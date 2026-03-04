@@ -1,7 +1,7 @@
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { queryClient, getApiBaseCandidates } from "@/lib/query-client";
@@ -72,7 +72,7 @@ export default function RootLayout() {
   const [bootProgress, setBootProgress] = useState(0);
   const [bootMessage, setBootMessage] = useState("Resources laden...");
   const [fontFallbackReady, setFontFallbackReady] = useState(false);
-  const [bootLocked, setBootLocked] = useState(false);
+  const bootStartedRef = useRef(false);
 
   useEffect(() => {
     const timer = setTimeout(() => setFontFallbackReady(true), 7000);
@@ -82,18 +82,19 @@ export default function RootLayout() {
   useEffect(() => {
     if (hasCompletedBootOnce) {
       setBootDone(true);
-      setBootLocked(false);
+      SplashScreen.hideAsync().catch(() => {});
       return;
     }
+
     if (!fontsLoaded && !fontFallbackReady) {
-      setBootLocked(true);
+      SplashScreen.hideAsync().catch(() => {});
       setBootMessage("Fonts laden...");
       setBootProgress((p) => (p < 20 ? 20 : p));
       return;
     }
 
-    if (bootLocked) return;
-    setBootLocked(true);
+    if (bootStartedRef.current) return;
+    bootStartedRef.current = true;
 
     let mounted = true;
     const messages = [
@@ -149,7 +150,7 @@ export default function RootLayout() {
       mounted = false;
       clearInterval(progressTimer);
     };
-  }, [fontsLoaded, fontFallbackReady, bootLocked]);
+  }, [fontsLoaded, fontFallbackReady]);
 
   const handleIntroFinish = React.useCallback(() => {
     hasShownIntroOnce = true;
