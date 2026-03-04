@@ -112,7 +112,7 @@ export function NexoraIntro({ onFinish }: Props) {
     >
       {/* Background */}
       <LinearGradient
-        colors={["#1B0A14", "#0F111A", COLORS.background]}
+        colors={["#0a0509", "#0f111a", COLORS.background]}
         start={{ x: 0.5, y: 0 }}
         end={{ x: 0.5, y: 1 }}
         style={styles.bg}
@@ -137,15 +137,20 @@ export function NexoraIntro({ onFinish }: Props) {
         </Text>
       </Animated.View>
 
+      {/* Accent line underneath logo */}
+      <Animated.View style={[styles.accentLine, { opacity: logoOpacity }]} />
+
       {/* Tagline */}
       <Animated.Text style={[styles.tagline, { opacity: tagOpacity }]}>
         Premium Sports • Live TV • Entertainment
       </Animated.Text>
 
       <Animated.View style={[styles.logoPlateFrame, { opacity: cardOpacity }]}> 
-        <BlurView intensity={75} tint="dark" style={styles.logoPlateBlur}>
+        <BlurView intensity={85} tint="dark" style={styles.logoPlateBlur}>
           <LinearGradient
-            colors={["rgba(229,9,20,0.18)", "rgba(38,20,45,0.34)", "rgba(10,10,16,0.62)"]}
+            colors={["rgba(229,9,20,0.25)", "rgba(38,20,45,0.15)", "rgba(10,10,16,0.45)"]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
             style={styles.logoPlate}
           >
             <Text style={styles.logoPlateNexora}>NEXORA</Text>
@@ -199,9 +204,16 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   logo: {
-    fontSize: 44,
-    letterSpacing: 6,
+    fontSize: 56,
+    letterSpacing: 8,
     fontFamily: "Inter_800ExtraBold",
+  },
+  accentLine: {
+    width: 60,
+    height: 3,
+    backgroundColor: COLORS.accent,
+    borderRadius: 2,
+    marginTop: 12,
   },
   logoN: {
     color: COLORS.accent,
@@ -241,14 +253,14 @@ const styles = StyleSheet.create({
   },
   logoPlateNexora: {
     fontFamily: "Inter_800ExtraBold",
-    fontSize: 34,
-    letterSpacing: 5,
+    fontSize: 38,
+    letterSpacing: 6,
     color: COLORS.text,
   },
   logoPlateSub: {
     fontFamily: "Inter_600SemiBold",
-    fontSize: 11,
-    letterSpacing: 2,
+    fontSize: 12,
+    letterSpacing: 2.5,
     color: COLORS.textSecondary,
   },
   curtainLeft: {
