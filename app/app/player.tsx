@@ -18,6 +18,7 @@ import WebView from "react-native-webview";
 import { COLORS } from "@/constants/colors";
 import { useNexora } from "@/context/NexoraContext";
 import { SafeHaptics } from "@/lib/safeHaptics";
+import { openInVlc } from "@/lib/vlc";
 
 
 
@@ -215,6 +216,12 @@ export default function PlayerScreen() {
     SafeHaptics.impactLight();
   };
 
+  const handleOpenInVlc = async () => {
+    if (!streamUrl) return;
+    SafeHaptics.impactLight();
+    await openInVlc(String(streamUrl), String(title || "Nexora stream"));
+  };
+
   // Build what to show
   const embedUrl: string | null = (() => {
     if (tmdbId) return getEmbedUrl(provider, tmdbId, type || "movie", season || "1", episode || "1");
@@ -361,6 +368,11 @@ export default function PlayerScreen() {
                 color={isFavorite(contentId || String(title)) ? COLORS.live : "#fff"}
               />
             </TouchableOpacity>
+            {!!streamUrl && (
+              <TouchableOpacity style={styles.iconBtn} onPress={handleOpenInVlc}>
+                <Ionicons name="open-outline" size={20} color="#fff" />
+              </TouchableOpacity>
+            )}
           </View>
         </LinearGradient>
 

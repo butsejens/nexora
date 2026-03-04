@@ -230,6 +230,92 @@ function normalizePlayerPhoto(playerId, ...candidates) {
   return `https://media.api-sports.io/football/players/${encodeURIComponent(id)}.png`;
 }
 
+function normalizePersonName(name) {
+  return String(name || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9 ]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function similarityScore(a, b) {
+  if (!a || !b) return 0;
+  if (a === b) return 1;
+  if (a.includes(b) || b.includes(a)) return 0.85;
+  const setA = new Set(a.split(" ").filter(Boolean));
+  const setB = new Set(b.split(" ").filter(Boolean));
+  let overlap = 0;
+  for (const token of setA) {
+    if (setB.has(token)) overlap += 1;
+  }
+  const denom = Math.max(setA.size, setB.size, 1);
+  return overlap / denom;
+}
+
+function pickBestProfileMatch(profiles, player, teamName) {
+  if (!Array.isArray(profiles) || profiles.length === 0) return null;
+
+  const targetName = normalizePersonName(player?.name);
+  const targetTeam = normalizePersonName(teamName);
+
+  let best = null;
+  let bestScore = 0;
+
+  for (const row of profiles) {
+    const prof = row?.player || row || {};
+    const profName = normalizePersonName(prof?.name || prof?.firstname || prof?.lastname || "");
+    const profTeam = normalizePersonName(row?.statistics?.[0]?.team?.name || "");
+
+    let score = similarityScore(targetName, profName);
+    if (targetTeam && profTeam) {
+      if (profTeam === targetTeam) score += 0.35;
+      else if (profTeam.includes(targetTeam) || targetTeam.includes(profTeam)) score += 0.2;
+    }
+
+    if (score > bestScore) {
+      best = row;
+      bestScore = score;
+    }
+  }
+
+  return bestScore >= 0.62 ? best : null;
+}
+
+async function enrichRosterPhotosFromApiSports(players, teamName) {
+  if (!Array.isArray(players) || players.length === 0) return players || [];
+  if (!process.env.APISPORTS_KEY) return players;
+
+  const out = players.map((p) => ({ ...p }));
+  const queue = out.filter((p) => !p?.photo || /media\.api-sports\.io\/football\/players\/\d+\.png$/i.test(String(p?.photo || "")));
+
+  for (const player of queue.slice(0, 24)) {
+    const name = String(player?.name || "").trim();
+    if (!name || name.length < 3) continue;
+    try {
+      const search = encodeURIComponent(name);
+      const raw = await fetchWithTimeout(footballApi(`/players/profiles?search=${search}`), 7000);
+      const rows = Array.isArray(raw?.response) ? raw.response : [];
+      if (rows.length === 0) continue;
+
+      const best = pickBestProfileMatch(rows, player, teamName);
+      const prof = best?.player || {};
+
+      const betterPhoto = normalizePlayerPhoto(player?.id, prof?.photo, player?.photo);
+      if (betterPhoto) player.photo = betterPhoto;
+      if (!player.nationality && prof?.nationality) player.nationality = prof.nationality;
+      if (!player.age && Number(prof?.age || 0) > 0) player.age = Number(prof.age);
+      if (!player.height) player.height = toMetersStringFromAny(prof?.height);
+      if (!player.weight) player.weight = toKgStringFromAny(prof?.weight);
+    } catch {
+      // best-effort enrichment only
+    }
+  }
+
+  return out;
+}
+
 function inferFormationFromPlayers(players) {
   const starters = (players || []).filter((p) => p?.starter !== false).slice(0, 11);
   if (starters.length < 10) return "";
@@ -412,7 +498,14 @@ function tryParseJSON(text) {
 
 async function aiEstimateRosterValues(players, teamName) {
   if (!Array.isArray(players) || players.length === 0) return null;
-  if (!process.env.OPENAI_API_KEY && !process.env.DEEPSEEK_API_KEY) return null;
+  const hasProvider = Boolean(
+    process.env.OLLAMA_MODEL ||
+    process.env.DEEPSEEK_API_KEY ||
+    process.env.OPENROUTER_API_KEY ||
+    process.env.GROQ_API_KEY ||
+    process.env.OPENAI_API_KEY
+  );
+  if (!hasProvider) return null;
 
   const compact = players.slice(0, 30).map((p) => ({
     id: p.id,
@@ -433,22 +526,209 @@ async function aiEstimateRosterValues(players, teamName) {
   try {
     const sys = { role: "system", content: "Je bent een voetbal transferanalist. Altijd geldige JSON." };
     const user = { role: "user", content: prompt };
-    const raw = process.env.DEEPSEEK_API_KEY
-      ? await deepseekChat([sys, user], { temperature: 0.2 })
-      : await openaiChat([sys, user], { temperature: 0.2, model: "gpt-4o-mini" });
-    const parsed = tryParseJSON(raw);
-    const rows = Array.isArray(parsed?.players) ? parsed.players : [];
-    const map = new Map();
-    for (const row of rows) {
-      const id = String(row?.id || "");
-      const eur = Number(row?.value_eur || 0);
-      if (!id || !Number.isFinite(eur) || eur <= 0) continue;
-      map.set(id, eur);
+    const providers = [];
+    if (process.env.OLLAMA_MODEL) providers.push(() => ollamaChat([sys, user], { temperature: 0.2 }));
+    if (process.env.DEEPSEEK_API_KEY) providers.push(() => deepseekChat([sys, user], { temperature: 0.2 }));
+    if (process.env.OPENROUTER_API_KEY) providers.push(() => openrouterChat([sys, user], { temperature: 0.2 }));
+    if (process.env.GROQ_API_KEY) providers.push(() => groqChat([sys, user], { temperature: 0.2 }));
+    if (process.env.OPENAI_API_KEY) providers.push(() => openaiChat([sys, user], { temperature: 0.2, model: "gpt-4o-mini" }));
+
+    for (const run of providers) {
+      try {
+        const raw = await run();
+        const parsed = tryParseJSON(raw);
+        const rows = Array.isArray(parsed?.players) ? parsed.players : [];
+        const map = new Map();
+        for (const row of rows) {
+          const id = String(row?.id || "");
+          const eur = Number(row?.value_eur || 0);
+          if (!id || !Number.isFinite(eur) || eur <= 0) continue;
+          map.set(id, eur);
+        }
+        if (map.size > 0) return map;
+      } catch {
+        // try next provider
+      }
     }
-    return map.size > 0 ? map : null;
+    return null;
   } catch {
     return null;
   }
+}
+
+async function enrichRosterMarketValues(players, teamName) {
+  if (!Array.isArray(players) || players.length === 0) return players || [];
+
+  const aiValues = await aiEstimateRosterValues(players, teamName);
+  return players.map((p) => {
+    const next = { ...p };
+    const aiValue = aiValues?.get?.(String(next.id || ""));
+    if (Number.isFinite(aiValue) && aiValue > 0) {
+      next.marketValue = formatEURShort(aiValue);
+      next.isRealValue = true;
+      next.valueMethod = "ai-model";
+      return next;
+    }
+
+    const estimated = estimateMarketValueEUR(next);
+    if (Number.isFinite(estimated) && estimated > 0) {
+      next.marketValue = formatEURShort(estimated);
+      next.isRealValue = false;
+      next.valueMethod = "estimated";
+    }
+    return next;
+  });
+}
+
+function inferStrengthsWeaknesses(position, age) {
+  const pos = String(position || "").toUpperCase();
+  const years = Number(age || 0);
+  const strengths = [];
+  const weaknesses = [];
+
+  if (/GK/.test(pos)) {
+    strengths.push("Reflexen", "Positionering", "1-op-1 reddingen");
+    weaknesses.push("Meevoetballen onder druk");
+  } else if (/CB|LB|RB|WB|DEF|BACK/.test(pos)) {
+    strengths.push("Duelkracht", "Positionering", "Defensieve organisatie");
+    weaknesses.push("Ruimte in de rug");
+  } else if (/DM|CM|AM|MID|LM|RM/.test(pos)) {
+    strengths.push("Balcirculatie", "Spelinzicht", "Passing");
+    weaknesses.push("Luchtduels tegen fysiek sterke tegenstanders");
+  } else if (/ST|CF|FW|LW|RW|ATT|STRIKER/.test(pos)) {
+    strengths.push("Afwerking", "Loopacties", "Diepgang");
+    weaknesses.push("Defensieve bijdrage");
+  } else {
+    strengths.push("Werkethiek", "Tactisch inzicht");
+    weaknesses.push("Constante impact over 90 minuten");
+  }
+
+  if (years > 0 && years <= 21) {
+    strengths.push("Ontwikkelingspotentieel");
+    weaknesses.push("Ervaring in topwedstrijden");
+  } else if (years >= 32) {
+    strengths.push("Ervaring", "Leiderschap");
+    weaknesses.push("Herstelsnelheid");
+  }
+
+  return {
+    strengths: Array.from(new Set(strengths)).slice(0, 5),
+    weaknesses: Array.from(new Set(weaknesses)).slice(0, 5),
+  };
+}
+
+async function aiAnalyzePlayerProfile(player, context = {}) {
+  const hasAnyProvider = Boolean(
+    process.env.OLLAMA_MODEL ||
+    process.env.DEEPSEEK_API_KEY ||
+    process.env.OPENROUTER_API_KEY ||
+    process.env.GROQ_API_KEY ||
+    process.env.OPENAI_API_KEY
+  );
+  if (!hasAnyProvider) return null;
+
+  const sys = {
+    role: "system",
+    content: "Je bent een professionele voetbal scout. Antwoord strikt in JSON.",
+  };
+  const user = {
+    role: "user",
+    content:
+      "Maak een korte objectieve speleranalyse op basis van de inputdata. Verzín geen clubs of statistieken buiten de input. Output alleen geldig JSON met keys: summary, strengths (array), weaknesses (array).\\n\\nINPUT:\\n" +
+      JSON.stringify({ player, context }, null, 2),
+  };
+
+  const providers = [];
+  if (process.env.OLLAMA_MODEL) providers.push(() => ollamaChat([sys, user], { temperature: 0.25 }));
+  if (process.env.DEEPSEEK_API_KEY) providers.push(() => deepseekChat([sys, user], { temperature: 0.25 }));
+  if (process.env.OPENROUTER_API_KEY) providers.push(() => openrouterChat([sys, user], { temperature: 0.25 }));
+  if (process.env.GROQ_API_KEY) providers.push(() => groqChat([sys, user], { temperature: 0.25 }));
+  if (process.env.OPENAI_API_KEY) providers.push(() => openaiChat([sys, user], { temperature: 0.25 }));
+
+  for (const run of providers) {
+    try {
+      const raw = await run();
+      const parsed = tryParseJSON(raw);
+      const summary = String(parsed?.summary || "").trim();
+      const strengths = Array.isArray(parsed?.strengths) ? parsed.strengths.map((x) => String(x).trim()).filter(Boolean) : [];
+      const weaknesses = Array.isArray(parsed?.weaknesses) ? parsed.weaknesses.map((x) => String(x).trim()).filter(Boolean) : [];
+      if (summary || strengths.length || weaknesses.length) {
+        return {
+          summary: summary || null,
+          strengths: strengths.slice(0, 5),
+          weaknesses: weaknesses.slice(0, 5),
+        };
+      }
+    } catch {
+      // try next provider
+    }
+  }
+
+  return null;
+}
+
+async function fetchApiSportsPlayerData(playerId, playerName, teamName) {
+  if (!process.env.APISPORTS_KEY) return null;
+
+  const out = {
+    profile: null,
+    transfers: [],
+    source: "api-sports",
+  };
+
+  try {
+    let profileRows = [];
+
+    const id = String(playerId || "").trim();
+    const name = String(playerName || "").trim();
+    if (id) {
+      const byId = await fetchWithTimeout(footballApi(`/players/profiles?player=${encodeURIComponent(id)}`), 9000);
+      profileRows = Array.isArray(byId?.response) ? byId.response : [];
+    }
+    if (profileRows.length === 0 && name) {
+      const bySearch = await fetchWithTimeout(footballApi(`/players/profiles?search=${encodeURIComponent(name)}`), 9000);
+      profileRows = Array.isArray(bySearch?.response) ? bySearch.response : [];
+    }
+
+    const best = pickBestProfileMatch(profileRows, { name: playerName }, teamName);
+    out.profile = best || profileRows[0] || null;
+
+    const transferPlayerId = String(out.profile?.player?.id || id || "").trim();
+    if (transferPlayerId) {
+      try {
+        const transferRaw = await fetchWithTimeout(footballApi(`/transfers?player=${encodeURIComponent(transferPlayerId)}`), 9000);
+        out.transfers = Array.isArray(transferRaw?.response?.[0]?.transfers)
+          ? transferRaw.response[0].transfers
+          : [];
+      } catch {
+        out.transfers = [];
+      }
+    }
+
+    return out;
+  } catch {
+    return null;
+  }
+}
+
+function mapFormerClubs(transfers) {
+  const clubs = [];
+  for (const t of transfers || []) {
+    const outClub = String(t?.teams?.out?.name || "").trim();
+    const inClub = String(t?.teams?.in?.name || "").trim();
+    const date = String(t?.date || "").trim();
+    if (outClub) clubs.push({ name: outClub, role: "from", date });
+    if (inClub) clubs.push({ name: inClub, role: "to", date });
+  }
+  const unique = [];
+  const seen = new Set();
+  for (const c of clubs) {
+    const key = `${c.name}_${c.date}`;
+    if (!c.name || seen.has(key)) continue;
+    seen.add(key);
+    unique.push(c);
+  }
+  return unique.slice(0, 12);
 }
 
 function mapEspnRosterPlayer(player) {
@@ -1213,26 +1493,30 @@ async function aiPredictMatch(payload) {
 
   const providers = [];
   if (process.env.OLLAMA_MODEL) {
-    providers.push(() => ollamaChat([sys, user], { temperature: 0.35 }));
+    providers.push({ name: "ollama", run: () => ollamaChat([sys, user], { temperature: 0.35 }) });
   }
   if (process.env.DEEPSEEK_API_KEY) {
-    providers.push(() => deepseekChat([sys, user], { temperature: 0.35 }));
+    providers.push({ name: "deepseek", run: () => deepseekChat([sys, user], { temperature: 0.35 }) });
   }
   if (process.env.OPENROUTER_API_KEY) {
-    providers.push(() => openrouterChat([sys, user], { temperature: 0.35 }));
+    providers.push({ name: "openrouter", run: () => openrouterChat([sys, user], { temperature: 0.35 }) });
   }
   if (process.env.GROQ_API_KEY) {
-    providers.push(() => groqChat([sys, user], { temperature: 0.35 }));
+    providers.push({ name: "groq", run: () => groqChat([sys, user], { temperature: 0.35 }) });
   }
   if (process.env.OPENAI_API_KEY) {
-    providers.push(() => openaiChat([sys, user], { temperature: 0.35 }));
+    providers.push({ name: "openai", run: () => openaiChat([sys, user], { temperature: 0.35 }) });
   }
 
   let lastError = null;
-  for (const run of providers) {
+  for (const provider of providers) {
     try {
-      const raw = await run();
-      return parseAiPredictionToUiShape(raw);
+      const raw = await provider.run();
+      const parsed = parseAiPredictionToUiShape(raw);
+      return {
+        ...parsed,
+        source: `ai-${provider.name}`,
+      };
     } catch (e) {
       lastError = e;
     }
@@ -1259,7 +1543,15 @@ app.get("/", (_req, res) => {
 });
 
 app.get("/health", (req, res) => {
-  res.json({ ok: true, time: new Date().toISOString(), source: footballSource(), tz: TZ });
+  const aiProviders = {
+    ollama: Boolean(process.env.OLLAMA_MODEL),
+    deepseek: Boolean(process.env.DEEPSEEK_API_KEY),
+    openrouter: Boolean(process.env.OPENROUTER_API_KEY),
+    groq: Boolean(process.env.GROQ_API_KEY),
+    openai: Boolean(process.env.OPENAI_API_KEY),
+  };
+  const aiReady = Object.values(aiProviders).some(Boolean);
+  res.json({ ok: true, time: new Date().toISOString(), source: footballSource(), tz: TZ, aiReady, aiProviders });
 });
 
 // Request logging middleware
@@ -1492,6 +1784,10 @@ app.get("/api/sports/match/:matchId", async (req, res) => {
           })
           .filter((t) => t.players.length > 0);
 
+        for (const team of starters) {
+          team.players = await enrichRosterMarketValues(team.players || [], team.team || "");
+        }
+
         return {
           ...mapped,
           homeTeamId: String(home?.team?.id || mapped.homeTeamId || ""),
@@ -1582,6 +1878,10 @@ app.get("/api/sports/match/:matchId", async (req, res) => {
           };
         }),
       }));
+
+      for (const team of starters) {
+        team.players = await enrichRosterMarketValues(team.players || [], team.team || "");
+      }
 
       return {
         ...mapped,
@@ -1957,6 +2257,8 @@ app.get("/api/sports/team/:teamId", async (req, res) => {
           if (!dedup.has(id)) dedup.set(id, mapped);
         }
         const players = Array.from(dedup.values());
+        const photoEnriched = await enrichRosterPhotosFromApiSports(players, team?.displayName || team?.name || teamNameFromQuery || "");
+        const valuedPlayers = await enrichRosterMarketValues(photoEnriched, team?.displayName || team?.name || teamNameFromQuery || "");
 
         return {
           id: String(team?.id || resolvedTeamId || ""),
@@ -1971,7 +2273,7 @@ app.get("/api/sports/team/:teamId", async (req, res) => {
           venue: team?.venue?.fullName || team?.venue?.name || "",
           coach: team?.staff?.[0]?.displayName || "",
           record: "",
-          players,
+          players: valuedPlayers,
           source: "espn",
         };
       }
@@ -1995,6 +2297,120 @@ app.get("/api/sports/team/:teamId", async (req, res) => {
     res.json(payload);
   } catch (e) {
     res.status(200).json({ team: null, stats: null, error: String(e?.message || e) });
+  }
+});
+
+app.get("/api/sports/player/:playerId", async (req, res) => {
+  const playerId = String(req.params.playerId || "").trim();
+  const playerName = String(req.query?.name || "").trim();
+  const teamName = String(req.query?.team || "").trim();
+  const espnLeague = String(req.query?.league || "eng.1");
+  const cacheKey = `player_profile_${playerId}_${playerName}_${teamName}_${espnLeague}`;
+
+  try {
+    const payload = await getOrFetch(cacheKey, 120_000, async () => {
+      let espnAthlete = null;
+      let espnTeam = null;
+
+      if (playerId) {
+        try {
+          const athleteResp = await fetch(`https://site.api.espn.com/apis/site/v2/sports/soccer/${encodeURIComponent(espnLeague)}/athletes/${encodeURIComponent(playerId)}`, {
+            headers: { "user-agent": "Mozilla/5.0 (Nexora/1.0)", accept: "application/json" },
+          });
+          if (athleteResp.ok) {
+            const athleteJson = await athleteResp.json();
+            espnAthlete = athleteJson?.athlete || athleteJson || null;
+            espnTeam = athleteJson?.team || athleteJson?.athlete?.team || null;
+          }
+        } catch {
+          espnAthlete = null;
+        }
+      }
+
+      const apiSports = await fetchApiSportsPlayerData(
+        playerId,
+        playerName || espnAthlete?.displayName || espnAthlete?.fullName,
+        teamName || espnTeam?.displayName || espnTeam?.name
+      );
+
+      const profile = apiSports?.profile?.player || {};
+      const profileStats = apiSports?.profile?.statistics?.[0] || {};
+
+      const name =
+        profile?.name ||
+        espnAthlete?.displayName ||
+        espnAthlete?.fullName ||
+        playerName ||
+        "Onbekend";
+
+      const normalizedPlayer = {
+        id: String(profile?.id || espnAthlete?.id || playerId || ""),
+        name,
+        age: Number(profile?.age || espnAthlete?.age || 0) || undefined,
+        nationality: profile?.nationality || espnAthlete?.citizenship || espnAthlete?.birthCountry || undefined,
+        position:
+          profileStats?.games?.position ||
+          espnAthlete?.position?.abbreviation ||
+          espnAthlete?.position?.name ||
+          "",
+      };
+
+      const valued = (await enrichRosterMarketValues([normalizedPlayer], teamName || profileStats?.team?.name || espnTeam?.displayName || ""))[0] || normalizedPlayer;
+      const fallbackInsights = inferStrengthsWeaknesses(valued?.position, valued?.age);
+      const aiInsights = await aiAnalyzePlayerProfile(
+        {
+          ...valued,
+          currentClub: profileStats?.team?.name || espnTeam?.displayName || espnTeam?.name || teamName || null,
+          formerClubs: mapFormerClubs(apiSports?.transfers || []),
+        },
+        {
+          league: espnLeague,
+          source: apiSports?.source || "espn",
+        }
+      );
+
+      return {
+        id: String(valued?.id || ""),
+        name: valued?.name || name,
+        photo: normalizePlayerPhoto(
+          valued?.id,
+          profile?.photo,
+          espnAthlete?.headshot?.href,
+          valued?.id ? `https://a.espncdn.com/i/headshots/soccer/players/full/${encodeURIComponent(String(valued.id))}.png` : null,
+          valued?.id ? `https://media.api-sports.io/football/players/${encodeURIComponent(String(valued.id))}.png` : null
+        ),
+        age: valued?.age,
+        nationality: valued?.nationality,
+        position: valued?.position,
+        height: toMetersStringFromAny(profile?.height || espnAthlete?.displayHeight || espnAthlete?.height),
+        weight: toKgStringFromAny(profile?.weight || espnAthlete?.displayWeight || espnAthlete?.weight),
+        currentClub:
+          profileStats?.team?.name ||
+          espnTeam?.displayName ||
+          espnTeam?.name ||
+          teamName ||
+          null,
+        currentClubLogo: normalizeTeamLogo(
+          profileStats?.team?.name || espnTeam?.displayName || espnTeam?.name || teamName || "",
+          profileStats?.team?.logo || espnTeam?.logo || espnTeam?.logos?.[0]?.href || null
+        ),
+        formerClubs: mapFormerClubs(apiSports?.transfers || []),
+        marketValue: valued?.marketValue || null,
+        isRealValue: Boolean(valued?.isRealValue),
+        valueMethod: valued?.valueMethod || "estimated",
+        strengths: aiInsights?.strengths?.length ? aiInsights.strengths : fallbackInsights.strengths,
+        weaknesses: aiInsights?.weaknesses?.length ? aiInsights.weaknesses : fallbackInsights.weaknesses,
+        analysis:
+          aiInsights?.summary ||
+          `${name} (${valued?.position || "Speler"}) wordt beoordeeld op actuele profieldata, positie-eisen en recente context van club/rol.`,
+        source: aiInsights ? "real-data+ai" : "real-data+deterministic",
+        updatedAt: new Date().toISOString(),
+      };
+    });
+
+    res.json(payload);
+  } catch (e) {
+    res.status(200).json({ error: String(e?.message || e) });
   }
 });
 
@@ -2092,6 +2508,65 @@ function channelNameFromUrl(rawUrl) {
   } catch {
     return "Live Stream";
   }
+}
+
+function isPublicHttpUrl(rawUrl) {
+  try {
+    const u = new URL(String(rawUrl || ""));
+    if (!["http:", "https:"].includes(u.protocol)) return false;
+    const hn = String(u.hostname || "").toLowerCase();
+    const isPrivateHost = /^(localhost|127\.|10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.|0\.0\.0\.0|::1)/.test(hn);
+    if (isPrivateHost && process.env.NODE_ENV !== "development") return false;
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function resolvePlaylistEntryUrl(baseUrl, entryUrl) {
+  const raw = String(entryUrl || "").trim();
+  if (!raw) return raw;
+  try {
+    return new URL(raw).toString();
+  } catch {}
+
+  try {
+    return new URL(raw, String(baseUrl || "")).toString();
+  } catch {
+    return raw;
+  }
+}
+
+async function probePlaylistStreamUrl(rawUrl) {
+  const url = String(rawUrl || "").trim();
+  if (!isPublicHttpUrl(url)) {
+    return { ok: false, url, code: 400 };
+  }
+
+  const methods = ["HEAD", "GET"];
+  for (const method of methods) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 6500);
+    try {
+      const resp = await fetch(url, {
+        method,
+        headers: IPTV_HEADERS,
+        redirect: "follow",
+        signal: controller.signal,
+      });
+      clearTimeout(timer);
+      const code = Number(resp.status || 0);
+      // Many IPTV providers answer 401/403 while stream still valid for player session.
+      if ((code >= 200 && code < 500) || code === 206) {
+        const finalUrl = String(resp.url || url);
+        return { ok: true, url: finalUrl, code };
+      }
+    } catch {
+      clearTimeout(timer);
+    }
+  }
+
+  return { ok: false, url, code: 0 };
 }
 
 // IPTV-friendly headers that most M3U/Xtream servers accept
@@ -2194,9 +2669,50 @@ app.post("/api/playlist/parse", playlistLimiter, async (req, res) => {
     }
 
     const parsed = parseM3U(txt);
+    parsed.live = (parsed.live || []).map((ch) => ({ ...ch, url: resolvePlaylistEntryUrl(url, ch?.url) }));
+    parsed.movies = (parsed.movies || []).map((ch) => ({ ...ch, url: resolvePlaylistEntryUrl(url, ch?.url) }));
+    parsed.series = (parsed.series || []).map((ch) => ({ ...ch, url: resolvePlaylistEntryUrl(url, ch?.url) }));
     res.json({ ...parsed, source: url });
   } catch (e) {
     res.status(500).json({ error: String(e?.message || e) });
+  }
+});
+
+app.post("/api/playlist/activate", playlistLimiter, async (req, res) => {
+  try {
+    const channels = Array.isArray(req.body?.channels) ? req.body.channels : [];
+    if (channels.length === 0) {
+      return res.status(400).json({ error: "channels array is vereist" });
+    }
+
+    const unique = [];
+    const seen = new Set();
+    for (const row of channels.slice(0, 80)) {
+      const id = String(row?.id || row?.url || "").trim();
+      const url = String(row?.url || "").trim();
+      if (!id || !url || seen.has(id)) continue;
+      seen.add(id);
+      unique.push({ id, url });
+    }
+
+    const activated = {};
+    let okCount = 0;
+    for (const row of unique) {
+      const probe = await probePlaylistStreamUrl(row.url);
+      if (probe.ok) {
+        activated[row.id] = probe.url;
+        okCount += 1;
+      }
+    }
+
+    return res.json({
+      ok: true,
+      tested: unique.length,
+      activated: okCount,
+      urls: activated,
+    });
+  } catch (e) {
+    return res.status(500).json({ error: String(e?.message || e) });
   }
 });
 
@@ -2281,6 +2797,9 @@ app.post("/api/playlist/xtream", playlistLimiter, async (req, res) => {
       }
 
       const parsed = parseM3U(txt);
+      parsed.live = (parsed.live || []).map((ch) => ({ ...ch, url: resolvePlaylistEntryUrl(baseUrl, ch?.url) }));
+      parsed.movies = (parsed.movies || []).map((ch) => ({ ...ch, url: resolvePlaylistEntryUrl(baseUrl, ch?.url) }));
+      parsed.series = (parsed.series || []).map((ch) => ({ ...ch, url: resolvePlaylistEntryUrl(baseUrl, ch?.url) }));
       console.log(`[xtream] ${baseUrl}: ${parsed.live.length} live, ${parsed.movies.length} movies, ${parsed.series.length} series`);
       res.json({ ...parsed, source: "xtream" });
     } catch (fetchErr) {

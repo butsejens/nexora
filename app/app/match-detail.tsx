@@ -13,6 +13,7 @@ import { COLORS } from "@/constants/colors";
 import { LiveBadge } from "@/components/LiveBadge";
 import { SafeHaptics } from "@/lib/safeHaptics";
 import { apiRequest } from "@/lib/query-client";
+import { openInVlc } from "@/lib/vlc";
 import { TeamLogo } from "@/components/MatchCard";
 
 const TABS = [
@@ -267,6 +268,16 @@ export default function MatchDetailScreen() {
                   <Ionicons name="refresh-outline" size={12} color={COLORS.accent} />
                   <Text style={styles.serverBtnText}>Nieuwe beste link zoeken</Text>
                 </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.serverBtn}
+                  onPress={async () => {
+                    SafeHaptics.impactLight();
+                    await openInVlc(streamUrl, `${params.homeTeam || ""} - ${params.awayTeam || ""}`.trim() || "Live sport");
+                  }}
+                >
+                  <Ionicons name="open-outline" size={12} color={COLORS.accent} />
+                  <Text style={styles.serverBtnText}>Open in VLC</Text>
+                </TouchableOpacity>
               </View>
             </>
           ) : (
@@ -469,9 +480,21 @@ function PlayerRow({ player, sport, compact = false }: { player: any; sport: str
   const photoUri = photoCandidates[photoIndex];
 
   const compactStyle = compact ? styles.playerRowCompact : null;
+  const handleOpenProfile = () => {
+    router.push({
+      pathname: "/player-profile",
+      params: {
+        playerId: String(player?.id || ""),
+        name: String(player?.name || ""),
+        team: "",
+        league: String(sport || "eng.1"),
+        marketValue: String(player?.marketValue || ""),
+      },
+    });
+  };
 
   return (
-    <View style={[styles.playerRow, compactStyle]}>
+    <TouchableOpacity style={[styles.playerRow, compactStyle]} activeOpacity={0.82} onPress={handleOpenProfile}>
       <View style={styles.playerJersey}>
         <Text style={styles.playerJerseyNum}>{player.jersey || "—"}</Text>
       </View>
@@ -489,7 +512,12 @@ function PlayerRow({ player, sport, compact = false }: { player: any; sport: str
         </View>
       )}
       <View style={styles.playerInfo}>
-        <Text style={styles.playerName} numberOfLines={1}>{player.name}</Text>
+        <View style={styles.playerNameRow}>
+          <Text style={styles.playerName} numberOfLines={1}>{player.name}</Text>
+          {player.marketValue ? (
+            <Text style={styles.playerInlineValue} numberOfLines={1}>{player.marketValue}</Text>
+          ) : null}
+        </View>
         <Text style={styles.playerPos} numberOfLines={1}>{player.positionName || player.position}</Text>
       </View>
       {!compact && <View style={{ alignItems: "flex-end", gap: 4 }}>
@@ -505,7 +533,7 @@ function PlayerRow({ player, sport, compact = false }: { player: any; sport: str
           </View>
         )}
       </View>}
-    </View>
+    </TouchableOpacity>
   );
 }
 
@@ -654,6 +682,9 @@ function AIPredictionView({ prediction, homeTeam, awayTeam }: any) {
       <Text style={styles.aiDisclaimer}>
         * AI-analyse is indicatief en gebaseerd op historische gegevens. Geen gokadvies.
       </Text>
+      {prediction?.source ? (
+        <Text style={styles.aiSourceText}>Bron: {String(prediction.source)}</Text>
+      ) : null}
     </View>
   );
 }
@@ -846,7 +877,9 @@ const styles = StyleSheet.create({
   playerPhoto: { width: 36, height: 36, borderRadius: 18 },
   playerPhotoPlaceholder: { backgroundColor: COLORS.card, alignItems: "center", justifyContent: "center" },
   playerInfo: { flex: 1 },
+  playerNameRow: { flexDirection: "row", alignItems: "center", gap: 6 },
   playerName: { fontFamily: "Inter_600SemiBold", fontSize: 13, color: COLORS.text },
+  playerInlineValue: { fontFamily: "Inter_700Bold", fontSize: 10, color: "#00C896" },
   playerPos: { fontFamily: "Inter_400Regular", fontSize: 11, color: COLORS.textMuted, marginTop: 1 },
   starterBadge: { backgroundColor: COLORS.accentGlow, borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3, borderWidth: 1, borderColor: COLORS.accent },
   starterText: { fontFamily: "Inter_600SemiBold", fontSize: 10, color: COLORS.accent },
@@ -893,6 +926,7 @@ const styles = StyleSheet.create({
   tipCard: { flexDirection: "row", alignItems: "flex-start", gap: 10, backgroundColor: "rgba(255,215,0,0.08)", borderRadius: 14, padding: 14, borderWidth: 1, borderColor: "rgba(255,215,0,0.25)" },
   tipText: { fontFamily: "Inter_400Regular", fontSize: 13, color: COLORS.textSecondary, flex: 1, lineHeight: 20 },
   aiDisclaimer: { fontFamily: "Inter_400Regular", fontSize: 11, color: COLORS.textMuted, textAlign: "center", marginTop: 4, paddingBottom: 20 },
+  aiSourceText: { fontFamily: "Inter_500Medium", fontSize: 11, color: COLORS.accentDim, textAlign: "center", marginTop: -10, paddingBottom: 20 },
   metaBadge: {
     backgroundColor: COLORS.card, borderRadius: 12, padding: 10, borderWidth: 1,
     borderColor: COLORS.border, alignItems: "center", gap: 4,

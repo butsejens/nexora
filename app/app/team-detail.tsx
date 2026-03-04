@@ -173,7 +173,23 @@ export default function TeamDetailScreen() {
           <FlatList
             data={filteredPlayers}
             keyExtractor={(item, idx) => String(item.id || idx)}
-            renderItem={({ item }) => <PlayerCard player={item} />}
+            renderItem={({ item }) => (
+              <TouchableOpacity
+                activeOpacity={0.8}
+                onPress={() => router.push({
+                  pathname: "/player-profile",
+                  params: {
+                    playerId: String(item?.id || ""),
+                    name: String(item?.name || ""),
+                    team: String(data?.name || params.teamName || ""),
+                    league: String(league || "eng.1"),
+                    marketValue: String(item?.marketValue || ""),
+                  },
+                })}
+              >
+                <PlayerCard player={item} />
+              </TouchableOpacity>
+            )}
             ListHeaderComponent={positions.length > 1 ? (
               <ScrollView horizontal showsHorizontalScrollIndicator={false}
                 style={[styles.filterScroll, styles.filterSticky]} contentContainerStyle={styles.filterRow}>
@@ -247,7 +263,14 @@ function PlayerCard({ player }: { player: any }) {
         )}
 
         <View style={styles.playerMain}>
-          <Text style={styles.playerName} numberOfLines={1}>{player.name}</Text>
+          <View style={styles.playerNameRow}>
+            <Text style={styles.playerName} numberOfLines={1}>{player.name}</Text>
+            {player.marketValue ? (
+              <Text style={[styles.playerNameValue, player.isRealValue ? styles.playerNameValueReal : null]} numberOfLines={1}>
+                {player.marketValue}
+              </Text>
+            ) : null}
+          </View>
           <View style={styles.playerSubRow}>
             <View style={[styles.posTag, { backgroundColor: `${posColor}22`, borderColor: `${posColor}44` }]}>
               <Text style={[styles.posTagText, { color: posColor }]}>{player.positionName || player.position}</Text>
@@ -354,7 +377,10 @@ const styles = StyleSheet.create({
   playerPhoto: { width: 44, height: 44, borderRadius: 22, flexShrink: 0 },
   photoPlaceholder: { backgroundColor: COLORS.card, alignItems: "center", justifyContent: "center" },
   playerMain: { flex: 1, gap: 4 },
+  playerNameRow: { flexDirection: "row", alignItems: "center", gap: 6 },
   playerName: { fontFamily: "Inter_600SemiBold", fontSize: 14, color: COLORS.text },
+  playerNameValue: { fontFamily: "Inter_700Bold", fontSize: 11, color: COLORS.textMuted },
+  playerNameValueReal: { color: "#00C896" },
   playerSubRow: { flexDirection: "row", alignItems: "center", gap: 8 },
   posTag: { borderRadius: 6, borderWidth: 1, paddingHorizontal: 7, paddingVertical: 2 },
   posTagText: { fontFamily: "Inter_600SemiBold", fontSize: 10 },

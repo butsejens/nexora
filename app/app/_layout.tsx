@@ -21,6 +21,9 @@ import { COLORS } from "@/constants/colors";
 
 SplashScreen.preventAutoHideAsync();
 
+let hasCompletedBootOnce = false;
+let hasShownIntroOnce = false;
+
 function RootLayoutNav() {
   return (
     <Stack
@@ -45,6 +48,7 @@ function RootLayoutNav() {
       <Stack.Screen name="competition" options={{ headerShown: false }} />
       <Stack.Screen name="match-detail" options={{ headerShown: false }} />
       <Stack.Screen name="team-detail" options={{ headerShown: false }} />
+      <Stack.Screen name="player-profile" options={{ headerShown: false }} />
       <Stack.Screen name="detail" options={{ headerShown: false }} />
       <Stack.Screen name="favorites" options={{ headerShown: false }} />
       <Stack.Screen name="premium" options={{ headerShown: false }} />
@@ -64,10 +68,11 @@ export default function RootLayout() {
   });
 
   const [showIntro, setShowIntro] = useState(false);
-  const [bootDone, setBootDone] = useState(false);
+  const [bootDone, setBootDone] = useState(hasCompletedBootOnce);
   const [bootProgress, setBootProgress] = useState(0);
   const [bootMessage, setBootMessage] = useState("Resources laden...");
   const [fontFallbackReady, setFontFallbackReady] = useState(false);
+  const [bootLocked, setBootLocked] = useState(false);
 
   useEffect(() => {
     const timer = setTimeout(() => setFontFallbackReady(true), 7000);
@@ -75,11 +80,20 @@ export default function RootLayout() {
   }, []);
 
   useEffect(() => {
+    if (hasCompletedBootOnce) {
+      setBootDone(true);
+      setBootLocked(false);
+      return;
+    }
     if (!fontsLoaded && !fontFallbackReady) {
+      setBootLocked(true);
       setBootMessage("Fonts laden...");
       setBootProgress((p) => (p < 20 ? 20 : p));
       return;
     }
+
+    if (bootLocked) return;
+    setBootLocked(true);
 
     let mounted = true;
     const messages = [
@@ -123,8 +137,11 @@ export default function RootLayout() {
         clearInterval(progressTimer);
         setBootProgress(100);
         setBootMessage("Klaar");
+        hasCompletedBootOnce = true;
         setBootDone(true);
-        setShowIntro(true);
+        if (!hasShownIntroOnce) {
+          setShowIntro(true);
+        }
       }
     })();
 
@@ -132,15 +149,20 @@ export default function RootLayout() {
       mounted = false;
       clearInterval(progressTimer);
     };
-  }, [fontsLoaded, fontFallbackReady]);
+  }, [fontsLoaded, fontFallbackReady, bootLocked]);
+
+  const handleIntroFinish = React.useCallback(() => {
+    hasShownIntroOnce = true;
+    setShowIntro(false);
+  }, []);
 
   useEffect(() => {
     if (!showIntro) return;
     const safety = setTimeout(() => {
-      setShowIntro(false);
+      handleIntroFinish();
     }, 7000);
     return () => clearTimeout(safety);
-  }, [showIntro]);
+  }, [showIntro, handleIntroFinish]);
 
   if (!bootDone) {
     return <NexoraBootScreen progress={bootProgress} message={bootMessage} />;
@@ -154,7 +176,7 @@ export default function RootLayout() {
             <NexoraProvider>
               <RootLayoutNav />
               {showIntro && (
-                <NexoraIntro onFinish={() => setShowIntro(false)} />
+                <NexoraIntro onFinish={handleIntroFinish} />
               )}
             </NexoraProvider>
           </GestureHandlerRootView>

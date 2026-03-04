@@ -19,7 +19,7 @@ import * as DocumentPicker from "expo-document-picker";
 import { COLORS } from "@/constants/colors";
 import { NexoraHeader } from "@/components/NexoraHeader";
 import { useNexora } from "@/context/NexoraContext";
-import { apiRequest , queryClient } from "@/lib/query-client";
+import { apiRequest, queryClient } from "@/lib/query-client";
 import { fetchM3UText } from "@/lib/fetchM3U";
 import { parseM3UContentAsync } from "@/lib/parseM3U";
 import { SafeHaptics } from "@/lib/safeHaptics";
@@ -230,20 +230,57 @@ const [showAddPlaylist, setShowAddPlaylist] = useState(false);
   const movieCount = iptvChannels.filter(c => c.category === "movie").length;
   const seriesCount = iptvChannels.filter(c => c.category === "series").length;
 
+  const activateParsedPlaylist = async (data: any) => {
+    try {
+      const all = [
+        ...(Array.isArray(data?.live) ? data.live : []),
+        ...(Array.isArray(data?.movies) ? data.movies : []),
+        ...(Array.isArray(data?.series) ? data.series : []),
+      ];
+      const candidates = all
+        .filter((row: any) => row?.id && row?.url)
+        .slice(0, 80)
+        .map((row: any) => ({ id: String(row.id), url: String(row.url) }));
+
+      if (!candidates.length) return data;
+
+      const res = await apiRequest("POST", "/api/playlist/activate", { channels: candidates });
+      const json = await res.json();
+      const mapped = json?.urls && typeof json.urls === "object" ? json.urls : {};
+
+      const applyUrls = (arr: any[]) =>
+        (Array.isArray(arr) ? arr : []).map((row) => {
+          const nextUrl = mapped?.[String(row?.id || "")];
+          if (!nextUrl) return row;
+          return { ...row, url: nextUrl };
+        });
+
+      return {
+        ...data,
+        live: applyUrls(data?.live),
+        movies: applyUrls(data?.movies),
+        series: applyUrls(data?.series),
+      };
+    } catch {
+      return data;
+    }
+  };
+
   const processPlaylistData = async (playlistId: string, data: any) => {
-    const allChannels = [...(data.live || []), ...(data.movies || []), ...(data.series || [])];
+    const activatedData = await activateParsedPlaylist(data);
+    const allChannels = [...(activatedData.live || []), ...(activatedData.movies || []), ...(activatedData.series || [])];
     await setIptvChannelsForPlaylist(playlistId, allChannels);
     updatePlaylist(playlistId, {
       status: "ready",
       channelCount: allChannels.length,
-      liveCount: (data.live || []).length,
-      movieCount: (data.movies || []).length,
-      seriesCount: (data.series || []).length,
+      liveCount: (activatedData.live || []).length,
+      movieCount: (activatedData.movies || []).length,
+      seriesCount: (activatedData.series || []).length,
     });
     SafeHaptics.success();
     Alert.alert(
       "Playlist Geladen",
-      `${allChannels.length} kanalen:\n• ${(data.live || []).length} Live\n• ${(data.movies || []).length} Films\n• ${(data.series || []).length} Series`
+      `${allChannels.length} kanalen:\n• ${(activatedData.live || []).length} Live\n• ${(activatedData.movies || []).length} Films\n• ${(activatedData.series || []).length} Series`
     );
   };
 
