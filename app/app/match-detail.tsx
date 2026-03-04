@@ -24,6 +24,55 @@ const TABS = [
 
 type TabId = "stream" | "stats" | "lineups" | "ai";
 
+function buildFormationRows(players: any[], formationRaw?: string) {
+  const starters = (Array.isArray(players) ? players : [])
+    .filter((p) => p?.starter !== false)
+    .slice(0, 11);
+
+  if (!starters.length) return [] as any[][];
+
+  const formationNums = String(formationRaw || "")
+    .split("-")
+    .map((n) => parseInt(n.trim(), 10))
+    .filter((n) => Number.isFinite(n) && n > 0);
+
+  const byRole = {
+    gk: starters.filter((p) => /gk|goalkeeper/i.test(`${p?.position || ""} ${p?.positionName || ""}`)),
+    def: starters.filter((p) => /cb|lb|rb|wb|def|back/i.test(`${p?.position || ""} ${p?.positionName || ""}`)),
+    mid: starters.filter((p) => /dm|cm|am|lm|rm|mid/i.test(`${p?.position || ""} ${p?.positionName || ""}`)),
+    fwd: starters.filter((p) => /st|cf|lw|rw|fw|att|wing|forward|striker/i.test(`${p?.position || ""} ${p?.positionName || ""}`)),
+  };
+
+  const pool = [...starters];
+  const takeFrom = (arr: any[], count: number) => {
+    const out: any[] = [];
+    while (arr.length && out.length < count) {
+      const p = arr.shift();
+      const idx = pool.findIndex((x) => x?.id === p?.id);
+      if (idx >= 0) {
+        out.push(pool[idx]);
+        pool.splice(idx, 1);
+      }
+    }
+    return out;
+  };
+
+  const gk = takeFrom([...byRole.gk], 1);
+  if (!gk.length && pool.length) gk.push(pool.shift());
+
+  const lines = formationNums.length >= 3 ? formationNums.slice(0, 3) : [4, 3, 3];
+  const defenders = takeFrom([...byRole.def], lines[0]);
+  while (defenders.length < lines[0] && pool.length) defenders.push(pool.shift());
+
+  const mids = takeFrom([...byRole.mid], lines[1]);
+  while (mids.length < lines[1] && pool.length) mids.push(pool.shift());
+
+  const fwds = takeFrom([...byRole.fwd], lines[2]);
+  while (fwds.length < lines[2] && pool.length) fwds.push(pool.shift());
+
+  return [fwds, mids, defenders, gk].filter((row) => row.length > 0);
+}
+
 export default function MatchDetailScreen() {
   const params = useLocalSearchParams<{
     matchId: string; homeTeam: string; awayTeam: string;
@@ -279,10 +328,29 @@ export default function MatchDetailScreen() {
           ) : matchDetail?.starters?.length > 0 ? (
             matchDetail.starters.map((team: any, ti: number) => (
               <View key={ti} style={styles.lineupTeamSection}>
-                <Text style={styles.sectionLabel}>{team.team?.toUpperCase()} — OPSTELLING</Text>
-                {team.players?.map((p: any, pi: number) => (
-                  <PlayerRow key={pi} player={p} sport={params.sport} />
-                ))}
+                <View style={styles.lineupHeaderRow}>
+                  <Text style={styles.sectionLabel}>{team.team?.toUpperCase()} — OPSTELLING {team.formation ? `(${team.formation})` : ""}</Text>
+                  <View style={styles.lineupTypeBadge}>
+                    <Text style={styles.lineupTypeText}>{team.lineupType === "official" ? "OFFICIEEL" : "VERWACHT"}</Text>
+                  </View>
+                </View>
+
+                <LinearGradient
+                  colors={["#183c20", "#0f2f19", "#0b2413"]}
+                  style={styles.pitchCard}
+                >
+                  <View style={styles.pitchCenterCircle} />
+                  <View style={styles.pitchHalfLine} />
+                  {buildFormationRows(team.players || [], team.formation).map((row, rowIndex) => (
+                    <View key={rowIndex} style={styles.pitchRow}>
+                      {row.map((p: any, pi: number) => (
+                        <View key={`${p.id || p.name}-${pi}`} style={styles.pitchPlayerWrap}>
+                          <PlayerRow player={p} sport={params.sport} compact />
+                        </View>
+                      ))}
+                    </View>
+                  ))}
+                </LinearGradient>
               </View>
             ))
           ) : (
@@ -391,18 +459,29 @@ function StatsBars({ homeTeam, awayTeam, homeStats, awayStats }: any) {
   );
 }
 
-function PlayerRow({ player, sport }: { player: any; sport: string }) {
-  const [photoError, setPhotoError] = useState(false);
+function PlayerRow({ player, sport, compact = false }: { player: any; sport: string; compact?: boolean }) {
+  const photoCandidates = [
+    player?.photo,
+    player?.id ? `https://media.api-sports.io/football/players/${encodeURIComponent(String(player.id))}.png` : null,
+    player?.id ? `https://a.espncdn.com/i/headshots/soccer/players/full/${encodeURIComponent(String(player.id))}.png` : null,
+  ].filter(Boolean) as string[];
+  const [photoIndex, setPhotoIndex] = useState(0);
+  const photoUri = photoCandidates[photoIndex];
+
+  const compactStyle = compact ? styles.playerRowCompact : null;
+
   return (
-    <View style={styles.playerRow}>
+    <View style={[styles.playerRow, compactStyle]}>
       <View style={styles.playerJersey}>
         <Text style={styles.playerJerseyNum}>{player.jersey || "—"}</Text>
       </View>
-      {player.photo && !photoError ? (
+      {photoUri ? (
         <Image
-          source={{ uri: player.photo }}
+          source={{ uri: photoUri }}
           style={styles.playerPhoto}
-          onError={() => setPhotoError(true)}
+          onError={() => {
+            setPhotoIndex((idx) => (idx + 1 < photoCandidates.length ? idx + 1 : idx));
+          }}
         />
       ) : (
         <View style={[styles.playerPhoto, styles.playerPhotoPlaceholder]}>
@@ -410,10 +489,10 @@ function PlayerRow({ player, sport }: { player: any; sport: string }) {
         </View>
       )}
       <View style={styles.playerInfo}>
-        <Text style={styles.playerName}>{player.name}</Text>
-        <Text style={styles.playerPos}>{player.positionName || player.position}</Text>
+        <Text style={styles.playerName} numberOfLines={1}>{player.name}</Text>
+        <Text style={styles.playerPos} numberOfLines={1}>{player.positionName || player.position}</Text>
       </View>
-      <View style={{ alignItems: "flex-end", gap: 4 }}>
+      {!compact && <View style={{ alignItems: "flex-end", gap: 4 }}>
         {player.marketValue && (
           <View style={styles.marketValueBadge}>
             <MaterialCommunityIcons name="trending-up" size={10} color="#00C896" />
@@ -425,7 +504,7 @@ function PlayerRow({ player, sport }: { player: any; sport: string }) {
             <Text style={styles.starterText}>Basis</Text>
           </View>
         )}
-      </View>
+      </View>}
     </View>
   );
 }
@@ -703,7 +782,65 @@ const styles = StyleSheet.create({
   eventBadge: { width: 28, height: 28, borderRadius: 14, backgroundColor: "rgba(255,59,48,0.15)", alignItems: "center", justifyContent: "center" },
   eventText: { fontFamily: "Inter_400Regular", fontSize: 13, color: COLORS.text, flex: 1 },
   lineupTeamSection: { marginBottom: 20 },
+  lineupHeaderRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 8, gap: 8 },
+  lineupTypeBadge: {
+    borderWidth: 1,
+    borderColor: COLORS.borderLight,
+    backgroundColor: COLORS.overlayLight,
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  lineupTypeText: { fontFamily: "Inter_700Bold", fontSize: 10, color: COLORS.accent },
+  pitchCard: {
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.18)",
+    borderRadius: 16,
+    paddingVertical: 14,
+    paddingHorizontal: 8,
+    gap: 10,
+    position: "relative",
+    overflow: "hidden",
+  },
+  pitchCenterCircle: {
+    position: "absolute",
+    width: 88,
+    height: 88,
+    borderRadius: 44,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.2)",
+    left: "50%",
+    marginLeft: -44,
+    top: "50%",
+    marginTop: -44,
+  },
+  pitchHalfLine: {
+    position: "absolute",
+    left: 8,
+    right: 8,
+    top: "50%",
+    borderTopWidth: 1,
+    borderTopColor: "rgba(255,255,255,0.2)",
+  },
+  pitchRow: {
+    flexDirection: "row",
+    justifyContent: "space-evenly",
+    alignItems: "center",
+    gap: 8,
+    zIndex: 2,
+  },
+  pitchPlayerWrap: { minWidth: 70, flex: 1, maxWidth: 110 },
   playerRow: { flexDirection: "row", alignItems: "center", gap: 10, paddingVertical: 9, borderBottomWidth: 1, borderBottomColor: COLORS.border },
+  playerRowCompact: {
+    borderBottomWidth: 0,
+    paddingVertical: 3,
+    paddingHorizontal: 2,
+    backgroundColor: "rgba(7,16,10,0.42)",
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.12)",
+    gap: 6,
+  },
   playerJersey: { width: 28, height: 28, borderRadius: 6, backgroundColor: COLORS.card, borderWidth: 1, borderColor: COLORS.border, alignItems: "center", justifyContent: "center" },
   playerJerseyNum: { fontFamily: "Inter_700Bold", fontSize: 12, color: COLORS.accent },
   playerPhoto: { width: 36, height: 36, borderRadius: 18 },

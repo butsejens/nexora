@@ -61,6 +61,11 @@ const LEAGUE_LOGOS: Record<string, string> = {
 
 export function TeamLogo({ uri, teamName, size = 48 }: { uri?: string | null; teamName: string; size?: number }) {
   const [error, setError] = useState(false);
+  const normalizedName = String(teamName || "").toLowerCase();
+  const clubBruggeFallback = "https://logodownload.org/wp-content/uploads/2019/11/club-brugge-logo-escudo.png";
+  const safeUri = (uri && !error)
+    ? uri
+    : (normalizedName.includes("club brugge") ? clubBruggeFallback : null);
   const initials = teamName
     .split(" ")
     .map((w) => w[0])
@@ -68,11 +73,11 @@ export function TeamLogo({ uri, teamName, size = 48 }: { uri?: string | null; te
     .slice(0, 2)
     .toUpperCase();
 
-  if (uri && !error) {
+  if (safeUri) {
     return (
       <View style={[logoStyles.container, { width: size, height: size, borderRadius: size / 2 }]}>
         <Image
-          source={{ uri }}
+          source={{ uri: safeUri }}
           style={{ width: size - 8, height: size - 8 }}
           resizeMode="contain"
           onError={() => setError(true)}

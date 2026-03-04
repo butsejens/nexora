@@ -203,11 +203,64 @@ function normalizeStatusFromEspn(comp) {
 const CLUB_BRUGGE_NEW_LOGO = "https://logodownload.org/wp-content/uploads/2019/11/club-brugge-logo-escudo.png";
 
 function normalizeTeamLogo(teamName, logoUrl) {
-  const name = String(teamName || "").toLowerCase();
-  if (name.includes("club brugge") || name.includes("club brugge kv")) {
+  const name = String(teamName || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]/g, "");
+  const logo = String(logoUrl || "").toLowerCase();
+  if (
+    name.includes("clubbrugge") ||
+    name.includes("clubbruggekv") ||
+    logo.includes("club-brugge") ||
+    logo.includes("clubbrugge")
+  ) {
     return CLUB_BRUGGE_NEW_LOGO;
   }
   return logoUrl || null;
+}
+
+function normalizePlayerPhoto(playerId, ...candidates) {
+  for (const c of candidates) {
+    const v = String(c || "").trim();
+    if (/^https?:\/\//i.test(v)) return v;
+  }
+  const id = String(playerId || "").trim();
+  if (!id) return null;
+  return `https://media.api-sports.io/football/players/${encodeURIComponent(id)}.png`;
+}
+
+function inferFormationFromPlayers(players) {
+  const starters = (players || []).filter((p) => p?.starter !== false).slice(0, 11);
+  if (starters.length < 10) return "";
+  const outfield = starters.filter((p) => !/gk|goalkeeper/i.test(String(p?.position || "") + " " + String(p?.positionName || "")));
+  let def = 0;
+  let mid = 0;
+  let fwd = 0;
+  for (const p of outfield) {
+    const pos = String(p?.position || "").toUpperCase();
+    const posName = String(p?.positionName || "").toLowerCase();
+    if (/GK|DEF|CB|LB|RB|SWB|LWB|RWB|BACK/.test(pos) || /defend|back/.test(posName)) {
+      def += 1;
+      continue;
+    }
+    if (/MID|DM|CM|AM|LM|RM/.test(pos) || /mid/.test(posName)) {
+      mid += 1;
+      continue;
+    }
+    if (/FW|ST|CF|LW|RW|ATT/.test(pos) || /forward|striker|wing|attack/.test(posName)) {
+      fwd += 1;
+      continue;
+    }
+    mid += 1;
+  }
+  const total = def + mid + fwd;
+  if (total !== 10) {
+    const rest = Math.max(0, 10 - def - mid);
+    fwd = rest;
+  }
+  if (def <= 0 || mid <= 0 || fwd <= 0) return "4-3-3";
+  return `${def}-${mid}-${fwd}`;
 }
 
 function mapEspnEventToMatch(ev) {
@@ -412,7 +465,11 @@ function mapEspnRosterPlayer(player) {
     weight: toKgStringFromAny(player?.displayWeight || player?.weight),
     marketValue: undefined,
     isRealValue: false,
-    photo: player?.headshot?.href || (playerId ? `https://a.espncdn.com/i/headshots/soccer/players/full/${encodeURIComponent(playerId)}.png` : null),
+    photo: normalizePlayerPhoto(
+      playerId,
+      player?.headshot?.href,
+      playerId ? `https://a.espncdn.com/i/headshots/soccer/players/full/${encodeURIComponent(playerId)}.png` : null
+    ),
   };
 }
 
@@ -1380,10 +1437,14 @@ app.get("/api/sports/match/:matchId", async (req, res) => {
         }));
 
         const espnLineups = Array.isArray(summary?.rosters) ? summary.rosters : [];
+        const lineupType = mapped?.status === "upcoming" ? "expected" : "official";
         const starters = espnLineups
           .map((block) => {
             const teamName = block?.team?.displayName || block?.team?.name || "";
-            const teamLogo = block?.team?.logo || block?.team?.logos?.[0]?.href || null;
+            const teamLogo = normalizeTeamLogo(
+              teamName,
+              block?.team?.logo || block?.team?.logos?.[0]?.href || null
+            );
             const players = [];
             const seen = new Set();
 
@@ -1402,11 +1463,23 @@ app.get("/api/sports/match/:matchId", async (req, res) => {
                 position,
                 positionName,
                 starter: Boolean(row?.starter),
-                photo: ath?.headshot?.href || `https://a.espncdn.com/i/headshots/soccer/players/full/${encodeURIComponent(id)}.png`,
+                photo: normalizePlayerPhoto(
+                  id,
+                  ath?.headshot?.href,
+                  id ? `https://a.espncdn.com/i/headshots/soccer/players/full/${encodeURIComponent(id)}.png` : null
+                ),
               });
             }
 
-            return { team: teamName, teamLogo, players };
+            const startersOnly = players.filter((p) => p.starter !== false).slice(0, 11);
+
+            return {
+              team: teamName,
+              teamLogo,
+              formation: inferFormationFromPlayers(startersOnly),
+              lineupType,
+              players: startersOnly,
+            };
           })
           .filter((t) => t.players.length > 0);
 
@@ -1477,37 +1550,28 @@ app.get("/api/sports/match/:matchId", async (req, res) => {
       const lineups = lineupsResp?.response || [];
       const starters = lineups.map((lu) => ({
         team: lu?.team?.name || "",
-        teamLogo: lu?.team?.logo || null,
+        teamLogo: normalizeTeamLogo(lu?.team?.name || "", lu?.team?.logo || null),
         formation: lu?.formation || "",
+        lineupType: mapped?.status === "upcoming" ? "expected" : "official",
         coach: lu?.coach?.name || "",
-        players: [
-          ...(lu?.startXI || []).map((x) => {
-            const p = x?.player || {};
-            const id = String(p?.id || "");
-            return {
+        players: (lu?.startXI || []).map((x) => {
+          const p = x?.player || {};
+          const id = String(p?.id || "");
+          return {
+            id,
+            name: p?.name || "Onbekend",
+            jersey: String(p?.number || "") || undefined,
+            position: p?.pos || "",
+            positionName: p?.pos || "",
+            starter: true,
+            photo: normalizePlayerPhoto(
               id,
-              name: p?.name || "Onbekend",
-              jersey: String(p?.number || "") || undefined,
-              position: p?.pos || "",
-              positionName: p?.pos || "",
-              starter: true,
-              photo: id ? `https://a.espncdn.com/i/headshots/soccer/players/full/${encodeURIComponent(id)}.png` : null,
-            };
-          }),
-          ...(lu?.substitutes || []).map((x) => {
-            const p = x?.player || {};
-            const id = String(p?.id || "");
-            return {
-              id,
-              name: p?.name || "Onbekend",
-              jersey: String(p?.number || "") || undefined,
-              position: p?.pos || "",
-              positionName: p?.pos || "",
-              starter: false,
-              photo: id ? `https://a.espncdn.com/i/headshots/soccer/players/full/${encodeURIComponent(id)}.png` : null,
-            };
-          }),
-        ],
+              p?.photo,
+              id ? `https://media.api-sports.io/football/players/${encodeURIComponent(id)}.png` : null,
+              id ? `https://a.espncdn.com/i/headshots/soccer/players/full/${encodeURIComponent(id)}.png` : null
+            ),
+          };
+        }),
       }));
 
       return {
