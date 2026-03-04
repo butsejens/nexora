@@ -1274,6 +1274,43 @@ function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
 }
 
+function normalizeThreeWayPercentages(homePct, drawPct, awayPct) {
+  let home = Number.isFinite(homePct) ? homePct : 0;
+  let draw = Number.isFinite(drawPct) ? drawPct : 0;
+  let away = Number.isFinite(awayPct) ? awayPct : 0;
+
+  const sum = home + draw + away;
+  if (sum <= 0) return { homePct: 34, drawPct: 33, awayPct: 33 };
+
+  home = Math.round((home / sum) * 100);
+  draw = Math.round((draw / sum) * 100);
+  away = 100 - home - draw;
+
+  home = clamp(home, 0, 100);
+  draw = clamp(draw, 0, 100);
+  away = clamp(away, 0, 100);
+
+  const fixed = home + draw + away;
+  if (fixed !== 100) {
+    const diff = 100 - fixed;
+    if (home >= draw && home >= away) home += diff;
+    else if (away >= home && away >= draw) away += diff;
+    else draw += diff;
+  }
+
+  return { homePct: home, drawPct: draw, awayPct: away };
+}
+
+function xgToGoals(xg) {
+  const value = Number(xg);
+  if (!Number.isFinite(value)) return 0;
+  if (value < 0.75) return 0;
+  if (value < 1.25) return 1;
+  if (value < 1.75) return 2;
+  if (value < 2.35) return 3;
+  return 4;
+}
+
 function normalizeOutcome(value) {
   const v = String(value || "").toLowerCase();
   if (v === "home" || v === "home win" || v === "home_win" || v === "1") return "Home Win";
@@ -1325,15 +1362,17 @@ function parseAiPredictionToUiShape(raw) {
   const riskLevel =
     parsed.riskLevel || parsed.risk || (confidence >= 65 ? "Low" : confidence >= 54 ? "Medium" : "High");
 
+  const normalizedPct = normalizeThreeWayPercentages(homePct, drawPct, awayPct);
+
   return {
     prediction: outcome,
     confidence,
     predictedScore: scoreline,
     xgHome: parsed.xgHome ?? parsed.xg_home ?? null,
     xgAway: parsed.xgAway ?? parsed.xg_away ?? null,
-    homePct: clamp(Math.round(homePct), 1, 98),
-    drawPct: clamp(Math.round(drawPct), 1, 98),
-    awayPct: clamp(Math.round(awayPct), 1, 98),
+    homePct: normalizedPct.homePct,
+    drawPct: normalizedPct.drawPct,
+    awayPct: normalizedPct.awayPct,
     momentum: parsed.momentum || null,
     danger: parsed.danger || null,
     riskLevel,
@@ -1345,6 +1384,7 @@ function parseAiPredictionToUiShape(raw) {
     formAway: parsed.formAway || null,
     tip: parsed.tip || null,
     source: "ai",
+    updatedAt: new Date().toISOString(),
   };
 }
 
@@ -1424,11 +1464,12 @@ function deterministicPrediction(payload) {
 
   const confidence = Math.max(homePct, awayPct, drawPct);
 
-  const xgHome = Number((Math.max(0.1, homeShots * 0.08 + homeSot * 0.22)).toFixed(2));
-  const xgAway = Number((Math.max(0.1, awayShots * 0.08 + awaySot * 0.22)).toFixed(2));
+  const hasXgInputs = (homeShots + awayShots + homeSot + awaySot) > 0;
+  const xgHome = hasXgInputs ? Number((Math.max(0, homeShots * 0.08 + homeSot * 0.22)).toFixed(2)) : null;
+  const xgAway = hasXgInputs ? Number((Math.max(0, awayShots * 0.08 + awaySot * 0.22)).toFixed(2)) : null;
 
-  const predictedHome = Math.max(homeScore, Math.round(xgHome + (minute > 70 ? 0 : 0.4)));
-  const predictedAway = Math.max(awayScore, Math.round(xgAway + (minute > 70 ? 0 : 0.4)));
+  const predictedHome = xgHome == null ? homeScore : Math.max(homeScore, xgToGoals(xgHome) + (minute > 70 ? 0 : 0));
+  const predictedAway = xgAway == null ? awayScore : Math.max(awayScore, xgToGoals(xgAway) + (minute > 70 ? 0 : 0));
 
   const keyFactors = [];
   if (homePoss || awayPoss) keyFactors.push(`Balbezit ${homePoss || 0}% - ${awayPoss || 0}%`);
@@ -1464,6 +1505,9 @@ function deterministicPrediction(payload) {
     tacticalNotes,
     tip: prediction === "Draw" ? "Gelijkspel blijft plausibel; let op late kansen." : `${prediction === "Home Win" ? "Thuisploeg" : "Uitploeg"} heeft statistisch voordeel op dit moment.`,
     source: "fallback-stats",
+    updatedAt: new Date().toISOString(),
+    insufficientData: !hasXgInputs,
+    unavailableReason: !hasXgInputs ? "Onvoldoende data voor xG" : null,
   };
 }
 
@@ -1516,6 +1560,7 @@ async function aiPredictMatch(payload) {
       return {
         ...parsed,
         source: `ai-${provider.name}`,
+        updatedAt: new Date().toISOString(),
       };
     } catch (e) {
       lastError = e;

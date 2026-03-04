@@ -84,6 +84,7 @@ export default function MatchDetailScreen() {
 
   const insets = useSafeAreaInsets();
   const [activeTab, setActiveTab] = useState<TabId>("stream");
+  const [lineupView, setLineupView] = useState<"pitch" | "list">("pitch");
   const [streamKey, setStreamKey] = useState(0);
   const isLive = params.status === "live";
   const {
@@ -334,6 +335,23 @@ export default function MatchDetailScreen() {
       {/* Lineups Tab */}
       {activeTab === "lineups" && (
         <ScrollView style={styles.tabContent} contentContainerStyle={styles.tabContentInner} showsVerticalScrollIndicator={false}>
+          <View style={styles.lineupViewToggleRow}>
+            <TouchableOpacity
+              style={[styles.lineupViewBtn, lineupView === "pitch" ? styles.lineupViewBtnActive : null]}
+              onPress={() => setLineupView("pitch")}
+            >
+              <Ionicons name="football-outline" size={14} color={lineupView === "pitch" ? COLORS.accent : COLORS.textMuted} />
+              <Text style={[styles.lineupViewBtnText, lineupView === "pitch" ? styles.lineupViewBtnTextActive : null]}>Pitch</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.lineupViewBtn, lineupView === "list" ? styles.lineupViewBtnActive : null]}
+              onPress={() => setLineupView("list")}
+            >
+              <Ionicons name="list-outline" size={14} color={lineupView === "list" ? COLORS.accent : COLORS.textMuted} />
+              <Text style={[styles.lineupViewBtnText, lineupView === "list" ? styles.lineupViewBtnTextActive : null]}>List</Text>
+            </TouchableOpacity>
+          </View>
+
           {detailLoading ? (
             <LoadingState />
           ) : matchDetail?.starters?.length > 0 ? (
@@ -346,22 +364,39 @@ export default function MatchDetailScreen() {
                   </View>
                 </View>
 
-                <LinearGradient
-                  colors={["#183c20", "#0f2f19", "#0b2413"]}
-                  style={styles.pitchCard}
-                >
-                  <View style={styles.pitchCenterCircle} />
-                  <View style={styles.pitchHalfLine} />
-                  {buildFormationRows(team.players || [], team.formation).map((row, rowIndex) => (
-                    <View key={rowIndex} style={styles.pitchRow}>
-                      {row.map((p: any, pi: number) => (
-                        <View key={`${p.id || p.name}-${pi}`} style={styles.pitchPlayerWrap}>
-                          <PlayerRow player={p} sport={params.sport} compact />
-                        </View>
-                      ))}
-                    </View>
-                  ))}
-                </LinearGradient>
+                {lineupView === "pitch" ? (
+                  <LinearGradient
+                    colors={["#183c20", "#0f2f19", "#0b2413"]}
+                    style={styles.pitchCard}
+                  >
+                    <View style={styles.pitchCenterCircle} />
+                    <View style={styles.pitchHalfLine} />
+                    {buildFormationRows(team.players || [], team.formation).map((row, rowIndex) => (
+                      <View key={rowIndex} style={styles.pitchRow}>
+                        {row.map((p: any, pi: number) => (
+                          <View key={`${p.id || p.name}-${pi}`} style={styles.pitchPlayerWrap}>
+                            <PlayerRow player={p} sport={params.sport} compact />
+                          </View>
+                        ))}
+                      </View>
+                    ))}
+                  </LinearGradient>
+                ) : (
+                  <View style={styles.lineupListCard}>
+                    <Text style={styles.lineupListLabel}>STARTING XI</Text>
+                    {(team.players || []).filter((p: any) => p?.starter !== false).map((p: any, i: number) => (
+                      <PlayerRow key={`st_${p?.id || p?.name || i}`} player={p} sport={params.sport} />
+                    ))}
+                    {(team.players || []).some((p: any) => p?.starter === false) ? (
+                      <>
+                        <Text style={[styles.lineupListLabel, { marginTop: 10 }]}>BENCH</Text>
+                        {(team.players || []).filter((p: any) => p?.starter === false).map((p: any, i: number) => (
+                          <PlayerRow key={`bn_${p?.id || p?.name || i}`} player={p} sport={params.sport} />
+                        ))}
+                      </>
+                    ) : null}
+                  </View>
+                )}
               </View>
             ))
           ) : (
@@ -538,6 +573,22 @@ function PlayerRow({ player, sport, compact = false }: { player: any; sport: str
 }
 
 function AIPredictionView({ prediction, homeTeam, awayTeam }: any) {
+  const normPcts = (() => {
+    let homePct = Number(prediction?.homePct || 0);
+    let drawPct = Number(prediction?.drawPct || 0);
+    let awayPct = Number(prediction?.awayPct || 0);
+    if (!Number.isFinite(homePct)) homePct = 0;
+    if (!Number.isFinite(drawPct)) drawPct = 0;
+    if (!Number.isFinite(awayPct)) awayPct = 0;
+    const sum = homePct + drawPct + awayPct;
+    if (sum <= 0) return { homePct: 34, drawPct: 33, awayPct: 33 };
+    homePct = Math.round((homePct / sum) * 100);
+    drawPct = Math.round((drawPct / sum) * 100);
+    awayPct = 100 - homePct - drawPct;
+    return { homePct, drawPct, awayPct };
+  })();
+
+  const hasXgData = prediction?.xgHome !== null && prediction?.xgHome !== undefined && prediction?.xgAway !== null && prediction?.xgAway !== undefined;
   const winnerColor = prediction.prediction === "Home Win" ? COLORS.accent :
     prediction.prediction === "Away Win" ? COLORS.live : "#FFD700";
   const riskColor = prediction.riskLevel === "Low" ? "#4CAF50" : prediction.riskLevel === "High" ? COLORS.live : "#FF9800";
@@ -554,6 +605,13 @@ function AIPredictionView({ prediction, homeTeam, awayTeam }: any) {
           </View>
         </View>
 
+        {prediction?.providerError ? (
+          <View style={styles.aiWarnCard}>
+            <MaterialCommunityIcons name="alert-outline" size={14} color={COLORS.gold} />
+            <Text style={styles.aiWarnText}>AI Analyse tijdelijk niet beschikbaar: {String(prediction.providerError)}</Text>
+          </View>
+        ) : null}
+
         <Text style={[styles.aiPrediction, { color: winnerColor }]}>
           {prediction.prediction === "Home Win" ? `${homeTeam} Wint` :
            prediction.prediction === "Away Win" ? `${awayTeam} Wint` : "Gelijkspel"}
@@ -564,27 +622,32 @@ function AIPredictionView({ prediction, homeTeam, awayTeam }: any) {
         )}
 
         {/* xG row */}
-        {(prediction.xgHome !== undefined || prediction.xgAway !== undefined) && (
+        {hasXgData ? (
           <View style={{ flexDirection: "row", justifyContent: "space-around", marginTop: 8, paddingTop: 8, borderTopWidth: 1, borderTopColor: "rgba(255,255,255,0.08)" }}>
             <View style={{ alignItems: "center" }}>
-              <Text style={{ fontFamily: "Inter_800ExtraBold", fontSize: 18, color: COLORS.accent }}>{prediction.xgHome ?? "—"}</Text>
+              <Text style={{ fontFamily: "Inter_800ExtraBold", fontSize: 18, color: COLORS.accent }}>{prediction.xgHome}</Text>
               <Text style={{ fontFamily: "Inter_400Regular", fontSize: 10, color: COLORS.textMuted }}>xG {homeTeam.split(" ")[0]}</Text>
             </View>
             <View style={{ alignItems: "center" }}>
               <Text style={{ fontFamily: "Inter_600SemiBold", fontSize: 12, color: COLORS.textMuted }}>Expected Goals</Text>
             </View>
             <View style={{ alignItems: "center" }}>
-              <Text style={{ fontFamily: "Inter_800ExtraBold", fontSize: 18, color: COLORS.live }}>{prediction.xgAway ?? "—"}</Text>
+              <Text style={{ fontFamily: "Inter_800ExtraBold", fontSize: 18, color: COLORS.live }}>{prediction.xgAway}</Text>
               <Text style={{ fontFamily: "Inter_400Regular", fontSize: 10, color: COLORS.textMuted }}>xG {awayTeam.split(" ")[0]}</Text>
             </View>
+          </View>
+        ) : (
+          <View style={styles.aiWarnCard}>
+            <MaterialCommunityIcons name="information-outline" size={14} color={COLORS.textMuted} />
+            <Text style={styles.aiWarnText}>xG: Onvoldoende data</Text>
           </View>
         )}
 
         {/* Win/Draw/Loss bars */}
         <View style={[styles.predBars, { marginTop: 10 }]}>
-          <PredBar label={homeTeam.split(" ")[0]} pct={prediction.homePct || 0} color={COLORS.accent} />
-          <PredBar label="Gelijk" pct={prediction.drawPct || 0} color={COLORS.textMuted} />
-          <PredBar label={awayTeam.split(" ")[0]} pct={prediction.awayPct || 0} color={COLORS.live} />
+          <PredBar label={homeTeam.split(" ")[0]} pct={normPcts.homePct} color={COLORS.accent} />
+          <PredBar label="Gelijk" pct={normPcts.drawPct} color={COLORS.textMuted} />
+          <PredBar label={awayTeam.split(" ")[0]} pct={normPcts.awayPct} color={COLORS.live} />
         </View>
       </LinearGradient>
 
@@ -683,7 +746,7 @@ function AIPredictionView({ prediction, homeTeam, awayTeam }: any) {
         * AI-analyse is indicatief en gebaseerd op historische gegevens. Geen gokadvies.
       </Text>
       {prediction?.source ? (
-        <Text style={styles.aiSourceText}>Bron: {String(prediction.source)}</Text>
+        <Text style={styles.aiSourceText}>Bron: {String(prediction.source)}{prediction?.updatedAt ? ` · ${new Date(String(prediction.updatedAt)).toLocaleString("nl-BE")}` : ""}</Text>
       ) : null}
     </View>
   );
@@ -813,6 +876,21 @@ const styles = StyleSheet.create({
   eventBadge: { width: 28, height: 28, borderRadius: 14, backgroundColor: "rgba(255,59,48,0.15)", alignItems: "center", justifyContent: "center" },
   eventText: { fontFamily: "Inter_400Regular", fontSize: 13, color: COLORS.text, flex: 1 },
   lineupTeamSection: { marginBottom: 20 },
+  lineupViewToggleRow: { flexDirection: "row", gap: 8, marginBottom: 12 },
+  lineupViewBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 10,
+    backgroundColor: COLORS.card,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  lineupViewBtnActive: { borderColor: COLORS.accent, backgroundColor: COLORS.accentGlow },
+  lineupViewBtnText: { fontFamily: "Inter_500Medium", fontSize: 12, color: COLORS.textMuted },
+  lineupViewBtnTextActive: { color: COLORS.accent },
   lineupHeaderRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 8, gap: 8 },
   lineupTypeBadge: {
     borderWidth: 1,
@@ -861,6 +939,21 @@ const styles = StyleSheet.create({
     zIndex: 2,
   },
   pitchPlayerWrap: { minWidth: 70, flex: 1, maxWidth: 110 },
+  lineupListCard: {
+    backgroundColor: COLORS.overlayLight,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+  lineupListLabel: {
+    fontFamily: "Inter_700Bold",
+    fontSize: 11,
+    color: COLORS.accent,
+    letterSpacing: 0.5,
+    marginBottom: 4,
+  },
   playerRow: { flexDirection: "row", alignItems: "center", gap: 10, paddingVertical: 9, borderBottomWidth: 1, borderBottomColor: COLORS.border },
   playerRowCompact: {
     borderBottomWidth: 0,
@@ -902,6 +995,19 @@ const styles = StyleSheet.create({
   aiTitle: { fontFamily: "Inter_700Bold", fontSize: 15, color: COLORS.text, flex: 1 },
   aiConfidenceBadge: { backgroundColor: "rgba(0,212,255,0.12)", borderRadius: 10, paddingHorizontal: 10, paddingVertical: 4, borderWidth: 1, borderColor: "rgba(0,212,255,0.3)" },
   aiConfidenceText: { fontFamily: "Inter_600SemiBold", fontSize: 11, color: COLORS.accent },
+  aiWarnCard: {
+    marginTop: 8,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: "rgba(255,255,255,0.05)",
+    borderColor: COLORS.border,
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+  aiWarnText: { fontFamily: "Inter_400Regular", fontSize: 12, color: COLORS.textSecondary, flex: 1 },
   aiPrediction: { fontFamily: "Inter_800ExtraBold", fontSize: 22, textAlign: "center", marginVertical: 4 },
   aiScore: { fontFamily: "Inter_500Medium", fontSize: 14, color: COLORS.textMuted, textAlign: "center" },
   predBars: { gap: 8, marginTop: 8 },

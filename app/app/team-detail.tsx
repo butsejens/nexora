@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   View, Text, StyleSheet, TouchableOpacity, ScrollView,
   Image, Platform, ActivityIndicator, FlatList,
@@ -8,6 +8,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { useQuery } from "@tanstack/react-query";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { COLORS } from "@/constants/colors";
 import { apiRequest } from "@/lib/query-client";
 
@@ -35,7 +36,36 @@ export default function TeamDetailScreen() {
   }>();
   const insets = useSafeAreaInsets();
   const [posFilter, setPosFilter] = useState<string>("all");
+  const [sortKey, setSortKey] = useState<"value_desc" | "value_asc" | "age_desc" | "age_asc" | "name_asc" | "position_asc">("value_desc");
   const topPad = Platform.OS === "web" ? 67 : insets.top;
+
+  const prefsKey = useMemo(
+    () => `team_ui_prefs_${encodeURIComponent(String(params.teamId || params.teamName || "unknown"))}`,
+    [params.teamId, params.teamName]
+  );
+
+  useEffect(() => {
+    let active = true;
+    const loadPrefs = async () => {
+      try {
+        const raw = await AsyncStorage.getItem(prefsKey);
+        if (!raw || !active) return;
+        const parsed = JSON.parse(raw);
+        if (typeof parsed?.posFilter === "string") setPosFilter(parsed.posFilter);
+        if (typeof parsed?.sortKey === "string") setSortKey(parsed.sortKey);
+      } catch {
+        // ignore preference load errors
+      }
+    };
+    loadPrefs();
+    return () => {
+      active = false;
+    };
+  }, [prefsKey]);
+
+  useEffect(() => {
+    AsyncStorage.setItem(prefsKey, JSON.stringify({ posFilter, sortKey })).catch(() => null);
+  }, [posFilter, sortKey, prefsKey]);
 
   const sport = params.sport || "soccer";
   const league = params.league || "eng.1";
@@ -77,8 +107,39 @@ export default function TeamDetailScreen() {
     return (POSITION_ORDER.indexOf(a) ?? 99) - (POSITION_ORDER.indexOf(b) ?? 99);
   });
 
-  const filteredPlayers = posFilter === "all" ? players :
-    players.filter(p => p.position === posFilter);
+  const parseValueToNumber = (value: string): number => {
+    const text = String(value || "").trim().toLowerCase().replace(/€/g, "").replace(/\s+/g, "");
+    if (!text) return 0;
+    const normalized = text.replace(",", ".");
+    const numberPart = Number(normalized.replace(/[^\d.]/g, ""));
+    if (!Number.isFinite(numberPart)) return 0;
+    if (normalized.includes("bn") || normalized.includes("b")) return numberPart * 1_000_000_000;
+    if (normalized.includes("m")) return numberPart * 1_000_000;
+    if (normalized.includes("k")) return numberPart * 1_000;
+    return numberPart;
+  };
+
+  const filteredPlayers = useMemo(() => {
+    const scoped = posFilter === "all" ? [...players] : players.filter(p => p.position === posFilter);
+    scoped.sort((a, b) => {
+      switch (sortKey) {
+        case "value_desc":
+          return parseValueToNumber(String(b?.marketValue || "")) - parseValueToNumber(String(a?.marketValue || ""));
+        case "value_asc":
+          return parseValueToNumber(String(a?.marketValue || "")) - parseValueToNumber(String(b?.marketValue || ""));
+        case "age_desc":
+          return Number(b?.age || 0) - Number(a?.age || 0);
+        case "age_asc":
+          return Number(a?.age || 0) - Number(b?.age || 0);
+        case "position_asc":
+          return String(a?.position || "").localeCompare(String(b?.position || ""));
+        case "name_asc":
+        default:
+          return String(a?.name || "").localeCompare(String(b?.name || ""));
+      }
+    });
+    return scoped;
+  }, [players, posFilter, sortKey]);
 
   const realValueCount = players.filter(p => p.isRealValue).length;
   const topScorerForTeam = ((scorersData?.scorers || []) as any[]).find((s) => {
@@ -191,30 +252,41 @@ export default function TeamDetailScreen() {
               </TouchableOpacity>
             )}
             ListHeaderComponent={positions.length > 1 ? (
-              <ScrollView horizontal showsHorizontalScrollIndicator={false}
-                style={[styles.filterScroll, styles.filterSticky]} contentContainerStyle={styles.filterRow}>
-                <TouchableOpacity
-                  style={[styles.filterChip, posFilter === "all" && styles.filterChipActive]}
-                  onPress={() => setPosFilter("all")}
-                >
-                  <Text style={[styles.filterChipText, posFilter === "all" && styles.filterChipTextActive]}>
-                    Alle ({players.length})
-                  </Text>
-                </TouchableOpacity>
-                {positions.map(pos => (
-                  <TouchableOpacity key={pos}
-                    style={[styles.filterChip, posFilter === pos && styles.filterChipActive,
-                      { borderColor: posFilter === pos ? (POSITION_COLORS[pos] || COLORS.accent) : COLORS.border }]}
-                    onPress={() => setPosFilter(pos)}
+              <View style={styles.filterHeaderWrap}>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false}
+                  style={[styles.filterScroll, styles.filterSticky]} contentContainerStyle={styles.filterRow}>
+                  <TouchableOpacity
+                    style={[styles.filterChip, posFilter === "all" && styles.filterChipActive]}
+                    onPress={() => setPosFilter("all")}
                   >
-                    <Text style={[styles.filterChipText, posFilter === pos && {
-                      color: POSITION_COLORS[pos] || COLORS.accent
-                    }]}> 
-                      {pos} ({positionGroups[pos]?.length || 0})
+                    <Text style={[styles.filterChipText, posFilter === "all" && styles.filterChipTextActive]}>
+                      Alle ({players.length})
                     </Text>
                   </TouchableOpacity>
-                ))}
-              </ScrollView>
+                  {positions.map(pos => (
+                    <TouchableOpacity key={pos}
+                      style={[styles.filterChip, posFilter === pos && styles.filterChipActive,
+                        { borderColor: posFilter === pos ? (POSITION_COLORS[pos] || COLORS.accent) : COLORS.border }]}
+                      onPress={() => setPosFilter(pos)}
+                    >
+                      <Text style={[styles.filterChipText, posFilter === pos && {
+                        color: POSITION_COLORS[pos] || COLORS.accent
+                      }]}> 
+                        {pos} ({positionGroups[pos]?.length || 0})
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.sortScroll} contentContainerStyle={styles.filterRow}>
+                  <SortChip label="Waarde ↓" active={sortKey === "value_desc"} onPress={() => setSortKey("value_desc")} />
+                  <SortChip label="Waarde ↑" active={sortKey === "value_asc"} onPress={() => setSortKey("value_asc")} />
+                  <SortChip label="Leeftijd ↓" active={sortKey === "age_desc"} onPress={() => setSortKey("age_desc")} />
+                  <SortChip label="Leeftijd ↑" active={sortKey === "age_asc"} onPress={() => setSortKey("age_asc")} />
+                  <SortChip label="Naam A-Z" active={sortKey === "name_asc"} onPress={() => setSortKey("name_asc")} />
+                  <SortChip label="Positie" active={sortKey === "position_asc"} onPress={() => setSortKey("position_asc")} />
+                </ScrollView>
+              </View>
             ) : null}
             stickyHeaderIndices={positions.length > 1 ? [0] : undefined}
             contentContainerStyle={styles.playerList}
@@ -240,12 +312,15 @@ function PlayerCard({ player }: { player: any }) {
   const [photoIndex, setPhotoIndex] = useState(0);
   const photoUri = photoCandidates[photoIndex];
   const posColor = POSITION_COLORS[player.position] || COLORS.accent;
+  const rawName = String(player?.name || "").trim();
+  const safeName = rawName || "Onbekend";
+  const initials = safeName.split(/\s+/).filter(Boolean).slice(0, 2).map((p: string) => p[0]).join("").toUpperCase() || "?";
 
   return (
     <View style={styles.playerCard}>
       <View style={styles.playerTopRow}>
         <View style={[styles.jerseyBadge, { borderColor: posColor }]}> 
-          <Text style={[styles.jerseyNum, { color: posColor }]}>{player.jersey || "—"}</Text>
+          <Text style={[styles.jerseyNum, { color: posColor }]}>{player.jersey || "Onbekend"}</Text>
         </View>
 
         {photoUri ? (
@@ -258,13 +333,13 @@ function PlayerCard({ player }: { player: any }) {
           />
         ) : (
           <View style={[styles.playerPhoto, styles.photoPlaceholder]}>
-            <Ionicons name="person" size={18} color={COLORS.textMuted} />
+            <Text style={styles.playerInitials}>{initials}</Text>
           </View>
         )}
 
         <View style={styles.playerMain}>
           <View style={styles.playerNameRow}>
-            <Text style={styles.playerName} numberOfLines={1}>{player.name}</Text>
+            <Text style={styles.playerName} numberOfLines={1}>{safeName}</Text>
             {player.marketValue ? (
               <Text style={[styles.playerNameValue, player.isRealValue ? styles.playerNameValueReal : null]} numberOfLines={1}>
                 {player.marketValue}
@@ -273,25 +348,19 @@ function PlayerCard({ player }: { player: any }) {
           </View>
           <View style={styles.playerSubRow}>
             <View style={[styles.posTag, { backgroundColor: `${posColor}22`, borderColor: `${posColor}44` }]}>
-              <Text style={[styles.posTagText, { color: posColor }]}>{player.positionName || player.position}</Text>
+              <Text style={[styles.posTagText, { color: posColor }]}>{player.positionName || player.position || "Onbekend"}</Text>
             </View>
             {player.nationality ? (
               <Text style={styles.playerNat} numberOfLines={1}>{player.nationality}</Text>
-            ) : null}
+            ) : <Text style={styles.playerNat} numberOfLines={1}>Onbekend</Text>}
           </View>
         </View>
       </View>
 
       <View style={styles.playerStats}>
-        {player.age ? (
-          <StatPill label="Leeftijd" value={String(player.age)} />
-        ) : null}
-        {player.height ? (
-          <StatPill label="Lengte" value={player.height} />
-        ) : null}
-        {player.weight ? (
-          <StatPill label="Gewicht" value={player.weight} />
-        ) : null}
+        <StatPill label="Leeftijd" value={player.age ? String(player.age) : "Onbekend"} />
+        <StatPill label="Lengte" value={player.height || "Onbekend"} />
+        <StatPill label="Gewicht" value={player.weight || "Onbekend"} />
         {player.marketValue ? (
           <StatPill
             label="Waarde (€)"
@@ -302,6 +371,18 @@ function PlayerCard({ player }: { player: any }) {
         ) : null}
       </View>
     </View>
+  );
+}
+
+function SortChip({ label, active, onPress }: { label: string; active: boolean; onPress: () => void }) {
+  return (
+    <TouchableOpacity
+      style={[styles.sortChip, active ? styles.sortChipActive : null]}
+      onPress={onPress}
+      activeOpacity={0.85}
+    >
+      <Text style={[styles.sortChipText, active ? styles.sortChipTextActive : null]}>{label}</Text>
+    </TouchableOpacity>
   );
 }
 
@@ -354,8 +435,21 @@ const styles = StyleSheet.create({
   emptyState: { flex: 1, alignItems: "center", justifyContent: "center", gap: 12, paddingVertical: 40 },
   emptyText: { fontFamily: "Inter_400Regular", fontSize: 14, color: COLORS.textMuted },
   filterScroll: { flexGrow: 0, borderBottomWidth: 1, borderBottomColor: COLORS.border, backgroundColor: COLORS.overlayLight },
+  filterHeaderWrap: { backgroundColor: COLORS.overlayLight },
   filterSticky: { zIndex: 5, elevation: 5 },
   filterRow: { flexDirection: "row", gap: 8, paddingHorizontal: 16, paddingVertical: 10 },
+  sortScroll: { flexGrow: 0, borderBottomWidth: 1, borderBottomColor: COLORS.border, backgroundColor: COLORS.overlayLight },
+  sortChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.card,
+  },
+  sortChipActive: { backgroundColor: COLORS.accentGlow, borderColor: COLORS.accent },
+  sortChipText: { fontFamily: "Inter_500Medium", fontSize: 11, color: COLORS.textMuted },
+  sortChipTextActive: { color: COLORS.accent },
   filterChip: {
     paddingHorizontal: 14, paddingVertical: 7, borderRadius: 20,
     borderWidth: 1, borderColor: COLORS.border, backgroundColor: COLORS.cardElevated,
@@ -376,6 +470,7 @@ const styles = StyleSheet.create({
   jerseyNum: { fontFamily: "Inter_700Bold", fontSize: 12 },
   playerPhoto: { width: 44, height: 44, borderRadius: 22, flexShrink: 0 },
   photoPlaceholder: { backgroundColor: COLORS.card, alignItems: "center", justifyContent: "center" },
+  playerInitials: { fontFamily: "Inter_700Bold", fontSize: 13, color: COLORS.text },
   playerMain: { flex: 1, gap: 4 },
   playerNameRow: { flexDirection: "row", alignItems: "center", gap: 6 },
   playerName: { fontFamily: "Inter_600SemiBold", fontSize: 14, color: COLORS.text },
