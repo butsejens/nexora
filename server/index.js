@@ -1249,6 +1249,15 @@ async function aiPredictMatch(payload) {
 // -----------------------------
 // Health
 // -----------------------------
+app.get("/", (_req, res) => {
+  res.json({
+    ok: true,
+    service: "nexora-api",
+    message: "Use /health for health checks and /api/* for data endpoints.",
+    time: new Date().toISOString(),
+  });
+});
+
 app.get("/health", (req, res) => {
   res.json({ ok: true, time: new Date().toISOString(), source: footballSource(), tz: TZ });
 });
