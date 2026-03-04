@@ -21,6 +21,14 @@ const POSITION_COLORS: Record<string, string> = {
   PG: "#FF6B6B", SG: "#34C759", SF: "#5AC8FA", PF: "#30B0C7", C: "#FF9500", G: "#FF9500", F: "#FF3B30",
 };
 
+const CLUB_BRUGGE_LOGO = "https://logodownload.org/wp-content/uploads/2019/11/club-brugge-logo-escudo.png";
+
+function resolveTeamLogo(teamName: string, logo?: string) {
+  const normalized = String(teamName || "").toLowerCase();
+  if (normalized.includes("club brugge")) return CLUB_BRUGGE_LOGO;
+  return logo || null;
+}
+
 export default function TeamDetailScreen() {
   const params = useLocalSearchParams<{
     teamId: string; teamName: string; logo?: string; sport?: string; league?: string;
@@ -92,7 +100,7 @@ export default function TeamDetailScreen() {
 
         <View style={styles.teamHeaderContent}>
           <Image
-            source={{ uri: data?.logo || params.logo || `https://a.espncdn.com/i/teamlogos/soccer/500/${params.teamId}.png` }}
+            source={{ uri: resolveTeamLogo(String(data?.name || params.teamName || ""), data?.logo || params.logo || `https://a.espncdn.com/i/teamlogos/soccer/500/${params.teamId}.png`) || undefined }}
             style={styles.teamBigLogo}
           />
           <Text style={styles.teamTitle}>{data?.name || params.teamName}</Text>
@@ -208,7 +216,13 @@ export default function TeamDetailScreen() {
 }
 
 function PlayerCard({ player }: { player: any }) {
-  const [photoError, setPhotoError] = useState(false);
+  const photoCandidates = [
+    player?.photo,
+    player?.id ? `https://media.api-sports.io/football/players/${encodeURIComponent(String(player.id))}.png` : null,
+    player?.id ? `https://a.espncdn.com/i/headshots/soccer/players/full/${encodeURIComponent(String(player.id))}.png` : null,
+  ].filter(Boolean) as string[];
+  const [photoIndex, setPhotoIndex] = useState(0);
+  const photoUri = photoCandidates[photoIndex];
   const posColor = POSITION_COLORS[player.position] || COLORS.accent;
 
   return (
@@ -218,8 +232,14 @@ function PlayerCard({ player }: { player: any }) {
           <Text style={[styles.jerseyNum, { color: posColor }]}>{player.jersey || "—"}</Text>
         </View>
 
-        {player.photo && !photoError ? (
-          <Image source={{ uri: player.photo }} style={styles.playerPhoto} onError={() => setPhotoError(true)} />
+        {photoUri ? (
+          <Image
+            source={{ uri: photoUri }}
+            style={styles.playerPhoto}
+            onError={() => {
+              setPhotoIndex((idx) => (idx + 1 < photoCandidates.length ? idx + 1 : idx));
+            }}
+          />
         ) : (
           <View style={[styles.playerPhoto, styles.photoPlaceholder]}>
             <Ionicons name="person" size={18} color={COLORS.textMuted} />

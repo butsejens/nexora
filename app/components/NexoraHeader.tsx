@@ -86,9 +86,10 @@ export function NexoraHeader({
       ]}
     >
       {isIOS ? (
-        <BlurView intensity={55} tint="dark" style={styles.glassWrap}>
+        <>
+          <BlurView intensity={50} tint="dark" style={styles.bgBlur} />
           {content}
-        </BlurView>
+        </>
       ) : (
         <View style={styles.flatWrap}>{content}</View>
       )}
@@ -98,28 +99,24 @@ export function NexoraHeader({
 
 const styles = StyleSheet.create({
   container: {
-    paddingHorizontal: 20,
-    paddingBottom: 12,
-    backgroundColor: "transparent",
-  },
-  glassWrap: {
-    borderRadius: 18,
-    overflow: "hidden",
-    borderWidth: 1,
-    borderColor: COLORS.borderLight,
-    backgroundColor: COLORS.overlayLight,
+    paddingHorizontal: 16,
+    paddingBottom: 8,
+    backgroundColor: COLORS.background,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
   },
   flatWrap: {
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    backgroundColor: COLORS.surface,
+    backgroundColor: "transparent",
+  },
+  bgBlur: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(8,8,12,0.38)",
   },
   contentRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: 12,
+    paddingHorizontal: 2,
     paddingVertical: 8,
   },
   logo: {
@@ -145,7 +142,7 @@ const styles = StyleSheet.create({
   actions: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 4,
+    gap: 6,
   },
   iconBtn: {
     width: 36,

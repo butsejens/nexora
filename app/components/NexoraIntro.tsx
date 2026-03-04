@@ -1,13 +1,12 @@
 import React, { useEffect, useRef } from "react";
 import {
-  View,
   Text,
   Animated,
   StyleSheet,
   Platform,
-  Image,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
+import { BlurView } from "expo-blur";
 import { COLORS } from "@/constants/colors";
 
 
@@ -55,7 +54,7 @@ export function NexoraIntro({ onFinish }: Props) {
       }).start();
     }, 800);
 
-    // Phase 3: Tagline + preview card
+    // Phase 3: Tagline + center plate
     setTimeout(() => {
       Animated.parallel([
         Animated.timing(tagOpacity, {
@@ -113,7 +112,7 @@ export function NexoraIntro({ onFinish }: Props) {
     >
       {/* Background */}
       <LinearGradient
-        colors={["#2A0B12", "#14070B", COLORS.background]}
+        colors={["#1B0A14", "#0F111A", COLORS.background]}
         start={{ x: 0.5, y: 0 }}
         end={{ x: 0.5, y: 1 }}
         style={styles.bg}
@@ -140,27 +139,19 @@ export function NexoraIntro({ onFinish }: Props) {
 
       {/* Tagline */}
       <Animated.Text style={[styles.tagline, { opacity: tagOpacity }]}>
-        NEXORA
+        Premium Sports • Live TV • Entertainment
       </Animated.Text>
 
-      <Animated.View style={[styles.previewFrame, { opacity: cardOpacity }]}>
-        <View style={styles.previewCard}>
-          <Image
-            source={{ uri: "https://image.tmdb.org/t/p/w780/sWgBv7LV2PRoQgkxwlibdGXKz1S.jpg" }}
-            style={styles.previewImage}
-            resizeMode="cover"
-          />
+      <Animated.View style={[styles.logoPlateFrame, { opacity: cardOpacity }]}> 
+        <BlurView intensity={75} tint="dark" style={styles.logoPlateBlur}>
           <LinearGradient
-            colors={["transparent", "rgba(2,12,35,0.85)", "rgba(2,10,30,0.98)"]}
-            style={styles.previewOverlay}
+            colors={["rgba(229,9,20,0.18)", "rgba(38,20,45,0.34)", "rgba(10,10,16,0.62)"]}
+            style={styles.logoPlate}
           >
-            <Text style={styles.previewTitle}>The Mandalorian</Text>
-            <Text style={styles.previewMeta}>2019 • Sci-Fi • Action-Adventure</Text>
-            <View style={styles.previewAction}>
-              <Text style={styles.previewActionText}>▶ Watch Now</Text>
-            </View>
+            <Text style={styles.logoPlateNexora}>NEXORA</Text>
+            <Text style={styles.logoPlateSub}>STREAMING REIMAGINED</Text>
           </LinearGradient>
-        </View>
+        </BlurView>
       </Animated.View>
 
       {/* Curtains (left + right slide out) */}
@@ -220,66 +211,45 @@ const styles = StyleSheet.create({
   },
   tagline: {
     position: "absolute",
-    top: "18%",
+    top: "66%",
     width: "78%",
     textAlign: "center",
-    color: COLORS.text,
-    fontSize: 19,
-    lineHeight: 27,
-    letterSpacing: 0.4,
-    fontFamily: "Inter_700Bold",
+    color: COLORS.textSecondary,
+    fontSize: 13,
+    lineHeight: 18,
+    letterSpacing: 0.6,
+    fontFamily: "Inter_600SemiBold",
   },
-  previewFrame: {
-    width: "86%",
+  logoPlateFrame: {
+    width: "80%",
     maxWidth: 360,
-    borderWidth: 2,
-    borderColor: "rgba(189,217,255,0.68)",
-    borderRadius: 32,
-    padding: 14,
-    marginTop: 80,
-    backgroundColor: "rgba(9,35,89,0.22)",
-  },
-  previewCard: {
-    borderRadius: 20,
+    borderRadius: 28,
     overflow: "hidden",
-    height: 370,
+    marginTop: 42,
     borderWidth: 1,
-    borderColor: "rgba(180,210,255,0.4)",
-    backgroundColor: "#0A1F4E",
+    borderColor: "rgba(255,255,255,0.16)",
   },
-  previewImage: {
-    ...StyleSheet.absoluteFillObject,
+  logoPlateBlur: {
+    width: "100%",
   },
-  previewOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    justifyContent: "flex-end",
-    padding: 16,
+  logoPlate: {
+    paddingVertical: 28,
+    paddingHorizontal: 18,
+    alignItems: "center",
+    justifyContent: "center",
     gap: 8,
   },
-  previewTitle: {
+  logoPlateNexora: {
     fontFamily: "Inter_800ExtraBold",
+    fontSize: 34,
+    letterSpacing: 5,
     color: COLORS.text,
-    fontSize: 24,
   },
-  previewMeta: {
-    fontFamily: "Inter_500Medium",
+  logoPlateSub: {
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 11,
+    letterSpacing: 2,
     color: COLORS.textSecondary,
-    fontSize: 12,
-  },
-  previewAction: {
-    marginTop: 4,
-    alignSelf: "flex-start",
-    borderRadius: 10,
-    backgroundColor: "rgba(22,33,58,0.9)",
-    borderWidth: 1,
-    borderColor: "rgba(184,215,255,0.3)",
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-  },
-  previewActionText: {
-    fontFamily: "Inter_700Bold",
-    color: COLORS.text,
-    fontSize: 13,
   },
   curtainLeft: {
     position: "absolute",
