@@ -11,18 +11,20 @@ import { COLORS } from "@/constants/colors";
 import { NexoraHeader } from "@/components/NexoraHeader";
 import { useNexora } from "@/context/NexoraContext";
 import type { IPTVChannel } from "@/context/NexoraContext";
+import { getInitials } from "@/lib/logo-manager";
 
 function ChannelRow({ channel, onPress, onLongPress }: {
   channel: IPTVChannel; onPress: () => void; onLongPress: () => void;
 }) {
   const [imgError, setImgError] = useState(false);
+  const initials = getInitials(channel?.name || "TV", 2);
   return (
     <TouchableOpacity style={styles.channelRow} onPress={onPress} onLongPress={onLongPress} activeOpacity={0.75}>
       <View style={styles.channelLogo}>
         {channel.logo && !imgError ? (
           <Image source={{ uri: channel.logo }} style={styles.channelLogoImg} resizeMode="contain" onError={() => setImgError(true)} />
         ) : (
-          <MaterialCommunityIcons name="television-play" size={24} color={COLORS.accent} />
+          <Text style={styles.channelLogoInitials}>{initials}</Text>
         )}
       </View>
       <View style={styles.channelInfo}>
@@ -266,6 +268,7 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: COLORS.border,
   },
   channelLogoImg: { width: 48, height: 48 },
+  channelLogoInitials: { fontFamily: "Inter_800ExtraBold", fontSize: 16, color: COLORS.accent },
   channelInfo: { flex: 1 },
   channelName: { fontFamily: "Inter_600SemiBold", fontSize: 14, color: COLORS.text, marginBottom: 3 },
   channelGroup: { fontFamily: "Inter_400Regular", fontSize: 11, color: COLORS.textMuted },

@@ -11,6 +11,7 @@ import { COLORS } from "@/constants/colors";
 import { NexoraHeader } from "@/components/NexoraHeader";
 import { useNexora } from "@/context/NexoraContext";
 import { apiRequest } from "@/lib/query-client";
+import { buildErrorReference, normalizeApiError } from "@/lib/error-messages";
 import { RealContentCard, RealHeroBanner } from "@/components/RealContentCard";
 
 async function withTimeout<T>(promise: Promise<T>, ms = 8000): Promise<T> {
@@ -24,8 +25,13 @@ async function fetchSeries() {
   try {
     const res = await withTimeout(apiRequest("GET", "/api/series/trending"), 8000);
     return await res.json();
-  } catch {
-    return { trending: [], newReleases: [], topRated: [] };
+  } catch (error: any) {
+    return {
+      trending: [],
+      newReleases: [],
+      topRated: [],
+      error: String(error?.message || "Series request failed"),
+    };
   }
 }
 
@@ -138,6 +144,13 @@ export default function SeriesScreen() {
     ? filteredIptv[0]
     : trending[0];
 
+  const rawCatalogError =
+    (data as any)?.error ||
+    (publicVodQuery.error as any)?.message ||
+    (isError ? "Series catalogus niet beschikbaar" : "");
+  const normalizedCatalogError = rawCatalogError ? normalizeApiError(rawCatalogError) : null;
+  const catalogErrorRef = useMemo(() => (rawCatalogError ? buildErrorReference("NX-SER") : ""), [rawCatalogError]);
+
   const bottomPad = Platform.OS === "web" ? 34 : insets.bottom + 90;
   const isTabLoading = isLoading || publicVodQuery.isLoading || isLoadingPlaylist;
 
@@ -204,6 +217,16 @@ export default function SeriesScreen() {
           </Text>
         </View>
       )}
+
+      {normalizedCatalogError ? (
+        <View style={styles.errorBanner}>
+          <Ionicons name="warning-outline" size={14} color={COLORS.live} />
+          <View style={{ flex: 1, gap: 2 }}>
+            <Text style={styles.errorText}>{normalizedCatalogError.userMessage}</Text>
+            <Text style={styles.errorCodeText}>Foutcode: {catalogErrorRef || normalizedCatalogError.code}</Text>
+          </View>
+        </View>
+      ) : null}
 
       <FlatList
         data={[]}
@@ -379,7 +402,7 @@ export default function SeriesScreen() {
                   <View style={{ padding: 40, alignItems: "center", gap: 10 }}>
                     <Ionicons name="cloud-offline-outline" size={40} color={COLORS.textMuted} />
                     <Text style={{ fontFamily: "Inter_500Medium", color: COLORS.textMuted, textAlign: "center" }}>
-                      Kan series niet laden.{"\n"}Voeg een IPTV playlist toe.
+                      {normalizedCatalogError?.userMessage || "Kan series niet laden."}
                     </Text>
                   </View>
                 )}
@@ -466,6 +489,21 @@ const styles = StyleSheet.create({
     borderColor: COLORS.accent + "55",
   },
   watchdogText: { fontFamily: "Inter_500Medium", fontSize: 12, color: COLORS.accent, flex: 1 },
+  errorBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginHorizontal: 16,
+    marginBottom: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 10,
+    backgroundColor: COLORS.liveGlow,
+    borderWidth: 1,
+    borderColor: COLORS.live,
+  },
+  errorText: { fontFamily: "Inter_500Medium", fontSize: 12, color: COLORS.textSecondary, flex: 1 },
+  errorCodeText: { fontFamily: "Inter_400Regular", fontSize: 10, color: COLORS.textMuted },
   section: { marginBottom: 28 },
   sectionTitle: { fontFamily: "Inter_700Bold", fontSize: 20, color: COLORS.text, marginBottom: 14, paddingHorizontal: 20 },
   carouselPadding: { paddingHorizontal: 20, paddingRight: 8 },

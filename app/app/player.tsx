@@ -19,6 +19,7 @@ import { COLORS } from "@/constants/colors";
 import { useNexora } from "@/context/NexoraContext";
 import { SafeHaptics } from "@/lib/safeHaptics";
 import { openInVlc } from "@/lib/vlc";
+import { buildErrorReference, normalizeApiError } from "@/lib/error-messages";
 
 
 
@@ -171,6 +172,8 @@ export default function PlayerScreen() {
   const [controlsVisible, setControlsVisible] = useState(true);
   const [webviewKey, setWebviewKey] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
+  const [streamError, setStreamError] = useState<unknown>(null);
+  const [streamErrorRef, setStreamErrorRef] = useState("");
 
   const controlsOpacity = useRef(new Animated.Value(1)).current;
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -198,7 +201,11 @@ export default function PlayerScreen() {
   }, [addToHistory, contentId, scheduleHide, title, type]);
 
   // Reset loading when provider or key changes
-  useEffect(() => { setIsLoading(true); }, [webviewKey, provider]);
+  useEffect(() => {
+    setIsLoading(true);
+    setStreamError(null);
+    setStreamErrorRef("");
+  }, [webviewKey, provider]);
 
   const showControls = () => {
     setControlsVisible(true);
@@ -239,7 +246,8 @@ export default function PlayerScreen() {
         <iframe
           key={webviewKey}
           srcDoc={hlsHtml as any}
-          style={{ width: "100%", height: "100%", border: "none", backgroundColor: "#000" }}
+          title={`Nexora player ${String(title || "stream")}`}
+          style={styles.webFrame as any}
           allow="autoplay; fullscreen; accelerometer; encrypted-media; gyroscope; picture-in-picture"
           allowFullScreen
         />
@@ -250,7 +258,8 @@ export default function PlayerScreen() {
         <iframe
           key={webviewKey}
           src={embedUrl}
-          style={{ width: "100%", height: "100%", border: "none", backgroundColor: "#000" }}
+          title={`Nexora embed ${String(title || "stream")}`}
+          style={styles.webFrame as any}
           allow="autoplay; fullscreen; accelerometer; encrypted-media; gyroscope; picture-in-picture"
           allowFullScreen
         />
@@ -275,8 +284,17 @@ export default function PlayerScreen() {
           mixedContentMode="always"
           originWhitelist={["http://*", "https://*"]}
           userAgent="Mozilla/5.0 (Linux; Android 12; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
-          onLoad={() => setIsLoading(false)}
-          onError={() => setIsLoading(false)}
+          onLoad={() => {
+            setIsLoading(false);
+            setStreamError(null);
+            setStreamErrorRef("");
+          }}
+          onError={(event) => {
+            setIsLoading(false);
+            const msg = event?.nativeEvent?.description || "Stream kon niet laden";
+            setStreamError(msg);
+            setStreamErrorRef((prev) => prev || buildErrorReference("NX-PLY"));
+          }}
         />
       );
     }
@@ -295,8 +313,17 @@ export default function PlayerScreen() {
           originWhitelist={["http://*", "https://*"]}
           userAgent="Mozilla/5.0 (Linux; Android 12; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
           injectedJavaScriptBeforeContentLoaded={AD_BLOCK_JS}
-          onLoad={() => setIsLoading(false)}
-          onError={() => setIsLoading(false)}
+          onLoad={() => {
+            setIsLoading(false);
+            setStreamError(null);
+            setStreamErrorRef("");
+          }}
+          onError={(event) => {
+            setIsLoading(false);
+            const msg = event?.nativeEvent?.description || "Stream kon niet laden";
+            setStreamError(msg);
+            setStreamErrorRef((prev) => prev || buildErrorReference("NX-PLY"));
+          }}
           onShouldStartLoadWithRequest={(req) => {
             const url = req.url || "";
             // Only block known ad/tracker domains – allow all CDN and video host navigations
@@ -335,6 +362,25 @@ export default function PlayerScreen() {
           <View style={styles.loadingOverlay} pointerEvents="none">
             <ActivityIndicator size="large" color={COLORS.accent} />
             <Text style={styles.loadingText}>Laden...</Text>
+          </View>
+        )}
+
+        {!isLoading && streamError && Platform.OS !== "web" && (
+          <View style={styles.streamErrorOverlay}>
+            <Ionicons name="warning-outline" size={18} color={COLORS.live} />
+            <Text style={styles.streamErrorText}>{normalizeApiError(streamError).userMessage}</Text>
+            <Text style={styles.streamErrorRef}>Foutcode: {streamErrorRef || "NX-PLY"}</Text>
+            <TouchableOpacity
+              style={styles.streamRetryBtn}
+              onPress={() => {
+                setStreamError(null);
+                setStreamErrorRef("");
+                setIsLoading(true);
+                setWebviewKey((k) => k + 1);
+              }}
+            >
+              <Text style={styles.streamRetryText}>Probeer opnieuw</Text>
+            </TouchableOpacity>
           </View>
         )}
       </View>
@@ -414,6 +460,7 @@ export default function PlayerScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#000" },
   videoArea: { flex: 1, backgroundColor: "#000" },
+  webFrame: { width: "100%", height: "100%", borderWidth: 0, backgroundColor: "#000" },
   webview: { flex: 1, backgroundColor: "#000" },
   loadingOverlay: {
     ...StyleSheet.absoluteFillObject,
@@ -421,6 +468,18 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(0,0,0,0.7)", gap: 12,
   },
   loadingText: { fontFamily: "Inter_500Medium", fontSize: 14, color: "rgba(255,255,255,0.7)" },
+  streamErrorOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    backgroundColor: "rgba(0,0,0,0.65)",
+    paddingHorizontal: 24,
+  },
+  streamErrorText: { fontFamily: "Inter_500Medium", fontSize: 13, color: COLORS.textSecondary, textAlign: "center" },
+  streamErrorRef: { fontFamily: "Inter_400Regular", fontSize: 10, color: COLORS.textMuted },
+  streamRetryBtn: { borderRadius: 10, borderWidth: 1, borderColor: COLORS.accent, backgroundColor: COLORS.accentGlow, paddingHorizontal: 14, paddingVertical: 8, marginTop: 2 },
+  streamRetryText: { fontFamily: "Inter_600SemiBold", fontSize: 12, color: COLORS.accent },
   noContent: { flex: 1, alignItems: "center", justifyContent: "center", gap: 14, padding: 32 },
   noTitle: { fontFamily: "Inter_700Bold", fontSize: 20, color: "#fff" },
   noText: { fontFamily: "Inter_400Regular", fontSize: 14, color: COLORS.textMuted, textAlign: "center" },

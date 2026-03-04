@@ -12,6 +12,7 @@ import { MatchCard, UpcomingMatchRow } from "@/components/MatchCard";
 import { SkeletonMatchCard } from "@/components/SkeletonCard";
 import { LiveBadge } from "@/components/LiveBadge";
 import { apiRequest } from "@/lib/query-client";
+import { buildErrorReference, normalizeApiError } from "@/lib/error-messages";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 
 type SportsPayload = {
@@ -316,6 +317,14 @@ export default function SportsScreen() {
   const allUpcoming: any[] = remoteUpcoming.filter(isFootballMatch);
   const allFinished: any[] = remoteFinished.filter(isFootballMatch);
   const noRemoteData = !hasRemoteData;
+  const rawApiError =
+    todayQuery.data?.error ||
+    liveQuery.data?.error ||
+    (todayQuery.error as any)?.message ||
+    (liveQuery.error as any)?.message ||
+    "";
+  const normalizedApiError = rawApiError ? normalizeApiError(rawApiError) : null;
+  const apiErrorRef = useMemo(() => (rawApiError ? buildErrorReference("NX-SPR") : ""), [rawApiError]);
 
   const dataSource: string | undefined = todayQuery.data?.source || liveQuery.data?.source;
   const dataDate: string | undefined = todayQuery.data?.date;
@@ -474,10 +483,13 @@ export default function SportsScreen() {
         )}
 
         {/* API error */}
-        {(todayQuery.data?.error || liveQuery.data?.error) && (
+        {normalizedApiError && (
           <View style={styles.errorBanner}>
             <Ionicons name="warning-outline" size={14} color="#ff6b6b" />
-            <Text style={styles.errorText}>{todayQuery.data?.error || liveQuery.data?.error}</Text>
+            <View style={{ flex: 1, gap: 2 }}>
+              <Text style={styles.errorText}>{normalizedApiError.userMessage}</Text>
+              <Text style={styles.errorCodeText}>Foutcode: {apiErrorRef || normalizedApiError.code}</Text>
+            </View>
           </View>
         )}
 
@@ -732,6 +744,7 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(255,0,0,0.10)", borderWidth: 1, borderColor: "rgba(255,0,0,0.25)",
   },
   errorText: { color: "#ff6b6b", fontSize: 12, flex: 1 },
+  errorCodeText: { color: COLORS.textMuted, fontSize: 10 },
   sourceBadge: {
     alignSelf: "flex-end", marginRight: 16, marginTop: 6,
     paddingHorizontal: 9, paddingVertical: 5, borderRadius: 10,

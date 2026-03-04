@@ -1,7 +1,7 @@
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  Image, Modal, Platform, Animated,
+  Image, Modal, Platform, Animated, ActivityIndicator,
 } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -13,6 +13,7 @@ import { COLORS } from "@/constants/colors";
 import { apiRequest } from "@/lib/query-client";
 import { useNexora } from "@/context/NexoraContext";
 import { SafeHaptics } from "@/lib/safeHaptics";
+import { buildErrorReference, normalizeApiError } from "@/lib/error-messages";
 
 // ── TMDB fetch ───────────────────────────────────────────────────────────────
 async function fetchDetails(id: string, type: string) {
@@ -128,6 +129,9 @@ export default function DetailScreen() {
   const [showTrailer, setShowTrailer] = useState(false);
   const [showDownload, setShowDownload] = useState(false);
   const [activeTab, setActiveTab] = useState<"overview" | "cast" | "seasons">("overview");
+  const [trailerLoading, setTrailerLoading] = useState(true);
+  const [trailerError, setTrailerError] = useState<unknown>(null);
+  const [trailerErrorRef, setTrailerErrorRef] = useState("");
 
   // ── For IPTV items: get channel data from context first ───────────────────
   const iptvChannel = isIptv === "true"
@@ -141,7 +145,7 @@ export default function DetailScreen() {
     ? String(iptvChannel.tmdbId)
     : (isIptv !== "true" ? id : null);
 
-  const { data: tmdbData, isLoading: tmdbLoading, refetch } = useQuery({
+  const { data: tmdbData, isLoading: tmdbLoading, error: tmdbError, refetch } = useQuery({
     queryKey: ["detail", type, tmdbId],
     queryFn: () => fetchDetails(tmdbId!, type),
     enabled: !!tmdbId,
@@ -151,7 +155,7 @@ export default function DetailScreen() {
 
   // ── Fallback: search TMDB by title if IPTV has no tmdbId ─────────────────
   const searchTitle = iptvChannel?.title || iptvChannel?.name || paramTitle;
-  const { data: searchData, isLoading: searchLoading } = useQuery({
+  const { data: searchData, isLoading: searchLoading, error: searchError } = useQuery({
     queryKey: ["tmdb-search", type, searchTitle],
     queryFn: () => searchTmdb(searchTitle!, type),
     enabled: isIptv === "true" && !tmdbId && !!searchTitle,
@@ -186,6 +190,14 @@ export default function DetailScreen() {
   })();
 
   const isLoading = (!data && (tmdbLoading || searchLoading));
+  const rawDetailError =
+    (tmdbData as any)?.error ||
+    (searchData as any)?.error ||
+    (tmdbError as any)?.message ||
+    (searchError as any)?.message ||
+    "Detail data ontbreekt";
+  const normalizedDetailError = normalizeApiError(rawDetailError);
+  const detailErrorRef = useMemo(() => buildErrorReference("NX-DTL"), []);
   const isMovie = type === "movie";
   const fav = isFavorite(id);
 
@@ -240,8 +252,9 @@ export default function DetailScreen() {
       <View style={[styles.container, styles.centered]}>
         <Ionicons name="alert-circle-outline" size={48} color={COLORS.live} />
         <Text style={[styles.loadingText, { marginTop: 16, color: COLORS.text }]}>
-          Kan inhoud niet laden
+          {normalizedDetailError.userMessage}
         </Text>
+        <Text style={styles.errorRefText}>Foutcode: {detailErrorRef}</Text>
         <View style={{ flexDirection: "row", gap: 12, marginTop: 24 }}>
           <TouchableOpacity
             style={[styles.backBtnLoading, { backgroundColor: COLORS.accent, borderRadius: 10, paddingHorizontal: 20, paddingVertical: 10 }]}
@@ -461,7 +474,8 @@ export default function DetailScreen() {
             {Platform.OS === "web" ? (
               <iframe
                 src={`https://www.youtube.com/embed/${data.trailerKey}?autoplay=1`}
-                style={{ width: "100%", height: "100%", border: "none" }}
+                title={`${String(data.title || "Trailer")} trailer`}
+                style={styles.trailerFrame as any}
                 allow="autoplay; fullscreen"
                 allowFullScreen
               />
@@ -471,8 +485,46 @@ export default function DetailScreen() {
                 style={{ flex: 1 }}
                 allowsFullscreenVideo
                 mediaPlaybackRequiresUserAction={false}
+                onLoadStart={() => {
+                  setTrailerLoading(true);
+                  setTrailerError(null);
+                }}
+                onLoad={() => {
+                  setTrailerLoading(false);
+                  setTrailerError(null);
+                  setTrailerErrorRef("");
+                }}
+                onError={(event) => {
+                  setTrailerLoading(false);
+                  setTrailerError(event?.nativeEvent?.description || "Trailer kon niet laden");
+                  setTrailerErrorRef((prev) => prev || buildErrorReference("NX-TRL"));
+                }}
               />
             )}
+            {Platform.OS !== "web" && trailerLoading ? (
+              <View style={styles.trailerOverlay}>
+                <ActivityIndicator size="small" color={COLORS.accent} />
+                <Text style={styles.trailerOverlayText}>Trailer laden...</Text>
+              </View>
+            ) : null}
+            {Platform.OS !== "web" && trailerError ? (
+              <View style={styles.trailerOverlay}>
+                <Ionicons name="warning-outline" size={16} color={COLORS.live} />
+                <Text style={styles.trailerOverlayText}>{normalizeApiError(trailerError).userMessage}</Text>
+                <Text style={styles.errorRefText}>Foutcode: {trailerErrorRef || "NX-TRL"}</Text>
+                <TouchableOpacity
+                  style={styles.trailerRetryBtn}
+                  onPress={() => {
+                    setTrailerLoading(true);
+                    setTrailerError(null);
+                    setShowTrailer(false);
+                    setTimeout(() => setShowTrailer(true), 80);
+                  }}
+                >
+                  <Text style={styles.trailerRetryText}>Probeer opnieuw</Text>
+                </TouchableOpacity>
+              </View>
+            ) : null}
           </View>
         </View>
       </Modal>
@@ -489,6 +541,7 @@ const styles = StyleSheet.create({
   loadingText: { color: COLORS.textMuted, fontFamily: "Inter_500Medium" },
   backBtnLoading: { flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 16, paddingVertical: 10, borderRadius: 10, borderWidth: 1, borderColor: COLORS.border },
   backBtnLoadingText: { color: COLORS.textMuted, fontFamily: "Inter_500Medium", fontSize: 14 },
+  errorRefText: { color: COLORS.textMuted, fontFamily: "Inter_400Regular", fontSize: 11, marginTop: 6 },
   hero: { height: 280, position: "relative" },
   backdrop: { width: "100%", height: "100%" },
   heroGradient: { ...StyleSheet.absoluteFillObject },
@@ -548,6 +601,17 @@ const styles = StyleSheet.create({
   trailerClose: { position: "absolute", top: Platform.OS === "web" ? 67 : 50, right: 16, padding: 8, zIndex: 10 },
   trailerTitle: { fontFamily: "Inter_600SemiBold", fontSize: 15, color: COLORS.text, marginBottom: 12, paddingHorizontal: 48, textAlign: "center" },
   trailerContainer: { width: "100%", aspectRatio: 16 / 9 },
+  trailerFrame: { width: "100%", height: "100%", borderWidth: 0 },
+  trailerOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    backgroundColor: "rgba(0,0,0,0.58)",
+  },
+  trailerOverlayText: { fontFamily: "Inter_500Medium", fontSize: 13, color: COLORS.textSecondary, textAlign: "center", paddingHorizontal: 22 },
+  trailerRetryBtn: { marginTop: 4, borderRadius: 10, borderWidth: 1, borderColor: COLORS.accent, backgroundColor: COLORS.accentGlow, paddingHorizontal: 12, paddingVertical: 8 },
+  trailerRetryText: { fontFamily: "Inter_600SemiBold", fontSize: 12, color: COLORS.accent },
   modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.7)", justifyContent: "flex-end" },
   downloadModal: { backgroundColor: COLORS.cardElevated, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, paddingBottom: 40, alignItems: "center", gap: 12 },
   downloadHandle: { width: 36, height: 4, borderRadius: 2, backgroundColor: COLORS.border, marginBottom: 4 },

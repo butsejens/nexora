@@ -12,7 +12,7 @@ import { useQuery } from "@tanstack/react-query";
 import { COLORS } from "@/constants/colors";
 import { apiRequest } from "@/lib/query-client";
 import { normalizeApiError } from "@/lib/error-messages";
-import { getLeagueLogo } from "@/lib/logo-manager";
+import { resolveTeamLogoUri } from "@/lib/logo-manager";
 
 function formatSeasonLabel(season?: number) {
   if (!season) return "";
@@ -187,6 +187,8 @@ return (
 function StandingsRow({ team, rank }: { team: any; rank: number }) {
   const isTop3 = rank <= 3;
   const isTopZone = rank <= 4;
+  const [logoError, setLogoError] = useState(false);
+  const teamLogo = !logoError ? resolveTeamLogoUri(String(team?.team || ""), team?.logo || null) : null;
 
   const rankColor = rank === 1 ? COLORS.gold : rank <= 3 ? COLORS.accent : COLORS.text;
 
@@ -197,8 +199,8 @@ function StandingsRow({ team, rank }: { team: any; rank: number }) {
       </View>
 
       <View style={styles.teamCell}>
-        {team.logo ? (
-          <Image source={{ uri: team.logo }} style={styles.standingsLogo} />
+        {teamLogo ? (
+          <Image source={{ uri: teamLogo }} style={styles.standingsLogo} onError={() => setLogoError(true)} />
         ) : (
           <View style={[styles.standingsLogo, styles.logoPlaceholder]}>
             <Ionicons name="shield" size={12} color={COLORS.textMuted} />
@@ -223,7 +225,8 @@ function StandingsRow({ team, rank }: { team: any; rank: number }) {
 
 function ScorerRow({ scorer, rank }: { scorer: any; rank: number }) {
   const rankColor = rank === 1 ? COLORS.gold : rank === 2 ? "#C0C0C0" : rank === 3 ? "#CD7F32" : COLORS.textMuted;
-  const teamLogo = getLeagueLogo(String(scorer?.league || "")) || scorer.teamLogo || null;
+  const [teamLogoError, setTeamLogoError] = useState(false);
+  const teamLogo = !teamLogoError ? resolveTeamLogoUri(String(scorer?.team || ""), scorer?.teamLogo || null) : null;
 
   return (
     <View style={styles.scorerRow}>
@@ -238,7 +241,7 @@ function ScorerRow({ scorer, rank }: { scorer: any; rank: number }) {
       <View style={styles.scorerInfo}>
         <Text style={styles.scorerName}>{scorer.name}</Text>
         <View style={styles.scorerTeamRow}>
-          {teamLogo && <Image source={{ uri: teamLogo }} style={styles.scorerTeamLogo} />}
+          {teamLogo ? <Image source={{ uri: teamLogo }} style={styles.scorerTeamLogo} onError={() => setTeamLogoError(true)} /> : null}
           <Text style={styles.scorerTeam}>{scorer.team}</Text>
         </View>
       </View>
