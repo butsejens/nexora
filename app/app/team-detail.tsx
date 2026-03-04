@@ -11,6 +11,8 @@ import { useQuery } from "@tanstack/react-query";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { COLORS } from "@/constants/colors";
 import { apiRequest } from "@/lib/query-client";
+import { normalizeApiError } from "@/lib/error-messages";
+import { resolveTeamLogoUri } from "@/lib/logo-manager";
 
 const POSITION_ORDER = ["GK", "CB", "LB", "RB", "LWB", "RWB", "DM", "CM", "AM", "CAM", "LW", "RW", "SS", "CF", "ST", "FW", "PG", "SG", "SF", "PF", "C", "G", "F"];
 
@@ -21,14 +23,6 @@ const POSITION_COLORS: Record<string, string> = {
   SS: "#FF6B6B", CF: "#FF3B30", ST: "#FF3B30", FW: "#FF3B30",
   PG: "#FF6B6B", SG: "#34C759", SF: "#5AC8FA", PF: "#30B0C7", C: "#FF9500", G: "#FF9500", F: "#FF3B30",
 };
-
-const CLUB_BRUGGE_LOGO = "https://logodownload.org/wp-content/uploads/2019/11/club-brugge-logo-escudo.png";
-
-function resolveTeamLogo(teamName: string, logo?: string) {
-  const normalized = String(teamName || "").toLowerCase();
-  if (normalized.includes("club brugge")) return CLUB_BRUGGE_LOGO;
-  return logo || null;
-}
 
 export default function TeamDetailScreen() {
   const params = useLocalSearchParams<{
@@ -161,7 +155,7 @@ export default function TeamDetailScreen() {
 
         <View style={styles.teamHeaderContent}>
           <Image
-            source={{ uri: resolveTeamLogo(String(data?.name || params.teamName || ""), data?.logo || params.logo || `https://a.espncdn.com/i/teamlogos/soccer/500/${params.teamId}.png`) || undefined }}
+            source={{ uri: resolveTeamLogoUri(String(data?.name || params.teamName || ""), data?.logo || params.logo || `https://a.espncdn.com/i/teamlogos/soccer/500/${params.teamId}.png`) || undefined }}
             style={styles.teamBigLogo}
           />
           <Text style={styles.teamTitle}>{data?.name || params.teamName}</Text>
@@ -227,6 +221,7 @@ export default function TeamDetailScreen() {
         <View style={styles.emptyState}>
           <Ionicons name="alert-circle-outline" size={40} color={COLORS.textMuted} />
           <Text style={styles.emptyText}>Team data niet beschikbaar</Text>
+          {error ? <Text style={styles.emptyHintText}>{normalizeApiError(error).userMessage}</Text> : null}
         </View>
       ) : (
         <>
@@ -434,6 +429,7 @@ const styles = StyleSheet.create({
   loadingText: { fontFamily: "Inter_400Regular", fontSize: 14, color: COLORS.textMuted },
   emptyState: { flex: 1, alignItems: "center", justifyContent: "center", gap: 12, paddingVertical: 40 },
   emptyText: { fontFamily: "Inter_400Regular", fontSize: 14, color: COLORS.textMuted },
+  emptyHintText: { fontFamily: "Inter_400Regular", fontSize: 12, color: COLORS.textSecondary, textAlign: "center", paddingHorizontal: 24 },
   filterScroll: { flexGrow: 0, borderBottomWidth: 1, borderBottomColor: COLORS.border, backgroundColor: COLORS.overlayLight },
   filterHeaderWrap: { backgroundColor: COLORS.overlayLight },
   filterSticky: { zIndex: 5, elevation: 5 },

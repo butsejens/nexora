@@ -12,6 +12,7 @@ import { MaterialCommunityIcons, Ionicons } from "@expo/vector-icons";
 import { COLORS } from "@/constants/colors";
 import { LiveBadge } from "@/components/LiveBadge";
 import { SafeHaptics } from "@/lib/safeHaptics";
+import { getInitials, getLeagueLogo, resolveTeamLogoUri } from "@/lib/logo-manager";
 
 export interface Server {
   id: string;
@@ -49,29 +50,10 @@ const SPORT_ICONS: Record<string, string> = {
   formula1: "car-sports",
 };
 
-// League logo map using ESPN CDN
-const LEAGUE_LOGOS: Record<string, string> = {
-  "Premier League": "https://a.espncdn.com/i/leaguelogos/soccer/500/23.png",
-  "UEFA Champions League": "https://a.espncdn.com/i/leaguelogos/soccer/500/1.png",
-  "La Liga": "https://a.espncdn.com/i/leaguelogos/soccer/500/15.png",
-  "Bundesliga": "https://a.espncdn.com/i/leaguelogos/soccer/500/10.png",
-  "Jupiler Pro League": "https://a.espncdn.com/i/leaguelogos/soccer/500/5.png",
-  "NBA": "https://a.espncdn.com/i/leaguelogos/basketball/500/nba.png",
-};
-
 export function TeamLogo({ uri, teamName, size = 48 }: { uri?: string | null; teamName: string; size?: number }) {
   const [error, setError] = useState(false);
-  const normalizedName = String(teamName || "").toLowerCase();
-  const clubBruggeFallback = "https://logodownload.org/wp-content/uploads/2019/11/club-brugge-logo-escudo.png";
-  const safeUri = (uri && !error)
-    ? uri
-    : (normalizedName.includes("club brugge") ? clubBruggeFallback : null);
-  const initials = teamName
-    .split(" ")
-    .map((w) => w[0])
-    .join("")
-    .slice(0, 2)
-    .toUpperCase();
+  const safeUri = !error ? resolveTeamLogoUri(teamName, uri) : null;
+  const initials = getInitials(teamName, 2);
 
   if (safeUri) {
     return (
@@ -124,7 +106,7 @@ export function MatchCard({ match, onPress }: Props) {
     Animated.spring(scaleAnim, { toValue: 1, useNativeDriver: true, speed: 20 }).start();
   };
 
-  const leagueLogo = LEAGUE_LOGOS[match.league];
+  const leagueLogo = getLeagueLogo(match.league);
 
   return (
     <Animated.View style={[styles.wrapper, { transform: [{ scale: scaleAnim }] }]}>
@@ -194,7 +176,7 @@ export function MatchCard({ match, onPress }: Props) {
 
 export function UpcomingMatchRow({ match, onPress }: { match: Match; onPress: () => void }) {
   const SPORT_ICON = SPORT_ICONS[match.sport] || "soccer";
-  const leagueLogo = LEAGUE_LOGOS[match.league];
+  const leagueLogo = getLeagueLogo(match.league);
   return (
     <TouchableOpacity
       style={styles.upcomingRow}

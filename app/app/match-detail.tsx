@@ -15,6 +15,7 @@ import { SafeHaptics } from "@/lib/safeHaptics";
 import { apiRequest } from "@/lib/query-client";
 import { openInVlc } from "@/lib/vlc";
 import { TeamLogo } from "@/components/MatchCard";
+import { buildErrorReference, normalizeApiError } from "@/lib/error-messages";
 
 const TABS = [
   { id: "stream", label: "Stream", icon: "play-circle-outline" },
@@ -86,10 +87,13 @@ export default function MatchDetailScreen() {
   const [activeTab, setActiveTab] = useState<TabId>("stream");
   const [lineupView, setLineupView] = useState<"pitch" | "list">("pitch");
   const [streamKey, setStreamKey] = useState(0);
+  const [streamWebError, setStreamWebError] = useState<unknown>(null);
+  const [streamErrorRef, setStreamErrorRef] = useState<string>("");
   const isLive = params.status === "live";
   const {
     data: streamData,
     isLoading: streamLoading,
+    error: streamFetchError,
     refetch: refetchStream,
   } = useQuery({
     queryKey: ["match-stream", params.matchId],
@@ -101,6 +105,10 @@ export default function MatchDetailScreen() {
     staleTime: 60_000,
   });
   const streamUrl = streamData?.url || `https://embedme.top/embed/alpha/${params.matchId}/1`;
+  const streamApiError = normalizeApiError(streamFetchError || streamData?.error || null);
+  const streamPlayerError = normalizeApiError(streamWebError);
+  const hasStreamApiIssue = Boolean(streamFetchError || streamData?.error);
+  const hasStreamPlayerIssue = Boolean(streamWebError);
 
   const espnSport = "soccer";
   const espnLeague = (() => {
@@ -167,6 +175,8 @@ export default function MatchDetailScreen() {
 
   const handleRetryAutoStream = async () => {
     SafeHaptics.impactLight();
+    setStreamWebError(null);
+    setStreamErrorRef("");
     await refetchStream();
     setStreamKey(k => k + 1);
   };
@@ -258,13 +268,34 @@ export default function MatchDetailScreen() {
                 <WebView key={streamKey} source={{ uri: streamUrl }}
                   style={{ flex: 1, backgroundColor: "#000" }}
                   allowsFullscreenVideo mediaPlaybackRequiresUserAction={false}
-                  javaScriptEnabled domStorageEnabled />
+                  javaScriptEnabled domStorageEnabled
+                  onError={(event) => {
+                    const err = event?.nativeEvent?.description || "WebView stream fout";
+                    setStreamWebError(err);
+                    setStreamErrorRef((prev) => prev || buildErrorReference("NX-STR"));
+                  }}
+                />
               </View>
               <View style={styles.serverSection}>
                 <Text style={styles.serverLabel}>AUTOMATISCH BESTE STREAM</Text>
                 <Text style={styles.serverSubLabel}>
                   {streamLoading ? "Beste bron zoeken..." : "Link automatisch gekozen en gestart"}
                 </Text>
+                {hasStreamApiIssue ? (
+                  <View style={styles.streamErrorCard}>
+                    <MaterialCommunityIcons name="wifi-alert" size={14} color={COLORS.live} />
+                    <Text style={styles.streamErrorText}>{streamApiError.userMessage}</Text>
+                  </View>
+                ) : null}
+                {hasStreamPlayerIssue ? (
+                  <View style={styles.streamErrorCard}>
+                    <MaterialCommunityIcons name="alert-octagon-outline" size={14} color={COLORS.live} />
+                    <View style={{ flex: 1, gap: 4 }}>
+                      <Text style={styles.streamErrorText}>{streamPlayerError.userMessage}</Text>
+                      {streamErrorRef ? <Text style={styles.streamErrorRef}>Foutcode: {streamErrorRef}</Text> : null}
+                    </View>
+                  </View>
+                ) : null}
                 <TouchableOpacity style={styles.serverBtn} onPress={handleRetryAutoStream}>
                   <Ionicons name="refresh-outline" size={12} color={COLORS.accent} />
                   <Text style={styles.serverBtnText}>Nieuwe beste link zoeken</Text>
@@ -842,6 +873,19 @@ const styles = StyleSheet.create({
   serverSection: { padding: 16, gap: 10, backgroundColor: COLORS.overlayLight, borderTopWidth: 1, borderTopColor: COLORS.border },
   serverLabel: { fontFamily: "Inter_600SemiBold", fontSize: 10, color: COLORS.textMuted, letterSpacing: 1.5 },
   serverSubLabel: { fontFamily: "Inter_400Regular", fontSize: 12, color: COLORS.textSecondary },
+  streamErrorCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: COLORS.liveGlow,
+    borderColor: COLORS.live,
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+  streamErrorText: { fontFamily: "Inter_500Medium", fontSize: 12, color: COLORS.textSecondary, flex: 1 },
+  streamErrorRef: { fontFamily: "Inter_500Medium", fontSize: 10, color: COLORS.textMuted },
   serverBtn: {
     flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, paddingHorizontal: 14, paddingVertical: 9,
     borderRadius: 10, borderWidth: 1, borderColor: COLORS.borderLight, backgroundColor: COLORS.card,

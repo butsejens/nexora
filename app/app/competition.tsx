@@ -11,6 +11,8 @@ import { LinearGradient } from "expo-linear-gradient";
 import { useQuery } from "@tanstack/react-query";
 import { COLORS } from "@/constants/colors";
 import { apiRequest } from "@/lib/query-client";
+import { normalizeApiError } from "@/lib/error-messages";
+import { getLeagueLogo } from "@/lib/logo-manager";
 
 function formatSeasonLabel(season?: number) {
   if (!season) return "";
@@ -77,6 +79,8 @@ export default function CompetitionScreen() {
 
   const standings: any[] = standingsData?.standings || [];
   const scorers: any[] = scorersData?.scorers || [];
+  const standingsError = normalizeApiError((standingsData as any)?.error || null);
+  const scorersError = normalizeApiError((scorersData as any)?.error || null);
 
   // Prefer seasonLabel from API, fall back to computing it
   const seasonLabel: string =
@@ -129,9 +133,7 @@ return (
           <View style={styles.emptyState}>
             <Ionicons name="list-outline" size={40} color={COLORS.textMuted} />
             <Text style={styles.emptyText}>Ranglijst niet beschikbaar</Text>
-            {(standingsData as any)?.error && (
-              <Text style={styles.errorDetail}>{(standingsData as any).error}</Text>
-            )}
+            {(standingsData as any)?.error ? <Text style={styles.errorDetail}>{standingsError.userMessage}</Text> : null}
             <Text style={styles.emptyHint}>Bron: ESPN + API-Sports (geen API-key vereist voor ESPN)</Text>
           </View>
         ) : (
@@ -166,9 +168,7 @@ return (
           <View style={styles.emptyState}>
             <Ionicons name="trophy-outline" size={40} color={COLORS.textMuted} />
             <Text style={styles.emptyText}>Topscorers niet beschikbaar</Text>
-            {(scorersData as any)?.error && (
-              <Text style={styles.errorDetail}>{(scorersData as any).error}</Text>
-            )}
+            {(scorersData as any)?.error ? <Text style={styles.errorDetail}>{scorersError.userMessage}</Text> : null}
           </View>
         ) : (
           <FlatList
@@ -223,6 +223,7 @@ function StandingsRow({ team, rank }: { team: any; rank: number }) {
 
 function ScorerRow({ scorer, rank }: { scorer: any; rank: number }) {
   const rankColor = rank === 1 ? COLORS.gold : rank === 2 ? "#C0C0C0" : rank === 3 ? "#CD7F32" : COLORS.textMuted;
+  const teamLogo = getLeagueLogo(String(scorer?.league || "")) || scorer.teamLogo || null;
 
   return (
     <View style={styles.scorerRow}>
@@ -237,7 +238,7 @@ function ScorerRow({ scorer, rank }: { scorer: any; rank: number }) {
       <View style={styles.scorerInfo}>
         <Text style={styles.scorerName}>{scorer.name}</Text>
         <View style={styles.scorerTeamRow}>
-          {scorer.teamLogo && <Image source={{ uri: scorer.teamLogo }} style={styles.scorerTeamLogo} />}
+          {teamLogo && <Image source={{ uri: teamLogo }} style={styles.scorerTeamLogo} />}
           <Text style={styles.scorerTeam}>{scorer.team}</Text>
         </View>
       </View>
