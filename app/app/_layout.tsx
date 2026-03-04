@@ -9,6 +9,7 @@ import { NexoraProvider } from "@/context/NexoraContext";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { NexoraIntro } from "@/components/NexoraIntro";
 import { NexoraBootScreen } from "@/components/NexoraBootScreen";
+import * as Updates from "expo-updates";
 import {
   useFonts,
   Inter_400Regular,
@@ -23,6 +24,7 @@ SplashScreen.preventAutoHideAsync();
 
 let hasCompletedBootOnce = false;
 let hasShownIntroOnce = false;
+let hasCheckedOtaUpdateOnce = false;
 
 function RootLayoutNav() {
   return (
@@ -164,6 +166,26 @@ export default function RootLayout() {
     }, 7000);
     return () => clearTimeout(safety);
   }, [showIntro, handleIntroFinish]);
+
+  useEffect(() => {
+    if (!bootDone) return;
+    if (hasCheckedOtaUpdateOnce) return;
+    hasCheckedOtaUpdateOnce = true;
+
+    const run = async () => {
+      try {
+        if (__DEV__) return;
+        const update = await Updates.checkForUpdateAsync();
+        if (!update.isAvailable) return;
+        await Updates.fetchUpdateAsync();
+        await Updates.reloadAsync();
+      } catch {
+        // Keep app usable even when OTA checks fail.
+      }
+    };
+
+    run();
+  }, [bootDone]);
 
   if (!bootDone) {
     return <NexoraBootScreen progress={bootProgress} message={bootMessage} />;

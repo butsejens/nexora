@@ -3,6 +3,14 @@
     "name": "NEXORA",
     "slug": "nexora-sports-stream",
     "version": "1.0.1",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "enabled": true,
+      "checkAutomatically": "ON_LOAD",
+      "fallbackToCacheTimeout": 0
+    },
     "orientation": "default",
     "icon": "./assets/images/icon.png",
     "scheme": "nexora",
