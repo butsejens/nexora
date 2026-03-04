@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: nexora-api
+    runtime: node
+    rootDir: server
+    plan: free
+    autoDeploy: true
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: NODE_VERSION
+        value: 20
+      - key: APP_TZ
+        value: Europe/Brussels
+      - key: PORT
+        value: 8080

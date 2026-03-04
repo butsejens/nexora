@@ -1,0 +1,21 @@
+{
+  "name": "nexora-monorepo",
+  "private": true,
+  "workspaces": [
+    "app",
+    "server"
+  ],
+  "scripts": {
+    "setup": "cp app/.env.example app/.env 2>/dev/null || true && cp server/.env.example server/.env 2>/dev/null || true",
+    "doctor": "node scripts/doctor.mjs",
+    "ports:free": "node scripts/free-ports.mjs 8080 8082",
+    "dev": "npm run doctor && npm run ports:free && concurrently --kill-others-on-fail \"npm -w server run dev\" \"npm -w app run start:ci\"",
+    "server": "npm -w server run dev",
+    "server:start": "npm -w server start",
+    "app": "npm -w app start"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  },
+  "main": "app/index.js"
+}
