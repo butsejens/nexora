@@ -247,6 +247,128 @@ function normalizePlayerPhoto(_playerId, ...candidates) {
   return null;
 }
 
+// =============================================================
+// ZILLIZ VECTOR DATABASE – persistente semantische AI-cache
+// ZILLIZ_URI  = cluster Public Endpoint (van cloud.zilliz.com)
+// ZILLIZ_API_KEY = API token (van cloud.zilliz.com → API Keys)
+// =============================================================
+const ZILLIZ_URI = String(process.env.ZILLIZ_URI || "").replace(/\/$/, "");
+const ZILLIZ_API_KEY = String(process.env.ZILLIZ_API_KEY || "");
+const ZILLIZ_COLLECTION = "nexora_ai_cache";
+const EMBEDDING_DIM = 128;
+
+let _zillizReady = false;
+
+// Deterministische pseudo-embedding: tekst → 128-dim genormaliseerde vector
+function textToVector(text) {
+  const s = String(text || "").toLowerCase().replace(/\s+/g, " ").trim();
+  const vec = new Array(EMBEDDING_DIM).fill(0);
+  for (let i = 0; i < s.length; i++) {
+    const c = s.charCodeAt(i);
+    vec[i % EMBEDDING_DIM] += c;
+    vec[(i * 31 + 7) % EMBEDDING_DIM] += c * 0.5;
+    vec[(i * 17 + 3) % EMBEDDING_DIM] += c * 0.25;
+  }
+  const mag = Math.sqrt(vec.reduce((a, v) => a + v * v, 0));
+  return mag > 0 ? vec.map(v => v / mag) : vec;
+}
+
+async function zillizRequest(method, path, body) {
+  if (!ZILLIZ_URI || !ZILLIZ_API_KEY) return null;
+  try {
+    const resp = await fetch(`${ZILLIZ_URI}/v2/vectordb${path}`, {
+      method,
+      headers: {
+        Authorization: `Bearer ${ZILLIZ_API_KEY}`,
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: body != null ? JSON.stringify(body) : undefined,
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!resp.ok) return null;
+    return await resp.json();
+  } catch {
+    return null;
+  }
+}
+
+async function zillizInit() {
+  if (!ZILLIZ_URI || !ZILLIZ_API_KEY) return false;
+  try {
+    const list = await zillizRequest("POST", "/collections/list", { dbName: "default" });
+    const exists = Array.isArray(list?.data) && list.data.includes(ZILLIZ_COLLECTION);
+    if (!exists) {
+      const res = await zillizRequest("POST", "/collections/create", {
+        dbName: "default",
+        collectionName: ZILLIZ_COLLECTION,
+        schema: {
+          fields: [
+            { fieldName: "id", dataType: "Int64", isPrimary: true, autoId: true },
+            { fieldName: "cache_key", dataType: "VarChar", elementTypeParams: { max_length: "512" } },
+            { fieldName: "type", dataType: "VarChar", elementTypeParams: { max_length: "64" } },
+            { fieldName: "result_json", dataType: "VarChar", elementTypeParams: { max_length: "65535" } },
+            { fieldName: "embedding", dataType: "FloatVector", elementTypeParams: { dim: String(EMBEDDING_DIM) } },
+            { fieldName: "created_at", dataType: "Int64" },
+          ],
+        },
+        indexParams: [{
+          fieldName: "embedding",
+          indexName: "emb_idx",
+          metricType: "COSINE",
+          params: { index_type: "AUTOINDEX" },
+        }],
+      });
+      if (res?.code !== 0) { console.warn("Zilliz collection create fout:", res?.message); return false; }
+    }
+    _zillizReady = true;
+    console.log("Zilliz cache: verbonden ✓");
+    return true;
+  } catch (e) {
+    console.warn("Zilliz init fout:", String(e?.message || e));
+    return false;
+  }
+}
+
+// Exacte cache lookup op type + key
+async function zillizGet(type, cacheKey) {
+  if (!_zillizReady) return null;
+  try {
+    const safeKey = String(cacheKey).slice(0, 500).replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+    const res = await zillizRequest("POST", "/entities/query", {
+      collectionName: ZILLIZ_COLLECTION,
+      filter: `type == "${type}" && cache_key == "${safeKey}"`,
+      outputFields: ["result_json", "created_at"],
+      limit: 1,
+    });
+    const row = res?.data?.[0];
+    if (!row?.result_json) return null;
+    if (Date.now() - Number(row.created_at || 0) > 86_400_000 * 7) return null; // 7 dagen TTL
+    return tryParseJSON(row.result_json);
+  } catch {
+    return null;
+  }
+}
+
+// Cache opslaan
+async function zillizPut(type, cacheKey, result) {
+  if (!_zillizReady) return;
+  try {
+    const resultJson = JSON.stringify(result);
+    if (resultJson.length > 64000) return;
+    await zillizRequest("POST", "/entities/insert", {
+      collectionName: ZILLIZ_COLLECTION,
+      data: [{
+        cache_key: String(cacheKey).slice(0, 500),
+        type,
+        result_json: resultJson,
+        embedding: textToVector(`${type} ${cacheKey}`),
+        created_at: Date.now(),
+      }],
+    });
+  } catch { /* best-effort */ }
+}
+
 function normalizePersonName(name) {
   return String(name || "")
     .toLowerCase()
@@ -995,8 +1117,15 @@ async function aiAnalyzePlayerProfile(player, context = {}) {
     process.env.DEEPSEEK_API_KEY ||
     process.env.OPENROUTER_API_KEY ||
     process.env.GROQ_API_KEY ||
-    process.env.OPENAI_API_KEY
+    process.env.OPENAI_API_KEY ||
+    process.env.GEMINI_API_KEY
   );
+
+  // Zilliz cache check – ook bruikbaar zonder AI provider
+  const zKey = `${String(player?.name || "")}_${String(player?.position || "")}_${String(context?.league || "")}`;
+  const zCached = await zillizGet("player_analysis", zKey);
+  if (zCached?.summary || zCached?.strengths?.length) return zCached;
+
   if (!hasAnyProvider) return null;
 
   const sys = {
@@ -1026,11 +1155,13 @@ async function aiAnalyzePlayerProfile(player, context = {}) {
       const strengths = Array.isArray(parsed?.strengths) ? parsed.strengths.map((x) => String(x).trim()).filter(Boolean) : [];
       const weaknesses = Array.isArray(parsed?.weaknesses) ? parsed.weaknesses.map((x) => String(x).trim()).filter(Boolean) : [];
       if (summary || strengths.length || weaknesses.length) {
-        return {
+        const result = {
           summary: summary || null,
           strengths: strengths.slice(0, 5),
           weaknesses: weaknesses.slice(0, 5),
         };
+        zillizPut("player_analysis", zKey, result); // asynchroon opslaan in Zilliz
+        return result;
       }
     } catch {
       // try next provider
@@ -1816,8 +1947,21 @@ async function aiPredictMatch(payload) {
     process.env.DEEPSEEK_API_KEY ||
     process.env.OPENROUTER_API_KEY ||
     process.env.GROQ_API_KEY ||
-    process.env.OPENAI_API_KEY
+    process.env.OPENAI_API_KEY ||
+    process.env.GEMINI_API_KEY
   );
+
+  // Zilliz cache check – skip for live matches (status=live) as they change rapidly
+  const isLive = String(payload?.status || "").toLowerCase() === "live";
+  const homeTeam = String(payload?.homeTeam || "");
+  const awayTeam = String(payload?.awayTeam || "");
+  const league = String(payload?.league || "");
+  const zPredKey = `${homeTeam}_vs_${awayTeam}_${league}`;
+  if (!isLive && _zillizReady) {
+    const zCached = await zillizGet("match_prediction", zPredKey);
+    if (zCached?.prediction) return { ...zCached, fromCache: true };
+  }
+
   if (!hasAnyProvider) {
     return deterministicPrediction(payload);
   }
@@ -1859,11 +2003,16 @@ async function aiPredictMatch(payload) {
     try {
       const raw = await provider.run();
       const parsed = parseAiPredictionToUiShape(raw);
-      return {
+      const result = {
         ...parsed,
         source: `ai-${provider.name}`,
         updatedAt: new Date().toISOString(),
       };
+      // Cache AI prediction in Zilliz (only for non-live, finished/upcoming matches)
+      if (!isLive) {
+        zillizPut("match_prediction", zPredKey, result); // async, best-effort
+      }
+      return result;
     } catch (e) {
       lastError = e;
     }
@@ -1899,7 +2048,7 @@ app.get("/health", (req, res) => {
     gemini: Boolean(process.env.GEMINI_API_KEY),
   };
   const aiReady = Object.values(aiProviders).some(Boolean);
-  res.json({ ok: true, time: new Date().toISOString(), source: footballSource(), tz: TZ, aiReady, aiProviders });
+  res.json({ ok: true, time: new Date().toISOString(), source: footballSource(), tz: TZ, aiReady, aiProviders, zilliz: _zillizReady });
 });
 
 // Request logging middleware
@@ -3432,4 +3581,6 @@ app.get("/api/series/:id/full", tmdbLimiter, async (req, res) => {
 // -----------------------------
 app.listen(PORT, () => {
   console.log(`Nexora server running on :${PORT} (sports source: ${footballSource()})`);
+  // Initialiseer Zilliz vector cache (non-blocking)
+  zillizInit().catch(() => {});
 });
