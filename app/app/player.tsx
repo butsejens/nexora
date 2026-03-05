@@ -172,7 +172,7 @@ export default function PlayerScreen() {
   const [controlsVisible, setControlsVisible] = useState(true);
   const [webviewKey, setWebviewKey] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
-  const [streamError, setStreamError] = useState<unknown>(null);
+  const [streamError, setStreamError] = useState<Error | string | null>(null);
   const [streamErrorRef, setStreamErrorRef] = useState("");
 
   const controlsOpacity = useRef(new Animated.Value(1)).current;

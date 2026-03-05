@@ -14,7 +14,7 @@ function getInferredNativeHost(): string {
     const rawHost =
       Constants?.expoConfig?.hostUri ||
       Constants?.manifest2?.extra?.expoClient?.hostUri ||
-      Constants?.manifest?.debuggerHost ||
+      (Constants?.manifest as any)?.debuggerHost ||
       "";
     const host = String(rawHost).split(":")[0];
     return host || "";
@@ -133,7 +133,7 @@ async function fetchWithTimeout(url: string, init?: RequestInit, timeoutMs = 500
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    return await fetch(url, { ...init, signal: controller.signal });
+    return await fetch(url, { ...init, signal: controller.signal, body: init?.body ?? undefined } as any);
   } finally {
     clearTimeout(timeout);
   }

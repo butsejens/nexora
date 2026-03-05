@@ -555,6 +555,35 @@ async function fetchTheSportsDBTeamPlayers(teamName) {
   }
 }
 
+// Wikipedia/Wikimedia API – free player photo lookup by name (no API key, CC licensed)
+async function fetchWikipediaPlayerPhoto(playerName) {
+  if (!playerName) return null;
+  const normName = normalizePersonName(playerName);
+  const cacheKey = `wikipedia_photo_${normName}`;
+  const cacheItem = __cache.get(cacheKey);
+  if (cacheItem && Date.now() <= cacheItem.expiresAt) return cacheItem.value;
+
+  try {
+    const wikiTitle = String(playerName).trim().replace(/ /g, "_");
+    const url = `https://en.wikipedia.org/w/api.php?action=query&titles=${encodeURIComponent(wikiTitle)}&prop=pageimages&pithumbsize=400&format=json&origin=*`;
+    const resp = await fetch(url, {
+      headers: { "User-Agent": "NexoraApp/1.0 (sports app)" },
+      signal: AbortSignal.timeout(4000),
+    });
+    if (!resp.ok) { cacheSet(cacheKey, null, 300_000); return null; }
+    const data = await resp.json();
+    const pages = data?.query?.pages || {};
+    const page = Object.values(pages)[0];
+    if (!page || page.missing !== undefined) { cacheSet(cacheKey, null, 300_000); return null; }
+    const photo = page?.thumbnail?.source || null;
+    cacheSet(cacheKey, photo, 86_400_000); // 24h
+    return photo;
+  } catch {
+    cacheSet(cacheKey, null, 300_000);
+    return null;
+  }
+}
+
 // TheSportsDB free API – team badge lookup by team name (no API key required)
 async function fetchTheSportsDBTeamLogo(teamName) {
   if (!teamName) return null;
@@ -829,6 +858,7 @@ async function aiEstimateRosterValues(players, teamName) {
     if (process.env.OPENROUTER_API_KEY) providers.push(() => openrouterChat([sys, user], { temperature: 0.2 }));
     if (process.env.GROQ_API_KEY) providers.push(() => groqChat([sys, user], { temperature: 0.2 }));
     if (process.env.OPENAI_API_KEY) providers.push(() => openaiChat([sys, user], { temperature: 0.2, model: "gpt-4o-mini" }));
+    if (process.env.GEMINI_API_KEY) providers.push(() => geminiChat([sys, user], { temperature: 0.2 }));
 
     for (const run of providers) {
       try {
@@ -882,15 +912,12 @@ async function enrichRosterPhotos(players, teamName) {
   const needsPhoto = players.some((p) => p && !p.photo);
   if (!needsPhoto) return players;
 
+  // Step 1: TheSportsDB – batch fetch all players for team (cached 24h)
   const dbPlayers = await fetchTheSportsDBTeamPlayers(teamName);
-  if (dbPlayers.length === 0) return players;
-
-  return players.map((player) => {
+  let enriched = players.map((player) => {
     if (!player || player.photo) return player;
     const normName = normalizePersonName(player.name || "");
     if (!normName) return player;
-
-    // Try exact match first, then similarity
     let best = null;
     let bestScore = 0;
     for (const dbp of dbPlayers) {
@@ -901,6 +928,28 @@ async function enrichRosterPhotos(players, teamName) {
     if (best) return { ...player, photo: best.photo };
     return player;
   });
+
+  // Step 2: Wikipedia fallback – lookup remaining players without photo (parallel, cached 24h)
+  const stillNeed = enriched.filter((p) => p && !p.photo && p.name);
+  if (stillNeed.length > 0) {
+    const wikiResults = await Promise.allSettled(
+      stillNeed.map((p) => fetchWikipediaPlayerPhoto(p.name))
+    );
+    const wikiMap = new Map();
+    stillNeed.forEach((p, i) => {
+      const res = wikiResults[i];
+      if (res.status === "fulfilled" && res.value) wikiMap.set(p.name || "", res.value);
+    });
+    if (wikiMap.size > 0) {
+      enriched = enriched.map((player) => {
+        if (!player || player.photo) return player;
+        const photo = wikiMap.get(player.name || "");
+        return photo ? { ...player, photo } : player;
+      });
+    }
+  }
+
+  return enriched;
 }
 
 function inferStrengthsWeaknesses(position, age) {
@@ -967,6 +1016,7 @@ async function aiAnalyzePlayerProfile(player, context = {}) {
   if (process.env.OPENROUTER_API_KEY) providers.push(() => openrouterChat([sys, user], { temperature: 0.25 }));
   if (process.env.GROQ_API_KEY) providers.push(() => groqChat([sys, user], { temperature: 0.25 }));
   if (process.env.OPENAI_API_KEY) providers.push(() => openaiChat([sys, user], { temperature: 0.25 }));
+  if (process.env.GEMINI_API_KEY) providers.push(() => geminiChat([sys, user], { temperature: 0.25 }));
 
   for (const run of providers) {
     try {
@@ -1381,7 +1431,7 @@ async function openrouterChat(messages, { temperature = 0.4, model } = {}) {
     throw e;
   }
 
-  const useModel = model || process.env.OPENROUTER_MODEL || "openai/gpt-oss-20b:free";
+  const useModel = model || process.env.OPENROUTER_MODEL || "meta-llama/llama-3.3-70b-instruct:free";
 
   const r = await fetch("https://openrouter.ai/api/v1/chat/completions", {
     method: "POST",
@@ -1415,7 +1465,7 @@ async function groqChat(messages, { temperature = 0.4, model } = {}) {
     throw e;
   }
 
-  const useModel = model || process.env.GROQ_MODEL || "llama-3.1-8b-instant";
+  const useModel = model || process.env.GROQ_MODEL || "llama-3.3-70b-versatile";
   const r = await fetch("https://api.groq.com/openai/v1/chat/completions", {
     method: "POST",
     headers: {
@@ -1477,6 +1527,41 @@ async function ollamaChat(messages, { temperature = 0.35, model } = {}) {
   }
 
   return data?.message?.content ?? "";
+}
+
+// Google Gemini – gratis tier: 1500 req/dag, geen creditcard vereist (GEMINI_API_KEY env)
+async function geminiChat(messages, { temperature = 0.4, model } = {}) {
+  const key = process.env.GEMINI_API_KEY;
+  if (!key) {
+    const e = new Error("GEMINI_API_KEY missing");
+    e.statusCode = 500;
+    throw e;
+  }
+
+  const useModel = model || process.env.GEMINI_MODEL || "gemini-2.0-flash";
+  // Use Gemini's OpenAI-compatible endpoint for easy integration
+  const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/openai/chat/completions`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${key}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: useModel,
+      temperature,
+      messages,
+    }),
+  });
+
+  const data = await r.json();
+  if (!r.ok) {
+    const e = new Error(`Gemini error (${r.status})`);
+    e.statusCode = r.status;
+    e.details = data;
+    throw e;
+  }
+
+  return data?.choices?.[0]?.message?.content ?? "";
 }
 
 function toNumber(value, fallback = 0) {
@@ -1765,6 +1850,9 @@ async function aiPredictMatch(payload) {
   if (process.env.OPENAI_API_KEY) {
     providers.push({ name: "openai", run: () => openaiChat([sys, user], { temperature: 0.35 }) });
   }
+  if (process.env.GEMINI_API_KEY) {
+    providers.push({ name: "gemini", run: () => geminiChat([sys, user], { temperature: 0.35 }) });
+  }
 
   let lastError = null;
   for (const provider of providers) {
@@ -1808,6 +1896,7 @@ app.get("/health", (req, res) => {
     openrouter: Boolean(process.env.OPENROUTER_API_KEY),
     groq: Boolean(process.env.GROQ_API_KEY),
     openai: Boolean(process.env.OPENAI_API_KEY),
+    gemini: Boolean(process.env.GEMINI_API_KEY),
   };
   const aiReady = Object.values(aiProviders).some(Boolean);
   res.json({ ok: true, time: new Date().toISOString(), source: footballSource(), tz: TZ, aiReady, aiProviders });
@@ -2693,6 +2782,10 @@ app.get("/api/sports/player/:playerId", async (req, res) => {
             break;
           }
         }
+      }
+      // Final fallback: Wikipedia
+      if (!resolvedPhoto && name && name !== "Onbekend") {
+        resolvedPhoto = await fetchWikipediaPlayerPhoto(name) || null;
       }
       const baseClubLogo = normalizeTeamLogo(
         clubName,

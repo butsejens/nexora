@@ -910,8 +910,6 @@ export default function SportsScreen() {
             </ScrollView>
 
             <View style={styles.countryCompetitionsPanel}>
-              onScroll={handleFeedScroll}
-              scrollEventThrottle={16}
               <Text style={styles.countryPanelTitle}>
                 {selectedCountry?.countryName} · Competities
               </Text>

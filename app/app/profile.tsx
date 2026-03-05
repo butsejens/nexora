@@ -214,7 +214,7 @@ const [showAddPlaylist, setShowAddPlaylist] = useState(false);
   const [selectedFileContent, setSelectedFileContent] = useState<string | null>(null);
   const [fileLoading, setFileLoading] = useState(false);
   const [fileProgress, setFileProgress] = useState(0);
-  const [filePhase, setFilePhase] = useState<"reading" | "parsing" | null>(null);
+  const [filePhase, setFilePhase] = useState<"reading" | "parsing" | "download" | null>(null);
   // silence eslint about unused state vars (progress only written)
   void fileProgress;
   void filePhase;
