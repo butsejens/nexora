@@ -1073,6 +1073,46 @@ async function enrichRosterPhotos(players, teamName) {
     }
   }
 
+  // Step 3: TheSportsDB individual search for players still without photo (best coverage, cached 24h)
+  const stillNeed2 = enriched.filter((p) => p && !p.photo && p.name);
+  if (stillNeed2.length > 0) {
+    const tsdbResults = await Promise.allSettled(
+      stillNeed2.map(async (p) => {
+        const cacheKey = `tsdb_player_${normalizePersonName(p.name)}`;
+        const cached = cacheGet(cacheKey);
+        if (cached !== null) return cached;
+        try {
+          const url = `https://www.thesportsdb.com/api/v1/json/3/searchplayers.php?p=${encodeURIComponent(p.name)}`;
+          const resp = await fetch(url, {
+            headers: { "user-agent": "Mozilla/5.0", accept: "application/json" },
+            signal: AbortSignal.timeout(4000),
+          });
+          if (!resp.ok) { cacheSet(cacheKey, null, 300_000); return null; }
+          const data = await resp.json();
+          const player = data?.player?.[0];
+          const photo = player?.strCutout || player?.strThumb || null;
+          cacheSet(cacheKey, photo, 86_400_000); // 24h
+          return photo;
+        } catch {
+          cacheSet(cacheKey, null, 300_000);
+          return null;
+        }
+      })
+    );
+    const tsdbMap = new Map();
+    stillNeed2.forEach((p, i) => {
+      const res = tsdbResults[i];
+      if (res.status === "fulfilled" && res.value) tsdbMap.set(p.name || "", res.value);
+    });
+    if (tsdbMap.size > 0) {
+      enriched = enriched.map((player) => {
+        if (!player || player.photo) return player;
+        const photo = tsdbMap.get(player.name || "");
+        return photo ? { ...player, photo } : player;
+      });
+    }
+  }
+
   return enriched;
 }
 

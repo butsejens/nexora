@@ -27,4 +27,4 @@ services:
       - key: OPENROUTER_API_KEY
         sync: false
       - key: TMDB_API_KEY
-        sync: false
+        value: 090a34f37141e9fab2e8007a1eb27465
