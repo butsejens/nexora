@@ -303,7 +303,7 @@ async function zillizInit() {
         collectionName: ZILLIZ_COLLECTION,
         schema: {
           fields: [
-            { fieldName: "id", dataType: "Int64", isPrimary: true, autoId: true },
+            { fieldName: "id", dataType: "Int64", isPrimary: true, autoId: false },
             { fieldName: "cache_key", dataType: "VarChar", elementTypeParams: { max_length: "512" } },
             { fieldName: "type", dataType: "VarChar", elementTypeParams: { max_length: "64" } },
             { fieldName: "result_json", dataType: "VarChar", elementTypeParams: { max_length: "65535" } },
@@ -355,9 +355,12 @@ async function zillizPut(type, cacheKey, result) {
   try {
     const resultJson = JSON.stringify(result);
     if (resultJson.length > 64000) return;
+    // Genereer uniek Int64-compatibel id (autoId staat uit op serverless clusters)
+    const uid = Date.now() * 1000 + Math.floor(Math.random() * 1000);
     await zillizRequest("POST", "/entities/insert", {
       collectionName: ZILLIZ_COLLECTION,
       data: [{
+        id: uid,
         cache_key: String(cacheKey).slice(0, 500),
         type,
         result_json: resultJson,
@@ -2460,8 +2463,7 @@ async function fetchWithTimeout(fetchPromise, timeoutMs = 12000) {
 }
 
 async function espnStandings(leagueName) {
-  const slug = ESPN_LEAGUE_SLUGS[leagueName] || ESPN_LEAGUE_SLUGS[normalizeLeagueName(leagueName)];
-  if (!slug) throw new Error(`No ESPN slug for league: ${leagueName}`);
+  const slug = ESPN_LEAGUE_SLUGS[leagueName] || ESPN_LEAGUE_SLUGS[normalizeLeagueName(leagueName)] || leagueName;
   const url = `${ESPN_STANDINGS_BASE}/${slug}/standings`;
   const resp = await fetchWithTimeout(
     fetch(url, { headers: { "user-agent": "Mozilla/5.0 (Nexora/1.0)", accept: "application/json" } }),
@@ -2472,8 +2474,7 @@ async function espnStandings(leagueName) {
 }
 
 async function espnTopScorers(leagueName) {
-  const slug = ESPN_LEAGUE_SLUGS[leagueName] || ESPN_LEAGUE_SLUGS[normalizeLeagueName(leagueName)];
-  if (!slug) throw new Error(`No ESPN slug for league: ${leagueName}`);
+  const slug = ESPN_LEAGUE_SLUGS[leagueName] || ESPN_LEAGUE_SLUGS[normalizeLeagueName(leagueName)] || leagueName;
   const url = `https://site.web.api.espn.com/apis/v2/sports/soccer/${slug}/leaders`;
   const resp = await fetchWithTimeout(
     fetch(url, { headers: { "user-agent": "Mozilla/5.0 (Nexora/1.0)", accept: "application/json" } }),
@@ -2601,8 +2602,9 @@ function decodeHtml(value) {
 }
 
 async function espnTopScorersFromHtml(leagueName) {
-  const code = ESPN_STATS_LEAGUE_CODES[leagueName] || ESPN_STATS_LEAGUE_CODES[normalizeLeagueName(leagueName)];
-  if (!code) return [];
+  const code = ESPN_STATS_LEAGUE_CODES[leagueName]
+    || ESPN_STATS_LEAGUE_CODES[normalizeLeagueName(leagueName)]
+    || leagueName.toUpperCase(); // fallback: eng.1 → ENG.1
 
   const url = `https://www.espn.com/soccer/stats/_/league/${encodeURIComponent(code)}`;
   const resp = await fetchWithTimeout(
