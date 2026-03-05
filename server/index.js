@@ -3484,7 +3484,7 @@ function mapFullDetail(detail, videos, credits, type) {
 
 app.get("/api/movies/trending", tmdbLimiter, async (req, res) => {
   try {
-    if (!process.env.TMDB_API_KEY) return res.json({ trending: [], newReleases: [], topRated: [] });
+    if (!process.env.TMDB_API_KEY) return res.json({ trending: [], newReleases: [], topRated: [], error: "TMDB_API_KEY niet geconfigureerd. Voeg je gratis key toe via themoviedb.org." });
 
     const [trending, nowPlaying, topRated] = await Promise.all([
       tmdb("/trending/movie/week"),
@@ -3504,7 +3504,7 @@ app.get("/api/movies/trending", tmdbLimiter, async (req, res) => {
 
 app.get("/api/series/trending", tmdbLimiter, async (req, res) => {
   try {
-    if (!process.env.TMDB_API_KEY) return res.json({ trending: [], newReleases: [], topRated: [] });
+    if (!process.env.TMDB_API_KEY) return res.json({ trending: [], newReleases: [], topRated: [], error: "TMDB_API_KEY niet geconfigureerd. Voeg je gratis key toe via themoviedb.org." });
 
     const [trending, onTheAir, topRated] = await Promise.all([
       tmdb("/trending/tv/week"),

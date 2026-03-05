@@ -125,9 +125,11 @@ export default function RootLayout() {
           setBootMessage("Server status controleren...");
           const candidates = getApiBaseCandidates();
           if (candidates.length > 0) {
+            const isCloud = candidates[0].startsWith("https://");
+            if (isCloud) setBootMessage("Server aan het opstarten...");
             await Promise.race([
               fetch(`${candidates[0]}/health`).catch(() => null),
-              new Promise((resolve) => setTimeout(resolve, 1800)),
+              new Promise((resolve) => setTimeout(resolve, isCloud ? 40000 : 2500)),
             ]);
           } else {
             await new Promise((resolve) => setTimeout(resolve, 900));

@@ -129,9 +129,16 @@ async function throwIfResNotOk(res: Response) {
   }
 }
 
-async function fetchWithTimeout(url: string, init?: RequestInit, timeoutMs = 5000): Promise<Response> {
+// Cloud URLs (https) may need to wake up from cold start → longer timeout
+// Local URLs (http) are either up or not → short timeout
+function timeoutForUrl(url: string): number {
+  return url.startsWith("https://") ? 35000 : 5000;
+}
+
+async function fetchWithTimeout(url: string, init?: RequestInit, timeoutMs?: number): Promise<Response> {
+  const ms = timeoutMs ?? timeoutForUrl(url);
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  const timeout = setTimeout(() => controller.abort(), ms);
   try {
     return await fetch(url, { ...init, signal: controller.signal, body: init?.body ?? undefined } as any);
   } finally {
@@ -216,7 +223,7 @@ export const getQueryFn: <T>(options: {
     for (const baseUrl of baseUrls) {
       const url = `${baseUrl}${path}`;
       try {
-        const res = await fetchWithTimeout(url, undefined, 5000);
+        const res = await fetchWithTimeout(url, undefined);
 
         if (unauthorizedBehavior === "returnNull" && res.status === 401) {
           return null;
