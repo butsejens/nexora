@@ -946,7 +946,7 @@ function tryParseJSON(text) {
   return null;
 }
 
-async function aiEstimateRosterValues(players, teamName) {
+async function aiEstimateRosterValues(players, teamName, leagueName) {
   if (!Array.isArray(players) || players.length === 0) return null;
   const hasProvider = Boolean(
     process.env.OLLAMA_MODEL ||
@@ -966,15 +966,16 @@ async function aiEstimateRosterValues(players, teamName) {
   }));
 
   const prompt = [
-    "Geef realistische EUR marktwaardes voor profvoetballers.",
-    "Output strikt JSON object: {\"players\":[{\"id\":\"...\",\"value_eur\":12345678}]}",
+    `Geef de meest nauwkeurige Transfermarkt.com marktwaarden (EUR) voor spelers van ${teamName || "Unknown"}${leagueName ? ` (${leagueName})` : ""} seizoen 2024/25.`,
+    "Voor BEKENDE spelers (internationals, topcompetitie): gebruik je trainingskennis van echte Transfermarkt waarden.",
+    "Voor MINDER BEKENDE spelers: schat conservatief op basis van leeftijd, positie en competitieniveau.",
+    "Output STRIKT JSON: {\"players\":[{\"id\":\"...\",\"value_eur\":12345678}]}",
     "Geen tekst buiten JSON.",
-    `Team: ${teamName || "Unknown"}`,
     JSON.stringify(compact),
   ].join("\n");
 
   try {
-    const sys = { role: "system", content: "Je bent een voetbal transferanalist. Altijd geldige JSON." };
+    const sys = { role: "system", content: "Je bent een expert voetbaltransfer analist met diepgaande kennis van Transfermarkt.com waarden. Je geeft altijd realistische waarden gebaseerd op je trainingsdata. Output uitsluitend geldige JSON." };
     const user = { role: "user", content: prompt };
     const providers = [];
     if (process.env.OLLAMA_MODEL) providers.push(() => ollamaChat([sys, user], { temperature: 0.2 }));
@@ -1007,10 +1008,10 @@ async function aiEstimateRosterValues(players, teamName) {
   }
 }
 
-async function enrichRosterMarketValues(players, teamName) {
+async function enrichRosterMarketValues(players, teamName, leagueName) {
   if (!Array.isArray(players) || players.length === 0) return players || [];
 
-  const aiValues = await aiEstimateRosterValues(players, teamName);
+  const aiValues = await aiEstimateRosterValues(players, teamName, leagueName);
   return players.map((p) => {
     const next = { ...p };
     const aiValue = aiValues?.get?.(String(next.id || ""));
@@ -1113,6 +1114,44 @@ async function enrichRosterPhotos(players, teamName) {
     }
   }
 
+  // Step 4: ESPN CDN headshot probe for players with numeric ESPN ID (cached 24h)
+  const stillNeed3 = enriched.filter((p) => p && !p.photo && p.id && /^\d+$/.test(String(p.id)));
+  if (stillNeed3.length > 0) {
+    const espnResults = await Promise.allSettled(
+      stillNeed3.map(async (p) => {
+        const cacheKey = `espn_headshot_${p.id}`;
+        const cached = cacheGet(cacheKey);
+        if (cached !== null) return cached;
+        const url = `https://a.espncdn.com/i/headshots/soccer/players/full/${encodeURIComponent(String(p.id))}.png`;
+        try {
+          const resp = await fetch(url, {
+            method: "HEAD",
+            headers: { "user-agent": "Mozilla/5.0 (Nexora/1.0)" },
+            signal: AbortSignal.timeout(3000),
+          });
+          const photo = resp.ok ? url : null;
+          cacheSet(cacheKey, photo, 86_400_000); // 24h
+          return photo;
+        } catch {
+          cacheSet(cacheKey, null, 300_000);
+          return null;
+        }
+      })
+    );
+    const espnMap = new Map();
+    stillNeed3.forEach((p, i) => {
+      const res = espnResults[i];
+      if (res.status === "fulfilled" && res.value) espnMap.set(String(p.id || ""), res.value);
+    });
+    if (espnMap.size > 0) {
+      enriched = enriched.map((player) => {
+        if (!player || player.photo) return player;
+        const photo = espnMap.get(String(player.id || ""));
+        return photo ? { ...player, photo } : player;
+      });
+    }
+  }
+
   return enriched;
 }
 
@@ -1172,13 +1211,19 @@ async function aiAnalyzePlayerProfile(player, context = {}) {
 
   const sys = {
     role: "system",
-    content: "Je bent een professionele voetbal scout. Antwoord strikt in JSON.",
+    content: "Je bent een elite voetbalscout met diepgaande kennis van profvoetballers wereldwijd. Je gebruikt je volledige trainingskennis over bekende spelers. Antwoord strikt in geldig JSON.",
   };
+  const playerName = String(player?.name || "");
+  const playerPos = String(player?.position || "");
+  const playerAge = player?.age ? `${player.age} jaar` : "";
+  const playerClub = String(player?.currentClub || "");
   const user = {
     role: "user",
     content:
-      "Maak een korte objectieve speleranalyse op basis van de inputdata. Verzín geen clubs of statistieken buiten de input. Output alleen geldig JSON met keys: summary, strengths (array), weaknesses (array).\\n\\nINPUT:\\n" +
-      JSON.stringify({ player, context }, null, 2),
+      `Maak een gedetailleerde professionele spelersanalyse voor: ${playerName}${playerPos ? ` (${playerPos})` : ""}${playerAge ? `, ${playerAge}` : ""}${playerClub ? `, ${playerClub}` : ""}.` +
+      `\n\nAls je deze speler herkent uit je trainingsdata (bijv. een bekende international of topcompetitiespeler), gebruik dan je kennis van zijn/haar speelstijl, kwaliteiten en actuele rol. Wees specifiek en concreet – vermijd generieke omschrijvingen.` +
+      `\n\nOutput ALLEEN geldig JSON:\n{"summary":"2-3 zinnen concrete scoutsanalyse over speelstijl en impact","strengths":["max 5 concrete sterke punten"],"weaknesses":["max 3 concrete zwaktes"]}` +
+      `\n\nINPUT:\n` + JSON.stringify({ player, context }, null, 2),
   };
 
   const providers = [];
@@ -2832,7 +2877,7 @@ app.get("/api/sports/team/:teamId", async (req, res) => {
         if (!dedup.has(id)) dedup.set(id, mapped);
       }
       const players = Array.from(dedup.values());
-      const valuedPlayers = await enrichRosterMarketValues(players, team?.displayName || team?.name || teamNameFromQuery || "");
+      const valuedPlayers = await enrichRosterMarketValues(players, team?.displayName || team?.name || teamNameFromQuery || "", espnLeague);
       const enrichedPlayers = await enrichRosterPhotos(
         valuedPlayers,
         team?.displayName || team?.name || teamNameFromQuery || ""
@@ -2927,7 +2972,7 @@ app.get("/api/sports/player/:playerId", async (req, res) => {
           "",
       };
 
-      const valuedFromModel = (await enrichRosterMarketValues([normalizedPlayer], teamName || profileStats?.team?.name || espnTeam?.displayName || ""))[0] || normalizedPlayer;
+      const valuedFromModel = (await enrichRosterMarketValues([normalizedPlayer], teamName || profileStats?.team?.name || espnTeam?.displayName || "", espnLeague))[0] || normalizedPlayer;
       const valued =
         apifyFallback?.marketValue && !valuedFromModel?.marketValue
           ? {
@@ -2976,6 +3021,42 @@ app.get("/api/sports/player/:playerId", async (req, res) => {
       // Final fallback: Wikipedia
       if (!resolvedPhoto && name && name !== "Onbekend") {
         resolvedPhoto = await fetchWikipediaPlayerPhoto(name) || null;
+      }
+      // TheSportsDB individual search fallback
+      if (!resolvedPhoto && name && name !== "Onbekend") {
+        try {
+          const tsdbCacheKey = `tsdb_player_${normalizePersonName(name)}`;
+          let tsdbPhoto = cacheGet(tsdbCacheKey);
+          if (tsdbPhoto === null) {
+            const tsdbResp = await fetch(`https://www.thesportsdb.com/api/v1/json/3/searchplayers.php?p=${encodeURIComponent(name)}`, {
+              headers: { "user-agent": "Mozilla/5.0", accept: "application/json" },
+              signal: AbortSignal.timeout(4000),
+            });
+            if (tsdbResp.ok) {
+              const tsdbData = await tsdbResp.json();
+              tsdbPhoto = tsdbData?.player?.[0]?.strCutout || tsdbData?.player?.[0]?.strThumb || null;
+              cacheSet(tsdbCacheKey, tsdbPhoto, 86_400_000);
+            }
+          }
+          if (tsdbPhoto) resolvedPhoto = tsdbPhoto;
+        } catch { /* ignore */ }
+      }
+      // ESPN CDN headshot probe if we have a numeric ESPN ID
+      const espnPlayerId = String(espnAthlete?.id || valued?.id || "");
+      if (!resolvedPhoto && espnPlayerId && /^\d+$/.test(espnPlayerId)) {
+        const espnCacheKey = `espn_headshot_${espnPlayerId}`;
+        let espnPhoto = cacheGet(espnCacheKey);
+        if (espnPhoto === null) {
+          const espnUrl = `https://a.espncdn.com/i/headshots/soccer/players/full/${encodeURIComponent(espnPlayerId)}.png`;
+          try {
+            const espnResp = await fetch(espnUrl, { method: "HEAD", signal: AbortSignal.timeout(3000) });
+            espnPhoto = espnResp.ok ? espnUrl : null;
+            cacheSet(espnCacheKey, espnPhoto, 86_400_000);
+          } catch {
+            cacheSet(espnCacheKey, null, 300_000);
+          }
+        }
+        if (espnPhoto) resolvedPhoto = espnPhoto;
       }
       const baseClubLogo = normalizeTeamLogo(
         clubName,
