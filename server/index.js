@@ -2135,7 +2135,7 @@ app.get("/health", (req, res) => {
     gemini: Boolean(process.env.GEMINI_API_KEY),
   };
   const aiReady = Object.values(aiProviders).some(Boolean);
-  res.json({ ok: true, time: new Date().toISOString(), source: footballSource(), tz: TZ, aiReady, aiProviders, zilliz: _zillizReady });
+  res.json({ ok: true, time: new Date().toISOString(), source: footballSource(), tz: TZ, aiReady, aiProviders, zilliz: _zillizReady, tmdb: Boolean(process.env.TMDB_API_KEY), apify: Boolean(process.env.APIFY_TOKEN) });
 });
 
 // Request logging middleware
