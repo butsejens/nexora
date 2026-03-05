@@ -296,11 +296,10 @@ async function zillizRequest(method, path, body) {
 async function zillizInit() {
   if (!ZILLIZ_URI || !ZILLIZ_API_KEY) return false;
   try {
-    const list = await zillizRequest("POST", "/collections/list", { dbName: "default" });
+    const list = await zillizRequest("POST", "/collections/list", {});
     const exists = Array.isArray(list?.data) && list.data.includes(ZILLIZ_COLLECTION);
     if (!exists) {
       const res = await zillizRequest("POST", "/collections/create", {
-        dbName: "default",
         collectionName: ZILLIZ_COLLECTION,
         schema: {
           fields: [
