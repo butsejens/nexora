@@ -227,16 +227,6 @@ export default function LiveTVScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
-  heroHeadline: {
-    fontFamily: "Inter_800ExtraBold",
-    fontSize: 20,
-    lineHeight: 28,
-    color: COLORS.text,
-    textAlign: "center",
-    marginHorizontal: 24,
-    marginTop: 8,
-    marginBottom: 10,
-  },
   topBar: { flexDirection: "row", alignItems: "center", paddingRight: 12, backgroundColor: COLORS.overlayLight, borderTopWidth: 1, borderBottomWidth: 1, borderColor: COLORS.border },
   groupScroll: { paddingHorizontal: 12, paddingVertical: 10 },
   groupChip: {

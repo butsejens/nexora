@@ -17,7 +17,7 @@ npm run doctor  # verifies Node/.env and checks Java for Android tooling
 > cp app/.env.example app/.env
 > cp server/.env.example server/.env
 > # edit EXPO_PUBLIC_API_BASE in app/.env if you plan to run on a device
-> # fill in your SPORTS SRC / API-SPORTS / RapidAPI keys in server/.env
+> # fill in optional keys in server/.env (TMDB, AI providers, Apify)
 > # and optionally TMDB, OpenAI, etc.
 > ```
 
@@ -71,6 +71,25 @@ npm run server
 ```bash
 npm run app
 ```
+
+## Updates zonder nieuwe APK (OTA)
+Je hoeft niet telkens een nieuwe APK te bouwen voor JS/UI wijzigingen.
+
+Eenmalig:
+- Installeer 1 release APK op je toestel, bijvoorbeeld [releases/nexora-release-2026-03-05.apk](releases/nexora-release-2026-03-05.apk).
+
+Daarna voor updates:
+```bash
+cd app
+npx eas login
+npm run ota:production
+```
+
+De app checkt updates automatisch bij opstarten en je kunt ook handmatig via Profile → About → Check app updates.
+
+Wanneer is toch een nieuwe APK nodig?
+- Alleen bij native wijzigingen (nieuwe native package, Android/iOS config, permissions, SDK/native dependency updates).
+- Voor gewone scherm-, stijl-, API- en business logic updates volstaat OTA.
 
 ## Common error: ENOENT package.json
 If you see `Could not read package.json`, you opened the wrong folder.

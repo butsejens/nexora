@@ -46,17 +46,34 @@ function colorFromSeed(seed: string): string {
   return `hsl(${hue}, 68%, 44%)`;
 }
 
-function normalizePlayerDto(raw: any, params: { name?: string; team?: string; marketValue?: string }) {
+function toAgeNumber(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value) && value > 0) return value;
+  const text = String(value ?? "").trim();
+  if (!text) return null;
+  const parsed = parseInt(text.replace(/[^\d]/g, ""), 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
+function normalizePlayerDto(raw: any, params: {
+  name?: string;
+  team?: string;
+  marketValue?: string;
+  age?: string;
+  height?: string;
+  weight?: string;
+  position?: string;
+  nationality?: string;
+}) {
   const baseName = normalizeText(raw?.name || params.name);
   return {
     id: normalizeText(raw?.id, ""),
     name: baseName,
     photo: raw?.photo || null,
-    age: Number(raw?.age || 0) || null,
-    nationality: normalizeText(raw?.nationality),
-    position: normalizeText(raw?.position),
-    height: normalizeText(raw?.height),
-    weight: normalizeText(raw?.weight),
+    age: toAgeNumber(raw?.age) ?? toAgeNumber(params.age),
+    nationality: normalizeText(raw?.nationality || params.nationality, ""),
+    position: normalizeText(raw?.position || params.position, ""),
+    height: normalizeText(raw?.height || params.height),
+    weight: normalizeText(raw?.weight || params.weight),
     currentClub: normalizeText(raw?.currentClub || params.team),
     formerClubs: Array.isArray(raw?.formerClubs) ? raw.formerClubs : [],
     marketValue: normalizeText(raw?.marketValue || params.marketValue, "Waarde onbekend"),
@@ -79,6 +96,11 @@ export default function PlayerProfileScreen() {
     team?: string;
     league?: string;
     marketValue?: string;
+    age?: string;
+    height?: string;
+    weight?: string;
+    position?: string;
+    nationality?: string;
   }>();
 
   const cacheKey = useMemo(() => {
@@ -114,7 +136,6 @@ export default function PlayerProfileScreen() {
   const photoCandidates = [
     data?.photo,
     params.playerId ? `https://a.espncdn.com/i/headshots/soccer/players/full/${encodeURIComponent(String(params.playerId))}.png` : null,
-    params.playerId ? `https://media.api-sports.io/football/players/${encodeURIComponent(String(params.playerId))}.png` : null,
   ].filter(Boolean) as string[];
 
   const [photoIdx, setPhotoIdx] = useState(0);
@@ -143,7 +164,7 @@ export default function PlayerProfileScreen() {
             </View>
           )}
           <Text style={styles.name}>{normalizeText(data?.name || params.name, "Speler")}</Text>
-          <Text style={styles.meta}>{normalizeText(data?.position)} {data?.nationality ? `· ${normalizeText(data.nationality)}` : ""}</Text>
+          <Text style={styles.meta}>{normalizeText(data?.position || params.position)} {normalizeText(data?.nationality || params.nationality, "") ? `· ${normalizeText(data?.nationality || params.nationality)}` : ""}</Text>
           <Text style={[styles.value, data?.isRealValue ? styles.valueReal : null]}>
             {normalizeText(data?.marketValue || params.marketValue, "Waarde onbekend")}
           </Text>

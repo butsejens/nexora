@@ -12,7 +12,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { COLORS } from "@/constants/colors";
 import { apiRequest } from "@/lib/query-client";
 import { normalizeApiError } from "@/lib/error-messages";
-import { resolveTeamLogoUri } from "@/lib/logo-manager";
+import { getInitials, resolveTeamLogoUri } from "@/lib/logo-manager";
 
 const POSITION_ORDER = ["GK", "CB", "LB", "RB", "LWB", "RWB", "DM", "CM", "AM", "CAM", "LW", "RW", "SS", "CF", "ST", "FW", "PG", "SG", "SF", "PF", "C", "G", "F"];
 
@@ -29,6 +29,7 @@ export default function TeamDetailScreen() {
     teamId: string; teamName: string; logo?: string; sport?: string; league?: string;
   }>();
   const insets = useSafeAreaInsets();
+  const [teamLogoFailed, setTeamLogoFailed] = useState(false);
   const [posFilter, setPosFilter] = useState<string>("all");
   const [sortKey, setSortKey] = useState<"value_desc" | "value_asc" | "age_desc" | "age_asc" | "name_asc" | "position_asc">("value_desc");
   const topPad = Platform.OS === "web" ? 67 : insets.top;
@@ -63,6 +64,8 @@ export default function TeamDetailScreen() {
 
   const sport = params.sport || "soccer";
   const league = params.league || "eng.1";
+  const teamName = String(data?.name || params.teamName || "Team");
+  const teamLogoUri = resolveTeamLogoUri(teamName, data?.logo || params.logo || `https://a.espncdn.com/i/teamlogos/soccer/500/${params.teamId}.png`);
 
   const { data, isLoading, error } = useQuery({
     queryKey: ["team-detail", params.teamId, sport, league],
@@ -85,9 +88,9 @@ export default function TeamDetailScreen() {
     staleTime: 5 * 60 * 1000,
   });
 
-  const players: any[] = data?.players || [];
+  const players: any[] = useMemo(() => data?.players || [], [data?.players]);
 
-  const positionGroups = (() => {
+  const positionGroups = useMemo(() => {
     const groups: Record<string, any[]> = {};
     for (const p of players) {
       const pos = p.position || "?";
@@ -95,7 +98,7 @@ export default function TeamDetailScreen() {
       groups[pos].push(p);
     }
     return groups;
-  })();
+  }, [players]);
 
   const positions = Object.keys(positionGroups).sort((a, b) => {
     return (POSITION_ORDER.indexOf(a) ?? 99) - (POSITION_ORDER.indexOf(b) ?? 99);
@@ -154,10 +157,17 @@ export default function TeamDetailScreen() {
         </TouchableOpacity>
 
         <View style={styles.teamHeaderContent}>
-          <Image
-            source={{ uri: resolveTeamLogoUri(String(data?.name || params.teamName || ""), data?.logo || params.logo || `https://a.espncdn.com/i/teamlogos/soccer/500/${params.teamId}.png`) || undefined }}
-            style={styles.teamBigLogo}
-          />
+          {teamLogoUri && !teamLogoFailed ? (
+            <Image
+              source={{ uri: teamLogoUri }}
+              style={styles.teamBigLogo}
+              onError={() => setTeamLogoFailed(true)}
+            />
+          ) : (
+            <View style={[styles.teamBigLogo, styles.logoPlaceholder]}>
+              <Text style={styles.logoPlaceholderText}>{getInitials(teamName, 2)}</Text>
+            </View>
+          )}
           <Text style={styles.teamTitle}>{data?.name || params.teamName}</Text>
           {data?.shortName ? <Text style={styles.teamShort}>{data.shortName}</Text> : null}
 
@@ -240,6 +250,11 @@ export default function TeamDetailScreen() {
                     team: String(data?.name || params.teamName || ""),
                     league: String(league || "eng.1"),
                     marketValue: String(item?.marketValue || ""),
+                    age: item?.age ? String(item.age) : "",
+                    height: String(item?.height || ""),
+                    weight: String(item?.weight || ""),
+                    position: String(item?.positionName || item?.position || ""),
+                    nationality: String(item?.nationality || ""),
                   },
                 })}
               >
@@ -397,6 +412,7 @@ const styles = StyleSheet.create({
   teamHeaderContent: { alignItems: "center", gap: 8 },
   teamBigLogo: { width: 72, height: 72, borderRadius: 36 },
   logoPlaceholder: { backgroundColor: COLORS.card, alignItems: "center", justifyContent: "center" },
+  logoPlaceholderText: { fontFamily: "Inter_700Bold", fontSize: 22, color: COLORS.text },
   teamTitle: { fontFamily: "Inter_800ExtraBold", fontSize: 22, color: COLORS.text, textAlign: "center" },
   teamShort: { fontFamily: "Inter_400Regular", fontSize: 14, color: "rgba(255,255,255,0.5)" },
   rankBadge: {

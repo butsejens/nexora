@@ -1,7 +1,7 @@
-import React, { useState, useCallback, useEffect, useMemo } from "react";
+import React, { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import {
   View, Text, StyleSheet, ScrollView, FlatList,
-  RefreshControl, Platform, TouchableOpacity, TextInput,
+  RefreshControl, Platform, TouchableOpacity, TextInput, Alert,
  useWindowDimensions } from "react-native";
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -13,7 +13,19 @@ import { SkeletonMatchCard } from "@/components/SkeletonCard";
 import { LiveBadge } from "@/components/LiveBadge";
 import { apiRequest } from "@/lib/query-client";
 import { buildErrorReference, normalizeApiError } from "@/lib/error-messages";
-import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
+import { Ionicons } from "@expo/vector-icons";
+import {
+  MatchSnapshot,
+  MatchSubscription,
+  ensureMatchNotificationPermission,
+  initializeMatchNotifications,
+  loadMatchSnapshots,
+  loadMatchSubscriptions,
+  pushMatchNotification,
+  saveMatchSnapshots,
+  saveMatchSubscriptions,
+  toEventHash,
+} from "@/lib/match-notifications";
 
 type SportsPayload = {
   date?: string;
@@ -56,17 +68,168 @@ const LEAGUES = [
   { name: "Jupiler Pro League", icon: "football-outline", displayName: "Jupiler Pro" },
 ];
 
-const COMPETITIONS = [
-  { name: "UEFA Champions League", espn: "uefa.champions", color: "#003399", displayName: "Champions League" },
-  { name: "UEFA Europa League", espn: "uefa.europa", color: "#6e2b00", displayName: "Europa League" },
-  { name: "UEFA Conference League", espn: "uefa.europa.conf", color: "#005a4e", displayName: "Conference League" },
-  { name: "Premier League", espn: "eng.1", color: "#3d0099", displayName: "Premier League" },
-  { name: "La Liga", espn: "esp.1", color: "#cc0033", displayName: "La Liga" },
-  { name: "Bundesliga", espn: "ger.1", color: "#cc0000", displayName: "Bundesliga" },
-  { name: "Serie A", espn: "ita.1", color: "#990033", displayName: "Serie A" },
-  { name: "Ligue 1", espn: "fra.1", color: "#330066", displayName: "Ligue 1" },
-  { name: "Jupiler Pro League", espn: "bel.1", color: "#006600", displayName: "Jupiler Pro League" },
+type CompetitionTier = "division1" | "division2" | "cup" | "national";
+
+type CountryCompetition = {
+  id: string;
+  tier: CompetitionTier;
+  title: string;
+  league: string;
+  espn: string;
+  color: string;
+  nationalTeamName?: string;
+};
+
+type CountryCatalog = {
+  countryCode: string;
+  countryName: string;
+  competitions: CountryCompetition[];
+};
+
+function flagFromIso2(code: string): string {
+  const normalized = String(code || "").trim().toUpperCase();
+  if (!/^[A-Z]{2}$/.test(normalized)) return "🏳️";
+  return String.fromCodePoint(...normalized.split("").map((ch) => 127397 + ch.charCodeAt(0)));
+}
+
+const COUNTRY_COMPETITIONS: CountryCatalog[] = [
+  {
+    countryCode: "BE",
+    countryName: "België",
+    competitions: [
+      { id: "be_d1", tier: "division1", title: "1e Klasse", league: "Jupiler Pro League", espn: "bel.1", color: "#006600" },
+      { id: "be_d2", tier: "division2", title: "2e Klasse", league: "Challenger Pro League", espn: "bel.2", color: "#228b22" },
+      { id: "be_cup", tier: "cup", title: "Beker", league: "Belgian Cup", espn: "bel.cup", color: "#4f7d4f" },
+      { id: "be_nt", tier: "national", title: "Nationaal Team", league: "Belgium National Team", espn: "fifa.world", color: "#7f9f7f", nationalTeamName: "Belgium" },
+    ],
+  },
+  {
+    countryCode: "GB",
+    countryName: "Engeland",
+    competitions: [
+      { id: "en_d1", tier: "division1", title: "1e Klasse", league: "Premier League", espn: "eng.1", color: "#3d0099" },
+      { id: "en_d2", tier: "division2", title: "2e Klasse", league: "Championship", espn: "eng.2", color: "#5220a3" },
+      { id: "en_cup", tier: "cup", title: "Beker", league: "FA Cup", espn: "eng.fa", color: "#6c3eb6" },
+      { id: "en_nt", tier: "national", title: "Nationaal Team", league: "England National Team", espn: "fifa.world", color: "#8460c4", nationalTeamName: "England" },
+    ],
+  },
+  {
+    countryCode: "ES",
+    countryName: "Spanje",
+    competitions: [
+      { id: "es_d1", tier: "division1", title: "1e Klasse", league: "La Liga", espn: "esp.1", color: "#cc0033" },
+      { id: "es_d2", tier: "division2", title: "2e Klasse", league: "La Liga 2", espn: "esp.2", color: "#d93d63" },
+      { id: "es_cup", tier: "cup", title: "Beker", league: "Copa del Rey", espn: "esp.copa_del_rey", color: "#de5d81" },
+      { id: "es_nt", tier: "national", title: "Nationaal Team", league: "Spain National Team", espn: "fifa.world", color: "#e1829f", nationalTeamName: "Spain" },
+    ],
+  },
+  {
+    countryCode: "DE",
+    countryName: "Duitsland",
+    competitions: [
+      { id: "de_d1", tier: "division1", title: "1e Klasse", league: "Bundesliga", espn: "ger.1", color: "#cc0000" },
+      { id: "de_d2", tier: "division2", title: "2e Klasse", league: "2. Bundesliga", espn: "ger.2", color: "#b42a2a" },
+      { id: "de_cup", tier: "cup", title: "Beker", league: "DFB Pokal", espn: "ger.dfb_pokal", color: "#a64545" },
+      { id: "de_nt", tier: "national", title: "Nationaal Team", league: "Germany National Team", espn: "fifa.world", color: "#956262", nationalTeamName: "Germany" },
+    ],
+  },
+  {
+    countryCode: "IT",
+    countryName: "Italië",
+    competitions: [
+      { id: "it_d1", tier: "division1", title: "1e Klasse", league: "Serie A", espn: "ita.1", color: "#990033" },
+      { id: "it_d2", tier: "division2", title: "2e Klasse", league: "Serie B", espn: "ita.2", color: "#ab3657" },
+      { id: "it_cup", tier: "cup", title: "Beker", league: "Coppa Italia", espn: "ita.coppa_italia", color: "#b9617b" },
+      { id: "it_nt", tier: "national", title: "Nationaal Team", league: "Italy National Team", espn: "fifa.world", color: "#c78a9f", nationalTeamName: "Italy" },
+    ],
+  },
+  {
+    countryCode: "FR",
+    countryName: "Frankrijk",
+    competitions: [
+      { id: "fr_d1", tier: "division1", title: "1e Klasse", league: "Ligue 1", espn: "fra.1", color: "#330066" },
+      { id: "fr_d2", tier: "division2", title: "2e Klasse", league: "Ligue 2", espn: "fra.2", color: "#5d3d82" },
+      { id: "fr_cup", tier: "cup", title: "Beker", league: "Coupe de France", espn: "fra.coupe_de_france", color: "#7d63a0" },
+      { id: "fr_nt", tier: "national", title: "Nationaal Team", league: "France National Team", espn: "fifa.world", color: "#9f8ac0", nationalTeamName: "France" },
+    ],
+  },
+  {
+    countryCode: "NL",
+    countryName: "Nederland",
+    competitions: [
+      { id: "nl_d1", tier: "division1", title: "1e Klasse", league: "Eredivisie", espn: "ned.1", color: "#ff6a00" },
+      { id: "nl_d2", tier: "division2", title: "2e Klasse", league: "Eerste Divisie", espn: "ned.2", color: "#ff8b2f" },
+      { id: "nl_cup", tier: "cup", title: "Beker", league: "KNVB Beker", espn: "ned.knvb_beker", color: "#ffa866" },
+      { id: "nl_nt", tier: "national", title: "Nationaal Team", league: "Netherlands National Team", espn: "fifa.world", color: "#ffc39a", nationalTeamName: "Netherlands" },
+    ],
+  },
 ];
+
+const tierPriority: Record<CompetitionTier, number> = {
+  division1: 1,
+  division2: 2,
+  cup: 3,
+  national: 4,
+};
+
+const normalizeLeagueKey = (value: string): string =>
+  String(value || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]/g, "");
+
+const competitionRankByLeague = COUNTRY_COMPETITIONS
+  .flatMap((country) => country.competitions)
+  .reduce<Record<string, number>>((acc, competition) => {
+    acc[normalizeLeagueKey(competition.league)] = tierPriority[competition.tier] ?? 9;
+    return acc;
+  }, {
+    [normalizeLeagueKey("UEFA Champions League")]: 1,
+    [normalizeLeagueKey("UEFA Europa League")]: 2,
+    [normalizeLeagueKey("UEFA Conference League")]: 3,
+  });
+
+const espnLeagueByName = COUNTRY_COMPETITIONS
+  .flatMap((country) => country.competitions)
+  .reduce<Record<string, string>>((acc, competition) => {
+    acc[normalizeLeagueKey(competition.league)] = competition.espn;
+    return acc;
+  }, {
+    [normalizeLeagueKey("UEFA Champions League")]: "uefa.champions",
+    [normalizeLeagueKey("UEFA Europa League")]: "uefa.europa",
+    [normalizeLeagueKey("UEFA Conference League")]: "uefa.europa.conf",
+    [normalizeLeagueKey("Premier League")]: "eng.1",
+  });
+
+const interestingEventRegex = /(goal|kaart|card|halftime|half-time|break|einde|end|full time|kick[- ]?off|start)/i;
+
+function parseMatchTimestamp(match: any, selectedDate: string): number {
+  const startDate = match?.startDate ? Date.parse(String(match.startDate)) : Number.NaN;
+  if (Number.isFinite(startDate)) return startDate;
+
+  const time = String(match?.startTime || "");
+  const m = time.match(/(\d{1,2}):(\d{2})/);
+  if (!m) return Number.MAX_SAFE_INTEGER;
+  const h = Number(m[1]);
+  const min = Number(m[2]);
+  if (!Number.isFinite(h) || !Number.isFinite(min)) return Number.MAX_SAFE_INTEGER;
+  return new Date(`${selectedDate}T${String(h).padStart(2, "0")}:${String(min).padStart(2, "0")}:00`).getTime();
+}
+
+function sortMatchesByCompetitionAndTime(matches: any[], selectedDate: string): any[] {
+  return [...matches].sort((a, b) => {
+    const rankA = competitionRankByLeague[normalizeLeagueKey(a?.league || "")] ?? 9;
+    const rankB = competitionRankByLeague[normalizeLeagueKey(b?.league || "")] ?? 9;
+    if (rankA !== rankB) return rankA - rankB;
+
+    const timeA = parseMatchTimestamp(a, selectedDate);
+    const timeB = parseMatchTimestamp(b, selectedDate);
+    if (timeA !== timeB) return timeA - timeB;
+
+    return String(a?.league || "").localeCompare(String(b?.league || ""));
+  });
+}
 
 function todayUTC(): string {
   return new Date().toISOString().slice(0, 10);
@@ -196,8 +359,37 @@ export default function SportsScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [statusFilter, setStatusFilter] = useState<"all" | "live" | "upcoming">("all");
   const [leagueFilter, setLeagueFilter] = useState<string>("Alle");
+  const [selectedCountryCode, setSelectedCountryCode] = useState<string>(COUNTRY_COMPETITIONS[0]?.countryCode || "BE");
   const [selectedDate, setSelectedDate] = useState<string>(todayUTC());
   const [loadingGuardReached, setLoadingGuardReached] = useState(false);
+  const [showTopFilters, setShowTopFilters] = useState(true);
+  const [matchSubscriptions, setMatchSubscriptions] = useState<Record<string, MatchSubscription>>({});
+  const subscriptionsRef = useRef<Record<string, MatchSubscription>>({});
+  const matchSnapshotsRef = useRef<Record<string, MatchSnapshot>>({});
+  const notificationCooldownRef = useRef<Record<string, number>>({});
+  const lastScrollYRef = useRef(0);
+
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      await initializeMatchNotifications();
+      const [storedSubs, storedSnapshots] = await Promise.all([
+        loadMatchSubscriptions(),
+        loadMatchSnapshots(),
+      ]);
+      if (!active) return;
+      const byId = (storedSubs || []).reduce<Record<string, MatchSubscription>>((acc, sub) => {
+        if (sub?.id) acc[sub.id] = sub;
+        return acc;
+      }, {});
+      subscriptionsRef.current = byId;
+      setMatchSubscriptions(byId);
+      matchSnapshotsRef.current = storedSnapshots || {};
+    })();
+    return () => {
+      active = false;
+    };
+  }, []);
 
   // Live – poll every 10s. Use notifyOnChangeProps to avoid flicker during background fetch.
   const liveQuery = useQuery({
@@ -347,7 +539,9 @@ export default function SportsScreen() {
   const displayLive = filterEmpty ? allLive : rawLive;
   const displayUpcoming = filterEmpty ? allUpcoming : rawUpcoming;
   const displayFinished = filterEmpty ? allFinished : rawFinished;
-  const featuredMatch = displayLive[0] || displayUpcoming[0] || displayFinished[0] || null;
+  const sortedLive = useMemo(() => sortMatchesByCompetitionAndTime(displayLive, selectedDate), [displayLive, selectedDate]);
+  const sortedUpcoming = useMemo(() => sortMatchesByCompetitionAndTime(displayUpcoming, selectedDate), [displayUpcoming, selectedDate]);
+  const sortedFinished = useMemo(() => sortMatchesByCompetitionAndTime(displayFinished, selectedDate), [displayFinished, selectedDate]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -358,6 +552,24 @@ export default function SportsScreen() {
     ]);
     setRefreshing(false);
   }, [qc, selectedDate]);
+
+  const handleFeedScroll = useCallback((event: any) => {
+    const nextY = Number(event?.nativeEvent?.contentOffset?.y || 0);
+    const prevY = lastScrollYRef.current;
+    const delta = nextY - prevY;
+    lastScrollYRef.current = nextY;
+
+    if (nextY < 8) {
+      if (!showTopFilters) setShowTopFilters(true);
+      return;
+    }
+
+    if (delta > 6 && showTopFilters) {
+      setShowTopFilters(false);
+    } else if (delta < -6 && !showTopFilters) {
+      setShowTopFilters(true);
+    }
+  }, [showTopFilters]);
 
   const handleMatchPress = (match: any) => {
     router.push({
@@ -378,17 +590,194 @@ export default function SportsScreen() {
     });
   };
 
-  const handleCompetitionPress = (comp: typeof COMPETITIONS[0]) => {
+  const resolveEspnLeague = useCallback((match: any): string => {
+    const direct = String(match?.espnLeague || "").trim();
+    if (direct) return direct;
+    return espnLeagueByName[normalizeLeagueKey(String(match?.league || ""))] || "eng.1";
+  }, []);
+
+  const setSubscriptionsAndPersist = useCallback(async (next: Record<string, MatchSubscription>) => {
+    subscriptionsRef.current = next;
+    setMatchSubscriptions(next);
+    await saveMatchSubscriptions(Object.values(next));
+  }, []);
+
+  const shouldNotify = useCallback((key: string, cooldownMs = 10_000) => {
+    const now = Date.now();
+    const lastAt = Number(notificationCooldownRef.current[key] || 0);
+    if (now - lastAt < cooldownMs) return false;
+    notificationCooldownRef.current[key] = now;
+    return true;
+  }, []);
+
+  const toggleMatchNotification = useCallback(async (match: any) => {
+    const id = String(match?.id || "");
+    if (!id) return;
+
+    const currentlyOn = Boolean(subscriptionsRef.current[id]);
+    if (currentlyOn) {
+      const next = { ...subscriptionsRef.current };
+      delete next[id];
+      await setSubscriptionsAndPersist(next);
+      await pushMatchNotification(
+        "Meldingen uitgeschakeld",
+        `${match.homeTeam} - ${match.awayTeam}`,
+        { matchId: id }
+      );
+      return;
+    }
+
+    const permission = await ensureMatchNotificationPermission();
+    if (!permission) {
+      Alert.alert("Meldingen geblokkeerd", "Geef notificatie-toestemming om match updates te ontvangen.");
+      return;
+    }
+
+    const next = {
+      ...subscriptionsRef.current,
+      [id]: {
+        id,
+        espnLeague: resolveEspnLeague(match),
+        homeTeam: String(match?.homeTeam || "Thuis"),
+        awayTeam: String(match?.awayTeam || "Uit"),
+      },
+    };
+    await setSubscriptionsAndPersist(next);
+    await pushMatchNotification(
+      "Meldingen ingeschakeld",
+      `${match.homeTeam} - ${match.awayTeam} wordt gevolgd`,
+      { matchId: id }
+    );
+  }, [resolveEspnLeague, setSubscriptionsAndPersist]);
+
+  useEffect(() => {
+    const activeSubs = Object.values(matchSubscriptions);
+    if (activeSubs.length === 0) return;
+
+    let alive = true;
+    const poll = async () => {
+      const nextSnapshots = { ...matchSnapshotsRef.current };
+      let changed = false;
+
+      for (const sub of activeSubs.slice(0, 30)) {
+        try {
+          const league = encodeURIComponent(sub.espnLeague || "eng.1");
+          const res = await apiRequest("GET", `/api/sports/match/${encodeURIComponent(sub.id)}?league=${league}`);
+          const detail = await res.json();
+          if (!detail || !detail.id) continue;
+
+          const prev = nextSnapshots[sub.id];
+          const currentStatus = String(detail?.status || "");
+          const currentHomeScore = Number(detail?.homeScore ?? 0);
+          const currentAwayScore = Number(detail?.awayScore ?? 0);
+
+          const keyEvents = Array.isArray(detail?.keyEvents) ? detail.keyEvents : [];
+          const eventHashes = keyEvents
+            .filter((event: any) => interestingEventRegex.test(`${event?.type || ""} ${event?.detail || ""}`))
+            .map((event: any) => toEventHash(event));
+
+          if (prev) {
+            if (prev.status !== "live" && currentStatus === "live" && shouldNotify(`${sub.id}:start`, 20_000)) {
+              await pushMatchNotification("Wedstrijd gestart", `${sub.homeTeam} - ${sub.awayTeam} is begonnen`, { matchId: sub.id });
+            }
+            if (prev.status !== "finished" && currentStatus === "finished" && shouldNotify(`${sub.id}:finished`, 20_000)) {
+              await pushMatchNotification(
+                "Wedstrijd afgelopen",
+                `${sub.homeTeam} ${currentHomeScore}-${currentAwayScore} ${sub.awayTeam}`,
+                { matchId: sub.id }
+              );
+            }
+
+            if (
+              currentStatus === "live"
+              && (prev.homeScore !== currentHomeScore || prev.awayScore !== currentAwayScore)
+              && shouldNotify(`${sub.id}:score`, 10_000)
+            ) {
+              await pushMatchNotification(
+                "Doelpunt update",
+                `${sub.homeTeam} ${currentHomeScore}-${currentAwayScore} ${sub.awayTeam}`,
+                { matchId: sub.id }
+              );
+            }
+
+            const seen = new Set(prev.eventHashes || []);
+            const newInterestingEvents = keyEvents.filter((event: any) => {
+              const hash = toEventHash(event);
+              if (seen.has(hash)) return false;
+              return interestingEventRegex.test(`${event?.type || ""} ${event?.detail || ""}`);
+            });
+
+            if (newInterestingEvents.length > 0 && shouldNotify(`${sub.id}:events`, 10_000)) {
+              const latest = newInterestingEvents[newInterestingEvents.length - 1];
+              const evTime = latest?.time ? `${latest.time} • ` : "";
+              const evType = String(latest?.type || "Event");
+              const evDetail = String(latest?.detail || "").trim();
+              const countPrefix = newInterestingEvents.length > 1 ? `+${newInterestingEvents.length} updates\n` : "";
+              const scoreLine = `${sub.homeTeam} ${currentHomeScore}-${currentAwayScore} ${sub.awayTeam}`;
+              const body = `${countPrefix}${scoreLine}\n${evTime}${evType}${evDetail ? `: ${evDetail}` : ""}`;
+              await pushMatchNotification("Match event", body, { matchId: sub.id });
+            }
+          }
+
+          nextSnapshots[sub.id] = {
+            status: currentStatus,
+            homeScore: currentHomeScore,
+            awayScore: currentAwayScore,
+            eventHashes,
+          };
+          changed = true;
+        } catch {
+          // keep polling other subscriptions
+        }
+      }
+
+      if (changed && alive) {
+        matchSnapshotsRef.current = nextSnapshots;
+        await saveMatchSnapshots(nextSnapshots);
+      }
+    };
+
+    void poll();
+    const timer = setInterval(() => {
+      void poll();
+    }, 20_000);
+
+    return () => {
+      alive = false;
+      clearInterval(timer);
+    };
+  }, [matchSubscriptions, shouldNotify]);
+
+  const handleCompetitionPress = (comp: CountryCompetition) => {
     router.push({
       pathname: "/competition",
-      params: { league: comp.name, sport: "soccer", espnLeague: comp.espn },
+      params: { league: comp.league, sport: "soccer", espnLeague: comp.espn },
     });
+  };
+
+  const selectedCountry = useMemo(
+    () => COUNTRY_COMPETITIONS.find((country) => country.countryCode === selectedCountryCode) || COUNTRY_COMPETITIONS[0],
+    [selectedCountryCode]
+  );
+
+  const tierLabel = (tier: CompetitionTier) => {
+    if (tier === "division1") return "1e Klasse";
+    if (tier === "division2") return "2e Klasse";
+    if (tier === "cup") return "Beker";
+    return "Nationaal Team";
+  };
+
+  const tierIcon = (tier: CompetitionTier) => {
+    if (tier === "division1") return "trophy-outline";
+    if (tier === "division2") return "podium-outline";
+    if (tier === "cup") return "medal-outline";
+    return "flag-outline";
   };
 
   const bottomPad = Platform.OS === "web" ? 44 : insets.bottom + 120;
   const showLive = statusFilter !== "upcoming";
   const showUpcoming = statusFilter !== "live";
-  const showLiveSection = showLive && (displayLive.length > 0 || liveFirstLoad);
+  const showLiveSection = showLive && (sortedLive.length > 0 || liveFirstLoad);
 
   return (
     <View style={styles.container}>
@@ -404,40 +793,44 @@ export default function SportsScreen() {
       {/* Date selector */}
       <DateSelector date={selectedDate} onDateChange={setSelectedDate} />
 
-      {/* Status Filter */}
-      <View style={styles.statusFilter}>
-        {(["all", "live", "upcoming"] as const).map(f => (
-          <TouchableOpacity
-            key={f}
-            style={[styles.statusBtn, statusFilter === f && styles.statusBtnActive]}
-            onPress={() => setStatusFilter(f)}
-          >
-            {f === "live" && <View style={styles.liveDot} />}
-            <Text style={[styles.statusBtnText, statusFilter === f && styles.statusBtnTextActive]}>
-              {f === "all" ? "Alle" : f === "live" ? "Live" : "Gepland"}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </View>
+      {showTopFilters && (
+        <>
+          {/* Status Filter */}
+          <View style={styles.statusFilter}>
+            {(["all", "live", "upcoming"] as const).map(f => (
+              <TouchableOpacity
+                key={f}
+                style={[styles.statusBtn, statusFilter === f && styles.statusBtnActive]}
+                onPress={() => setStatusFilter(f)}
+              >
+                {f === "live" && <View style={styles.liveDot} />}
+                <Text style={[styles.statusBtnText, statusFilter === f && styles.statusBtnTextActive]}>
+                  {f === "all" ? "Alle" : f === "live" ? "Live" : "Gepland"}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
 
-      {/* League Filter */}
-      <ScrollView horizontal showsHorizontalScrollIndicator={false}
-        style={styles.leagueFilterScroll} contentContainerStyle={styles.leagueFilterRow}>
-        {LEAGUES.map(league => (
-          <TouchableOpacity
-            key={league.name}
-            style={[styles.leagueChip, leagueFilter === league.name && styles.leagueChipActive]}
-            onPress={() => setLeagueFilter(league.name)}
-          >
-            <Ionicons
-              name={league.icon as any} size={13}
-              color={leagueFilter === league.name ? COLORS.accent : COLORS.textMuted} />
-            <Text style={[styles.leagueChipText, leagueFilter === league.name && styles.leagueChipTextActive]}>
-              {league.displayName}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </ScrollView>
+          {/* League Filter */}
+          <ScrollView horizontal showsHorizontalScrollIndicator={false}
+            style={styles.leagueFilterScroll} contentContainerStyle={styles.leagueFilterRow}>
+            {LEAGUES.map(league => (
+              <TouchableOpacity
+                key={league.name}
+                style={[styles.leagueChip, leagueFilter === league.name && styles.leagueChipActive]}
+                onPress={() => setLeagueFilter(league.name)}
+              >
+                <Ionicons
+                  name={league.icon as any} size={13}
+                  color={leagueFilter === league.name ? COLORS.accent : COLORS.textMuted} />
+                <Text style={[styles.leagueChipText, leagueFilter === league.name && styles.leagueChipTextActive]}>
+                  {league.displayName}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </>
+      )}
 
       <ScrollView
         style={styles.scroll}
@@ -447,31 +840,6 @@ export default function SportsScreen() {
         }
         contentContainerStyle={{ paddingBottom: bottomPad, width: contentWidth, alignSelf: "center" }}
       >
-        {featuredMatch && (
-          <TouchableOpacity style={styles.sportHeroFrame} onPress={() => handleMatchPress(featuredMatch)} activeOpacity={0.85}>
-            <View style={styles.sportHeroCard}>
-              <View style={styles.sportHeroTop}>
-                <Text style={styles.sportHeroLeague} numberOfLines={1}>{featuredMatch.league}</Text>
-                {featuredMatch.status === "live" ? <LiveBadge minute={featuredMatch.minute} small /> : null}
-              </View>
-              <View style={styles.sportHeroTeams}>
-                <View style={styles.sportHeroTeamPill}>
-                  <Text style={styles.sportHeroTeamText} numberOfLines={1}>{featuredMatch.homeTeam}</Text>
-                </View>
-                <Text style={styles.sportHeroVs}>VS</Text>
-                <View style={styles.sportHeroTeamPill}>
-                  <Text style={styles.sportHeroTeamText} numberOfLines={1}>{featuredMatch.awayTeam}</Text>
-                </View>
-              </View>
-              <View style={styles.sportHeroAction}>
-                <Text style={styles.sportHeroActionText}>
-                  {featuredMatch.status === "live" ? "▶ Watch Live" : "▶ Bekijk wedstrijd"}
-                </Text>
-              </View>
-            </View>
-          </TouchableOpacity>
-        )}
-
         {/* Filter fallback warning */}
         {filterEmpty && (
           <View style={styles.warnBanner}>
@@ -525,24 +893,59 @@ export default function SportsScreen() {
         {leagueFilter === "Alle" && (
           <View style={styles.competitionsSection}>
             <Text style={styles.sectionTitle}>Competities</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.competitionsRow}>
-              {COMPETITIONS.map(comp => (
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.countryRow}>
+              {COUNTRY_COMPETITIONS.map((country) => {
+                const active = selectedCountryCode === country.countryCode;
+                return (
+                  <TouchableOpacity
+                    key={country.countryCode}
+                    style={[styles.countryChip, active && styles.countryChipActive]}
+                    onPress={() => setSelectedCountryCode(country.countryCode)}
+                  >
+                    <Text style={styles.countryFlag}>{flagFromIso2(country.countryCode)}</Text>
+                    <Text style={[styles.countryChipText, active && styles.countryChipTextActive]}>{country.countryName}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+
+            <View style={styles.countryCompetitionsPanel}>
+              onScroll={handleFeedScroll}
+              scrollEventThrottle={16}
+              <Text style={styles.countryPanelTitle}>
+                {selectedCountry?.countryName} · Competities
+              </Text>
+              {(selectedCountry?.competitions || []).map((comp) => (
                 <TouchableOpacity
-                  key={comp.name}
-                  style={[styles.compCard, { borderColor: `${comp.color}44` }]}
-                  onPress={() => handleCompetitionPress(comp)}
+                  key={comp.id}
+                  style={[styles.countryCompetitionCard, { borderColor: `${comp.color}55` }]}
+                  onPress={() => {
+                    if (comp.tier === "national" && comp.nationalTeamName) {
+                      router.push({
+                        pathname: "/team-detail",
+                        params: {
+                          teamId: `name:${encodeURIComponent(comp.nationalTeamName)}`,
+                          teamName: comp.nationalTeamName,
+                          sport: "soccer",
+                          league: comp.espn,
+                        },
+                      });
+                      return;
+                    }
+                    handleCompetitionPress(comp);
+                  }}
                 >
-                  <View style={[styles.compIcon, { backgroundColor: `${comp.color}22` }]}>
-                    <MaterialCommunityIcons name="soccer" size={20} color={comp.color} />
+                  <View style={[styles.countryCompetitionIcon, { backgroundColor: `${comp.color}22` }]}> 
+                    <Ionicons name={tierIcon(comp.tier) as any} size={16} color={comp.color} />
                   </View>
-                  <Text style={styles.compName} numberOfLines={2}>{comp.displayName}</Text>
-                  <View style={styles.compArrow}>
-                    <Ionicons name="chevron-forward" size={12} color={COLORS.textMuted} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.countryCompetitionLabel}>{tierLabel(comp.tier)}</Text>
+                    <Text style={styles.countryCompetitionName} numberOfLines={1}>{comp.league}</Text>
                   </View>
+                  <Ionicons name="chevron-forward" size={14} color={COLORS.textMuted} />
                 </TouchableOpacity>
               ))}
-            </ScrollView>
+            </View>
           </View>
         )}
 
@@ -551,14 +954,14 @@ export default function SportsScreen() {
           <View style={styles.liveSection}>
             <View style={styles.sectionHeader}>
               <Text style={styles.sectionTitle}>Live Nu</Text>
-              {displayLive.length > 0 && <LiveBadge />}
+              {sortedLive.length > 0 && <LiveBadge />}
             </View>
             {liveFirstLoad ? (
               <FlatList horizontal data={[1, 2, 3]} keyExtractor={item => String(item)}
                 renderItem={() => <SkeletonMatchCard />}
                 contentContainerStyle={styles.carouselPadding}
                 showsHorizontalScrollIndicator={false} />
-            ) : displayLive.length === 0 ? (
+            ) : sortedLive.length === 0 ? (
               <View style={styles.emptySection}>
                 <Text style={styles.emptyText}>Geen live wedstrijden</Text>
                 <Text style={styles.emptySubText}>Bekijk de geplande wedstrijden hieronder</Text>
@@ -566,12 +969,14 @@ export default function SportsScreen() {
             ) : (
               <FlatList
                 horizontal
-                data={displayLive}
+                data={sortedLive}
                 keyExtractor={(item: any) => item.id}
                 renderItem={({ item }: { item: any }) => (
                   <MatchCard
                     match={item}
                     onPress={() => handleMatchPress(item)}
+                    onToggleNotification={() => toggleMatchNotification(item)}
+                    notificationsEnabled={Boolean(matchSubscriptions[String(item?.id || "")])}
                   />
                 )}
                 contentContainerStyle={styles.carouselPadding}
@@ -594,7 +999,7 @@ export default function SportsScreen() {
                   <View style={[styles.skeletonBlock, { width: "20%", height: 14 }]} />
                 </View>
               ))
-            ) : displayUpcoming.length === 0 && displayFinished.length === 0 ? (
+            ) : sortedUpcoming.length === 0 && sortedFinished.length === 0 ? (
               <View style={styles.emptySection}>
                 <Ionicons name="calendar-outline" size={32} color={COLORS.textMuted} style={{ marginBottom: 8 }} />
                 <Text style={styles.emptyText}>Geen wedstrijden op {formatDateDisplay(selectedDate)}</Text>
@@ -602,15 +1007,28 @@ export default function SportsScreen() {
               </View>
             ) : (
               <>
-                {displayUpcoming.slice(0, 50).map((match: any) => (
-                  <UpcomingMatchRow key={match.id} match={match} onPress={() => handleMatchPress(match)} />
+                {sortedUpcoming.length > 0 && <Text style={styles.subSectionTitle}>Binnenkort</Text>}
+                {sortedUpcoming.slice(0, 50).map((match: any) => (
+                  <UpcomingMatchRow
+                    key={match.id}
+                    match={match}
+                    onPress={() => handleMatchPress(match)}
+                    onToggleNotification={() => toggleMatchNotification(match)}
+                    notificationsEnabled={Boolean(matchSubscriptions[String(match?.id || "")])}
+                  />
                 ))}
 
-                {displayFinished.length > 0 && (
+                {sortedFinished.length > 0 && (
                   <View style={{ marginTop: 10 }}>
                     <Text style={styles.subSectionTitle}>Afgelopen</Text>
-                    {displayFinished.slice(0, 50).map((match: any) => (
-                      <UpcomingMatchRow key={match.id} match={match} onPress={() => handleMatchPress(match)} />
+                    {sortedFinished.slice(0, 50).map((match: any) => (
+                      <UpcomingMatchRow
+                        key={match.id}
+                        match={match}
+                        onPress={() => handleMatchPress(match)}
+                        onToggleNotification={() => toggleMatchNotification(match)}
+                        notificationsEnabled={Boolean(matchSubscriptions[String(match?.id || "")])}
+                      />
                     ))}
                   </View>
                 )}
@@ -776,14 +1194,52 @@ const styles = StyleSheet.create({
   leagueChipText: { fontFamily: "Inter_500Medium", fontSize: 12, color: COLORS.textMuted },
   leagueChipTextActive: { color: COLORS.accent },
   competitionsSection: { marginBottom: 20, marginTop: 16 },
-  competitionsRow: { paddingHorizontal: 20, paddingRight: 8, gap: 10 },
-  compCard: {
-    width: 128, backgroundColor: COLORS.cardElevated, borderRadius: 16, padding: 12,
-    alignItems: "center", gap: 8, borderWidth: 1,
+  countryRow: { paddingHorizontal: 20, paddingRight: 8, gap: 8 },
+  countryChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 18,
+    backgroundColor: COLORS.cardElevated,
+    borderWidth: 1,
+    borderColor: COLORS.border,
   },
-  compIcon: { width: 40, height: 40, borderRadius: 20, alignItems: "center", justifyContent: "center" },
-  compName: { fontFamily: "Inter_600SemiBold", fontSize: 11, color: COLORS.text, textAlign: "center" },
-  compArrow: { position: "absolute", top: 8, right: 8 },
+  countryChipActive: { borderColor: COLORS.accent, backgroundColor: COLORS.accentGlow },
+  countryFlag: { fontSize: 14 },
+  countryChipText: { fontFamily: "Inter_500Medium", fontSize: 12, color: COLORS.textMuted },
+  countryChipTextActive: { color: COLORS.accent },
+  countryCompetitionsPanel: {
+    marginTop: 12,
+    marginHorizontal: 20,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.overlayLight,
+    padding: 12,
+    gap: 8,
+  },
+  countryPanelTitle: { fontFamily: "Inter_700Bold", fontSize: 13, color: COLORS.textSecondary, marginBottom: 4 },
+  countryCompetitionCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    borderRadius: 12,
+    borderWidth: 1,
+    backgroundColor: COLORS.card,
+    paddingHorizontal: 10,
+    paddingVertical: 9,
+  },
+  countryCompetitionIcon: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  countryCompetitionLabel: { fontFamily: "Inter_500Medium", fontSize: 10, color: COLORS.textMuted, textTransform: "uppercase", letterSpacing: 0.4 },
+  countryCompetitionName: { fontFamily: "Inter_600SemiBold", fontSize: 13, color: COLORS.text },
   sectionHeader: { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 20, marginBottom: 14 },
   sectionTitle: { fontFamily: "Inter_700Bold", fontSize: 18, color: COLORS.text, marginBottom: 12, paddingHorizontal: 20 },
   subSectionTitle: { fontFamily: "Inter_700Bold", fontSize: 14, color: COLORS.textMuted, marginBottom: 10, paddingHorizontal: 20 },

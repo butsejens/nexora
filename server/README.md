@@ -12,6 +12,21 @@ npm run dev
 Health check:
 - http://localhost:8080/health
 
+## Apify fallback (SofaScore + Transfermarkt)
+Voor ontbrekende spelerinfo kan de server automatisch Apify actors gebruiken als fallback in deze volgorde:
+1. `APIFY_SOFASCORE_ACTOR` (optioneel)
+2. `APIFY_TRANSFERMARKT_ACTOR` (standaard: `data_xplorer/transfermarkt-api-scraper`)
+
+Voeg in `.env` toe:
+
+```bash
+APIFY_TOKEN=...
+APIFY_SOFASCORE_ACTOR=azzouzana/sofascore-scraper-pro
+APIFY_TRANSFERMARKT_ACTOR=data_xplorer/transfermarkt-api-scraper
+```
+
+Als `APIFY_TOKEN` ontbreekt, wordt de Apify fallback automatisch overgeslagen.
+
 ## AI providers (including free options)
 Nexora probeert providers in volgorde en pakt de eerste die werkt:
 1. `OLLAMA_MODEL` (lokaal, gratis)
@@ -34,7 +49,7 @@ Voor OpenRouter free models:
 - Root Directory: `server`
 - Build command: `npm install`
 - Start command: `npm start`
-- Add env vars: AI provider keys of choice (`OLLAMA_MODEL` local, or `DEEPSEEK_API_KEY` / `OPENROUTER_API_KEY` / `GROQ_API_KEY` / `OPENAI_API_KEY`) and `APISPORTS_KEY` (optional sports fallback)
+- Add env vars: AI provider keys of choice (`OLLAMA_MODEL` local, or `DEEPSEEK_API_KEY` / `OPENROUTER_API_KEY` / `GROQ_API_KEY` / `OPENAI_API_KEY`)
 
 ## Deploy zonder lokale server (aanrader)
 Gebruik Render free tier zodat je app altijd een backend heeft.
@@ -46,7 +61,7 @@ Gebruik Render free tier zodat je app altijd een backend heeft.
 	- Minimaal: `APP_TZ=Europe/Brussels`
 	- Voor films/series: `TMDB_API_KEY`
 	- Voor AI: minstens één van `OPENROUTER_API_KEY` / `GROQ_API_KEY` / `DEEPSEEK_API_KEY` / `OPENAI_API_KEY`
-	- Optioneel sports fallback: `APISPORTS_KEY`
+	- Optioneel data fallback voor spelers: `APIFY_TOKEN`
 
 Na deploy: zet in `app/.env`:
 

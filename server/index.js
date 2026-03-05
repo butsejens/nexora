@@ -6,10 +6,6 @@ import fetch from "node-fetch";
 dotenv.config();
 
 // ESPN endpoints are used keyless as primary source.
-// APISPORTS_KEY is optional fallback for richer/backup coverage.
-if (!process.env.APISPORTS_KEY) {
-  console.info("ℹ️ APISPORTS_KEY not set. Using ESPN keyless endpoints as primary sports source.");
-}
 
 const app = express();
 // CORS: allow all in development, restrict to configured domain in production
@@ -101,10 +97,9 @@ async function getOrFetch(key, ttlMs, fetcher) {
 // Primary is ESPN (keyless). APISPORTS/RapidAPI/SportSRC are optional fallbacks.
 // -----------------------------
 
-const APISPORTS_BASE = "https://v3.football.api-sports.io";
-const RAPID_BASE = "https://api-football-v1.p.rapidapi.com/v3";
-const RAPID_HOST = "api-football-v1.p.rapidapi.com";
-const SPORTSRC_BASE = "https://api.sportsrc.org/v2/";
+const APIFY_BASE = "https://api.apify.com/v2";
+const APIFY_TRANSFERMARKT_ACTOR = process.env.APIFY_TRANSFERMARKT_ACTOR || "data_xplorer/transfermarkt-api-scraper";
+const APIFY_SOFASCORE_ACTOR = process.env.APIFY_SOFASCORE_ACTOR || "azzouzana/sofascore-scraper-pro";
 
 
 const ESPN_SCOREBOARD_BASE = "https://site.web.api.espn.com/apis/v2/sports/soccer/scoreboard";
@@ -114,14 +109,29 @@ const ESPN_LOOKAHEAD_DAYS = Number(process.env.ESPN_LOOKAHEAD_DAYS || 3);
 // Per-league ESPN scoreboard URLs (more reliable than generic)
 const ESPN_LEAGUE_SCOREBOARDS = {
   "Premier League": "https://site.api.espn.com/apis/site/v2/sports/soccer/eng.1/scoreboard",
+  Championship: "https://site.api.espn.com/apis/site/v2/sports/soccer/eng.2/scoreboard",
+  "FA Cup": "https://site.api.espn.com/apis/site/v2/sports/soccer/eng.fa/scoreboard",
   "UEFA Champions League": "https://site.api.espn.com/apis/site/v2/sports/soccer/uefa.champions/scoreboard",
   "UEFA Europa League": "https://site.api.espn.com/apis/site/v2/sports/soccer/uefa.europa/scoreboard",
   "UEFA Conference League": "https://site.api.espn.com/apis/site/v2/sports/soccer/uefa.europa.conf/scoreboard",
   "La Liga": "https://site.api.espn.com/apis/site/v2/sports/soccer/esp.1/scoreboard",
+  "La Liga 2": "https://site.api.espn.com/apis/site/v2/sports/soccer/esp.2/scoreboard",
+  "Copa del Rey": "https://site.api.espn.com/apis/site/v2/sports/soccer/esp.copa_del_rey/scoreboard",
   "Bundesliga": "https://site.api.espn.com/apis/site/v2/sports/soccer/ger.1/scoreboard",
+  "2. Bundesliga": "https://site.api.espn.com/apis/site/v2/sports/soccer/ger.2/scoreboard",
+  "DFB Pokal": "https://site.api.espn.com/apis/site/v2/sports/soccer/ger.dfb_pokal/scoreboard",
   "Jupiler Pro League": "https://site.api.espn.com/apis/site/v2/sports/soccer/bel.1/scoreboard",
+  "Challenger Pro League": "https://site.api.espn.com/apis/site/v2/sports/soccer/bel.2/scoreboard",
+  "Belgian Cup": "https://site.api.espn.com/apis/site/v2/sports/soccer/bel.cup/scoreboard",
   "Ligue 1": "https://site.api.espn.com/apis/site/v2/sports/soccer/fra.1/scoreboard",
+  "Ligue 2": "https://site.api.espn.com/apis/site/v2/sports/soccer/fra.2/scoreboard",
+  "Coupe de France": "https://site.api.espn.com/apis/site/v2/sports/soccer/fra.coupe_de_france/scoreboard",
   "Serie A": "https://site.api.espn.com/apis/site/v2/sports/soccer/ita.1/scoreboard",
+  "Serie B": "https://site.api.espn.com/apis/site/v2/sports/soccer/ita.2/scoreboard",
+  "Coppa Italia": "https://site.api.espn.com/apis/site/v2/sports/soccer/ita.coppa_italia/scoreboard",
+  Eredivisie: "https://site.api.espn.com/apis/site/v2/sports/soccer/ned.1/scoreboard",
+  "Eerste Divisie": "https://site.api.espn.com/apis/site/v2/sports/soccer/ned.2/scoreboard",
+  "KNVB Beker": "https://site.api.espn.com/apis/site/v2/sports/soccer/ned.knvb_beker/scoreboard",
 };
 
 function ymdToEspnDate(ymd) {
@@ -147,9 +157,11 @@ async function espnScoreboard(dateYmd) {
         if (!resp.ok) return { events: [] };
         const data = await resp.json();
         // Add league name to events if missing
+        const leagueSlug = String(baseUrl.match(/\/soccer\/([^/]+)\/scoreboard/)?.[1] || "");
         const events = (data?.events || []).map(ev => ({
           ...ev,
           _leagueHint: leagueName,
+          _espnLeagueHint: leagueSlug,
         }));
         return { events };
       } catch {
@@ -200,9 +212,10 @@ function normalizeStatusFromEspn(comp) {
   return { status: "upcoming", minute };
 }
 
-const CLUB_BRUGGE_NEW_LOGO = "https://logodownload.org/wp-content/uploads/2019/11/club-brugge-logo-escudo.png";
+// Club Brugge ESPN CDN logo (Jupiler Pro League team ID: 6718)
+const CLUB_BRUGGE_NEW_LOGO = "https://a.espncdn.com/i/teamlogos/soccer/500/6718.png";
 
-function normalizeTeamLogo(teamName, logoUrl) {
+function normalizeTeamLogo(teamName, logoUrl, ...fallbackCandidates) {
   const name = String(teamName || "")
     .toLowerCase()
     .normalize("NFD")
@@ -217,7 +230,13 @@ function normalizeTeamLogo(teamName, logoUrl) {
   ) {
     return CLUB_BRUGGE_NEW_LOGO;
   }
-  return logoUrl || null;
+
+  const candidates = [logoUrl, ...fallbackCandidates];
+  for (const candidate of candidates) {
+    const value = String(candidate || "").trim();
+    if (/^https?:\/\//i.test(value)) return value;
+  }
+  return null;
 }
 
 function normalizePlayerPhoto(playerId, ...candidates) {
@@ -227,7 +246,7 @@ function normalizePlayerPhoto(playerId, ...candidates) {
   }
   const id = String(playerId || "").trim();
   if (!id) return null;
-  return `https://media.api-sports.io/football/players/${encodeURIComponent(id)}.png`;
+  return `https://a.espncdn.com/i/headshots/soccer/players/full/${encodeURIComponent(id)}.png`;
 }
 
 function normalizePersonName(name) {
@@ -283,37 +302,313 @@ function pickBestProfileMatch(profiles, player, teamName) {
   return bestScore >= 0.62 ? best : null;
 }
 
-async function enrichRosterPhotosFromApiSports(players, teamName) {
-  if (!Array.isArray(players) || players.length === 0) return players || [];
-  if (!process.env.APISPORTS_KEY) return players;
+function parseNumberish(value) {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  const text = String(value ?? "").trim();
+  if (!text) return null;
+  const parsed = Number(text.replace(/[^\d.-]/g, ""));
+  return Number.isFinite(parsed) ? parsed : null;
+}
 
-  const out = players.map((p) => ({ ...p }));
-  const queue = out.filter((p) => !p?.photo || /media\.api-sports\.io\/football\/players\/\d+\.png$/i.test(String(p?.photo || "")));
+function normalizeMarketValueInput(value) {
+  if (value == null) return null;
+  if (typeof value === "number" && Number.isFinite(value) && value > 0) {
+    return formatEURShort(value);
+  }
+  const raw = String(value || "").trim();
+  if (!raw) return null;
+  if (/^€/.test(raw)) return raw;
+  const num = parseNumberish(raw);
+  if (num && /k|m|b|bn|mln|million|billion|eur|euro/i.test(raw)) {
+    if (/b|bn|billion/i.test(raw)) return formatEURShort(Math.round(num * 1_000_000_000));
+    if (/m|mln|million/i.test(raw)) return formatEURShort(Math.round(num * 1_000_000));
+    if (/k/i.test(raw)) return formatEURShort(Math.round(num * 1_000));
+    return formatEURShort(Math.round(num));
+  }
+  return raw;
+}
 
-  for (const player of queue.slice(0, 24)) {
-    const name = String(player?.name || "").trim();
-    if (!name || name.length < 3) continue;
-    try {
-      const search = encodeURIComponent(name);
-      const raw = await fetchWithTimeout(footballApi(`/players/profiles?search=${search}`), 7000);
-      const rows = Array.isArray(raw?.response) ? raw.response : [];
-      if (rows.length === 0) continue;
+function asArray(value) {
+  if (Array.isArray(value)) return value;
+  return value ? [value] : [];
+}
 
-      const best = pickBestProfileMatch(rows, player, teamName);
-      const prof = best?.player || {};
+function pickString(...values) {
+  for (const value of values) {
+    const text = String(value ?? "").trim();
+    if (text) return text;
+  }
+  return "";
+}
 
-      const betterPhoto = normalizePlayerPhoto(player?.id, prof?.photo, player?.photo);
-      if (betterPhoto) player.photo = betterPhoto;
-      if (!player.nationality && prof?.nationality) player.nationality = prof.nationality;
-      if (!player.age && Number(prof?.age || 0) > 0) player.age = Number(prof.age);
-      if (!player.height) player.height = toMetersStringFromAny(prof?.height);
-      if (!player.weight) player.weight = toKgStringFromAny(prof?.weight);
-    } catch {
-      // best-effort enrichment only
+function isLikelyFemale(value) {
+  const text = String(value || "").toLowerCase();
+  if (!text) return false;
+  return /female|woman|women|feminine|ladies|vrouw|dames|feminino|femminile|weibl/i.test(text);
+}
+
+function isSoccerContext(value) {
+  const text = String(value || "").toLowerCase();
+  if (!text) return true;
+  return /soccer|football|voetbal|futbol|calcio|bundesliga|liga|premier|uefa|cup|serie a/i.test(text);
+}
+
+async function apifyRunActor(actorId, input = {}) {
+  const token = String(process.env.APIFY_TOKEN || "").trim();
+  const actor = String(actorId || "").trim();
+  if (!token || !actor) return [];
+
+  const startResp = await fetch(`${APIFY_BASE}/acts/${encodeURIComponent(actor)}/runs?token=${encodeURIComponent(token)}`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(input || {}),
+  });
+  if (!startResp.ok) return [];
+
+  const runData = await startResp.json().catch(() => null);
+  const datasetId = runData?.data?.defaultDatasetId;
+  if (!datasetId) return [];
+
+  const itemsResp = await fetch(`${APIFY_BASE}/datasets/${encodeURIComponent(datasetId)}/items?clean=true&token=${encodeURIComponent(token)}`);
+  if (!itemsResp.ok) return [];
+  const items = await itemsResp.json().catch(() => []);
+  return Array.isArray(items) ? items : [];
+}
+
+function mapFormerClubsFromApify(raw) {
+  const rows = asArray(raw);
+  const out = [];
+  const seen = new Set();
+  for (const row of rows) {
+    const from = pickString(row?.from, row?.fromClub, row?.outClub, row?.oldClub, row?.clubFrom);
+    const to = pickString(row?.to, row?.toClub, row?.inClub, row?.newClub, row?.clubTo);
+    const date = pickString(row?.date, row?.season, row?.year, row?.when);
+    if (from) {
+      const key = `${from}_${date}_from`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        out.push({ name: from, role: "from", date });
+      }
+    }
+    if (to) {
+      const key = `${to}_${date}_to`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        out.push({ name: to, role: "to", date });
+      }
+    }
+  }
+  return out.slice(0, 12);
+}
+
+function normalizeApifyPlayerItem(raw, requestedName, requestedTeam) {
+  const scopes = [raw, raw?.player, raw?.athlete, raw?.data, raw?.profile].filter(Boolean);
+  const read = (...keys) => {
+    for (const scope of scopes) {
+      for (const key of keys) {
+        if (scope?.[key] != null && String(scope[key]).trim() !== "") return scope[key];
+      }
+    }
+    return undefined;
+  };
+
+  const name = pickString(read("name", "playerName", "fullName", "displayName"), requestedName);
+  const team = pickString(read("team", "club", "currentClub", "clubName", "teamName"), requestedTeam);
+  const marketValue = normalizeMarketValueInput(read("marketValue", "market_value", "value", "estimatedValue", "valueEur"));
+  const teamLogo = read("teamLogo", "clubLogo", "logo", "team_logo", "club_logo");
+  const photo = read("photo", "image", "avatar", "headshot", "playerImage", "profileImage");
+  const age = parseNumberish(read("age", "playerAge"));
+  const position = pickString(read("position", "positionName", "role", "mainPosition"));
+  const nationality = pickString(read("nationality", "country", "nation"));
+  const gender = pickString(read("gender", "sex", "category", "teamGender", "playerGender"));
+  const sportContext = pickString(
+    read("sport", "sportName", "discipline", "competition", "tournament", "league", "leagueName"),
+    position,
+    team,
+  );
+  const height = toMetersStringFromAny(read("height", "heightCm", "height_cm", "height_m"));
+  const weight = toKgStringFromAny(read("weight", "weightKg", "weight_kg"));
+  const formerClubs = mapFormerClubsFromApify(read("formerClubs", "transfers", "transferHistory", "history"));
+
+  return {
+    name,
+    team,
+    teamLogo: normalizeTeamLogo(team, teamLogo || null),
+    photo: normalizePlayerPhoto(read("id", "playerId", "athleteId"), photo),
+    age: Number.isFinite(age) && age > 0 ? age : undefined,
+    position,
+    nationality,
+    gender,
+    sportContext,
+    height,
+    weight,
+    marketValue,
+    formerClubs,
+  };
+}
+
+function pickBestApifyCandidate(items, requestedName, requestedTeam) {
+  const targetName = normalizePersonName(requestedName);
+  const targetTeam = normalizePersonName(requestedTeam);
+  let best = null;
+  let bestScore = 0;
+
+  for (const item of items || []) {
+    const candidate = normalizeApifyPlayerItem(item, requestedName, requestedTeam);
+    const candName = normalizePersonName(candidate?.name);
+    const candTeam = normalizePersonName(candidate?.team);
+
+    if (isLikelyFemale(candidate?.gender)) continue;
+    if (!isSoccerContext(candidate?.sportContext)) continue;
+
+    let score = similarityScore(targetName, candName);
+
+    if (targetName && candName) {
+      const nameTokens = targetName.split(" ").filter(Boolean);
+      const candTokens = new Set(candName.split(" ").filter(Boolean));
+      const tokenOverlap = nameTokens.filter((token) => candTokens.has(token)).length;
+      if (nameTokens.length >= 2 && tokenOverlap === 0) score -= 0.6;
+      else if (nameTokens.length >= 2 && tokenOverlap === 1) score -= 0.2;
+    }
+
+    if (targetTeam && candTeam) {
+      if (candTeam === targetTeam) score += 0.35;
+      else if (candTeam.includes(targetTeam) || targetTeam.includes(candTeam)) score += 0.2;
+      else score -= 0.4;
+    }
+
+    if (!candName && !candidate?.marketValue) score -= 0.3;
+    if (score > bestScore) {
+      bestScore = score;
+      best = candidate;
     }
   }
 
-  return out;
+  if (best && bestScore >= (targetTeam ? 0.68 : 0.74)) return best;
+  return null;
+}
+
+async function fetchApifyPlayerFallback(playerId, playerName, teamName) {
+  const token = String(process.env.APIFY_TOKEN || "").trim();
+  if (!token) return null;
+
+  const baseInput = {
+    playerId: String(playerId || "").trim() || undefined,
+    playerName: String(playerName || "").trim() || undefined,
+    teamName: String(teamName || "").trim() || undefined,
+    query: String(playerName || "").trim() || undefined,
+    limit: 5,
+  };
+
+  try {
+    if (APIFY_SOFASCORE_ACTOR) {
+      const sofaItems = await apifyRunActor(APIFY_SOFASCORE_ACTOR, baseInput);
+      const sofaBest = pickBestApifyCandidate(sofaItems, playerName, teamName);
+      if (sofaBest) return { ...sofaBest, source: "apify-sofascore" };
+    }
+
+    const tmItems = await apifyRunActor(APIFY_TRANSFERMARKT_ACTOR, baseInput);
+    const tmBest = pickBestApifyCandidate(tmItems, playerName, teamName);
+    if (tmBest) return { ...tmBest, source: "apify-transfermarkt" };
+
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+// SofaScore public API – photo lookup by player name (no API key required)
+async function fetchSofaScorePlayerPhoto(playerName, teamName) {
+  if (!playerName) return null;
+  const namePart = normalizePersonName(playerName);
+  const teamPart = normalizePersonName(teamName || "");
+  const cacheKey = `sofascore_photo_${namePart}_${teamPart}`;
+  const cacheItem = __cache.get(cacheKey);
+  if (cacheItem && Date.now() <= cacheItem.expiresAt) return cacheItem.value;
+
+  try {
+    const q = encodeURIComponent(String(playerName).trim());
+    const resp = await fetch(`https://api.sofascore.com/api/v1/search/all?q=${q}`, {
+      headers: {
+        "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        accept: "application/json",
+      },
+      signal: AbortSignal.timeout(4000),
+    });
+    if (!resp.ok) { cacheSet(cacheKey, null, 60_000); return null; }
+    const data = await resp.json();
+    const players = Array.isArray(data?.players) ? data.players : [];
+    for (const item of players.slice(0, 8)) {
+      const p = item?.player;
+      if (!p?.id) continue;
+      const candName = normalizePersonName(p?.name || p?.shortName || "");
+      if (!candName) continue;
+      if (similarityScore(namePart, candName) < 0.65) continue;
+      if (teamPart && p?.team?.name) {
+        const ct = normalizePersonName(p.team.name);
+        const targetWords = teamPart.split(" ").filter(Boolean);
+        const candWords = ct.split(" ").filter(Boolean);
+        const hasOverlap = targetWords.some((w) => candWords.includes(w)) || candWords.some((w) => targetWords.includes(w));
+        if (!hasOverlap) continue;
+      }
+      const photoUrl = `https://api.sofascore.com/api/v1/player/${p.id}/image`;
+      cacheSet(cacheKey, photoUrl, 3_600_000);
+      return photoUrl;
+    }
+    cacheSet(cacheKey, null, 60_000);
+    return null;
+  } catch {
+    cacheSet(cacheKey, null, 60_000);
+    return null;
+  }
+}
+
+// TheSportsDB free API – team badge lookup by team name (no API key required)
+async function fetchTheSportsDBTeamLogo(teamName) {
+  if (!teamName) return null;
+  const cacheKey = `thesportsdb_logo_${normalizePersonName(teamName)}`;
+  const cacheItem = __cache.get(cacheKey);
+  if (cacheItem && Date.now() <= cacheItem.expiresAt) return cacheItem.value;
+
+  try {
+    const q = encodeURIComponent(String(teamName).trim());
+    const resp = await fetch(`https://www.thesportsdb.com/api/v1/json/3/searchteams.php?t=${q}`, {
+      headers: { "user-agent": "Mozilla/5.0", accept: "application/json" },
+      signal: AbortSignal.timeout(4000),
+    });
+    if (!resp.ok) { cacheSet(cacheKey, null, 300_000); return null; }
+    const data = await resp.json();
+    const logo = data?.teams?.[0]?.strTeamBadge || data?.teams?.[0]?.strTeamBadgeDark || null;
+    cacheSet(cacheKey, logo, 86_400_000); // cache 24h
+    return logo;
+  } catch {
+    cacheSet(cacheKey, null, 300_000);
+    return null;
+  }
+}
+
+// Enrich null team logos on a list of matches using TheSportsDB (parallel, cached)
+async function enrichMatchLogos(matches) {
+  if (!Array.isArray(matches) || matches.length === 0) return matches;
+  const needsLogo = matches.filter((m) => !m.homeTeamLogo || !m.awayTeamLogo);
+  if (needsLogo.length === 0) return matches;
+
+  const teamNames = [...new Set(
+    needsLogo.flatMap((m) => [
+      !m.homeTeamLogo && m.homeTeam ? m.homeTeam : null,
+      !m.awayTeamLogo && m.awayTeam ? m.awayTeam : null,
+    ].filter(Boolean))
+  )];
+
+  const logoMap = Object.fromEntries(
+    await Promise.all(teamNames.map(async (name) => [name, await fetchTheSportsDBTeamLogo(name)]))
+  );
+
+  return matches.map((m) => ({
+    ...m,
+    homeTeamLogo: m.homeTeamLogo || logoMap[m.homeTeam] || null,
+    awayTeamLogo: m.awayTeamLogo || logoMap[m.awayTeam] || null,
+  }));
 }
 
 function inferFormationFromPlayers(players) {
@@ -371,17 +666,27 @@ function mapEspnEventToMatch(ev) {
 
   return {
     id,
+    espnLeague: String(ev?._espnLeagueHint || ""),
     league: leagueName,
     homeTeamId: String(home?.team?.id || ""),
     awayTeamId: String(away?.team?.id || ""),
     homeTeam: home?.team?.displayName || home?.team?.name || "",
     awayTeam: away?.team?.displayName || away?.team?.name || "",
-    homeTeamLogo: normalizeTeamLogo(home?.team?.displayName || home?.team?.name, home?.team?.logo || null),
-    awayTeamLogo: normalizeTeamLogo(away?.team?.displayName || away?.team?.name, away?.team?.logo || null),
+    homeTeamLogo: normalizeTeamLogo(
+      home?.team?.displayName || home?.team?.name,
+      home?.team?.logo || null,
+      home?.team?.id ? `https://a.espncdn.com/i/teamlogos/soccer/500/${encodeURIComponent(String(home.team.id))}.png` : null,
+    ),
+    awayTeamLogo: normalizeTeamLogo(
+      away?.team?.displayName || away?.team?.name,
+      away?.team?.logo || null,
+      away?.team?.id ? `https://a.espncdn.com/i/teamlogos/soccer/500/${encodeURIComponent(String(away.team.id))}.png` : null,
+    ),
     homeScore,
     awayScore,
     status,
     minute,
+    startDate: comp?.date || null,
     startTime: formatTime(comp?.date),
     servers: STREAM_SERVERS.map((s) => ({
       id: s.id,
@@ -667,50 +972,6 @@ async function aiAnalyzePlayerProfile(player, context = {}) {
   return null;
 }
 
-async function fetchApiSportsPlayerData(playerId, playerName, teamName) {
-  if (!process.env.APISPORTS_KEY) return null;
-
-  const out = {
-    profile: null,
-    transfers: [],
-    source: "api-sports",
-  };
-
-  try {
-    let profileRows = [];
-
-    const id = String(playerId || "").trim();
-    const name = String(playerName || "").trim();
-    if (id) {
-      const byId = await fetchWithTimeout(footballApi(`/players/profiles?player=${encodeURIComponent(id)}`), 9000);
-      profileRows = Array.isArray(byId?.response) ? byId.response : [];
-    }
-    if (profileRows.length === 0 && name) {
-      const bySearch = await fetchWithTimeout(footballApi(`/players/profiles?search=${encodeURIComponent(name)}`), 9000);
-      profileRows = Array.isArray(bySearch?.response) ? bySearch.response : [];
-    }
-
-    const best = pickBestProfileMatch(profileRows, { name: playerName }, teamName);
-    out.profile = best || profileRows[0] || null;
-
-    const transferPlayerId = String(out.profile?.player?.id || id || "").trim();
-    if (transferPlayerId) {
-      try {
-        const transferRaw = await fetchWithTimeout(footballApi(`/transfers?player=${encodeURIComponent(transferPlayerId)}`), 9000);
-        out.transfers = Array.isArray(transferRaw?.response?.[0]?.transfers)
-          ? transferRaw.response[0].transfers
-          : [];
-      } catch {
-        out.transfers = [];
-      }
-    }
-
-    return out;
-  } catch {
-    return null;
-  }
-}
-
 function mapFormerClubs(transfers) {
   const clubs = [];
   for (const t of transfers || []) {
@@ -761,77 +1022,11 @@ function getDateParam(req) {
 
 
 function footballSource() {
-  if (process.env.APISPORTS_KEY) return "api-sports";
-  // ESPN is the primary keyless source.
   return "espn";
 }
 
-async function apiSportsFetch(pathAndQuery) {
-  const r = await fetch(`${APISPORTS_BASE}${pathAndQuery}`, {
-    headers: {
-      "x-apisports-key": process.env.APISPORTS_KEY,
-    },
-  });
-  const data = await r.json();
-  if (!r.ok) {
-    const e = new Error(`API-SPORTS error (${r.status})`);
-    e.statusCode = r.status;
-    e.details = data;
-    throw e;
-  }
-  return data;
-}
-
-async function rapidFetch(pathAndQuery) {
-  const r = await fetch(`${RAPID_BASE}${pathAndQuery}`, {
-    headers: {
-      "x-rapidapi-key": process.env.RAPIDAPI_KEY,
-      "x-rapidapi-host": RAPID_HOST,
-    },
-  });
-  const data = await r.json();
-  if (!r.ok) {
-    const e = new Error(`RapidAPI API-Football error (${r.status})`);
-    e.statusCode = r.status;
-    e.details = data;
-    throw e;
-  }
-  return data;
-}
-
-async function sportSrcFetch(paramsObj) {
-  // SportSRC uses query params on base endpoint
-  const qs = new URLSearchParams(paramsObj).toString();
-  const r = await fetch(`${SPORTSRC_BASE}?${qs}`, {
-    headers: {
-      "X-API-KEY": process.env.SPORTSRC_API_KEY,
-    },
-  });
-  const data = await r.json();
-  if (!r.ok) {
-    const e = new Error(`SportSRC error (${r.status})`);
-    e.statusCode = r.status;
-    e.details = data;
-    throw e;
-  }
-  return data;
-}
-
 async function footballApi(pathAndQuery, sportsrcParams = null) {
-  const src = footballSource();
-  if (src === "sportsrc") {
-    if (!sportsrcParams) {
-      // We only support a few SportSRC calls; caller must provide params.
-      const e = new Error("SportSRC params missing for this request");
-      e.statusCode = 500;
-      throw e;
-    }
-    return await sportSrcFetch(sportsrcParams);
-  }
-  if (src === "api-sports") return await apiSportsFetch(pathAndQuery);
-  if (src === "rapidapi") return await rapidFetch(pathAndQuery);
-
-  // No key configured: return empty data (keeps app from endless loading)
+  // ESPN-only mode: kept for backward compatibility in legacy code paths.
   return { response: [] };
 }
 
@@ -998,6 +1193,7 @@ function mapFixtureToMatch(fix) {
     awayScore: Number(fix?.goals?.away ?? 0),
     status,
     minute,
+    startDate: fix?.fixture?.date || null,
     startTime: formatTime(fix?.fixture?.date),
     servers: STREAM_SERVERS.map((s) => ({
       id: s.id,
@@ -1010,7 +1206,7 @@ function mapFixtureToMatch(fix) {
   };
 }
 
-// SportSRC returns a different schema than API-SPORTS.
+// SportSRC returns a different schema than ESPN.
 // The app expects the flattened `Match` shape used by MatchCard.tsx.
 function mapSportSrcToMatch(m) {
   // Robust extraction across common SportSRC variants
@@ -1078,6 +1274,7 @@ function mapSportSrcToMatch(m) {
     awayScore: Number.isFinite(awayScore) ? awayScore : 0,
     status,
     minute,
+    startDate: dateIso,
     startTime: dateIso ? formatTime(dateIso) : undefined,
     servers: STREAM_SERVERS.map((s) => ({
       id: s.id,
@@ -1621,9 +1818,9 @@ app.get("/api/sports/live", async (req, res) => {
       try {
         const espn = await espnScoreboard(date);
         const events = Array.isArray(espn?.events) ? espn.events : [];
-        const live = events
+        const live = await enrichMatchLogos(events
           .map(mapEspnEventToMatch)
-          .filter((m) => m.status === "live" && m.league);
+          .filter((m) => m.status === "live" && m.league));
         return { timezone: TZ, live, source: "espn" };
       } catch (_) {}
 
@@ -1665,11 +1862,16 @@ for (let i = 0; i <= ESPN_LOOKAHEAD_DAYS; i++) {
       major.has(normalizeLeagueName(m.league)) || m.league
     );
 
-    const live = filtered.filter((m) => m.status === "live");
-    const upcoming = filtered.filter((m) => m.status === "upcoming");
-    const finished = filtered.filter((m) => m.status === "finished");
+    const liveRaw = filtered.filter((m) => m.status === "live");
+    const upcomingRaw = filtered.filter((m) => m.status === "upcoming");
+    const finishedRaw = filtered.filter((m) => m.status === "finished");
 
-    if (live.length || upcoming.length || finished.length) {
+    if (liveRaw.length || upcomingRaw.length || finishedRaw.length) {
+      const [live, upcoming, finished] = await Promise.all([
+        enrichMatchLogos(liveRaw),
+        enrichMatchLogos(upcomingRaw),
+        enrichMatchLogos(finishedRaw),
+      ]);
       return { date: espnDate, timezone: TZ, live, upcoming, finished, source: "espn" };
     }
   } catch (_) {}
@@ -1708,10 +1910,15 @@ app.get("/api/sports/by-date", async (req, res) => {
           const filtered = mapped.filter((m) =>
             major.has(normalizeLeagueName(m.league)) || m.league
           );
-          const live = filtered.filter((m) => m.status === "live");
-          const upcoming = filtered.filter((m) => m.status === "upcoming");
-          const finished = filtered.filter((m) => m.status === "finished");
-          if (live.length || upcoming.length || finished.length) {
+          const liveRaw = filtered.filter((m) => m.status === "live");
+          const upcomingRaw = filtered.filter((m) => m.status === "upcoming");
+          const finishedRaw = filtered.filter((m) => m.status === "finished");
+          if (liveRaw.length || upcomingRaw.length || finishedRaw.length) {
+            const [live, upcoming, finished] = await Promise.all([
+              enrichMatchLogos(liveRaw),
+              enrichMatchLogos(upcomingRaw),
+              enrichMatchLogos(finishedRaw),
+            ]);
             return { date: espnDate, timezone: TZ, live, upcoming, finished, source: "espn" };
           }
         } catch (_) {}
@@ -1789,7 +1996,8 @@ app.get("/api/sports/match/:matchId", async (req, res) => {
             const teamName = block?.team?.displayName || block?.team?.name || "";
             const teamLogo = normalizeTeamLogo(
               teamName,
-              block?.team?.logo || block?.team?.logos?.[0]?.href || null
+              block?.team?.logo || block?.team?.logos?.[0]?.href || null,
+              block?.team?.id ? `https://a.espncdn.com/i/teamlogos/soccer/500/${encodeURIComponent(String(block.team.id))}.png` : null,
             );
             const players = [];
             const seen = new Set();
@@ -1812,7 +2020,7 @@ app.get("/api/sports/match/:matchId", async (req, res) => {
                 photo: normalizePlayerPhoto(
                   id,
                   ath?.headshot?.href,
-                  id ? `https://a.espncdn.com/i/headshots/soccer/players/full/${encodeURIComponent(id)}.png` : null
+                  id ? `https://a.espncdn.com/i/headshots/soccer/players/full/${encodeURIComponent(id)}.png` : null,
                 ),
               });
             }
@@ -1917,7 +2125,6 @@ app.get("/api/sports/match/:matchId", async (req, res) => {
             photo: normalizePlayerPhoto(
               id,
               p?.photo,
-              id ? `https://media.api-sports.io/football/players/${encodeURIComponent(id)}.png` : null,
               id ? `https://a.espncdn.com/i/headshots/soccer/players/full/${encodeURIComponent(id)}.png` : null
             ),
           };
@@ -1959,15 +2166,36 @@ const ESPN_SCORERS_BASE = "https://site.web.api.espn.com/apis/v2/sports/soccer";
 
 const ESPN_LEAGUE_SLUGS = {
   "Premier League": "eng.1",
+  Championship: "eng.2",
+  "FA Cup": "eng.fa",
   "UEFA Champions League": "uefa.champions",
   "Champions League": "uefa.champions",
   "UEFA Europa League": "uefa.europa",
   "UEFA Conference League": "uefa.europa.conf",
   "La Liga": "esp.1",
+  "La Liga 2": "esp.2",
+  "Copa del Rey": "esp.copa_del_rey",
   "Bundesliga": "ger.1",
+  "2. Bundesliga": "ger.2",
+  "DFB Pokal": "ger.dfb_pokal",
   "Jupiler Pro League": "bel.1",
+  "Challenger Pro League": "bel.2",
+  "Belgian Cup": "bel.cup",
   "Ligue 1": "fra.1",
+  "Ligue 2": "fra.2",
+  "Coupe de France": "fra.coupe_de_france",
   "Serie A": "ita.1",
+  "Serie B": "ita.2",
+  "Coppa Italia": "ita.coppa_italia",
+  Eredivisie: "ned.1",
+  "Eerste Divisie": "ned.2",
+  "KNVB Beker": "ned.knvb_beker",
+  "Primeira Liga": "por.1",
+  "Liga Portugal 2": "por.2",
+  "Taca de Portugal": "por.taca_de_portugal",
+  "Super Lig": "tur.1",
+  "1. Lig": "tur.2",
+  "Turkish Cup": "tur.turkish_cup",
 };
 
 async function fetchWithTimeout(fetchPromise, timeoutMs = 12000) {
@@ -2023,7 +2251,11 @@ function mapEspnStandings(data) {
       return {
         rank: entry?.rank ?? idx + 1,
         team: team.displayName || team.name || "",
-        logo: normalizeTeamLogo(team.displayName || team.name || "", team.logos?.[0]?.href || team.logo || null),
+        logo: normalizeTeamLogo(
+          team.displayName || team.name || "",
+          team.logos?.[0]?.href || team.logo || null,
+          team.id ? `https://a.espncdn.com/i/teamlogos/soccer/500/${encodeURIComponent(String(team.id))}.png` : null,
+        ),
         teamId: String(team.id || ""),
         played: stats.gamesPlayed ?? stats.played ?? 0,
         wins: stats.wins ?? 0,
@@ -2055,7 +2287,11 @@ function mapEspnTopScorers(data) {
         name: ath.displayName || ath.fullName || "",
         photo: ath.headshot?.href || (athleteId ? `https://a.espncdn.com/i/headshots/soccer/players/full/${encodeURIComponent(athleteId)}.png` : null),
         team: ath.team?.displayName || ath.team?.name || "",
-        teamLogo: normalizeTeamLogo(ath.team?.displayName || ath.team?.name || "", ath.team?.logos?.[0]?.href || ath.team?.logo || null),
+        teamLogo: normalizeTeamLogo(
+          ath.team?.displayName || ath.team?.name || "",
+          ath.team?.logos?.[0]?.href || ath.team?.logo || null,
+          ath.team?.id ? `https://a.espncdn.com/i/teamlogos/soccer/500/${encodeURIComponent(String(ath.team.id))}.png` : null,
+        ),
         goals: entry?.value ?? 0,
         displayValue: String(entry?.displayValue ?? entry?.value ?? 0),
         stat: "Goals",
@@ -2068,15 +2304,36 @@ function mapEspnTopScorers(data) {
 
 const ESPN_STATS_LEAGUE_CODES = {
   "Premier League": "ENG.1",
+  Championship: "ENG.2",
+  "FA Cup": "ENG.FA",
   "UEFA Champions League": "UEFA.CHAMPIONS",
   "Champions League": "UEFA.CHAMPIONS",
   "UEFA Europa League": "UEFA.EUROPA",
   "UEFA Conference League": "UEFA.EUROPA.CONF",
   "La Liga": "ESP.1",
+  "La Liga 2": "ESP.2",
+  "Copa del Rey": "ESP.COPA_DEL_REY",
   "Bundesliga": "GER.1",
+  "2. Bundesliga": "GER.2",
+  "DFB Pokal": "GER.DFB_POKAL",
   "Jupiler Pro League": "BEL.1",
+  "Challenger Pro League": "BEL.2",
+  "Belgian Cup": "BEL.CUP",
   "Ligue 1": "FRA.1",
+  "Ligue 2": "FRA.2",
+  "Coupe de France": "FRA.COUPE_DE_FRANCE",
   "Serie A": "ITA.1",
+  "Serie B": "ITA.2",
+  "Coppa Italia": "ITA.COPPA_ITALIA",
+  Eredivisie: "NED.1",
+  "Eerste Divisie": "NED.2",
+  "KNVB Beker": "NED.KNVB_BEKER",
+  "Primeira Liga": "POR.1",
+  "Liga Portugal 2": "POR.2",
+  "Taca de Portugal": "POR.TACA_DE_PORTUGAL",
+  "Super Lig": "TUR.1",
+  "1. Lig": "TUR.2",
+  "Turkish Cup": "TUR.TURKISH_CUP",
 };
 
 function decodeHtml(value) {
@@ -2158,16 +2415,10 @@ app.get("/api/sports/standings/:league", async (req, res) => {
         console.warn(`[standings] ESPN failed for ${leagueName}: ${e.message}`);
       }
 
-      // 2) Fallback to API-Sports / RapidAPI
       if (!leagueId) {
         return { league: leagueName, season, seasonLabel, standings: [], error: "League niet gevonden" };
       }
-      const raw = await fetchWithTimeout(
-        footballApi(`/standings?league=${leagueId}&season=${season}`), 12000
-      );
-      const standings = raw?.response?.[0]?.league?.standings?.[0] ?? [];
-      console.log(`[standings] ${leagueName}: API-Sports → ${standings.length} teams`);
-      return { league: leagueName, season, seasonLabel, standings, source: "api-sports" };
+      return { league: leagueName, season, seasonLabel, standings: [], source: "espn", error: "Standings tijdelijk niet beschikbaar via ESPN" };
     });
     res.json(payload);
   } catch (e) {
@@ -2209,26 +2460,10 @@ app.get("/api/sports/topscorers/:league", async (req, res) => {
         console.warn(`[topscorers] ESPN HTML failed for ${leagueName}: ${e.message}`);
       }
 
-      // 2) Fallback
       if (!leagueId) {
         return { league: leagueName, season, seasonLabel, scorers: [], error: "League niet gevonden" };
       }
-      const raw = await fetchWithTimeout(
-        footballApi(`/players/topscorers?league=${leagueId}&season=${season}`), 12000
-      );
-      // Map API-Sports format to app format
-      const scorers = (raw?.response ?? []).map((item, idx) => ({
-        rank: idx + 1,
-        name: item?.player?.name || "",
-        photo: item?.player?.photo || null,
-        team: item?.statistics?.[0]?.team?.name || "",
-        teamLogo: normalizeTeamLogo(item?.statistics?.[0]?.team?.name || "", item?.statistics?.[0]?.team?.logo || null),
-        goals: item?.statistics?.[0]?.goals?.total ?? 0,
-        displayValue: String(item?.statistics?.[0]?.goals?.total ?? 0),
-        stat: "Goals",
-      }));
-      console.log(`[topscorers] ${leagueName}: API-Sports → ${scorers.length} scorers`);
-      return { league: leagueName, season, seasonLabel, scorers, source: "api-sports" };
+      return { league: leagueName, season, seasonLabel, scorers: [], source: "espn", error: "Topscorers tijdelijk niet beschikbaar via ESPN" };
     });
     res.json(payload);
   } catch (e) {
@@ -2247,95 +2482,81 @@ app.get("/api/sports/team/:teamId", async (req, res) => {
 
   try {
     const payload = await getOrFetch(key, 60_000, async () => {
-      if (footballSource() === "espn") {
-        let resolvedTeamId = teamId;
-        if (teamId.startsWith("name:")) {
-          const rawName = decodeURIComponent(teamId.replace(/^name:/, "")).toLowerCase();
-          const teamsResp = await fetch(`https://site.api.espn.com/apis/site/v2/sports/soccer/${encodeURIComponent(espnLeague)}/teams`, {
-            headers: { "user-agent": "Mozilla/5.0 (Nexora/1.0)", accept: "application/json" },
+      let resolvedTeamId = teamId;
+      if (teamId.startsWith("name:")) {
+        const rawName = decodeURIComponent(teamId.replace(/^name:/, "")).toLowerCase();
+        const teamsResp = await fetch(`https://site.api.espn.com/apis/site/v2/sports/soccer/${encodeURIComponent(espnLeague)}/teams`, {
+          headers: { "user-agent": "Mozilla/5.0 (Nexora/1.0)", accept: "application/json" },
+        });
+        const teamsJson = teamsResp.ok ? await teamsResp.json() : {};
+        const teams = teamsJson?.sports?.[0]?.leagues?.[0]?.teams || teamsJson?.teams || [];
+        const found = teams
+          .map((t) => t?.team || t)
+          .find((t) => {
+            const n = String(t?.displayName || t?.name || "").toLowerCase();
+            return n === rawName || n.includes(rawName) || rawName.includes(n);
           });
-          const teamsJson = teamsResp.ok ? await teamsResp.json() : {};
-          const teams = teamsJson?.sports?.[0]?.leagues?.[0]?.teams || teamsJson?.teams || [];
-          const found = teams
-            .map((t) => t?.team || t)
-            .find((t) => {
-              const n = String(t?.displayName || t?.name || "").toLowerCase();
-              return n === rawName || n.includes(rawName) || rawName.includes(n);
-            });
-          if (found?.id) resolvedTeamId = String(found.id);
-        }
-
-        const [teamResp, rosterResp] = await Promise.all([
-          fetch(`https://site.api.espn.com/apis/site/v2/sports/soccer/${encodeURIComponent(espnLeague)}/teams/${encodeURIComponent(resolvedTeamId)}`, {
-            headers: { "user-agent": "Mozilla/5.0 (Nexora/1.0)", accept: "application/json" },
-          }),
-          fetch(`https://site.api.espn.com/apis/site/v2/sports/soccer/${encodeURIComponent(espnLeague)}/teams/${encodeURIComponent(resolvedTeamId)}/roster`, {
-            headers: { "user-agent": "Mozilla/5.0 (Nexora/1.0)", accept: "application/json" },
-          }),
-        ]);
-
-        const teamJson = teamResp.ok ? await teamResp.json() : {};
-        const rosterJson = rosterResp.ok ? await rosterResp.json() : {};
-        const team = teamJson?.team || {};
-
-        const flattenAthletes = (input) => {
-          if (!input) return [];
-          if (Array.isArray(input)) {
-            return input.flatMap((item) => {
-              if (!item) return [];
-              if (item?.athlete) return [item.athlete];
-              if (item?.items && Array.isArray(item.items)) return flattenAthletes(item.items);
-              if (item?.athletes && Array.isArray(item.athletes)) return flattenAthletes(item.athletes);
-              if (item?.displayName || item?.fullName || item?.id) return [item];
-              return [];
-            });
-          }
-          return [];
-        };
-
-        const athletes = flattenAthletes(rosterJson?.athletes || rosterJson?.groups || rosterJson?.items || []);
-        const dedup = new Map();
-        for (const player of athletes) {
-          const mapped = mapEspnRosterPlayer(player);
-          if (!mapped?.name) continue;
-          const id = String(mapped.id || mapped.name);
-          if (!dedup.has(id)) dedup.set(id, mapped);
-        }
-        const players = Array.from(dedup.values());
-        const photoEnriched = await enrichRosterPhotosFromApiSports(players, team?.displayName || team?.name || teamNameFromQuery || "");
-        const valuedPlayers = await enrichRosterMarketValues(photoEnriched, team?.displayName || team?.name || teamNameFromQuery || "");
-
-        return {
-          id: String(team?.id || resolvedTeamId || ""),
-          name: team?.displayName || team?.name || teamNameFromQuery || "Team",
-          shortName: team?.abbreviation || team?.shortDisplayName || "",
-          logo: normalizeTeamLogo(team?.displayName || team?.name || teamNameFromQuery, team?.logos?.[0]?.href || team?.logo || null),
-          color: team?.color ? `#${String(team.color).replace("#", "")}` : "#151515",
-          leagueName: rosterJson?.team?.links?.[0]?.text || espnLeague,
-          leagueRank: undefined,
-          leaguePoints: undefined,
-          leaguePlayed: undefined,
-          venue: team?.venue?.fullName || team?.venue?.name || "",
-          coach: team?.staff?.[0]?.displayName || "",
-          record: "",
-          players: valuedPlayers,
-          source: "espn",
-        };
+        if (found?.id) resolvedTeamId = String(found.id);
       }
 
-      if (footballSource() === "sportsrc") {
-        const data = await footballApi(null, { type: "team", id: teamId });
-        return data?.data ?? data;
-      }
-
-      const [info, stats] = await Promise.all([
-        footballApi(`/teams?id=${encodeURIComponent(teamId)}`),
-        footballApi(`/teams/statistics?team=${encodeURIComponent(teamId)}&season=${season}&league=${39}`),
+      const [teamResp, rosterResp] = await Promise.all([
+        fetch(`https://site.api.espn.com/apis/site/v2/sports/soccer/${encodeURIComponent(espnLeague)}/teams/${encodeURIComponent(resolvedTeamId)}`, {
+          headers: { "user-agent": "Mozilla/5.0 (Nexora/1.0)", accept: "application/json" },
+        }),
+        fetch(`https://site.api.espn.com/apis/site/v2/sports/soccer/${encodeURIComponent(espnLeague)}/teams/${encodeURIComponent(resolvedTeamId)}/roster`, {
+          headers: { "user-agent": "Mozilla/5.0 (Nexora/1.0)", accept: "application/json" },
+        }),
       ]);
 
+      const teamJson = teamResp.ok ? await teamResp.json() : {};
+      const rosterJson = rosterResp.ok ? await rosterResp.json() : {};
+      const team = teamJson?.team || {};
+
+      const flattenAthletes = (input) => {
+        if (!input) return [];
+        if (Array.isArray(input)) {
+          return input.flatMap((item) => {
+            if (!item) return [];
+            if (item?.athlete) return [item.athlete];
+            if (item?.items && Array.isArray(item.items)) return flattenAthletes(item.items);
+            if (item?.athletes && Array.isArray(item.athletes)) return flattenAthletes(item.athletes);
+            if (item?.displayName || item?.fullName || item?.id) return [item];
+            return [];
+          });
+        }
+        return [];
+      };
+
+      const athletes = flattenAthletes(rosterJson?.athletes || rosterJson?.groups || rosterJson?.items || []);
+      const dedup = new Map();
+      for (const player of athletes) {
+        const mapped = mapEspnRosterPlayer(player);
+        if (!mapped?.name) continue;
+        const id = String(mapped.id || mapped.name);
+        if (!dedup.has(id)) dedup.set(id, mapped);
+      }
+      const players = Array.from(dedup.values());
+      const valuedPlayers = await enrichRosterMarketValues(players, team?.displayName || team?.name || teamNameFromQuery || "");
+
       return {
-        team: info?.response?.[0] ?? null,
-        stats: stats?.response ?? null,
+        id: String(team?.id || resolvedTeamId || ""),
+        name: team?.displayName || team?.name || teamNameFromQuery || "Team",
+        shortName: team?.abbreviation || team?.shortDisplayName || "",
+        logo: normalizeTeamLogo(
+          team?.displayName || team?.name || teamNameFromQuery,
+          team?.logos?.[0]?.href || team?.logo || null,
+          team?.id ? `https://a.espncdn.com/i/teamlogos/soccer/500/${encodeURIComponent(String(team.id))}.png` : null,
+        ),
+        color: team?.color ? `#${String(team.color).replace("#", "")}` : "#151515",
+        leagueName: rosterJson?.team?.links?.[0]?.text || espnLeague,
+        leagueRank: undefined,
+        leaguePoints: undefined,
+        leaguePlayed: undefined,
+        venue: team?.venue?.fullName || team?.venue?.name || "",
+        coach: team?.staff?.[0]?.displayName || "",
+        record: "",
+        players: valuedPlayers,
+        source: "espn",
       };
     });
 
@@ -2372,7 +2593,8 @@ app.get("/api/sports/player/:playerId", async (req, res) => {
         }
       }
 
-      const apiSports = await fetchApiSportsPlayerData(
+      const apiSports = null;
+      const apifyFallback = await fetchApifyPlayerFallback(
         playerId,
         playerName || espnAthlete?.displayName || espnAthlete?.fullName,
         teamName || espnTeam?.displayName || espnTeam?.name
@@ -2391,55 +2613,71 @@ app.get("/api/sports/player/:playerId", async (req, res) => {
       const normalizedPlayer = {
         id: String(profile?.id || espnAthlete?.id || playerId || ""),
         name,
-        age: Number(profile?.age || espnAthlete?.age || 0) || undefined,
-        nationality: profile?.nationality || espnAthlete?.citizenship || espnAthlete?.birthCountry || undefined,
+        age: Number(profile?.age || espnAthlete?.age || apifyFallback?.age || 0) || undefined,
+        nationality: profile?.nationality || espnAthlete?.citizenship || espnAthlete?.birthCountry || apifyFallback?.nationality || undefined,
         position:
           profileStats?.games?.position ||
           espnAthlete?.position?.abbreviation ||
           espnAthlete?.position?.name ||
+          apifyFallback?.position ||
           "",
       };
 
-      const valued = (await enrichRosterMarketValues([normalizedPlayer], teamName || profileStats?.team?.name || espnTeam?.displayName || ""))[0] || normalizedPlayer;
+      const valuedFromModel = (await enrichRosterMarketValues([normalizedPlayer], teamName || profileStats?.team?.name || espnTeam?.displayName || ""))[0] || normalizedPlayer;
+      const valued =
+        apifyFallback?.marketValue && !valuedFromModel?.marketValue
+          ? {
+              ...valuedFromModel,
+              marketValue: apifyFallback.marketValue,
+              isRealValue: true,
+              valueMethod: "apify-transfermarkt",
+            }
+          : valuedFromModel;
       const fallbackInsights = inferStrengthsWeaknesses(valued?.position, valued?.age);
       const aiInsights = await aiAnalyzePlayerProfile(
         {
           ...valued,
-          currentClub: profileStats?.team?.name || espnTeam?.displayName || espnTeam?.name || teamName || null,
-          formerClubs: mapFormerClubs(apiSports?.transfers || []),
+          currentClub: profileStats?.team?.name || espnTeam?.displayName || espnTeam?.name || teamName || apifyFallback?.team || null,
+          formerClubs: mapFormerClubs(apiSports?.transfers || []).length ? mapFormerClubs(apiSports?.transfers || []) : (apifyFallback?.formerClubs || []),
         },
         {
           league: espnLeague,
-          source: apiSports?.source || "espn",
+          source: apifyFallback?.source || apiSports?.source || "espn",
         }
       );
+
+      const formerClubs = mapFormerClubs(apiSports?.transfers || []).length
+        ? mapFormerClubs(apiSports?.transfers || [])
+        : (apifyFallback?.formerClubs || []);
+      const sourceTag = apifyFallback?.source || apiSports?.source || "espn";
+
+      const clubName = profileStats?.team?.name || espnTeam?.displayName || espnTeam?.name || teamName || apifyFallback?.team || "";
+      const basePhoto = normalizePlayerPhoto(
+        valued?.id,
+        profile?.photo,
+        apifyFallback?.photo,
+        espnAthlete?.headshot?.href,
+        valued?.id ? `https://a.espncdn.com/i/headshots/soccer/players/full/${encodeURIComponent(String(valued.id))}.png` : null,
+      );
+      const resolvedPhoto = basePhoto || await fetchSofaScorePlayerPhoto(name, clubName) || null;
+      const baseClubLogo = normalizeTeamLogo(
+        clubName,
+        profileStats?.team?.logo || espnTeam?.logo || espnTeam?.logos?.[0]?.href || apifyFallback?.teamLogo || null
+      );
+      const resolvedClubLogo = baseClubLogo || await fetchTheSportsDBTeamLogo(clubName) || null;
 
       return {
         id: String(valued?.id || ""),
         name: valued?.name || name,
-        photo: normalizePlayerPhoto(
-          valued?.id,
-          profile?.photo,
-          espnAthlete?.headshot?.href,
-          valued?.id ? `https://a.espncdn.com/i/headshots/soccer/players/full/${encodeURIComponent(String(valued.id))}.png` : null,
-          valued?.id ? `https://media.api-sports.io/football/players/${encodeURIComponent(String(valued.id))}.png` : null
-        ),
+        photo: resolvedPhoto,
         age: valued?.age,
         nationality: valued?.nationality,
         position: valued?.position,
-        height: toMetersStringFromAny(profile?.height || espnAthlete?.displayHeight || espnAthlete?.height),
-        weight: toKgStringFromAny(profile?.weight || espnAthlete?.displayWeight || espnAthlete?.weight),
-        currentClub:
-          profileStats?.team?.name ||
-          espnTeam?.displayName ||
-          espnTeam?.name ||
-          teamName ||
-          null,
-        currentClubLogo: normalizeTeamLogo(
-          profileStats?.team?.name || espnTeam?.displayName || espnTeam?.name || teamName || "",
-          profileStats?.team?.logo || espnTeam?.logo || espnTeam?.logos?.[0]?.href || null
-        ),
-        formerClubs: mapFormerClubs(apiSports?.transfers || []),
+        height: toMetersStringFromAny(profile?.height || espnAthlete?.displayHeight || espnAthlete?.height || apifyFallback?.height),
+        weight: toKgStringFromAny(profile?.weight || espnAthlete?.displayWeight || espnAthlete?.weight || apifyFallback?.weight),
+        currentClub: clubName || null,
+        currentClubLogo: resolvedClubLogo,
+        formerClubs,
         marketValue: valued?.marketValue || null,
         isRealValue: Boolean(valued?.isRealValue),
         valueMethod: valued?.valueMethod || "estimated",
@@ -2448,7 +2686,7 @@ app.get("/api/sports/player/:playerId", async (req, res) => {
         analysis:
           aiInsights?.summary ||
           `${name} (${valued?.position || "Speler"}) wordt beoordeeld op actuele profieldata, positie-eisen en recente context van club/rol.`,
-        source: aiInsights ? "real-data+ai" : "real-data+deterministic",
+        source: aiInsights ? `${sourceTag}+ai` : `${sourceTag}+deterministic`,
         updatedAt: new Date().toISOString(),
       };
     });

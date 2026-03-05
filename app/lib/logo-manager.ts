@@ -1,10 +1,14 @@
-const CLUB_BRUGGE_LOGO = "https://logodownload.org/wp-content/uploads/2019/11/club-brugge-logo-escudo.png";
+// Club Brugge ESPN CDN logo (Jupiler Pro League team ID: 6718)
+const CLUB_BRUGGE_LOGO = "https://a.espncdn.com/i/teamlogos/soccer/500/6718.png";
 
 const LEAGUE_LOGO_MAP: Record<string, string> = {
   "Premier League": "https://a.espncdn.com/i/leaguelogos/soccer/500/23.png",
   "UEFA Champions League": "https://a.espncdn.com/i/leaguelogos/soccer/500/1.png",
+  "Champions League": "https://a.espncdn.com/i/leaguelogos/soccer/500/1.png",
   "UEFA Europa League": "https://a.espncdn.com/i/leaguelogos/soccer/500/2.png",
+  "Europa League": "https://a.espncdn.com/i/leaguelogos/soccer/500/2.png",
   "UEFA Conference League": "https://a.espncdn.com/i/leaguelogos/soccer/500/3.png",
+  "Conference League": "https://a.espncdn.com/i/leaguelogos/soccer/500/3.png",
   "La Liga": "https://a.espncdn.com/i/leaguelogos/soccer/500/15.png",
   Bundesliga: "https://a.espncdn.com/i/leaguelogos/soccer/500/10.png",
   "Jupiler Pro League": "https://a.espncdn.com/i/leaguelogos/soccer/500/5.png",

@@ -1,4 +1,4 @@
-import React, { useRef, useState } from "react";
+import React, { useCallback, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -16,6 +16,8 @@ import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import * as DocumentPicker from "expo-document-picker";
+import Constants from "expo-constants";
+import * as Updates from "expo-updates";
 import { COLORS } from "@/constants/colors";
 import { NexoraHeader } from "@/components/NexoraHeader";
 import { useNexora } from "@/context/NexoraContext";
@@ -220,6 +222,7 @@ const [showAddPlaylist, setShowAddPlaylist] = useState(false);
   const [showPinModal, setShowPinModal] = useState(false);
   const [pinModalMode, setPinModalMode] = useState<"set" | "confirm">("set");
   const [showLangModal, setShowLangModal] = useState(false);
+  const [checkingUpdate, setCheckingUpdate] = useState(false);
 
   const bottomPad = Platform.OS === "web" ? 34 : insets.bottom + 90;
   const qualities = ["Auto", "4K", "FHD", "HD"] as const;
@@ -229,6 +232,30 @@ const [showAddPlaylist, setShowAddPlaylist] = useState(false);
   const liveCount = iptvChannels.filter(c => c.category === "live").length;
   const movieCount = iptvChannels.filter(c => c.category === "movie").length;
   const seriesCount = iptvChannels.filter(c => c.category === "series").length;
+  const appVersion = String(Constants.expoConfig?.version || "1.0.0");
+
+  const handleManualUpdateCheck = useCallback(async () => {
+    if (__DEV__) {
+      Alert.alert("Ontwikkelmodus", "OTA update-check is actief in release builds.");
+      return;
+    }
+
+    setCheckingUpdate(true);
+    try {
+      const update = await Updates.checkForUpdateAsync();
+      if (!update.isAvailable) {
+        Alert.alert("Up-to-date", "Je gebruikt al de nieuwste versie.");
+        return;
+      }
+      await Updates.fetchUpdateAsync();
+      Alert.alert("Update klaar", "De app wordt nu herstart met de nieuwste update.");
+      await Updates.reloadAsync();
+    } catch (error: any) {
+      Alert.alert("Update fout", error?.message || "Kon update niet ophalen.");
+    } finally {
+      setCheckingUpdate(false);
+    }
+  }, []);
 
   const activateParsedPlaylist = async (data: any) => {
     try {
@@ -1100,7 +1127,15 @@ const [showAddPlaylist, setShowAddPlaylist] = useState(false);
         </Section>
 
         <Section title="About">
-          <SettingRow icon="information-circle-outline" label="Version" value="1.0.0" />
+          <SettingRow icon="information-circle-outline" label="Version" value={appVersion} />
+          <Divider />
+          <SettingRow
+            icon="cloud-download-outline"
+            label="Check app updates"
+            value={checkingUpdate ? "Controleren..." : "Nu controleren"}
+            onPress={handleManualUpdateCheck}
+            rightElement={checkingUpdate ? <ActivityIndicator size="small" color={COLORS.accent} /> : undefined}
+          />
           <Divider />
           <SettingRow
             icon="star-outline"

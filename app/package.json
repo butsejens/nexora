@@ -11,6 +11,9 @@
     "start:ci": "CI=1 npx expo start --port 8082 --localhost --clear",
     "lint": "npx expo lint",
     "lint:fix": "npx expo lint --fix",
+    "ota:production": "npx eas update --branch production --message \"nexora-ota-production\"",
+    "ota:preview": "npx eas update --branch preview --message \"nexora-ota-preview\"",
+    "release:apk": "cd android && ./gradlew assembleRelease -x externalNativeBuildDebug",
     "android": "expo run:android",
     "ios": "expo run:ios"
   },
@@ -36,6 +39,7 @@
     "expo-linking": "~8.0.10",
     "expo-location": "~19.0.8",
     "expo-modules-core": "^3.0.29",
+    "expo-notifications": "~0.32.16",
     "expo-router": "~6.0.17",
     "expo-splash-screen": "~31.0.12",
     "expo-status-bar": "~3.0.9",

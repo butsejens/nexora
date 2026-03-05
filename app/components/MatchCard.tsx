@@ -41,6 +41,8 @@ export interface Match {
 interface Props {
   match: Match;
   onPress: () => void;
+  onToggleNotification?: () => void;
+  notificationsEnabled?: boolean;
 }
 
 const SPORT_ICONS: Record<string, string> = {
@@ -55,30 +57,31 @@ export function TeamLogo({ uri, teamName, size = 48 }: { uri?: string | null; te
   const safeUri = !error ? resolveTeamLogoUri(teamName, uri) : null;
   const initials = getInitials(teamName, 2);
 
-  if (safeUri) {
-    return (
-      <View style={[logoStyles.container, { width: size, height: size, borderRadius: size / 2 }]}>
+  return (
+    <View style={[
+      safeUri ? logoStyles.container : logoStyles.fallback,
+      { width: size, height: size, borderRadius: size / 2 },
+    ]}>
+      <Text style={[logoStyles.initials, { fontSize: size * 0.28 }]}>{initials}</Text>
+      {safeUri ? (
         <Image
           source={{ uri: safeUri }}
-          style={{ width: size - 8, height: size - 8 }}
+          style={{ width: size - 8, height: size - 8, position: "absolute" }}
           resizeMode="contain"
           onError={() => setError(true)}
         />
-      </View>
-    );
-  }
-  return (
-    <View style={[logoStyles.fallback, { width: size, height: size, borderRadius: size / 2 }]}>
-      <Text style={[logoStyles.initials, { fontSize: size * 0.28 }]}>{initials}</Text>
+      ) : null}
     </View>
   );
 }
 
 const logoStyles = StyleSheet.create({
   container: {
-    backgroundColor: "rgba(255,255,255,0.93)",
+    backgroundColor: COLORS.cardElevated,
     alignItems: "center",
     justifyContent: "center",
+    borderWidth: 1,
+    borderColor: COLORS.border,
     elevation: 3,
     // @ts-ignore – web uses boxShadow
     boxShadow: "0px 2px 4px rgba(0,0,0,0.2)",
@@ -96,7 +99,7 @@ const logoStyles = StyleSheet.create({
   },
 });
 
-export function MatchCard({ match, onPress }: Props) {
+export function MatchCard({ match, onPress, onToggleNotification, notificationsEnabled }: Props) {
   const scaleAnim = useRef(new Animated.Value(1)).current;
 
   const handlePressIn = () => {
@@ -139,7 +142,26 @@ export function MatchCard({ match, onPress }: Props) {
               )}
               <Text style={styles.league} numberOfLines={1}>{match.league}</Text>
             </View>
-            {match.status === "live" && <LiveBadge minute={match.minute} small />}
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+              {onToggleNotification ? (
+                <TouchableOpacity
+                  onPress={(e) => {
+                    e.stopPropagation();
+                    SafeHaptics.selection();
+                    onToggleNotification();
+                  }}
+                  style={styles.alertBtn}
+                  hitSlop={{ top: 10, right: 10, bottom: 10, left: 10 }}
+                >
+                  <Ionicons
+                    name={notificationsEnabled ? "notifications" : "notifications-outline"}
+                    size={14}
+                    color={notificationsEnabled ? COLORS.accent : COLORS.textMuted}
+                  />
+                </TouchableOpacity>
+              ) : null}
+              {match.status === "live" && <LiveBadge minute={match.minute} small />}
+            </View>
           </View>
 
           {/* Score row */}
@@ -174,7 +196,17 @@ export function MatchCard({ match, onPress }: Props) {
   );
 }
 
-export function UpcomingMatchRow({ match, onPress }: { match: Match; onPress: () => void }) {
+export function UpcomingMatchRow({
+  match,
+  onPress,
+  onToggleNotification,
+  notificationsEnabled,
+}: {
+  match: Match;
+  onPress: () => void;
+  onToggleNotification?: () => void;
+  notificationsEnabled?: boolean;
+}) {
   const SPORT_ICON = SPORT_ICONS[match.sport] || "soccer";
   const leagueLogo = getLeagueLogo(match.league);
   return (
@@ -207,6 +239,23 @@ export function UpcomingMatchRow({ match, onPress }: { match: Match; onPress: ()
         </View>
       </View>
       <View style={styles.upcomingRight}>
+        {onToggleNotification ? (
+          <TouchableOpacity
+            onPress={(e) => {
+              e.stopPropagation();
+              SafeHaptics.selection();
+              onToggleNotification();
+            }}
+            style={styles.upcomingAlertBtn}
+            hitSlop={{ top: 8, right: 8, bottom: 8, left: 8 }}
+          >
+            <Ionicons
+              name={notificationsEnabled ? "notifications" : "notifications-outline"}
+              size={14}
+              color={notificationsEnabled ? COLORS.accent : COLORS.textMuted}
+            />
+          </TouchableOpacity>
+        ) : null}
         <Text style={styles.upcomingTime}>
           {match.status === "finished"
             ? `${match.homeScore} - ${match.awayScore}`
@@ -253,6 +302,16 @@ const styles = StyleSheet.create({
     color: COLORS.textMuted,
     letterSpacing: 0.3,
     flex: 1,
+  },
+  alertBtn: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.overlay,
+    alignItems: "center",
+    justifyContent: "center",
   },
   scoreRow: {
     flexDirection: "row",
@@ -358,12 +417,12 @@ const styles = StyleSheet.create({
     marginBottom: 2,
   },
   upcomingLeagueLogo: {
-    width: 12,
-    height: 12,
+    width: 16,
+    height: 16,
   },
   upcomingLeague: {
     fontFamily: "Inter_500Medium",
-    fontSize: 10,
+    fontSize: 11,
     color: COLORS.textSecondary,
   },
   upcomingTeams: {
@@ -375,6 +434,17 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 4,
+  },
+  upcomingAlertBtn: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.overlay,
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 2,
   },
   upcomingTime: {
     fontFamily: "Inter_600SemiBold",

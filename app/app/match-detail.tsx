@@ -406,7 +406,7 @@ export default function MatchDetailScreen() {
                       <View key={rowIndex} style={styles.pitchRow}>
                         {row.map((p: any, pi: number) => (
                           <View key={`${p.id || p.name}-${pi}`} style={styles.pitchPlayerWrap}>
-                            <PlayerRow player={p} sport={params.sport} compact />
+                            <PlayerRow player={p} sport={params.sport} compact teamName={team.team} />
                           </View>
                         ))}
                       </View>
@@ -416,13 +416,13 @@ export default function MatchDetailScreen() {
                   <View style={styles.lineupListCard}>
                     <Text style={styles.lineupListLabel}>STARTING XI</Text>
                     {(team.players || []).filter((p: any) => p?.starter !== false).map((p: any, i: number) => (
-                      <PlayerRow key={`st_${p?.id || p?.name || i}`} player={p} sport={params.sport} />
+                      <PlayerRow key={`st_${p?.id || p?.name || i}`} player={p} sport={params.sport} teamName={team.team} />
                     ))}
                     {(team.players || []).some((p: any) => p?.starter === false) ? (
                       <>
                         <Text style={[styles.lineupListLabel, { marginTop: 10 }]}>BENCH</Text>
                         {(team.players || []).filter((p: any) => p?.starter === false).map((p: any, i: number) => (
-                          <PlayerRow key={`bn_${p?.id || p?.name || i}`} player={p} sport={params.sport} />
+                          <PlayerRow key={`bn_${p?.id || p?.name || i}`} player={p} sport={params.sport} teamName={team.team} />
                         ))}
                       </>
                     ) : null}
@@ -536,7 +536,7 @@ function StatsBars({ homeTeam, awayTeam, homeStats, awayStats }: any) {
   );
 }
 
-function PlayerRow({ player, sport, compact = false }: { player: any; sport: string; compact?: boolean }) {
+function PlayerRow({ player, sport, compact = false, teamName = "" }: { player: any; sport: string; compact?: boolean; teamName?: string }) {
   const photoCandidates = [
     player?.photo,
     player?.id ? `https://media.api-sports.io/football/players/${encodeURIComponent(String(player.id))}.png` : null,
@@ -552,9 +552,14 @@ function PlayerRow({ player, sport, compact = false }: { player: any; sport: str
       params: {
         playerId: String(player?.id || ""),
         name: String(player?.name || ""),
-        team: "",
+        team: String(teamName || ""),
         league: String(sport || "eng.1"),
         marketValue: String(player?.marketValue || ""),
+        age: player?.age ? String(player.age) : "",
+        height: String(player?.height || ""),
+        weight: String(player?.weight || ""),
+        position: String(player?.positionName || player?.position || ""),
+        nationality: String(player?.nationality || ""),
       },
     });
   };
@@ -579,12 +584,12 @@ function PlayerRow({ player, sport, compact = false }: { player: any; sport: str
       )}
       <View style={styles.playerInfo}>
         <View style={styles.playerNameRow}>
-          <Text style={styles.playerName} numberOfLines={1}>{player.name}</Text>
-          {player.marketValue ? (
+          <Text style={[styles.playerName, compact ? styles.playerNameCompact : null]} numberOfLines={1}>{player.name}</Text>
+          {!compact && player.marketValue ? (
             <Text style={styles.playerInlineValue} numberOfLines={1}>{player.marketValue}</Text>
           ) : null}
         </View>
-        <Text style={styles.playerPos} numberOfLines={1}>{player.positionName || player.position}</Text>
+        <Text style={[styles.playerPos, compact ? styles.playerPosCompact : null]} numberOfLines={1}>{player.positionName || player.position}</Text>
       </View>
       {!compact && <View style={{ alignItems: "flex-end", gap: 4 }}>
         {player.marketValue && (
@@ -852,8 +857,6 @@ const styles = StyleSheet.create({
   leagueName: { fontFamily: "Inter_500Medium", fontSize: 11, color: COLORS.textMuted, letterSpacing: 1, textTransform: "uppercase" },
   scoreRow: { flexDirection: "row", alignItems: "center", width: "100%", paddingHorizontal: 8 },
   teamSide: { flex: 1, alignItems: "center", gap: 6 },
-  teamLogo: { width: 52, height: 52, borderRadius: 26 },
-  teamLogoPlaceholder: { backgroundColor: COLORS.card, alignItems: "center", justifyContent: "center" },
   teamName: { fontFamily: "Inter_600SemiBold", fontSize: 12, color: COLORS.text, textAlign: "center" },
   tapHint: { fontFamily: "Inter_400Regular", fontSize: 10, color: COLORS.accentDim },
   scoreCenter: { width: 90, alignItems: "center", gap: 4 },
@@ -982,7 +985,7 @@ const styles = StyleSheet.create({
     gap: 8,
     zIndex: 2,
   },
-  pitchPlayerWrap: { minWidth: 70, flex: 1, maxWidth: 110 },
+  pitchPlayerWrap: { minWidth: 72, flex: 1, maxWidth: 120 },
   lineupListCard: {
     backgroundColor: COLORS.overlayLight,
     borderWidth: 1,
@@ -1002,12 +1005,12 @@ const styles = StyleSheet.create({
   playerRowCompact: {
     borderBottomWidth: 0,
     paddingVertical: 3,
-    paddingHorizontal: 2,
+    paddingHorizontal: 4,
     backgroundColor: "rgba(7,16,10,0.42)",
     borderRadius: 10,
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.12)",
-    gap: 6,
+    gap: 5,
   },
   playerJersey: { width: 28, height: 28, borderRadius: 6, backgroundColor: COLORS.card, borderWidth: 1, borderColor: COLORS.border, alignItems: "center", justifyContent: "center" },
   playerJerseyNum: { fontFamily: "Inter_700Bold", fontSize: 12, color: COLORS.accent },
@@ -1016,8 +1019,10 @@ const styles = StyleSheet.create({
   playerInfo: { flex: 1 },
   playerNameRow: { flexDirection: "row", alignItems: "center", gap: 6 },
   playerName: { fontFamily: "Inter_600SemiBold", fontSize: 13, color: COLORS.text },
+  playerNameCompact: { fontSize: 11 },
   playerInlineValue: { fontFamily: "Inter_700Bold", fontSize: 10, color: "#00C896" },
   playerPos: { fontFamily: "Inter_400Regular", fontSize: 11, color: COLORS.textMuted, marginTop: 1 },
+  playerPosCompact: { fontSize: 9, marginTop: 0 },
   starterBadge: { backgroundColor: COLORS.accentGlow, borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3, borderWidth: 1, borderColor: COLORS.accent },
   starterText: { fontFamily: "Inter_600SemiBold", fontSize: 10, color: COLORS.accent },
   marketValueBadge: { flexDirection: "row", alignItems: "center", gap: 3, backgroundColor: "rgba(0,200,150,0.12)", borderRadius: 6, paddingHorizontal: 7, paddingVertical: 3, borderWidth: 1, borderColor: "rgba(0,200,150,0.3)" },

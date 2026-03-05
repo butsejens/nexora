@@ -1,6 +1,7 @@
 import { fetch } from "expo/fetch";
 import { Platform } from "react-native";
 import { QueryClient, QueryFunction } from "@tanstack/react-query";
+import Constants from "expo-constants";
 
 let lastWorkingApiBase = "";
 
@@ -10,8 +11,6 @@ function normalizeBase(base: string): string {
 
 function getInferredNativeHost(): string {
   try {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires, @typescript-eslint/no-unsafe-assignment
-    const Constants = require("expo-constants");
     const rawHost =
       Constants?.expoConfig?.hostUri ||
       Constants?.manifest2?.extra?.expoClient?.hostUri ||
