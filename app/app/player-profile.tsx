@@ -133,9 +133,10 @@ export default function PlayerProfileScreen() {
     staleTime: 60_000,
   });
 
+  const safePlayerId = /^\d+$/.test(String(params.playerId || "").trim()) ? String(params.playerId).trim() : "";
   const photoCandidates = [
     data?.photo,
-    params.playerId ? `https://a.espncdn.com/i/headshots/soccer/players/full/${encodeURIComponent(String(params.playerId))}.png` : null,
+    safePlayerId ? `https://a.espncdn.com/i/headshots/soccer/players/full/${encodeURIComponent(safePlayerId)}.png` : null,
   ].filter(Boolean) as string[];
 
   const [photoIdx, setPhotoIdx] = useState(0);
@@ -216,7 +217,7 @@ export default function PlayerProfileScreen() {
             {(Array.isArray(data?.formerClubs) ? data.formerClubs : []).length === 0 ? (
               <Text style={styles.placeholder}>Geen transferhistoriek beschikbaar.</Text>
             ) : (
-              (data.formerClubs as any[]).map((club, idx) => (
+              ((data?.formerClubs ?? []) as any[]).map((club, idx) => (
                 <View key={`${club?.name || "club"}_${idx}`} style={styles.clubRow}>
                   <MaterialCommunityIcons name={club?.role === "to" ? "arrow-right-bold-circle-outline" : "arrow-left-bold-circle-outline"} size={15} color={COLORS.accent} />
                   <Text style={styles.clubName}>{club?.name || "Onbekend"}</Text>

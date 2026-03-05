@@ -239,14 +239,12 @@ function normalizeTeamLogo(teamName, logoUrl, ...fallbackCandidates) {
   return null;
 }
 
-function normalizePlayerPhoto(playerId, ...candidates) {
+function normalizePlayerPhoto(_playerId, ...candidates) {
   for (const c of candidates) {
     const v = String(c || "").trim();
     if (/^https?:\/\//i.test(v)) return v;
   }
-  const id = String(playerId || "").trim();
-  if (!id) return null;
-  return `https://a.espncdn.com/i/headshots/soccer/players/full/${encodeURIComponent(id)}.png`;
+  return null;
 }
 
 function normalizePersonName(name) {
@@ -517,49 +515,43 @@ async function fetchApifyPlayerFallback(playerId, playerName, teamName) {
   }
 }
 
-// SofaScore public API – photo lookup by player name (no API key required)
-async function fetchSofaScorePlayerPhoto(playerName, teamName) {
-  if (!playerName) return null;
-  const namePart = normalizePersonName(playerName);
-  const teamPart = normalizePersonName(teamName || "");
-  const cacheKey = `sofascore_photo_${namePart}_${teamPart}`;
+// TheSportsDB free API – get all players (with photos) for a team (no API key required)
+async function fetchTheSportsDBTeamPlayers(teamName) {
+  if (!teamName) return [];
+  const normTeam = normalizePersonName(teamName);
+  const cacheKey = `thesportsdb_players_${normTeam}`;
   const cacheItem = __cache.get(cacheKey);
   if (cacheItem && Date.now() <= cacheItem.expiresAt) return cacheItem.value;
 
   try {
-    const q = encodeURIComponent(String(playerName).trim());
-    const resp = await fetch(`https://api.sofascore.com/api/v1/search/all?q=${q}`, {
-      headers: {
-        "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-        accept: "application/json",
-      },
+    // Step 1: find team ID
+    const q = encodeURIComponent(String(teamName).trim());
+    const teamResp = await fetch(`https://www.thesportsdb.com/api/v1/json/3/searchteams.php?t=${q}`, {
+      headers: { "user-agent": "Mozilla/5.0", accept: "application/json" },
       signal: AbortSignal.timeout(4000),
     });
-    if (!resp.ok) { cacheSet(cacheKey, null, 60_000); return null; }
-    const data = await resp.json();
-    const players = Array.isArray(data?.players) ? data.players : [];
-    for (const item of players.slice(0, 8)) {
-      const p = item?.player;
-      if (!p?.id) continue;
-      const candName = normalizePersonName(p?.name || p?.shortName || "");
-      if (!candName) continue;
-      if (similarityScore(namePart, candName) < 0.65) continue;
-      if (teamPart && p?.team?.name) {
-        const ct = normalizePersonName(p.team.name);
-        const targetWords = teamPart.split(" ").filter(Boolean);
-        const candWords = ct.split(" ").filter(Boolean);
-        const hasOverlap = targetWords.some((w) => candWords.includes(w)) || candWords.some((w) => targetWords.includes(w));
-        if (!hasOverlap) continue;
-      }
-      const photoUrl = `https://api.sofascore.com/api/v1/player/${p.id}/image`;
-      cacheSet(cacheKey, photoUrl, 3_600_000);
-      return photoUrl;
-    }
-    cacheSet(cacheKey, null, 60_000);
-    return null;
+    if (!teamResp.ok) { cacheSet(cacheKey, [], 300_000); return []; }
+    const teamData = await teamResp.json();
+    const teamId = teamData?.teams?.[0]?.idTeam;
+    if (!teamId) { cacheSet(cacheKey, [], 300_000); return []; }
+
+    // Step 2: get all players for that team
+    const playersResp = await fetch(`https://www.thesportsdb.com/api/v1/json/3/lookup_all_players.php?id=${teamId}`, {
+      headers: { "user-agent": "Mozilla/5.0", accept: "application/json" },
+      signal: AbortSignal.timeout(6000),
+    });
+    if (!playersResp.ok) { cacheSet(cacheKey, [], 300_000); return []; }
+    const playersData = await playersResp.json();
+    const list = (playersData?.player || []).map((p) => ({
+      name: normalizePersonName(p?.strPlayer || ""),
+      photo: p?.strCutout || p?.strThumb || null,
+    })).filter((p) => p.name && p.photo);
+
+    cacheSet(cacheKey, list, 86_400_000); // cache 24h
+    return list;
   } catch {
-    cacheSet(cacheKey, null, 60_000);
-    return null;
+    cacheSet(cacheKey, [], 300_000);
+    return [];
   }
 }
 
@@ -885,6 +877,32 @@ async function enrichRosterMarketValues(players, teamName) {
   });
 }
 
+async function enrichRosterPhotos(players, teamName) {
+  if (!Array.isArray(players) || players.length === 0) return players || [];
+  const needsPhoto = players.some((p) => p && !p.photo);
+  if (!needsPhoto) return players;
+
+  const dbPlayers = await fetchTheSportsDBTeamPlayers(teamName);
+  if (dbPlayers.length === 0) return players;
+
+  return players.map((player) => {
+    if (!player || player.photo) return player;
+    const normName = normalizePersonName(player.name || "");
+    if (!normName) return player;
+
+    // Try exact match first, then similarity
+    let best = null;
+    let bestScore = 0;
+    for (const dbp of dbPlayers) {
+      if (dbp.name === normName) { best = dbp; break; }
+      const score = similarityScore(normName, dbp.name);
+      if (score > bestScore && score >= 0.6) { best = dbp; bestScore = score; }
+    }
+    if (best) return { ...player, photo: best.photo };
+    return player;
+  });
+}
+
 function inferStrengthsWeaknesses(position, age) {
   const pos = String(position || "").toUpperCase();
   const years = Number(age || 0);
@@ -1009,7 +1027,6 @@ function mapEspnRosterPlayer(player) {
     photo: normalizePlayerPhoto(
       playerId,
       player?.headshot?.href,
-      playerId ? `https://a.espncdn.com/i/headshots/soccer/players/full/${encodeURIComponent(playerId)}.png` : null
     ),
   };
 }
@@ -2020,7 +2037,6 @@ app.get("/api/sports/match/:matchId", async (req, res) => {
                 photo: normalizePlayerPhoto(
                   id,
                   ath?.headshot?.href,
-                  id ? `https://a.espncdn.com/i/headshots/soccer/players/full/${encodeURIComponent(id)}.png` : null,
                 ),
               });
             }
@@ -2038,7 +2054,8 @@ app.get("/api/sports/match/:matchId", async (req, res) => {
           .filter((t) => t.players.length > 0);
 
         for (const team of starters) {
-          team.players = await enrichRosterMarketValues(team.players || [], team.team || "");
+          const valued = await enrichRosterMarketValues(team.players || [], team.team || "");
+          team.players = await enrichRosterPhotos(valued, team.team || "");
         }
 
         return {
@@ -2125,14 +2142,14 @@ app.get("/api/sports/match/:matchId", async (req, res) => {
             photo: normalizePlayerPhoto(
               id,
               p?.photo,
-              id ? `https://a.espncdn.com/i/headshots/soccer/players/full/${encodeURIComponent(id)}.png` : null
             ),
           };
         }),
       }));
 
       for (const team of starters) {
-        team.players = await enrichRosterMarketValues(team.players || [], team.team || "");
+        const valued = await enrichRosterMarketValues(team.players || [], team.team || "");
+        team.players = await enrichRosterPhotos(valued, team.team || "");
       }
 
       return {
@@ -2537,16 +2554,24 @@ app.get("/api/sports/team/:teamId", async (req, res) => {
       }
       const players = Array.from(dedup.values());
       const valuedPlayers = await enrichRosterMarketValues(players, team?.displayName || team?.name || teamNameFromQuery || "");
+      const enrichedPlayers = await enrichRosterPhotos(
+        valuedPlayers,
+        team?.displayName || team?.name || teamNameFromQuery || ""
+      );
+
+      const teamDisplayName = team?.displayName || team?.name || teamNameFromQuery || "";
+      const baseLogo = normalizeTeamLogo(
+        teamDisplayName,
+        team?.logos?.[0]?.href || team?.logo || null,
+        team?.id ? `https://a.espncdn.com/i/teamlogos/soccer/500/${encodeURIComponent(String(team.id))}.png` : null,
+      );
+      const resolvedLogo = baseLogo || await fetchTheSportsDBTeamLogo(teamDisplayName) || null;
 
       return {
         id: String(team?.id || resolvedTeamId || ""),
-        name: team?.displayName || team?.name || teamNameFromQuery || "Team",
+        name: teamDisplayName || "Team",
         shortName: team?.abbreviation || team?.shortDisplayName || "",
-        logo: normalizeTeamLogo(
-          team?.displayName || team?.name || teamNameFromQuery,
-          team?.logos?.[0]?.href || team?.logo || null,
-          team?.id ? `https://a.espncdn.com/i/teamlogos/soccer/500/${encodeURIComponent(String(team.id))}.png` : null,
-        ),
+        logo: resolvedLogo,
         color: team?.color ? `#${String(team.color).replace("#", "")}` : "#151515",
         leagueName: rosterJson?.team?.links?.[0]?.text || espnLeague,
         leagueRank: undefined,
@@ -2555,7 +2580,7 @@ app.get("/api/sports/team/:teamId", async (req, res) => {
         venue: team?.venue?.fullName || team?.venue?.name || "",
         coach: team?.staff?.[0]?.displayName || "",
         record: "",
-        players: valuedPlayers,
+        players: enrichedPlayers,
         source: "espn",
       };
     });
@@ -2657,9 +2682,18 @@ app.get("/api/sports/player/:playerId", async (req, res) => {
         profile?.photo,
         apifyFallback?.photo,
         espnAthlete?.headshot?.href,
-        valued?.id ? `https://a.espncdn.com/i/headshots/soccer/players/full/${encodeURIComponent(String(valued.id))}.png` : null,
       );
-      const resolvedPhoto = basePhoto || await fetchSofaScorePlayerPhoto(name, clubName) || null;
+      let resolvedPhoto = basePhoto;
+      if (!resolvedPhoto && clubName) {
+        const dbPlayers = await fetchTheSportsDBTeamPlayers(clubName);
+        const normName = normalizePersonName(name || "");
+        for (const dbp of dbPlayers) {
+          if (dbp.name === normName || similarityScore(normName, dbp.name) >= 0.6) {
+            resolvedPhoto = dbp.photo;
+            break;
+          }
+        }
+      }
       const baseClubLogo = normalizeTeamLogo(
         clubName,
         profileStats?.team?.logo || espnTeam?.logo || espnTeam?.logos?.[0]?.href || apifyFallback?.teamLogo || null

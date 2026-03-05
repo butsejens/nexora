@@ -64,14 +64,12 @@ export default function TeamDetailScreen() {
 
   const sport = params.sport || "soccer";
   const league = params.league || "eng.1";
-  const teamName = String(data?.name || params.teamName || "Team");
-  const teamLogoUri = resolveTeamLogoUri(teamName, data?.logo || params.logo || `https://a.espncdn.com/i/teamlogos/soccer/500/${params.teamId}.png`);
 
   const { data, isLoading, error } = useQuery({
     queryKey: ["team-detail", params.teamId, sport, league],
     queryFn: async () => {
-      const teamName = encodeURIComponent(String(params.teamName || ""));
-      const res = await apiRequest("GET", `/api/sports/team/${params.teamId}?sport=${sport}&league=${league}&teamName=${teamName}`);
+      const tn = encodeURIComponent(String(params.teamName || ""));
+      const res = await apiRequest("GET", `/api/sports/team/${params.teamId}?sport=${sport}&league=${league}&teamName=${tn}`);
       return res.json();
     },
     staleTime: 0,
@@ -87,6 +85,9 @@ export default function TeamDetailScreen() {
     enabled: !!league,
     staleTime: 5 * 60 * 1000,
   });
+
+  const teamName = String(data?.name || params.teamName || "Team");
+  const teamLogoUri = resolveTeamLogoUri(teamName, data?.logo || params.logo || `https://a.espncdn.com/i/teamlogos/soccer/500/${params.teamId}.png`);
 
   const players: any[] = useMemo(() => data?.players || [], [data?.players]);
 
@@ -314,10 +315,10 @@ export default function TeamDetailScreen() {
 }
 
 function PlayerCard({ player }: { player: any }) {
+  const safePlayerId = /^\d+$/.test(String(player?.id || "").trim()) ? String(player.id).trim() : "";
   const photoCandidates = [
     player?.photo,
-    player?.id ? `https://media.api-sports.io/football/players/${encodeURIComponent(String(player.id))}.png` : null,
-    player?.id ? `https://a.espncdn.com/i/headshots/soccer/players/full/${encodeURIComponent(String(player.id))}.png` : null,
+    safePlayerId ? `https://a.espncdn.com/i/headshots/soccer/players/full/${encodeURIComponent(safePlayerId)}.png` : null,
   ].filter(Boolean) as string[];
   const [photoIndex, setPhotoIndex] = useState(0);
   const photoUri = photoCandidates[photoIndex];
