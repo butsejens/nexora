@@ -28,3 +28,9 @@ services:
         sync: false
       - key: TMDB_API_KEY
         value: 090a34f37141e9fab2e8007a1eb27465
+      - key: APIFY_TOKEN
+        sync: false
+      - key: APIFY_SOFASCORE_ACTOR
+        value: azzouzana/sofascore-scraper-pro
+      - key: APIFY_TRANSFERMARKT_ACTOR
+        value: data_xplorer/transfermarkt-api-scraper

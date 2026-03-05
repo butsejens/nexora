@@ -480,21 +480,21 @@ async function apifyRunActor(actorId, input = {}) {
   const actor = String(actorId || "").trim();
   if (!token || !actor) return [];
 
-  const startResp = await fetch(`${APIFY_BASE}/acts/${encodeURIComponent(actor)}/runs?token=${encodeURIComponent(token)}`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(input || {}),
-  });
-  if (!startResp.ok) return [];
-
-  const runData = await startResp.json().catch(() => null);
-  const datasetId = runData?.data?.defaultDatasetId;
-  if (!datasetId) return [];
-
-  const itemsResp = await fetch(`${APIFY_BASE}/datasets/${encodeURIComponent(datasetId)}/items?clean=true&token=${encodeURIComponent(token)}`);
-  if (!itemsResp.ok) return [];
-  const items = await itemsResp.json().catch(() => []);
-  return Array.isArray(items) ? items : [];
+  try {
+    // run-sync-get-dataset-items: starts actor, waits for completion, returns items directly
+    const url = `${APIFY_BASE}/acts/${encodeURIComponent(actor)}/run-sync-get-dataset-items?token=${encodeURIComponent(token)}&clean=true&limit=10`;
+    const resp = await fetch(url, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(input || {}),
+      signal: AbortSignal.timeout(120_000), // 2 min max (Apify actors can take 30-90s)
+    });
+    if (!resp.ok) return [];
+    const items = await resp.json().catch(() => []);
+    return Array.isArray(items) ? items : [];
+  } catch {
+    return [];
+  }
 }
 
 function mapFormerClubsFromApify(raw) {
