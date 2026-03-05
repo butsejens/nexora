@@ -2694,7 +2694,7 @@ app.get("/api/sports/player/:playerId", async (req, res) => {
 
       if (playerId) {
         try {
-          const athleteResp = await fetch(`https://site.api.espn.com/apis/site/v2/sports/soccer/${encodeURIComponent(espnLeague)}/athletes/${encodeURIComponent(playerId)}`, {
+          const athleteResp = await fetch(`https://sports.core.api.espn.com/v2/sports/soccer/leagues/${encodeURIComponent(espnLeague)}/athletes/${encodeURIComponent(playerId)}`, {
             headers: { "user-agent": "Mozilla/5.0 (Nexora/1.0)", accept: "application/json" },
           });
           if (athleteResp.ok) {
