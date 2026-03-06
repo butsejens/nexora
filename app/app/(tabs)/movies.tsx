@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo, useEffect, useCallback } from "react";
 import {
   View, Text, StyleSheet, FlatList, Platform, RefreshControl,
   TouchableOpacity, TextInput, ActivityIndicator,
@@ -34,12 +34,21 @@ async function fetchMovies() {
   }
 }
 
-async function fetchMovieGenres() {
+async function fetchMovieGenres(page = 1) {
   try {
-    const res = await withTimeout(apiRequest("GET", "/api/movies/genres-catalog"), 15000);
+    const res = await withTimeout(apiRequest("GET", `/api/movies/genres-catalog?page=${page}`), 20000);
     return await res.json();
   } catch {
     return { genres: [] };
+  }
+}
+
+async function fetchMovieDecades() {
+  try {
+    const res = await withTimeout(apiRequest("GET", "/api/movies/decades"), 15000);
+    return await res.json();
+  } catch {
+    return { decades: [] };
   }
 }
 
@@ -51,6 +60,9 @@ export default function MoviesScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [loadingGuardReached, setLoadingGuardReached] = useState(false);
 
+  // Per-genre extra pages state: genreId -> { page, items[], loading }
+  const [genreExtras, setGenreExtras] = useState<Record<number, { page: number; items: any[]; loading: boolean }>>({});
+
   const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ["movies", "trending"],
     queryFn: fetchMovies,
@@ -60,8 +72,15 @@ export default function MoviesScreen() {
 
   const { data: genresData, refetch: refetchGenres } = useQuery({
     queryKey: ["movies", "genres"],
-    queryFn: fetchMovieGenres,
+    queryFn: () => fetchMovieGenres(1),
     staleTime: 10 * 60 * 1000,
+    retry: 0,
+  });
+
+  const { data: decadesData } = useQuery({
+    queryKey: ["movies", "decades"],
+    queryFn: fetchMovieDecades,
+    staleTime: 30 * 60 * 1000,
     retry: 0,
   });
 
@@ -97,6 +116,7 @@ export default function MoviesScreen() {
   const popular = useMemo(() => data?.popular || [], [data]);
   const upcoming = useMemo(() => data?.upcoming || [], [data]);
   const movieGenres: any[] = useMemo(() => genresData?.genres || [], [genresData]);
+  const movieDecades: any[] = useMemo(() => decadesData?.decades || [], [decadesData]);
 
   const featured = iptvMovies.length > 0
     ? filteredIptv[0]
@@ -133,7 +153,6 @@ export default function MoviesScreen() {
     }
   };
 
-  // Direct play — bypasses detail screen
   const goToPlayer = (item: any) => {
     SafeHaptics.impactLight();
     const tmdbId = item.tmdbId ? String(item.tmdbId) : (!item.isIptv ? item.id : null);
@@ -161,6 +180,29 @@ export default function MoviesScreen() {
     }
   };
 
+  // ── Load more per genre ───────────────────────────────────────────────────
+  const loadMoreGenre = useCallback(async (genreId: number) => {
+    const current = genreExtras[genreId] || { page: 1, items: [], loading: false };
+    if (current.loading) return;
+    const nextPage = current.page + 1;
+    setGenreExtras(prev => ({ ...prev, [genreId]: { ...current, loading: true } }));
+    try {
+      const data = await fetchMovieGenres(nextPage);
+      const genre = (data.genres || []).find((g: any) => g.id === genreId);
+      const newItems = genre?.items || [];
+      setGenreExtras(prev => ({
+        ...prev,
+        [genreId]: {
+          page: nextPage,
+          items: [...(prev[genreId]?.items || []), ...newItems],
+          loading: false,
+        },
+      }));
+    } catch {
+      setGenreExtras(prev => ({ ...prev, [genreId]: { ...current, loading: false } }));
+    }
+  }, [genreExtras]);
+
   const filteredTmdb = useMemo(() => {
     if (!search.trim()) return null;
     const q = search.toLowerCase();
@@ -175,15 +217,47 @@ export default function MoviesScreen() {
     return results.filter((m: any) => { if (seen.has(m.id)) return false; seen.add(m.id); return true; });
   }, [search, trending, newReleases, topRated, popular, upcoming]);
 
-  const renderCard = (item: any, type = "movie") => (
+  const renderCard = (item: any) => (
     <RealContentCard
       item={item}
       onPress={() => goToDetail(item)}
-      onPlay={() => goToPlayer(item)}
       onFavorite={() => toggleFavorite(item.id)}
       isFavorite={isFavorite(item.id)}
     />
   );
+
+  const renderGenreRow = (genre: any) => {
+    const extra = genreExtras[genre.id];
+    const allItems = extra ? [...genre.items, ...extra.items] : genre.items;
+    return (
+      <View key={String(genre.id)} style={styles.section}>
+        <Text style={styles.sectionTitle}>{genre.name}</Text>
+        <FlatList
+          horizontal
+          data={allItems}
+          keyExtractor={(item: any) => item.id}
+          renderItem={({ item }: any) => renderCard(item)}
+          contentContainerStyle={styles.carouselPadding}
+          showsHorizontalScrollIndicator={false}
+          ListFooterComponent={
+            <TouchableOpacity
+              style={styles.loadMoreBtn}
+              onPress={() => loadMoreGenre(genre.id)}
+              disabled={extra?.loading}
+            >
+              {extra?.loading
+                ? <ActivityIndicator size="small" color={COLORS.accent} />
+                : <>
+                    <Ionicons name="chevron-forward-circle-outline" size={18} color={COLORS.accent} />
+                    <Text style={styles.loadMoreText}>Meer</Text>
+                  </>
+              }
+            </TouchableOpacity>
+          }
+        />
+      </View>
+    );
+  };
 
   return (
     <View style={styles.container}>
@@ -227,6 +301,7 @@ export default function MoviesScreen() {
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={async () => {
             setRefreshing(true);
+            setGenreExtras({});
             await Promise.all([refetch(), refetchGenres()]);
             setRefreshing(false);
           }} tintColor={COLORS.accent} />
@@ -350,15 +425,18 @@ export default function MoviesScreen() {
                   </View>
                 )}
 
-                {/* Genre rows — 2000 to present */}
-                {movieGenres.map((genre: any) => (
-                  genre.items?.length > 0 && (
-                    <View key={String(genre.id)} style={styles.section}>
-                      <Text style={styles.sectionTitle}>{genre.name}</Text>
+                {/* Genre rows — 15 genres, each with load-more */}
+                {movieGenres.map((genre: any) => genre.items?.length > 0 && renderGenreRow(genre))}
+
+                {/* Decade rows */}
+                {movieDecades.map((decade: any) => (
+                  decade.items?.length > 0 && (
+                    <View key={decade.decade} style={styles.section}>
+                      <Text style={styles.sectionTitle}>Beste van de {decade.name}</Text>
                       <FlatList
                         horizontal
-                        data={genre.items}
-                        keyExtractor={(item: any) => item.id}
+                        data={decade.items}
+                        keyExtractor={(item: any) => `${decade.decade}-${item.id}`}
                         renderItem={({ item }: any) => renderCard(item)}
                         contentContainerStyle={styles.carouselPadding}
                         showsHorizontalScrollIndicator={false}
@@ -430,4 +508,11 @@ const styles = StyleSheet.create({
   section: { marginBottom: 28 },
   sectionTitle: { fontFamily: "Inter_700Bold", fontSize: 20, color: COLORS.text, marginBottom: 14, paddingHorizontal: 20 },
   carouselPadding: { paddingHorizontal: 20, paddingRight: 8 },
+  loadMoreBtn: {
+    width: 64, alignItems: "center", justifyContent: "center", gap: 4,
+    backgroundColor: COLORS.cardElevated, borderRadius: 16,
+    borderWidth: 1, borderColor: COLORS.border,
+    marginLeft: 6, marginRight: 20, height: 203,
+  },
+  loadMoreText: { fontFamily: "Inter_600SemiBold", fontSize: 11, color: COLORS.accent },
 });

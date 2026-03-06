@@ -159,8 +159,8 @@ export function MatchCard({ match, onPress, onToggleNotification, notificationsE
 
           {/* Home team */}
           <View style={styles.teamSection}>
-            <TeamLogo uri={match.homeTeamLogo} teamName={match.homeTeam} size={58} />
-            <Text style={styles.teamName} numberOfLines={2}>{match.homeTeam}</Text>
+            <TeamLogo uri={match.homeTeamLogo} teamName={match.homeTeam} size={50} />
+            <Text style={styles.teamName} numberOfLines={2} adjustsFontSizeToFit minimumFontScale={0.8}>{match.homeTeam}</Text>
           </View>
 
           {/* Score / time center */}
@@ -173,14 +173,14 @@ export function MatchCard({ match, onPress, onToggleNotification, notificationsE
           ) : (
             <View style={styles.timeCenterBox}>
               <Ionicons name="time-outline" size={11} color={COLORS.accent} />
-              <Text style={styles.timeCenterText}>{match.startTime}</Text>
+              <Text style={styles.timeCenterText} numberOfLines={1}>{match.startTime}</Text>
             </View>
           )}
 
           {/* Away team */}
           <View style={styles.teamSection}>
-            <TeamLogo uri={match.awayTeamLogo} teamName={match.awayTeam} size={58} />
-            <Text style={styles.teamName} numberOfLines={2}>{match.awayTeam}</Text>
+            <TeamLogo uri={match.awayTeamLogo} teamName={match.awayTeam} size={50} />
+            <Text style={styles.teamName} numberOfLines={2} adjustsFontSizeToFit minimumFontScale={0.8}>{match.awayTeam}</Text>
           </View>
 
           {/* Live badge */}
@@ -274,7 +274,7 @@ const styles = StyleSheet.create({
   },
   card: {
     width: 160,
-    height: 258,
+    height: 285,
     borderRadius: 22,
     padding: 12,
     borderWidth: 2,

@@ -4073,7 +4073,7 @@ app.get("/api/series/:id/full", tmdbLimiter, async (req, res) => {
 });
 // ─── Genre catalog (discover) ─────────────────────────────────────────────────
 // Returns genre rows using TMDB /discover, from 2000 to now.
-// 11 concurrent genre calls per request — well within TMDB 50 req/s limit.
+// Supports ?page=N for infinite scroll — each TMDB genre has up to 500 pages.
 
 const MOVIE_GENRES = [
   { id: 28,    name: "Actie" },
@@ -4087,6 +4087,10 @@ const MOVIE_GENRES = [
   { id: 80,    name: "Misdaad" },
   { id: 12,    name: "Avontuur" },
   { id: 14,    name: "Fantasy" },
+  { id: 10402, name: "Muziek" },
+  { id: 9648,  name: "Mysterie" },
+  { id: 36,    name: "Geschiedenis" },
+  { id: 10752, name: "Oorlog" },
 ];
 
 const SERIES_GENRES = [
@@ -4099,24 +4103,32 @@ const SERIES_GENRES = [
   { id: 80,    name: "Misdaad" },
   { id: 16,    name: "Animatie" },
   { id: 10762, name: "Voor Kinderen" },
+  { id: 10763, name: "Nieuws" },
+  { id: 10764, name: "Reality" },
+  { id: 10766, name: "Soap" },
+  { id: 10767, name: "Talkshow" },
+  { id: 10768, name: "Politiek" },
 ];
 
 app.get("/api/movies/genres-catalog", tmdbLimiter, async (req, res) => {
   try {
     if (!process.env.TMDB_API_KEY) return res.json({ genres: [] });
+    const page = Math.max(1, Math.min(500, parseInt(req.query.page) || 1));
     const results = await Promise.all(
       MOVIE_GENRES.map(async (g) => {
         const data = await tmdb(
-          `/discover/movie?with_genres=${g.id}&primary_release_date.gte=2000-01-01&sort_by=popularity.desc&vote_count.gte=50`
+          `/discover/movie?with_genres=${g.id}&primary_release_date.gte=2000-01-01&sort_by=popularity.desc&vote_count.gte=50&page=${page}`
         );
         return {
           id: g.id,
           name: g.name,
-          items: (data?.results || []).slice(0, 20).map((it) => mapTrendingItem(it, "movie")),
+          items: (data?.results || []).map((it) => mapTrendingItem(it, "movie")),
+          totalPages: data?.total_pages || 1,
+          totalResults: data?.total_results || 0,
         };
       })
     );
-    res.json({ genres: results.filter((g) => g.items.length > 0) });
+    res.json({ genres: results.filter((g) => g.items.length > 0), page });
   } catch (e) {
     res.status(200).json({ genres: [], error: String(e?.message || e) });
   }
@@ -4125,21 +4137,136 @@ app.get("/api/movies/genres-catalog", tmdbLimiter, async (req, res) => {
 app.get("/api/series/genres-catalog", tmdbLimiter, async (req, res) => {
   try {
     if (!process.env.TMDB_API_KEY) return res.json({ genres: [] });
+    const page = Math.max(1, Math.min(500, parseInt(req.query.page) || 1));
     const results = await Promise.all(
       SERIES_GENRES.map(async (g) => {
         const data = await tmdb(
-          `/discover/tv?with_genres=${g.id}&first_air_date.gte=2000-01-01&sort_by=popularity.desc&vote_count.gte=50`
+          `/discover/tv?with_genres=${g.id}&first_air_date.gte=2000-01-01&sort_by=popularity.desc&vote_count.gte=50&page=${page}`
         );
         return {
           id: g.id,
           name: g.name,
-          items: (data?.results || []).slice(0, 20).map((it) => mapTrendingItem(it, "series")),
+          items: (data?.results || []).map((it) => mapTrendingItem(it, "series")),
+          totalPages: data?.total_pages || 1,
+          totalResults: data?.total_results || 0,
         };
       })
     );
-    res.json({ genres: results.filter((g) => g.items.length > 0) });
+    res.json({ genres: results.filter((g) => g.items.length > 0), page });
   } catch (e) {
     res.status(200).json({ genres: [], error: String(e?.message || e) });
+  }
+});
+
+// ─── All movies / series (no genre filter, full popularity sort) ──────────────
+// Supports ?page=N for infinite scroll. Up to ~10,000 results per sort.
+app.get("/api/movies/all", tmdbLimiter, async (req, res) => {
+  try {
+    if (!process.env.TMDB_API_KEY) return res.json({ items: [] });
+    const page = Math.max(1, Math.min(500, parseInt(req.query.page) || 1));
+    const sortBy = req.query.sort_by || "popularity.desc";
+    const year = req.query.year ? `&primary_release_year=${req.query.year}` : "";
+    const decade = req.query.decade;
+    let dateRange = year;
+    if (decade && !year) {
+      const from = `${decade}-01-01`;
+      const to = `${parseInt(decade) + 9}-12-31`;
+      dateRange = `&primary_release_date.gte=${from}&primary_release_date.lte=${to}`;
+    }
+    const data = await tmdb(
+      `/discover/movie?sort_by=${sortBy}&vote_count.gte=10&primary_release_date.gte=1990-01-01${dateRange}&page=${page}`
+    );
+    res.json({
+      items: (data?.results || []).map((it) => mapTrendingItem(it, "movie")),
+      page,
+      totalPages: data?.total_pages || 1,
+      totalResults: data?.total_results || 0,
+    });
+  } catch (e) {
+    res.status(200).json({ items: [], error: String(e?.message || e) });
+  }
+});
+
+app.get("/api/series/all", tmdbLimiter, async (req, res) => {
+  try {
+    if (!process.env.TMDB_API_KEY) return res.json({ items: [] });
+    const page = Math.max(1, Math.min(500, parseInt(req.query.page) || 1));
+    const sortBy = req.query.sort_by || "popularity.desc";
+    const year = req.query.year ? `&first_air_date_year=${req.query.year}` : "";
+    const decade = req.query.decade;
+    let dateRange = year;
+    if (decade && !year) {
+      const from = `${decade}-01-01`;
+      const to = `${parseInt(decade) + 9}-12-31`;
+      dateRange = `&first_air_date.gte=${from}&first_air_date.lte=${to}`;
+    }
+    const data = await tmdb(
+      `/discover/tv?sort_by=${sortBy}&vote_count.gte=10&first_air_date.gte=1990-01-01${dateRange}&page=${page}`
+    );
+    res.json({
+      items: (data?.results || []).map((it) => mapTrendingItem(it, "series")),
+      page,
+      totalPages: data?.total_pages || 1,
+      totalResults: data?.total_results || 0,
+    });
+  } catch (e) {
+    res.status(200).json({ items: [], error: String(e?.message || e) });
+  }
+});
+
+// ─── Decade rows for movies/series ───────────────────────────────────────────
+// Returns one row per decade: 1990s, 2000s, 2010s, 2020s
+app.get("/api/movies/decades", tmdbLimiter, async (req, res) => {
+  try {
+    if (!process.env.TMDB_API_KEY) return res.json({ decades: [] });
+    const decades = [
+      { decade: "2020", name: "2020s" },
+      { decade: "2010", name: "2010s" },
+      { decade: "2000", name: "2000s" },
+      { decade: "1990", name: "1990s" },
+    ];
+    const results = await Promise.all(
+      decades.map(async (d) => {
+        const data = await tmdb(
+          `/discover/movie?sort_by=popularity.desc&vote_count.gte=50&primary_release_date.gte=${d.decade}-01-01&primary_release_date.lte=${parseInt(d.decade) + 9}-12-31&page=1`
+        );
+        return {
+          decade: d.decade,
+          name: d.name,
+          items: (data?.results || []).map((it) => mapTrendingItem(it, "movie")),
+        };
+      })
+    );
+    res.json({ decades: results.filter((d) => d.items.length > 0) });
+  } catch (e) {
+    res.status(200).json({ decades: [], error: String(e?.message || e) });
+  }
+});
+
+app.get("/api/series/decades", tmdbLimiter, async (req, res) => {
+  try {
+    if (!process.env.TMDB_API_KEY) return res.json({ decades: [] });
+    const decades = [
+      { decade: "2020", name: "2020s" },
+      { decade: "2010", name: "2010s" },
+      { decade: "2000", name: "2000s" },
+      { decade: "1990", name: "1990s" },
+    ];
+    const results = await Promise.all(
+      decades.map(async (d) => {
+        const data = await tmdb(
+          `/discover/tv?sort_by=popularity.desc&vote_count.gte=50&first_air_date.gte=${d.decade}-01-01&first_air_date.lte=${parseInt(d.decade) + 9}-12-31&page=1`
+        );
+        return {
+          decade: d.decade,
+          name: d.name,
+          items: (data?.results || []).map((it) => mapTrendingItem(it, "series")),
+        };
+      })
+    );
+    res.json({ decades: results.filter((d) => d.items.length > 0) });
+  } catch (e) {
+    res.status(200).json({ decades: [], error: String(e?.message || e) });
   }
 });
 

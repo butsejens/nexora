@@ -29,6 +29,19 @@ import { SafeHaptics } from "@/lib/safeHaptics";
 
 const CHANGELOG: { version: string; date: string; changes: string[] }[] = [
   {
+    version: "1.9.0",
+    date: "2026-03-06",
+    changes: [
+      "Play-knop verwijderd van poster-kaartjes (enkel nog op hero banner)",
+      "Sport live-kaartje vergroot (285px) en tekst past nu volledig in het vak",
+      "15 filmgenres + 14 seriegenres (was 11 + 9) via TMDB Discover",
+      "Nieuwe 'Meer' knop per genrerij — laad onbeperkt meer content (tot 500 pagina's)",
+      "Decennia-rijen: Beste films/series van de 1990s, 2000s, 2010s, 2020s",
+      "Nieuwe API-endpoints: /api/movies/all, /api/series/all met paginering en jaar/decennium filter",
+      "Nieuwe eindpunten /api/movies/decades en /api/series/decades",
+    ],
+  },
+  {
     version: "1.8.0",
     date: "2026-03-06",
     changes: [
