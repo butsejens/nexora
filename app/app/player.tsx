@@ -448,8 +448,9 @@ export default function PlayerScreen() {
         )}
       </View>
 
-      {/* Tap area to toggle controls */}
-      <TouchableOpacity style={StyleSheet.absoluteFill} onPress={showControls} activeOpacity={1} />
+      {/* Tap strips – top + bottom edges show controls; CENTER is transparent so embed play buttons work */}
+      <TouchableOpacity style={styles.tapStripTop} onPress={showControls} activeOpacity={1} />
+      <TouchableOpacity style={styles.tapStripBottom} onPress={showControls} activeOpacity={1} />
 
       {/* Controls overlay */}
       <Animated.View
@@ -541,4 +542,6 @@ const styles = StyleSheet.create({
   bottomGrad: { paddingTop: 60 },
   bottomBar: { paddingHorizontal: 14, alignItems: "flex-end" },
   reloadBtn: { width: 38, height: 38, alignItems: "center", justifyContent: "center" },
+  tapStripTop: { position: "absolute", top: 0, left: 0, right: 0, height: 80, zIndex: 5 },
+  tapStripBottom: { position: "absolute", bottom: 0, left: 0, right: 0, height: 80, zIndex: 5 },
 });

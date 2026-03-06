@@ -103,7 +103,7 @@ export function MatchCard({ match, onPress, onToggleNotification, notificationsE
   const scaleAnim = useRef(new Animated.Value(1)).current;
 
   const handlePressIn = () => {
-    Animated.spring(scaleAnim, { toValue: 0.97, useNativeDriver: true, speed: 30 }).start();
+    Animated.spring(scaleAnim, { toValue: 0.96, useNativeDriver: true, speed: 30 }).start();
   };
   const handlePressOut = () => {
     Animated.spring(scaleAnim, { toValue: 1, useNativeDriver: true, speed: 20 }).start();
@@ -114,10 +114,7 @@ export function MatchCard({ match, onPress, onToggleNotification, notificationsE
   return (
     <Animated.View style={[styles.wrapper, { transform: [{ scale: scaleAnim }] }]}>
       <TouchableOpacity
-        onPress={() => {
-          SafeHaptics.impactMedium();
-          onPress();
-        }}
+        onPress={() => { SafeHaptics.impactMedium(); onPress(); }}
         onPressIn={handlePressIn}
         onPressOut={handlePressOut}
         activeOpacity={1}
@@ -126,70 +123,65 @@ export function MatchCard({ match, onPress, onToggleNotification, notificationsE
           colors={[...match.heroGradient] as any}
           style={styles.card}
           start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
+          end={{ x: 0, y: 1 }}
         >
-          {/* League row */}
-          <View style={styles.topRow}>
-            <View style={styles.leagueRow}>
+          {/* League header */}
+          <View style={styles.leagueHeaderRow}>
+            <View style={styles.leagueLeft}>
               {leagueLogo ? (
                 <Image source={{ uri: leagueLogo }} style={styles.leagueLogo} resizeMode="contain" />
               ) : (
-                <MaterialCommunityIcons
-                  name={(SPORT_ICONS[match.sport] || "soccer") as any}
-                  size={14}
-                  color={COLORS.textMuted}
-                />
+                <MaterialCommunityIcons name={(SPORT_ICONS[match.sport] || "soccer") as any} size={13} color={COLORS.textMuted} />
               )}
               <Text style={styles.league} numberOfLines={1}>{match.league}</Text>
             </View>
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-              {onToggleNotification ? (
-                <TouchableOpacity
-                  onPress={(e) => {
-                    e.stopPropagation();
-                    SafeHaptics.selection();
-                    onToggleNotification();
-                  }}
-                  style={styles.alertBtn}
-                  hitSlop={{ top: 10, right: 10, bottom: 10, left: 10 }}
-                >
-                  <Ionicons
-                    name={notificationsEnabled ? "notifications" : "notifications-outline"}
-                    size={14}
-                    color={notificationsEnabled ? COLORS.accent : COLORS.textMuted}
-                  />
-                </TouchableOpacity>
-              ) : null}
-              {match.status === "live" && <LiveBadge minute={match.minute} small />}
-            </View>
+            {onToggleNotification ? (
+              <TouchableOpacity
+                onPress={(e) => { e.stopPropagation(); SafeHaptics.selection(); onToggleNotification(); }}
+                style={styles.alertBtn}
+                hitSlop={{ top: 10, right: 10, bottom: 10, left: 10 }}
+              >
+                <Ionicons
+                  name={notificationsEnabled ? "notifications" : "notifications-outline"}
+                  size={13}
+                  color={notificationsEnabled ? COLORS.accent : COLORS.textMuted}
+                />
+              </TouchableOpacity>
+            ) : null}
           </View>
 
-          {/* Score row */}
-          <View style={styles.scoreRow}>
-            <View style={styles.teamBlock}>
-              <TeamLogo uri={match.homeTeamLogo} teamName={match.homeTeam} size={52} />
-              <Text style={styles.team} numberOfLines={2}>{match.homeTeam}</Text>
-            </View>
-
-            {match.status === "live" || match.status === "finished" ? (
-              <View style={styles.scoreBox}>
-                <Text style={styles.score}>{match.homeScore}</Text>
-                <Text style={styles.scoreDash}>:</Text>
-                <Text style={styles.score}>{match.awayScore}</Text>
-              </View>
-            ) : (
-              <View style={styles.timeBox}>
-                <Ionicons name="time-outline" size={12} color={COLORS.accent} />
-                <Text style={styles.timeText}>{match.startTime}</Text>
-              </View>
-            )}
-
-            <View style={styles.teamBlock}>
-              <TeamLogo uri={match.awayTeamLogo} teamName={match.awayTeam} size={52} />
-              <Text style={styles.team} numberOfLines={2}>{match.awayTeam}</Text>
-            </View>
+          {/* Home team */}
+          <View style={styles.teamSection}>
+            <TeamLogo uri={match.homeTeamLogo} teamName={match.homeTeam} size={58} />
+            <Text style={styles.teamName} numberOfLines={2}>{match.homeTeam}</Text>
           </View>
 
+          {/* Score / time center */}
+          {match.status === "live" || match.status === "finished" ? (
+            <View style={styles.scoreCenterBox}>
+              <Text style={styles.scoreNum}>{match.homeScore}</Text>
+              <Text style={styles.scoreSep}>:</Text>
+              <Text style={styles.scoreNum}>{match.awayScore}</Text>
+            </View>
+          ) : (
+            <View style={styles.timeCenterBox}>
+              <Ionicons name="time-outline" size={11} color={COLORS.accent} />
+              <Text style={styles.timeCenterText}>{match.startTime}</Text>
+            </View>
+          )}
+
+          {/* Away team */}
+          <View style={styles.teamSection}>
+            <TeamLogo uri={match.awayTeamLogo} teamName={match.awayTeam} size={58} />
+            <Text style={styles.teamName} numberOfLines={2}>{match.awayTeam}</Text>
+          </View>
+
+          {/* Live badge */}
+          {match.status === "live" && (
+            <View style={styles.liveBadgeRow}>
+              <LiveBadge minute={match.minute} small />
+            </View>
+          )}
         </LinearGradient>
       </TouchableOpacity>
     </Animated.View>
@@ -274,99 +266,100 @@ const styles = StyleSheet.create({
     marginRight: 14,
   },
   card: {
-    width: 300,
+    width: 160,
+    height: 258,
     borderRadius: 22,
-    padding: 16,
-    gap: 14,
+    padding: 12,
     borderWidth: 2,
     borderColor: COLORS.borderLight,
-  },
-  topRow: {
-    flexDirection: "row",
     justifyContent: "space-between",
-    alignItems: "center",
   },
-  leagueRow: {
+  leagueHeaderRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
+    justifyContent: "space-between",
+  },
+  leagueLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
     flex: 1,
   },
   leagueLogo: {
-    width: 18,
-    height: 18,
+    width: 16,
+    height: 16,
   },
   league: {
     fontFamily: "Inter_500Medium",
-    fontSize: 11,
+    fontSize: 10,
     color: COLORS.textMuted,
-    letterSpacing: 0.3,
+    letterSpacing: 0.2,
     flex: 1,
   },
   alertBtn: {
-    width: 26,
-    height: 26,
-    borderRadius: 13,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: COLORS.border,
     backgroundColor: COLORS.overlay,
     alignItems: "center",
     justifyContent: "center",
   },
-  scoreRow: {
-    flexDirection: "row",
+  teamSection: {
     alignItems: "center",
-    justifyContent: "space-between",
-    gap: 8,
+    gap: 6,
   },
-  teamBlock: {
-    flex: 1,
-    alignItems: "center",
-    gap: 8,
-  },
-  team: {
+  teamName: {
     fontFamily: "Inter_600SemiBold",
-    fontSize: 12,
+    fontSize: 11,
     color: COLORS.text,
     textAlign: "center",
-    lineHeight: 16,
+    lineHeight: 15,
   },
-  scoreBox: {
-    backgroundColor: COLORS.overlay,
-    borderRadius: 14,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
+  scoreCenterBox: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
+    justifyContent: "center",
+    gap: 6,
+    backgroundColor: COLORS.overlay,
+    borderRadius: 12,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
     borderWidth: 1,
     borderColor: COLORS.border,
+    alignSelf: "center",
   },
-  score: {
+  scoreNum: {
     fontFamily: "Inter_800ExtraBold",
-    fontSize: 28,
+    fontSize: 24,
     color: COLORS.text,
   },
-  scoreDash: {
+  scoreSep: {
     fontFamily: "Inter_400Regular",
-    fontSize: 20,
+    fontSize: 18,
     color: COLORS.textMuted,
   },
-  timeBox: {
+  timeCenterBox: {
     flexDirection: "row",
     alignItems: "center",
+    justifyContent: "center",
     gap: 4,
     backgroundColor: COLORS.accentGlow,
     borderRadius: 10,
     paddingHorizontal: 10,
-    paddingVertical: 7,
+    paddingVertical: 6,
     borderWidth: 1,
     borderColor: `${COLORS.accent}44`,
+    alignSelf: "center",
   },
-  timeText: {
+  timeCenterText: {
     fontFamily: "Inter_700Bold",
-    fontSize: 11,
+    fontSize: 12,
     color: COLORS.accent,
+  },
+  liveBadgeRow: {
+    alignItems: "center",
   },
   upcomingRow: {
     flexDirection: "row",

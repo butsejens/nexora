@@ -3,7 +3,7 @@ import {
   View, Text, StyleSheet, FlatList, Platform, RefreshControl,
   TouchableOpacity, TextInput, ActivityIndicator,
 } from "react-native";
-import { MaterialCommunityIcons, Ionicons } from "@expo/vector-icons";
+import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery } from "@tanstack/react-query";
@@ -37,40 +37,6 @@ async function fetchMovies() {
   }
 }
 
-async function fetchPublicVodMovies() {
-  const sources = [
-    "https://iptv-org.github.io/iptv/categories/movies.m3u",
-    "https://iptv-org.github.io/iptv/categories/series.m3u",
-    "https://i.mjh.nz/PlutoTV/all.m3u8",
-    "https://i.mjh.nz/SamsungTVPlus/all.m3u8",
-    "https://i.mjh.nz/Plex/all.m3u8",
-  ];
-
-  const settled = await Promise.allSettled(
-    sources.map(async (url) => {
-      try {
-        const res = await Promise.race([
-          apiRequest("POST", "/api/playlist/parse", { url }),
-          new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout")), 15000)),
-        ]);
-        return (res as Response).json();
-      } catch (e) {
-        console.warn(`[Movies] VOD fetch failed for ${url}:`, e);
-        return { movies: [] };
-      }
-    })
-  );
-
-  const movies: any[] = [];
-  for (const entry of settled) {
-    if (entry.status === "fulfilled") {
-      movies.push(...(entry.value?.movies || []));
-    }
-  }
-
-  return movies.slice(0, 600); // Cap at 600 items
-}
-
 export default function MoviesScreen() {
   const insets = useSafeAreaInsets();
   const { isFavorite, toggleFavorite, iptvChannels, isChannelVisible, isLoadingPlaylist } = useNexora();
@@ -85,14 +51,6 @@ export default function MoviesScreen() {
     staleTime: 5 * 60 * 1000,
     retry: 0,
     retryDelay: 2000,
-  });
-
-  const publicVodQuery = useQuery({
-    queryKey: ["movies", "public-vod"],
-    queryFn: fetchPublicVodMovies,
-    staleTime: 60 * 60 * 1000,
-    retry: 0,
-    retryDelay: 5000,
   });
 
   const iptvMovies = useMemo(
@@ -121,26 +79,6 @@ export default function MoviesScreen() {
     }));
   }, [iptvMovies, groupFilter, search]);
 
-  const publicVodMapped = useMemo(() => {
-    const items = (publicVodQuery.data || []).slice(0, 350);
-    return items.map((c: any, idx: number) => ({
-      id: `public-movie-${idx}-${c.id || c.name || "item"}`,
-      title: c.title || c.name || "Onbekend",
-      poster: c.poster || c.logo || null,
-      backdrop: c.backdrop || null,
-      synopsis: c.synopsis || "",
-      year: c.year,
-      imdb: c.rating,
-      genre: [],
-      quality: "HD",
-      isIptv: true,
-      streamUrl: c.url,
-      tmdbId: c.tmdbId,
-      color: COLORS.card,
-      source: "public",
-    }));
-  }, [publicVodQuery.data]);
-
   const trending = useMemo(() => data?.trending || [], [data]);
   const newReleases = useMemo(() => data?.newReleases || [], [data]);
   const topRated = useMemo(() => data?.topRated || [], [data]);
@@ -152,13 +90,12 @@ export default function MoviesScreen() {
 
   const rawCatalogError =
     (data as any)?.error ||
-    (publicVodQuery.error as any)?.message ||
     (isError ? "Movie catalogus niet beschikbaar" : "");
   const normalizedCatalogError = rawCatalogError ? normalizeApiError(rawCatalogError) : null;
   const catalogErrorRef = useMemo(() => (rawCatalogError ? buildErrorReference("NX-MOV") : ""), [rawCatalogError]);
 
   const bottomPad = Platform.OS === "web" ? 34 : insets.bottom + 90;
-  const isTabLoading = isLoading || publicVodQuery.isLoading || isLoadingPlaylist;
+  const isTabLoading = isLoading || isLoadingPlaylist;
 
   useEffect(() => {
     if (!isTabLoading) {
@@ -275,15 +212,6 @@ export default function MoviesScreen() {
                       contentContainerStyle={styles.carouselPadding} showsHorizontalScrollIndicator={false} />
                   </>
                 )}
-                {publicVodMapped.length > 0 && (
-                  <>
-                    <FlatList horizontal data={publicVodMapped} keyExtractor={(item: any) => item.id}
-                      renderItem={({ item }: any) => (
-                        <RealContentCard item={item} onPress={() => goToDetail(item)} onFavorite={() => toggleFavorite(item.id)} isFavorite={isFavorite(item.id)} />
-                      )}
-                      contentContainerStyle={styles.carouselPadding} showsHorizontalScrollIndicator={false} />
-                  </>
-                )}
                 {(filteredTmdb ?? []).length > 0 && (
                   <>
                     <FlatList horizontal data={filteredTmdb ?? []} keyExtractor={(item: any) => item.id}
@@ -293,7 +221,7 @@ export default function MoviesScreen() {
                       contentContainerStyle={styles.carouselPadding} showsHorizontalScrollIndicator={false} />
                   </>
                 )}
-                {filteredIptv.length === 0 && publicVodMapped.length === 0 && (filteredTmdb ?? []).length === 0 && (
+                {filteredIptv.length === 0 && (filteredTmdb ?? []).length === 0 && (
                   <View style={{ alignItems: "center", paddingTop: 40, gap: 10 }}>
                     <Ionicons name="film-outline" size={40} color={COLORS.textMuted} />
                     <Text style={{ fontFamily: "Inter_400Regular", color: COLORS.textMuted }}>Geen films gevonden voor &quot;{search}&quot;</Text>
@@ -327,18 +255,6 @@ export default function MoviesScreen() {
                     )}
                     <FlatList
                       horizontal data={filteredIptv} keyExtractor={(item: any) => item.id}
-                      renderItem={({ item }: any) => (
-                        <RealContentCard item={item} onPress={() => goToDetail(item)} onFavorite={() => toggleFavorite(item.id)} isFavorite={isFavorite(item.id)} />
-                      )}
-                      contentContainerStyle={styles.carouselPadding} showsHorizontalScrollIndicator={false} />
-                  </View>
-                )}
-
-                {publicVodMapped.length > 0 && (
-                  <View style={styles.section}>
-                    <Text style={styles.sectionTitle}>Gratis Films</Text>
-                    <FlatList
-                      horizontal data={publicVodMapped} keyExtractor={(item: any) => item.id}
                       renderItem={({ item }: any) => (
                         <RealContentCard item={item} onPress={() => goToDetail(item)} onFavorite={() => toggleFavorite(item.id)} isFavorite={isFavorite(item.id)} />
                       )}

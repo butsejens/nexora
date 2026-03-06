@@ -2,18 +2,20 @@ import React, { useState, useCallback, useEffect, useMemo, useRef } from "react"
 import {
   View, Text, StyleSheet, ScrollView, FlatList,
   RefreshControl, Platform, TouchableOpacity, TextInput, Alert,
- useWindowDimensions } from "react-native";
+  Image, useWindowDimensions } from "react-native";
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { COLORS } from "@/constants/colors";
 import { NexoraHeader } from "@/components/NexoraHeader";
-import { MatchCard, UpcomingMatchRow } from "@/components/MatchCard";
+import { MatchCard, UpcomingMatchRow, TeamLogo } from "@/components/MatchCard";
 import { SkeletonMatchCard } from "@/components/SkeletonCard";
 import { LiveBadge } from "@/components/LiveBadge";
 import { apiRequest } from "@/lib/query-client";
 import { buildErrorReference, normalizeApiError } from "@/lib/error-messages";
 import { Ionicons } from "@expo/vector-icons";
+import { LinearGradient } from "expo-linear-gradient";
+import { getLeagueLogo } from "@/lib/logo-manager";
 import {
   MatchSnapshot,
   MatchSubscription,
@@ -889,6 +891,53 @@ export default function SportsScreen() {
           </View>
         )}
 
+        {/* Hero live match banner */}
+        {sortedLive.length > 0 && (() => {
+          const hero = sortedLive[0];
+          const leagueLogo = getLeagueLogo(hero.league);
+          return (
+            <TouchableOpacity
+              style={styles.heroMatchWrapper}
+              onPress={() => handleMatchPress(hero)}
+              activeOpacity={0.9}
+            >
+              <LinearGradient
+                colors={[...(hero.heroGradient || ["#0B2359", "#0d1b3e"])] as any}
+                style={styles.heroMatchGrad}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+              >
+                <View style={styles.heroLeagueRow}>
+                  {leagueLogo ? (
+                    <Image source={{ uri: leagueLogo }} style={styles.heroLeagueLogo} resizeMode="contain" />
+                  ) : null}
+                  <Text style={styles.heroLeagueName} numberOfLines={1}>{hero.league}</Text>
+                  <LiveBadge minute={hero.minute} small />
+                </View>
+                <View style={styles.heroTeamRow}>
+                  <View style={styles.heroTeamBlock}>
+                    <TeamLogo uri={hero.homeTeamLogo} teamName={hero.homeTeam} size={68} />
+                    <Text style={styles.heroTeamName} numberOfLines={2}>{hero.homeTeam}</Text>
+                  </View>
+                  <View style={styles.heroScoreBlock}>
+                    <Text style={styles.heroScore}>{hero.homeScore}</Text>
+                    <Text style={styles.heroScoreSep}>:</Text>
+                    <Text style={styles.heroScore}>{hero.awayScore}</Text>
+                  </View>
+                  <View style={styles.heroTeamBlock}>
+                    <TeamLogo uri={hero.awayTeamLogo} teamName={hero.awayTeam} size={68} />
+                    <Text style={styles.heroTeamName} numberOfLines={2}>{hero.awayTeam}</Text>
+                  </View>
+                </View>
+                <View style={styles.heroActionRow}>
+                  <Text style={styles.heroActionText}>Meer info</Text>
+                  <Ionicons name="chevron-forward" size={14} color="rgba(255,255,255,0.7)" />
+                </View>
+              </LinearGradient>
+            </TouchableOpacity>
+          );
+        })()}
+
         {/* Competitions */}
         {leagueFilter === "Alle" && (
           <View style={styles.competitionsSection}>
@@ -1253,4 +1302,82 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.card, borderRadius: 14,
   },
   skeletonBlock: { backgroundColor: COLORS.cardElevated, borderRadius: 6, height: 14 },
+  heroMatchWrapper: {
+    marginHorizontal: 16,
+    marginTop: 12,
+    marginBottom: 4,
+    borderRadius: 24,
+    overflow: "hidden",
+    borderWidth: 2,
+    borderColor: "rgba(174,205,248,0.45)",
+  },
+  heroMatchGrad: {
+    padding: 16,
+    gap: 14,
+  },
+  heroLeagueRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  heroLeagueLogo: {
+    width: 20,
+    height: 20,
+  },
+  heroLeagueName: {
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 12,
+    color: COLORS.textSecondary,
+    flex: 1,
+  },
+  heroTeamRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+  },
+  heroTeamBlock: {
+    flex: 1,
+    alignItems: "center",
+    gap: 8,
+  },
+  heroTeamName: {
+    fontFamily: "Inter_700Bold",
+    fontSize: 13,
+    color: COLORS.text,
+    textAlign: "center",
+    lineHeight: 17,
+  },
+  heroScoreBlock: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: "rgba(0,0,0,0.35)",
+    borderRadius: 14,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.15)",
+  },
+  heroScore: {
+    fontFamily: "Inter_800ExtraBold",
+    fontSize: 36,
+    color: COLORS.text,
+  },
+  heroScoreSep: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 26,
+    color: COLORS.textMuted,
+  },
+  heroActionRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "flex-end",
+    gap: 4,
+  },
+  heroActionText: {
+    fontFamily: "Inter_500Medium",
+    fontSize: 12,
+    color: "rgba(255,255,255,0.7)",
+  },
 });
