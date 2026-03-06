@@ -25,10 +25,10 @@ import { buildErrorReference, normalizeApiError } from "@/lib/error-messages";
 
 // Stream providers ordered by reliability (updated 2025)
 const STREAM_PROVIDERS = [
-  { id: "vidsrc",      label: "Server 1" },
-  { id: "vidsrccc",    label: "Server 2" },
-  { id: "multiembed",  label: "Server 3" },
-  { id: "embed2",      label: "Server 4" },
+  { id: "vidsrcto",    label: "Server 1" },
+  { id: "embedsu",     label: "Server 2" },
+  { id: "autoembed",   label: "Server 3" },
+  { id: "vidsrcpro",   label: "Server 4" },
 ];
 
 function getEmbedUrl(provider: string, tmdbId: string, type: string, season: string, episode: string): string {
@@ -36,26 +36,26 @@ function getEmbedUrl(provider: string, tmdbId: string, type: string, season: str
   const e = episode || "1";
   const isMovie = type !== "series";
   switch (provider) {
-    case "vidsrc":
+    case "vidsrcto":
       return isMovie
-        ? `https://vidsrc.xyz/embed/movie/${tmdbId}`
-        : `https://vidsrc.xyz/embed/tv/${tmdbId}?s=${s}&e=${e}`;
-    case "vidsrccc":
+        ? `https://vidsrc.to/embed/movie/${tmdbId}`
+        : `https://vidsrc.to/embed/tv/${tmdbId}/${s}/${e}`;
+    case "embedsu":
       return isMovie
-        ? `https://vidsrc.cc/embed/movie/${tmdbId}`
-        : `https://vidsrc.cc/embed/tv/${tmdbId}/${s}/${e}`;
-    case "multiembed":
+        ? `https://embed.su/embed/movie/${tmdbId}`
+        : `https://embed.su/embed/tv/${tmdbId}/${s}/${e}`;
+    case "autoembed":
       return isMovie
-        ? `https://multiembed.mov/?video_id=${tmdbId}&tmdb=1`
-        : `https://multiembed.mov/?video_id=${tmdbId}&tmdb=1&s=${s}&e=${e}`;
-    case "embed2":
+        ? `https://autoembed.co/movie/tmdb/${tmdbId}`
+        : `https://autoembed.co/tv/tmdb/${tmdbId}-${s}-${e}`;
+    case "vidsrcpro":
       return isMovie
-        ? `https://www.2embed.cc/embed/${tmdbId}`
-        : `https://www.2embed.cc/embedtv/${tmdbId}&s=${s}&e=${e}`;
+        ? `https://vidsrc.pro/embed/movie/${tmdbId}`
+        : `https://vidsrc.pro/embed/tv/${tmdbId}?s=${s}&e=${e}`;
     default:
       return isMovie
-        ? `https://vidsrc.xyz/embed/movie/${tmdbId}`
-        : `https://vidsrc.xyz/embed/tv/${tmdbId}?s=${s}&e=${e}`;
+        ? `https://vidsrc.to/embed/movie/${tmdbId}`
+        : `https://vidsrc.to/embed/tv/${tmdbId}/${s}/${e}`;
   }
 }
 

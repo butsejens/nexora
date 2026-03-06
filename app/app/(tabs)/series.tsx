@@ -30,6 +30,8 @@ async function fetchSeries() {
       trending: [],
       newReleases: [],
       topRated: [],
+      popular: [],
+      airingToday: [],
       error: String(error?.message || "Series request failed"),
     };
   }
@@ -140,6 +142,8 @@ export default function SeriesScreen() {
   const trending = useMemo(() => data?.trending || [], [data]);
   const newReleases = useMemo(() => data?.newReleases || [], [data]);
   const topRated = useMemo(() => data?.topRated || [], [data]);
+  const popular = useMemo(() => data?.popular || [], [data]);
+  const airingToday = useMemo(() => data?.airingToday || [], [data]);
   const featured = iptvSeries.length > 0
     ? filteredIptv[0]
     : trending[0];
@@ -188,10 +192,12 @@ export default function SeriesScreen() {
       ...trending.filter((s: any) => (s.title || "").toLowerCase().includes(q)),
       ...newReleases.filter((s: any) => (s.title || "").toLowerCase().includes(q)),
       ...topRated.filter((s: any) => (s.title || "").toLowerCase().includes(q)),
+      ...popular.filter((s: any) => (s.title || "").toLowerCase().includes(q)),
+      ...airingToday.filter((s: any) => (s.title || "").toLowerCase().includes(q)),
     ];
     const seen = new Set<string>();
     return results.filter((s: any) => { if (seen.has(s.id)) return false; seen.add(s.id); return true; });
-  }, [search, trending, newReleases, topRated]);
+  }, [search, trending, newReleases, topRated, popular, airingToday]);
 
   return (
     <View style={styles.container}>
@@ -386,6 +392,28 @@ export default function SeriesScreen() {
                   <View style={styles.section}>
                     <Text style={styles.sectionTitle}>Best beoordeeld</Text>
                     <FlatList horizontal data={topRated} keyExtractor={(item: any) => item.id}
+                      renderItem={({ item }: any) => (
+                        <RealContentCard item={item} onPress={() => goToDetail(item)} onFavorite={() => toggleFavorite(item.id)} isFavorite={isFavorite(item.id)} />
+                      )}
+                      contentContainerStyle={styles.carouselPadding} showsHorizontalScrollIndicator={false} />
+                  </View>
+                )}
+
+                {popular.length > 0 && (
+                  <View style={styles.section}>
+                    <Text style={styles.sectionTitle}>Populair nu</Text>
+                    <FlatList horizontal data={popular} keyExtractor={(item: any) => item.id}
+                      renderItem={({ item }: any) => (
+                        <RealContentCard item={item} onPress={() => goToDetail(item)} onFavorite={() => toggleFavorite(item.id)} isFavorite={isFavorite(item.id)} />
+                      )}
+                      contentContainerStyle={styles.carouselPadding} showsHorizontalScrollIndicator={false} />
+                  </View>
+                )}
+
+                {airingToday.length > 0 && (
+                  <View style={styles.section}>
+                    <Text style={styles.sectionTitle}>Vanavond te zien</Text>
+                    <FlatList horizontal data={airingToday} keyExtractor={(item: any) => item.id}
                       renderItem={({ item }: any) => (
                         <RealContentCard item={item} onPress={() => goToDetail(item)} onFavorite={() => toggleFavorite(item.id)} isFavorite={isFavorite(item.id)} />
                       )}

@@ -3605,41 +3605,49 @@ function mapFullDetail(detail, videos, credits, type) {
 
 app.get("/api/movies/trending", tmdbLimiter, async (req, res) => {
   try {
-    if (!process.env.TMDB_API_KEY) return res.json({ trending: [], newReleases: [], topRated: [], error: "TMDB_API_KEY niet geconfigureerd. Voeg je gratis key toe via themoviedb.org." });
+    if (!process.env.TMDB_API_KEY) return res.json({ trending: [], newReleases: [], topRated: [], popular: [], upcoming: [], error: "TMDB_API_KEY niet geconfigureerd." });
 
-    const [trending, nowPlaying, topRated] = await Promise.all([
+    const [trending, nowPlaying, topRated, popular, upcoming] = await Promise.all([
       tmdb("/trending/movie/week"),
       tmdb("/movie/now_playing"),
       tmdb("/movie/top_rated"),
+      tmdb("/movie/popular"),
+      tmdb("/movie/upcoming"),
     ]);
 
     res.json({
       trending: (trending?.results || []).map((it) => mapTrendingItem(it, "movie")),
       newReleases: (nowPlaying?.results || []).map((it) => mapTrendingItem(it, "movie")),
       topRated: (topRated?.results || []).map((it) => mapTrendingItem(it, "movie")),
+      popular: (popular?.results || []).map((it) => mapTrendingItem(it, "movie")),
+      upcoming: (upcoming?.results || []).map((it) => mapTrendingItem(it, "movie")),
     });
   } catch (e) {
-    res.status(200).json({ trending: [], newReleases: [], topRated: [], error: String(e?.message || e) });
+    res.status(200).json({ trending: [], newReleases: [], topRated: [], popular: [], upcoming: [], error: String(e?.message || e) });
   }
 });
 
 app.get("/api/series/trending", tmdbLimiter, async (req, res) => {
   try {
-    if (!process.env.TMDB_API_KEY) return res.json({ trending: [], newReleases: [], topRated: [], error: "TMDB_API_KEY niet geconfigureerd. Voeg je gratis key toe via themoviedb.org." });
+    if (!process.env.TMDB_API_KEY) return res.json({ trending: [], newReleases: [], topRated: [], popular: [], airingToday: [], error: "TMDB_API_KEY niet geconfigureerd." });
 
-    const [trending, onTheAir, topRated] = await Promise.all([
+    const [trending, onTheAir, topRated, popular, airingToday] = await Promise.all([
       tmdb("/trending/tv/week"),
       tmdb("/tv/on_the_air"),
       tmdb("/tv/top_rated"),
+      tmdb("/tv/popular"),
+      tmdb("/tv/airing_today"),
     ]);
 
     res.json({
       trending: (trending?.results || []).map((it) => mapTrendingItem(it, "series")),
       newReleases: (onTheAir?.results || []).map((it) => mapTrendingItem(it, "series")),
       topRated: (topRated?.results || []).map((it) => mapTrendingItem(it, "series")),
+      popular: (popular?.results || []).map((it) => mapTrendingItem(it, "series")),
+      airingToday: (airingToday?.results || []).map((it) => mapTrendingItem(it, "series")),
     });
   } catch (e) {
-    res.status(200).json({ trending: [], newReleases: [], topRated: [], error: String(e?.message || e) });
+    res.status(200).json({ trending: [], newReleases: [], topRated: [], popular: [], airingToday: [], error: String(e?.message || e) });
   }
 });
 

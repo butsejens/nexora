@@ -24,6 +24,25 @@ const POSITION_COLORS: Record<string, string> = {
   PG: "#FF6B6B", SG: "#34C759", SF: "#5AC8FA", PF: "#30B0C7", C: "#FF9500", G: "#FF9500", F: "#FF3B30",
 };
 
+const POSITION_LABELS: Record<string, string> = {
+  GK: "Doelman", CB: "Centrale Verdediger", LB: "Linksback", RB: "Rechtsback",
+  LWB: "Links Wingback", RWB: "Rechts Wingback", DM: "Defensieve Middenvelder",
+  CM: "Centrale Middenvelder", AM: "Aanvallende Mid.", CAM: "Aanvallende Mid.",
+  LM: "Links Middenvelder", RM: "Rechts Middenvelder",
+  LW: "Links Vleugel", RW: "Rechts Vleugel", SS: "Schaduwspits",
+  CF: "Centrumaanvaller", ST: "Spits", FW: "Aanvaller",
+  DEF: "Verdediger", MID: "Middenvelder", ATT: "Aanvaller",
+  // Basketbal / algemeen
+  PG: "Point Guard", SG: "Shooting Guard", SF: "Small Forward",
+  PF: "Power Forward", C: "Center", G: "Guard", F: "Forward",
+};
+
+function positionLabel(pos: string, positionName?: string): string {
+  if (positionName && positionName.length > 2 && !/^[A-Z]{1,3}$/.test(positionName)) return positionName;
+  const key = String(pos || "").toUpperCase().trim();
+  return POSITION_LABELS[key] || key || "Onbekend";
+}
+
 export default function TeamDetailScreen() {
   const params = useLocalSearchParams<{
     teamId: string; teamName: string; logo?: string; sport?: string; league?: string;
@@ -283,7 +302,7 @@ export default function TeamDetailScreen() {
                       <Text style={[styles.filterChipText, posFilter === pos && {
                         color: POSITION_COLORS[pos] || COLORS.accent
                       }]}> 
-                        {pos} ({positionGroups[pos]?.length || 0})
+                        {positionLabel(pos)} ({positionGroups[pos]?.length || 0})
                       </Text>
                     </TouchableOpacity>
                   ))}
@@ -359,7 +378,7 @@ function PlayerCard({ player }: { player: any }) {
           </View>
           <View style={styles.playerSubRow}>
             <View style={[styles.posTag, { backgroundColor: `${posColor}22`, borderColor: `${posColor}44` }]}>
-              <Text style={[styles.posTagText, { color: posColor }]}>{player.positionName || player.position || "Onbekend"}</Text>
+              <Text style={[styles.posTagText, { color: posColor }]}>{positionLabel(player.position || "", player.positionName)}</Text>
             </View>
             {player.nationality ? (
               <Text style={styles.playerNat} numberOfLines={1}>{player.nationality}</Text>
