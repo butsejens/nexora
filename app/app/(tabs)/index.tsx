@@ -891,9 +891,10 @@ export default function SportsScreen() {
           </View>
         )}
 
-        {/* Hero live match banner */}
-        {sortedLive.length > 0 && (() => {
-          const hero = sortedLive[0];
+        {/* Hero match banner — live match first, fall back to first upcoming */}
+        {(sortedLive.length > 0 || sortedUpcoming.length > 0) && (() => {
+          const isLive = sortedLive.length > 0;
+          const hero = isLive ? sortedLive[0] : sortedUpcoming[0];
           const leagueLogo = getLeagueLogo(hero.league);
           return (
             <TouchableOpacity
@@ -909,10 +910,15 @@ export default function SportsScreen() {
               >
                 <View style={styles.heroLeagueRow}>
                   {leagueLogo ? (
-                    <Image source={{ uri: leagueLogo }} style={styles.heroLeagueLogo} resizeMode="contain" />
+                    <Image source={typeof leagueLogo === "number" ? leagueLogo : { uri: leagueLogo as string }} style={styles.heroLeagueLogo} resizeMode="contain" />
                   ) : null}
                   <Text style={styles.heroLeagueName} numberOfLines={1}>{hero.league}</Text>
-                  <LiveBadge minute={hero.minute} small />
+                  {isLive ? <LiveBadge minute={hero.minute} small /> : (
+                    <View style={styles.heroUpcomingBadge}>
+                      <Ionicons name="time-outline" size={10} color={COLORS.accent} />
+                      <Text style={styles.heroUpcomingTime}>{hero.startTime}</Text>
+                    </View>
+                  )}
                 </View>
                 <View style={styles.heroTeamRow}>
                   <View style={styles.heroTeamBlock}>
@@ -920,9 +926,15 @@ export default function SportsScreen() {
                     <Text style={styles.heroTeamName} numberOfLines={2}>{hero.homeTeam}</Text>
                   </View>
                   <View style={styles.heroScoreBlock}>
-                    <Text style={styles.heroScore}>{hero.homeScore}</Text>
-                    <Text style={styles.heroScoreSep}>:</Text>
-                    <Text style={styles.heroScore}>{hero.awayScore}</Text>
+                    {isLive ? (
+                      <>
+                        <Text style={styles.heroScore}>{hero.homeScore}</Text>
+                        <Text style={styles.heroScoreSep}>:</Text>
+                        <Text style={styles.heroScore}>{hero.awayScore}</Text>
+                      </>
+                    ) : (
+                      <Text style={styles.heroVsText}>vs</Text>
+                    )}
                   </View>
                   <View style={styles.heroTeamBlock}>
                     <TeamLogo uri={hero.awayTeamLogo} teamName={hero.awayTeam} size={68} />
@@ -930,7 +942,7 @@ export default function SportsScreen() {
                   </View>
                 </View>
                 <View style={styles.heroActionRow}>
-                  <Text style={styles.heroActionText}>Meer info</Text>
+                  <Text style={styles.heroActionText}>{isLive ? "Meer info" : "Bekijk wedstrijd"}</Text>
                   <Ionicons name="chevron-forward" size={14} color="rgba(255,255,255,0.7)" />
                 </View>
               </LinearGradient>
@@ -1379,5 +1391,26 @@ const styles = StyleSheet.create({
     fontFamily: "Inter_500Medium",
     fontSize: 12,
     color: "rgba(255,255,255,0.7)",
+  },
+  heroUpcomingBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: COLORS.accentGlow,
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderWidth: 1,
+    borderColor: `${COLORS.accent}55`,
+  },
+  heroUpcomingTime: {
+    fontFamily: "Inter_700Bold",
+    fontSize: 10,
+    color: COLORS.accent,
+  },
+  heroVsText: {
+    fontFamily: "Inter_800ExtraBold",
+    fontSize: 22,
+    color: "rgba(255,255,255,0.6)",
   },
 });

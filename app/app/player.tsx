@@ -448,14 +448,13 @@ export default function PlayerScreen() {
         )}
       </View>
 
-      {/* Tap strips – top + bottom edges show controls; CENTER is transparent so embed play buttons work */}
-      <TouchableOpacity style={styles.tapStripTop} onPress={showControls} activeOpacity={1} />
-      <TouchableOpacity style={styles.tapStripBottom} onPress={showControls} activeOpacity={1} />
-
       {/* Controls overlay */}
       <Animated.View
         style={[styles.overlay, { opacity: controlsOpacity, pointerEvents: controlsVisible ? "box-none" : "none" }]}
       >
+        {/* Full-screen tap blocker: swallows center taps to prevent WebView popups */}
+        <TouchableOpacity style={StyleSheet.absoluteFillObject} onPress={showControls} activeOpacity={1} />
+
         {/* Top bar */}
         <LinearGradient colors={["rgba(0,0,0,0.85)", "transparent"]} style={styles.topGrad}>
           <View style={[styles.topBar, { paddingTop: Platform.OS === "web" ? 67 : insets.top + 8 }]}>
@@ -542,6 +541,4 @@ const styles = StyleSheet.create({
   bottomGrad: { paddingTop: 60 },
   bottomBar: { paddingHorizontal: 14, alignItems: "flex-end" },
   reloadBtn: { width: 38, height: 38, alignItems: "center", justifyContent: "center" },
-  tapStripTop: { position: "absolute", top: 0, left: 0, right: 0, height: 80, zIndex: 5 },
-  tapStripBottom: { position: "absolute", bottom: 0, left: 0, right: 0, height: 80, zIndex: 5 },
 });

@@ -17,5 +17,8 @@
   "devDependencies": {
     "concurrently": "^8.2.2"
   },
-  "main": "app/index.js"
+  "main": "app/index.js",
+  "dependencies": {
+    "graphql": "^16.13.1"
+  }
 }

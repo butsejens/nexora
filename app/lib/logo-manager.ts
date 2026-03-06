@@ -1,7 +1,11 @@
-// Club Brugge ESPN CDN logo (Jupiler Pro League team ID: 6718)
-const CLUB_BRUGGE_LOGO = "https://a.espncdn.com/i/teamlogos/soccer/500/6718.png";
+// Local logo assets
+const LOCAL_LOGOS = {
+  clubBrugge: require("../assets/logos/club-brugge.png"),
+  jupilerProLeague: require("../assets/logos/jupiler-pro-league.jpg"),
+  raalLaLouviere: require("../assets/logos/raal-la-louviere.png"),
+};
 
-const LEAGUE_LOGO_MAP: Record<string, string> = {
+const LEAGUE_LOGO_MAP: Record<string, string | number> = {
   "Premier League": "https://a.espncdn.com/i/leaguelogos/soccer/500/23.png",
   "UEFA Champions League": "https://a.espncdn.com/i/leaguelogos/soccer/500/1.png",
   "Champions League": "https://a.espncdn.com/i/leaguelogos/soccer/500/1.png",
@@ -11,7 +15,7 @@ const LEAGUE_LOGO_MAP: Record<string, string> = {
   "Conference League": "https://a.espncdn.com/i/leaguelogos/soccer/500/3.png",
   "La Liga": "https://a.espncdn.com/i/leaguelogos/soccer/500/15.png",
   Bundesliga: "https://a.espncdn.com/i/leaguelogos/soccer/500/10.png",
-  "Jupiler Pro League": "https://a.espncdn.com/i/leaguelogos/soccer/500/6.png",
+  "Jupiler Pro League": LOCAL_LOGOS.jupilerProLeague,
   "Ligue 1": "https://a.espncdn.com/i/leaguelogos/soccer/500/9.png",
   "Serie A": "https://a.espncdn.com/i/leaguelogos/soccer/500/12.png",
   NBA: "https://a.espncdn.com/i/leaguelogos/basketball/500/nba.png",
@@ -27,15 +31,22 @@ function normalizeName(value: string): string {
     .trim();
 }
 
-export function getLeagueLogo(leagueName?: string): string | null {
+export function getLeagueLogo(leagueName?: string): string | number | null {
   const key = String(leagueName || "").trim();
-  return LEAGUE_LOGO_MAP[key] || null;
+  return LEAGUE_LOGO_MAP[key] ?? null;
 }
 
-export function resolveTeamLogoUri(teamName?: string, logoUri?: string | null): string | null {
+export function resolveTeamLogoUri(teamName?: string, logoUri?: string | null): string | number | null {
   const normalized = normalizeName(String(teamName || ""));
   if (normalized.includes("club brugge") || normalized.includes("clubbrugge")) {
-    return CLUB_BRUGGE_LOGO;
+    return LOCAL_LOGOS.clubBrugge;
+  }
+  if (
+    normalized.includes("raal") ||
+    normalized.includes("raal la louviere") ||
+    normalized.includes("la louviere")
+  ) {
+    return LOCAL_LOGOS.raalLaLouviere;
   }
   const safeLogo = String(logoUri || "").trim();
   return safeLogo || null;

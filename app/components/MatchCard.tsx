@@ -54,21 +54,28 @@ const SPORT_ICONS: Record<string, string> = {
 
 export function TeamLogo({ uri, teamName, size = 48 }: { uri?: string | null; teamName: string; size?: number }) {
   const [error, setError] = useState(false);
-  const safeUri = !error ? resolveTeamLogoUri(teamName, uri) : null;
+  const [imageLoaded, setImageLoaded] = useState(false);
+  const resolved = !error ? resolveTeamLogoUri(teamName, uri) : null;
   const initials = getInitials(teamName, 2);
+
+  // Support both local require (number) and remote URI (string)
+  const imageSource = resolved != null
+    ? (typeof resolved === "number" ? resolved : { uri: resolved as string })
+    : null;
 
   return (
     <View style={[
-      safeUri ? logoStyles.container : logoStyles.fallback,
+      imageSource ? logoStyles.container : logoStyles.fallback,
       { width: size, height: size, borderRadius: size / 2 },
     ]}>
-      <Text style={[logoStyles.initials, { fontSize: size * 0.28 }]}>{initials}</Text>
-      {safeUri ? (
+      <Text style={[logoStyles.initials, { fontSize: size * 0.28 }, imageLoaded && { opacity: 0 }]}>{initials}</Text>
+      {imageSource ? (
         <Image
-          source={{ uri: safeUri }}
+          source={imageSource as any}
           style={{ width: size - 8, height: size - 8, position: "absolute" }}
           resizeMode="contain"
-          onError={() => setError(true)}
+          onLoad={() => setImageLoaded(true)}
+          onError={() => { setError(true); setImageLoaded(false); }}
         />
       ) : null}
     </View>
@@ -129,7 +136,7 @@ export function MatchCard({ match, onPress, onToggleNotification, notificationsE
           <View style={styles.leagueHeaderRow}>
             <View style={styles.leagueLeft}>
               {leagueLogo ? (
-                <Image source={{ uri: leagueLogo }} style={styles.leagueLogo} resizeMode="contain" />
+                <Image source={typeof leagueLogo === "number" ? leagueLogo : { uri: leagueLogo as string }} style={styles.leagueLogo} resizeMode="contain" />
               ) : (
                 <MaterialCommunityIcons name={(SPORT_ICONS[match.sport] || "soccer") as any} size={13} color={COLORS.textMuted} />
               )}
@@ -219,7 +226,7 @@ export function UpcomingMatchRow({
         <View style={styles.upcomingInfo}>
           <View style={styles.upcomingLeagueRow}>
             {leagueLogo ? (
-              <Image source={{ uri: leagueLogo }} style={styles.upcomingLeagueLogo} resizeMode="contain" />
+              <Image source={typeof leagueLogo === "number" ? leagueLogo : { uri: leagueLogo as string }} style={styles.upcomingLeagueLogo} resizeMode="contain" />
             ) : (
               <MaterialCommunityIcons name={SPORT_ICON as any} size={11} color={COLORS.textMuted} />
             )}
