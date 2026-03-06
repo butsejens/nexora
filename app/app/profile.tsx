@@ -11,6 +11,7 @@ import {
   Modal,
   Platform,
   ActivityIndicator,
+  Linking,
 } from "react-native";
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -27,6 +28,26 @@ import { parseM3UContentAsync } from "@/lib/parseM3U";
 import { SafeHaptics } from "@/lib/safeHaptics";
 
 const CHANGELOG: { version: string; date: string; changes: string[] }[] = [
+  {
+    version: "1.7.0",
+    date: "2026-03-06",
+    changes: [
+      "Popups volledig geblokkeerd: volledig scherm interceptor + location.href override + meta refresh blokkering",
+      "Download/deel knop in speler voor alle content",
+      "Push melding bij nieuwe update (automatisch bij opstart)",
+      "Notificatie tikt door naar update scherm",
+    ],
+  },
+  {
+    version: "1.6.0",
+    date: "2026-03-06",
+    changes: [
+      "Server slaapstand opgelost: automatische keep-alive ping",
+      "App opstart niet meer vast op 85%",
+      "Film/serie popups volledig geblokkeerd (twee-laagse beveiliging)",
+      "In-app auto-update: detecteert en installeert nieuwe versie",
+    ],
+  },
   {
     version: "1.5.0",
     date: "2026-03-06",
@@ -71,6 +92,16 @@ const CHANGELOG: { version: string; date: string; changes: string[] }[] = [
   },
 ];
 
+function compareVersions(a: string, b: string): number {
+  const pa = a.split(".").map(Number);
+  const pb = b.split(".").map(Number);
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    const diff = (pa[i] || 0) - (pb[i] || 0);
+    if (diff !== 0) return diff;
+  }
+  return 0;
+}
+
 function UpdateModal({
   visible,
   currentVersion,
@@ -81,27 +112,33 @@ function UpdateModal({
   onClose: () => void;
 }) {
   const [checking, setChecking] = useState(false);
-  const [status, setStatus] = useState<"idle" | "uptodate" | "downloading" | "ready">("idle");
+  const [status, setStatus] = useState<"idle" | "uptodate" | "update" | "downloading" | "ready">("idle");
+  const [apkUrl, setApkUrl] = useState("");
 
   const handleCheck = async () => {
-    // OTA updates require an EAS Update server — not available for manually distributed APKs
-    if (__DEV__ || !Updates.isEnabled) {
-      setStatus("uptodate");
-      return;
-    }
     setChecking(true);
     setStatus("idle");
     try {
-      const update = await Updates.checkForUpdateAsync();
-      if (!update.isAvailable) {
-        setStatus("uptodate");
+      // For manually distributed APKs, expo-updates OTA is not available.
+      // Instead, check our own server for a newer version.
+      if (__DEV__ || !Updates.isEnabled) {
+        const res = await apiRequest("GET", "/api/app-version");
+        const data = await res.json() as { version: string; apkUrl: string };
+        if (compareVersions(data.version, currentVersion) > 0) {
+          setApkUrl(data.apkUrl);
+          setStatus("update");
+        } else {
+          setStatus("uptodate");
+        }
         return;
       }
+      // EAS OTA path (when running via Expo Go / EAS Update)
+      const update = await Updates.checkForUpdateAsync();
+      if (!update.isAvailable) { setStatus("uptodate"); return; }
       setStatus("downloading");
       await Updates.fetchUpdateAsync();
       setStatus("ready");
     } catch {
-      // OTA not available for this build — treat as up-to-date
       setStatus("uptodate");
     } finally {
       setChecking(false);
@@ -110,6 +147,11 @@ function UpdateModal({
 
   const handleReload = async () => {
     await Updates.reloadAsync();
+  };
+
+  const handleDownload = async () => {
+    if (!apkUrl) return;
+    await Linking.openURL(apkUrl);
   };
 
   return (
@@ -151,6 +193,11 @@ function UpdateModal({
             {status === "uptodate" && (
               <Text style={updateStyles.statusText}>Je hebt de nieuwste versie.</Text>
             )}
+            {status === "update" && (
+              <Text style={[updateStyles.statusText, { color: COLORS.accent }]}>
+                Nieuwe versie beschikbaar!
+              </Text>
+            )}
             {status === "downloading" && (
               <Text style={updateStyles.statusText}>Update downloaden...</Text>
             )}
@@ -159,14 +206,16 @@ function UpdateModal({
                 Update klaar — tap om te herstarten.
               </Text>
             )}
-            {status === "error" && (
-              <Text style={[updateStyles.statusText, { color: COLORS.live }]}>Kan niet controleren op updates.</Text>
-            )}
 
             {status === "ready" ? (
               <TouchableOpacity style={updateStyles.checkBtn} onPress={handleReload}>
                 <Ionicons name="refresh" size={16} color={COLORS.background} />
                 <Text style={updateStyles.checkBtnText}>Herstart en installeer</Text>
+              </TouchableOpacity>
+            ) : status === "update" ? (
+              <TouchableOpacity style={updateStyles.checkBtn} onPress={handleDownload}>
+                <Ionicons name="download-outline" size={16} color={COLORS.background} />
+                <Text style={updateStyles.checkBtnText}>Download & installeer</Text>
               </TouchableOpacity>
             ) : (
               <TouchableOpacity

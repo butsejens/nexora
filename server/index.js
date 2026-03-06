@@ -2,6 +2,11 @@ import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
 import fetch from "node-fetch";
+import { fileURLToPath } from "url";
+import { dirname, join } from "path";
+import { existsSync, readFileSync } from "fs";
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
 
 dotenv.config();
 
@@ -18,6 +23,8 @@ app.use(cors(allowedOrigin ? {
   credentials: true,
 } : undefined));
 app.use(express.json({ limit: "10mb" }));
+// Serve APK downloads (used for in-app update distribution)
+app.use("/downloads", express.static(join(__dirname, "public", "downloads")));
 
 // ── Simple in-memory rate limiter ────────────────────────────────────────────
 // Prevents abuse of heavy endpoints (playlist parsing, TMDB calls)
@@ -2370,6 +2377,21 @@ app.get("/health", (req, res) => {
   res.json({ ok: true, time: new Date().toISOString(), source: footballSource(), tz: TZ, aiReady, aiProviders, zilliz: _zillizReady, tmdb: Boolean(process.env.TMDB_API_KEY), apify: Boolean(process.env.APIFY_TOKEN) });
 });
 
+// ── App version / update check ────────────────────────────────────────────────
+// Update server/app-version.json when you build a new APK.
+// Copy the new APK to server/public/downloads/nexora.apk.
+app.get("/api/app-version", (req, res) => {
+  let version = "1.5.0";
+  try {
+    const vf = join(__dirname, "app-version.json");
+    if (existsSync(vf)) version = JSON.parse(readFileSync(vf, "utf8")).version || version;
+  } catch {}
+  const proto = req.headers["x-forwarded-proto"] || req.protocol;
+  const host  = req.headers["x-forwarded-host"]  || req.get("host");
+  const apkUrl = `${proto}://${host}/downloads/nexora.apk`;
+  res.json({ version, apkUrl });
+});
+
 // Image proxy – forwards images that require specific Referer headers (e.g. Transfermarkt CDN)
 // Usage: GET /api/img?url=<encoded_url>
 app.get("/api/img", async (req, res) => {
@@ -4056,4 +4078,12 @@ app.listen(PORT, () => {
   console.log(`Nexora server running on :${PORT} (sports source: ${footballSource()})`);
   // Initialiseer Zilliz vector cache (non-blocking)
   zillizInit().catch(() => {});
+  // Keep-alive: ping /health every 10 min to prevent Render free-tier sleep
+  const selfPingUrl = process.env.RENDER_EXTERNAL_URL || process.env.SELF_PING_URL;
+  if (selfPingUrl) {
+    setInterval(async () => {
+      try { await fetch(`${selfPingUrl}/health`, { signal: AbortSignal.timeout(10000) }); } catch {}
+    }, 10 * 60 * 1000);
+    console.log(`Keep-alive ping enabled → ${selfPingUrl}/health`);
+  }
 });

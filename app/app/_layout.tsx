@@ -1,15 +1,18 @@
 import { QueryClientProvider } from "@tanstack/react-query";
-import { Stack } from "expo-router";
+import { Stack, router } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import React, { useEffect, useRef, useState } from "react";
+import { Platform } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
-import { queryClient, getApiBaseCandidates } from "@/lib/query-client";
+import { queryClient, getApiBaseCandidates, apiRequest } from "@/lib/query-client";
 import { NexoraProvider } from "@/context/NexoraContext";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { NexoraIntro } from "@/components/NexoraIntro";
 import { NexoraBootScreen } from "@/components/NexoraBootScreen";
 import * as Updates from "expo-updates";
+import * as Notifications from "expo-notifications";
+import Constants from "expo-constants";
 import {
   useFonts,
   Inter_400Regular,
@@ -25,6 +28,17 @@ SplashScreen.preventAutoHideAsync();
 let hasCompletedBootOnce = false;
 let hasShownIntroOnce = false;
 let hasCheckedOtaUpdateOnce = false;
+let hasCheckedServerUpdateOnce = false;
+
+function compareVersions(a: string, b: string): number {
+  const pa = a.split(".").map(Number);
+  const pb = b.split(".").map(Number);
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    const diff = (pa[i] || 0) - (pb[i] || 0);
+    if (diff !== 0) return diff;
+  }
+  return 0;
+}
 
 function RootLayoutNav() {
   return (
@@ -127,7 +141,7 @@ export default function RootLayout() {
             if (isCloud) setBootMessage("Server aan het opstarten...");
             await Promise.race([
               fetch(`${candidates[0]}/health`).catch(() => null),
-              new Promise((resolve) => setTimeout(resolve, isCloud ? 40000 : 2500)),
+              new Promise((resolve) => setTimeout(resolve, isCloud ? 5000 : 2500)),
             ]);
           } else {
             await new Promise((resolve) => setTimeout(resolve, 900));
@@ -163,7 +177,7 @@ export default function RootLayout() {
     return () => clearTimeout(safety);
   }, [fontsLoaded, fontFallbackReady, introFinished, handleIntroFinish]);
 
-  // OTA check after boot
+  // OTA check after boot (EAS Update path)
   useEffect(() => {
     if (!bootDone) return;
     if (hasCheckedOtaUpdateOnce) return;
@@ -183,6 +197,54 @@ export default function RootLayout() {
 
     run();
   }, [bootDone]);
+
+  // Server update check — fires a local push notification when a newer APK is available
+  useEffect(() => {
+    if (!bootDone) return;
+    if (hasCheckedServerUpdateOnce) return;
+    hasCheckedServerUpdateOnce = true;
+
+    const run = async () => {
+      try {
+        if (__DEV__) return;
+        const res = await apiRequest("GET", "/api/app-version");
+        const data = await res.json() as { version: string };
+        const appVer = String(Constants.expoConfig?.version || "1.0.0");
+        if (compareVersions(data.version, appVer) <= 0) return;
+
+        // Set up Android notification channel
+        if (Platform.OS === "android") {
+          await Notifications.setNotificationChannelAsync("app-updates", {
+            name: "App updates",
+            importance: Notifications.AndroidImportance.DEFAULT,
+            vibrationPattern: [0, 200],
+          });
+        }
+
+        await Notifications.scheduleNotificationAsync({
+          content: {
+            title: "Nexora update beschikbaar",
+            body: `Versie ${data.version} is klaar om te installeren. Tik om te updaten.`,
+            data: { type: "app_update" },
+            ...(Platform.OS === "android" ? { channelId: "app-updates" } : {}),
+          },
+          trigger: null, // show immediately
+        });
+      } catch {}
+    };
+
+    run();
+  }, [bootDone]);
+
+  // Notification tap handler — navigate to profile (update modal) when user taps the notification
+  useEffect(() => {
+    const sub = Notifications.addNotificationResponseReceivedListener((response) => {
+      if (response.notification.request.content.data?.type === "app_update") {
+        router.push("/profile");
+      }
+    });
+    return () => sub.remove();
+  }, []);
 
   const fontsReady = fontsLoaded || fontFallbackReady;
 
