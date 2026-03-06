@@ -52,6 +52,15 @@ async function fetchMovieDecades() {
   }
 }
 
+async function fetchArchiveMovies(page = 1) {
+  try {
+    const res = await withTimeout(apiRequest("GET", `/api/movies/archive?page=${page}`), 25000);
+    return await res.json();
+  } catch {
+    return { movies: [] };
+  }
+}
+
 export default function MoviesScreen() {
   const insets = useSafeAreaInsets();
   const { isFavorite, toggleFavorite, iptvChannels, isChannelVisible, isLoadingPlaylist } = useNexora();
@@ -81,6 +90,13 @@ export default function MoviesScreen() {
     queryKey: ["movies", "decades"],
     queryFn: fetchMovieDecades,
     staleTime: 30 * 60 * 1000,
+    retry: 0,
+  });
+
+  const { data: archiveData } = useQuery({
+    queryKey: ["movies", "archive"],
+    queryFn: () => fetchArchiveMovies(1),
+    staleTime: 60 * 60 * 1000,
     retry: 0,
   });
 
@@ -117,6 +133,7 @@ export default function MoviesScreen() {
   const upcoming = useMemo(() => data?.upcoming || [], [data]);
   const movieGenres: any[] = useMemo(() => genresData?.genres || [], [genresData]);
   const movieDecades: any[] = useMemo(() => decadesData?.decades || [], [decadesData]);
+  const archiveMovies: any[] = useMemo(() => archiveData?.movies || [], [archiveData]);
 
   const featured = iptvMovies.length > 0
     ? filteredIptv[0]
@@ -216,6 +233,12 @@ export default function MoviesScreen() {
     const seen = new Set<string>();
     return results.filter((m: any) => { if (seen.has(m.id)) return false; seen.add(m.id); return true; });
   }, [search, trending, newReleases, topRated, popular, upcoming]);
+
+  const filteredArchive = useMemo(() => {
+    if (!search.trim() || !archiveMovies.length) return [];
+    const q = search.toLowerCase();
+    return archiveMovies.filter((m: any) => (m.title || "").toLowerCase().includes(q));
+  }, [search, archiveMovies]);
 
   const renderCard = (item: any) => (
     <RealContentCard
@@ -337,7 +360,12 @@ export default function MoviesScreen() {
                     renderItem={({ item }: any) => renderCard(item)}
                     contentContainerStyle={styles.carouselPadding} showsHorizontalScrollIndicator={false} />
                 )}
-                {filteredIptv.length === 0 && (filteredTmdb ?? []).length === 0 && (
+                {filteredArchive.length > 0 && (
+                  <FlatList horizontal data={filteredArchive} keyExtractor={(item: any) => item.id}
+                    renderItem={({ item }: any) => renderCard(item)}
+                    contentContainerStyle={styles.carouselPadding} showsHorizontalScrollIndicator={false} />
+                )}
+                {filteredIptv.length === 0 && (filteredTmdb ?? []).length === 0 && filteredArchive.length === 0 && (
                   <View style={{ alignItems: "center", paddingTop: 40, gap: 10 }}>
                     <Ionicons name="film-outline" size={40} color={COLORS.textMuted} />
                     <Text style={{ fontFamily: "Inter_400Regular", color: COLORS.textMuted }}>Geen films gevonden voor &quot;{search}&quot;</Text>
@@ -427,6 +455,21 @@ export default function MoviesScreen() {
 
                 {/* Genre rows — 15 genres, each with load-more */}
                 {movieGenres.map((genre: any) => genre.items?.length > 0 && renderGenreRow(genre))}
+
+                {/* Free public domain movies via Internet Archive */}
+                {archiveMovies.length > 0 && (
+                  <View style={styles.section}>
+                    <Text style={styles.sectionTitle}>Gratis Films (Archief)</Text>
+                    <FlatList
+                      horizontal
+                      data={archiveMovies}
+                      keyExtractor={(item: any) => item.id}
+                      renderItem={({ item }: any) => renderCard(item)}
+                      contentContainerStyle={styles.carouselPadding}
+                      showsHorizontalScrollIndicator={false}
+                    />
+                  </View>
+                )}
 
                 {/* Decade rows */}
                 {movieDecades.map((decade: any) => (

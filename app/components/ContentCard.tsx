@@ -96,11 +96,6 @@ export function ContentCard({ item, onPress, onFavorite, isFavorite, width = 130
             </TouchableOpacity>
           )}
 
-          <View style={styles.playOverlay}>
-            <View style={styles.playBtn}>
-              <Ionicons name="play" size={14} color={COLORS.text} />
-            </View>
-          </View>
         </View>
         <Text style={styles.title} numberOfLines={1}>
           {item.title}
@@ -223,24 +218,6 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(0,0,0,0.5)",
     alignItems: "center",
     justifyContent: "center",
-  },
-  playOverlay: {
-    position: "absolute",
-    alignItems: "center",
-    justifyContent: "center",
-    width: "100%",
-    height: "100%",
-    opacity: 0,
-  },
-  playBtn: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    backgroundColor: "rgba(0,0,0,0.6)",
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.3)",
   },
   title: {
     fontFamily: "Inter_600SemiBold",

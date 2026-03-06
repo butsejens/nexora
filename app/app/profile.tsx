@@ -29,6 +29,16 @@ import { SafeHaptics } from "@/lib/safeHaptics";
 
 const CHANGELOG: { version: string; date: string; changes: string[] }[] = [
   {
+    version: "1.9.1",
+    date: "2026-03-06",
+    changes: [
+      "Play-knop volledig verwijderd van alle poster-kaartjes",
+      "Nieuwe sectie 'Gratis Films (Archief)' — gratis publiek domein films via Internet Archive",
+      "Gratis films zijn direct afspeelbaar én te downloaden (echte MP4-bestanden)",
+      "Gratis films verschijnen ook in zoekresultaten",
+    ],
+  },
+  {
     version: "1.9.0",
     date: "2026-03-06",
     changes: [

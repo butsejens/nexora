@@ -4271,6 +4271,81 @@ app.get("/api/series/decades", tmdbLimiter, async (req, res) => {
 });
 
 // -----------------------------
+// Internet Archive – free public domain movies
+// -----------------------------
+const archiveMovieCache = { data: null, ts: 0 };
+
+app.get("/api/movies/archive", async (req, res) => {
+  try {
+    const page = Math.max(1, parseInt(req.query.page) || 1);
+    const rows = 20;
+    const start = (page - 1) * rows;
+    const now = Date.now();
+
+    // Use per-page cache (60 min)
+    const cacheKey = `page${page}`;
+    if (!archiveMovieCache[cacheKey] || now - archiveMovieCache[cacheKey].ts > 60 * 60 * 1000) {
+      const searchUrl =
+        `https://archive.org/advancedsearch.php?q=mediatype%3Amovies+subject%3Afeature+format%3Ah.264+language%3Aen` +
+        `&fl[]=identifier,title,year,description,subject` +
+        `&sort[]=downloads+desc&output=json&rows=${rows}&start=${start}`;
+      const resp = await fetch(searchUrl, { signal: AbortSignal.timeout(12000) });
+      const data = await resp.json();
+      const docs = data?.response?.docs || [];
+
+      // For each doc, find the actual h.264 mp4 file via metadata
+      const movies = (
+        await Promise.all(
+          docs.map(async (doc) => {
+            try {
+              const mResp = await fetch(
+                `https://archive.org/metadata/${doc.identifier}/files`,
+                { signal: AbortSignal.timeout(5000) }
+              );
+              const mData = await mResp.json();
+              const files = mData?.result || [];
+              const mp4 = files.find(
+                (f) => f.format === "h.264" && f.name?.endsWith(".mp4")
+              ) || files.find((f) => f.name?.endsWith(".mp4"));
+              if (!mp4) return null;
+
+              const desc = Array.isArray(doc.description)
+                ? doc.description[0]
+                : doc.description || "";
+              const yearStr = String(doc.year || "").slice(0, 4);
+
+              return {
+                id: `archive-${doc.identifier}`,
+                title: doc.title || doc.identifier,
+                poster: `https://archive.org/services/img/${doc.identifier}`,
+                backdrop: null,
+                synopsis: desc.replace(/<[^>]+>/g, "").slice(0, 220),
+                year: yearStr ? Number(yearStr) : null,
+                imdb: null,
+                rating: null,
+                genre: ["Gratis"],
+                quality: "HD",
+                isIptv: true,
+                streamUrl: `https://archive.org/download/${doc.identifier}/${mp4.name}`,
+                color: "#1B2B4A",
+              };
+            } catch {
+              return null;
+            }
+          })
+        )
+      ).filter(Boolean);
+
+      archiveMovieCache[cacheKey] = { data: movies, ts: now };
+    }
+
+    res.json({ movies: archiveMovieCache[cacheKey].data });
+  } catch (e) {
+    res.status(200).json({ movies: [], error: String(e?.message || e) });
+  }
+});
+
+// -----------------------------
 // Start
 // -----------------------------
 app.listen(PORT, () => {
