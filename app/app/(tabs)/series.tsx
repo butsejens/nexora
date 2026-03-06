@@ -13,6 +13,7 @@ import { useNexora } from "@/context/NexoraContext";
 import { apiRequest } from "@/lib/query-client";
 import { buildErrorReference, normalizeApiError } from "@/lib/error-messages";
 import { RealContentCard, RealHeroBanner } from "@/components/RealContentCard";
+import { SafeHaptics } from "@/lib/safeHaptics";
 
 async function withTimeout<T>(promise: Promise<T>, ms = 8000): Promise<T> {
   return await Promise.race([
@@ -27,13 +28,18 @@ async function fetchSeries() {
     return await res.json();
   } catch (error: any) {
     return {
-      trending: [],
-      newReleases: [],
-      topRated: [],
-      popular: [],
-      airingToday: [],
+      trending: [], newReleases: [], topRated: [], popular: [], airingToday: [],
       error: String(error?.message || "Series request failed"),
     };
+  }
+}
+
+async function fetchSeriesGenres() {
+  try {
+    const res = await withTimeout(apiRequest("GET", "/api/series/genres-catalog"), 15000);
+    return await res.json();
+  } catch {
+    return { genres: [] };
   }
 }
 
@@ -50,7 +56,13 @@ export default function SeriesScreen() {
     queryFn: fetchSeries,
     staleTime: 5 * 60 * 1000,
     retry: 0,
-    retryDelay: 2000,
+  });
+
+  const { data: genresData, refetch: refetchGenres } = useQuery({
+    queryKey: ["series", "genres"],
+    queryFn: fetchSeriesGenres,
+    staleTime: 10 * 60 * 1000,
+    retry: 0,
   });
 
   const iptvSeries = useMemo(
@@ -73,8 +85,8 @@ export default function SeriesScreen() {
     return list.map(c => ({
       id: c.id, title: c.title || c.name, poster: c.poster || null,
       backdrop: c.backdrop || null, synopsis: c.synopsis || "",
-      year: c.year, imdb: c.rating, genre: [], quality: "HD", seasons: (c as any).seasons || 1,
-      isIptv: true, streamUrl: c.url, tmdbId: (c as any).tmdbId,
+      year: c.year, imdb: c.rating, genre: [], quality: "HD",
+      isIptv: true, streamUrl: c.url, tmdbId: c.tmdbId,
       color: COLORS.card,
     }));
   }, [iptvSeries, groupFilter, search]);
@@ -84,9 +96,11 @@ export default function SeriesScreen() {
   const topRated = useMemo(() => data?.topRated || [], [data]);
   const popular = useMemo(() => data?.popular || [], [data]);
   const airingToday = useMemo(() => data?.airingToday || [], [data]);
+  const seriesGenres: any[] = useMemo(() => genresData?.genres || [], [genresData]);
+
   const featured = iptvSeries.length > 0
     ? filteredIptv[0]
-    : trending[0];
+    : (trending[0] || newReleases[0]);
 
   const rawCatalogError =
     (data as any)?.error ||
@@ -98,25 +112,19 @@ export default function SeriesScreen() {
   const isTabLoading = isLoading || isLoadingPlaylist;
 
   useEffect(() => {
-    if (!isTabLoading) {
-      setLoadingGuardReached(false);
-      return;
-    }
+    if (!isTabLoading) { setLoadingGuardReached(false); return; }
     const timer = setTimeout(() => setLoadingGuardReached(true), 12_000);
     return () => clearTimeout(timer);
   }, [isTabLoading]);
 
-  // IPTV → detail met isIptv flag → detail haalt TMDB info op via titel/tmdbId
+  // ── Navigation helpers ─────────────────────────────────────────────────────
   const goToDetail = (item: any) => {
     if (item.isIptv) {
       router.push({
         pathname: "/detail",
         params: {
-          id: item.id,
-          type: "series",
-          title: item.title,
-          isIptv: "true",
-          streamUrl: item.streamUrl,
+          id: item.id, type: "series", title: item.title,
+          isIptv: "true", streamUrl: item.streamUrl,
           ...(item.tmdbId ? { tmdbId: String(item.tmdbId) } : {}),
         },
       });
@@ -125,19 +133,57 @@ export default function SeriesScreen() {
     }
   };
 
+  // Direct play — bypasses detail screen
+  const goToPlayer = (item: any) => {
+    SafeHaptics.impactLight();
+    const tmdbId = item.tmdbId ? String(item.tmdbId) : (!item.isIptv ? item.id : null);
+    if (item.isIptv && item.streamUrl) {
+      router.push({
+        pathname: "/player",
+        params: {
+          streamUrl: item.streamUrl, title: item.title,
+          type: "series", contentId: item.id,
+          ...(tmdbId ? { tmdbId } : {}),
+          season: "1", episode: "1",
+        },
+      });
+    } else if (tmdbId) {
+      router.push({
+        pathname: "/player",
+        params: {
+          tmdbId, title: item.title,
+          type: "series", contentId: item.id,
+          season: "1", episode: "1",
+        },
+      });
+    } else {
+      goToDetail(item);
+    }
+  };
+
   const filteredTmdb = useMemo(() => {
     if (!search.trim()) return null;
     const q = search.toLowerCase();
     const results = [
-      ...trending.filter((s: any) => (s.title || "").toLowerCase().includes(q)),
-      ...newReleases.filter((s: any) => (s.title || "").toLowerCase().includes(q)),
-      ...topRated.filter((s: any) => (s.title || "").toLowerCase().includes(q)),
-      ...popular.filter((s: any) => (s.title || "").toLowerCase().includes(q)),
-      ...airingToday.filter((s: any) => (s.title || "").toLowerCase().includes(q)),
+      ...trending.filter((m: any) => (m.title || "").toLowerCase().includes(q)),
+      ...newReleases.filter((m: any) => (m.title || "").toLowerCase().includes(q)),
+      ...topRated.filter((m: any) => (m.title || "").toLowerCase().includes(q)),
+      ...popular.filter((m: any) => (m.title || "").toLowerCase().includes(q)),
+      ...airingToday.filter((m: any) => (m.title || "").toLowerCase().includes(q)),
     ];
     const seen = new Set<string>();
-    return results.filter((s: any) => { if (seen.has(s.id)) return false; seen.add(s.id); return true; });
+    return results.filter((m: any) => { if (seen.has(m.id)) return false; seen.add(m.id); return true; });
   }, [search, trending, newReleases, topRated, popular, airingToday]);
+
+  const renderCard = (item: any) => (
+    <RealContentCard
+      item={item}
+      onPress={() => goToDetail(item)}
+      onPlay={() => goToPlayer(item)}
+      onFavorite={() => toggleFavorite(item.id)}
+      isFavorite={isFavorite(item.id)}
+    />
+  );
 
   return (
     <View style={styles.container}>
@@ -179,7 +225,11 @@ export default function SeriesScreen() {
         keyExtractor={() => ""}
         renderItem={null}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={async () => { setRefreshing(true); await refetch(); setRefreshing(false); }} tintColor={COLORS.accent} />
+          <RefreshControl refreshing={refreshing} onRefresh={async () => {
+            setRefreshing(true);
+            await Promise.all([refetch(), refetchGenres()]);
+            setRefreshing(false);
+          }} tintColor={COLORS.accent} />
         }
         ListHeaderComponent={
           <>
@@ -203,22 +253,14 @@ export default function SeriesScreen() {
               <View style={styles.section}>
                 <Text style={styles.sectionTitle}>Zoekresultaten</Text>
                 {filteredIptv.length > 0 && (
-                  <>
-                    <FlatList horizontal data={filteredIptv} keyExtractor={(item: any) => item.id}
-                      renderItem={({ item }: any) => (
-                        <RealContentCard item={item} onPress={() => goToDetail(item)} onFavorite={() => toggleFavorite(item.id)} isFavorite={isFavorite(item.id)} />
-                      )}
-                      contentContainerStyle={styles.carouselPadding} showsHorizontalScrollIndicator={false} />
-                  </>
+                  <FlatList horizontal data={filteredIptv} keyExtractor={(item: any) => item.id}
+                    renderItem={({ item }: any) => renderCard(item)}
+                    contentContainerStyle={styles.carouselPadding} showsHorizontalScrollIndicator={false} />
                 )}
                 {(filteredTmdb ?? []).length > 0 && (
-                  <>
-                    <FlatList horizontal data={filteredTmdb ?? []} keyExtractor={(item: any) => item.id}
-                      renderItem={({ item }: any) => (
-                        <RealContentCard item={item} onPress={() => goToDetail(item)} onFavorite={() => toggleFavorite(item.id)} isFavorite={isFavorite(item.id)} />
-                      )}
-                      contentContainerStyle={styles.carouselPadding} showsHorizontalScrollIndicator={false} />
-                  </>
+                  <FlatList horizontal data={filteredTmdb ?? []} keyExtractor={(item: any) => item.id}
+                    renderItem={({ item }: any) => renderCard(item)}
+                    contentContainerStyle={styles.carouselPadding} showsHorizontalScrollIndicator={false} />
                 )}
                 {filteredIptv.length === 0 && (filteredTmdb ?? []).length === 0 && (
                   <View style={{ alignItems: "center", paddingTop: 40, gap: 10 }}>
@@ -229,14 +271,16 @@ export default function SeriesScreen() {
               </View>
             ) : (
               <>
-                {/* Hero banner — IPTV eerst als beschikbaar */}
                 {featured && (
                   <View style={styles.heroFrame}>
-                    <RealHeroBanner item={featured} onPlay={() => goToDetail(featured)} onInfo={() => goToDetail(featured)} />
+                    <RealHeroBanner
+                      item={featured}
+                      onPlay={() => goToPlayer(featured)}
+                      onInfo={() => goToDetail(featured)}
+                    />
                   </View>
                 )}
 
-                {/* IPTV Playlist sectie */}
                 {iptvSeries.length > 0 && (
                   <View style={styles.section}>
                     <Text style={styles.sectionTitle}>Jouw Playlist</Text>
@@ -254,9 +298,7 @@ export default function SeriesScreen() {
                     )}
                     <FlatList
                       horizontal data={filteredIptv} keyExtractor={(item: any) => item.id}
-                      renderItem={({ item }: any) => (
-                        <RealContentCard item={item} onPress={() => goToDetail(item)} onFavorite={() => toggleFavorite(item.id)} isFavorite={isFavorite(item.id)} />
-                      )}
+                      renderItem={({ item }: any) => renderCard(item)}
                       contentContainerStyle={styles.carouselPadding} showsHorizontalScrollIndicator={false} />
                   </View>
                 )}
@@ -265,20 +307,25 @@ export default function SeriesScreen() {
                   <View style={styles.section}>
                     <Text style={styles.sectionTitle}>Trending deze week</Text>
                     <FlatList horizontal data={trending} keyExtractor={(item: any) => item.id}
-                      renderItem={({ item }: any) => (
-                        <RealContentCard item={item} onPress={() => goToDetail(item)} onFavorite={() => toggleFavorite(item.id)} isFavorite={isFavorite(item.id)} />
-                      )}
+                      renderItem={({ item }: any) => renderCard(item)}
+                      contentContainerStyle={styles.carouselPadding} showsHorizontalScrollIndicator={false} />
+                  </View>
+                )}
+
+                {airingToday.length > 0 && (
+                  <View style={styles.section}>
+                    <Text style={styles.sectionTitle}>Nu op TV</Text>
+                    <FlatList horizontal data={airingToday} keyExtractor={(item: any) => item.id}
+                      renderItem={({ item }: any) => renderCard(item)}
                       contentContainerStyle={styles.carouselPadding} showsHorizontalScrollIndicator={false} />
                   </View>
                 )}
 
                 {newReleases.length > 0 && (
                   <View style={styles.section}>
-                    <Text style={styles.sectionTitle}>Nieuw toegevoegd</Text>
+                    <Text style={styles.sectionTitle}>Nieuw & Lopend</Text>
                     <FlatList horizontal data={newReleases} keyExtractor={(item: any) => item.id}
-                      renderItem={({ item }: any) => (
-                        <RealContentCard item={item} onPress={() => goToDetail(item)} onFavorite={() => toggleFavorite(item.id)} isFavorite={isFavorite(item.id)} />
-                      )}
+                      renderItem={({ item }: any) => renderCard(item)}
                       contentContainerStyle={styles.carouselPadding} showsHorizontalScrollIndicator={false} />
                   </View>
                 )}
@@ -287,9 +334,7 @@ export default function SeriesScreen() {
                   <View style={styles.section}>
                     <Text style={styles.sectionTitle}>Best beoordeeld</Text>
                     <FlatList horizontal data={topRated} keyExtractor={(item: any) => item.id}
-                      renderItem={({ item }: any) => (
-                        <RealContentCard item={item} onPress={() => goToDetail(item)} onFavorite={() => toggleFavorite(item.id)} isFavorite={isFavorite(item.id)} />
-                      )}
+                      renderItem={({ item }: any) => renderCard(item)}
                       contentContainerStyle={styles.carouselPadding} showsHorizontalScrollIndicator={false} />
                   </View>
                 )}
@@ -298,27 +343,34 @@ export default function SeriesScreen() {
                   <View style={styles.section}>
                     <Text style={styles.sectionTitle}>Populair nu</Text>
                     <FlatList horizontal data={popular} keyExtractor={(item: any) => item.id}
-                      renderItem={({ item }: any) => (
-                        <RealContentCard item={item} onPress={() => goToDetail(item)} onFavorite={() => toggleFavorite(item.id)} isFavorite={isFavorite(item.id)} />
-                      )}
+                      renderItem={({ item }: any) => renderCard(item)}
                       contentContainerStyle={styles.carouselPadding} showsHorizontalScrollIndicator={false} />
                   </View>
                 )}
 
-                {airingToday.length > 0 && (
-                  <View style={styles.section}>
-                    <Text style={styles.sectionTitle}>Vanavond te zien</Text>
-                    <FlatList horizontal data={airingToday} keyExtractor={(item: any) => item.id}
-                      renderItem={({ item }: any) => (
-                        <RealContentCard item={item} onPress={() => goToDetail(item)} onFavorite={() => toggleFavorite(item.id)} isFavorite={isFavorite(item.id)} />
-                      )}
-                      contentContainerStyle={styles.carouselPadding} showsHorizontalScrollIndicator={false} />
-                  </View>
-                )}
+                {/* Genre rows — 2000 to present */}
+                {seriesGenres.map((genre: any) => (
+                  genre.items?.length > 0 && (
+                    <View key={String(genre.id)} style={styles.section}>
+                      <Text style={styles.sectionTitle}>{genre.name}</Text>
+                      <FlatList
+                        horizontal
+                        data={genre.items}
+                        keyExtractor={(item: any) => item.id}
+                        renderItem={({ item }: any) => renderCard(item)}
+                        contentContainerStyle={styles.carouselPadding}
+                        showsHorizontalScrollIndicator={false}
+                      />
+                    </View>
+                  )
+                ))}
 
                 {isLoading && (
                   <View style={{ padding: 40, alignItems: "center" }}>
                     <ActivityIndicator color={COLORS.accent} />
+                    <Text style={{ color: COLORS.textMuted, fontFamily: "Inter_400Regular", fontSize: 13, marginTop: 12 }}>
+                      Series laden...
+                    </Text>
                   </View>
                 )}
                 {isError && !iptvSeries.length && (
@@ -353,48 +405,27 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(11,35,89,0.25)",
     marginBottom: 14,
   },
-  sectionRow: { flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 20, marginBottom: 14 },
   chipRow: { paddingHorizontal: 16, paddingBottom: 10, gap: 8, flexDirection: "row" },
   chip: { paddingHorizontal: 14, paddingVertical: 6, borderRadius: 20, backgroundColor: COLORS.card, borderWidth: 1, borderColor: COLORS.border },
   chipActive: { backgroundColor: COLORS.accentGlow, borderColor: COLORS.accent },
   chipText: { fontFamily: "Inter_500Medium", fontSize: 12, color: COLORS.textMuted },
   chipTextActive: { color: COLORS.accent },
-  iptvBadge: { flexDirection: "row", alignItems: "center", gap: 5, backgroundColor: COLORS.accentGlow, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4, borderWidth: 1, borderColor: COLORS.accent },
-  iptvBadgeText: { fontFamily: "Inter_600SemiBold", fontSize: 11, color: COLORS.accent },
   loadingBanner: { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 16, paddingVertical: 8 },
   loadingText: { fontFamily: "Inter_400Regular", fontSize: 13, color: COLORS.textMuted },
   watchdogBanner: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    marginHorizontal: 16,
-    marginBottom: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderRadius: 10,
-    backgroundColor: COLORS.accentGlow,
-    borderWidth: 1,
-    borderColor: COLORS.accent + "55",
+    flexDirection: "row", alignItems: "center", gap: 8, marginHorizontal: 16, marginBottom: 10,
+    paddingHorizontal: 12, paddingVertical: 10, borderRadius: 10,
+    backgroundColor: COLORS.accentGlow, borderWidth: 1, borderColor: COLORS.accent + "55",
   },
   watchdogText: { fontFamily: "Inter_500Medium", fontSize: 12, color: COLORS.accent, flex: 1 },
   errorBanner: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    marginHorizontal: 16,
-    marginBottom: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderRadius: 10,
-    backgroundColor: COLORS.liveGlow,
-    borderWidth: 1,
-    borderColor: COLORS.live,
+    flexDirection: "row", alignItems: "center", gap: 8, marginHorizontal: 16, marginBottom: 10,
+    paddingHorizontal: 12, paddingVertical: 10, borderRadius: 10,
+    backgroundColor: COLORS.liveGlow, borderWidth: 1, borderColor: COLORS.live,
   },
   errorText: { fontFamily: "Inter_500Medium", fontSize: 12, color: COLORS.textSecondary, flex: 1 },
   errorCodeText: { fontFamily: "Inter_400Regular", fontSize: 10, color: COLORS.textMuted },
   section: { marginBottom: 28 },
   sectionTitle: { fontFamily: "Inter_700Bold", fontSize: 20, color: COLORS.text, marginBottom: 14, paddingHorizontal: 20 },
   carouselPadding: { paddingHorizontal: 20, paddingRight: 8 },
-  sourceLabel: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 20, marginBottom: 10, marginTop: 4 },
-  sourceLabelText: { fontFamily: "Inter_600SemiBold", fontSize: 12, color: COLORS.accent },
 });

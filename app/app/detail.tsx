@@ -1,7 +1,7 @@
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useState, useRef } from "react";
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  Image, Modal, Platform, Animated, ActivityIndicator,
+  Image, Modal, Platform, Alert, ActivityIndicator,
 } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -9,6 +9,7 @@ import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { useQuery } from "@tanstack/react-query";
 import WebView from "react-native-webview";
+import * as FileSystem from "expo-file-system";
 import { COLORS } from "@/constants/colors";
 import { apiRequest } from "@/lib/query-client";
 import { useNexora } from "@/context/NexoraContext";
@@ -47,66 +48,190 @@ function CastCard({ person }: { person: any }) {
   );
 }
 
-function DownloadModal({ visible, onClose, title }: { visible: boolean; onClose: () => void; title: string }) {
-  const [progress] = useState(new Animated.Value(0));
-  const [step, setStep] = useState<"select" | "downloading" | "done">("select");
+function DownloadModal({
+  visible, onClose, title, contentId, type: contentType, streamUrl, poster, year,
+}: {
+  visible: boolean; onClose: () => void; title: string;
+  contentId: string; type: string; streamUrl?: string | null;
+  poster?: string | null; year?: number | null;
+}) {
+  const { addDownload, isDownloaded, removeDownload, getDownload } = useNexora();
+  const [step, setStep] = useState<"select" | "downloading" | "done" | "error">("select");
   const [quality, setQuality] = useState("FHD");
+  const [progress, setProgress] = useState(0);
+  const [errorMsg, setErrorMsg] = useState("");
+  const downloadRef = useRef<FileSystem.DownloadResumable | null>(null);
 
-  const startDownload = () => {
-    setStep("downloading");
-    Animated.timing(progress, { toValue: 1, duration: 4000, useNativeDriver: false }).start(() => {
-      setStep("done");
-    });
+  const alreadyDownloaded = isDownloaded(contentId);
+  const existingDl = getDownload(contentId);
+
+  // Determine if we have a direct downloadable URL (not HLS/m3u8)
+  const canDownload = streamUrl &&
+    !streamUrl.includes(".m3u8") &&
+    !streamUrl.includes("m3u") &&
+    (streamUrl.startsWith("http://") || streamUrl.startsWith("https://"));
+
+  const resetState = () => {
+    setStep("select");
+    setProgress(0);
+    setErrorMsg("");
+    downloadRef.current = null;
   };
 
-  const progressWidth = progress.interpolate({ inputRange: [0, 1], outputRange: ["0%", "100%"] });
+  const startDownload = async () => {
+    if (!canDownload || !streamUrl) {
+      setErrorMsg("Direct downloaden is alleen mogelijk voor MP4/TS streams vanuit een IPTV playlist.");
+      setStep("error");
+      return;
+    }
+    setStep("downloading");
+    setProgress(0);
+    try {
+      const dir = FileSystem.documentDirectory + "nexora_downloads/";
+      await FileSystem.makeDirectoryAsync(dir, { intermediates: true });
+      const ext = streamUrl.split("?")[0].split(".").pop()?.split("/").pop() || "mp4";
+      const filename = `nx_${contentId.replace(/[^a-z0-9]/gi, "_")}_${Date.now()}.${ext}`;
+      const fileUri = dir + filename;
+
+      const dl = FileSystem.createDownloadResumable(
+        streamUrl,
+        fileUri,
+        {},
+        (p) => {
+          const pct = p.totalBytesExpectedToWrite > 0
+            ? p.totalBytesWritten / p.totalBytesExpectedToWrite
+            : 0;
+          setProgress(Math.min(pct, 0.99));
+        }
+      );
+      downloadRef.current = dl;
+      const result = await dl.downloadAsync();
+      if (result?.uri) {
+        setProgress(1);
+        const info = await FileSystem.getInfoAsync(result.uri);
+        await addDownload({
+          id: `dl_${Date.now()}`,
+          contentId,
+          title,
+          type: contentType as any,
+          poster: poster || null,
+          filePath: result.uri,
+          fileSize: (info as any).size ?? undefined,
+          downloadedAt: new Date().toISOString(),
+          year: year ?? null,
+          quality,
+        });
+        setStep("done");
+      } else {
+        throw new Error("Download mislukt");
+      }
+    } catch (e: any) {
+      setErrorMsg(e?.message || "Download mislukt");
+      setStep("error");
+    }
+  };
+
+  const handleCancel = async () => {
+    try { await downloadRef.current?.cancelAsync(); } catch {}
+    resetState();
+    onClose();
+  };
+
+  const handleRemove = () => {
+    if (existingDl) {
+      Alert.alert("Verwijder download", "Wil je deze download verwijderen?", [
+        { text: "Annuleer", style: "cancel" },
+        { text: "Verwijder", style: "destructive", onPress: async () => {
+          await removeDownload(existingDl.id);
+          resetState();
+          onClose();
+        }},
+      ]);
+    }
+  };
 
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={handleCancel}>
       <View style={styles.modalOverlay}>
         <View style={styles.downloadModal}>
           <View style={styles.downloadHandle} />
-          <Text style={styles.downloadTitle}>Download for Offline</Text>
+          <Text style={styles.downloadTitle}>
+            {alreadyDownloaded ? "Gedownload" : "Download voor Offline"}
+          </Text>
           <Text style={styles.downloadSubtitle} numberOfLines={2}>{title}</Text>
-          {step === "select" && (
-            <>
-              <Text style={styles.downloadLabel}>Select Quality</Text>
-              <View style={styles.qualityOptions}>
-                {["HD", "FHD", "4K"].map((q) => (
-                  <TouchableOpacity
-                    key={q}
-                    style={[styles.qualityOption, quality === q && styles.qualityOptionActive]}
-                    onPress={() => setQuality(q)}
-                  >
-                    <Text style={[styles.qualityOptionText, quality === q && styles.qualityOptionTextActive]}>{q}</Text>
-                    <Text style={styles.qualitySize}>{q === "4K" ? "~4.2 GB" : q === "FHD" ? "~2.1 GB" : "~900 MB"}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-              <TouchableOpacity style={styles.downloadBtn} onPress={startDownload}>
-                <Ionicons name="download-outline" size={18} color={COLORS.background} />
-                <Text style={styles.downloadBtnText}>Start Download</Text>
+
+          {alreadyDownloaded && step === "select" ? (
+            <View style={styles.doneContainer}>
+              <View style={styles.doneIcon}><Ionicons name="checkmark-circle" size={36} color={COLORS.accent} /></View>
+              <Text style={styles.doneText}>Al opgeslagen op je toestel</Text>
+              <Text style={styles.doneNote}>Beschikbaar zonder internet</Text>
+              <TouchableOpacity style={[styles.downloadBtn, { backgroundColor: COLORS.liveGlow, marginTop: 8 }]} onPress={handleRemove}>
+                <Ionicons name="trash-outline" size={16} color={COLORS.live} />
+                <Text style={[styles.downloadBtnText, { color: COLORS.live }]}>Download verwijderen</Text>
               </TouchableOpacity>
-            </>
-          )}
-          {step === "downloading" && (
-            <View style={styles.progressContainer}>
-              <Text style={styles.downloadingText}>Downloading {quality}...</Text>
-              <View style={styles.progressTrack}>
-                <Animated.View style={[styles.progressFill, { width: progressWidth }]} />
-              </View>
-              <Text style={styles.progressNote}>Keep the app open to continue downloading</Text>
             </View>
-          )}
-          {step === "done" && (
+          ) : step === "select" ? (
+            <>
+              {!canDownload && (
+                <View style={styles.noDownloadNote}>
+                  <Ionicons name="information-circle-outline" size={16} color={COLORS.accent} />
+                  <Text style={styles.noDownloadText}>
+                    {streamUrl?.includes(".m3u8")
+                      ? "HLS/M3U8 streams kunnen niet lokaal worden opgeslagen. Probeer een andere server."
+                      : "Dit item heeft geen directe stream URL. Voeg een IPTV playlist toe om te downloaden."}
+                  </Text>
+                </View>
+              )}
+              {canDownload && (
+                <>
+                  <Text style={styles.downloadLabel}>Kwaliteit</Text>
+                  <View style={styles.qualityOptions}>
+                    {["HD", "FHD"].map((q) => (
+                      <TouchableOpacity
+                        key={q}
+                        style={[styles.qualityOption, quality === q && styles.qualityOptionActive]}
+                        onPress={() => setQuality(q)}
+                      >
+                        <Text style={[styles.qualityOptionText, quality === q && styles.qualityOptionTextActive]}>{q}</Text>
+                        <Text style={styles.qualitySize}>{q === "FHD" ? "~2+ GB" : "~900 MB"}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                  <TouchableOpacity style={styles.downloadBtn} onPress={startDownload}>
+                    <Ionicons name="download-outline" size={18} color={COLORS.background} />
+                    <Text style={styles.downloadBtnText}>Start Download</Text>
+                  </TouchableOpacity>
+                </>
+              )}
+            </>
+          ) : step === "downloading" ? (
+            <View style={styles.progressContainer}>
+              <ActivityIndicator color={COLORS.accent} size="small" />
+              <Text style={styles.downloadingText}>Downloaden... {Math.round(progress * 100)}%</Text>
+              <View style={styles.progressTrack}>
+                <View style={[styles.progressFill, { width: `${Math.round(progress * 100)}%` as any }]} />
+              </View>
+              <Text style={styles.progressNote}>Houd de app open tijdens het downloaden</Text>
+            </View>
+          ) : step === "done" ? (
             <View style={styles.doneContainer}>
               <View style={styles.doneIcon}><Ionicons name="checkmark" size={32} color={COLORS.accent} /></View>
-              <Text style={styles.doneText}>Downloaded Successfully</Text>
-              <Text style={styles.doneNote}>Available in My Downloads</Text>
+              <Text style={styles.doneText}>Opgeslagen op je toestel</Text>
+              <Text style={styles.doneNote}>Beschikbaar zonder internet</Text>
+            </View>
+          ) : (
+            <View style={styles.doneContainer}>
+              <Ionicons name="warning-outline" size={32} color={COLORS.live} />
+              <Text style={[styles.doneText, { color: COLORS.live }]}>Download mislukt</Text>
+              <Text style={styles.doneNote}>{errorMsg}</Text>
+              <TouchableOpacity style={[styles.downloadBtn, { marginTop: 8 }]} onPress={resetState}>
+                <Text style={styles.downloadBtnText}>Opnieuw proberen</Text>
+              </TouchableOpacity>
             </View>
           )}
-          <TouchableOpacity style={styles.closeBtnSmall} onPress={onClose}>
-            <Text style={styles.closeBtnText}>{step === "done" ? "Done" : "Cancel"}</Text>
+
+          <TouchableOpacity style={styles.closeBtnSmall} onPress={step === "downloading" ? handleCancel : () => { resetState(); onClose(); }}>
+            <Text style={styles.closeBtnText}>{step === "done" || step === "error" ? "Sluiten" : step === "downloading" ? "Annuleer" : "Sluiten"}</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -124,7 +249,7 @@ export default function DetailScreen() {
   }>();
 
   const insets = useSafeAreaInsets();
-  const { isFavorite, toggleFavorite, iptvChannels } = useNexora();
+  const { isFavorite, toggleFavorite, iptvChannels, isDownloaded } = useNexora();
 
   const [showTrailer, setShowTrailer] = useState(false);
   const [showDownload, setShowDownload] = useState(false);
@@ -380,11 +505,13 @@ export default function DetailScreen() {
               </LinearGradient>
             </TouchableOpacity>
             <TouchableOpacity
-              style={styles.downloadBtnOutline}
+              style={[styles.downloadBtnOutline, isDownloaded(id) && { borderColor: "#22c55e" }]}
               onPress={() => { SafeHaptics.impactLight(); setShowDownload(true); }}
             >
-              <Ionicons name="download-outline" size={20} color={COLORS.accent} />
-              <Text style={styles.downloadBtnOutlineText}>Download</Text>
+              <Ionicons name={isDownloaded(id) ? "checkmark-circle" : "download-outline"} size={20} color={isDownloaded(id) ? "#22c55e" : COLORS.accent} />
+              <Text style={[styles.downloadBtnOutlineText, isDownloaded(id) && { color: "#22c55e" }]}>
+                {isDownloaded(id) ? "Gedownload" : "Download"}
+              </Text>
             </TouchableOpacity>
           </View>
 
@@ -543,7 +670,19 @@ export default function DetailScreen() {
         </View>
       </Modal>
 
-      <DownloadModal visible={showDownload} onClose={() => setShowDownload(false)} title={data.title} />
+      <DownloadModal
+        visible={showDownload}
+        onClose={() => setShowDownload(false)}
+        title={data.title}
+        contentId={id}
+        type={type || "movie"}
+        streamUrl={
+          (streamUrl && streamUrl !== "undefined" && streamUrl.startsWith("http") ? streamUrl : null) ||
+          (iptvChannel?.url?.startsWith("http") ? iptvChannel.url : null)
+        }
+        poster={data.poster}
+        year={data.year ? Number(data.year) : null}
+      />
     </View>
   );
 }
@@ -651,4 +790,6 @@ const styles = StyleSheet.create({
   doneNote: { fontFamily: "Inter_400Regular", fontSize: 13, color: COLORS.textMuted },
   closeBtnSmall: { marginTop: 8, paddingVertical: 12, paddingHorizontal: 32, borderRadius: 12, borderWidth: 1, borderColor: COLORS.border, width: "100%", alignItems: "center" },
   closeBtnText: { fontFamily: "Inter_600SemiBold", fontSize: 15, color: COLORS.textSecondary },
+  noDownloadNote: { flexDirection: "row", alignItems: "flex-start", gap: 8, backgroundColor: COLORS.accentGlow, borderRadius: 10, borderWidth: 1, borderColor: COLORS.accent, padding: 12, width: "100%" },
+  noDownloadText: { fontFamily: "Inter_400Regular", fontSize: 13, color: COLORS.textSecondary, flex: 1, lineHeight: 18 },
 });

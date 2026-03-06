@@ -4071,6 +4071,78 @@ app.get("/api/series/:id/full", tmdbLimiter, async (req, res) => {
     res.status(200).json({ error: String(e?.message || e) });
   }
 });
+// ─── Genre catalog (discover) ─────────────────────────────────────────────────
+// Returns genre rows using TMDB /discover, from 2000 to now.
+// 11 concurrent genre calls per request — well within TMDB 50 req/s limit.
+
+const MOVIE_GENRES = [
+  { id: 28,    name: "Actie" },
+  { id: 35,    name: "Komedie" },
+  { id: 18,    name: "Drama" },
+  { id: 27,    name: "Horror" },
+  { id: 878,   name: "Science Fiction" },
+  { id: 53,    name: "Thriller" },
+  { id: 10749, name: "Romantiek" },
+  { id: 16,    name: "Animatie" },
+  { id: 80,    name: "Misdaad" },
+  { id: 12,    name: "Avontuur" },
+  { id: 14,    name: "Fantasy" },
+];
+
+const SERIES_GENRES = [
+  { id: 10759, name: "Actie & Avontuur" },
+  { id: 35,    name: "Komedie" },
+  { id: 18,    name: "Drama" },
+  { id: 10765, name: "Sci-Fi & Fantasy" },
+  { id: 27,    name: "Horror" },
+  { id: 9648,  name: "Mysterie" },
+  { id: 80,    name: "Misdaad" },
+  { id: 16,    name: "Animatie" },
+  { id: 10762, name: "Voor Kinderen" },
+];
+
+app.get("/api/movies/genres-catalog", tmdbLimiter, async (req, res) => {
+  try {
+    if (!process.env.TMDB_API_KEY) return res.json({ genres: [] });
+    const results = await Promise.all(
+      MOVIE_GENRES.map(async (g) => {
+        const data = await tmdb(
+          `/discover/movie?with_genres=${g.id}&primary_release_date.gte=2000-01-01&sort_by=popularity.desc&vote_count.gte=50`
+        );
+        return {
+          id: g.id,
+          name: g.name,
+          items: (data?.results || []).slice(0, 20).map((it) => mapTrendingItem(it, "movie")),
+        };
+      })
+    );
+    res.json({ genres: results.filter((g) => g.items.length > 0) });
+  } catch (e) {
+    res.status(200).json({ genres: [], error: String(e?.message || e) });
+  }
+});
+
+app.get("/api/series/genres-catalog", tmdbLimiter, async (req, res) => {
+  try {
+    if (!process.env.TMDB_API_KEY) return res.json({ genres: [] });
+    const results = await Promise.all(
+      SERIES_GENRES.map(async (g) => {
+        const data = await tmdb(
+          `/discover/tv?with_genres=${g.id}&first_air_date.gte=2000-01-01&sort_by=popularity.desc&vote_count.gte=50`
+        );
+        return {
+          id: g.id,
+          name: g.name,
+          items: (data?.results || []).slice(0, 20).map((it) => mapTrendingItem(it, "series")),
+        };
+      })
+    );
+    res.json({ genres: results.filter((g) => g.items.length > 0) });
+  } catch (e) {
+    res.status(200).json({ genres: [], error: String(e?.message || e) });
+  }
+});
+
 // -----------------------------
 // Start
 // -----------------------------

@@ -29,6 +29,18 @@ import { SafeHaptics } from "@/lib/safeHaptics";
 
 const CHANGELOG: { version: string; date: string; changes: string[] }[] = [
   {
+    version: "1.8.0",
+    date: "2026-03-06",
+    changes: [
+      "Echte offline downloads naar toestel via expo-file-system",
+      "Nieuw Downloads-tabblad om gedownloade content te beheren en afspelen",
+      "Play-knop direct op poster-kaartjes en hero banner",
+      "11 genre-rijen (Actie, Komedie, Drama, Horror, Sci-Fi…) per categorie",
+      "Film & serie catalogus uitgebreid met TMDB Discover-API (2000–nu)",
+      "Poster-afbeeldingen automatisch via TMDB",
+    ],
+  },
+  {
     version: "1.7.1",
     date: "2026-03-06",
     changes: [

@@ -41,12 +41,13 @@ interface ContentItem {
 interface Props {
   item: ContentItem;
   onPress: () => void;
+  onPlay?: () => void;
   onFavorite?: () => void;
   isFavorite?: boolean;
   width?: number;
 }
 
-export function RealContentCard({ item, onPress, onFavorite, isFavorite, width = 130 }: Props) {
+export function RealContentCard({ item, onPress, onPlay, onFavorite, isFavorite, width = 130 }: Props) {
   const scaleAnim = useRef(new Animated.Value(1)).current;
   const [imageError, setImageError] = useState(false);
   const height = Math.round(width * 1.56);
@@ -115,6 +116,12 @@ export function RealContentCard({ item, onPress, onFavorite, isFavorite, width =
             <View style={styles.trendingBadge}>
               <Ionicons name="flame" size={10} color="#FF6B35" />
             </View>
+          )}
+
+          {onPlay && (
+            <TouchableOpacity style={styles.playOverlayBtn} onPress={onPlay} activeOpacity={0.8}>
+              <Ionicons name="play" size={13} color={COLORS.background} />
+            </TouchableOpacity>
           )}
 
           {onFavorite && (
@@ -298,6 +305,23 @@ const styles = StyleSheet.create({
     borderColor: COLORS.borderLight,
     alignItems: "center",
     justifyContent: "center",
+  },
+  playOverlayBtn: {
+    position: "absolute",
+    bottom: 32,
+    alignSelf: "center",
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: COLORS.accent,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.5,
+    shadowRadius: 4,
+    elevation: 6,
+    paddingLeft: 2,
   },
   title: {
     fontFamily: "Inter_600SemiBold",

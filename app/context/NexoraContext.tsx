@@ -1,10 +1,24 @@
 import React, { createContext, useContext, useState, useEffect, useMemo, ReactNode } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Platform } from "react-native";
+import * as FileSystem from "expo-file-system";
 import { parseM3UContentAsync } from "@/lib/parseM3U";
 import { fetchM3UText } from "@/lib/fetchM3U";
 
 export type PremiumCategory = "sport" | "movies" | "series" | "livetv";
+
+export interface DownloadedItem {
+  id: string;
+  contentId: string;
+  title: string;
+  type: "movie" | "series" | "channel";
+  poster?: string | null;
+  filePath: string;
+  fileSize?: number;
+  downloadedAt: string;
+  year?: number | null;
+  quality?: string;
+}
 
 export interface WatchedItem {
   id: string;
@@ -89,6 +103,11 @@ interface NexoraContextValue {
   activatePremium: () => Promise<void>;
   deactivatePremium: () => Promise<void>;
   activatePremiumCategories: (cats: PremiumCategory[]) => Promise<void>;
+  downloads: DownloadedItem[];
+  addDownload: (item: DownloadedItem) => Promise<void>;
+  removeDownload: (id: string) => Promise<void>;
+  isDownloaded: (contentId: string) => boolean;
+  getDownload: (contentId: string) => DownloadedItem | undefined;
 }
 
 const NexoraContext = createContext<NexoraContextValue | null>(null);
@@ -114,6 +133,7 @@ export function NexoraProvider({ children }: { children: ReactNode }) {
   const [parentalPin, setParentalPinState] = useState<string | null>(null);
   const [activeProfile, setActiveProfileState] = useState("Main");
   const [premiumCategories, setPremiumCategoriesState] = useState<PremiumCategory[]>([]);
+  const [downloads, setDownloads] = useState<DownloadedItem[]>([]);
 
   const isPremium = ALL_CATS.every(c => premiumCategories.includes(c));
   const hasPremium = (cat: PremiumCategory) => premiumCategories.includes(cat);
@@ -162,9 +182,10 @@ export function NexoraProvider({ children }: { children: ReactNode }) {
           "nexora_iptv_channels", "nexora_hidden_channels", "nexora_hidden_groups",
           "nexora_premium", "nexora_premium_cats",
           "nexora_audio_lang", "nexora_autoplay", "nexora_dl_wifi", "nexora_notif",
+          "nexora_downloads",
         ];
         const [favs, hist, pls, qual, subs, pin, prof, iptv, hidCh, hidGr, prem, cats,
-               audioLang, autoplay, dlWifi, notif] =
+               audioLang, autoplay, dlWifi, notif, dlItems] =
           await AsyncStorage.multiGet(keys).then(r => r.map(([, v]) => v));
 
         if (favs) setFavorites(JSON.parse(favs));
@@ -185,6 +206,7 @@ export function NexoraProvider({ children }: { children: ReactNode }) {
         } else if (prem === "true") {
           setPremiumCategoriesState(ALL_CATS);
         }
+        if (dlItems) setDownloads(JSON.parse(dlItems));
 
         if (iptv) {
           const stored = JSON.parse(iptv) as IPTVChannel[];
@@ -365,6 +387,25 @@ export function NexoraProvider({ children }: { children: ReactNode }) {
     await AsyncStorage.removeItem("nexora_premium");
   };
 
+  const addDownload = async (item: DownloadedItem) => {
+    const next = [item, ...downloads.filter(d => d.contentId !== item.contentId)];
+    setDownloads(next);
+    await AsyncStorage.setItem("nexora_downloads", JSON.stringify(next));
+  };
+
+  const removeDownload = async (id: string) => {
+    const item = downloads.find(d => d.id === id);
+    if (item?.filePath) {
+      try { await FileSystem.deleteAsync(item.filePath, { idempotent: true }); } catch {}
+    }
+    const next = downloads.filter(d => d.id !== id);
+    setDownloads(next);
+    await AsyncStorage.setItem("nexora_downloads", JSON.stringify(next));
+  };
+
+  const isDownloaded = (contentId: string) => downloads.some(d => d.contentId === contentId);
+  const getDownload = (contentId: string) => downloads.find(d => d.contentId === contentId);
+
   const resetAll = async () => {
     const keys = [
       "nexora_favorites", "nexora_hidden_channels", "nexora_hidden_groups",
@@ -372,7 +413,7 @@ export function NexoraProvider({ children }: { children: ReactNode }) {
       "nexora_playlists", "nexora_pin", "nexora_profile", "nexora_quality",
       "nexora_subtitles", "nexora_premium", "nexora_premium_cats",
       "nexora_audio_lang", "nexora_autoplay", "nexora_dl_wifi", "nexora_notif",
-      "nexora_schema_v2", "nexora_schema_v3",
+      "nexora_schema_v2", "nexora_schema_v3", "nexora_downloads",
     ];
     try {
       await AsyncStorage.multiRemove(keys);
@@ -394,6 +435,7 @@ export function NexoraProvider({ children }: { children: ReactNode }) {
     setParentalPinState(null);
     setActiveProfileState("Main");
     setPremiumCategoriesState([]);
+    setDownloads([]);
     if (Platform.OS === "web" && typeof window !== "undefined") {
       setTimeout(() => window.location.reload(), 300);
     }
@@ -416,10 +458,11 @@ export function NexoraProvider({ children }: { children: ReactNode }) {
     activeProfile, setActiveProfile, profiles,
     isPremium, premiumCategories, hasPremium,
     activatePremium, deactivatePremium, activatePremiumCategories,
+    downloads, addDownload, removeDownload, isDownloaded, getDownload,
     resetAll,
   }), [favorites, watchHistory, playlists, iptvChannels, isLoadingPlaylist, hiddenChannels, hiddenGroups,
        selectedQuality, subtitlesEnabled, audioLanguage, autoplayEnabled, downloadOverWifi,
-       notificationsEnabled, parentalPin, activeProfile, premiumCategories]);
+       notificationsEnabled, parentalPin, activeProfile, premiumCategories, downloads]);
 
   return <NexoraContext.Provider value={value}>{children}</NexoraContext.Provider>;
 }
