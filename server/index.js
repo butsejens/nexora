@@ -44,6 +44,17 @@ const tmdbLimiter = makeRateLimiter(60, 60 * 1000);          // 60 per minute
 
 
 const PORT = process.env.PORT || 8080;
+// Public URL used to generate absolute proxy links (set by Render automatically)
+const PUBLIC_URL = (process.env.RENDER_EXTERNAL_URL || process.env.PUBLIC_URL || `http://localhost:${PORT}`).replace(/\/$/, "");
+
+// Rewrite image URLs that require Referer headers through our own proxy
+function proxyPhotoUrl(url) {
+  if (!url || !url.startsWith("http")) return url || null;
+  if (/transfermarkt\.technology|img\.a\.transfermarkt|img\.[a-z]\.transfermarkt/i.test(url)) {
+    return `${PUBLIC_URL}/api/img?url=${encodeURIComponent(url)}`;
+  }
+  return url;
+}
 const TZ = process.env.APP_TZ || "Europe/Brussels";
 
 // -----------------------------
@@ -829,8 +840,9 @@ async function fetchWikipediaTeamLogo(teamName) {
   }
 }
 
-// Enrich team logos using TheSportsDB + Wikipedia (parallel, cached 24h)
-// Runs for ALL teams – TheSportsDB/Wikipedia take priority over possibly-broken ESPN CDN URLs
+// Enrich team logos using TheSportsDB + ESPN CDN + Wikipedia (priority order, cached 24h)
+// Priority: TheSportsDB badge > existing ESPN CDN URL > Wikipedia (last resort)
+// Uses batched requests (5 at a time) to avoid rate-limiting the free TheSportsDB API.
 async function enrichMatchLogos(matches) {
   if (!Array.isArray(matches) || matches.length === 0) return matches;
 
@@ -839,21 +851,30 @@ async function enrichMatchLogos(matches) {
   )];
   if (teamNames.length === 0) return matches;
 
-  // TheSportsDB first (cached 24h), Wikipedia fallback
-  const logoMap = Object.fromEntries(
-    await Promise.all(teamNames.map(async (name) => {
-      const tsdb = await fetchTheSportsDBTeamLogo(name);
-      if (tsdb) return [name, tsdb];
-      const wiki = await fetchWikipediaTeamLogo(name);
-      return [name, wiki || null];
-    }))
-  );
+  // Batched TheSportsDB lookups (max 5 parallel) to avoid rate-limit on free key
+  const tsdbMap = {};
+  for (let i = 0; i < teamNames.length; i += 5) {
+    const batch = teamNames.slice(i, i + 5);
+    const results = await Promise.all(batch.map(async (name) => [name, await fetchTheSportsDBTeamLogo(name)]));
+    for (const [name, logo] of results) tsdbMap[name] = logo;
+  }
+
+  // Wikipedia only for teams that TSDB missed AND have no existing ESPN CDN logo
+  const needsWiki = teamNames.filter((name) => {
+    const hasExistingLogo = matches.some((m) => (m.homeTeam === name && m.homeTeamLogo) || (m.awayTeam === name && m.awayTeamLogo));
+    return !tsdbMap[name] && !hasExistingLogo;
+  });
+  const wikiMap = {};
+  if (needsWiki.length > 0) {
+    const results = await Promise.all(needsWiki.map(async (name) => [name, await fetchWikipediaTeamLogo(name)]));
+    for (const [name, logo] of results) wikiMap[name] = logo;
+  }
 
   return matches.map((m) => ({
     ...m,
-    // Prefer TheSportsDB/Wikipedia over possibly-broken ESPN CDN URLs
-    homeTeamLogo: logoMap[m.homeTeam] || m.homeTeamLogo || null,
-    awayTeamLogo: logoMap[m.awayTeam] || m.awayTeamLogo || null,
+    // Priority: TSDB badge > existing ESPN CDN URL > Wikipedia (last resort)
+    homeTeamLogo: tsdbMap[m.homeTeam] || m.homeTeamLogo || wikiMap[m.homeTeam] || null,
+    awayTeamLogo: tsdbMap[m.awayTeam] || m.awayTeamLogo || wikiMap[m.awayTeam] || null,
   }));
 }
 
@@ -1166,7 +1187,7 @@ async function fetchTransfermarktClubPlayers(teamName) {
     const result = players.map((p) => ({
       name: normalizePersonName(p?.name || ""),
       marketValueEur: p?.marketValue?.value ?? p?.marketValue ?? null,
-      photo: String(p?.image || p?.photo || p?.picture || "").trim() || null,
+      photo: proxyPhotoUrl(String(p?.image || p?.photo || p?.picture || "").trim() || null),
     })).filter((p) => p.name);
 
     cacheSet(cacheKey, result, 86_400_000); // cache 24h
@@ -2347,6 +2368,30 @@ app.get("/health", (req, res) => {
   };
   const aiReady = Object.values(aiProviders).some(Boolean);
   res.json({ ok: true, time: new Date().toISOString(), source: footballSource(), tz: TZ, aiReady, aiProviders, zilliz: _zillizReady, tmdb: Boolean(process.env.TMDB_API_KEY), apify: Boolean(process.env.APIFY_TOKEN) });
+});
+
+// Image proxy – forwards images that require specific Referer headers (e.g. Transfermarkt CDN)
+// Usage: GET /api/img?url=<encoded_url>
+app.get("/api/img", async (req, res) => {
+  const url = String(req.query.url || "").trim();
+  if (!url || !/^https?:\/\//i.test(url)) return res.status(400).send("Bad url");
+  const referer = url.includes("transfermarkt")
+    ? "https://www.transfermarkt.com/"
+    : String(new URL(url).origin + "/");
+  try {
+    const imgResp = await fetch(url, {
+      headers: { "Referer": referer, "User-Agent": "Mozilla/5.0", "Accept": "image/*" },
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!imgResp.ok) return res.status(imgResp.status).send("Upstream error");
+    const ct = imgResp.headers.get("content-type") || "image/jpeg";
+    if (!ct.startsWith("image/")) return res.status(400).send("Not an image");
+    res.setHeader("Content-Type", ct);
+    res.setHeader("Cache-Control", "public, max-age=86400");
+    imgResp.body.pipe(res);
+  } catch {
+    res.status(502).send("Proxy error");
+  }
 });
 
 // Request logging middleware
