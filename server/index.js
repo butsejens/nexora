@@ -2880,9 +2880,11 @@ function mapEspnTopScorers(data) {
       const athleteId = String(ath?.id || "");
       return {
         rank: idx + 1,
+        id: athleteId,
         name: ath.displayName || ath.fullName || "",
         photo: ath.headshot?.href || (athleteId ? `https://a.espncdn.com/i/headshots/soccer/players/full/${encodeURIComponent(athleteId)}.png` : null),
         team: ath.team?.displayName || ath.team?.name || "",
+        teamId: String(ath?.team?.id || ""),
         teamLogo: normalizeTeamLogo(
           ath.team?.displayName || ath.team?.name || "",
           ath.team?.logos?.[0]?.href || ath.team?.logo || null,
@@ -3039,7 +3041,25 @@ app.get("/api/sports/topscorers/:league", async (req, res) => {
         const espnData = await espnTopScorers(leagueName);
         const scorers = mapEspnTopScorers(espnData);
         if (scorers.length > 0) {
-          console.log(`[topscorers] ${leagueName}: ESPN → ${scorers.length} scorers`);
+          // Enrich with market values per team (best-effort, cached by enrichRosterMarketValues)
+          const teams = [...new Set(scorers.map(s => s.team).filter(Boolean))];
+          await Promise.allSettled(
+            teams.map(teamName =>
+              Promise.race([
+                (async () => {
+                  const teamScorers = scorers.filter(s => s.team === teamName);
+                  const minimal = teamScorers.map(s => ({ id: s.id, name: s.name }));
+                  const enriched = await enrichRosterMarketValues(minimal, teamName, leagueName);
+                  for (const s of teamScorers) {
+                    const e = enriched.find(p => p.id === s.id || p.name === s.name);
+                    if (e?.marketValue) { s.marketValue = e.marketValue; s.isRealValue = e.isRealValue; }
+                  }
+                })(),
+                new Promise(r => setTimeout(r, 12000)),
+              ])
+            )
+          );
+          console.log(`[topscorers] ${leagueName}: ESPN → ${scorers.length} scorers (enriched)`);
           return { league: leagueName, season, seasonLabel, scorers, source: "espn" };
         }
       } catch (e) {
@@ -3066,6 +3086,73 @@ app.get("/api/sports/topscorers/:league", async (req, res) => {
   } catch (e) {
     console.error(`[topscorers] Error for ${leagueName}:`, e.message);
     res.status(200).json({ league: leagueName, season, seasonLabel, scorers: [], error: String(e?.message || e) });
+  }
+});
+
+// Competition matches (current round + nearby weeks for a specific competition)
+async function espnLeagueMatches(leagueName) {
+  const baseUrl = ESPN_LEAGUE_SCOREBOARDS[leagueName];
+  if (!baseUrl) return [];
+  const leagueSlug = String(baseUrl.match(/\/soccer\/([^/]+)\/scoreboard/)?.[1] || "");
+  const now = new Date();
+  // Build a set of date strings: current + ±2 weeks
+  const dateStrs = [""];
+  for (const offsetDays of [-14, -7, 7, 14]) {
+    const d = new Date(now.getTime() + offsetDays * 86400000);
+    dateStrs.push(d.toISOString().slice(0, 10).replace(/-/g, ""));
+  }
+  const seen = new Set();
+  const allEvents = [];
+  await Promise.allSettled(
+    dateStrs.map(async (dateStr) => {
+      const url = dateStr ? `${baseUrl}?dates=${dateStr}&limit=20` : `${baseUrl}?limit=50`;
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 6000);
+      try {
+        const resp = await fetch(url, {
+          headers: { "user-agent": "Mozilla/5.0 (Nexora/1.0)", "accept": "application/json" },
+          signal: controller.signal,
+        });
+        clearTimeout(timer);
+        if (!resp.ok) return;
+        const data = await resp.json();
+        for (const ev of (data?.events || [])) {
+          if (!seen.has(ev.id)) {
+            seen.add(ev.id);
+            allEvents.push({ ...ev, _leagueHint: leagueName, _espnLeagueHint: leagueSlug });
+          }
+        }
+      } catch { clearTimeout(timer); }
+    })
+  );
+  return allEvents;
+}
+
+app.get("/api/sports/competition-matches/:league", async (req, res) => {
+  const leagueName = normalizeLeagueName(decodeURIComponent(req.params.league));
+  const key = `comp_matches_${leagueName}`;
+  try {
+    const payload = await getOrFetch(key, 5 * 60_000, async () => {
+      const events = await espnLeagueMatches(leagueName);
+      const matches = events.map(mapEspnEventToMatch);
+      const now = Date.now();
+      // Sort: upcoming / live first, then recent finished
+      matches.sort((a, b) => {
+        const da = a.startDate ? new Date(a.startDate).getTime() : 0;
+        const db = b.startDate ? new Date(b.startDate).getTime() : 0;
+        const aFuture = da >= now;
+        const bFuture = db >= now;
+        if (aFuture && !bFuture) return -1;
+        if (!aFuture && bFuture) return 1;
+        return aFuture ? da - db : db - da; // upcoming: soonest first; finished: most recent first
+      });
+      console.log(`[comp-matches] ${leagueName}: ${matches.length} matches`);
+      return { league: leagueName, matches, source: "espn" };
+    });
+    res.json(payload);
+  } catch (e) {
+    console.error(`[comp-matches] Error for ${leagueName}:`, e.message);
+    res.status(200).json({ league: leagueName, matches: [], error: String(e?.message || e) });
   }
 });
 
