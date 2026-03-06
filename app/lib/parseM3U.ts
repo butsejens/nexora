@@ -21,13 +21,31 @@ const MAX_MOVIES = 5000;
 const MAX_SERIES = 3000;
 
 function classify(group: string, url = ""): "live" | "movie" | "series" {
+  // 1. Xtream Codes URL path patterns (most reliable)
+  if (/\/live\//.test(url)) return "live";
   if (/\/movie\//.test(url)) return "movie";
   if (/\/series\//.test(url)) return "series";
-  const g = group.toLowerCase();
-  if (/\bvod\b|movie|film|cinema|films\b|spielfilme|bioscoop|pelicul|kino/i.test(g)
-    || /\|\s*movie|\|\s*film|\|\s*vod/i.test(group)) return "movie";
-  if (/\bseries?\b|serie\b|seizoen|season|tv.?show|episode|tvshow|sitcom/i.test(g)
-    || /\|\s*series?|\|\s*serie/i.test(group)) return "series";
+
+  const g = group.toLowerCase().trim();
+
+  // 2. Movie group title detection (group names + genre names used by IPTV providers)
+  if (
+    /\bvod\b|movie|film|cinema|bioscoop|spielfilm|pelicul|kino|flick/i.test(g) ||
+    /\|\s*movie|\|\s*film|\|\s*vod/i.test(group) ||
+    // Genre-based movie group names
+    /^(action|adventure|animation|comedy|crime|documentary|drama|fantasy|horror|komedie|kinder|kids|misdaad|mystery|romance|sci.?fi|thriller|western|animatie|tekenfilm|avontuur|historisch|musical|oorlog)\b/i.test(g)
+  ) return "movie";
+
+  // 3. Series group title detection
+  if (
+    /\bseries?\b|serie\b|seizoen|season|tv.?show|episode|tvshow|sitcom|docu.?series|mini.?series/i.test(g) ||
+    /\|\s*series?|\|\s*serie/i.test(group)
+  ) return "series";
+
+  // 4. URL file extension hints
+  const urlLow = url.toLowerCase();
+  if (/\.(mp4|mkv|avi|mov|wmv|divx|xvid)(\?|$)/.test(urlLow)) return "movie";
+
   return "live";
 }
 

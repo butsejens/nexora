@@ -26,6 +26,171 @@ import { fetchM3UText } from "@/lib/fetchM3U";
 import { parseM3UContentAsync } from "@/lib/parseM3U";
 import { SafeHaptics } from "@/lib/safeHaptics";
 
+const CHANGELOG: { version: string; date: string; changes: string[] }[] = [
+  {
+    version: "1.5.0",
+    date: "2026-03-06",
+    changes: [
+      "Sport UI volledig herwerkt: poster MatchCards, hero banner",
+      "Belgische competitie crash opgelost",
+      "Films & series afspeelknop hersteld",
+      "M3U URL parsering verbeterd (Xtream, .ts streams, genres)",
+      "Popup-blokkering versterkt zonder speler te breken",
+      "M3U8 samengevoegd onder één 'M3U URL' tab",
+      "Team- en competitielogo's: achtergrond verwijderd",
+      "Jupiler / RAAL logo's gecorrigeerd",
+    ],
+  },
+  {
+    version: "1.4.0",
+    date: "2026-03-05",
+    changes: [
+      "Logo prioriteit: TSDB > ESPN CDN > Wikipedia",
+      "Afbeeldingsproxy voor Transfermarkt CDN",
+      "Speler: absoluteFill layout-fix",
+      "Gratis VOD sectie verwijderd",
+    ],
+  },
+  {
+    version: "1.3.0",
+    date: "2026-03-04",
+    changes: [
+      "Sport UI herontwerp: poster MatchCard toegevoegd",
+      "Speler popup-fix + MatchCard verbeteringen",
+    ],
+  },
+  {
+    version: "1.0.0",
+    date: "2026-03-01",
+    changes: [
+      "Eerste release van NEXORA",
+      "Live TV, Films & Series via IPTV playlists",
+      "Xtream Codes ondersteuning",
+      "Sport-hub met wedstrijden, standen en topscorers",
+    ],
+  },
+];
+
+function UpdateModal({
+  visible,
+  currentVersion,
+  onClose,
+}: {
+  visible: boolean;
+  currentVersion: string;
+  onClose: () => void;
+}) {
+  const [checking, setChecking] = useState(false);
+  const [status, setStatus] = useState<"idle" | "uptodate" | "downloading" | "ready" | "error">("idle");
+  const [errorMsg, setErrorMsg] = useState("");
+
+  const handleCheck = async () => {
+    if (__DEV__) {
+      setStatus("uptodate");
+      return;
+    }
+    setChecking(true);
+    setStatus("idle");
+    try {
+      const update = await Updates.checkForUpdateAsync();
+      if (!update.isAvailable) {
+        setStatus("uptodate");
+        return;
+      }
+      setStatus("downloading");
+      await Updates.fetchUpdateAsync();
+      setStatus("ready");
+    } catch (e: any) {
+      setErrorMsg(e?.message || "Onbekende fout");
+      setStatus("error");
+    } finally {
+      setChecking(false);
+    }
+  };
+
+  const handleReload = async () => {
+    await Updates.reloadAsync();
+  };
+
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <View style={updateStyles.overlay}>
+        <View style={updateStyles.modal}>
+          <View style={updateStyles.header}>
+            <Text style={updateStyles.title}>Wat is er nieuw?</Text>
+            <TouchableOpacity onPress={onClose} style={updateStyles.closeBtn}>
+              <Ionicons name="close" size={20} color={COLORS.textMuted} />
+            </TouchableOpacity>
+          </View>
+
+          <Text style={updateStyles.currentVersion}>Huidige versie: {currentVersion}</Text>
+
+          <ScrollView style={updateStyles.logScroll} showsVerticalScrollIndicator={false}>
+            {CHANGELOG.map((entry) => (
+              <View key={entry.version} style={updateStyles.entry}>
+                <View style={updateStyles.entryHeader}>
+                  <Text style={updateStyles.entryVersion}>v{entry.version}</Text>
+                  <Text style={updateStyles.entryDate}>{entry.date}</Text>
+                  {entry.version === currentVersion && (
+                    <View style={updateStyles.currentBadge}>
+                      <Text style={updateStyles.currentBadgeText}>huidig</Text>
+                    </View>
+                  )}
+                </View>
+                {entry.changes.map((c, i) => (
+                  <View key={i} style={updateStyles.changeRow}>
+                    <Text style={updateStyles.bullet}>•</Text>
+                    <Text style={updateStyles.changeText}>{c}</Text>
+                  </View>
+                ))}
+              </View>
+            ))}
+          </ScrollView>
+
+          <View style={updateStyles.footer}>
+            {status === "uptodate" && (
+              <Text style={updateStyles.statusText}>Je hebt de nieuwste versie.</Text>
+            )}
+            {status === "downloading" && (
+              <Text style={updateStyles.statusText}>Update downloaden...</Text>
+            )}
+            {status === "ready" && (
+              <Text style={[updateStyles.statusText, { color: "#22c55e" }]}>
+                Update klaar — tap om te herstarten.
+              </Text>
+            )}
+            {status === "error" && (
+              <Text style={[updateStyles.statusText, { color: COLORS.live }]}>{errorMsg}</Text>
+            )}
+
+            {status === "ready" ? (
+              <TouchableOpacity style={updateStyles.checkBtn} onPress={handleReload}>
+                <Ionicons name="refresh" size={16} color={COLORS.background} />
+                <Text style={updateStyles.checkBtnText}>Herstart en installeer</Text>
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity
+                style={[updateStyles.checkBtn, checking && { opacity: 0.6 }]}
+                onPress={handleCheck}
+                disabled={checking}
+              >
+                {checking ? (
+                  <ActivityIndicator size="small" color={COLORS.background} />
+                ) : (
+                  <Ionicons name="cloud-download-outline" size={16} color={COLORS.background} />
+                )}
+                <Text style={updateStyles.checkBtnText}>
+                  {checking ? "Controleren..." : "Controleer op updates"}
+                </Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
 const LANGUAGES = [
   { code: "auto", label: "Auto (System)" },
   { code: "nl", label: "Nederlands" },
@@ -206,7 +371,7 @@ const [showAddPlaylist, setShowAddPlaylist] = useState(false);
   const [playlistName, setPlaylistName] = useState("");
   const [playlistUrl, setPlaylistUrl] = useState("");
   const [loadingPlaylistId, setLoadingPlaylistId] = useState<string | null>(null);
-  const [addMode, setAddMode] = useState<"url" | "file" | "xtream" | "m3u8">("url");
+  const [addMode, setAddMode] = useState<"url" | "file" | "xtream">("url");
   const [xtreamHost, setXtreamHost] = useState("");
   const [xtreamUser, setXtreamUser] = useState("");
   const [xtreamPass, setXtreamPass] = useState("");
@@ -222,7 +387,7 @@ const [showAddPlaylist, setShowAddPlaylist] = useState(false);
   const [showPinModal, setShowPinModal] = useState(false);
   const [pinModalMode, setPinModalMode] = useState<"set" | "confirm">("set");
   const [showLangModal, setShowLangModal] = useState(false);
-  const [checkingUpdate, setCheckingUpdate] = useState(false);
+  const [showUpdateModal, setShowUpdateModal] = useState(false);
 
   const bottomPad = Platform.OS === "web" ? 34 : insets.bottom + 90;
   const qualities = ["Auto", "4K", "FHD", "HD"] as const;
@@ -234,27 +399,8 @@ const [showAddPlaylist, setShowAddPlaylist] = useState(false);
   const seriesCount = iptvChannels.filter(c => c.category === "series").length;
   const appVersion = String(Constants.expoConfig?.version || "1.0.0");
 
-  const handleManualUpdateCheck = useCallback(async () => {
-    if (__DEV__) {
-      Alert.alert("Ontwikkelmodus", "OTA update-check is actief in release builds.");
-      return;
-    }
-
-    setCheckingUpdate(true);
-    try {
-      const update = await Updates.checkForUpdateAsync();
-      if (!update.isAvailable) {
-        Alert.alert("Up-to-date", "Je gebruikt al de nieuwste versie.");
-        return;
-      }
-      await Updates.fetchUpdateAsync();
-      Alert.alert("Update klaar", "De app wordt nu herstart met de nieuwste update.");
-      await Updates.reloadAsync();
-    } catch (error: any) {
-      Alert.alert("Update fout", error?.message || "Kon update niet ophalen.");
-    } finally {
-      setCheckingUpdate(false);
-    }
+  const handleManualUpdateCheck = useCallback(() => {
+    setShowUpdateModal(true);
   }, []);
 
   const activateParsedPlaylist = async (data: any) => {
@@ -878,7 +1024,7 @@ const [showAddPlaylist, setShowAddPlaylist] = useState(false);
                   onPress={() => setAddMode("url")}
                 >
                   <Ionicons name="link-outline" size={14} color={addMode === "url" ? COLORS.accent : COLORS.textMuted} />
-                  <Text style={[styles.modeTabText, addMode === "url" && styles.modeTabTextActive]}>URL</Text>
+                  <Text style={[styles.modeTabText, addMode === "url" && styles.modeTabTextActive]}>M3U URL</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={[styles.modeTab, addMode === "xtream" && styles.modeTabActive]}
@@ -894,13 +1040,6 @@ const [showAddPlaylist, setShowAddPlaylist] = useState(false);
                   <Ionicons name="document-outline" size={14} color={addMode === "file" ? COLORS.accent : COLORS.textMuted} />
                   <Text style={[styles.modeTabText, addMode === "file" && styles.modeTabTextActive]}>Bestand</Text>
                 </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.modeTab, addMode === "m3u8" && styles.modeTabActive]}
-                  onPress={() => setAddMode("m3u8")}
-                >
-                  <Ionicons name="play-circle-outline" size={14} color={addMode === "m3u8" ? COLORS.accent : COLORS.textMuted} />
-                  <Text style={[styles.modeTabText, addMode === "m3u8" && styles.modeTabTextActive]}>M3U8</Text>
-                </TouchableOpacity>
               </View>
 
               <TextInput
@@ -912,13 +1051,13 @@ const [showAddPlaylist, setShowAddPlaylist] = useState(false);
                 <>
                   <TextInput
                     style={styles.input}
-                    placeholder="http://server.com/get.php?username=...&password=..."
+                    placeholder="http://server.com/get.php?username=...&password=... of https://example.com/playlist.m3u8"
                     placeholderTextColor={COLORS.textMuted}
                     value={playlistUrl} onChangeText={setPlaylistUrl}
                     autoCapitalize="none" keyboardType="url"
                   />
                   <Text style={styles.urlHint}>
-                    Ondersteund: M3U URLs, M3U+ / Xtream Codes (get.php). Voor grote playlists gebruik de URL-methode — bestanden zijn beperkt tot 30MB.
+                    Ondersteund: M3U, M3U8, M3U+ en Xtream Codes (get.php) URLs. Alle soorten playlist-links worden hier uitgelezen.
                   </Text>
                 </>
               ) : addMode === "xtream" ? (
@@ -951,21 +1090,6 @@ const [showAddPlaylist, setShowAddPlaylist] = useState(false);
                   />
                   <Text style={styles.urlHint}>
                     We bouwen automatisch je M3U+ link via get.php (output=ts). Dit is compatibel met de bestaande parser.
-                  </Text>
-                </>
-              ) : addMode === "m3u8" ? (
-                <>
-                  <TextInput
-                    style={styles.input}
-                    placeholder="https://example.com/live/channel.m3u8"
-                    placeholderTextColor={COLORS.textMuted}
-                    value={playlistUrl}
-                    onChangeText={setPlaylistUrl}
-                    autoCapitalize="none"
-                    keyboardType="url"
-                  />
-                  <Text style={styles.urlHint}>
-                    Voeg een losse HLS stream toe als live kanaal (M3U8).
                   </Text>
                 </>
               ) : (
@@ -1132,9 +1256,8 @@ const [showAddPlaylist, setShowAddPlaylist] = useState(false);
           <SettingRow
             icon="cloud-download-outline"
             label="Check app updates"
-            value={checkingUpdate ? "Controleren..." : "Nu controleren"}
+            value={appVersion}
             onPress={handleManualUpdateCheck}
-            rightElement={checkingUpdate ? <ActivityIndicator size="small" color={COLORS.accent} /> : undefined}
           />
           <Divider />
           <SettingRow
@@ -1169,6 +1292,12 @@ const [showAddPlaylist, setShowAddPlaylist] = useState(false);
         selected={audioLanguage}
         onClose={() => setShowLangModal(false)}
         onSelect={setAudioLanguage}
+      />
+
+      <UpdateModal
+        visible={showUpdateModal}
+        currentVersion={appVersion}
+        onClose={() => setShowUpdateModal(false)}
       />
 
       {/* M3U Upload Progress Modal */}
@@ -1378,6 +1507,50 @@ const styles = StyleSheet.create({
   qualityBtnActive: { backgroundColor: COLORS.accentGlow, borderColor: COLORS.accent },
   qualityBtnText: { fontFamily: "Inter_600SemiBold", fontSize: 11, color: COLORS.textMuted },
   qualityBtnTextActive: { color: COLORS.accent },
+});
+
+const updateStyles = StyleSheet.create({
+  overlay: {
+    flex: 1, backgroundColor: "rgba(0,0,0,0.8)",
+    alignItems: "center", justifyContent: "center", padding: 24,
+  },
+  modal: {
+    backgroundColor: COLORS.cardElevated, borderRadius: 20, width: "100%", maxWidth: 400,
+    borderWidth: 1, borderColor: COLORS.border, maxHeight: "80%",
+  },
+  header: {
+    flexDirection: "row", alignItems: "center", justifyContent: "space-between",
+    paddingHorizontal: 20, paddingTop: 20, paddingBottom: 12,
+    borderBottomWidth: 1, borderBottomColor: COLORS.border,
+  },
+  title: { fontFamily: "Inter_700Bold", fontSize: 18, color: COLORS.text },
+  closeBtn: { padding: 4 },
+  currentVersion: {
+    fontFamily: "Inter_400Regular", fontSize: 12, color: COLORS.textMuted,
+    paddingHorizontal: 20, paddingVertical: 8,
+  },
+  logScroll: { maxHeight: 340, paddingHorizontal: 20 },
+  entry: { marginBottom: 20 },
+  entryHeader: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 8 },
+  entryVersion: { fontFamily: "Inter_700Bold", fontSize: 15, color: COLORS.accent },
+  entryDate: { fontFamily: "Inter_400Regular", fontSize: 12, color: COLORS.textMuted },
+  currentBadge: {
+    backgroundColor: COLORS.accentGlow, borderRadius: 6, borderWidth: 1,
+    borderColor: COLORS.accent, paddingHorizontal: 6, paddingVertical: 2,
+  },
+  currentBadgeText: { fontFamily: "Inter_700Bold", fontSize: 9, color: COLORS.accent },
+  changeRow: { flexDirection: "row", gap: 8, marginBottom: 4 },
+  bullet: { fontFamily: "Inter_400Regular", fontSize: 13, color: COLORS.accent, marginTop: 1 },
+  changeText: { fontFamily: "Inter_400Regular", fontSize: 13, color: COLORS.textSecondary, flex: 1, lineHeight: 18 },
+  footer: {
+    padding: 20, gap: 10, borderTopWidth: 1, borderTopColor: COLORS.border,
+  },
+  statusText: { fontFamily: "Inter_500Medium", fontSize: 13, color: COLORS.textMuted, textAlign: "center" },
+  checkBtn: {
+    flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8,
+    backgroundColor: COLORS.accent, borderRadius: 12, paddingVertical: 14,
+  },
+  checkBtnText: { fontFamily: "Inter_700Bold", fontSize: 14, color: COLORS.background },
 });
 
 const progStyles = StyleSheet.create({

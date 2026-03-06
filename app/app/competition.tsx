@@ -200,7 +200,11 @@ function StandingsRow({ team, rank }: { team: any; rank: number }) {
 
       <View style={styles.teamCell}>
         {teamLogo ? (
-          <Image source={{ uri: teamLogo }} style={styles.standingsLogo} onError={() => setLogoError(true)} />
+          <Image
+            source={typeof teamLogo === "number" ? teamLogo : { uri: teamLogo as string }}
+            style={styles.standingsLogo}
+            onError={() => setLogoError(true)}
+          />
         ) : (
           <View style={[styles.standingsLogo, styles.logoPlaceholder]}>
             <Ionicons name="shield" size={12} color={COLORS.textMuted} />
@@ -241,7 +245,7 @@ function ScorerRow({ scorer, rank }: { scorer: any; rank: number }) {
       <View style={styles.scorerInfo}>
         <Text style={styles.scorerName}>{scorer.name}</Text>
         <View style={styles.scorerTeamRow}>
-          {teamLogo ? <Image source={{ uri: teamLogo }} style={styles.scorerTeamLogo} onError={() => setTeamLogoError(true)} /> : null}
+          {teamLogo ? <Image source={typeof teamLogo === "number" ? teamLogo : { uri: teamLogo as string }} style={styles.scorerTeamLogo} onError={() => setTeamLogoError(true)} /> : null}
           <Text style={styles.scorerTeam}>{scorer.team}</Text>
         </View>
       </View>

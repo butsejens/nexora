@@ -85,17 +85,20 @@ const AD_DOMAINS = [
 // JavaScript injected into every WebView to block ads/popups without breaking video embeds
 const AD_BLOCK_JS = `
 (function(){
-  // Block window.open ONLY for known ad popup domains
-  var _origOpen = window.open;
-  window.open = function(url) {
-    var u = String(url || '');
-    var adHosts = ['googlesyndication','doubleclick','adnxs','exoclick','juicyads',
-      'popads','popcash','trafficjunky','adsterra','propellerads','clickadu'];
-    if(!u || adHosts.some(function(d){ return u.indexOf(d)>-1; })) return null;
-    return _origOpen.apply(window, arguments);
-  };
+  // Block ALL window.open() – the primary popup mechanism on embed/ad sites
+  window.open = function(){ return null; };
 
-  // NOTE: do NOT override window.top – embed sites use it to detect iframe context
+  // Block target="_blank" link clicks that would open new tabs
+  document.addEventListener('click', function(e){
+    var el = e.target;
+    for(var i=0;i<5;i++){
+      if(!el) break;
+      if(el.tagName==='A' && (el.getAttribute('target')==='_blank' || el.getAttribute('rel')==='noopener')){
+        e.preventDefault(); e.stopPropagation(); return false;
+      }
+      el = el.parentElement;
+    }
+  }, true);
 
   // Remove fixed overlays and popup ads via MutationObserver
   function removeAds(){
@@ -110,7 +113,7 @@ const AD_BLOCK_JS = `
       try{
         document.querySelectorAll(sel).forEach(function(el){
           var tag = el.tagName.toLowerCase();
-          if(tag==='video'||tag==='source'||tag==='div'&&el.querySelector('video')) return;
+          if(tag==='video'||tag==='source'||(tag==='div'&&el.querySelector('video'))) return;
           var s = window.getComputedStyle(el);
           if((s.position==='fixed'||s.position==='absolute')&&parseInt(s.zIndex||'0')>999){
             el.style.display='none';
@@ -136,8 +139,13 @@ const AD_BLOCK_JS = `
 })();
 `;
 
-// Inline HLS player – used for direct .m3u8 or .mp4 streams
+// Inline HLS player – used for direct .m3u8, .ts or other streams
 function buildHlsHtml(src: string): string {
+  // For Xtream Codes .ts streams (/live/, /movie/, /series/ paths), prefer the .m3u8 version
+  const isXtreamTs = /\/(live|movie|series)\/[^/]+\/[^/]+\/[^/]+\.ts(\?|$)/i.test(src);
+  const primarySrc = isXtreamTs ? src.replace(/\.ts(\?|$)/, '.m3u8$1') : src;
+  const fallbackSrc = isXtreamTs ? src : null; // original .ts as fallback
+
   return `<!DOCTYPE html>
 <html>
 <head>
@@ -146,24 +154,52 @@ function buildHlsHtml(src: string): string {
 *{margin:0;padding:0;box-sizing:border-box}
 html,body{width:100%;height:100%;background:#000;overflow:hidden}
 video{width:100%;height:100%;object-fit:contain;display:block;background:#000}
+#err{display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);color:#aaa;font-family:sans-serif;font-size:14px;text-align:center;padding:20px}
 </style>
 </head>
 <body>
 <video id="v" autoplay controls playsinline webkit-playsinline x5-playsinline muted></video>
+<div id="err">Stream kon niet laden.<br>Probeer opnieuw of kies een ander kanaal.</div>
 <script src="https://cdn.jsdelivr.net/npm/hls.js@1.4.14/dist/hls.min.js"></script>
 <script>
 (function(){
   var v=document.getElementById('v');
-  var src=${JSON.stringify(src)};
-  function tryDirect(){v.src=src;v.muted=false;v.play().catch(function(){});}
-  if(typeof Hls!=='undefined'&&Hls.isSupported()){
+  var primary=${JSON.stringify(primarySrc)};
+  var fallback=${JSON.stringify(fallbackSrc)};
+  var tried=0;
+
+  function showError(){document.getElementById('err').style.display='block';}
+
+  function tryDirect(url){
+    v.src=url; v.muted=false;
+    v.play().catch(function(){});
+    v.onerror=function(){ if(fallback && tried<1){tried++;tryDirect(fallback);}else{showError();} };
+  }
+
+  function loadWithHls(url, onFail){
     var h=new Hls({enableWorker:false,lowLatencyMode:true,backBufferLength:0,maxBufferLength:30});
-    h.loadSource(src);h.attachMedia(v);
+    h.loadSource(url); h.attachMedia(v);
     h.on(Hls.Events.MANIFEST_PARSED,function(){v.muted=false;v.play().catch(function(){});});
-    h.on(Hls.Events.ERROR,function(e,d){if(d.fatal){h.destroy();tryDirect();}});
-  }else if(v.canPlayType('application/vnd.apple.mpegurl')){
-    v.src=src;v.play().catch(function(){});
-  }else{tryDirect();}
+    h.on(Hls.Events.ERROR,function(e,d){
+      if(d.fatal){h.destroy();onFail();}
+    });
+  }
+
+  if(typeof Hls!=='undefined'&&Hls.isSupported()){
+    loadWithHls(primary, function(){
+      // HLS failed: try fallback .ts directly, or original src
+      var alt = fallback || primary;
+      if(v.canPlayType('video/mp2t')||v.canPlayType('video/mp4')){
+        tryDirect(alt);
+      } else {
+        tryDirect(alt);
+      }
+    });
+  } else if(v.canPlayType('application/vnd.apple.mpegurl')){
+    v.src=primary; v.play().catch(function(){});
+  } else {
+    tryDirect(primary);
+  }
 })();
 </script>
 </body>
@@ -448,13 +484,14 @@ export default function PlayerScreen() {
         )}
       </View>
 
+      {/* Tap strips – top + bottom edges show/refresh controls; center is transparent so embed play buttons work */}
+      <TouchableOpacity style={styles.tapStripTop} onPress={showControls} activeOpacity={1} />
+      <TouchableOpacity style={styles.tapStripBottom} onPress={showControls} activeOpacity={1} />
+
       {/* Controls overlay */}
       <Animated.View
         style={[styles.overlay, { opacity: controlsOpacity, pointerEvents: controlsVisible ? "box-none" : "none" }]}
       >
-        {/* Full-screen tap blocker: swallows center taps to prevent WebView popups */}
-        <TouchableOpacity style={StyleSheet.absoluteFillObject} onPress={showControls} activeOpacity={1} />
-
         {/* Top bar */}
         <LinearGradient colors={["rgba(0,0,0,0.85)", "transparent"]} style={styles.topGrad}>
           <View style={[styles.topBar, { paddingTop: Platform.OS === "web" ? 67 : insets.top + 8 }]}>
@@ -541,4 +578,6 @@ const styles = StyleSheet.create({
   bottomGrad: { paddingTop: 60 },
   bottomBar: { paddingHorizontal: 14, alignItems: "flex-end" },
   reloadBtn: { width: 38, height: 38, alignItems: "center", justifyContent: "center" },
+  tapStripTop: { position: "absolute", top: 0, left: 0, right: 0, height: 90, zIndex: 5 },
+  tapStripBottom: { position: "absolute", bottom: 0, left: 0, right: 0, height: 90, zIndex: 5 },
 });
