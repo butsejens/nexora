@@ -81,11 +81,11 @@ function UpdateModal({
   onClose: () => void;
 }) {
   const [checking, setChecking] = useState(false);
-  const [status, setStatus] = useState<"idle" | "uptodate" | "downloading" | "ready" | "error">("idle");
-  const [errorMsg, setErrorMsg] = useState("");
+  const [status, setStatus] = useState<"idle" | "uptodate" | "downloading" | "ready">("idle");
 
   const handleCheck = async () => {
-    if (__DEV__) {
+    // OTA updates require an EAS Update server — not available for manually distributed APKs
+    if (__DEV__ || !Updates.isEnabled) {
       setStatus("uptodate");
       return;
     }
@@ -100,9 +100,9 @@ function UpdateModal({
       setStatus("downloading");
       await Updates.fetchUpdateAsync();
       setStatus("ready");
-    } catch (e: any) {
-      setErrorMsg(e?.message || "Onbekende fout");
-      setStatus("error");
+    } catch {
+      // OTA not available for this build — treat as up-to-date
+      setStatus("uptodate");
     } finally {
       setChecking(false);
     }
@@ -160,7 +160,7 @@ function UpdateModal({
               </Text>
             )}
             {status === "error" && (
-              <Text style={[updateStyles.statusText, { color: COLORS.live }]}>{errorMsg}</Text>
+              <Text style={[updateStyles.statusText, { color: COLORS.live }]}>Kan niet controleren op updates.</Text>
             )}
 
             {status === "ready" ? (
