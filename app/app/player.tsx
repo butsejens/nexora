@@ -271,7 +271,7 @@ export default function PlayerScreen() {
     if (streamUrl && !useFallbackEmbed) return;
     if (!tmdbId) return;
     if (allProvidersFailed) return;
-    const t = setTimeout(() => tryNextProvider(), 18000);
+    const t = setTimeout(() => tryNextProvider(), 5000);
     return () => clearTimeout(t);
   }, [isLoading, webviewKey, streamUrl, useFallbackEmbed, tmdbId, allProvidersFailed, tryNextProvider]);
 

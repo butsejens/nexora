@@ -829,20 +829,17 @@ async function fetchWikipediaTeamLogo(teamName) {
   }
 }
 
-// Enrich null team logos on a list of matches using TheSportsDB + Wikipedia (parallel, cached)
+// Enrich team logos using TheSportsDB + Wikipedia (parallel, cached 24h)
+// Runs for ALL teams – TheSportsDB/Wikipedia take priority over possibly-broken ESPN CDN URLs
 async function enrichMatchLogos(matches) {
   if (!Array.isArray(matches) || matches.length === 0) return matches;
-  const needsLogo = matches.filter((m) => !m.homeTeamLogo || !m.awayTeamLogo);
-  if (needsLogo.length === 0) return matches;
 
   const teamNames = [...new Set(
-    needsLogo.flatMap((m) => [
-      !m.homeTeamLogo && m.homeTeam ? m.homeTeam : null,
-      !m.awayTeamLogo && m.awayTeam ? m.awayTeam : null,
-    ].filter(Boolean))
+    matches.flatMap((m) => [m.homeTeam, m.awayTeam].filter(Boolean))
   )];
+  if (teamNames.length === 0) return matches;
 
-  // TheSportsDB first, Wikipedia fallback for teams that still have no logo
+  // TheSportsDB first (cached 24h), Wikipedia fallback
   const logoMap = Object.fromEntries(
     await Promise.all(teamNames.map(async (name) => {
       const tsdb = await fetchTheSportsDBTeamLogo(name);
@@ -854,8 +851,9 @@ async function enrichMatchLogos(matches) {
 
   return matches.map((m) => ({
     ...m,
-    homeTeamLogo: m.homeTeamLogo || logoMap[m.homeTeam] || null,
-    awayTeamLogo: m.awayTeamLogo || logoMap[m.awayTeam] || null,
+    // Prefer TheSportsDB/Wikipedia over possibly-broken ESPN CDN URLs
+    homeTeamLogo: logoMap[m.homeTeam] || m.homeTeamLogo || null,
+    awayTeamLogo: logoMap[m.awayTeam] || m.awayTeamLogo || null,
   }));
 }
 
@@ -1136,12 +1134,81 @@ async function aiEstimateRosterValues(players, teamName, leagueName) {
   }
 }
 
+// Transfermarkt community API – free, no key required
+// https://transfermarkt-api.vercel.app (open-source wrapper)
+async function fetchTransfermarktClubPlayers(teamName) {
+  if (!teamName) return null;
+  const normKey = normalizePersonName(teamName);
+  const cacheKey = `transfermarkt_club_${normKey}`;
+  const cached = cacheGet(cacheKey);
+  if (cached !== null) return cached;
+
+  try {
+    const q = encodeURIComponent(String(teamName).trim());
+    const searchResp = await fetch(`https://transfermarkt-api.vercel.app/clubs/search/${q}`, {
+      headers: { "user-agent": "Mozilla/5.0 (Nexora/1.0)", accept: "application/json" },
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!searchResp.ok) { cacheSet(cacheKey, null, 300_000); return null; }
+    const searchData = await searchResp.json();
+    const clubs = Array.isArray(searchData?.results) ? searchData.results : [];
+    const club = clubs[0];
+    if (!club?.id) { cacheSet(cacheKey, null, 300_000); return null; }
+
+    const playersResp = await fetch(`https://transfermarkt-api.vercel.app/clubs/${encodeURIComponent(club.id)}/players`, {
+      headers: { "user-agent": "Mozilla/5.0 (Nexora/1.0)", accept: "application/json" },
+      signal: AbortSignal.timeout(10000),
+    });
+    if (!playersResp.ok) { cacheSet(cacheKey, null, 300_000); return null; }
+    const playersData = await playersResp.json();
+    const players = Array.isArray(playersData?.players) ? playersData.players : [];
+
+    const result = players.map((p) => ({
+      name: normalizePersonName(p?.name || ""),
+      marketValueEur: p?.marketValue?.value ?? p?.marketValue ?? null,
+      photo: String(p?.image || p?.photo || p?.picture || "").trim() || null,
+    })).filter((p) => p.name);
+
+    cacheSet(cacheKey, result, 86_400_000); // cache 24h
+    return result;
+  } catch {
+    cacheSet(cacheKey, null, 300_000);
+    return null;
+  }
+}
+
 async function enrichRosterMarketValues(players, teamName, leagueName) {
   if (!Array.isArray(players) || players.length === 0) return players || [];
 
-  const aiValues = await aiEstimateRosterValues(players, teamName, leagueName);
+  // Step 1: Transfermarkt community API – real values, no key required (cached 24h)
+  const tmPlayers = teamName ? await fetchTransfermarktClubPlayers(teamName) : null;
+  const tmValueMap = new Map();
+  if (Array.isArray(tmPlayers)) {
+    for (const p of tmPlayers) {
+      const eur = parseNumberish(p.marketValueEur);
+      if (Number.isFinite(eur) && eur > 0) tmValueMap.set(p.name, eur);
+    }
+  }
+  console.log(`[market] ${teamName}: Transfermarkt found ${tmValueMap.size}/${players.length} values`);
+
+  // Step 2: AI for players not covered by Transfermarkt
+  const needsAi = players.filter((p) => !tmValueMap.has(normalizePersonName(p?.name || "")));
+  const aiValues = needsAi.length > 0 ? await aiEstimateRosterValues(needsAi, teamName, leagueName) : null;
+
   return players.map((p) => {
     const next = { ...p };
+    const normedName = normalizePersonName(next.name || "");
+
+    // Transfermarkt first (real value)
+    const tmValue = tmValueMap.get(normedName);
+    if (Number.isFinite(tmValue) && tmValue > 0) {
+      next.marketValue = formatEURShort(tmValue);
+      next.isRealValue = true;
+      next.valueMethod = "transfermarkt";
+      return next;
+    }
+
+    // AI model fallback
     const aiValue = aiValues?.get?.(String(next.id || ""));
     if (Number.isFinite(aiValue) && aiValue > 0) {
       next.marketValue = formatEURShort(aiValue);
@@ -1150,6 +1217,7 @@ async function enrichRosterMarketValues(players, teamName, leagueName) {
       return next;
     }
 
+    // Formula-based estimate
     const estimated = estimateMarketValueEUR(next, leagueName);
     if (Number.isFinite(estimated) && estimated > 0) {
       next.marketValue = formatEURShort(estimated);
@@ -1165,9 +1233,24 @@ async function enrichRosterPhotos(players, teamName) {
   const needsPhoto = players.some((p) => p && !p.photo);
   if (!needsPhoto) return players;
 
+  // Step 0: Transfermarkt community API – has player profile images (cached, already fetched for values)
+  const tmPlayers = teamName ? await fetchTransfermarktClubPlayers(teamName) : null;
+  const tmPhotoMap = new Map();
+  if (Array.isArray(tmPlayers)) {
+    for (const p of tmPlayers) {
+      if (p.name && p.photo && /^https?:\/\//i.test(p.photo)) tmPhotoMap.set(p.name, p.photo);
+    }
+  }
+  let enriched = players.map((player) => {
+    if (!player || player.photo) return player;
+    const normName = normalizePersonName(player.name || "");
+    const photo = tmPhotoMap.get(normName);
+    return photo ? { ...player, photo } : player;
+  });
+
   // Step 1: TheSportsDB – batch fetch all players for team (cached 24h)
   const dbPlayers = await fetchTheSportsDBTeamPlayers(teamName);
-  let enriched = players.map((player) => {
+  enriched = enriched.map((player) => {
     if (!player || player.photo) return player;
     const normName = normalizePersonName(player.name || "");
     if (!normName) return player;

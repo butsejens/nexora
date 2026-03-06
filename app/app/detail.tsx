@@ -203,25 +203,39 @@ export default function DetailScreen() {
 
   const goToPlayer = (season = 1, episode = 1) => {
     SafeHaptics.impactLight();
-    // IPTV: use direct stream URL
-    if (isIptv === "true" && (streamUrl || iptvChannel?.url)) {
+    // Filter out "undefined" string and non-http values that Expo Router passes for absent params
+    const validStreamUrl =
+      streamUrl && streamUrl !== "undefined" && streamUrl.startsWith("http")
+        ? streamUrl
+        : null;
+    const validIptvUrl =
+      iptvChannel?.url && iptvChannel.url.startsWith("http")
+        ? iptvChannel.url
+        : null;
+    const usableStream = validStreamUrl || validIptvUrl;
+    const resolvedTmdbId = String(data?.tmdbId || tmdbId || "");
+
+    // IPTV: use direct stream URL if available
+    if (isIptv === "true" && usableStream) {
       router.push({
         pathname: "/player",
         params: {
-          streamUrl: streamUrl || iptvChannel?.url,
+          streamUrl: usableStream,
           title: data?.title || paramTitle,
           type: type || "movie",
           contentId: id,
-          ...(data?.tmdbId ? { tmdbId: String(data.tmdbId) } : {}),
+          ...(resolvedTmdbId ? { tmdbId: resolvedTmdbId } : {}),
           season: String(season),
           episode: String(episode),
         },
       });
     } else {
+      // Public VOD or IPTV without stream URL: use TMDB embed providers
       router.push({
         pathname: "/player",
         params: {
-          tmdbId: String(data?.tmdbId || tmdbId || ""),
+          ...(resolvedTmdbId ? { tmdbId: resolvedTmdbId } : {}),
+          ...(usableStream ? { streamUrl: usableStream } : {}),
           title: data?.title || paramTitle,
           type: type || "movie",
           contentId: id,
