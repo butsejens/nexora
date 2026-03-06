@@ -158,7 +158,7 @@ export default function PlayerProfileScreen() {
 
         <View style={styles.hero}>
           {photoUri ? (
-            <Image source={{ uri: photoUri }} style={styles.photo} onError={() => setPhotoIdx((i) => (i + 1 < photoCandidates.length ? i + 1 : i))} />
+            <Image source={{ uri: photoUri }} style={[styles.photo, { backgroundColor: COLORS.card }]} resizeMode="contain" onError={() => setPhotoIdx((i) => (i + 1 < photoCandidates.length ? i + 1 : i))} />
           ) : (
             <View style={[styles.photo, styles.photoFallback, { borderColor: badgeColor }]}> 
               <Text style={styles.photoInitials}>{initials}</Text>

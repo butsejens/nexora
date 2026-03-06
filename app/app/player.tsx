@@ -29,6 +29,8 @@ const STREAM_PROVIDERS = [
   { id: "embedsu",     label: "Server 2" },
   { id: "autoembed",   label: "Server 3" },
   { id: "vidsrcpro",   label: "Server 4" },
+  { id: "2embed",      label: "Server 5" },
+  { id: "moviesapi",   label: "Server 6" },
 ];
 
 function getEmbedUrl(provider: string, tmdbId: string, type: string, season: string, episode: string): string {
@@ -52,6 +54,14 @@ function getEmbedUrl(provider: string, tmdbId: string, type: string, season: str
       return isMovie
         ? `https://vidsrc.pro/embed/movie/${tmdbId}`
         : `https://vidsrc.pro/embed/tv/${tmdbId}?s=${s}&e=${e}`;
+    case "2embed":
+      return isMovie
+        ? `https://www.2embed.cc/embed/${tmdbId}`
+        : `https://www.2embed.cc/embedtv/${tmdbId}&s=${s}&e=${e}`;
+    case "moviesapi":
+      return isMovie
+        ? `https://moviesapi.club/movie/${tmdbId}`
+        : `https://moviesapi.club/tv/${tmdbId}-${s}-${e}`;
     default:
       return isMovie
         ? `https://vidsrc.to/embed/movie/${tmdbId}`
@@ -73,52 +83,56 @@ const AD_DOMAINS = [
   "media.net", "revcontent.com", "mgid.com", "bidvertiser.com",
 ];
 
-// JavaScript injected into every WebView to block ads, popups and redirects
+// JavaScript injected into every WebView to block ads/popups without breaking video embeds
 const AD_BLOCK_JS = `
 (function(){
-  // Block window.open (popup ads)
-  window.open = function(){ return null; };
+  // Block window.open ONLY for known ad popup domains
+  var _origOpen = window.open;
+  window.open = function(url) {
+    var u = String(url || '');
+    var adHosts = ['googlesyndication','doubleclick','adnxs','exoclick','juicyads',
+      'popads','popcash','trafficjunky','adsterra','propellerads','clickadu'];
+    if(!u || adHosts.some(function(d){ return u.indexOf(d)>-1; })) return null;
+    return _origOpen.apply(window, arguments);
+  };
 
-  // Block top-level redirects from iframes
-  try {
-    Object.defineProperty(window, 'top', { get: function(){ return window; } });
-  } catch(e){}
+  // NOTE: do NOT override window.top – embed sites use it to detect iframe context
 
-  // Remove overlays and popup ads via MutationObserver
+  // Remove fixed overlays and popup ads via MutationObserver
   function removeAds(){
     var selectors = [
-      '[id*="ad"]','[class*="ad-"]','[class*="-ad"]','[class*="ads"]',
-      '[id*="popup"]','[class*="popup"]','[class*="overlay"]',
-      '[id*="overlay"]','[class*="banner"]','[id*="banner"]',
-      '.adsbygoogle','[data-ad-slot]','iframe[src*="ad"]',
-      'div[style*="z-index: 9999"]','div[style*="z-index:9999"]',
+      '[id*="popup"]','[class*="popup"]',
+      '[id*="overlay"]','[class*="overlay"]',
+      '[id*="banner"]','[class*="banner"]',
+      '.adsbygoogle','[data-ad-slot]',
       '[class*="vpn"]','[id*="vpn"]',
     ];
     selectors.forEach(function(sel){
       try{
         document.querySelectorAll(sel).forEach(function(el){
-          // Only remove if it's blocking content, not a video container
           var tag = el.tagName.toLowerCase();
-          if(tag==='video'||tag==='source') return;
-          var rect = el.getBoundingClientRect();
-          if(rect.width>200&&rect.height>100&&el.style.position==='fixed'){
-            el.remove();
+          if(tag==='video'||tag==='source'||tag==='div'&&el.querySelector('video')) return;
+          var s = window.getComputedStyle(el);
+          if((s.position==='fixed'||s.position==='absolute')&&parseInt(s.zIndex||'0')>999){
+            el.style.display='none';
           }
         });
       }catch(e){}
     });
-    // Close alert dialogs
-    try{ document.querySelectorAll('dialog[open]').forEach(function(d){ d.close(); }); }catch(e){}
+    try{ document.querySelectorAll('dialog[open]').forEach(function(d){ try{d.close();}catch(e){} }); }catch(e){}
   }
 
-  // Run now and on DOM changes
-  removeAds();
-  var obs = new MutationObserver(function(){ removeAds(); });
-  obs.observe(document.body||document.documentElement, {childList:true, subtree:true});
+  setTimeout(function(){
+    removeAds();
+    try{
+      var obs = new MutationObserver(function(){ removeAds(); });
+      obs.observe(document.body||document.documentElement, {childList:true, subtree:true});
+    }catch(e){}
+  }, 500);
 
-  // Block window.alert and window.confirm popups
+  // Block alert/confirm/prompt dialogs
   window.alert = function(){};
-  window.confirm = function(){ return false; };
+  window.confirm = function(){ return true; };
   window.prompt = function(){ return ''; };
 })();
 `;
@@ -308,9 +322,11 @@ export default function PlayerScreen() {
           mediaPlaybackRequiresUserAction={false}
           javaScriptEnabled
           domStorageEnabled
+          thirdPartyCookiesEnabled
+          sharedCookiesEnabled
           allowsInlineMediaPlayback
           mixedContentMode="always"
-          originWhitelist={["http://*", "https://*"]}
+          originWhitelist={["http://*", "https://*", "about:*", "blob:*"]}
           userAgent="Mozilla/5.0 (Linux; Android 12; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
           injectedJavaScriptBeforeContentLoaded={AD_BLOCK_JS}
           onLoad={() => {

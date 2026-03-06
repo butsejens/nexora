@@ -180,7 +180,8 @@ export default function TeamDetailScreen() {
           {teamLogoUri && !teamLogoFailed ? (
             <Image
               source={{ uri: teamLogoUri }}
-              style={styles.teamBigLogo}
+              style={[styles.teamBigLogo, { backgroundColor: COLORS.card }]}
+              resizeMode="contain"
               onError={() => setTeamLogoFailed(true)}
             />
           ) : (
@@ -356,7 +357,8 @@ function PlayerCard({ player }: { player: any }) {
         {photoUri ? (
           <Image
             source={{ uri: photoUri }}
-            style={styles.playerPhoto}
+            style={[styles.playerPhoto, { backgroundColor: COLORS.card }]}
+            resizeMode="contain"
             onError={() => {
               setPhotoIndex((idx) => (idx + 1 < photoCandidates.length ? idx + 1 : idx));
             }}

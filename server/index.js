@@ -844,7 +844,17 @@ function mapEspnEventToMatch(ev) {
   };
 }
 
-function estimateMarketValueEUR(player) {
+function leagueValueMultiplier(leagueName) {
+  const n = String(leagueName || "").toLowerCase();
+  if (n.includes("jupiler") || n.includes("bel.1") || n.includes("pro league")) return 0.12;
+  if (n.includes("challenger") || n.includes("bel.2")) return 0.06;
+  if (n.includes("bundesliga") || n.includes("la liga") || n.includes("ligue 1") || n.includes("serie a")) return 0.85;
+  if (n.includes("premier") || n.includes("champions")) return 1.0;
+  if (n.includes("eredivisie") || n.includes("scottish") || n.includes("liga nos") || n.includes("primeira")) return 0.35;
+  return 0.7; // generic mid-tier fallback
+}
+
+function estimateMarketValueEUR(player, leagueName) {
   const age = Number(player?.age || 0);
   const pos = String(player?.position?.abbreviation || player?.position || "").toUpperCase();
   const baseByPos = pos.includes("GK") ? 5_000_000 : pos.includes("CB") || pos.includes("LB") || pos.includes("RB") ? 8_000_000 : pos.includes("CM") || pos.includes("DM") || pos.includes("AM") ? 12_000_000 : 10_000_000;
@@ -854,7 +864,8 @@ function estimateMarketValueEUR(player) {
   else if (age <= 28) ageFactor = 1.0;
   else if (age <= 31) ageFactor = 0.82;
   else if (age > 31) ageFactor = 0.65;
-  return Math.max(1_000_000, Math.round(baseByPos * ageFactor));
+  const multiplier = leagueValueMultiplier(leagueName);
+  return Math.max(100_000, Math.round(baseByPos * ageFactor * multiplier));
 }
 
 function formatEURShort(value) {
@@ -965,14 +976,28 @@ async function aiEstimateRosterValues(players, teamName, leagueName) {
     nationality: p.nationality,
   }));
 
+  const isBelgian = /jupiler|bel\.1|pro.?league|eerste.*klasse/i.test(leagueName || "");
+  const leagueContext = isBelgian
+    ? [
+        "JUPILER PRO LEAGUE context (seizoen 2024/25):",
+        "- Gemiddelde speler: €200K–€1.5M",
+        "- Goede stamspeler (24-28 jaar): €500K–€3M",
+        "- Topspeler Club Brugge/Anderlecht/Gent: €3M–€15M",
+        "- Jonge beloften (<22j): €300K–€5M",
+        "- Oudere spelers (>32j): €100K–€500K",
+        "Geef REALISTISCHE Jupiler Pro League waarden, NIET Premier League waarden!",
+      ].join("\n")
+    : "";
+
   const prompt = [
     `Geef de meest nauwkeurige Transfermarkt.com marktwaarden (EUR) voor spelers van ${teamName || "Unknown"}${leagueName ? ` (${leagueName})` : ""} seizoen 2024/25.`,
+    leagueContext,
     "Voor BEKENDE spelers (internationals, topcompetitie): gebruik je trainingskennis van echte Transfermarkt waarden.",
     "Voor MINDER BEKENDE spelers: schat conservatief op basis van leeftijd, positie en competitieniveau.",
     "Output STRIKT JSON: {\"players\":[{\"id\":\"...\",\"value_eur\":12345678}]}",
     "Geen tekst buiten JSON.",
     JSON.stringify(compact),
-  ].join("\n");
+  ].filter(Boolean).join("\n");
 
   try {
     const sys = { role: "system", content: "Je bent een expert voetbaltransfer analist met diepgaande kennis van Transfermarkt.com waarden. Je geeft altijd realistische waarden gebaseerd op je trainingsdata. Output uitsluitend geldige JSON." };
@@ -1022,7 +1047,7 @@ async function enrichRosterMarketValues(players, teamName, leagueName) {
       return next;
     }
 
-    const estimated = estimateMarketValueEUR(next);
+    const estimated = estimateMarketValueEUR(next, leagueName);
     if (Number.isFinite(estimated) && estimated > 0) {
       next.marketValue = formatEURShort(estimated);
       next.isRealValue = false;

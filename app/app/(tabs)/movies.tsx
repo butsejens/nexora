@@ -41,6 +41,9 @@ async function fetchPublicVodMovies() {
   const sources = [
     "https://iptv-org.github.io/iptv/categories/movies.m3u",
     "https://iptv-org.github.io/iptv/categories/series.m3u",
+    "https://i.mjh.nz/PlutoTV/all.m3u8",
+    "https://i.mjh.nz/SamsungTVPlus/all.m3u8",
+    "https://i.mjh.nz/Plex/all.m3u8",
   ];
 
   const settled = await Promise.allSettled(
@@ -65,7 +68,7 @@ async function fetchPublicVodMovies() {
     }
   }
 
-  return movies.slice(0, 350); // Cap at 350 items
+  return movies.slice(0, 600); // Cap at 600 items
 }
 
 export default function MoviesScreen() {
