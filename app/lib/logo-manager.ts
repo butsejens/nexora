@@ -1,7 +1,7 @@
 // Local logo assets
 const LOCAL_LOGOS = {
   clubBrugge: require("../assets/logos/club-brugge.png"),
-  jupilerProLeague: require("../assets/logos/jupiler-pro-league.jpg"),
+  jupilerProLeague: require("../assets/logos/jupiler-pro-league.png"),
   raalLaLouviere: require("../assets/logos/raal-la-louviere.png"),
 };
 
