@@ -29,6 +29,15 @@ import { SafeHaptics } from "@/lib/safeHaptics";
 
 const CHANGELOG: { version: string; date: string; changes: string[] }[] = [
   {
+    version: "1.7.1",
+    date: "2026-03-06",
+    changes: [
+      "Play/pauze knop werkt opnieuw: touch overlay herschreven",
+      "Download knop werkt correct op Android",
+      "18 film/serie servers (was 6): vidsrc.me, vidsrc.xyz, vidlink, multiembed, vidsrc.icu, videasy, nontongo, 111movies, smashystream, embedcc, rive, primewire",
+    ],
+  },
+  {
     version: "1.7.0",
     date: "2026-03-06",
     changes: [

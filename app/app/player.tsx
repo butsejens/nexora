@@ -23,12 +23,24 @@ import { buildErrorReference } from "@/lib/error-messages";
 
 // ─── Stream providers ──────────────────────────────────────────────────────────
 const STREAM_PROVIDERS = [
-  { id: "vidsrcto",    label: "Server 1" },
-  { id: "embedsu",     label: "Server 2" },
-  { id: "autoembed",   label: "Server 3" },
-  { id: "vidsrcpro",   label: "Server 4" },
-  { id: "2embed",      label: "Server 5" },
-  { id: "moviesapi",   label: "Server 6" },
+  { id: "vidsrcto",     label: "Server 1"  },
+  { id: "embedsu",      label: "Server 2"  },
+  { id: "autoembed",    label: "Server 3"  },
+  { id: "vidsrcpro",    label: "Server 4"  },
+  { id: "2embed",       label: "Server 5"  },
+  { id: "moviesapi",    label: "Server 6"  },
+  { id: "vidsrcme",     label: "Server 7"  },
+  { id: "vidsrcxyz",    label: "Server 8"  },
+  { id: "vidlink",      label: "Server 9"  },
+  { id: "multiembed",   label: "Server 10" },
+  { id: "vidsrcicu",    label: "Server 11" },
+  { id: "videasy",      label: "Server 12" },
+  { id: "nontongo",     label: "Server 13" },
+  { id: "111movies",    label: "Server 14" },
+  { id: "smashystream", label: "Server 15" },
+  { id: "embedcc",      label: "Server 16" },
+  { id: "rive",         label: "Server 17" },
+  { id: "primewire",    label: "Server 18" },
 ];
 
 function getEmbedUrl(provider: string, tmdbId: string, type: string, season: string, episode: string): string {
@@ -60,6 +72,54 @@ function getEmbedUrl(provider: string, tmdbId: string, type: string, season: str
       return isMovie
         ? `https://moviesapi.club/movie/${tmdbId}`
         : `https://moviesapi.club/tv/${tmdbId}-${s}-${e}`;
+    case "vidsrcme":
+      return isMovie
+        ? `https://vidsrc.me/embed/movie?tmdb=${tmdbId}`
+        : `https://vidsrc.me/embed/tv?tmdb=${tmdbId}&season=${s}&episode=${e}`;
+    case "vidsrcxyz":
+      return isMovie
+        ? `https://vidsrc.xyz/embed/movie?tmdb=${tmdbId}`
+        : `https://vidsrc.xyz/embed/tv?tmdb=${tmdbId}&season=${s}&episode=${e}`;
+    case "vidlink":
+      return isMovie
+        ? `https://vidlink.pro/movie/${tmdbId}`
+        : `https://vidlink.pro/tv/${tmdbId}/${s}/${e}`;
+    case "multiembed":
+      return isMovie
+        ? `https://multiembed.mov/?video_id=${tmdbId}&tmdb=1`
+        : `https://multiembed.mov/?video_id=${tmdbId}&tmdb=1&s=${s}&e=${e}`;
+    case "vidsrcicu":
+      return isMovie
+        ? `https://vidsrc.icu/embed/movie/${tmdbId}`
+        : `https://vidsrc.icu/embed/tv/${tmdbId}/${s}/${e}`;
+    case "videasy":
+      return isMovie
+        ? `https://player.videasy.net/movie/${tmdbId}`
+        : `https://player.videasy.net/tv/${tmdbId}/${s}/${e}`;
+    case "nontongo":
+      return isMovie
+        ? `https://www.nontongo.win/embed/movie/${tmdbId}`
+        : `https://www.nontongo.win/embed/tv/${tmdbId}/${s}/${e}`;
+    case "111movies":
+      return isMovie
+        ? `https://111movies.com/movie/${tmdbId}`
+        : `https://111movies.com/tv/${tmdbId}/${s}/${e}`;
+    case "smashystream":
+      return isMovie
+        ? `https://player.smashystream.com/movie/${tmdbId}`
+        : `https://player.smashystream.com/tv/${tmdbId}/${s}/${e}`;
+    case "embedcc":
+      return isMovie
+        ? `https://www.embedcc.com/embed/movie/${tmdbId}`
+        : `https://www.embedcc.com/embed/tv/${tmdbId}/${s}/${e}`;
+    case "rive":
+      return isMovie
+        ? `https://rivestream.live/embed?type=movie&id=${tmdbId}`
+        : `https://rivestream.live/embed?type=tv&id=${tmdbId}&season=${s}&episode=${e}`;
+    case "primewire":
+      return isMovie
+        ? `https://www.primewire.tf/embed/movie?tmdb=${tmdbId}`
+        : `https://www.primewire.tf/embed/tv?tmdb=${tmdbId}&season=${s}&episode=${e}`;
     default:
       return isMovie
         ? `https://vidsrc.to/embed/movie/${tmdbId}`
@@ -399,7 +459,12 @@ export default function PlayerScreen() {
     if (!url) return;
     SafeHaptics.impactLight();
     try {
-      await Share.share({ title: String(title || "Nexora"), message: url, url });
+      // On Android Share needs `message`; `url` is iOS-only
+      await Share.share(
+        Platform.OS === "ios"
+          ? { title: String(title || "Nexora"), url, message: url }
+          : { message: url }
+      );
     } catch {}
   };
 
@@ -624,12 +689,12 @@ export default function PlayerScreen() {
         )}
       </View>
 
-      {/* ─── Full-screen touch interceptor (HLS + Embed) ──────────────────────
-          Captures ALL taps so the WebView never receives raw touch events.
-          This is the final guard against popup navigation on both player types.
-          Tap = show controls.  HLS controls handle play/pause/seek.
+      {/* ─── Full-screen interceptor — only when controls are hidden ──────────
+          When controls are visible, the overlay (pointerEvents=auto) handles
+          everything. The interceptor only runs when controls are gone so taps
+          still reach it to bring the overlay back.
       ─────────────────────────────────────────────────────────────────────── */}
-      {(hlsHtml || embedUrl) && Platform.OS !== "web" && (
+      {(hlsHtml || embedUrl) && Platform.OS !== "web" && !controlsVisible && (
         <TouchableOpacity
           style={styles.hlsTouchScreen}
           onPress={showControls}
@@ -640,8 +705,16 @@ export default function PlayerScreen() {
       {/* ─── Controls overlay ─────────────────────────────────────────────── */}
       <Animated.View
         style={[styles.overlay, { opacity: controlsOpacity }]}
-        pointerEvents={controlsVisible ? "box-none" : "none"}
+        pointerEvents={controlsVisible ? "auto" : "none"}
       >
+        {/* Background tap area — FIRST child = lowest priority.
+            Tapping empty space dismisses the overlay; buttons (rendered after)
+            still receive touches normally because they're higher in paint order. */}
+        <TouchableOpacity
+          style={StyleSheet.absoluteFillObject}
+          onPress={() => setControlsVisible(false)}
+          activeOpacity={1}
+        />
         {/* Top bar */}
         <LinearGradient colors={["rgba(0,0,0,0.85)", "transparent"]} style={styles.topGrad}>
           <View style={[styles.topBar, { paddingTop: Platform.OS === "web" ? 67 : insets.top + 8 }]}>
