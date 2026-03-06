@@ -11,7 +11,7 @@ const LEAGUE_LOGO_MAP: Record<string, string> = {
   "Conference League": "https://a.espncdn.com/i/leaguelogos/soccer/500/3.png",
   "La Liga": "https://a.espncdn.com/i/leaguelogos/soccer/500/15.png",
   Bundesliga: "https://a.espncdn.com/i/leaguelogos/soccer/500/10.png",
-  "Jupiler Pro League": "https://a.espncdn.com/i/leaguelogos/soccer/500/5.png",
+  "Jupiler Pro League": "https://a.espncdn.com/i/leaguelogos/soccer/500/6.png",
   "Ligue 1": "https://a.espncdn.com/i/leaguelogos/soccer/500/9.png",
   "Serie A": "https://a.espncdn.com/i/leaguelogos/soccer/500/12.png",
   NBA: "https://a.espncdn.com/i/leaguelogos/basketball/500/nba.png",

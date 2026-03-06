@@ -7,7 +7,6 @@ import {
   StatusBar,
   Animated,
   Platform,
-  ScrollView,
   ActivityIndicator,
 } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
@@ -182,7 +181,10 @@ export default function PlayerScreen() {
   const insets = useSafeAreaInsets();
   const { isFavorite, toggleFavorite, addToHistory } = useNexora();
 
-  const [provider, setProvider] = useState(STREAM_PROVIDERS[0].id);
+  const [providerIndex, setProviderIndex] = useState(0);
+  const provider = STREAM_PROVIDERS[providerIndex]?.id || STREAM_PROVIDERS[0].id;
+  const allProvidersFailed = providerIndex >= STREAM_PROVIDERS.length;
+  const [useFallbackEmbed, setUseFallbackEmbed] = useState(false);
   const [controlsVisible, setControlsVisible] = useState(true);
   const [webviewKey, setWebviewKey] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
@@ -228,14 +230,24 @@ export default function PlayerScreen() {
   };
 
   const switchProvider = (id: string) => {
-    if (id === provider) {
+    const idx = STREAM_PROVIDERS.findIndex(p => p.id === id);
+    if (idx === providerIndex) {
       setWebviewKey(k => k + 1);
-    } else {
-      setProvider(id);
+    } else if (idx >= 0) {
+      setProviderIndex(idx);
       setWebviewKey(k => k + 1);
     }
     SafeHaptics.impactLight();
   };
+
+  const tryNextProvider = React.useCallback(() => {
+    const nextIdx = providerIndex + 1;
+    setProviderIndex(nextIdx);
+    setWebviewKey(k => k + 1);
+    setStreamError(null);
+    setStreamErrorRef("");
+    setIsLoading(true);
+  }, [providerIndex]);
 
   const handleOpenInVlc = async () => {
     if (!streamUrl) return;
@@ -243,14 +255,36 @@ export default function PlayerScreen() {
     await openInVlc(String(streamUrl), String(title || "Nexora stream"));
   };
 
+  // Auto-advance to next provider on network error (embed only)
+  useEffect(() => {
+    if (!streamError) return;
+    if (streamUrl && !useFallbackEmbed) return; // HLS streams: don't auto-switch
+    if (!tmdbId) return;
+    if (allProvidersFailed) return; // already shown error UI — wait for manual retry
+    const t = setTimeout(() => tryNextProvider(), 1200);
+    return () => clearTimeout(t);
+  }, [streamError, streamUrl, useFallbackEmbed, tmdbId, allProvidersFailed, tryNextProvider]);
+
+  // Auto-advance if loading takes too long (embed only)
+  useEffect(() => {
+    if (!isLoading) return;
+    if (streamUrl && !useFallbackEmbed) return;
+    if (!tmdbId) return;
+    if (allProvidersFailed) return;
+    const t = setTimeout(() => tryNextProvider(), 18000);
+    return () => clearTimeout(t);
+  }, [isLoading, webviewKey, streamUrl, useFallbackEmbed, tmdbId, allProvidersFailed, tryNextProvider]);
+
   // Build what to show
   const embedUrl: string | null = (() => {
+    if (allProvidersFailed) return null; // all providers exhausted
     if (tmdbId) return getEmbedUrl(provider, tmdbId, type || "movie", season || "1", episode || "1");
     if (trailerKey) return `https://www.youtube.com/embed/${trailerKey}?autoplay=1&rel=0&modestbranding=1&playsinline=1`;
     return null;
   })();
 
-  const hlsHtml: string | null = streamUrl ? buildHlsHtml(streamUrl) : null;
+  // HLS stream: use direct URL unless we've fallen back to embed
+  const hlsHtml: string | null = (streamUrl && !useFallbackEmbed) ? buildHlsHtml(streamUrl) : null;
   const hasSource = !!(hlsHtml || embedUrl);
 
   // Web player (iframe based)
@@ -304,10 +338,18 @@ export default function PlayerScreen() {
             setStreamErrorRef("");
           }}
           onError={(event) => {
-            setIsLoading(false);
-            const msg = event?.nativeEvent?.description || "Stream kon niet laden";
-            setStreamError(msg);
-            setStreamErrorRef((prev) => prev || buildErrorReference("NX-PLY"));
+            // If TMDB ID is available, fall back to embed providers automatically
+            if (tmdbId && !useFallbackEmbed) {
+              setUseFallbackEmbed(true);
+              setIsLoading(true);
+              setStreamError(null);
+              setStreamErrorRef("");
+            } else {
+              setIsLoading(false);
+              const msg = event?.nativeEvent?.description || "Stream kon niet laden";
+              setStreamError(msg);
+              setStreamErrorRef((prev) => prev || buildErrorReference("NX-PLY"));
+            }
           }}
         />
       );
@@ -377,14 +419,18 @@ export default function PlayerScreen() {
         {isLoading && hasSource && Platform.OS !== "web" && (
           <View style={styles.loadingOverlay} pointerEvents="none">
             <ActivityIndicator size="large" color={COLORS.accent} />
-            <Text style={styles.loadingText}>Laden...</Text>
+            <Text style={styles.loadingText}>
+              {(tmdbId && !streamUrl) || (useFallbackEmbed && tmdbId)
+                ? `Verbinding zoeken... (${providerIndex + 1}/${STREAM_PROVIDERS.length})`
+                : "Laden..."}
+            </Text>
           </View>
         )}
 
-        {!isLoading && streamError && Platform.OS !== "web" && (
+        {(allProvidersFailed || (!isLoading && streamError && !tmdbId)) && Platform.OS !== "web" && (
           <View style={styles.streamErrorOverlay}>
             <Ionicons name="warning-outline" size={18} color={COLORS.live} />
-            <Text style={styles.streamErrorText}>{normalizeApiError(streamError).userMessage}</Text>
+            <Text style={styles.streamErrorText}>Geen enkele server werkt momenteel.</Text>
             <Text style={styles.streamErrorRef}>Foutcode: {streamErrorRef || "NX-PLY"}</Text>
             <TouchableOpacity
               style={styles.streamRetryBtn}
@@ -392,10 +438,11 @@ export default function PlayerScreen() {
                 setStreamError(null);
                 setStreamErrorRef("");
                 setIsLoading(true);
+                setProviderIndex(0);
                 setWebviewKey((k) => k + 1);
               }}
             >
-              <Text style={styles.streamRetryText}>Probeer opnieuw</Text>
+              <Text style={styles.streamRetryText}>Opnieuw proberen</Text>
             </TouchableOpacity>
           </View>
         )}
@@ -438,33 +485,16 @@ export default function PlayerScreen() {
           </View>
         </LinearGradient>
 
-        {/* Bottom bar – provider switcher */}
-        {(tmdbId || trailerKey) && !streamUrl && (
-          <LinearGradient colors={["transparent", "rgba(0,0,0,0.9)"]} style={styles.bottomGrad}>
+        {/* Minimal bottom bar — reload only */}
+        {(tmdbId || trailerKey) && (!streamUrl || useFallbackEmbed) && !allProvidersFailed && (
+          <LinearGradient colors={["transparent", "rgba(0,0,0,0.7)"]} style={styles.bottomGrad}>
             <View style={[styles.bottomBar, { paddingBottom: Platform.OS === "web" ? 34 : insets.bottom + 16 }]}>
-              <View style={styles.serverRow}>
-                <Text style={styles.serverLabel}>Bron:</Text>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.serverChips}>
-                  {STREAM_PROVIDERS.map(p => (
-                    <TouchableOpacity
-                      key={p.id}
-                      style={[styles.serverChip, provider === p.id && styles.serverChipActive]}
-                      onPress={() => switchProvider(p.id)}
-                    >
-                      <Text style={[styles.serverChipText, provider === p.id && styles.serverChipTextActive]}>
-                        {p.label}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </ScrollView>
-                <TouchableOpacity
-                  style={styles.reloadBtn}
-                  onPress={() => { setWebviewKey(k => k + 1); SafeHaptics.impactLight(); }}
-                >
-                  <Ionicons name="refresh" size={20} color="#fff" />
-                </TouchableOpacity>
-              </View>
-              <Text style={styles.serverHint}>Als de stream niet start, probeer een andere server</Text>
+              <TouchableOpacity
+                style={styles.reloadBtn}
+                onPress={() => { tryNextProvider(); SafeHaptics.impactLight(); }}
+              >
+                <Ionicons name="refresh" size={20} color="#fff" />
+              </TouchableOpacity>
             </View>
           </LinearGradient>
         )}
@@ -509,17 +539,6 @@ const styles = StyleSheet.create({
   playerTitle: { fontFamily: "Inter_700Bold", fontSize: 16, color: "#fff" },
   playerSub: { fontFamily: "Inter_400Regular", fontSize: 12, color: "rgba(255,255,255,0.6)", marginTop: 1 },
   bottomGrad: { paddingTop: 60 },
-  bottomBar: { paddingHorizontal: 14 },
-  serverRow: { flexDirection: "row", alignItems: "center", gap: 8 },
-  serverLabel: { fontFamily: "Inter_500Medium", fontSize: 12, color: "rgba(255,255,255,0.6)" },
-  serverChips: { flexDirection: "row", gap: 6, paddingRight: 4 },
-  serverChip: {
-    paddingHorizontal: 14, paddingVertical: 7, borderRadius: 20,
-    backgroundColor: "rgba(255,255,255,0.1)", borderWidth: 1, borderColor: "rgba(255,255,255,0.2)",
-  },
-  serverChipActive: { backgroundColor: COLORS.accentGlow, borderColor: COLORS.accent },
-  serverChipText: { fontFamily: "Inter_500Medium", fontSize: 12, color: "rgba(255,255,255,0.7)" },
-  serverChipTextActive: { color: COLORS.accent, fontFamily: "Inter_700Bold" },
+  bottomBar: { paddingHorizontal: 14, alignItems: "flex-end" },
   reloadBtn: { width: 38, height: 38, alignItems: "center", justifyContent: "center" },
-  serverHint: { fontFamily: "Inter_400Regular", fontSize: 10, color: "rgba(255,255,255,0.3)", marginTop: 4, paddingBottom: 2 },
 });

@@ -680,28 +680,61 @@ async function fetchTheSportsDBTeamPlayers(teamName) {
 }
 
 // Wikipedia/Wikimedia API – free player photo lookup by name (no API key, CC licensed)
-async function fetchWikipediaPlayerPhoto(playerName) {
+async function fetchWikipediaPlayerPhoto(playerName, hintContext = "") {
   if (!playerName) return null;
   const normName = normalizePersonName(playerName);
   const cacheKey = `wikipedia_photo_${normName}`;
   const cacheItem = __cache.get(cacheKey);
   if (cacheItem && Date.now() <= cacheItem.expiresAt) return cacheItem.value;
 
-  try {
-    const wikiTitle = String(playerName).trim().replace(/ /g, "_");
-    const url = `https://en.wikipedia.org/w/api.php?action=query&titles=${encodeURIComponent(wikiTitle)}&prop=pageimages&pithumbsize=400&format=json&origin=*`;
+  const fetchPageImage = async (title) => {
+    const url = `https://en.wikipedia.org/w/api.php?action=query&titles=${encodeURIComponent(title)}&prop=pageimages&pithumbsize=400&format=json&origin=*`;
     const resp = await fetch(url, {
       headers: { "User-Agent": "NexoraApp/1.0 (sports app)" },
       signal: AbortSignal.timeout(4000),
     });
-    if (!resp.ok) { cacheSet(cacheKey, null, 300_000); return null; }
+    if (!resp.ok) return null;
     const data = await resp.json();
     const pages = data?.query?.pages || {};
     const page = Object.values(pages)[0];
-    if (!page || page.missing !== undefined) { cacheSet(cacheKey, null, 300_000); return null; }
-    const photo = page?.thumbnail?.source || null;
-    cacheSet(cacheKey, photo, 86_400_000); // 24h
-    return photo;
+    if (!page || page.missing !== undefined) return null;
+    return page?.thumbnail?.source || null;
+  };
+
+  try {
+    const wikiTitle = String(playerName).trim().replace(/ /g, "_");
+    // Try direct name first
+    const direct = await fetchPageImage(wikiTitle);
+    if (direct) { cacheSet(cacheKey, direct, 86_400_000); return direct; }
+
+    // Try with footballer disambiguation
+    const footballerVariants = [
+      `${playerName.trim()} (footballer)`,
+      `${playerName.trim()} (soccer)`,
+      `${playerName.trim()} (Belgian footballer)`,
+      `${playerName.trim()} (Dutch footballer)`,
+    ];
+    for (const variant of footballerVariants) {
+      const photo = await fetchPageImage(variant);
+      if (photo) { cacheSet(cacheKey, photo, 86_400_000); return photo; }
+    }
+
+    // Final: Wikipedia opensearch
+    const searchResp = await fetch(
+      `https://en.wikipedia.org/w/api.php?action=opensearch&search=${encodeURIComponent(playerName)}&limit=3&format=json&origin=*`,
+      { headers: { "User-Agent": "NexoraApp/1.0 (sports app)" }, signal: AbortSignal.timeout(4000) }
+    );
+    if (searchResp.ok) {
+      const searchData = await searchResp.json();
+      const results = searchData?.[1] || [];
+      for (const title of results.slice(0, 3)) {
+        const photo = await fetchPageImage(title);
+        if (photo) { cacheSet(cacheKey, photo, 86_400_000); return photo; }
+      }
+    }
+
+    cacheSet(cacheKey, null, 300_000);
+    return null;
   } catch {
     cacheSet(cacheKey, null, 300_000);
     return null;
@@ -732,7 +765,71 @@ async function fetchTheSportsDBTeamLogo(teamName) {
   }
 }
 
-// Enrich null team logos on a list of matches using TheSportsDB (parallel, cached)
+// Wikipedia/Wikimedia API – free team logo/crest lookup by club name (CC licensed)
+async function fetchWikipediaTeamLogo(teamName) {
+  if (!teamName) return null;
+  const normKey = normalizePersonName(teamName);
+  const cacheKey = `wikipedia_team_logo_${normKey}`;
+  const cached = cacheGet(cacheKey);
+  if (cached !== null) return cached;
+
+  try {
+    // Try direct page title first, then search
+    const variants = [
+      teamName.trim(),
+      `${teamName.trim()} F.C.`,
+      `${teamName.trim()} FC`,
+    ];
+    for (const variant of variants) {
+      const url = `https://en.wikipedia.org/w/api.php?action=query&titles=${encodeURIComponent(variant)}&prop=pageimages&pithumbsize=400&format=json&origin=*`;
+      const resp = await fetch(url, {
+        headers: { "User-Agent": "NexoraApp/1.0 (sports app)" },
+        signal: AbortSignal.timeout(4000),
+      });
+      if (!resp.ok) continue;
+      const data = await resp.json();
+      const pages = data?.query?.pages || {};
+      const page = Object.values(pages)[0];
+      if (page && page.missing === undefined && page?.thumbnail?.source) {
+        const logo = page.thumbnail.source;
+        cacheSet(cacheKey, logo, 86_400_000); // 24h
+        return logo;
+      }
+    }
+    // Fallback: Wikipedia opensearch → use first result's page images
+    const searchResp = await fetch(
+      `https://en.wikipedia.org/w/api.php?action=opensearch&search=${encodeURIComponent(teamName)}&limit=1&format=json&origin=*`,
+      { headers: { "User-Agent": "NexoraApp/1.0 (sports app)" }, signal: AbortSignal.timeout(4000) }
+    );
+    if (searchResp.ok) {
+      const searchData = await searchResp.json();
+      const found = searchData?.[1]?.[0];
+      if (found) {
+        const imgResp = await fetch(
+          `https://en.wikipedia.org/w/api.php?action=query&titles=${encodeURIComponent(found)}&prop=pageimages&pithumbsize=400&format=json&origin=*`,
+          { headers: { "User-Agent": "NexoraApp/1.0 (sports app)" }, signal: AbortSignal.timeout(4000) }
+        );
+        if (imgResp.ok) {
+          const imgData = await imgResp.json();
+          const pages2 = imgData?.query?.pages || {};
+          const page2 = Object.values(pages2)[0];
+          if (page2?.thumbnail?.source) {
+            const logo = page2.thumbnail.source;
+            cacheSet(cacheKey, logo, 86_400_000);
+            return logo;
+          }
+        }
+      }
+    }
+    cacheSet(cacheKey, null, 300_000); // 5min negative cache
+    return null;
+  } catch {
+    cacheSet(cacheKey, null, 300_000);
+    return null;
+  }
+}
+
+// Enrich null team logos on a list of matches using TheSportsDB + Wikipedia (parallel, cached)
 async function enrichMatchLogos(matches) {
   if (!Array.isArray(matches) || matches.length === 0) return matches;
   const needsLogo = matches.filter((m) => !m.homeTeamLogo || !m.awayTeamLogo);
@@ -745,8 +842,14 @@ async function enrichMatchLogos(matches) {
     ].filter(Boolean))
   )];
 
+  // TheSportsDB first, Wikipedia fallback for teams that still have no logo
   const logoMap = Object.fromEntries(
-    await Promise.all(teamNames.map(async (name) => [name, await fetchTheSportsDBTeamLogo(name)]))
+    await Promise.all(teamNames.map(async (name) => {
+      const tsdb = await fetchTheSportsDBTeamLogo(name);
+      if (tsdb) return [name, tsdb];
+      const wiki = await fetchWikipediaTeamLogo(name);
+      return [name, wiki || null];
+    }))
   );
 
   return matches.map((m) => ({
@@ -1083,7 +1186,7 @@ async function enrichRosterPhotos(players, teamName) {
   const stillNeed = enriched.filter((p) => p && !p.photo && p.name);
   if (stillNeed.length > 0) {
     const wikiResults = await Promise.allSettled(
-      stillNeed.map((p) => fetchWikipediaPlayerPhoto(p.name))
+      stillNeed.map((p) => fetchWikipediaPlayerPhoto(p.name, teamName))
     );
     const wikiMap = new Map();
     stillNeed.forEach((p, i) => {
@@ -2914,7 +3017,7 @@ app.get("/api/sports/team/:teamId", async (req, res) => {
         team?.logos?.[0]?.href || team?.logo || null,
         team?.id ? `https://a.espncdn.com/i/teamlogos/soccer/500/${encodeURIComponent(String(team.id))}.png` : null,
       );
-      const resolvedLogo = baseLogo || await fetchTheSportsDBTeamLogo(teamDisplayName) || null;
+      const resolvedLogo = baseLogo || await fetchTheSportsDBTeamLogo(teamDisplayName) || await fetchWikipediaTeamLogo(teamDisplayName) || null;
 
       return {
         id: String(team?.id || resolvedTeamId || ""),
@@ -3087,7 +3190,7 @@ app.get("/api/sports/player/:playerId", async (req, res) => {
         clubName,
         profileStats?.team?.logo || espnTeam?.logo || espnTeam?.logos?.[0]?.href || apifyFallback?.teamLogo || null
       );
-      const resolvedClubLogo = baseClubLogo || await fetchTheSportsDBTeamLogo(clubName) || null;
+      const resolvedClubLogo = baseClubLogo || await fetchTheSportsDBTeamLogo(clubName) || await fetchWikipediaTeamLogo(clubName) || null;
 
       return {
         id: String(valued?.id || ""),

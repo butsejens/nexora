@@ -69,32 +69,35 @@ export default function RootLayout() {
     Inter_800ExtraBold,
   });
 
-  const [showIntro, setShowIntro] = useState(false);
+  // introFinished: skip on subsequent opens (hasShownIntroOnce stays true for app lifetime)
+  const [introFinished, setIntroFinished] = useState(hasShownIntroOnce);
   const [bootDone, setBootDone] = useState(hasCompletedBootOnce);
   const [bootProgress, setBootProgress] = useState(0);
   const [bootMessage, setBootMessage] = useState("Resources laden...");
   const [fontFallbackReady, setFontFallbackReady] = useState(false);
   const bootStartedRef = useRef(false);
 
+  // 7s font fallback
   useEffect(() => {
     const timer = setTimeout(() => setFontFallbackReady(true), 7000);
     return () => clearTimeout(timer);
   }, []);
 
+  // Hide native splash as soon as fonts (or fallback) are ready
+  useEffect(() => {
+    if (fontsLoaded || fontFallbackReady) {
+      SplashScreen.hideAsync().catch(() => {});
+    }
+  }, [fontsLoaded, fontFallbackReady]);
+
+  // Boot sequence — start immediately when fonts are ready (parallel with intro)
   useEffect(() => {
     if (hasCompletedBootOnce) {
       setBootDone(true);
-      SplashScreen.hideAsync().catch(() => {});
       return;
     }
 
-    if (!fontsLoaded && !fontFallbackReady) {
-      SplashScreen.hideAsync().catch(() => {});
-      setBootMessage("Fonts laden...");
-      setBootProgress((p) => (p < 20 ? 20 : p));
-      return;
-    }
-
+    if (!fontsLoaded && !fontFallbackReady) return;
     if (bootStartedRef.current) return;
     bootStartedRef.current = true;
 
@@ -109,18 +112,13 @@ export default function RootLayout() {
 
     const progressTimer = setInterval(() => {
       if (!mounted) return;
-      setBootProgress((p) => {
-        const next = Math.min(92, p + Math.max(2, Math.round((100 - p) * 0.12)));
-        return next;
-      });
+      setBootProgress((p) => Math.min(92, p + Math.max(2, Math.round((100 - p) * 0.12))));
       messageIndex = Math.min(messages.length - 1, messageIndex + 1);
       setBootMessage(messages[messageIndex]);
     }, 450);
 
     (async () => {
       try {
-        SplashScreen.hideAsync().catch(() => {});
-
         if (fontsLoaded || fontFallbackReady) {
           setBootMessage("Server status controleren...");
           const candidates = getApiBaseCandidates();
@@ -135,7 +133,6 @@ export default function RootLayout() {
             await new Promise((resolve) => setTimeout(resolve, 900));
           }
         }
-
         await new Promise((resolve) => setTimeout(resolve, 500));
       } finally {
         if (!mounted) return;
@@ -144,9 +141,6 @@ export default function RootLayout() {
         setBootMessage("Klaar");
         hasCompletedBootOnce = true;
         setBootDone(true);
-        if (!hasShownIntroOnce) {
-          setShowIntro(true);
-        }
       }
     })();
 
@@ -158,17 +152,18 @@ export default function RootLayout() {
 
   const handleIntroFinish = React.useCallback(() => {
     hasShownIntroOnce = true;
-    setShowIntro(false);
+    setIntroFinished(true);
   }, []);
 
+  // Safety: auto-finish intro after 7s (in case animation stalls)
   useEffect(() => {
-    if (!showIntro) return;
-    const safety = setTimeout(() => {
-      handleIntroFinish();
-    }, 7000);
+    if (introFinished) return;
+    if (!fontsLoaded && !fontFallbackReady) return;
+    const safety = setTimeout(handleIntroFinish, 7000);
     return () => clearTimeout(safety);
-  }, [showIntro, handleIntroFinish]);
+  }, [fontsLoaded, fontFallbackReady, introFinished, handleIntroFinish]);
 
+  // OTA check after boot
   useEffect(() => {
     if (!bootDone) return;
     if (hasCheckedOtaUpdateOnce) return;
@@ -189,10 +184,21 @@ export default function RootLayout() {
     run();
   }, [bootDone]);
 
+  const fontsReady = fontsLoaded || fontFallbackReady;
+
+  // === RENDER PHASES ===
+
+  // Phase 1: Intro (first launch only, once fonts are ready)
+  if (!introFinished && fontsReady) {
+    return <NexoraIntro onFinish={handleIntroFinish} />;
+  }
+
+  // Phase 2: Boot / loading screen
   if (!bootDone) {
     return <NexoraBootScreen progress={bootProgress} message={bootMessage} />;
   }
 
+  // Phase 3: App
   return (
     <ErrorBoundary>
       <QueryClientProvider client={queryClient}>
@@ -200,9 +206,6 @@ export default function RootLayout() {
           <GestureHandlerRootView style={{ flex: 1 }}>
             <NexoraProvider>
               <RootLayoutNav />
-              {showIntro && (
-                <NexoraIntro onFinish={handleIntroFinish} />
-              )}
             </NexoraProvider>
           </GestureHandlerRootView>
         </SafeAreaProvider>

@@ -181,6 +181,7 @@ export default function MoviesScreen() {
           title: item.title,
           isIptv: "true",
           streamUrl: item.streamUrl,
+          ...(item.tmdbId ? { tmdbId: String(item.tmdbId) } : {}),
         },
       });
     } else {
@@ -267,10 +268,6 @@ export default function MoviesScreen() {
                 <Text style={styles.sectionTitle}>Zoekresultaten</Text>
                 {filteredIptv.length > 0 && (
                   <>
-                    <View style={styles.sourceLabel}>
-                      <MaterialCommunityIcons name="play-network" size={12} color={COLORS.accent} />
-                      <Text style={styles.sourceLabelText}>Jouw Playlist</Text>
-                    </View>
                     <FlatList horizontal data={filteredIptv} keyExtractor={(item: any) => item.id}
                       renderItem={({ item }: any) => (
                         <RealContentCard item={item} onPress={() => goToDetail(item)} onFavorite={() => toggleFavorite(item.id)} isFavorite={isFavorite(item.id)} />
@@ -280,10 +277,6 @@ export default function MoviesScreen() {
                 )}
                 {publicVodMapped.length > 0 && (
                   <>
-                    <View style={styles.sourceLabel}>
-                      <MaterialCommunityIcons name="earth" size={12} color="#4AC1FF" />
-                      <Text style={[styles.sourceLabelText, { color: "#4AC1FF" }]}>Open M3U</Text>
-                    </View>
                     <FlatList horizontal data={publicVodMapped} keyExtractor={(item: any) => item.id}
                       renderItem={({ item }: any) => (
                         <RealContentCard item={item} onPress={() => goToDetail(item)} onFavorite={() => toggleFavorite(item.id)} isFavorite={isFavorite(item.id)} />
@@ -293,10 +286,6 @@ export default function MoviesScreen() {
                 )}
                 {(filteredTmdb ?? []).length > 0 && (
                   <>
-                    <View style={styles.sourceLabel}>
-                      <MaterialCommunityIcons name="database" size={12} color="#E50914" />
-                      <Text style={[styles.sourceLabelText, { color: "#E50914" }]}>Catalogus</Text>
-                    </View>
                     <FlatList horizontal data={filteredTmdb ?? []} keyExtractor={(item: any) => item.id}
                       renderItem={({ item }: any) => (
                         <RealContentCard item={item} onPress={() => goToDetail(item)} onFavorite={() => toggleFavorite(item.id)} isFavorite={isFavorite(item.id)} />
@@ -323,13 +312,7 @@ export default function MoviesScreen() {
                 {/* IPTV Playlist sectie */}
                 {iptvMovies.length > 0 && (
                   <View style={styles.section}>
-                    <View style={styles.sectionRow}>
-                      <Text style={styles.sectionTitle}>Jouw Playlist</Text>
-                      <View style={styles.iptvBadge}>
-                        <MaterialCommunityIcons name="play-network" size={11} color={COLORS.accent} />
-                        <Text style={styles.iptvBadgeText}>IPTV</Text>
-                      </View>
-                    </View>
+                    <Text style={styles.sectionTitle}>Jouw Playlist</Text>
                     {iptvGroups.length > 2 && (
                       <FlatList
                         horizontal data={iptvGroups} keyExtractor={g => g}
@@ -353,13 +336,7 @@ export default function MoviesScreen() {
 
                 {publicVodMapped.length > 0 && (
                   <View style={styles.section}>
-                    <View style={styles.sectionRow}>
-                      <Text style={styles.sectionTitle}>Open M3U Aanvulling</Text>
-                      <View style={styles.iptvBadge}>
-                        <MaterialCommunityIcons name="earth" size={11} color={COLORS.accent} />
-                        <Text style={styles.iptvBadgeText}>PUBLIC</Text>
-                      </View>
-                    </View>
+                    <Text style={styles.sectionTitle}>Gratis Films</Text>
                     <FlatList
                       horizontal data={publicVodMapped} keyExtractor={(item: any) => item.id}
                       renderItem={({ item }: any) => (
