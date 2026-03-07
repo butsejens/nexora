@@ -340,10 +340,22 @@ function formatTime(secs: number): string {
 // Finds video in top frame or same-origin iframes (cross-origin iframes are blocked by browser)
 const FIND_VIDEO_FN = `function _fv(){var v=document.querySelector("video");if(!v){var fs=document.querySelectorAll("iframe");for(var i=0;i<fs.length;i++){try{var d=fs[i].contentDocument||(fs[i].contentWindow&&fs[i].contentWindow.document);var iv=d&&d.querySelector("video");if(iv){v=iv;break;}}catch(e){}}}return v;}`;
 
-// Strategy order: 1) direct video  2) postMessage to iframes  3) spacebar keyboard sim
+// Strategy order: 1) direct video  2) center-click sim  3) postMessage to iframes  4) spacebar keyboard sim
 const EMBED_TOGGLE_JS = `(function(){${FIND_VIDEO_FN}
   var v=_fv();
   if(v){if(v.paused)v.play().catch(function(){});else v.pause();return;}
+  try{
+    var cx=window.innerWidth/2,cy=window.innerHeight/2;
+    var el=document.elementFromPoint(cx,cy);
+    if(el&&el!==document.documentElement&&el!==document.body){
+      ["mousedown","mouseup","click"].forEach(function(t){
+        el.dispatchEvent(new MouseEvent(t,{bubbles:true,cancelable:true,view:window,clientX:cx,clientY:cy}));
+      });
+      try{el.dispatchEvent(new TouchEvent("touchstart",{bubbles:true,cancelable:true,touches:[new Touch({identifier:1,target:el,clientX:cx,clientY:cy})]}));}catch(e){}
+      try{el.dispatchEvent(new TouchEvent("touchend",{bubbles:true,cancelable:true}));}catch(e){}
+      return;
+    }
+  }catch(e){}
   var frs=[];try{frs=Array.from(window.frames);}catch(e){}
   frs.forEach(function(f){
     try{f.postMessage({action:"pause"},"*");}catch(e){}

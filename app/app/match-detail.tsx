@@ -386,50 +386,59 @@ export default function MatchDetailScreen() {
           {detailLoading ? (
             <LoadingState />
           ) : matchDetail?.starters?.length > 0 ? (
-            matchDetail.starters.map((team: any, ti: number) => (
-              <View key={ti} style={styles.lineupTeamSection}>
-                <View style={styles.lineupHeaderRow}>
-                  <Text style={styles.sectionLabel}>{team.team?.toUpperCase()} — OPSTELLING {team.formation ? `(${team.formation})` : ""}</Text>
-                  <View style={styles.lineupTypeBadge}>
-                    <Text style={styles.lineupTypeText}>{team.lineupType === "official" ? "OFFICIEEL" : "VERWACHT"}</Text>
-                  </View>
-                </View>
+            <>
+              {lineupView === "pitch" && matchDetail.starters.length >= 2 ? (
+                <CombinedPitchView
+                  homeTeamData={matchDetail.starters[0]}
+                  awayTeamData={matchDetail.starters[1]}
+                />
+              ) : (
+                matchDetail.starters.map((team: any, ti: number) => (
+                  <View key={ti} style={styles.lineupTeamSection}>
+                    <View style={styles.lineupHeaderRow}>
+                      <Text style={styles.sectionLabel}>{team.team?.toUpperCase()} — OPSTELLING {team.formation ? `(${team.formation})` : ""}</Text>
+                      <View style={styles.lineupTypeBadge}>
+                        <Text style={styles.lineupTypeText}>{team.lineupType === "official" ? "OFFICIEEL" : "VERWACHT"}</Text>
+                      </View>
+                    </View>
 
-                {lineupView === "pitch" ? (
-                  <LinearGradient
-                    colors={["#183c20", "#0f2f19", "#0b2413"]}
-                    style={styles.pitchCard}
-                  >
-                    <View style={styles.pitchCenterCircle} />
-                    <View style={styles.pitchHalfLine} />
-                    {buildFormationRows(team.players || [], team.formation).map((row, rowIndex) => (
-                      <View key={rowIndex} style={styles.pitchRow}>
-                        {row.map((p: any, pi: number) => (
-                          <View key={`${p.id || p.name}-${pi}`} style={styles.pitchPlayerWrap}>
-                            <PlayerRow player={p} sport={params.sport} compact teamName={team.team} />
+                    {lineupView === "pitch" ? (
+                      <LinearGradient
+                        colors={["#183c20", "#0f2f19", "#0b2413"]}
+                        style={styles.pitchCard}
+                      >
+                        <View style={styles.pitchCenterCircle} />
+                        <View style={styles.pitchHalfLine} />
+                        {buildFormationRows(team.players || [], team.formation).map((row, rowIndex) => (
+                          <View key={rowIndex} style={styles.pitchRow}>
+                            {row.map((p: any, pi: number) => (
+                              <View key={`${p.id || p.name}-${pi}`} style={styles.pitchPlayerWrap}>
+                                <PlayerRow player={p} sport={params.sport} compact teamName={team.team} />
+                              </View>
+                            ))}
                           </View>
                         ))}
-                      </View>
-                    ))}
-                  </LinearGradient>
-                ) : (
-                  <View style={styles.lineupListCard}>
-                    <Text style={styles.lineupListLabel}>STARTING XI</Text>
-                    {(team.players || []).filter((p: any) => p?.starter !== false).map((p: any, i: number) => (
-                      <PlayerRow key={`st_${p?.id || p?.name || i}`} player={p} sport={params.sport} teamName={team.team} />
-                    ))}
-                    {(team.players || []).some((p: any) => p?.starter === false) ? (
-                      <>
-                        <Text style={[styles.lineupListLabel, { marginTop: 10 }]}>BENCH</Text>
-                        {(team.players || []).filter((p: any) => p?.starter === false).map((p: any, i: number) => (
-                          <PlayerRow key={`bn_${p?.id || p?.name || i}`} player={p} sport={params.sport} teamName={team.team} />
+                      </LinearGradient>
+                    ) : (
+                      <View style={styles.lineupListCard}>
+                        <Text style={styles.lineupListLabel}>STARTING XI</Text>
+                        {(team.players || []).filter((p: any) => p?.starter !== false).map((p: any, i: number) => (
+                          <PlayerRow key={`st_${p?.id || p?.name || i}`} player={p} sport={params.sport} teamName={team.team} />
                         ))}
-                      </>
-                    ) : null}
+                        {(team.players || []).some((p: any) => p?.starter === false) ? (
+                          <>
+                            <Text style={[styles.lineupListLabel, { marginTop: 10 }]}>BENCH</Text>
+                            {(team.players || []).filter((p: any) => p?.starter === false).map((p: any, i: number) => (
+                              <PlayerRow key={`bn_${p?.id || p?.name || i}`} player={p} sport={params.sport} teamName={team.team} />
+                            ))}
+                          </>
+                        ) : null}
+                      </View>
+                    )}
                   </View>
-                )}
-              </View>
-            ))
+                ))
+              )}
+            </>
           ) : (
             <EmptyState icon="people-outline" text="Opstelling nog niet beschikbaar" />
           )}
@@ -486,15 +495,18 @@ function TeamSide({ name, logo, onPress }: { name: string; logo?: string; onPres
 
 function StatsBars({ homeTeam, awayTeam, homeStats, awayStats }: any) {
   const STAT_LABELS: Record<string, string> = {
-    possessionPct: "Balbezit %",
-    totalShots: "Totaal schoten",
-    shotsOnTarget: "Schoten op doel",
-    totalPasses: "Totaal passes",
+    ball_possession: "Balbezit %",
+    total_shots: "Schoten",
+    shots_on_goal: "Op doel",
+    shots_off_goal: "Naast doel",
+    blocked_shots: "Geblokkeerd",
+    total_passes: "Passes",
     fouls: "Overtredingen",
-    yellowCards: "Gele kaarten",
-    redCards: "Rode kaarten",
-    corners: "Hoekschoppen",
+    yellow_cards: "Gele kaarten",
+    red_cards: "Rode kaarten",
+    corner_kicks: "Hoekschoppen",
     offsides: "Buitenspel",
+    goalkeeper_saves: "Reddingen",
   };
 
   const statsToShow = Object.keys(STAT_LABELS).filter(k => homeStats[k] || awayStats[k]);
@@ -514,8 +526,10 @@ function StatsBars({ homeTeam, awayTeam, homeStats, awayStats }: any) {
         <Text style={styles.statsTeamName} numberOfLines={1}>{awayTeam}</Text>
       </View>
       {statsToShow.map(key => {
-        const hVal = parseFloat(homeStats[key] || "0");
-        const aVal = parseFloat(awayStats[key] || "0");
+        const rawH = String(homeStats[key] || "0");
+        const rawA = String(awayStats[key] || "0");
+        const hVal = parseFloat(rawH.replace("%", "")) || 0;
+        const aVal = parseFloat(rawA.replace("%", "")) || 0;
         const total = hVal + aVal || 1;
         const hPct = (hVal / total) * 100;
         return (
@@ -605,6 +619,71 @@ function PlayerRow({ player, sport, compact = false, teamName = "" }: { player: 
         )}
       </View>}
     </TouchableOpacity>
+  );
+}
+
+function shortPlayerName(name: string): string {
+  const parts = (name || "").trim().split(/\s+/);
+  if (parts.length <= 1) return (parts[0] || "").slice(0, 9);
+  return `${parts[0][0]}. ${parts[parts.length - 1]}`.slice(0, 12);
+}
+
+function PitchDot({ player, color }: { player: any; color: string }) {
+  return (
+    <View style={styles.pitchDotWrap}>
+      <View style={[styles.pitchDotCircle, { borderColor: color }]}>
+        <Text style={[styles.pitchDotNum, { color }]}>{player.jersey || "—"}</Text>
+      </View>
+      <Text style={styles.pitchDotName} numberOfLines={1}>{shortPlayerName(player.name)}</Text>
+    </View>
+  );
+}
+
+function CombinedPitchView({ homeTeamData, awayTeamData }: { homeTeamData: any; awayTeamData: any }) {
+  const homeRows = buildFormationRows(homeTeamData?.players || [], homeTeamData?.formation);
+  const awayRows = [...buildFormationRows(awayTeamData?.players || [], awayTeamData?.formation)].reverse();
+
+  return (
+    <LinearGradient colors={["#0d2e18", "#183c20", "#0d2e18"]} style={styles.combinedPitch}>
+      {/* Field markings */}
+      <View style={styles.pitchTopArc} />
+      <View style={styles.pitchCenterLine} />
+      <View style={styles.pitchCenterCircleNew} />
+      <View style={styles.pitchBottomArc} />
+
+      {/* Away team label */}
+      <View style={styles.pitchTeamLabelRow}>
+        <Text style={[styles.pitchTeamLabel, { color: COLORS.live }]}>{awayTeamData?.team?.toUpperCase()}</Text>
+        {awayTeamData?.formation ? <Text style={styles.pitchFormLabel}>{awayTeamData.formation}</Text> : null}
+      </View>
+
+      {/* Away rows (GK top → FWDs center) */}
+      {awayRows.map((row, ri) => (
+        <View key={`away_${ri}`} style={styles.combinedPitchRow}>
+          {row.map((p: any, pi: number) => (
+            <PitchDot key={`a_${p?.id || p?.name || pi}`} player={p} color={COLORS.live} />
+          ))}
+        </View>
+      ))}
+
+      {/* Center divider */}
+      <View style={styles.pitchDivider} />
+
+      {/* Home rows (FWDs center → GK bottom) */}
+      {homeRows.map((row, ri) => (
+        <View key={`home_${ri}`} style={styles.combinedPitchRow}>
+          {row.map((p: any, pi: number) => (
+            <PitchDot key={`h_${p?.id || p?.name || pi}`} player={p} color={COLORS.accent} />
+          ))}
+        </View>
+      ))}
+
+      {/* Home team label */}
+      <View style={styles.pitchTeamLabelRow}>
+        <Text style={[styles.pitchTeamLabel, { color: COLORS.accent }]}>{homeTeamData?.team?.toUpperCase()}</Text>
+        {homeTeamData?.formation ? <Text style={styles.pitchFormLabel}>{homeTeamData.formation}</Text> : null}
+      </View>
+    </LinearGradient>
   );
 }
 
@@ -1088,4 +1167,123 @@ const styles = StyleSheet.create({
   },
   metaBadgeLabel: { fontFamily: "Inter_400Regular", fontSize: 10, color: COLORS.textMuted },
   metaBadgeValue: { fontFamily: "Inter_700Bold", fontSize: 12, color: COLORS.text },
+  combinedPitch: {
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.15)",
+    paddingVertical: 12,
+    paddingHorizontal: 4,
+    gap: 6,
+    overflow: "hidden",
+    position: "relative",
+  },
+  combinedPitchRow: {
+    flexDirection: "row",
+    justifyContent: "space-evenly",
+    alignItems: "center",
+    zIndex: 2,
+    gap: 2,
+    paddingHorizontal: 4,
+  },
+  pitchDivider: {
+    height: 1,
+    backgroundColor: "rgba(255,255,255,0.3)",
+    marginHorizontal: 16,
+    marginVertical: 4,
+    zIndex: 2,
+  },
+  pitchTeamLabelRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    zIndex: 2,
+    paddingVertical: 2,
+  },
+  pitchTeamLabel: {
+    fontFamily: "Inter_700Bold",
+    fontSize: 10,
+    letterSpacing: 1,
+  },
+  pitchFormLabel: {
+    fontFamily: "Inter_500Medium",
+    fontSize: 9,
+    color: "rgba(255,255,255,0.5)",
+  },
+  pitchTopArc: {
+    position: "absolute",
+    width: 80,
+    height: 40,
+    borderBottomLeftRadius: 40,
+    borderBottomRightRadius: 40,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.18)",
+    borderTopWidth: 0,
+    top: 0,
+    left: "50%",
+    marginLeft: -40,
+    zIndex: 1,
+  },
+  pitchBottomArc: {
+    position: "absolute",
+    width: 80,
+    height: 40,
+    borderTopLeftRadius: 40,
+    borderTopRightRadius: 40,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.18)",
+    borderBottomWidth: 0,
+    bottom: 0,
+    left: "50%",
+    marginLeft: -40,
+    zIndex: 1,
+  },
+  pitchCenterLine: {
+    position: "absolute",
+    left: 8,
+    right: 8,
+    top: "50%",
+    borderTopWidth: 1,
+    borderTopColor: "rgba(255,255,255,0.18)",
+    zIndex: 1,
+  },
+  pitchCenterCircleNew: {
+    position: "absolute",
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.18)",
+    left: "50%",
+    marginLeft: -30,
+    top: "50%",
+    marginTop: -30,
+    zIndex: 1,
+  },
+  pitchDotWrap: {
+    alignItems: "center",
+    gap: 2,
+    minWidth: 36,
+    flex: 1,
+    maxWidth: 60,
+  },
+  pitchDotCircle: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    borderWidth: 2,
+    backgroundColor: "rgba(0,0,0,0.55)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  pitchDotNum: {
+    fontFamily: "Inter_800ExtraBold",
+    fontSize: 11,
+  },
+  pitchDotName: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 8,
+    color: "rgba(255,255,255,0.75)",
+    textAlign: "center",
+  },
 });

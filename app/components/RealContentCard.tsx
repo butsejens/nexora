@@ -328,8 +328,6 @@ const styles = StyleSheet.create({
     borderRadius: 24,
     overflow: "hidden",
     backgroundColor: COLORS.card,
-    borderWidth: 2,
-    borderColor: "rgba(183,213,255,0.5)",
     justifyContent: "flex-end",
   },
   heroBottomGradient: {

@@ -804,7 +804,7 @@ export default function SportsScreen() {
       <Animated.View style={{
         overflow: "hidden",
         opacity: filterAnim,
-        maxHeight: filterAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 96] }),
+        maxHeight: filterAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 120] }),
       }}>
           {/* Status Filter */}
           <View style={styles.statusFilter}>

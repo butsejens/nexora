@@ -59,6 +59,7 @@ export default function SeriesScreen() {
   const [search, setSearch] = useState("");
   const [refreshing, setRefreshing] = useState(false);
   const [loadingGuardReached, setLoadingGuardReached] = useState(false);
+  const [heroIndex, setHeroIndex] = useState(0);
 
   // Per-genre extra pages state
   const [genreExtras, setGenreExtras] = useState<Record<number, { page: number; items: any[]; loading: boolean }>>({});
@@ -120,9 +121,21 @@ export default function SeriesScreen() {
   const seriesGenres: any[] = useMemo(() => genresData?.genres || [], [genresData]);
   const seriesDecades: any[] = useMemo(() => decadesData?.decades || [], [decadesData]);
 
-  const featured = iptvSeries.length > 0
-    ? filteredIptv[0]
-    : (trending[0] || newReleases[0]);
+  const heroItems = useMemo(() => {
+    const pool = iptvSeries.length > 0 ? filteredIptv : [...trending, ...newReleases, ...popular];
+    return pool.filter(Boolean).slice(0, 10);
+  }, [iptvSeries, filteredIptv, trending, newReleases, popular]);
+
+  const featured = heroItems[heroIndex % Math.max(heroItems.length, 1)] || null;
+
+  // Auto-rotate hero banner every 10 seconds
+  useEffect(() => {
+    if (heroItems.length <= 1) return;
+    const timer = setInterval(() => {
+      setHeroIndex((i) => (i + 1) % heroItems.length);
+    }, 10_000);
+    return () => clearInterval(timer);
+  }, [heroItems.length]);
 
   const rawCatalogError =
     (data as any)?.error ||
@@ -535,11 +548,7 @@ const styles = StyleSheet.create({
   searchInput: { flex: 1, height: 40, paddingHorizontal: 10, fontFamily: "Inter_400Regular", fontSize: 14, color: COLORS.text },
   heroFrame: {
     marginHorizontal: 12,
-    borderWidth: 2,
-    borderColor: "rgba(174,205,248,0.55)",
     borderRadius: 28,
-    paddingTop: 10,
-    backgroundColor: "rgba(11,35,89,0.25)",
     marginBottom: 14,
   },
   chipRow: { paddingHorizontal: 16, paddingBottom: 10, gap: 8, flexDirection: "row" },

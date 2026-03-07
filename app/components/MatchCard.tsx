@@ -206,8 +206,6 @@ export function UpcomingMatchRow({
   onToggleNotification?: () => void;
   notificationsEnabled?: boolean;
 }) {
-  const SPORT_ICON = SPORT_ICONS[match.sport] || "soccer";
-  const leagueLogo = getLeagueLogo(match.league);
   return (
     <TouchableOpacity
       style={styles.upcomingRow}
@@ -217,53 +215,50 @@ export function UpcomingMatchRow({
       }}
       activeOpacity={0.75}
     >
-      <View style={styles.upcomingLeft}>
-        <View style={styles.upcomingLogos}>
-          <TeamLogo uri={match.homeTeamLogo} teamName={match.homeTeam} size={32} />
-          <View style={styles.vsCircle}><Text style={styles.vsText}>vs</Text></View>
-          <TeamLogo uri={match.awayTeamLogo} teamName={match.awayTeam} size={32} />
-        </View>
-        <View style={styles.upcomingInfo}>
-          <View style={styles.upcomingLeagueRow}>
-            {leagueLogo ? (
-              <Image source={typeof leagueLogo === "number" ? leagueLogo : { uri: leagueLogo as string }} style={styles.upcomingLeagueLogo} resizeMode="contain" />
-            ) : (
-              <MaterialCommunityIcons name={SPORT_ICON as any} size={11} color={COLORS.textMuted} />
-            )}
-            <Text style={styles.upcomingLeague}>{match.league}</Text>
-          </View>
-          <Text style={styles.upcomingTeams} numberOfLines={1}>
-            {match.homeTeam} · {match.awayTeam}
-          </Text>
-        </View>
+      {/* Home team */}
+      <View style={styles.upcomingTeamBlock}>
+        <TeamLogo uri={match.homeTeamLogo} teamName={match.homeTeam} size={36} />
+        <Text style={styles.upcomingTeamName} numberOfLines={2}>{match.homeTeam}</Text>
       </View>
-      <View style={styles.upcomingRight}>
+
+      {/* Center: score or time */}
+      <View style={styles.upcomingCenterBlock}>
         {onToggleNotification ? (
           <TouchableOpacity
-            onPress={(e) => {
-              e.stopPropagation();
-              SafeHaptics.selection();
-              onToggleNotification();
-            }}
+            onPress={(e) => { e.stopPropagation(); SafeHaptics.selection(); onToggleNotification(); }}
             style={[styles.upcomingAlertBtn, notificationsEnabled && styles.alertBtnActive]}
             hitSlop={{ top: 8, right: 8, bottom: 8, left: 8 }}
           >
-            <Ionicons
-              name={notificationsEnabled ? "notifications" : "notifications-outline"}
-              size={14}
-              color={notificationsEnabled ? "#fff" : COLORS.textMuted}
-            />
+            <Ionicons name={notificationsEnabled ? "notifications" : "notifications-outline"} size={12} color={notificationsEnabled ? "#fff" : COLORS.textMuted} />
           </TouchableOpacity>
         ) : null}
-        <Text style={styles.upcomingTime}>
-          {match.status === "finished"
-            ? `${match.homeScore} - ${match.awayScore}`
-            : match.status === "live"
-              ? (match.minute != null ? `${match.minute}'` : "LIVE")
-              : match.startTime}
-        </Text>
-        <Ionicons name="chevron-forward" size={16} color={COLORS.textMuted} />
+        {match.status === "live" ? (
+          <>
+            {match.minute != null && (
+              <Text style={styles.upcomingMinute}>{match.minute}{"'"}</Text>
+            )}
+            <Text style={styles.upcomingScore}>{match.homeScore} - {match.awayScore}</Text>
+          </>
+        ) : match.status === "finished" ? (
+          <>
+            <Text style={styles.upcomingFinishedLabel}>EINDE</Text>
+            <Text style={styles.upcomingScore}>{match.homeScore} - {match.awayScore}</Text>
+          </>
+        ) : (
+          <View style={styles.upcomingTimeBox}>
+            <Ionicons name="time-outline" size={11} color={COLORS.accent} />
+            <Text style={styles.upcomingTimeText} numberOfLines={1}>{match.startTime}</Text>
+          </View>
+        )}
       </View>
+
+      {/* Away team */}
+      <View style={styles.upcomingTeamBlock}>
+        <TeamLogo uri={match.awayTeamLogo} teamName={match.awayTeam} size={36} />
+        <Text style={styles.upcomingTeamName} numberOfLines={2}>{match.awayTeam}</Text>
+      </View>
+
+      <Ionicons name="chevron-forward" size={14} color={COLORS.textMuted} />
     </TouchableOpacity>
   );
 }
@@ -378,81 +373,74 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     backgroundColor: COLORS.cardElevated,
     borderRadius: 18,
-    padding: 12,
+    padding: 10,
     marginHorizontal: 16,
     marginBottom: 8,
     borderWidth: 1,
     borderColor: COLORS.border,
+    gap: 6,
   },
-  upcomingLeft: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
+  upcomingTeamBlock: {
     flex: 1,
-  },
-  upcomingLogos: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 2,
-  },
-  vsCircle: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    backgroundColor: COLORS.cardElevated,
-    alignItems: "center",
-    justifyContent: "center",
-    zIndex: 2,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  vsText: {
-    fontFamily: "Inter_700Bold",
-    fontSize: 7,
-    color: COLORS.textMuted,
-  },
-  upcomingInfo: {
-    flex: 1,
-  },
-  upcomingLeagueRow: {
-    flexDirection: "row",
     alignItems: "center",
     gap: 4,
-    marginBottom: 2,
   },
-  upcomingLeagueLogo: {
-    width: 16,
-    height: 16,
-  },
-  upcomingLeague: {
-    fontFamily: "Inter_500Medium",
-    fontSize: 11,
-    color: COLORS.textSecondary,
-  },
-  upcomingTeams: {
+  upcomingTeamName: {
     fontFamily: "Inter_600SemiBold",
-    fontSize: 13,
+    fontSize: 11,
+    color: COLORS.text,
+    textAlign: "center",
+    lineHeight: 14,
+  },
+  upcomingCenterBlock: {
+    width: 90,
+    alignItems: "center",
+    gap: 3,
+  },
+  upcomingScore: {
+    fontFamily: "Inter_800ExtraBold",
+    fontSize: 18,
     color: COLORS.text,
   },
-  upcomingRight: {
+  upcomingMinute: {
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 10,
+    color: COLORS.live,
+  },
+  upcomingFinishedLabel: {
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 10,
+    color: COLORS.textMuted,
+    letterSpacing: 0.5,
+  },
+  upcomingTimeBox: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 4,
+    gap: 3,
+    backgroundColor: COLORS.accentGlow,
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderWidth: 1,
+    borderColor: `${COLORS.accent}44`,
+  },
+  upcomingTimeText: {
+    fontFamily: "Inter_700Bold",
+    fontSize: 11,
+    color: COLORS.accent,
   },
   upcomingAlertBtn: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
     borderWidth: 1,
     borderColor: COLORS.border,
     backgroundColor: COLORS.overlay,
     alignItems: "center",
     justifyContent: "center",
-    marginRight: 2,
   },
-  upcomingTime: {
-    fontFamily: "Inter_600SemiBold",
-    fontSize: 12,
-    color: COLORS.accent,
+  alertBtnActive: {
+    backgroundColor: COLORS.accent,
+    borderColor: COLORS.accent,
   },
 });
