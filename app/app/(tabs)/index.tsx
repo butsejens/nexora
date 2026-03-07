@@ -908,7 +908,7 @@ export default function SportsScreen() {
           const leagueLogo = getLeagueLogo(hero.league);
           return (
             <TouchableOpacity
-              style={styles.heroMatchWrapper}
+              style={[styles.heroMatchWrapper, isLive && styles.heroMatchWrapperLive]}
               onPress={() => handleMatchPress(hero)}
               activeOpacity={0.9}
             >
@@ -932,7 +932,7 @@ export default function SportsScreen() {
                 </View>
                 <View style={styles.heroTeamRow}>
                   <View style={styles.heroTeamBlock}>
-                    <TeamLogo uri={hero.homeTeamLogo} teamName={hero.homeTeam} size={68} />
+                    <TeamLogo uri={hero.homeTeamLogo} teamName={hero.homeTeam} size={76} />
                     <Text style={styles.heroTeamName} numberOfLines={2}>{hero.homeTeam}</Text>
                   </View>
                   <View style={styles.heroScoreBlock}>
@@ -943,16 +943,19 @@ export default function SportsScreen() {
                         <Text style={styles.heroScore}>{hero.awayScore}</Text>
                       </>
                     ) : (
-                      <Text style={styles.heroVsText}>vs</Text>
+                      <View style={{ alignItems: "center", gap: 4 }}>
+                        <Text style={styles.heroVsText}>vs</Text>
+                        <Text style={{ fontFamily: "Inter_400Regular", fontSize: 10, color: "rgba(255,255,255,0.5)" }}>Aanvang</Text>
+                      </View>
                     )}
                   </View>
                   <View style={styles.heroTeamBlock}>
-                    <TeamLogo uri={hero.awayTeamLogo} teamName={hero.awayTeam} size={68} />
+                    <TeamLogo uri={hero.awayTeamLogo} teamName={hero.awayTeam} size={76} />
                     <Text style={styles.heroTeamName} numberOfLines={2}>{hero.awayTeam}</Text>
                   </View>
                 </View>
                 <View style={styles.heroActionRow}>
-                  <Text style={styles.heroActionText}>{isLive ? "Meer info" : "Bekijk wedstrijd"}</Text>
+                  <Text style={styles.heroActionText}>{isLive ? "Live · Meer info" : "Bekijk wedstrijd"}</Text>
                   <Ionicons name="chevron-forward" size={14} color="rgba(255,255,255,0.7)" />
                 </View>
               </LinearGradient>
@@ -1413,6 +1416,9 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     borderWidth: 2,
     borderColor: "rgba(174,205,248,0.45)",
+  },
+  heroMatchWrapperLive: {
+    borderColor: `${COLORS.live}66`,
   },
   heroMatchGrad: {
     padding: 16,

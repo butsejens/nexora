@@ -2185,12 +2185,17 @@ function deterministicPrediction(payload) {
 
   const homeStats = payload?.stats?.home || {};
   const awayStats = payload?.stats?.away || {};
-  const homePoss = toNum(homeStats.possessionPct);
-  const awayPoss = toNum(awayStats.possessionPct);
-  const homeShots = toNum(homeStats.totalShots);
-  const awayShots = toNum(awayStats.totalShots);
-  const homeSot = toNum(homeStats.shotsOnTarget);
-  const awaySot = toNum(awayStats.shotsOnTarget);
+  // Support both snake_case (ESPN API) and camelCase keys
+  const homePoss = toNum(homeStats.ball_possession ?? homeStats.possessionPct);
+  const awayPoss = toNum(awayStats.ball_possession ?? awayStats.possessionPct);
+  const homeShots = toNum(homeStats.total_shots ?? homeStats.totalShots);
+  const awayShots = toNum(awayStats.total_shots ?? awayStats.totalShots);
+  const homeSot = toNum(homeStats.shots_on_goal ?? homeStats.shotsOnTarget);
+  const awaySot = toNum(awayStats.shots_on_goal ?? awayStats.shotsOnTarget);
+  const homeCorners = toNum(homeStats.corner_kicks ?? homeStats.cornerKicks);
+  const awayCorners = toNum(awayStats.corner_kicks ?? awayStats.cornerKicks);
+  const homeFouls = toNum(homeStats.fouls);
+  const awayFouls = toNum(awayStats.fouls);
 
   const scoreEdge = (homeScore - awayScore) * 22;
   const shotEdge = (homeShots - awayShots) * 1.8;
@@ -2231,6 +2236,7 @@ function deterministicPrediction(payload) {
   if (homePoss || awayPoss) keyFactors.push(`Balbezit ${homePoss || 0}% - ${awayPoss || 0}%`);
   if (homeShots || awayShots) keyFactors.push(`Schoten ${homeShots || 0} - ${awayShots || 0}`);
   if (homeSot || awaySot) keyFactors.push(`Op doel ${homeSot || 0} - ${awaySot || 0}`);
+  if (homeCorners || awayCorners) keyFactors.push(`Hoekschoppen ${homeCorners || 0} - ${awayCorners || 0}`);
   if (minute) keyFactors.push(`Wedstrijdminuut ${minute}`);
 
   const tacticalNotes = [];
@@ -2240,8 +2246,22 @@ function deterministicPrediction(payload) {
   if (Math.abs(homePoss - awayPoss) >= 10) {
     tacticalNotes.push(homePoss > awayPoss ? "Thuisploeg controleert het tempo via balbezit." : "Uitploeg controleert het tempo via balbezit.");
   }
+  if (homeFouls + awayFouls > 0 && Math.abs(homeFouls - awayFouls) >= 3) {
+    tacticalNotes.push(homeFouls > awayFouls ? "Thuisploeg speelt met meer overtredingen, risico op kaarten." : "Uitploeg speelt met meer overtredingen, risico op kaarten.");
+  }
   if (tacticalNotes.length === 0) {
     tacticalNotes.push("Match is tactisch in evenwicht op basis van de huidige cijfers.");
+  }
+
+  // Estimate next-goal probability based on shots on target frequency
+  let nextGoalProbability = null;
+  if (hasXgInputs && minute > 0 && minute < 90) {
+    const totalSot = homeSot + awaySot;
+    const minutesPlayed = Math.max(1, minute);
+    const sotPerMin = totalSot / minutesPlayed;
+    // Each shot on target has ~0.33 chance of being a goal; 15 minutes window
+    const rawProb = Math.min(95, Math.round(sotPerMin * 15 * 0.33 * 100));
+    nextGoalProbability = Math.max(5, rawProb);
   }
 
   return {
@@ -2253,12 +2273,16 @@ function deterministicPrediction(payload) {
     awayPct,
     xgHome,
     xgAway,
+    nextGoalProbability,
     momentum: homePct > awayPct ? "Home" : awayPct > homePct ? "Away" : "Balanced",
     danger: homeSot > awaySot ? "Home Attack" : awaySot > homeSot ? "Away Attack" : "Balanced",
     riskLevel: confidence >= 65 ? "Low" : confidence >= 52 ? "Medium" : "High",
     summary: "Analyse op basis van live score en wedstrijdstatistieken (provider-onafhankelijke fallback).",
     keyFactors,
     tacticalNotes,
+    h2hSummary: null,
+    formHome: null,
+    formAway: null,
     tip: prediction === "Draw" ? "Gelijkspel blijft plausibel; let op late kansen." : `${prediction === "Home Win" ? "Thuisploeg" : "Uitploeg"} heeft statistisch voordeel op dit moment.`,
     source: "fallback-stats",
     updatedAt: new Date().toISOString(),
@@ -2295,12 +2319,12 @@ async function aiPredictMatch(payload) {
   const sys = {
     role: "system",
     content:
-      "Je bent een professionele sportanalist. Antwoord kort en gestructureerd in JSON.",
+      "Je bent een elite voetbalanalist met expertise in xG-modellen, tactische patronen en Europese competities. Antwoord ENKEL met geldig JSON zonder extra tekst of markdown.",
   };
   const user = {
     role: "user",
     content:
-      "Geef een voorspelling voor deze match op basis van de aangeleverde echte wedstrijdata (score, minuut, statistieken, events). Verzín geen extra feiten of vormreeksen die niet in de input staan. Output ALLEEN geldig JSON met keys: prediction (Home Win/Away Win/Draw), confidence (0-100), predictedScore, homePct, drawPct, awayPct, xgHome, xgAway, summary, keyFactors (array), tacticalNotes (array), momentum, danger, riskLevel, tip.\n\nINPUT:\n" +
+      "Analyseer deze voetbalwedstrijd op basis van de data hieronder. Gebruik ALLEEN de aangeleverde data; verzin geen extra feiten. Geef thuisploeg een licht voordeel als er geen tegenstrijdige data is.\n\nOutput ALLEEN geldig JSON met EXACT deze keys:\n- prediction: \"Home Win\" | \"Away Win\" | \"Draw\"\n- confidence: 0-100\n- predictedScore: \"X-Y\"\n- homePct: 0-100\n- drawPct: 0-100\n- awayPct: 0-100 (homePct+drawPct+awayPct = 100)\n- xgHome: decimaal of null\n- xgAway: decimaal of null\n- nextGoalProbability: kans op doelpunt komende 15 min (0-100) of null\n- summary: tactische analyse 2-3 zinnen in het Nederlands\n- keyFactors: array max 4 strings\n- tacticalNotes: array max 3 strings in het Nederlands\n- momentum: \"Home\" | \"Away\" | \"Balanced\"\n- danger: \"Home Attack\" | \"Away Attack\" | \"Balanced\"\n- riskLevel: \"Low\" | \"Medium\" | \"High\"\n- tip: wedtip 1 zin Nederlands\n- h2hSummary: onderlinge duels samenvatting string of null\n- formHome: recentste 5 resultaten als string bijv \"WWDLL\" of null\n- formAway: recentste 5 resultaten als string bijv \"LWWDL\" of null\n\nINPUT:\n" +
       JSON.stringify(payload, null, 2),
   };
 

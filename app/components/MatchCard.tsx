@@ -1,4 +1,4 @@
-import React, { useRef, useState } from "react";
+import React, { useRef, useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -108,6 +108,8 @@ const logoStyles = StyleSheet.create({
 
 export function MatchCard({ match, onPress, onToggleNotification, notificationsEnabled }: Props) {
   const scaleAnim = useRef(new Animated.Value(1)).current;
+  const pulseAnim = useRef(new Animated.Value(1)).current;
+  const isLive = match.status === "live";
 
   const handlePressIn = () => {
     Animated.spring(scaleAnim, { toValue: 0.96, useNativeDriver: true, speed: 30 }).start();
@@ -116,10 +118,31 @@ export function MatchCard({ match, onPress, onToggleNotification, notificationsE
     Animated.spring(scaleAnim, { toValue: 1, useNativeDriver: true, speed: 20 }).start();
   };
 
+  useEffect(() => {
+    if (!isLive) return;
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulseAnim, { toValue: 0.4, duration: 900, useNativeDriver: true }),
+        Animated.timing(pulseAnim, { toValue: 1, duration: 900, useNativeDriver: true }),
+      ])
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [isLive, pulseAnim]);
+
   const leagueLogo = getLeagueLogo(match.league);
 
   return (
     <Animated.View style={[styles.wrapper, { transform: [{ scale: scaleAnim }] }]}>
+      {/* Live glow ring */}
+      {isLive && (
+        <Animated.View
+          style={[
+            styles.liveGlowRing,
+            { opacity: pulseAnim },
+          ]}
+        />
+      )}
       <TouchableOpacity
         onPress={() => { SafeHaptics.impactMedium(); onPress(); }}
         onPressIn={handlePressIn}
@@ -128,7 +151,7 @@ export function MatchCard({ match, onPress, onToggleNotification, notificationsE
       >
         <LinearGradient
           colors={[...match.heroGradient] as any}
-          style={styles.card}
+          style={[styles.card, isLive && styles.cardLive]}
           start={{ x: 0, y: 0 }}
           end={{ x: 0, y: 1 }}
         >
@@ -164,11 +187,11 @@ export function MatchCard({ match, onPress, onToggleNotification, notificationsE
           </View>
 
           {/* Score / time center */}
-          {match.status === "live" || match.status === "finished" ? (
-            <View style={styles.scoreCenterBox}>
-              <Text style={styles.scoreNum}>{match.homeScore}</Text>
+          {isLive || match.status === "finished" ? (
+            <View style={[styles.scoreCenterBox, isLive && styles.scoreCenterBoxLive]}>
+              <Text style={[styles.scoreNum, isLive && styles.scoreNumLive]}>{match.homeScore}</Text>
               <Text style={styles.scoreSep}>:</Text>
-              <Text style={styles.scoreNum}>{match.awayScore}</Text>
+              <Text style={[styles.scoreNum, isLive && styles.scoreNumLive]}>{match.awayScore}</Text>
             </View>
           ) : (
             <View style={styles.timeCenterBox}>
@@ -184,7 +207,7 @@ export function MatchCard({ match, onPress, onToggleNotification, notificationsE
           </View>
 
           {/* Live badge */}
-          {match.status === "live" && (
+          {isLive && (
             <View style={styles.liveBadgeRow}>
               <LiveBadge minute={match.minute} small />
             </View>
@@ -266,6 +289,23 @@ export function UpcomingMatchRow({
 const styles = StyleSheet.create({
   wrapper: {
     marginRight: 14,
+    position: "relative",
+  },
+  liveGlowRing: {
+    position: "absolute",
+    top: -3,
+    left: -3,
+    right: -3,
+    bottom: -3,
+    borderRadius: 25,
+    borderWidth: 2,
+    borderColor: COLORS.live,
+    zIndex: 0,
+    // @ts-ignore
+    shadowColor: COLORS.live,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.8,
+    shadowRadius: 8,
   },
   card: {
     width: 160,
@@ -275,6 +315,9 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: COLORS.borderLight,
     justifyContent: "space-between",
+  },
+  cardLive: {
+    borderColor: `${COLORS.live}88`,
   },
   leagueHeaderRow: {
     flexDirection: "row",
@@ -336,10 +379,18 @@ const styles = StyleSheet.create({
     borderColor: COLORS.border,
     alignSelf: "center",
   },
+  scoreCenterBoxLive: {
+    backgroundColor: "rgba(255,59,48,0.12)",
+    borderColor: `${COLORS.live}55`,
+  },
   scoreNum: {
     fontFamily: "Inter_800ExtraBold",
     fontSize: 24,
     color: COLORS.text,
+  },
+  scoreNumLive: {
+    color: COLORS.text,
+    fontSize: 26,
   },
   scoreSep: {
     fontFamily: "Inter_400Regular",

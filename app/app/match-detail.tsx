@@ -708,8 +708,11 @@ function AIPredictionView({ prediction, homeTeam, awayTeam }: any) {
     prediction.prediction === "Away Win" ? COLORS.live : "#FFD700";
   const riskColor = prediction.riskLevel === "Low" ? "#4CAF50" : prediction.riskLevel === "High" ? COLORS.live : "#FF9800";
 
+  const homeShortName = homeTeam.split(" ")[0];
+  const awayShortName = awayTeam.split(" ")[0];
+
   return (
-    <View style={{ gap: 14 }}>
+    <View style={{ gap: 12 }}>
       {/* Main prediction card */}
       <LinearGradient colors={["rgba(0,212,255,0.12)", "rgba(0,212,255,0.04)"]} style={styles.aiMainCard}>
         <View style={styles.aiHeader}>
@@ -736,19 +739,38 @@ function AIPredictionView({ prediction, homeTeam, awayTeam }: any) {
           <Text style={styles.aiScore}>Verwachte score: {prediction.predictedScore}</Text>
         )}
 
+        {/* 3-column Win / Draw / Loss chances */}
+        <View style={styles.chanceRow}>
+          <View style={[styles.chanceBlock, { borderColor: `${COLORS.accent}44` }]}>
+            <Text style={[styles.chancePct, { color: COLORS.accent }]}>{normPcts.homePct}%</Text>
+            <Text style={styles.chanceLabel} numberOfLines={1}>{homeShortName}</Text>
+            <Text style={styles.chanceSubLabel}>Wint</Text>
+          </View>
+          <View style={[styles.chanceBlock, { borderColor: "rgba(255,215,0,0.3)" }]}>
+            <Text style={[styles.chancePct, { color: "#FFD700" }]}>{normPcts.drawPct}%</Text>
+            <Text style={styles.chanceLabel}>Gelijk</Text>
+            <Text style={styles.chanceSubLabel}>Kans</Text>
+          </View>
+          <View style={[styles.chanceBlock, { borderColor: `${COLORS.live}44` }]}>
+            <Text style={[styles.chancePct, { color: COLORS.live }]}>{normPcts.awayPct}%</Text>
+            <Text style={styles.chanceLabel} numberOfLines={1}>{awayShortName}</Text>
+            <Text style={styles.chanceSubLabel}>Wint</Text>
+          </View>
+        </View>
+
         {/* xG row */}
         {hasXgData ? (
-          <View style={{ flexDirection: "row", justifyContent: "space-around", marginTop: 8, paddingTop: 8, borderTopWidth: 1, borderTopColor: "rgba(255,255,255,0.08)" }}>
-            <View style={{ alignItems: "center" }}>
-              <Text style={{ fontFamily: "Inter_800ExtraBold", fontSize: 18, color: COLORS.accent }}>{prediction.xgHome}</Text>
-              <Text style={{ fontFamily: "Inter_400Regular", fontSize: 10, color: COLORS.textMuted }}>xG {homeTeam.split(" ")[0]}</Text>
+          <View style={styles.xgRow}>
+            <View style={{ alignItems: "center", flex: 1 }}>
+              <Text style={styles.xgValue}>{prediction.xgHome}</Text>
+              <Text style={styles.xgLabel}>xG {homeShortName}</Text>
             </View>
             <View style={{ alignItems: "center" }}>
-              <Text style={{ fontFamily: "Inter_600SemiBold", fontSize: 12, color: COLORS.textMuted }}>Expected Goals</Text>
+              <Text style={{ fontFamily: "Inter_600SemiBold", fontSize: 11, color: COLORS.textMuted }}>Expected Goals</Text>
             </View>
-            <View style={{ alignItems: "center" }}>
-              <Text style={{ fontFamily: "Inter_800ExtraBold", fontSize: 18, color: COLORS.live }}>{prediction.xgAway}</Text>
-              <Text style={{ fontFamily: "Inter_400Regular", fontSize: 10, color: COLORS.textMuted }}>xG {awayTeam.split(" ")[0]}</Text>
+            <View style={{ alignItems: "center", flex: 1 }}>
+              <Text style={[styles.xgValue, { color: COLORS.live }]}>{prediction.xgAway}</Text>
+              <Text style={styles.xgLabel}>xG {awayShortName}</Text>
             </View>
           </View>
         ) : (
@@ -757,14 +779,21 @@ function AIPredictionView({ prediction, homeTeam, awayTeam }: any) {
             <Text style={styles.aiWarnText}>xG: Onvoldoende data</Text>
           </View>
         )}
-
-        {/* Win/Draw/Loss bars */}
-        <View style={[styles.predBars, { marginTop: 10 }]}>
-          <PredBar label={homeTeam.split(" ")[0]} pct={normPcts.homePct} color={COLORS.accent} />
-          <PredBar label="Gelijk" pct={normPcts.drawPct} color={COLORS.textMuted} />
-          <PredBar label={awayTeam.split(" ")[0]} pct={normPcts.awayPct} color={COLORS.live} />
-        </View>
       </LinearGradient>
+
+      {/* Next goal probability */}
+      {prediction.nextGoalProbability != null && (
+        <View style={styles.nextGoalCard}>
+          <View style={styles.nextGoalHeader}>
+            <MaterialCommunityIcons name="soccer" size={14} color={COLORS.accent} />
+            <Text style={styles.nextGoalTitle}>Kans op doelpunt (15 min)</Text>
+            <Text style={styles.nextGoalPct}>{prediction.nextGoalProbability}%</Text>
+          </View>
+          <View style={styles.nextGoalBar}>
+            <View style={[styles.nextGoalFill, { width: `${Math.min(100, prediction.nextGoalProbability)}%` as any }]} />
+          </View>
+        </View>
+      )}
 
       {/* Meta row: momentum, danger, risk */}
       <View style={{ flexDirection: "row", gap: 8 }}>
@@ -825,6 +854,24 @@ function AIPredictionView({ prediction, homeTeam, awayTeam }: any) {
         </View>
       )}
 
+      {/* Form bubbles */}
+      {(prediction.formHome || prediction.formAway) && (
+        <View style={styles.formRow}>
+          {prediction.formHome && (
+            <View style={[styles.formCard, { flex: 1 }]}>
+              <Text style={styles.formTeamName}>{homeShortName}</Text>
+              <FormBubbles form={prediction.formHome} />
+            </View>
+          )}
+          {prediction.formAway && (
+            <View style={[styles.formCard, { flex: 1 }]}>
+              <Text style={styles.formTeamName}>{awayShortName}</Text>
+              <FormBubbles form={prediction.formAway} />
+            </View>
+          )}
+        </View>
+      )}
+
       {/* H2H */}
       {prediction.h2hSummary && (
         <View style={styles.tipCard}>
@@ -832,22 +879,6 @@ function AIPredictionView({ prediction, homeTeam, awayTeam }: any) {
           <Text style={styles.tipText}>{prediction.h2hSummary}</Text>
         </View>
       )}
-
-      {/* Form bubbles */}
-      <View style={styles.formRow}>
-        {prediction.formHome && (
-          <View style={[styles.formCard, { flex: 1 }]}>
-            <Text style={styles.formTeamName}>{homeTeam.split(" ")[0]}</Text>
-            <FormBubbles form={prediction.formHome} />
-          </View>
-        )}
-        {prediction.formAway && (
-          <View style={[styles.formCard, { flex: 1 }]}>
-            <Text style={styles.formTeamName}>{awayTeam.split(" ")[0]}</Text>
-            <FormBubbles form={prediction.formAway} />
-          </View>
-        )}
-      </View>
 
       {/* Tip */}
       {prediction.tip && (
@@ -1285,5 +1316,93 @@ const styles = StyleSheet.create({
     fontSize: 8,
     color: "rgba(255,255,255,0.75)",
     textAlign: "center",
+  },
+  // AI redesign styles
+  chanceRow: {
+    flexDirection: "row",
+    gap: 8,
+    marginTop: 10,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: "rgba(255,255,255,0.08)",
+  },
+  chanceBlock: {
+    flex: 1,
+    alignItems: "center",
+    gap: 2,
+    backgroundColor: "rgba(255,255,255,0.04)",
+    borderRadius: 14,
+    paddingVertical: 10,
+    borderWidth: 1,
+  },
+  chancePct: {
+    fontFamily: "Inter_800ExtraBold",
+    fontSize: 22,
+  },
+  chanceLabel: {
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 11,
+    color: COLORS.text,
+    textAlign: "center",
+  },
+  chanceSubLabel: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 9,
+    color: COLORS.textMuted,
+  },
+  xgRow: {
+    flexDirection: "row",
+    justifyContent: "space-around",
+    alignItems: "center",
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: "rgba(255,255,255,0.08)",
+  },
+  xgValue: {
+    fontFamily: "Inter_800ExtraBold",
+    fontSize: 22,
+    color: COLORS.accent,
+  },
+  xgLabel: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 10,
+    color: COLORS.textMuted,
+    marginTop: 2,
+  },
+  nextGoalCard: {
+    backgroundColor: COLORS.overlayLight,
+    borderRadius: 14,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: `${COLORS.accent}33`,
+    gap: 10,
+  },
+  nextGoalHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  nextGoalTitle: {
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 13,
+    color: COLORS.text,
+    flex: 1,
+  },
+  nextGoalPct: {
+    fontFamily: "Inter_800ExtraBold",
+    fontSize: 16,
+    color: COLORS.accent,
+  },
+  nextGoalBar: {
+    height: 6,
+    backgroundColor: COLORS.border,
+    borderRadius: 3,
+    overflow: "hidden",
+  },
+  nextGoalFill: {
+    height: "100%",
+    backgroundColor: COLORS.accent,
+    borderRadius: 3,
   },
 });
