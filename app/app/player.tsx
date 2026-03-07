@@ -160,6 +160,19 @@ const AD_BLOCK_JS = `
 (function(){
   var _host = window.location.hostname;
 
+  // ── 0. CSS injection: hide ad/overlay patterns immediately ───────────────
+  (function(){
+    var s = document.createElement('style');
+    s.textContent =
+      '[class*="vpn"],[class*="consent"],[class*="cookie"],[id*="cookie"],' +
+      '[class*="gdpr"],[id*="gdpr"],[class*="subscribe"],[class*="subscription"],' +
+      '[class*="paywall"],[class*="gate-"],[id*="consent"],[class*="promo"],' +
+      '[id*="promo"],[class*="notification-bar"],[class*="sticky-ad"],' +
+      '[class*="interstitial"],[id*="interstitial"],[class*="lightbox"]:not([class*="player"]),' +
+      '[class*="fancybox"],[class*="remodal"],[class*="swal"]{ display:none!important; }';
+    (document.head||document.documentElement).appendChild(s);
+  })();
+
   // ── 1. Block ALL popups / new windows ────────────────────────────────────
   window.open = function(){ return null; };
   window.alert = function(){};
@@ -239,6 +252,11 @@ const AD_BLOCK_JS = `
     'ins.adsbygoogle', '[id*="ad-"]', '[id*="ads-"]', '[class*="advert"]',
     '[class*="banner-ad"]', '[class*="popup"]', '[id*="popup"]',
     '[class*="overlay"]:not(video)', '[class*="modal"]:not([class*="video"])',
+    '[class*="vpn"]', '[class*="consent"]', '[class*="cookie"]', '[class*="gdpr"]',
+    '[class*="subscribe"]', '[class*="subscription"]', '[class*="paywall"]',
+    '[class*="interstitial"]', '[id*="interstitial"]', '[class*="lightbox"]:not([class*="player"])',
+    '[class*="promo"]', '[id*="promo"]', '[id*="consent"]', '[id*="cookie"]',
+    '[class*="notification-bar"]', '[class*="sticky-ad"]', '[id*="overlay"]',
     'iframe[src*="doubleclick"]', 'iframe[src*="googlesyndication"]',
     'iframe[src*="adnxs"]', 'iframe[src*="popads"]', 'iframe[src*="exoclick"]',
     'iframe[src*="trafficjunky"]', 'iframe[src*="adsterra"]',
@@ -260,7 +278,7 @@ const AD_BLOCK_JS = `
          !el.className.match(/player|video|stream|controls/i)){
         // Only remove if it looks like a full-viewport overlay
         var r = el.getBoundingClientRect();
-        if(r.width > window.innerWidth * 0.5 && r.height > window.innerHeight * 0.4){
+        if(r.width > window.innerWidth * 0.35 && r.height > window.innerHeight * 0.25){
           el.remove();
         }
       }
@@ -930,26 +948,6 @@ export default function PlayerScreen() {
             </TouchableOpacity>
           </View>
         )}
-
-        {/* Embed center controls: skip-back | play-pause | skip-forward */}
-        {embedUrl && !hlsHtml && Platform.OS !== "web" && (
-          <View style={styles.hlsCenterRow}>
-            <TouchableOpacity style={styles.hlsSkipBtn} onPress={() => embedSeekRelative(-15)}>
-              <Ionicons name="play-back" size={26} color="#fff" />
-              <Text style={styles.hlsSkipLabel}>15</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity style={styles.hlsPlayBtn} onPress={embedTogglePlay}>
-              <Ionicons name="pause" size={46} color="#fff" />
-            </TouchableOpacity>
-
-            <TouchableOpacity style={styles.hlsSkipBtn} onPress={() => embedSeekRelative(15)}>
-              <Ionicons name="play-forward" size={26} color="#fff" />
-              <Text style={styles.hlsSkipLabel}>15</Text>
-            </TouchableOpacity>
-          </View>
-        )}
-
         {/* HLS bottom: seek bar + time */}
         {hlsHtml && Platform.OS !== "web" && (
           <LinearGradient colors={["transparent", "rgba(0,0,0,0.8)"]} style={styles.bottomGrad}>

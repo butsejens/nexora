@@ -52,7 +52,7 @@ const SPORT_ICONS: Record<string, string> = {
   formula1: "car-sports",
 };
 
-export function TeamLogo({ uri, teamName, size = 48 }: { uri?: string | null; teamName: string; size?: number }) {
+export const TeamLogo = React.memo(function TeamLogo({ uri, teamName, size = 48 }: { uri?: string | null; teamName: string; size?: number }) {
   const [error, setError] = useState(false);
   const [imageLoaded, setImageLoaded] = useState(false);
   const resolved = !error ? resolveTeamLogoUri(teamName, uri) : null;
@@ -80,7 +80,7 @@ export function TeamLogo({ uri, teamName, size = 48 }: { uri?: string | null; te
       ) : null}
     </View>
   );
-}
+});
 
 const logoStyles = StyleSheet.create({
   container: {
@@ -106,7 +106,7 @@ const logoStyles = StyleSheet.create({
   },
 });
 
-export function MatchCard({ match, onPress, onToggleNotification, notificationsEnabled }: Props) {
+export const MatchCard = React.memo(function MatchCard({ match, onPress, onToggleNotification, notificationsEnabled }: Props) {
   const scaleAnim = useRef(new Animated.Value(1)).current;
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const isLive = match.status === "live";
@@ -216,9 +216,9 @@ export function MatchCard({ match, onPress, onToggleNotification, notificationsE
       </TouchableOpacity>
     </Animated.View>
   );
-}
+});
 
-export function UpcomingMatchRow({
+export const UpcomingMatchRow = React.memo(function UpcomingMatchRow({
   match,
   onPress,
   onToggleNotification,
@@ -284,7 +284,7 @@ export function UpcomingMatchRow({
       <Ionicons name="chevron-forward" size={14} color={COLORS.textMuted} />
     </TouchableOpacity>
   );
-}
+});
 
 const styles = StyleSheet.create({
   wrapper: {

@@ -2196,15 +2196,27 @@ function deterministicPrediction(payload) {
   const awayCorners = toNum(awayStats.corner_kicks ?? awayStats.cornerKicks);
   const homeFouls = toNum(homeStats.fouls);
   const awayFouls = toNum(awayStats.fouls);
+  const homeRed = toNum(homeStats.red_cards);
+  const awayRed = toNum(awayStats.red_cards);
+  const homeYellow = toNum(homeStats.yellow_cards);
+  const awayYellow = toNum(awayStats.yellow_cards);
+  const homeBlocked = toNum(homeStats.blocked_shots);
+  const awayBlocked = toNum(awayStats.blocked_shots);
+  const homeOffsides = toNum(homeStats.offsides);
+  const awayOffsides = toNum(awayStats.offsides);
+  const homeGkSaves = toNum(homeStats.goalkeeper_saves);
+  const awayGkSaves = toNum(awayStats.goalkeeper_saves);
 
   const scoreEdge = (homeScore - awayScore) * 22;
   const shotEdge = (homeShots - awayShots) * 1.8;
   const sotEdge = (homeSot - awaySot) * 4.2;
   const possEdge = (homePoss - awayPoss) * 0.25;
+  // Red card = numerical disadvantage (10 vs 11 players) ≈ 25 edge per card
+  const cardEdge = (awayRed - homeRed) * 25;
   // Home advantage baseline (+8 edge when no stats/score available)
   const noStatsAtAll = !homeScore && !awayScore && !homeShots && !awayShots && !homeSot && !awaySot && !homePoss && !awayPoss;
   const homeAdvantage = noStatsAtAll ? 8 : 0;
-  const rawEdge = scoreEdge + shotEdge + sotEdge + possEdge + homeAdvantage;
+  const rawEdge = scoreEdge + shotEdge + sotEdge + possEdge + cardEdge + homeAdvantage;
 
   const sigmoid = (x) => 1 / (1 + Math.exp(-x / 20));
   const baseHome = sigmoid(rawEdge);
@@ -2239,15 +2251,22 @@ function deterministicPrediction(payload) {
   if (homePoss || awayPoss) keyFactors.push(`Balbezit ${homePoss || 0}% - ${awayPoss || 0}%`);
   if (homeShots || awayShots) keyFactors.push(`Schoten ${homeShots || 0} - ${awayShots || 0}`);
   if (homeSot || awaySot) keyFactors.push(`Op doel ${homeSot || 0} - ${awaySot || 0}`);
-  if (homeCorners || awayCorners) keyFactors.push(`Hoekschoppen ${homeCorners || 0} - ${awayCorners || 0}`);
+  if (homeRed > 0 || awayRed > 0) keyFactors.push(`Rode kaarten: thuis ${homeRed} - uit ${awayRed}`);
+  else if (homeCorners || awayCorners) keyFactors.push(`Hoekschoppen ${homeCorners || 0} - ${awayCorners || 0}`);
   if (minute) keyFactors.push(`Wedstrijdminuut ${minute}`);
 
   const tacticalNotes = [];
+  if (homeRed > 0) tacticalNotes.push(`Thuisploeg speelt met ${11 - homeRed} man door rode kaart.`);
+  if (awayRed > 0) tacticalNotes.push(`Uitploeg speelt met ${11 - awayRed} man door rode kaart.`);
   if (Math.abs(homeSot - awaySot) >= 2) {
     tacticalNotes.push(homeSot > awaySot ? "Thuisploeg creëert de grootste kansen." : "Uitploeg creëert de grootste kansen.");
   }
   if (Math.abs(homePoss - awayPoss) >= 10) {
     tacticalNotes.push(homePoss > awayPoss ? "Thuisploeg controleert het tempo via balbezit." : "Uitploeg controleert het tempo via balbezit.");
+  }
+  if (homeGkSaves > 0 || awayGkSaves > 0) {
+    if (homeGkSaves >= 3) tacticalNotes.push(`Keeper thuisploeg redt uitstekend (${homeGkSaves}x).`);
+    if (awayGkSaves >= 3) tacticalNotes.push(`Keeper uitploeg redt uitstekend (${awayGkSaves}x).`);
   }
   if (homeFouls + awayFouls > 0 && Math.abs(homeFouls - awayFouls) >= 3) {
     tacticalNotes.push(homeFouls > awayFouls ? "Thuisploeg speelt met meer overtredingen, risico op kaarten." : "Uitploeg speelt met meer overtredingen, risico op kaarten.");
@@ -2322,12 +2341,12 @@ async function aiPredictMatch(payload) {
   const sys = {
     role: "system",
     content:
-      "Je bent een elite voetbalanalist met expertise in xG-modellen, tactische patronen en Europese competities. Antwoord ENKEL met geldig JSON zonder extra tekst of markdown.",
+      "Je bent een elite voetbalanalist met expertise in xG-modellen, tactische patronen, kaartanalyse en Europese competities. Je beschikt over uitgebreide kennis van voetbalteams en hun recente prestaties. Antwoord ENKEL met geldig JSON zonder extra tekst of markdown. Gebruik alle beschikbare data (score, statistieken, events, rode/gele kaarten, reddingen, buitenspel) voor een nauwkeurige analyse.",
   };
   const user = {
     role: "user",
     content:
-      "Analyseer deze voetbalwedstrijd op basis van de data hieronder. Gebruik ALLEEN de aangeleverde data; verzin geen extra feiten. Geef thuisploeg een licht voordeel als er geen tegenstrijdige data is.\n\nOutput ALLEEN geldig JSON met EXACT deze keys:\n- prediction: \"Home Win\" | \"Away Win\" | \"Draw\"\n- confidence: 0-100\n- predictedScore: \"X-Y\"\n- homePct: 0-100\n- drawPct: 0-100\n- awayPct: 0-100 (homePct+drawPct+awayPct = 100)\n- xgHome: decimaal of null\n- xgAway: decimaal of null\n- nextGoalProbability: kans op doelpunt komende 15 min (0-100) of null\n- summary: tactische analyse 2-3 zinnen in het Nederlands\n- keyFactors: array max 4 strings\n- tacticalNotes: array max 3 strings in het Nederlands\n- momentum: \"Home\" | \"Away\" | \"Balanced\"\n- danger: \"Home Attack\" | \"Away Attack\" | \"Balanced\"\n- riskLevel: \"Low\" | \"Medium\" | \"High\"\n- tip: wedtip 1 zin Nederlands\n- h2hSummary: onderlinge duels samenvatting string of null\n- formHome: recentste 5 resultaten als string bijv \"WWDLL\" of null\n- formAway: recentste 5 resultaten als string bijv \"LWWDL\" of null\n\nINPUT:\n" +
+      "Analyseer deze voetbalwedstrijd grondig op basis van de onderstaande data.\n\nREGELS:\n- Gebruik de aangeleverde data als primaire bron\n- Rode kaarten hebben grote impact op de uitkomst (numeriek nadeel)\n- Als events beschikbaar zijn: analyseer doelpunten, kaarten en momenten\n- Voor formHome/formAway en h2hSummary: gebruik je algemene voetbalkennis als de data ontbreekt (teams in bekende competities hebben een trackrecord)\n- Gele kaarten verhogen riskLevel\n- Geef thuisploeg licht voordeel bij gelijke kansen\n\nOutput ALLEEN geldig JSON met EXACT deze keys:\n- prediction: \"Home Win\" | \"Away Win\" | \"Draw\"\n- confidence: 0-100\n- predictedScore: \"X-Y\"\n- homePct: 0-100\n- drawPct: 0-100\n- awayPct: 0-100 (som = 100)\n- xgHome: decimaal of null\n- xgAway: decimaal of null\n- nextGoalProbability: kans op doelpunt komende 15 min (0-100) of null\n- summary: tactische analyse 2-3 zinnen in het Nederlands (vermeld rode kaarten/events indien aanwezig)\n- keyFactors: array max 4 strings (meest impactvolle factoren: score, kaarten, schoten, momentum)\n- tacticalNotes: array max 3 strings in het Nederlands\n- momentum: \"Home\" | \"Away\" | \"Balanced\"\n- danger: \"Home Attack\" | \"Away Attack\" | \"Balanced\"\n- riskLevel: \"Low\" | \"Medium\" | \"High\" (hoog bij rode kaarten of veel gele kaarten)\n- tip: scherpe wedtip 1 zin Nederlands\n- h2hSummary: onderlinge duels samenvatting (gebruik algemene kennis als data ontbreekt) of null\n- formHome: recentste 5 resultaten thuisploeg bijv \"WWDLL\" (gebruik algemene kennis) of null\n- formAway: recentste 5 resultaten uitploeg bijv \"LWWDL\" (gebruik algemene kennis) of null\n\nINPUT:\n" +
       JSON.stringify(payload, null, 2),
   };
 
