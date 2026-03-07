@@ -2,7 +2,7 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { Stack, router } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import React, { useEffect, useRef, useState } from "react";
-import { Platform } from "react-native";
+import { Platform, Alert, Linking } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { queryClient, getApiBaseCandidates, apiRequest } from "@/lib/query-client";
@@ -198,7 +198,7 @@ export default function RootLayout() {
     run();
   }, [bootDone]);
 
-  // Server update check — fires a local push notification when a newer APK is available
+  // Server update check — shows an in-app popup when a newer APK is available
   useEffect(() => {
     if (!bootDone) return;
     if (hasCheckedServerUpdateOnce) return;
@@ -208,28 +208,31 @@ export default function RootLayout() {
       try {
         if (__DEV__) return;
         const res = await apiRequest("GET", "/api/app-version");
-        const data = await res.json() as { version: string };
+        const data = await res.json() as { version: string; apkUrl?: string };
         const appVer = String(Constants.expoConfig?.version || "1.0.0");
         if (compareVersions(data.version, appVer) <= 0) return;
 
-        // Set up Android notification channel
-        if (Platform.OS === "android") {
-          await Notifications.setNotificationChannelAsync("app-updates", {
-            name: "App updates",
-            importance: Notifications.AndroidImportance.DEFAULT,
-            vibrationPattern: [0, 200],
-          });
-        }
+        // Small delay so the main UI is fully rendered before alert appears
+        await new Promise(r => setTimeout(r, 1200));
 
-        await Notifications.scheduleNotificationAsync({
-          content: {
-            title: "Nexora update beschikbaar",
-            body: `Versie ${data.version} is klaar om te installeren. Tik om te updaten.`,
-            data: { type: "app_update" },
-            ...(Platform.OS === "android" ? { channelId: "app-updates" } : {}),
-          },
-          trigger: null, // show immediately
-        });
+        Alert.alert(
+          "Update beschikbaar",
+          `Nexora ${data.version} is klaar.\nUpdate nu voor de nieuwste functies en bugfixes.`,
+          [
+            { text: "Straks", style: "cancel" },
+            {
+              text: "Update nu",
+              onPress: () => {
+                if (data.apkUrl) {
+                  Linking.openURL(data.apkUrl).catch(() => router.push("/profile"));
+                } else {
+                  router.push("/profile");
+                }
+              },
+            },
+          ],
+          { cancelable: true }
+        );
       } catch {}
     };
 
