@@ -471,7 +471,7 @@ export default function DetailScreen() {
                 {data.year && data.imdb ? <View style={styles.metaDot} /> : null}
                 {data.imdb ? <Text style={styles.metaText}>{data.imdb}</Text> : null}
                 {data.duration ? <><View style={styles.metaDot} /><Text style={styles.metaText}>{data.duration}</Text></> : null}
-                {!isMovie && data.seasons ? <><View style={styles.metaDot} /><Text style={styles.metaText}>{data.seasons} Seizoen{data.seasons > 1 ? "en" : ""}</Text></> : null}
+                {!isMovie && data.seasons?.length ? <><View style={styles.metaDot} /><Text style={styles.metaText}>{data.seasons.length} Seizoen{data.seasons.length > 1 ? "en" : ""}</Text></> : null}
               </View>
               {data.imdb ? (
                 <View style={styles.imdbRow}>

@@ -482,7 +482,7 @@ export default function PlayerScreen() {
     if (!isLoading) return;
     if (streamUrl && !useFallbackEmbed) return;
     if (!tmdbId || allProvidersFailed) return;
-    const t = setTimeout(() => tryNextProvider(), 5000);
+    const t = setTimeout(() => tryNextProvider(), 15000);
     return () => clearTimeout(t);
   }, [isLoading, webviewKey, streamUrl, useFallbackEmbed, tmdbId, allProvidersFailed, tryNextProvider]);
 
@@ -689,17 +689,27 @@ export default function PlayerScreen() {
         )}
       </View>
 
-      {/* ─── Full-screen interceptor — only when controls are hidden ──────────
-          When controls are visible, the overlay (pointerEvents=auto) handles
-          everything. The interceptor only runs when controls are gone so taps
-          still reach it to bring the overlay back.
+      {/* ─── Full-screen interceptor — only for HLS/direct streams ────────────
+          For embed players the user needs to interact freely with the WebView,
+          so we only intercept taps in HLS mode to bring back the overlay.
       ─────────────────────────────────────────────────────────────────────── */}
-      {(hlsHtml || embedUrl) && Platform.OS !== "web" && !controlsVisible && (
+      {hlsHtml && Platform.OS !== "web" && !controlsVisible && (
         <TouchableOpacity
           style={styles.hlsTouchScreen}
           onPress={showControls}
           activeOpacity={1}
         />
+      )}
+
+      {/* Persistent mini back button for embed mode (when controls are hidden) */}
+      {embedUrl && !hlsHtml && Platform.OS !== "web" && !controlsVisible && (
+        <TouchableOpacity
+          style={styles.embedMiniBack}
+          onPress={() => { SafeHaptics.impactLight(); showControls(); }}
+          activeOpacity={0.8}
+        >
+          <Ionicons name="chevron-down" size={20} color="#fff" />
+        </TouchableOpacity>
       )}
 
       {/* ─── Controls overlay ─────────────────────────────────────────────── */}
@@ -852,6 +862,20 @@ const styles = StyleSheet.create({
 
   // Touch zones
   hlsTouchScreen: { ...StyleSheet.absoluteFillObject, zIndex: 5 },
+  embedMiniBack: {
+    position: "absolute",
+    top: 48,
+    left: 16,
+    zIndex: 10,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: "rgba(0,0,0,0.6)",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.2)",
+  },
   tapStripTop:    { position: "absolute", top: 0,    left: 0, right: 0, height: 90, zIndex: 5 },
   tapStripBottom: { position: "absolute", bottom: 0, left: 0, right: 0, height: 90, zIndex: 5 },
 

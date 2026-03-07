@@ -3958,7 +3958,18 @@ function mapFullDetail(detail, videos, credits, type) {
     imdb: detail.vote_average ? String(Number(detail.vote_average).toFixed(1)) : null,
     rating: detail.vote_average ? String(Number(detail.vote_average).toFixed(1)) : null,
     duration: type === "movie" ? minutesToDuration(detail.runtime) : null,
-    seasons: type === "series" ? (detail.number_of_seasons ?? null) : null,
+    seasons: type === "series"
+      ? (detail.seasons || [])
+          .filter((s) => s.season_number > 0)
+          .map((s) => ({
+            id: String(s.id || s.season_number),
+            name: s.name || `Seizoen ${s.season_number}`,
+            seasonNumber: s.season_number,
+            episodes: s.episode_count || 0,
+            poster: s.poster_path ? `${TMDB_IMG_500}${s.poster_path}` : null,
+            airDate: s.air_date || null,
+          }))
+      : null,
     genre: genres,
     quality: "HD",
     cast,

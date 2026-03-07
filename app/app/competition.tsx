@@ -265,15 +265,23 @@ function StandingsRow({ team, rank, league, espnLeague }: { team: any; rank: num
   const rankColor = rank === 1 ? COLORS.gold : rank <= 3 ? COLORS.accent : COLORS.text;
 
   const handlePress = () => {
-    if (!team?.teamId) return;
-    router.push({ pathname: "/team-detail", params: { teamId: team.teamId, sport: "soccer", league, teamName: team.team } });
+    router.push({
+      pathname: "/team-detail",
+      params: {
+        teamId: team.teamId || `name:${team.team || ""}`,
+        sport: "soccer",
+        league,
+        teamName: team.team,
+        espnLeague,
+      },
+    });
   };
 
   return (
     <TouchableOpacity
       style={[styles.standingsRow, isTop3 && styles.standingsRowTop]}
       onPress={handlePress}
-      activeOpacity={team?.teamId ? 0.7 : 1}
+      activeOpacity={0.7}
     >
       <View style={[styles.rankIndicator, { backgroundColor: isTopZone ? COLORS.accentGlow : "transparent" }]}>
         <Text style={[styles.rankText, { color: rankColor }]}>{rank}</Text>

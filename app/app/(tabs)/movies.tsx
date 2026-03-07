@@ -71,6 +71,8 @@ export default function MoviesScreen() {
 
   // Per-genre extra pages state: genreId -> { page, items[], loading }
   const [genreExtras, setGenreExtras] = useState<Record<number, { page: number; items: any[]; loading: boolean }>>({});
+  // Per-category extra pages: categoryKey -> { page, items[], loading }
+  const [categoryExtras, setCategoryExtras] = useState<Record<string, { page: number; items: any[]; loading: boolean }>>({});
 
   const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ["movies", "trending"],
@@ -220,6 +222,67 @@ export default function MoviesScreen() {
     }
   }, [genreExtras]);
 
+  // ── Load more per main category ────────────────────────────────────────────
+  const CATEGORY_SORT: Record<string, string> = {
+    trending:    "popularity.desc",
+    newReleases: "release_date.desc",
+    topRated:    "vote_average.desc",
+    popular:     "popularity.desc",
+    upcoming:    "primary_release_date.asc",
+  };
+
+  const loadMoreCategory = useCallback(async (key: string) => {
+    const current = categoryExtras[key] || { page: 1, items: [], loading: false };
+    if (current.loading) return;
+    const nextPage = current.page + 1;
+    const sortBy = CATEGORY_SORT[key] || "popularity.desc";
+    setCategoryExtras(prev => ({ ...prev, [key]: { ...current, loading: true } }));
+    try {
+      const res = await withTimeout(
+        apiRequest("GET", `/api/movies/all?page=${nextPage}&sort_by=${sortBy}`),
+        15000
+      );
+      const d = await res.json();
+      const newItems = d?.movies || [];
+      setCategoryExtras(prev => ({
+        ...prev,
+        [key]: {
+          page: nextPage,
+          items: [...(prev[key]?.items || []), ...newItems],
+          loading: false,
+        },
+      }));
+    } catch {
+      setCategoryExtras(prev => ({ ...prev, [key]: { ...current, loading: false } }));
+    }
+  }, [categoryExtras]);
+
+  // ── Deduplicate: build set of IDs already shown in all base rows ───────────
+  const baseSeenIds = useMemo(() => {
+    const seen = new Set<string>();
+    [trending, newReleases, topRated, popular, upcoming].forEach(arr =>
+      arr.forEach((m: any) => seen.add(m.id))
+    );
+    return seen;
+  }, [trending, newReleases, topRated, popular, upcoming]);
+
+  // Deduplicate each base list against earlier categories
+  const [dedupTrending, dedupNewReleases, dedupTopRated, dedupPopular, dedupUpcoming] = useMemo(() => {
+    const seen = new Set<string>();
+    const dedup = (arr: any[]) => arr.filter((m: any) => {
+      if (seen.has(m.id)) return false;
+      seen.add(m.id);
+      return true;
+    });
+    return [
+      dedup(trending),
+      dedup(newReleases),
+      dedup(topRated),
+      dedup(popular),
+      dedup(upcoming),
+    ];
+  }, [trending, newReleases, topRated, popular, upcoming]);
+
   const filteredTmdb = useMemo(() => {
     if (!search.trim()) return null;
     const q = search.toLowerCase();
@@ -248,6 +311,41 @@ export default function MoviesScreen() {
       isFavorite={isFavorite(item.id)}
     />
   );
+
+  const renderMainRow = (title: string, baseItems: any[], categoryKey: string) => {
+    const extra = categoryExtras[categoryKey];
+    const extraFiltered = (extra?.items || []).filter(
+      (m: any) => !baseSeenIds.has(m.id)
+    );
+    const allItems = [...baseItems, ...extraFiltered];
+    const isLoading = extra?.loading;
+    if (allItems.length === 0) return null;
+    return (
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>{title}</Text>
+        <FlatList
+          horizontal
+          data={allItems}
+          keyExtractor={(item: any) => item.id}
+          renderItem={({ item }: any) => renderCard(item)}
+          contentContainerStyle={styles.carouselPadding}
+          showsHorizontalScrollIndicator={false}
+          ListFooterComponent={() => (
+            <TouchableOpacity
+              style={styles.loadMoreBtn}
+              onPress={() => loadMoreCategory(categoryKey)}
+              disabled={!!isLoading}
+            >
+              {isLoading
+                ? <ActivityIndicator size="small" color={COLORS.accent} />
+                : <><Ionicons name="add" size={22} color={COLORS.accent} /><Text style={styles.loadMoreText}>Meer</Text></>
+              }
+            </TouchableOpacity>
+          )}
+        />
+      </View>
+    );
+  };
 
   const renderGenreRow = (genre: any) => {
     const extra = genreExtras[genre.id];
@@ -325,6 +423,7 @@ export default function MoviesScreen() {
           <RefreshControl refreshing={refreshing} onRefresh={async () => {
             setRefreshing(true);
             setGenreExtras({});
+            setCategoryExtras({});
             await Promise.all([refetch(), refetchGenres()]);
             setRefreshing(false);
           }} tintColor={COLORS.accent} />
@@ -408,50 +507,11 @@ export default function MoviesScreen() {
                   </View>
                 )}
 
-                {trending.length > 0 && (
-                  <View style={styles.section}>
-                    <Text style={styles.sectionTitle}>Trending deze week</Text>
-                    <FlatList horizontal data={trending} keyExtractor={(item: any) => item.id}
-                      renderItem={({ item }: any) => renderCard(item)}
-                      contentContainerStyle={styles.carouselPadding} showsHorizontalScrollIndicator={false} />
-                  </View>
-                )}
-
-                {newReleases.length > 0 && (
-                  <View style={styles.section}>
-                    <Text style={styles.sectionTitle}>Nieuw in bioscoop</Text>
-                    <FlatList horizontal data={newReleases} keyExtractor={(item: any) => item.id}
-                      renderItem={({ item }: any) => renderCard(item)}
-                      contentContainerStyle={styles.carouselPadding} showsHorizontalScrollIndicator={false} />
-                  </View>
-                )}
-
-                {topRated.length > 0 && (
-                  <View style={styles.section}>
-                    <Text style={styles.sectionTitle}>Best beoordeeld</Text>
-                    <FlatList horizontal data={topRated} keyExtractor={(item: any) => item.id}
-                      renderItem={({ item }: any) => renderCard(item)}
-                      contentContainerStyle={styles.carouselPadding} showsHorizontalScrollIndicator={false} />
-                  </View>
-                )}
-
-                {popular.length > 0 && (
-                  <View style={styles.section}>
-                    <Text style={styles.sectionTitle}>Populair nu</Text>
-                    <FlatList horizontal data={popular} keyExtractor={(item: any) => item.id}
-                      renderItem={({ item }: any) => renderCard(item)}
-                      contentContainerStyle={styles.carouselPadding} showsHorizontalScrollIndicator={false} />
-                  </View>
-                )}
-
-                {upcoming.length > 0 && (
-                  <View style={styles.section}>
-                    <Text style={styles.sectionTitle}>Binnenkort</Text>
-                    <FlatList horizontal data={upcoming} keyExtractor={(item: any) => item.id}
-                      renderItem={({ item }: any) => renderCard(item)}
-                      contentContainerStyle={styles.carouselPadding} showsHorizontalScrollIndicator={false} />
-                  </View>
-                )}
+                {renderMainRow("Trending deze week", dedupTrending, "trending")}
+                {renderMainRow("Nieuw in bioscoop", dedupNewReleases, "newReleases")}
+                {renderMainRow("Best beoordeeld", dedupTopRated, "topRated")}
+                {renderMainRow("Populair nu", dedupPopular, "popular")}
+                {renderMainRow("Binnenkort", dedupUpcoming, "upcoming")}
 
                 {/* Genre rows — 15 genres, each with load-more */}
                 {movieGenres.map((genre: any) => genre.items?.length > 0 && renderGenreRow(genre))}

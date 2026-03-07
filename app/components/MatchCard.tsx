@@ -145,13 +145,13 @@ export function MatchCard({ match, onPress, onToggleNotification, notificationsE
             {onToggleNotification ? (
               <TouchableOpacity
                 onPress={(e) => { e.stopPropagation(); SafeHaptics.selection(); onToggleNotification(); }}
-                style={styles.alertBtn}
+                style={[styles.alertBtn, notificationsEnabled && styles.alertBtnActive]}
                 hitSlop={{ top: 10, right: 10, bottom: 10, left: 10 }}
               >
                 <Ionicons
                   name={notificationsEnabled ? "notifications" : "notifications-outline"}
                   size={13}
-                  color={notificationsEnabled ? COLORS.accent : COLORS.textMuted}
+                  color={notificationsEnabled ? "#fff" : COLORS.textMuted}
                 />
               </TouchableOpacity>
             ) : null}
@@ -245,13 +245,13 @@ export function UpcomingMatchRow({
               SafeHaptics.selection();
               onToggleNotification();
             }}
-            style={styles.upcomingAlertBtn}
+            style={[styles.upcomingAlertBtn, notificationsEnabled && styles.alertBtnActive]}
             hitSlop={{ top: 8, right: 8, bottom: 8, left: 8 }}
           >
             <Ionicons
               name={notificationsEnabled ? "notifications" : "notifications-outline"}
               size={14}
-              color={notificationsEnabled ? COLORS.accent : COLORS.textMuted}
+              color={notificationsEnabled ? "#fff" : COLORS.textMuted}
             />
           </TouchableOpacity>
         ) : null}
@@ -274,7 +274,7 @@ const styles = StyleSheet.create({
   },
   card: {
     width: 160,
-    height: 285,
+    height: 300,
     borderRadius: 22,
     padding: 12,
     borderWidth: 2,
@@ -312,6 +312,10 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.overlay,
     alignItems: "center",
     justifyContent: "center",
+  },
+  alertBtnActive: {
+    backgroundColor: COLORS.accent,
+    borderColor: COLORS.accent,
   },
   teamSection: {
     alignItems: "center",

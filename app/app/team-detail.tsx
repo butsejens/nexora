@@ -45,7 +45,7 @@ function positionLabel(pos: string, positionName?: string): string {
 
 export default function TeamDetailScreen() {
   const params = useLocalSearchParams<{
-    teamId: string; teamName: string; logo?: string; sport?: string; league?: string;
+    teamId: string; teamName: string; logo?: string; sport?: string; league?: string; espnLeague?: string;
   }>();
   const insets = useSafeAreaInsets();
   const [teamLogoFailed, setTeamLogoFailed] = useState(false);
@@ -82,7 +82,7 @@ export default function TeamDetailScreen() {
   }, [posFilter, sortKey, prefsKey]);
 
   const sport = params.sport || "soccer";
-  const league = params.league || "eng.1";
+  const league = params.espnLeague || params.league || "eng.1";
 
   const { data, isLoading, error } = useQuery({
     queryKey: ["team-detail", params.teamId, sport, league],
@@ -339,6 +339,8 @@ function PlayerCard({ player }: { player: any }) {
   const photoCandidates = [
     player?.photo,
     safePlayerId ? `https://a.espncdn.com/i/headshots/soccer/players/full/${encodeURIComponent(safePlayerId)}.png` : null,
+    safePlayerId ? `https://a.espncdn.com/combiner/i?img=/i/headshots/soccer/players/full/${encodeURIComponent(safePlayerId)}.png&w=350&h=254` : null,
+    player?.name ? `https://media.api-sports.io/football/players/${encodeURIComponent(safePlayerId || player.name)}.png` : null,
   ].filter(Boolean) as string[];
   const [photoIndex, setPhotoIndex] = useState(0);
   const photoUri = photoCandidates[photoIndex];
@@ -393,14 +395,6 @@ function PlayerCard({ player }: { player: any }) {
         <StatPill label="Leeftijd" value={player.age ? String(player.age) : "Onbekend"} />
         <StatPill label="Lengte" value={player.height || "Onbekend"} />
         <StatPill label="Gewicht" value={player.weight || "Onbekend"} />
-        {player.marketValue ? (
-          <StatPill
-            label="Waarde (€)"
-            value={player.marketValue}
-            color={player.isRealValue ? "#00C896" : COLORS.textMuted}
-            real={player.isRealValue}
-          />
-        ) : null}
       </View>
     </View>
   );
