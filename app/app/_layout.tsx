@@ -12,6 +12,7 @@ import { NexoraIntro } from "@/components/NexoraIntro";
 import { NexoraBootScreen } from "@/components/NexoraBootScreen";
 import * as Updates from "expo-updates";
 import * as Notifications from "expo-notifications";
+import * as FileSystem from "expo-file-system";
 import Constants from "expo-constants";
 import {
   useFonts,
@@ -215,21 +216,28 @@ export default function RootLayout() {
         // Small delay so the main UI is fully rendered before alert appears
         await new Promise(r => setTimeout(r, 1200));
 
+        const doInstall = async () => {
+          if (!data.apkUrl) { router.push("/profile"); return; }
+          if (Platform.OS === "android") {
+            try {
+              const localUri = FileSystem.cacheDirectory + "nexora-update.apk";
+              await FileSystem.downloadAsync(data.apkUrl, localUri);
+              const contentUri = await FileSystem.getContentUriAsync(localUri);
+              await Linking.openURL(contentUri);
+            } catch {
+              Linking.openURL(data.apkUrl).catch(() => router.push("/profile"));
+            }
+          } else {
+            Linking.openURL(data.apkUrl).catch(() => router.push("/profile"));
+          }
+        };
+
         Alert.alert(
           "Update beschikbaar",
           `Nexora ${data.version} is klaar.\nUpdate nu voor de nieuwste functies en bugfixes.`,
           [
             { text: "Straks", style: "cancel" },
-            {
-              text: "Update nu",
-              onPress: () => {
-                if (data.apkUrl) {
-                  Linking.openURL(data.apkUrl).catch(() => router.push("/profile"));
-                } else {
-                  router.push("/profile");
-                }
-              },
-            },
+            { text: "Update nu", onPress: doInstall },
           ],
           { cancelable: true }
         );
