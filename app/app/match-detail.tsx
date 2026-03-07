@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   View, Text, StyleSheet, TouchableOpacity, Platform,
   ScrollView, Image, ActivityIndicator,
@@ -181,6 +181,16 @@ export default function MatchDetailScreen() {
     setStreamKey(k => k + 1);
   };
 
+  // Auto-fetch AI prediction once when match data is ready
+  const hasFetchedAiRef = useRef(false);
+  useEffect(() => {
+    if (matchDetail && !hasFetchedAiRef.current && !predLoading) {
+      hasFetchedAiRef.current = true;
+      const t = setTimeout(() => fetchPrediction(), 600);
+      return () => clearTimeout(t);
+    }
+  }, [!!matchDetail]);
+
   const topPad = Platform.OS === "web" ? 67 : insets.top;
 
   return (
@@ -258,6 +268,17 @@ export default function MatchDetailScreen() {
           </TouchableOpacity>
         ))}
       </ScrollView>
+
+      {/* Mini AI strip — always visible below tab bar */}
+      {activeTab !== "ai" && (predLoading || (prediction && !prediction.error)) && (
+        <MiniAIPill
+          prediction={prediction}
+          homeTeam={params.homeTeam}
+          awayTeam={params.awayTeam}
+          loading={predLoading && !prediction}
+          onPress={() => handleTabChange("ai")}
+        />
+      )}
 
       {/* Stream Tab */}
       {activeTab === "stream" && (
@@ -455,9 +476,18 @@ export default function MatchDetailScreen() {
               <Text style={[styles.aiLoadingText, { fontSize: 12, marginTop: 4 }]}>Tactiek · xG · Vorm · Voorspelling</Text>
             </View>
           ) : prediction && !prediction.error ? (
-            <AIPredictionView prediction={prediction} homeTeam={params.homeTeam} awayTeam={params.awayTeam} />
+            <>
+              <AIPredictionView prediction={prediction} homeTeam={params.homeTeam} awayTeam={params.awayTeam} />
+              <TouchableOpacity
+                style={styles.aiRefreshBtn}
+                onPress={() => { hasFetchedAiRef.current = false; fetchPrediction(); }}
+              >
+                <Ionicons name="refresh-outline" size={13} color={COLORS.textMuted} />
+                <Text style={styles.aiRefreshText}>Vernieuwen</Text>
+              </TouchableOpacity>
+            </>
           ) : (
-            <View style={{ gap: 10 }}>
+            <View style={styles.aiWaitCard}>
               {prediction?.error ? (
                 <View style={styles.tipCard}>
                   <MaterialCommunityIcons name="alert-circle-outline" size={16} color={COLORS.live} />
@@ -465,13 +495,13 @@ export default function MatchDetailScreen() {
                 </View>
               ) : null}
               <TouchableOpacity style={styles.aiTrigger} onPress={() => fetchPrediction()}>
-                <LinearGradient colors={["rgba(0,212,255,0.15)", "rgba(0,212,255,0.05)"]} style={styles.aiTriggerGrad}>
+                <LinearGradient colors={["rgba(229,9,20,0.12)", "rgba(229,9,20,0.04)"]} style={styles.aiTriggerGrad}>
                   <MaterialCommunityIcons name="robot-outline" size={40} color={COLORS.accent} />
                   <Text style={styles.aiTriggerTitle}>AI Wedstrijd Analyse</Text>
                   <Text style={styles.aiTriggerSub}>Voorspelling · xG · Tactiek · Vormlijn · Wedtip</Text>
                   <View style={styles.aiTriggerBtn}>
-                    <Ionicons name="sparkles" size={14} color="#000" />
-                    <Text style={styles.aiTriggerBtnText}>Analyseer nu</Text>
+                    <Ionicons name="refresh" size={14} color="#fff" />
+                    <Text style={styles.aiTriggerBtnText}>Analyseer opnieuw</Text>
                   </View>
                 </LinearGradient>
               </TouchableOpacity>
@@ -480,6 +510,49 @@ export default function MatchDetailScreen() {
         </ScrollView>
       )}
     </View>
+  );
+}
+
+function MiniAIPill({ prediction, homeTeam, awayTeam, loading, onPress }: any) {
+  if (loading) {
+    return (
+      <TouchableOpacity style={styles.miniAIPill} onPress={onPress} activeOpacity={0.8}>
+        <MaterialCommunityIcons name="robot-outline" size={13} color={COLORS.accent} />
+        <ActivityIndicator size="small" color={COLORS.accent} style={{ marginLeft: 4, marginRight: 4 }} />
+        <Text style={styles.miniAIPillLoadingText}>AI analyseert...</Text>
+        <Ionicons name="chevron-forward" size={12} color={COLORS.textMuted} />
+      </TouchableOpacity>
+    );
+  }
+  if (!prediction || prediction.error) return null;
+  const homeShort = (homeTeam || "").split(" ")[0];
+  const awayShort = (awayTeam || "").split(" ")[0];
+  const winner = prediction.prediction === "Home Win" ? homeShort :
+    prediction.prediction === "Away Win" ? awayShort : "Gelijk";
+  const winnerColor = prediction.prediction === "Home Win" ? COLORS.accent :
+    prediction.prediction === "Away Win" ? COLORS.live : "#FFD700";
+  return (
+    <TouchableOpacity style={styles.miniAIPill} onPress={onPress} activeOpacity={0.8}>
+      <MaterialCommunityIcons name="robot" size={13} color={COLORS.accent} />
+      <View style={styles.miniAIPillChances}>
+        <Text style={[styles.miniAIPillPct, { color: COLORS.accent }]}>{prediction.homePct}%</Text>
+        <Text style={styles.miniAIPillSep}>{homeShort}</Text>
+      </View>
+      <Text style={styles.miniAIPillDivider}>·</Text>
+      <View style={styles.miniAIPillChances}>
+        <Text style={[styles.miniAIPillPct, { color: "#FFD700" }]}>{prediction.drawPct}%</Text>
+        <Text style={styles.miniAIPillSep}>Gelijk</Text>
+      </View>
+      <Text style={styles.miniAIPillDivider}>·</Text>
+      <View style={styles.miniAIPillChances}>
+        <Text style={[styles.miniAIPillPct, { color: COLORS.live }]}>{prediction.awayPct}%</Text>
+        <Text style={styles.miniAIPillSep}>{awayShort}</Text>
+      </View>
+      <View style={styles.miniAIPillWinnerTag}>
+        <Text style={[styles.miniAIPillWinnerText, { color: winnerColor }]}>{winner}</Text>
+      </View>
+      <Ionicons name="chevron-forward" size={12} color={COLORS.textMuted} />
+    </TouchableOpacity>
   );
 }
 
@@ -1148,7 +1221,7 @@ const styles = StyleSheet.create({
   aiTriggerTitle: { fontFamily: "Inter_700Bold", fontSize: 18, color: COLORS.text },
   aiTriggerSub: { fontFamily: "Inter_400Regular", fontSize: 14, color: COLORS.textMuted, textAlign: "center" },
   aiTriggerBtn: { flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: COLORS.accent, borderRadius: 20, paddingHorizontal: 20, paddingVertical: 10, marginTop: 4 },
-  aiTriggerBtnText: { fontFamily: "Inter_700Bold", fontSize: 14, color: "#000" },
+  aiTriggerBtnText: { fontFamily: "Inter_700Bold", fontSize: 14, color: "#fff" },
   aiMainCard: { borderRadius: 20, padding: 20, borderWidth: 1, borderColor: "rgba(0,212,255,0.2)", gap: 10, marginBottom: 2 },
   aiHeader: { flexDirection: "row", alignItems: "center", gap: 8 },
   aiTitle: { fontFamily: "Inter_700Bold", fontSize: 15, color: COLORS.text, flex: 1 },
@@ -1404,5 +1477,68 @@ const styles = StyleSheet.create({
     height: "100%",
     backgroundColor: COLORS.accent,
     borderRadius: 3,
+  },
+  // MiniAIPill styles
+  miniAIPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: COLORS.card,
+    borderTopWidth: 1,
+    borderBottomWidth: 1,
+    borderColor: COLORS.border,
+    paddingHorizontal: 16,
+    paddingVertical: 9,
+    flexWrap: "nowrap",
+  },
+  miniAIPillChances: {
+    alignItems: "center",
+    gap: 1,
+  },
+  miniAIPillPct: {
+    fontFamily: "Inter_800ExtraBold",
+    fontSize: 13,
+  },
+  miniAIPillSep: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 9,
+    color: COLORS.textMuted,
+  },
+  miniAIPillDivider: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 14,
+    color: COLORS.border,
+  },
+  miniAIPillWinnerTag: {
+    flex: 1,
+    alignItems: "flex-end",
+  },
+  miniAIPillWinnerText: {
+    fontFamily: "Inter_700Bold",
+    fontSize: 11,
+    letterSpacing: 0.3,
+  },
+  miniAIPillLoadingText: {
+    fontFamily: "Inter_500Medium",
+    fontSize: 12,
+    color: COLORS.textMuted,
+    flex: 1,
+  },
+  // AI tab refresh button
+  aiRefreshBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    paddingVertical: 12,
+    marginTop: 4,
+  },
+  aiRefreshText: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 12,
+    color: COLORS.textMuted,
+  },
+  aiWaitCard: {
+    gap: 10,
   },
 });
