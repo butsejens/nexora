@@ -25,22 +25,25 @@ import { buildErrorReference } from "@/lib/error-messages";
 const STREAM_PROVIDERS = [
   { id: "vidsrcto",     label: "Server 1"  },
   { id: "embedsu",      label: "Server 2"  },
-  { id: "autoembed",    label: "Server 3"  },
-  { id: "vidsrcpro",    label: "Server 4"  },
-  { id: "2embed",       label: "Server 5"  },
-  { id: "moviesapi",    label: "Server 6"  },
-  { id: "vidsrcme",     label: "Server 7"  },
-  { id: "vidsrcxyz",    label: "Server 8"  },
-  { id: "vidlink",      label: "Server 9"  },
-  { id: "multiembed",   label: "Server 10" },
-  { id: "vidsrcicu",    label: "Server 11" },
-  { id: "videasy",      label: "Server 12" },
-  { id: "nontongo",     label: "Server 13" },
-  { id: "111movies",    label: "Server 14" },
+  { id: "vidlink",      label: "Server 3"  },
+  { id: "autoembed",    label: "Server 4"  },
+  { id: "superembed",   label: "Server 5"  },
+  { id: "vidbinge",     label: "Server 6"  },
+  { id: "vidsrcpro",    label: "Server 7"  },
+  { id: "vidsrcme",     label: "Server 8"  },
+  { id: "2embed",       label: "Server 9"  },
+  { id: "moviesapi",    label: "Server 10" },
+  { id: "vidsrcxyz",    label: "Server 11" },
+  { id: "multiembed",   label: "Server 12" },
+  { id: "vidsrcicu",    label: "Server 13" },
+  { id: "videasy",      label: "Server 14" },
   { id: "smashystream", label: "Server 15" },
   { id: "embedcc",      label: "Server 16" },
   { id: "rive",         label: "Server 17" },
-  { id: "primewire",    label: "Server 18" },
+  { id: "nontongo",     label: "Server 18" },
+  { id: "111movies",    label: "Server 19" },
+  { id: "frembed",      label: "Server 20" },
+  { id: "primewire",    label: "Server 21" },
 ];
 
 function getEmbedUrl(provider: string, tmdbId: string, type: string, season: string, episode: string): string {
@@ -120,6 +123,18 @@ function getEmbedUrl(provider: string, tmdbId: string, type: string, season: str
       return isMovie
         ? `https://www.primewire.tf/embed/movie?tmdb=${tmdbId}`
         : `https://www.primewire.tf/embed/tv?tmdb=${tmdbId}&season=${s}&episode=${e}`;
+    case "superembed":
+      return isMovie
+        ? `https://multiembed.mov/?video_id=${tmdbId}&tmdb=1`
+        : `https://multiembed.mov/?video_id=${tmdbId}&tmdb=1&s=${s}&e=${e}`;
+    case "vidbinge":
+      return isMovie
+        ? `https://vidbinge.dev/embed/movie/${tmdbId}`
+        : `https://vidbinge.dev/embed/tv/${tmdbId}/${s}/${e}`;
+    case "frembed":
+      return isMovie
+        ? `https://frembed.xyz/api/movie.php?id=${tmdbId}`
+        : `https://frembed.xyz/api/serie.php?id=${tmdbId}&sa=${s}&epi=${e}`;
     default:
       return isMovie
         ? `https://vidsrc.to/embed/movie/${tmdbId}`
@@ -140,37 +155,43 @@ const AD_DOMAINS = [
 ];
 
 // ─── JS injected in embed WebView ─────────────────────────────────────────────
-// Blocks: window.open, target="_blank" links, alert/confirm dialogs,
-// location.assign / location.replace / location.href navigation to off-domain URLs,
-// and <meta http-equiv="refresh"> redirects.
+// Blocks: window.open, popups, ads, overlays, redirects + triggers auto-play
 const AD_BLOCK_JS = `
 (function(){
   var _host = window.location.hostname;
 
-  // Block ALL window.open() calls
+  // ── 1. Block ALL popups / new windows ────────────────────────────────────
   window.open = function(){ return null; };
+  window.alert = function(){};
+  window.confirm = function(){ return true; };
+  window.prompt = function(){ return ''; };
 
-  // Block target="_blank" / _top / _parent link clicks
+  // ── 2. Block target="_blank" / _top / _parent link clicks ────────────────
   document.addEventListener('click', function(e){
     var el = e.target;
-    for(var i = 0; i < 6; i++){
+    for(var i = 0; i < 8; i++){
       if(!el) break;
       if(el.tagName === 'A'){
-        var target = el.getAttribute('target');
+        var href = el.getAttribute('href') || '';
+        var target = el.getAttribute('target') || '';
         if(target === '_blank' || target === '_top' || target === '_parent'){
-          e.preventDefault(); e.stopPropagation(); return false;
+          e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation(); return false;
+        }
+        // Block links going to ad/redirect URLs
+        if(href && !href.startsWith('#') && !href.startsWith('javascript')){
+          try{
+            var u = new URL(href, window.location.href);
+            if(u.hostname !== _host && !u.hostname.endsWith('.'+_host)){
+              e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation(); return false;
+            }
+          }catch(e2){}
         }
       }
       el = el.parentElement;
     }
   }, true);
 
-  // Block alert / confirm / prompt
-  window.alert   = function(){};
-  window.confirm = function(){ return true; };
-  window.prompt  = function(){ return ''; };
-
-  // Block off-domain navigation via location.assign / location.replace / location.href
+  // ── 3. Block location navigation off-domain ──────────────────────────────
   (function(){
     var _isSafe = function(u){
       try{ var h = new URL(String(u), window.location.href).hostname;
@@ -182,27 +203,20 @@ const AD_BLOCK_JS = `
       window.location.assign  = function(u){ if(_isSafe(u)) _assign(u);  };
       window.location.replace = function(u){ if(_isSafe(u)) _replace(u); };
     }catch(e){}
-    // Override window.location setter (works in most Chromium-based WebViews)
     try{
       var _locDesc = Object.getOwnPropertyDescriptor(window, 'location');
       if(!_locDesc || _locDesc.configurable){
         Object.defineProperty(window, 'location', {
           get: function(){ return _locDesc ? _locDesc.get.call(window) : location; },
-          set: function(v){
-            if(_isSafe(String(v))){ if(_locDesc && _locDesc.set) _locDesc.set.call(window, v); }
-          },
+          set: function(v){ if(_isSafe(String(v))){ if(_locDesc && _locDesc.set) _locDesc.set.call(window, v); } },
           configurable: true
         });
       }
     }catch(e){}
-    // Guard top/parent references from within iframes
-    try{ if(top !== window){
-      top.location.assign  = window.location.assign;
-      top.location.replace = window.location.replace;
-    }}catch(e){}
+    try{ if(top !== window){ top.location.assign = window.location.assign; top.location.replace = window.location.replace; }}catch(e){}
   })();
 
-  // Remove <meta http-equiv="refresh"> redirect tags (current + future)
+  // ── 4. Remove meta-refresh redirects ─────────────────────────────────────
   (function(){
     var removeRefresh = function(){
       document.querySelectorAll('meta[http-equiv]').forEach(function(m){
@@ -211,17 +225,95 @@ const AD_BLOCK_JS = `
     };
     if(document.readyState !== 'loading'){ removeRefresh(); }
     else{ document.addEventListener('DOMContentLoaded', removeRefresh); }
-    var obs = new MutationObserver(function(muts){
+    new MutationObserver(function(muts){
       muts.forEach(function(mut){
         mut.addedNodes.forEach(function(n){
-          if(n.nodeType===1 && n.tagName==='META' &&
-             (n.getAttribute('http-equiv')||'').toLowerCase()==='refresh') n.remove();
+          if(n.nodeType===1 && n.tagName==='META' && (n.getAttribute('http-equiv')||'').toLowerCase()==='refresh') n.remove();
         });
       });
-    });
-    obs.observe(document.documentElement||document.body||document,
-                {childList:true, subtree:true});
+    }).observe(document.documentElement||document.body||document, {childList:true, subtree:true});
   })();
+
+  // ── 5. Remove ad overlays / popups aggressively ──────────────────────────
+  var AD_SELECTORS = [
+    'ins.adsbygoogle', '[id*="ad-"]', '[id*="ads-"]', '[class*="advert"]',
+    '[class*="banner-ad"]', '[class*="popup"]', '[id*="popup"]',
+    '[class*="overlay"]:not(video)', '[class*="modal"]:not([class*="video"])',
+    'iframe[src*="doubleclick"]', 'iframe[src*="googlesyndication"]',
+    'iframe[src*="adnxs"]', 'iframe[src*="popads"]', 'iframe[src*="exoclick"]',
+    'iframe[src*="trafficjunky"]', 'iframe[src*="adsterra"]',
+    '[class*="preroll"]', '[id*="preroll"]',
+    '[style*="z-index: 9999"]:not(video):not([class*="player"])',
+    '[style*="z-index:9999"]:not(video):not([class*="player"])',
+  ];
+
+  function removeAds(){
+    AD_SELECTORS.forEach(function(sel){
+      try{ document.querySelectorAll(sel).forEach(function(el){ el.remove(); }); }catch(e){}
+    });
+    // Remove fixed/absolute positioned overlays that cover the full screen but are not the player
+    document.querySelectorAll('div,section').forEach(function(el){
+      var s = window.getComputedStyle(el);
+      if((s.position === 'fixed' || s.position === 'absolute') &&
+         (parseInt(s.zIndex||'0') > 100) &&
+         !el.querySelector('video') && !el.id.match(/player|video|stream/i) &&
+         !el.className.match(/player|video|stream|controls/i)){
+        // Only remove if it looks like a full-viewport overlay
+        var r = el.getBoundingClientRect();
+        if(r.width > window.innerWidth * 0.5 && r.height > window.innerHeight * 0.4){
+          el.remove();
+        }
+      }
+    });
+  }
+
+  // Run after DOM ready and then continuously with MutationObserver
+  if(document.readyState !== 'loading'){ removeAds(); }
+  else{ document.addEventListener('DOMContentLoaded', removeAds); }
+  var _adObs = new MutationObserver(function(){ setTimeout(removeAds, 50); });
+  setTimeout(function(){
+    _adObs.observe(document.documentElement||document.body||document, {childList:true, subtree:true});
+  }, 200);
+
+  // ── 6. Auto-play: click play button + start video ────────────────────────
+  function tryAutoPlay(){
+    // Try direct video element
+    var videos = document.querySelectorAll('video');
+    for(var i=0; i<videos.length; i++){
+      var v = videos[i];
+      if(v.paused && v.readyState >= 2){
+        v.muted = false;
+        var p = v.play();
+        if(p && p.catch) p.catch(function(){ v.muted = true; v.play().catch(function(){}); });
+        return;
+      }
+    }
+    // Try clicking a play button
+    var playSelectors = [
+      '[class*="play"]:not([disabled])',
+      '[id*="play"]:not([disabled])',
+      'button[aria-label*="play"]',
+      'button[aria-label*="Play"]',
+      '.vjs-play-control', '.plyr__control--play', '.jw-icon-playback',
+    ];
+    for(var j=0; j<playSelectors.length; j++){
+      var btn = document.querySelector(playSelectors[j]);
+      if(btn){ btn.click(); return; }
+    }
+    // Center-click fallback
+    var cx = window.innerWidth/2, cy = window.innerHeight/2;
+    var el = document.elementFromPoint(cx, cy);
+    if(el && el !== document.documentElement && el !== document.body){
+      ['mousedown','mouseup','click'].forEach(function(t){
+        el.dispatchEvent(new MouseEvent(t, {bubbles:true, cancelable:true, view:window, clientX:cx, clientY:cy}));
+      });
+    }
+  }
+
+  // Try to auto-play after page stabilizes
+  document.addEventListener('DOMContentLoaded', function(){ setTimeout(tryAutoPlay, 1200); });
+  setTimeout(tryAutoPlay, 2000);
+  setTimeout(tryAutoPlay, 3500);
 })();
 `;
 

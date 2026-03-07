@@ -28,7 +28,7 @@ const CATEGORIES: {
     label: "Sport AI",
     icon: "robot",
     iconLib: "mci",
-    priceMonthly: 2.99,
+    priceMonthly: 7.99,
     color: "#00C4E8",
     features: ["AI voorspellingen", "xG & kansen analyse", "Tactische analyse", "Vormlijn & H2H"],
   },
@@ -37,7 +37,7 @@ const CATEGORIES: {
     label: "Films",
     icon: "film",
     iconLib: "mci",
-    priceMonthly: 3.99,
+    priceMonthly: 5.99,
     color: "#FF6B6B",
     features: ["Alle films in 4K", "Duizenden titels", "TMDB catalogus", "Nieuwe releases"],
   },
@@ -46,7 +46,7 @@ const CATEGORIES: {
     label: "Series",
     icon: "television-play",
     iconLib: "mci",
-    priceMonthly: 3.99,
+    priceMonthly: 5.99,
     color: "#A855F7",
     features: ["Alle series unlocked", "Seizoen overzicht", "Trending series", "Exclusieve titels"],
   },
@@ -55,7 +55,7 @@ const CATEGORIES: {
     label: "Live TV",
     icon: "antenna",
     iconLib: "mci",
-    priceMonthly: 3.99,
+    priceMonthly: 0.99,
     color: "#F59E0B",
     features: ["Onbeperkte IPTV", "Live kanalen", "M3U/Xtream support", "HD & 4K streams"],
   },
@@ -68,7 +68,7 @@ function calcPrice(selected: PremiumCategory[], cycle: BillingCycle): { monthly:
   const allFour = n === 4;
   let baseMonthly = 0;
   if (allFour) {
-    baseMonthly = 9.99;
+    baseMonthly = 11.99;
   } else {
     const sum = selected.reduce((acc, id) => {
       const cat = CATEGORIES.find(c => c.id === id)!;

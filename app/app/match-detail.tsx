@@ -181,15 +181,16 @@ export default function MatchDetailScreen() {
     setStreamKey(k => k + 1);
   };
 
-  // Auto-fetch AI prediction once when match data is ready
+  // Auto-fetch AI prediction: trigger once after detail loading finishes
+  // (works even if matchDetail is null/empty — for upcoming matches without stats)
   const hasFetchedAiRef = useRef(false);
   useEffect(() => {
-    if (matchDetail && !hasFetchedAiRef.current && !predLoading) {
+    if (!detailLoading && !hasFetchedAiRef.current && !predLoading) {
       hasFetchedAiRef.current = true;
-      const t = setTimeout(() => fetchPrediction(), 600);
+      const t = setTimeout(() => fetchPrediction(), 800);
       return () => clearTimeout(t);
     }
-  }, [!!matchDetail]);
+  }, [detailLoading]);
 
   const topPad = Platform.OS === "web" ? 67 : insets.top;
 
@@ -796,10 +797,10 @@ function AIPredictionView({ prediction, homeTeam, awayTeam }: any) {
           </View>
         </View>
 
-        {prediction?.providerError ? (
+        {prediction?.providerError && prediction?.insufficientData ? (
           <View style={styles.aiWarnCard}>
             <MaterialCommunityIcons name="alert-outline" size={14} color={COLORS.gold} />
-            <Text style={styles.aiWarnText}>AI Analyse tijdelijk niet beschikbaar: {String(prediction.providerError)}</Text>
+            <Text style={styles.aiWarnText}>Onvoldoende data voor volledige AI analyse.</Text>
           </View>
         ) : null}
 

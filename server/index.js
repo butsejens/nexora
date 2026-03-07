@@ -2201,7 +2201,10 @@ function deterministicPrediction(payload) {
   const shotEdge = (homeShots - awayShots) * 1.8;
   const sotEdge = (homeSot - awaySot) * 4.2;
   const possEdge = (homePoss - awayPoss) * 0.25;
-  const rawEdge = scoreEdge + shotEdge + sotEdge + possEdge;
+  // Home advantage baseline (+8 edge when no stats/score available)
+  const noStatsAtAll = !homeScore && !awayScore && !homeShots && !awayShots && !homeSot && !awaySot && !homePoss && !awayPoss;
+  const homeAdvantage = noStatsAtAll ? 8 : 0;
+  const rawEdge = scoreEdge + shotEdge + sotEdge + possEdge + homeAdvantage;
 
   const sigmoid = (x) => 1 / (1 + Math.exp(-x / 20));
   const baseHome = sigmoid(rawEdge);
