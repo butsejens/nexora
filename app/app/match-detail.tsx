@@ -190,7 +190,7 @@ export default function MatchDetailScreen() {
       const t = setTimeout(() => fetchPrediction(), 800);
       return () => clearTimeout(t);
     }
-  }, [detailLoading]);
+  }, [detailLoading, predLoading, fetchPrediction]);
 
   const topPad = Platform.OS === "web" ? 67 : insets.top;
 
@@ -781,6 +781,13 @@ function AIPredictionView({ prediction, homeTeam, awayTeam }: any) {
   const winnerColor = prediction.prediction === "Home Win" ? COLORS.accent :
     prediction.prediction === "Away Win" ? COLORS.live : "#FFD700";
   const riskColor = prediction.riskLevel === "Low" ? "#4CAF50" : prediction.riskLevel === "High" ? COLORS.live : "#FF9800";
+  const bttsPct = Number(prediction?.bothTeamsToScorePct);
+  const over25Pct = Number(prediction?.over25Pct);
+  const homeDcPct = Number(prediction?.doubleChanceHomePct);
+  const awayDcPct = Number(prediction?.doubleChanceAwayPct);
+  const edgeScore = Number(prediction?.edgeScore);
+  const hasMarketMetrics = [bttsPct, over25Pct, homeDcPct, awayDcPct].some((v) => Number.isFinite(v));
+  const hasEdgeScore = Number.isFinite(edgeScore);
 
   const homeShortName = homeTeam.split(" ")[0];
   const awayShortName = awayTeam.split(" ")[0];
@@ -791,7 +798,7 @@ function AIPredictionView({ prediction, homeTeam, awayTeam }: any) {
       <LinearGradient colors={["rgba(0,212,255,0.12)", "rgba(0,212,255,0.04)"]} style={styles.aiMainCard}>
         <View style={styles.aiHeader}>
           <MaterialCommunityIcons name="robot" size={20} color={COLORS.accent} />
-          <Text style={styles.aiTitle}>AI Voorspelling</Text>
+          <Text style={styles.aiTitle}>AI Match Intelligence</Text>
           <View style={styles.aiConfidenceBadge}>
             <Text style={styles.aiConfidenceText}>{prediction.confidence}% zekerheid</Text>
           </View>
@@ -812,6 +819,13 @@ function AIPredictionView({ prediction, homeTeam, awayTeam }: any) {
         {prediction.predictedScore && (
           <Text style={styles.aiScore}>Verwachte score: {prediction.predictedScore}</Text>
         )}
+
+        {prediction.confidenceReason ? (
+          <View style={styles.aiWarnCard}>
+            <MaterialCommunityIcons name="information-outline" size={14} color={COLORS.accent} />
+            <Text style={styles.aiWarnText}>{prediction.confidenceReason}</Text>
+          </View>
+        ) : null}
 
         {/* 3-column Win / Draw / Loss chances */}
         <View style={styles.chanceRow}>
@@ -854,6 +868,48 @@ function AIPredictionView({ prediction, homeTeam, awayTeam }: any) {
           </View>
         )}
       </LinearGradient>
+
+      {(hasMarketMetrics || hasEdgeScore) ? (
+        <View style={styles.infoCard}>
+          <Text style={styles.infoCardTitle}>SMART MARKETS</Text>
+          <View style={styles.marketGrid}>
+            {Number.isFinite(bttsPct) ? (
+              <View style={styles.marketCard}>
+                <Text style={styles.marketLabel}>BTTS</Text>
+                <Text style={styles.marketValue}>{Math.round(bttsPct)}%</Text>
+                <Text style={styles.marketSub}>Beide teams scoren</Text>
+              </View>
+            ) : null}
+            {Number.isFinite(over25Pct) ? (
+              <View style={styles.marketCard}>
+                <Text style={styles.marketLabel}>Over 2.5</Text>
+                <Text style={styles.marketValue}>{Math.round(over25Pct)}%</Text>
+                <Text style={styles.marketSub}>Totaal goals</Text>
+              </View>
+            ) : null}
+            {Number.isFinite(homeDcPct) ? (
+              <View style={styles.marketCard}>
+                <Text style={styles.marketLabel}>1X</Text>
+                <Text style={styles.marketValue}>{Math.round(homeDcPct)}%</Text>
+                <Text style={styles.marketSub}>{homeShortName} of gelijk</Text>
+              </View>
+            ) : null}
+            {Number.isFinite(awayDcPct) ? (
+              <View style={styles.marketCard}>
+                <Text style={styles.marketLabel}>X2</Text>
+                <Text style={styles.marketValue}>{Math.round(awayDcPct)}%</Text>
+                <Text style={styles.marketSub}>{awayShortName} of gelijk</Text>
+              </View>
+            ) : null}
+          </View>
+          {hasEdgeScore ? (
+            <View style={styles.edgeRow}>
+              <Text style={styles.edgeLabel}>Model edge</Text>
+              <Text style={styles.edgeValue}>{Math.round(edgeScore)}/100</Text>
+            </View>
+          ) : null}
+        </View>
+      ) : null}
 
       {/* Next goal probability */}
       {prediction.nextGoalProbability != null && (
@@ -966,20 +1022,8 @@ function AIPredictionView({ prediction, homeTeam, awayTeam }: any) {
         * AI-analyse is indicatief en gebaseerd op historische gegevens. Geen gokadvies.
       </Text>
       {prediction?.source ? (
-        <Text style={styles.aiSourceText}>Bron: {String(prediction.source)}{prediction?.updatedAt ? ` · ${new Date(String(prediction.updatedAt)).toLocaleString("nl-BE")}` : ""}</Text>
+        <Text style={styles.aiSourceText}>Bron: {String(prediction.source)}{prediction?.modelVersion ? ` · ${String(prediction.modelVersion)}` : ""}{prediction?.updatedAt ? ` · ${new Date(String(prediction.updatedAt)).toLocaleString("nl-BE")}` : ""}</Text>
       ) : null}
-    </View>
-  );
-}
-
-function PredBar({ label, pct, color }: { label: string; pct: number; color: string }) {
-  return (
-    <View style={styles.predBarItem}>
-      <Text style={styles.predBarLabel}>{label}</Text>
-      <View style={styles.predBarTrack}>
-        <View style={[styles.predBarFill, { width: `${pct}%`, backgroundColor: color }]} />
-      </View>
-      <Text style={[styles.predBarPct, { color }]}>{pct}%</Text>
     </View>
   );
 }
@@ -1250,6 +1294,35 @@ const styles = StyleSheet.create({
   predBarFill: { height: "100%", borderRadius: 4 },
   predBarPct: { fontFamily: "Inter_700Bold", fontSize: 12, width: 38, textAlign: "right" },
   aiSummary: { fontFamily: "Inter_400Regular", fontSize: 14, color: COLORS.textSecondary, lineHeight: 22 },
+  marketGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    marginTop: 2,
+  },
+  marketCard: {
+    width: "48%",
+    borderRadius: 12,
+    padding: 10,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.overlayLight,
+    gap: 2,
+  },
+  marketLabel: { fontFamily: "Inter_700Bold", fontSize: 11, color: COLORS.textSecondary },
+  marketValue: { fontFamily: "Inter_800ExtraBold", fontSize: 20, color: COLORS.text },
+  marketSub: { fontFamily: "Inter_400Regular", fontSize: 10, color: COLORS.textMuted },
+  edgeRow: {
+    marginTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.border,
+    paddingTop: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  edgeLabel: { fontFamily: "Inter_500Medium", fontSize: 12, color: COLORS.textMuted },
+  edgeValue: { fontFamily: "Inter_700Bold", fontSize: 14, color: COLORS.accent },
   factorRow: { flexDirection: "row", alignItems: "flex-start", gap: 8, paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: COLORS.border },
   factorDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: COLORS.accent, marginTop: 6 },
   factorText: { fontFamily: "Inter_400Regular", fontSize: 13, color: COLORS.text, flex: 1 },

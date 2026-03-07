@@ -249,7 +249,7 @@ export const UpcomingMatchRow = React.memo(function UpcomingMatchRow({
         {onToggleNotification ? (
           <TouchableOpacity
             onPress={(e) => { e.stopPropagation(); SafeHaptics.selection(); onToggleNotification(); }}
-            style={[styles.upcomingAlertBtn, notificationsEnabled && styles.alertBtnActive]}
+            style={[styles.upcomingAlertBtn, notificationsEnabled && styles.upcomingAlertBtnActive]}
             hitSlop={{ top: 8, right: 8, bottom: 8, left: 8 }}
           >
             <Ionicons name={notificationsEnabled ? "notifications" : "notifications-outline"} size={12} color={notificationsEnabled ? "#fff" : COLORS.textMuted} />
@@ -490,7 +490,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  alertBtnActive: {
+  upcomingAlertBtnActive: {
     backgroundColor: COLORS.accent,
     borderColor: COLORS.accent,
   },

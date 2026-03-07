@@ -14,6 +14,17 @@ import { SafeHaptics } from "@/lib/safeHaptics";
 
 type BillingCycle = "monthly" | "yearly";
 
+const SPORT_SHOWCASE = [
+  { title: "Football Predictions", subtitle: "Powered by artificial intelligence.", icon: "brain" },
+  { title: "Daily Acca Picks", subtitle: "Generate high confidence picks via your custom home page.", icon: "ticket-percent-outline" },
+  { title: "Score Centre", subtitle: "Stay up-to-date with every match.", icon: "scoreboard-outline" },
+  { title: "Ready to Play?", subtitle: "Test your football knowledge against the rest of the world.", icon: "gamepad-variant-outline" },
+  { title: "Match Highlights", subtitle: "Never miss a goal.", icon: "movie-play-outline" },
+  { title: "Analyze Everything", subtitle: "Head-to-head analysis for every match.", icon: "chart-line" },
+  { title: "Bet Builder", subtitle: "Build smart bets with confidence.", icon: "shape-outline" },
+  { title: "Detailed Statistics", subtitle: "Get ahead with advanced match predictions.", icon: "chart-box-outline" },
+] as const;
+
 const CATEGORIES: {
   id: PremiumCategory;
   label: string;
@@ -182,6 +193,51 @@ export default function PremiumScreen() {
             </View>
           )}
         </LinearGradient>
+
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Sport UI Preview</Text>
+          </View>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.showcaseRow}
+          >
+            {SPORT_SHOWCASE.map((item) => (
+              <View key={item.title} style={styles.showcaseCard}>
+                <View style={styles.showcaseTopRow}>
+                  <View style={styles.showcaseIconWrap}>
+                    <MaterialCommunityIcons name={item.icon as any} size={15} color={COLORS.text} />
+                  </View>
+                </View>
+                <Text style={styles.showcaseTitle}>{item.title}</Text>
+                <Text style={styles.showcaseSubtitle}>{item.subtitle}</Text>
+
+                <View style={styles.mockPhoneFrame}>
+                  <View style={styles.mockPhoneHeader}>
+                    <Text style={styles.mockPhoneBrand}>COPA</Text>
+                    <Ionicons name="person" size={14} color={COLORS.textSecondary} />
+                  </View>
+                  <View style={styles.mockPhoneBody}>
+                    <View style={styles.mockDataRow}>
+                      <View style={[styles.mockDataBar, { width: "56%", backgroundColor: COLORS.green + "AA" }]} />
+                      <View style={[styles.mockDataBar, { width: "24%" }]} />
+                      <View style={[styles.mockDataBar, { width: "34%" }]} />
+                    </View>
+                    <View style={styles.mockDataRow}>
+                      <View style={[styles.mockDataBar, { width: "34%" }]} />
+                      <View style={[styles.mockDataBar, { width: "28%" }]} />
+                      <View style={[styles.mockDataBar, { width: "58%", backgroundColor: COLORS.accent + "CC" }]} />
+                    </View>
+                    <View style={styles.mockFooterBtn}>
+                      <Text style={styles.mockFooterBtnText}>Generate</Text>
+                    </View>
+                  </View>
+                </View>
+              </View>
+            ))}
+          </ScrollView>
+        </View>
 
         {/* Category tiles */}
         <View style={styles.section}>
@@ -388,6 +444,67 @@ const styles = StyleSheet.create({
   section: { marginHorizontal: 16, marginBottom: 20, marginTop: 8 },
   sectionHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 14 },
   sectionTitle: { fontFamily: "Inter_700Bold", fontSize: 16, color: COLORS.text },
+  showcaseRow: { gap: 12, paddingRight: 16 },
+  showcaseCard: {
+    width: 286,
+    borderRadius: 24,
+    backgroundColor: COLORS.background,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    padding: 16,
+    gap: 10,
+  },
+  showcaseTopRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  showcaseIconWrap: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: COLORS.borderLight,
+    backgroundColor: COLORS.card,
+  },
+  showcaseTitle: { fontFamily: "Inter_800ExtraBold", fontSize: 28, color: COLORS.text, lineHeight: 32 },
+  showcaseSubtitle: { fontFamily: "Inter_700Bold", fontSize: 16, color: COLORS.textSecondary, lineHeight: 23 },
+  mockPhoneFrame: {
+    marginTop: 6,
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: COLORS.borderLight,
+    padding: 10,
+    backgroundColor: COLORS.card,
+  },
+  mockPhoneHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 8,
+  },
+  mockPhoneBrand: { fontFamily: "Inter_800ExtraBold", fontSize: 18, color: COLORS.text },
+  mockPhoneBody: {
+    borderRadius: 12,
+    backgroundColor: COLORS.surface,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    padding: 10,
+    gap: 9,
+  },
+  mockDataRow: { flexDirection: "row", alignItems: "center", gap: 6 },
+  mockDataBar: {
+    height: 22,
+    borderRadius: 6,
+    backgroundColor: COLORS.cardElevated,
+  },
+  mockFooterBtn: {
+    marginTop: 4,
+    borderRadius: 10,
+    backgroundColor: COLORS.accent,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 8,
+  },
+  mockFooterBtnText: { fontFamily: "Inter_700Bold", fontSize: 14, color: COLORS.text },
   selectAllBtn: { paddingHorizontal: 10, paddingVertical: 5 },
   selectAllText: { fontFamily: "Inter_500Medium", fontSize: 12, color: COLORS.accent },
   catGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },

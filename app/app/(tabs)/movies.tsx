@@ -15,6 +15,14 @@ import { buildErrorReference, normalizeApiError } from "@/lib/error-messages";
 import { RealContentCard, RealHeroBanner } from "@/components/RealContentCard";
 import { SafeHaptics } from "@/lib/safeHaptics";
 
+const CATEGORY_SORT: Record<string, string> = {
+  trending: "popularity.desc",
+  newReleases: "release_date.desc",
+  topRated: "vote_average.desc",
+  popular: "popularity.desc",
+  upcoming: "primary_release_date.asc",
+};
+
 async function withTimeout<T>(promise: Promise<T>, ms = 8000): Promise<T> {
   return await Promise.race([
     promise,
@@ -236,14 +244,6 @@ export default function MoviesScreen() {
   }, [genreExtras]);
 
   // ── Load more per main category ────────────────────────────────────────────
-  const CATEGORY_SORT: Record<string, string> = {
-    trending:    "popularity.desc",
-    newReleases: "release_date.desc",
-    topRated:    "vote_average.desc",
-    popular:     "popularity.desc",
-    upcoming:    "primary_release_date.asc",
-  };
-
   const loadMoreCategory = useCallback(async (key: string) => {
     const current = categoryExtras[key] || { page: 1, items: [], loading: false };
     if (current.loading) return;

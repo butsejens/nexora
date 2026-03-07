@@ -12,7 +12,7 @@ import { NexoraIntro } from "@/components/NexoraIntro";
 import { NexoraBootScreen } from "@/components/NexoraBootScreen";
 import * as Updates from "expo-updates";
 import * as Notifications from "expo-notifications";
-import * as FileSystem from "expo-file-system";
+import * as FileSystem from "expo-file-system/legacy";
 import Constants from "expo-constants";
 import {
   useFonts,

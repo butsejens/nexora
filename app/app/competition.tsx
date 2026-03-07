@@ -324,7 +324,6 @@ function CompMatchRow({ match, league, espnLeague }: { match: any; league: strin
 
   const isLive = match.status === "live";
   const isFinished = match.status === "finished";
-  const isUpcoming = match.status === "upcoming";
 
   const handlePress = () => {
     router.push({

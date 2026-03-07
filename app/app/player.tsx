@@ -446,59 +446,6 @@ function formatTime(secs: number): string {
   return `${m}:${String(s).padStart(2, "0")}`;
 }
 
-// ─── Embed player control scripts ─────────────────────────────────────────────
-// Finds video in top frame or same-origin iframes (cross-origin iframes are blocked by browser)
-const FIND_VIDEO_FN = `function _fv(){var v=document.querySelector("video");if(!v){var fs=document.querySelectorAll("iframe");for(var i=0;i<fs.length;i++){try{var d=fs[i].contentDocument||(fs[i].contentWindow&&fs[i].contentWindow.document);var iv=d&&d.querySelector("video");if(iv){v=iv;break;}}catch(e){}}}return v;}`;
-
-// Strategy order: 1) direct video  2) center-click sim  3) postMessage to iframes  4) spacebar keyboard sim
-const EMBED_TOGGLE_JS = `(function(){${FIND_VIDEO_FN}
-  var v=_fv();
-  if(v){if(v.paused)v.play().catch(function(){});else v.pause();return;}
-  try{
-    var cx=window.innerWidth/2,cy=window.innerHeight/2;
-    var el=document.elementFromPoint(cx,cy);
-    if(el&&el!==document.documentElement&&el!==document.body){
-      ["mousedown","mouseup","click"].forEach(function(t){
-        el.dispatchEvent(new MouseEvent(t,{bubbles:true,cancelable:true,view:window,clientX:cx,clientY:cy}));
-      });
-      try{el.dispatchEvent(new TouchEvent("touchstart",{bubbles:true,cancelable:true,touches:[new Touch({identifier:1,target:el,clientX:cx,clientY:cy})]}));}catch(e){}
-      try{el.dispatchEvent(new TouchEvent("touchend",{bubbles:true,cancelable:true}));}catch(e){}
-      return;
-    }
-  }catch(e){}
-  var frs=[];try{frs=Array.from(window.frames);}catch(e){}
-  frs.forEach(function(f){
-    try{f.postMessage({action:"pause"},"*");}catch(e){}
-    try{f.postMessage({type:"pause"},"*");}catch(e){}
-    try{f.postMessage({event:"command",func:"pauseVideo"},"*");}catch(e){}
-    try{f.postMessage(JSON.stringify({action:"pause"}),"*");}catch(e){}
-  });
-  try{
-    document.dispatchEvent(new KeyboardEvent("keydown",{key:" ",code:"Space",keyCode:32,which:32,bubbles:true,cancelable:true}));
-    document.dispatchEvent(new KeyboardEvent("keyup",{key:" ",code:"Space",keyCode:32,which:32,bubbles:true}));
-  }catch(e){}
-})()`;
-
-function buildEmbedSeekJS(delta: number): string {
-  const key = delta > 0 ? "ArrowRight" : "ArrowLeft";
-  const kc  = delta > 0 ? 39 : 37;
-  // Most players move 5 s per arrow key press; repeat to reach target delta
-  const reps = Math.max(1, Math.round(Math.abs(delta) / 5));
-  return `(function(){${FIND_VIDEO_FN}
-  var v=_fv();
-  if(v&&isFinite(v.currentTime)){v.currentTime=Math.max(0,v.currentTime+${delta});return;}
-  var frs=[];try{frs=Array.from(window.frames);}catch(e){}
-  frs.forEach(function(f){
-    try{f.postMessage({action:"seek",offset:${delta}},"*");}catch(e){}
-    try{f.postMessage({type:"seek",seconds:${delta}},"*");}catch(e){}
-  });
-  for(var i=0;i<${reps};i++){
-    try{document.dispatchEvent(new KeyboardEvent("keydown",{key:"${key}",code:"${key}",keyCode:${kc},which:${kc},bubbles:true,cancelable:true}));}catch(e){}
-    try{document.dispatchEvent(new KeyboardEvent("keyup",{key:"${key}",code:"${key}",keyCode:${kc},which:${kc},bubbles:true}));}catch(e){}
-  }
-})()`;
-}
-
 // ─── Main component ───────────────────────────────────────────────────────────
 export default function PlayerScreen() {
   const {
@@ -591,22 +538,6 @@ export default function PlayerScreen() {
   }, [hlsInject]);
 
   // ── Embed control commands (JS-injected, works for same-origin iframes) ──
-  const embedInject = useCallback((js: string) => {
-    embedWebviewRef.current?.injectJavaScript(`${js};true;`);
-  }, []);
-
-  const embedTogglePlay = useCallback(() => {
-    embedInject(EMBED_TOGGLE_JS);
-    SafeHaptics.impactLight();
-    showControls();
-  }, [embedInject, showControls]);
-
-  const embedSeekRelative = useCallback((delta: number) => {
-    embedInject(buildEmbedSeekJS(delta));
-    SafeHaptics.impactLight();
-    showControls();
-  }, [embedInject, showControls]);
-
   const handleHlsMessage = useCallback((event: any) => {
     try {
       const data = JSON.parse(event.nativeEvent.data);

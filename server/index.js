@@ -2117,6 +2117,9 @@ function parseAiPredictionToUiShape(raw) {
   const reasoning = parsed.summary || parsed.reasoning || null;
   const riskLevel =
     parsed.riskLevel || parsed.risk || (confidence >= 65 ? "Low" : confidence >= 54 ? "Medium" : "High");
+  const bothTeamsToScorePct = clamp(Math.round(toNumber(parsed.bothTeamsToScorePct ?? parsed.bttsPct, 0)), 0, 100);
+  const over25Pct = clamp(Math.round(toNumber(parsed.over25Pct ?? parsed.over2_5Pct ?? parsed.over25Probability, 0)), 0, 100);
+  const edgeScore = clamp(Math.round(toNumber(parsed.edgeScore, confidence)), 0, 100);
 
   const normalizedPct = normalizeThreeWayPercentages(homePct, drawPct, awayPct);
 
@@ -2129,6 +2132,13 @@ function parseAiPredictionToUiShape(raw) {
     homePct: normalizedPct.homePct,
     drawPct: normalizedPct.drawPct,
     awayPct: normalizedPct.awayPct,
+    bothTeamsToScorePct,
+    over25Pct,
+    doubleChanceHomePct: clamp(normalizedPct.homePct + normalizedPct.drawPct, 0, 100),
+    doubleChanceAwayPct: clamp(normalizedPct.awayPct + normalizedPct.drawPct, 0, 100),
+    edgeScore,
+    confidenceReason: parsed.confidenceReason || null,
+    modelVersion: parsed.modelVersion || "ai-v2",
     momentum: parsed.momentum || null,
     danger: parsed.danger || null,
     riskLevel,
@@ -2174,6 +2184,12 @@ function normalizeAiProviderError(error) {
 }
 
 function toNum(v) {
+  if (typeof v === "number") return Number.isFinite(v) ? v : 0;
+  if (typeof v === "string") {
+    const cleaned = v.replace(/,/g, ".").replace(/[^\d.-]/g, "").trim();
+    const n = Number(cleaned);
+    return Number.isFinite(n) ? n : 0;
+  }
   const n = Number(v);
   return Number.isFinite(n) ? n : 0;
 }
@@ -2207,23 +2223,54 @@ function deterministicPrediction(payload) {
   const homeGkSaves = toNum(homeStats.goalkeeper_saves);
   const awayGkSaves = toNum(awayStats.goalkeeper_saves);
 
-  const scoreEdge = (homeScore - awayScore) * 22;
-  const shotEdge = (homeShots - awayShots) * 1.8;
-  const sotEdge = (homeSot - awaySot) * 4.2;
-  const possEdge = (homePoss - awayPoss) * 0.25;
+  const scoreEdge = (homeScore - awayScore) * 24;
+  const shotEdge = (homeShots - awayShots) * 1.6;
+  const sotEdge = (homeSot - awaySot) * 4.8;
+  const possEdge = (homePoss - awayPoss) * 0.22;
+  const cornerEdge = (homeCorners - awayCorners) * 1.2;
+  const blockedEdge = (homeBlocked - awayBlocked) * 0.6;
+  const offsidesEdge = (awayOffsides - homeOffsides) * 0.35;
+  const savesEdge = (awayGkSaves - homeGkSaves) * 0.65;
   // Red card = numerical disadvantage (10 vs 11 players) ≈ 25 edge per card
   const cardEdge = (awayRed - homeRed) * 25;
+  const yellowEdge = (awayYellow - homeYellow) * 2.2;
+  const foulEdge = (awayFouls - homeFouls) * 0.25;
+  const attackingHome = homeShots * 0.95 + homeSot * 1.9 + homeCorners * 0.5 + homePoss * 0.07;
+  const attackingAway = awayShots * 0.95 + awaySot * 1.9 + awayCorners * 0.5 + awayPoss * 0.07;
+  const attackingEdge = (attackingHome - attackingAway) * 0.35;
+
+  const events = Array.isArray(payload?.events) ? payload.events : [];
+  const homeTag = String(payload?.homeTeam || "").toLowerCase();
+  const awayTag = String(payload?.awayTeam || "").toLowerCase();
+  let eventEdge = 0;
+  for (const event of events.slice(0, 40)) {
+    const joined = `${event?.type || ""} ${event?.detail || ""} ${event?.text || ""}`.toLowerCase();
+    const isCard = /red|second yellow|penalty miss|own goal/.test(joined);
+    const isPositive = /goal|penalty scored|big chance|shot on target/.test(joined);
+    const toHome = homeTag && joined.includes(homeTag);
+    const toAway = awayTag && joined.includes(awayTag);
+    const weight = isCard ? 10 : isPositive ? 6 : 2;
+    if (toHome && !toAway) eventEdge += weight;
+    else if (toAway && !toHome) eventEdge -= weight;
+  }
+
+  const gamePhaseMultiplier = minute >= 75 ? 1.22 : minute >= 45 ? 1.08 : 1;
   // Home advantage baseline (+8 edge when no stats/score available)
   const noStatsAtAll = !homeScore && !awayScore && !homeShots && !awayShots && !homeSot && !awaySot && !homePoss && !awayPoss;
   const homeAdvantage = noStatsAtAll ? 8 : 0;
-  const rawEdge = scoreEdge + shotEdge + sotEdge + possEdge + cardEdge + homeAdvantage;
+  const rawEdge = (
+    scoreEdge + shotEdge + sotEdge + possEdge + cornerEdge + blockedEdge +
+    offsidesEdge + savesEdge + cardEdge + yellowEdge + foulEdge + attackingEdge +
+    eventEdge + homeAdvantage
+  ) * gamePhaseMultiplier;
 
   const sigmoid = (x) => 1 / (1 + Math.exp(-x / 20));
   const baseHome = sigmoid(rawEdge);
   const baseAway = 1 - baseHome;
 
-  let drawPct = Math.max(8, 28 - Math.abs(rawEdge) * 0.35);
+  let drawPct = Math.max(8, 30 - Math.abs(rawEdge) * 0.32);
   if (minute >= 75 && Math.abs(homeScore - awayScore) === 0) drawPct += 8;
+  if (minute >= 80 && Math.abs(homeScore - awayScore) >= 2) drawPct -= 5;
   drawPct = Math.min(45, drawPct);
 
   let homePct = Math.max(5, Math.round(baseHome * (100 - drawPct)));
@@ -2238,11 +2285,18 @@ function deterministicPrediction(payload) {
   if (homePct > awayPct && homePct > drawPct) prediction = "Home Win";
   else if (awayPct > homePct && awayPct > drawPct) prediction = "Away Win";
 
-  const confidence = Math.max(homePct, awayPct, drawPct);
+  const confidenceBase = Math.max(homePct, awayPct, drawPct);
+  const statVolume = homeShots + awayShots + homeSot + awaySot + homeCorners + awayCorners;
+  const confidenceBoost = clamp(Math.round(statVolume / 6), 0, 8);
+  const confidence = clamp(confidenceBase + confidenceBoost, 35, 95);
 
   const hasXgInputs = (homeShots + awayShots + homeSot + awaySot) > 0;
-  const xgHome = hasXgInputs ? Number((Math.max(0, homeShots * 0.08 + homeSot * 0.22)).toFixed(2)) : null;
-  const xgAway = hasXgInputs ? Number((Math.max(0, awayShots * 0.08 + awaySot * 0.22)).toFixed(2)) : null;
+  const xgHome = hasXgInputs
+    ? Number((Math.max(0, homeShots * 0.075 + homeSot * 0.24 + homeCorners * 0.018)).toFixed(2))
+    : null;
+  const xgAway = hasXgInputs
+    ? Number((Math.max(0, awayShots * 0.075 + awaySot * 0.24 + awayCorners * 0.018)).toFixed(2))
+    : null;
 
   const predictedHome = xgHome == null ? homeScore : Math.max(homeScore, xgToGoals(xgHome) + (minute > 70 ? 0 : 0));
   const predictedAway = xgAway == null ? awayScore : Math.max(awayScore, xgToGoals(xgAway) + (minute > 70 ? 0 : 0));
@@ -2256,8 +2310,8 @@ function deterministicPrediction(payload) {
   if (minute) keyFactors.push(`Wedstrijdminuut ${minute}`);
 
   const tacticalNotes = [];
-  if (homeRed > 0) tacticalNotes.push(`Thuisploeg speelt met ${11 - homeRed} man door rode kaart.`);
-  if (awayRed > 0) tacticalNotes.push(`Uitploeg speelt met ${11 - awayRed} man door rode kaart.`);
+  if (homeRed > 0) tacticalNotes.push(`Thuisploeg speelt met ${Math.max(7, 11 - homeRed)} man door rode kaart.`);
+  if (awayRed > 0) tacticalNotes.push(`Uitploeg speelt met ${Math.max(7, 11 - awayRed)} man door rode kaart.`);
   if (Math.abs(homeSot - awaySot) >= 2) {
     tacticalNotes.push(homeSot > awaySot ? "Thuisploeg creëert de grootste kansen." : "Uitploeg creëert de grootste kansen.");
   }
@@ -2286,6 +2340,22 @@ function deterministicPrediction(payload) {
     nextGoalProbability = Math.max(5, rawProb);
   }
 
+  const over25Pct = hasXgInputs && xgHome != null && xgAway != null
+    ? clamp(Math.round(((xgHome + xgAway) / 3.2) * 100), 8, 92)
+    : clamp(Math.round(40 + (homeShots + awayShots) * 1.5 + (homeSot + awaySot) * 2), 8, 90);
+
+  const bothTeamsToScorePct = hasXgInputs && xgHome != null && xgAway != null
+    ? clamp(Math.round((Math.min(xgHome, xgAway) / Math.max(0.7, Math.max(xgHome, xgAway))) * 100 * 0.85), 10, 88)
+    : clamp(Math.round(35 + Math.min(homeSot, awaySot) * 9), 10, 85);
+
+  const confidenceReason = confidence >= 72
+    ? "Sterke statistische voorsprong in score, kansen en momentum."
+    : confidence >= 58
+      ? "Meerdere signalen wijzen in dezelfde richting, maar met wedstrijdrisico."
+      : "Wedstrijdbeeld is volatiel; uitkomst blijft open.";
+
+  const edgeScore = clamp(Math.round(Math.abs(rawEdge)), 0, 100);
+
   return {
     prediction,
     confidence,
@@ -2293,19 +2363,28 @@ function deterministicPrediction(payload) {
     homePct,
     drawPct,
     awayPct,
+    bothTeamsToScorePct,
+    over25Pct,
+    doubleChanceHomePct: clamp(homePct + drawPct, 0, 100),
+    doubleChanceAwayPct: clamp(awayPct + drawPct, 0, 100),
+    edgeScore,
+    confidenceReason,
+    modelVersion: "fallback-v2.2",
     xgHome,
     xgAway,
     nextGoalProbability,
     momentum: homePct > awayPct ? "Home" : awayPct > homePct ? "Away" : "Balanced",
     danger: homeSot > awaySot ? "Home Attack" : awaySot > homeSot ? "Away Attack" : "Balanced",
-    riskLevel: confidence >= 65 ? "Low" : confidence >= 52 ? "Medium" : "High",
-    summary: "Analyse op basis van live score en wedstrijdstatistieken (provider-onafhankelijke fallback).",
+    riskLevel: confidence >= 70 ? "Low" : confidence >= 56 ? "Medium" : "High",
+    summary: "Analyse op basis van live score, schotkwaliteit, kaarten, event-impact en momentum (provider-onafhankelijke fallback).",
     keyFactors,
     tacticalNotes,
     h2hSummary: null,
     formHome: null,
     formAway: null,
-    tip: prediction === "Draw" ? "Gelijkspel blijft plausibel; let op late kansen." : `${prediction === "Home Win" ? "Thuisploeg" : "Uitploeg"} heeft statistisch voordeel op dit moment.`,
+    tip: prediction === "Draw"
+      ? "Gelijkspel blijft plausibel; overweeg een voorzichtige live-benadering met focus op late fases."
+      : `${prediction === "Home Win" ? "Thuisploeg" : "Uitploeg"} heeft statistisch voordeel; monitor kaarten en omschakelmomenten.`,
     source: "fallback-stats",
     updatedAt: new Date().toISOString(),
     insufficientData: !hasXgInputs,
@@ -2346,7 +2425,7 @@ async function aiPredictMatch(payload) {
   const user = {
     role: "user",
     content:
-      "Analyseer deze voetbalwedstrijd grondig op basis van de onderstaande data.\n\nREGELS:\n- Gebruik de aangeleverde data als primaire bron\n- Rode kaarten hebben grote impact op de uitkomst (numeriek nadeel)\n- Als events beschikbaar zijn: analyseer doelpunten, kaarten en momenten\n- Voor formHome/formAway en h2hSummary: gebruik je algemene voetbalkennis als de data ontbreekt (teams in bekende competities hebben een trackrecord)\n- Gele kaarten verhogen riskLevel\n- Geef thuisploeg licht voordeel bij gelijke kansen\n\nOutput ALLEEN geldig JSON met EXACT deze keys:\n- prediction: \"Home Win\" | \"Away Win\" | \"Draw\"\n- confidence: 0-100\n- predictedScore: \"X-Y\"\n- homePct: 0-100\n- drawPct: 0-100\n- awayPct: 0-100 (som = 100)\n- xgHome: decimaal of null\n- xgAway: decimaal of null\n- nextGoalProbability: kans op doelpunt komende 15 min (0-100) of null\n- summary: tactische analyse 2-3 zinnen in het Nederlands (vermeld rode kaarten/events indien aanwezig)\n- keyFactors: array max 4 strings (meest impactvolle factoren: score, kaarten, schoten, momentum)\n- tacticalNotes: array max 3 strings in het Nederlands\n- momentum: \"Home\" | \"Away\" | \"Balanced\"\n- danger: \"Home Attack\" | \"Away Attack\" | \"Balanced\"\n- riskLevel: \"Low\" | \"Medium\" | \"High\" (hoog bij rode kaarten of veel gele kaarten)\n- tip: scherpe wedtip 1 zin Nederlands\n- h2hSummary: onderlinge duels samenvatting (gebruik algemene kennis als data ontbreekt) of null\n- formHome: recentste 5 resultaten thuisploeg bijv \"WWDLL\" (gebruik algemene kennis) of null\n- formAway: recentste 5 resultaten uitploeg bijv \"LWWDL\" (gebruik algemene kennis) of null\n\nINPUT:\n" +
+        "Analyseer deze voetbalwedstrijd grondig op basis van de onderstaande data.\n\nREGELS:\n- Gebruik de aangeleverde data als primaire bron\n- Rode kaarten hebben grote impact op de uitkomst (numeriek nadeel)\n- Als events beschikbaar zijn: analyseer doelpunten, kaarten en momenten\n- Voor formHome/formAway en h2hSummary: gebruik je algemene voetbalkennis als de data ontbreekt (teams in bekende competities hebben een trackrecord)\n- Gele kaarten verhogen riskLevel\n- Geef thuisploeg licht voordeel bij gelijke kansen\n\nOutput ALLEEN geldig JSON met minimaal deze keys (extra velden zijn toegestaan):\n- prediction: \"Home Win\" | \"Away Win\" | \"Draw\"\n- confidence: 0-100\n- predictedScore: \"X-Y\"\n- homePct: 0-100\n- drawPct: 0-100\n- awayPct: 0-100 (som = 100)\n- xgHome: decimaal of null\n- xgAway: decimaal of null\n- nextGoalProbability: kans op doelpunt komende 15 min (0-100) of null\n- bothTeamsToScorePct: 0-100\n- over25Pct: 0-100\n- edgeScore: 0-100\n- confidenceReason: 1 korte zin\n- summary: tactische analyse 2-3 zinnen in het Nederlands (vermeld rode kaarten/events indien aanwezig)\n- keyFactors: array max 4 strings (meest impactvolle factoren: score, kaarten, schoten, momentum)\n- tacticalNotes: array max 3 strings in het Nederlands\n- momentum: \"Home\" | \"Away\" | \"Balanced\"\n- danger: \"Home Attack\" | \"Away Attack\" | \"Balanced\"\n- riskLevel: \"Low\" | \"Medium\" | \"High\" (hoog bij rode kaarten of veel gele kaarten)\n- tip: scherpe wedtip 1 zin Nederlands\n- h2hSummary: onderlinge duels samenvatting (gebruik algemene kennis als data ontbreekt) of null\n- formHome: recentste 5 resultaten thuisploeg bijv \"WWDLL\" (gebruik algemene kennis) of null\n- formAway: recentste 5 resultaten uitploeg bijv \"LWWDL\" (gebruik algemene kennis) of null\n\nINPUT:\n" +
       JSON.stringify(payload, null, 2),
   };
 
