@@ -336,8 +336,46 @@ function formatTime(secs: number): string {
   return `${m}:${String(s).padStart(2, "0")}`;
 }
 
-// Finds the first <video> element in the top frame or any same-origin iframe
-const FIND_VIDEO_JS = `(function(){var v=document.querySelector('video');if(!v){var fs=document.querySelectorAll('iframe');for(var i=0;i<fs.length;i++){try{var iv=fs[i].contentDocument&&fs[i].contentDocument.querySelector('video');if(iv){v=iv;break;}}catch(e){}}}return v;})()`;
+// ─── Embed player control scripts ─────────────────────────────────────────────
+// Finds video in top frame or same-origin iframes (cross-origin iframes are blocked by browser)
+const FIND_VIDEO_FN = `function _fv(){var v=document.querySelector("video");if(!v){var fs=document.querySelectorAll("iframe");for(var i=0;i<fs.length;i++){try{var d=fs[i].contentDocument||(fs[i].contentWindow&&fs[i].contentWindow.document);var iv=d&&d.querySelector("video");if(iv){v=iv;break;}}catch(e){}}}return v;}`;
+
+// Strategy order: 1) direct video  2) postMessage to iframes  3) spacebar keyboard sim
+const EMBED_TOGGLE_JS = `(function(){${FIND_VIDEO_FN}
+  var v=_fv();
+  if(v){if(v.paused)v.play().catch(function(){});else v.pause();return;}
+  var frs=[];try{frs=Array.from(window.frames);}catch(e){}
+  frs.forEach(function(f){
+    try{f.postMessage({action:"pause"},"*");}catch(e){}
+    try{f.postMessage({type:"pause"},"*");}catch(e){}
+    try{f.postMessage({event:"command",func:"pauseVideo"},"*");}catch(e){}
+    try{f.postMessage(JSON.stringify({action:"pause"}),"*");}catch(e){}
+  });
+  try{
+    document.dispatchEvent(new KeyboardEvent("keydown",{key:" ",code:"Space",keyCode:32,which:32,bubbles:true,cancelable:true}));
+    document.dispatchEvent(new KeyboardEvent("keyup",{key:" ",code:"Space",keyCode:32,which:32,bubbles:true}));
+  }catch(e){}
+})()`;
+
+function buildEmbedSeekJS(delta: number): string {
+  const key = delta > 0 ? "ArrowRight" : "ArrowLeft";
+  const kc  = delta > 0 ? 39 : 37;
+  // Most players move 5 s per arrow key press; repeat to reach target delta
+  const reps = Math.max(1, Math.round(Math.abs(delta) / 5));
+  return `(function(){${FIND_VIDEO_FN}
+  var v=_fv();
+  if(v&&isFinite(v.currentTime)){v.currentTime=Math.max(0,v.currentTime+${delta});return;}
+  var frs=[];try{frs=Array.from(window.frames);}catch(e){}
+  frs.forEach(function(f){
+    try{f.postMessage({action:"seek",offset:${delta}},"*");}catch(e){}
+    try{f.postMessage({type:"seek",seconds:${delta}},"*");}catch(e){}
+  });
+  for(var i=0;i<${reps};i++){
+    try{document.dispatchEvent(new KeyboardEvent("keydown",{key:"${key}",code:"${key}",keyCode:${kc},which:${kc},bubbles:true,cancelable:true}));}catch(e){}
+    try{document.dispatchEvent(new KeyboardEvent("keyup",{key:"${key}",code:"${key}",keyCode:${kc},which:${kc},bubbles:true}));}catch(e){}
+  }
+})()`;
+}
 
 // ─── Main component ───────────────────────────────────────────────────────────
 export default function PlayerScreen() {
@@ -436,13 +474,13 @@ export default function PlayerScreen() {
   }, []);
 
   const embedTogglePlay = useCallback(() => {
-    embedInject(`(function(){var v=${FIND_VIDEO_JS};if(v){if(v.paused)v.play().catch(function(){});else v.pause();};})()`);
+    embedInject(EMBED_TOGGLE_JS);
     SafeHaptics.impactLight();
     showControls();
   }, [embedInject, showControls]);
 
   const embedSeekRelative = useCallback((delta: number) => {
-    embedInject(`(function(){var v=${FIND_VIDEO_JS};if(v&&isFinite(v.currentTime))v.currentTime=Math.max(0,(v.currentTime||0)+${delta});})()`);
+    embedInject(buildEmbedSeekJS(delta));
     SafeHaptics.impactLight();
     showControls();
   }, [embedInject, showControls]);
