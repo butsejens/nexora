@@ -2,7 +2,7 @@ import React, { useState, useCallback, useEffect, useMemo, useRef } from "react"
 import {
   View, Text, StyleSheet, ScrollView, FlatList,
   RefreshControl, Platform, TouchableOpacity, TextInput, Alert,
-  Image, useWindowDimensions } from "react-native";
+  Image, useWindowDimensions, Animated } from "react-native";
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -364,12 +364,13 @@ export default function SportsScreen() {
   const [selectedCountryCode, setSelectedCountryCode] = useState<string>(COUNTRY_COMPETITIONS[0]?.countryCode || "BE");
   const [selectedDate, setSelectedDate] = useState<string>(todayUTC());
   const [loadingGuardReached, setLoadingGuardReached] = useState(false);
-  const [showTopFilters, setShowTopFilters] = useState(true);
   const [matchSubscriptions, setMatchSubscriptions] = useState<Record<string, MatchSubscription>>({});
   const subscriptionsRef = useRef<Record<string, MatchSubscription>>({});
   const matchSnapshotsRef = useRef<Record<string, MatchSnapshot>>({});
   const notificationCooldownRef = useRef<Record<string, number>>({});
   const lastScrollYRef = useRef(0);
+  const showFiltersRef = useRef(true);
+  const filterAnim = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
     let active = true;
@@ -562,16 +563,21 @@ export default function SportsScreen() {
     lastScrollYRef.current = nextY;
 
     if (nextY < 8) {
-      if (!showTopFilters) setShowTopFilters(true);
+      if (!showFiltersRef.current) {
+        showFiltersRef.current = true;
+        Animated.timing(filterAnim, { toValue: 1, duration: 160, useNativeDriver: false }).start();
+      }
       return;
     }
 
-    if (delta > 6 && showTopFilters) {
-      setShowTopFilters(false);
-    } else if (delta < -6 && !showTopFilters) {
-      setShowTopFilters(true);
+    if (delta > 6 && showFiltersRef.current) {
+      showFiltersRef.current = false;
+      Animated.timing(filterAnim, { toValue: 0, duration: 160, useNativeDriver: false }).start();
+    } else if (delta < -6 && !showFiltersRef.current) {
+      showFiltersRef.current = true;
+      Animated.timing(filterAnim, { toValue: 1, duration: 160, useNativeDriver: false }).start();
     }
-  }, [showTopFilters]);
+  }, [filterAnim]);
 
   const handleMatchPress = (match: any) => {
     router.push({
@@ -795,8 +801,11 @@ export default function SportsScreen() {
       {/* Date selector */}
       <DateSelector date={selectedDate} onDateChange={setSelectedDate} />
 
-      {showTopFilters && (
-        <>
+      <Animated.View style={{
+        overflow: "hidden",
+        opacity: filterAnim,
+        maxHeight: filterAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 96] }),
+      }}>
           {/* Status Filter */}
           <View style={styles.statusFilter}>
             {(["all", "live", "upcoming"] as const).map(f => (
@@ -831,8 +840,7 @@ export default function SportsScreen() {
               </TouchableOpacity>
             ))}
           </ScrollView>
-        </>
-      )}
+      </Animated.View>
 
       <ScrollView
         style={styles.scroll}

@@ -336,6 +336,9 @@ function formatTime(secs: number): string {
   return `${m}:${String(s).padStart(2, "0")}`;
 }
 
+// Finds the first <video> element in the top frame or any same-origin iframe
+const FIND_VIDEO_JS = `(function(){var v=document.querySelector('video');if(!v){var fs=document.querySelectorAll('iframe');for(var i=0;i<fs.length;i++){try{var iv=fs[i].contentDocument&&fs[i].contentDocument.querySelector('video');if(iv){v=iv;break;}}catch(e){}}}return v;})()`;
+
 // ─── Main component ───────────────────────────────────────────────────────────
 export default function PlayerScreen() {
   const {
@@ -426,6 +429,23 @@ export default function PlayerScreen() {
   const hlsSeekTo = useCallback((time: number) => {
     hlsInject(`(function(){ var v=document.getElementById('v'); if(v){ v.currentTime=${time}; } })()`);
   }, [hlsInject]);
+
+  // ── Embed control commands (JS-injected, works for same-origin iframes) ──
+  const embedInject = useCallback((js: string) => {
+    embedWebviewRef.current?.injectJavaScript(`${js};true;`);
+  }, []);
+
+  const embedTogglePlay = useCallback(() => {
+    embedInject(`(function(){var v=${FIND_VIDEO_JS};if(v){if(v.paused)v.play().catch(function(){});else v.pause();};})()`);
+    SafeHaptics.impactLight();
+    showControls();
+  }, [embedInject, showControls]);
+
+  const embedSeekRelative = useCallback((delta: number) => {
+    embedInject(`(function(){var v=${FIND_VIDEO_JS};if(v&&isFinite(v.currentTime))v.currentTime=Math.max(0,(v.currentTime||0)+${delta});})()`);
+    SafeHaptics.impactLight();
+    showControls();
+  }, [embedInject, showControls]);
 
   const handleHlsMessage = useCallback((event: any) => {
     try {
@@ -689,27 +709,17 @@ export default function PlayerScreen() {
         )}
       </View>
 
-      {/* ─── Full-screen interceptor — only for HLS/direct streams ────────────
-          For embed players the user needs to interact freely with the WebView,
-          so we only intercept taps in HLS mode to bring back the overlay.
+      {/* ─── Full-screen interceptor — HLS and embed modes ──────────────────
+          Intercepts all taps when controls are hidden:
+          - HLS: shows overlay controls
+          - Embed: shows controls AND prevents ad tap-throughs
       ─────────────────────────────────────────────────────────────────────── */}
-      {hlsHtml && Platform.OS !== "web" && !controlsVisible && (
+      {(hlsHtml || embedUrl) && Platform.OS !== "web" && !controlsVisible && (
         <TouchableOpacity
           style={styles.hlsTouchScreen}
           onPress={showControls}
           activeOpacity={1}
         />
-      )}
-
-      {/* Persistent mini back button for embed mode (when controls are hidden) */}
-      {embedUrl && !hlsHtml && Platform.OS !== "web" && !controlsVisible && (
-        <TouchableOpacity
-          style={styles.embedMiniBack}
-          onPress={() => { SafeHaptics.impactLight(); showControls(); }}
-          activeOpacity={0.8}
-        >
-          <Ionicons name="chevron-down" size={20} color="#fff" />
-        </TouchableOpacity>
       )}
 
       {/* ─── Controls overlay ─────────────────────────────────────────────── */}
@@ -773,6 +783,25 @@ export default function PlayerScreen() {
             </TouchableOpacity>
 
             <TouchableOpacity style={styles.hlsSkipBtn} onPress={() => hlsSeekRelative(15)}>
+              <Ionicons name="play-forward" size={26} color="#fff" />
+              <Text style={styles.hlsSkipLabel}>15</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {/* Embed center controls: skip-back | play-pause | skip-forward */}
+        {embedUrl && !hlsHtml && Platform.OS !== "web" && (
+          <View style={styles.hlsCenterRow}>
+            <TouchableOpacity style={styles.hlsSkipBtn} onPress={() => embedSeekRelative(-15)}>
+              <Ionicons name="play-back" size={26} color="#fff" />
+              <Text style={styles.hlsSkipLabel}>15</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.hlsPlayBtn} onPress={embedTogglePlay}>
+              <Ionicons name="pause" size={46} color="#fff" />
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.hlsSkipBtn} onPress={() => embedSeekRelative(15)}>
               <Ionicons name="play-forward" size={26} color="#fff" />
               <Text style={styles.hlsSkipLabel}>15</Text>
             </TouchableOpacity>
