@@ -11,3 +11,7 @@ scripts/
 
 # Git hooks
 .githooks/
+
+# Placeholder native projecten (EAS genereert zelf via expo prebuild)
+app/android/
+app/ios/
