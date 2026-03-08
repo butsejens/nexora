@@ -1,0 +1,18 @@
+#!/bin/sh
+
+if [ "$NEXORA_DISABLE_AUTO_RELEASE" = "1" ]; then
+  exit 0
+fi
+
+if [ "$NEXORA_AUTO_RELEASE_RUNNING" = "1" ]; then
+  exit 0
+fi
+
+last_msg=$(git log -1 --pretty=%s)
+echo "$last_msg" | grep -q "\[auto-release\]" && exit 0
+
+echo "[nexora] Auto-release gestart na commit..."
+NEXORA_AUTO_RELEASE_RUNNING=1 node scripts/auto-release.mjs || {
+  echo "[nexora] Auto-release mislukt. Zet uit met NEXORA_DISABLE_AUTO_RELEASE=1"
+  exit 0
+}

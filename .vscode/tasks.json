@@ -1,0 +1,27 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Start Nexora App",
+			"type": "shell",
+			"command": "npm",
+			"args": [
+				"run",
+				"app"
+			],
+			"isBackground": true,
+			"group": "build"
+		},
+		{
+			"label": "Start Nexora Dev",
+			"type": "shell",
+			"command": "npm",
+			"args": [
+				"run",
+				"dev"
+			],
+			"isBackground": true,
+			"group": "build"
+		}
+	]
+}

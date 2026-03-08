@@ -1,0 +1,36 @@
+services:
+  - type: web
+    name: nexora-api
+    runtime: node
+    rootDir: server
+    plan: free
+    autoDeploy: true
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: NODE_VERSION
+        value: 20
+      - key: APP_TZ
+        value: Europe/Brussels
+      - key: PORT
+        value: 8080
+      - key: ZILLIZ_URI
+        value: https://in03-17db1096462d89d.serverless.aws-eu-central-1.cloud.zilliz.com
+      - key: ZILLIZ_API_KEY
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false
+      - key: GROQ_MODEL
+        value: llama-3.3-70b-versatile
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: OPENROUTER_API_KEY
+        sync: false
+      - key: TMDB_API_KEY
+        value: 090a34f37141e9fab2e8007a1eb27465
+      - key: APIFY_TOKEN
+        sync: false
+      - key: APIFY_SOFASCORE_ACTOR
+        value: azzouzana/sofascore-scraper-pro
+      - key: APIFY_TRANSFERMARKT_ACTOR
+        value: data_xplorer/transfermarkt-api-scraper
