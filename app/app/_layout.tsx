@@ -258,15 +258,7 @@ export default function RootLayout() {
           }
         };
 
-        Alert.alert(
-          "Update beschikbaar",
-          `Nexora ${data.version} is klaar.\nUpdate nu voor de nieuwste functies en bugfixes.`,
-          [
-            { text: "Straks", style: "cancel" },
-            { text: "Update nu", onPress: doInstall },
-          ],
-          { cancelable: true }
-        );
+        // Popup melding uitgeschakeld: update wordt niet getoond.
       } catch {}
     };
 
