@@ -258,7 +258,15 @@ export default function RootLayout() {
           }
         };
 
-        // Popup melding uitgeschakeld: update wordt niet getoond.
+        Alert.alert(
+          "Update beschikbaar",
+          `Nexora ${data.version} is klaar.\nDownload de nieuwste versie via:\n${data.apkUrl || 'Geen link beschikbaar'}`,
+          [
+            { text: "Straks", style: "cancel" },
+            { text: "Download", onPress: doInstall },
+          ],
+          { cancelable: true }
+        );
       } catch {}
     };
 
