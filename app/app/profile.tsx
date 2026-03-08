@@ -30,6 +30,15 @@ import { SafeHaptics } from "@/lib/safeHaptics";
 
 const CHANGELOG: { version: string; date: string; changes: string[] }[] = [
   {
+    version: "2.0.36",
+    date: "2026-03-08",
+    changes: [
+      "Server URL gecorrigeerd naar Render cloudserver (verbindingsprobleem opgelost)",
+      "Update-check altijd via server + OTA gecombineerd (popup en manuele check)",
+      "Server versiebestand bijgewerkt naar correcte versie",
+    ],
+  },
+  {
     version: "2.0.4",
     date: "2026-03-08",
     changes: [
@@ -204,25 +213,31 @@ function UpdateModal({
     setChecking(true);
     setStatus("idle");
     try {
-      // For manually distributed APKs, expo-updates OTA is not available.
-      // Instead, check our own server for a newer version.
-      if (__DEV__ || !Updates.isEnabled) {
-        const res = await apiRequest("GET", "/api/app-version");
-        const data = await res.json() as { version: string; apkUrl: string };
-        if (compareVersions(data.version, currentVersion) > 0) {
-          setApkUrl(data.apkUrl);
-          setStatus("update");
-        } else {
-          setStatus("uptodate");
-        }
-        return;
+      // Always check server for the latest APK version
+      const res = await apiRequest("GET", "/api/app-version");
+      const data = await res.json() as { version: string; apkUrl: string };
+      const hasNewerApk = compareVersions(data.version, currentVersion) > 0;
+
+      // Try OTA path first (works for both EAS and non-dev builds)
+      if (!__DEV__ && Updates.isEnabled) {
+        try {
+          const update = await Updates.checkForUpdateAsync();
+          if (update.isAvailable) {
+            setStatus("downloading");
+            await Updates.fetchUpdateAsync();
+            setStatus("ready");
+            return;
+          }
+        } catch {}
       }
-      // EAS OTA path (when running via Expo Go / EAS Update)
-      const update = await Updates.checkForUpdateAsync();
-      if (!update.isAvailable) { setStatus("uptodate"); return; }
-      setStatus("downloading");
-      await Updates.fetchUpdateAsync();
-      setStatus("ready");
+
+      // No OTA update available — check server APK
+      if (hasNewerApk) {
+        setApkUrl(data.apkUrl);
+        setStatus("update");
+      } else {
+        setStatus("uptodate");
+      }
     } catch {
       setStatus("uptodate");
     } finally {
