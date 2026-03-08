@@ -30,6 +30,14 @@ import { SafeHaptics } from "@/lib/safeHaptics";
 
 const CHANGELOG: { version: string; date: string; changes: string[] }[] = [
   {
+    version: "2.0.37",
+    date: "2026-03-09",
+    changes: [
+      "Film/serie speler crash na 5 seconden opgelost (removeChild fout)",
+      "Ad-blocker minder agressief: debounce op DOM-observatie, stopt zodra video speelt",
+    ],
+  },
+  {
     version: "2.0.36",
     date: "2026-03-08",
     changes: [
