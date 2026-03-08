@@ -224,7 +224,7 @@ const AD_BLOCK_JS = `
   window.prompt = function(){ return ''; };
   var _swallowRemoveChildError = function(msg){
     var text = String(msg || '').toLowerCase();
-    return text.includes('removechild') && text.includes('node');
+    return text.includes('removechild') || text.includes('notfounderror') || text.includes('not a child') || text.includes('hierarchyrequesterror');
   };
   window.onerror = function(message){
     if (_swallowRemoveChildError(message)) return true;
@@ -468,7 +468,11 @@ const AD_BLOCK_JS = `
 
   if(document.readyState !== 'loading'){ removeAds(); }
   else{ document.addEventListener('DOMContentLoaded', removeAds); }
-  var _adObs = new MutationObserver(function(){ removeAds(); });
+  var _obs_timer = null;
+  var _adObs = new MutationObserver(function(){
+    clearTimeout(_obs_timer);
+    _obs_timer = setTimeout(removeAds, 300);
+  });
   setTimeout(function(){
     _adObs.observe(document.documentElement||document.body||document, {childList:true, subtree:true});
   }, 100);
@@ -476,8 +480,8 @@ const AD_BLOCK_JS = `
   var _cleanInterval = setInterval(function(){
     removeAds();
     _cleanCount++;
-    if(_cleanCount > 60) clearInterval(_cleanInterval);
-  }, 500);
+    if(_cleanCount > 20 || _videoFound) clearInterval(_cleanInterval);
+  }, 1000);
 
   // ── 6. Auto-play: click play button + start video ────────────────────
   function tryAutoPlay(){
@@ -978,7 +982,7 @@ export default function PlayerScreen() {
           onLoad={() => { setIsLoading(false); setStreamError(null); }}
           onError={(event) => {
             const msg = String(event?.nativeEvent?.description || "");
-            if (/removechild.*node/i.test(msg)) {
+            if (/removechild|notfounderror|not a child|hierarchyrequesterror/i.test(msg)) {
               setIsLoading(false);
               return;
             }
@@ -1021,7 +1025,7 @@ export default function PlayerScreen() {
           onLoadEnd={() => { injectEmbedAutoplay(); }}
           onError={(event) => {
             const msg = String(event?.nativeEvent?.description || "");
-            if (/removechild.*node/i.test(msg)) {
+            if (/removechild|notfounderror|not a child|hierarchyrequesterror/i.test(msg)) {
               setIsLoading(false);
               return;
             }
