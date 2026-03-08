@@ -1,8 +1,8 @@
 import React from "react";
 import { View, Text, StyleSheet, TouchableOpacity } from "react-native";
-import { COLORS } from "@/constants/colors";
-import type { Server } from "@/components/MatchCard";
-import { SafeHaptics } from "@/lib/safeHaptics";
+import { COLORS } from "../constants/colors";
+import type { Server } from "./MatchCard";
+import { SafeHaptics } from "../lib/safeHaptics";
 
 interface Props {
   servers: Server[];

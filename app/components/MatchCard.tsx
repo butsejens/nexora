@@ -9,10 +9,10 @@ import {
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { MaterialCommunityIcons, Ionicons } from "@expo/vector-icons";
-import { COLORS } from "@/constants/colors";
-import { LiveBadge } from "@/components/LiveBadge";
-import { SafeHaptics } from "@/lib/safeHaptics";
-import { getInitials, getLeagueLogo, resolveTeamLogoUri } from "@/lib/logo-manager";
+import { COLORS } from "../constants/colors";
+import { LiveBadge } from "./LiveBadge";
+import { SafeHaptics } from "../lib/safeHaptics";
+import { getInitials, getLeagueLogo, resolveTeamLogoUri } from "../lib/logo-manager";
 
 export interface Server {
   id: string;

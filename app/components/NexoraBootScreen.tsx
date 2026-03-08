@@ -2,7 +2,7 @@ import React, { useRef, useEffect } from "react";
 import { View, Text, StyleSheet, Animated } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { BlurView } from "expo-blur";
-import { COLORS } from "@/constants/colors";
+import { COLORS } from "../constants/colors";
 
 interface Props {
   progress: number;

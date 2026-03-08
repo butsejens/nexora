@@ -6,8 +6,8 @@ import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { useQuery } from "@tanstack/react-query";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { COLORS } from "@/constants/colors";
-import { apiRequest } from "@/lib/query-client";
+import { COLORS } from "../constants/colors";
+import { apiRequest } from "../lib/query-client";
 
 const UNKNOWN = "Onbekend";
 

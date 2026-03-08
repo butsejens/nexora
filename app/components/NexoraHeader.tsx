@@ -4,7 +4,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { BlurView } from "expo-blur";
-import { COLORS } from "@/constants/colors";
+import { COLORS } from "../constants/colors";
 
 interface Props {
   title?: string;

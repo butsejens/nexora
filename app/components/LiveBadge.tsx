@@ -1,6 +1,6 @@
 import React, { useEffect, useRef } from "react";
 import { View, Text, StyleSheet, Animated } from "react-native";
-import { COLORS } from "@/constants/colors";
+import { COLORS } from "../constants/colors";
 
 interface Props {
   minute?: number;

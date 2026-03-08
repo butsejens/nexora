@@ -9,10 +9,10 @@ import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 
 import { useQuery } from "@tanstack/react-query";
-import { COLORS } from "@/constants/colors";
-import { apiRequest } from "@/lib/query-client";
-import { normalizeApiError } from "@/lib/error-messages";
-import { resolveTeamLogoUri } from "@/lib/logo-manager";
+import { COLORS } from "../constants/colors";
+import { apiRequest } from "../lib/query-client";
+import { normalizeApiError } from "../lib/error-messages";
+import { resolveTeamLogoUri } from "../lib/logo-manager";
 
 function asParam(value: string | string[] | undefined, fallback = ""): string {
   if (Array.isArray(value)) return String(value[0] || fallback);

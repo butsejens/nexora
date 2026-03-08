@@ -6,11 +6,11 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { COLORS } from "@/constants/colors";
-import { NexoraHeader } from "@/components/NexoraHeader";
-import { useNexora } from "@/context/NexoraContext";
-import { SafeHaptics } from "@/lib/safeHaptics";
-import type { DownloadedItem } from "@/context/NexoraContext";
+import { COLORS } from "../../constants/colors";
+import { NexoraHeader } from "../../components/NexoraHeader";
+import { useNexora } from "../../context/NexoraContext";
+import { SafeHaptics } from "../../lib/safeHaptics";
+import type { DownloadedItem } from "../../context/NexoraContext";
 
 function formatBytes(bytes?: number): string {
   if (!bytes) return "";

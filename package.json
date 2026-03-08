@@ -29,6 +29,7 @@
   },
   "main": "app/index.js",
   "dependencies": {
+    "expo-updates": "~29.0.16",
     "graphql": "^16.13.1"
   }
 }

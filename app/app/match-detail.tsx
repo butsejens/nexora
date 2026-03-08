@@ -9,13 +9,13 @@ import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import WebView from "react-native-webview";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { COLORS } from "@/constants/colors";
-import { LiveBadge } from "@/components/LiveBadge";
-import { SafeHaptics } from "@/lib/safeHaptics";
-import { apiRequest } from "@/lib/query-client";
-import { openInVlc } from "@/lib/vlc";
-import { TeamLogo } from "@/components/MatchCard";
-import { buildErrorReference, normalizeApiError } from "@/lib/error-messages";
+import { COLORS } from "../constants/colors";
+import { LiveBadge } from "../components/LiveBadge";
+import { SafeHaptics } from "../lib/safeHaptics";
+import { apiRequest } from "../lib/query-client";
+import { openInVlc } from "../lib/vlc";
+import { TeamLogo } from "../components/MatchCard";
+import { buildErrorReference, normalizeApiError } from "../lib/error-messages";
 
 const TABS = [
   { id: "stream", label: "Stream", icon: "play-circle-outline" },

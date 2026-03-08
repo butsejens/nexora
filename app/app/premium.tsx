@@ -7,10 +7,10 @@ import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
-import { COLORS } from "@/constants/colors";
-import { useNexora } from "@/context/NexoraContext";
-import type { PremiumCategory } from "@/context/NexoraContext";
-import { SafeHaptics } from "@/lib/safeHaptics";
+import { COLORS } from "../constants/colors";
+import { useNexora } from "../context/NexoraContext";
+import type { PremiumCategory } from "../context/NexoraContext";
+import { SafeHaptics } from "../lib/safeHaptics";
 
 type BillingCycle = "monthly" | "yearly";
 

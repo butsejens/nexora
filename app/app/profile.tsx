@@ -20,13 +20,13 @@ import * as DocumentPicker from "expo-document-picker";
 import Constants from "expo-constants";
 import * as Application from "expo-application";
 import * as Updates from "expo-updates";
-import { COLORS } from "@/constants/colors";
-import { NexoraHeader } from "@/components/NexoraHeader";
-import { useNexora } from "@/context/NexoraContext";
-import { apiRequest, queryClient } from "@/lib/query-client";
-import { fetchM3UText } from "@/lib/fetchM3U";
-import { parseM3UContentAsync } from "@/lib/parseM3U";
-import { SafeHaptics } from "@/lib/safeHaptics";
+import { COLORS } from "../constants/colors";
+import { NexoraHeader } from "../components/NexoraHeader";
+import { useNexora } from "../context/NexoraContext";
+import { apiRequest, queryClient } from "../lib/query-client";
+import { fetchM3UText } from "../lib/fetchM3U";
+import { parseM3UContentAsync } from "../lib/parseM3U";
+import { SafeHaptics } from "../lib/safeHaptics";
 
 const CHANGELOG: { version: string; date: string; changes: string[] }[] = [
   {

@@ -2,8 +2,8 @@ import React, { createContext, useContext, useState, useEffect, useMemo, ReactNo
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Platform } from "react-native";
 import * as FileSystem from "expo-file-system";
-import { parseM3UContentAsync } from "@/lib/parseM3U";
-import { fetchM3UText } from "@/lib/fetchM3U";
+import { parseM3UContentAsync } from "../lib/parseM3U";
+import { fetchM3UText } from "../lib/fetchM3U";
 
 export type PremiumCategory = "sport" | "movies" | "series" | "livetv";
 

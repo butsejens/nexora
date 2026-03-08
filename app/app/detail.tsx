@@ -10,11 +10,11 @@ import { LinearGradient } from "expo-linear-gradient";
 import { useQuery } from "@tanstack/react-query";
 import WebView from "react-native-webview";
 import * as FileSystem from "expo-file-system/legacy";
-import { COLORS } from "@/constants/colors";
-import { apiRequest } from "@/lib/query-client";
-import { useNexora } from "@/context/NexoraContext";
-import { SafeHaptics } from "@/lib/safeHaptics";
-import { buildErrorReference, normalizeApiError } from "@/lib/error-messages";
+import { COLORS } from "../constants/colors";
+import { apiRequest } from "../lib/query-client";
+import { useNexora } from "../context/NexoraContext";
+import { SafeHaptics } from "../lib/safeHaptics";
+import { buildErrorReference, normalizeApiError } from "../lib/error-messages";
 
 // ── TMDB fetch ───────────────────────────────────────────────────────────────
 async function fetchDetails(id: string, type: string) {

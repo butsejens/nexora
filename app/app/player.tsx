@@ -15,11 +15,11 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import WebView from "react-native-webview";
-import { COLORS } from "@/constants/colors";
-import { useNexora } from "@/context/NexoraContext";
-import { SafeHaptics } from "@/lib/safeHaptics";
-import { openInVlc } from "@/lib/vlc";
-import { buildErrorReference } from "@/lib/error-messages";
+import { COLORS } from "../constants/colors";
+import { useNexora } from "../context/NexoraContext";
+import { SafeHaptics } from "../lib/safeHaptics";
+import { openInVlc } from "../lib/vlc";
+import { buildErrorReference } from "../lib/error-messages";
 
 // ─── Stream providers ──────────────────────────────────────────────────────────
 const STREAM_PROVIDERS = [

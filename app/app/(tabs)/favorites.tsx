@@ -5,10 +5,10 @@ import { Ionicons } from "@expo/vector-icons";
 import { useQuery } from "@tanstack/react-query";
 import { router } from "expo-router";
 
-import { COLORS } from "@/constants/colors";
-import { NexoraHeader } from "@/components/NexoraHeader";
-import { useNexora } from "@/context/NexoraContext";
-import { apiRequest } from "@/lib/query-client";
+import { COLORS } from "../../constants/colors";
+import { NexoraHeader } from "../../components/NexoraHeader";
+import { useNexora } from "../../context/NexoraContext";
+import { apiRequest } from "../../lib/query-client";
 
 async function fetchMovieFull(id: string) {
   const res = await apiRequest("GET", `/api/movies/${id}/full`);

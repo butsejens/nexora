@@ -7,13 +7,13 @@ import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery } from "@tanstack/react-query";
-import { COLORS } from "@/constants/colors";
-import { NexoraHeader } from "@/components/NexoraHeader";
-import { useNexora } from "@/context/NexoraContext";
-import { apiRequest } from "@/lib/query-client";
-import { buildErrorReference, normalizeApiError } from "@/lib/error-messages";
-import { RealContentCard, RealHeroBanner } from "@/components/RealContentCard";
-import { SafeHaptics } from "@/lib/safeHaptics";
+import { COLORS } from "../../constants/colors";
+import { NexoraHeader } from "../../components/NexoraHeader";
+import { useNexora } from "../../context/NexoraContext";
+import { apiRequest } from "../../lib/query-client";
+import { buildErrorReference, normalizeApiError } from "../../lib/error-messages";
+import { RealContentCard, RealHeroBanner } from "../../components/RealContentCard";
+import { SafeHaptics } from "../../lib/safeHaptics";
 
 const CATEGORY_SORT: Record<string, string> = {
   trending: "popularity.desc",

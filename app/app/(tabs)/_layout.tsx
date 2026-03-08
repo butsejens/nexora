@@ -3,7 +3,7 @@ import { BlurView } from "expo-blur";
 import { Platform, StyleSheet, View } from "react-native";
 import React from "react";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
-import { COLORS } from "@/constants/colors";
+import { COLORS } from "../../constants/colors";
 
 export default function TabLayout() {
   const isWeb = Platform.OS === "web";

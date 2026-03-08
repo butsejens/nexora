@@ -3,10 +3,10 @@ import { View, Text, StyleSheet, TextInput, TouchableOpacity, Alert, Platform, S
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useLocalSearchParams, router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { COLORS } from "@/constants/colors";
-import { NexoraHeader } from "@/components/NexoraHeader";
-import { useNexora } from "@/context/NexoraContext";
-import { SafeHaptics } from "@/lib/safeHaptics";
+import { COLORS } from "../constants/colors";
+import { NexoraHeader } from "../components/NexoraHeader";
+import { useNexora } from "../context/NexoraContext";
+import { SafeHaptics } from "../lib/safeHaptics";
 
 export default function PlaylistEditScreen() {
   const insets = useSafeAreaInsets();

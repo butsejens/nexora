@@ -6,9 +6,9 @@ import {
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
-import { COLORS } from "@/constants/colors";
-import { useNexora } from "@/context/NexoraContext";
-import { SafeHaptics } from "@/lib/safeHaptics";
+import { COLORS } from "../constants/colors";
+import { useNexora } from "../context/NexoraContext";
+import { SafeHaptics } from "../lib/safeHaptics";
 
 type Tab = "groups" | "channels";
 

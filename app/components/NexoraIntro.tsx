@@ -7,7 +7,7 @@ import {
   Platform,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
-import { COLORS } from "@/constants/colors";
+import { COLORS } from "../constants/colors";
 
 
 interface Props {

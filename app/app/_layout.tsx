@@ -4,12 +4,12 @@ import * as SplashScreen from "expo-splash-screen";
 import React, { useEffect, useRef, useState } from "react";
 import { Alert, Linking } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
-import { ErrorBoundary } from "@/components/ErrorBoundary";
-import { queryClient, getApiBaseCandidates, apiRequest } from "@/lib/query-client";
-import { NexoraProvider } from "@/context/NexoraContext";
+import { ErrorBoundary } from "../components/ErrorBoundary";
+import { queryClient, getApiBaseCandidates, apiRequest } from "../lib/query-client";
+import { NexoraProvider } from "../context/NexoraContext";
 import { SafeAreaProvider } from "react-native-safe-area-context";
-import { NexoraIntro } from "@/components/NexoraIntro";
-import { NexoraBootScreen } from "@/components/NexoraBootScreen";
+import { NexoraIntro } from "../components/NexoraIntro";
+import { NexoraBootScreen } from "../components/NexoraBootScreen";
 import * as Updates from "expo-updates";
 import * as Notifications from "expo-notifications";
 import * as Application from "expo-application";
@@ -22,7 +22,7 @@ import {
   Inter_700Bold,
   Inter_800ExtraBold,
 } from "@expo-google-fonts/inter";
-import { COLORS } from "@/constants/colors";
+import { COLORS } from "../constants/colors";
 
 SplashScreen.preventAutoHideAsync();
 

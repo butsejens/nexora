@@ -6,16 +6,16 @@ import {
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { COLORS } from "@/constants/colors";
-import { NexoraHeader } from "@/components/NexoraHeader";
-import { UpcomingMatchRow, TeamLogo } from "@/components/MatchCard";
-import { SkeletonMatchCard } from "@/components/SkeletonCard";
-import { LiveBadge } from "@/components/LiveBadge";
-import { apiRequest } from "@/lib/query-client";
-import { buildErrorReference, normalizeApiError } from "@/lib/error-messages";
+import { COLORS } from "../../constants/colors";
+import { NexoraHeader } from "../../components/NexoraHeader";
+import { UpcomingMatchRow, TeamLogo } from "../../components/MatchCard";
+import { SkeletonMatchCard } from "../../components/SkeletonCard";
+import { LiveBadge } from "../../components/LiveBadge";
+import { apiRequest } from "../../lib/query-client";
+import { buildErrorReference, normalizeApiError } from "../../lib/error-messages";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
-import { getLeagueLogo } from "@/lib/logo-manager";
+import { getLeagueLogo } from "../../lib/logo-manager";
 import {
   MatchSnapshot,
   MatchSubscription,
@@ -27,7 +27,7 @@ import {
   saveMatchSnapshots,
   saveMatchSubscriptions,
   toEventHash,
-} from "@/lib/match-notifications";
+} from "../../lib/match-notifications";
 
 type SportsPayload = {
   date?: string;

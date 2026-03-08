@@ -7,11 +7,11 @@ import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
-import { COLORS } from "@/constants/colors";
-import { NexoraHeader } from "@/components/NexoraHeader";
-import { useNexora } from "@/context/NexoraContext";
-import type { IPTVChannel } from "@/context/NexoraContext";
-import { getInitials } from "@/lib/logo-manager";
+import { COLORS } from "../../constants/colors";
+import { NexoraHeader } from "../../components/NexoraHeader";
+import { useNexora } from "../../context/NexoraContext";
+import type { IPTVChannel } from "../../context/NexoraContext";
+import { getInitials } from "../../lib/logo-manager";
 
 function ChannelRow({ channel, onPress, onLongPress }: {
   channel: IPTVChannel; onPress: () => void; onLongPress: () => void;
