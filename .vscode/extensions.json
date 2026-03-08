@@ -1,0 +1,15 @@
+{
+  "recommendations": [
+    "expo.vscode-expo-tools",
+    "msjsdiag.vscode-react-native",
+    "dbaeumer.vscode-eslint",
+    "esbenp.prettier-vscode",
+    "dsznajder.es7-react-js-snippets",
+    "ms-vscode.vscode-typescript-next",
+    "christian-kohler.path-intellisense",
+    "formulahendry.auto-rename-tag",
+    "redhat.vscode-yaml",
+    "mikestead.dotenv",
+    "ms-azuretools.vscode-docker"
+  ]
+}
