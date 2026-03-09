@@ -50,7 +50,7 @@ function hasEncryptedEnvPair() {
 
 function buildAndPublishApk() {
   const androidCwd = path.join(repoRoot, "app", "android");
-  run("./gradlew assembleRelease", androidCwd);
+  run("./gradlew assembleRelease --rerun-tasks", androidCwd);
   if (!fs.existsSync(releaseApkPath)) {
     throw new Error("APK build voltooid zonder release artifact: app-release.apk ontbreekt");
   }
@@ -102,6 +102,7 @@ function main() {
     : "NEXORA_ALLOW_PLAINTEXT_ONLY=1 node ../scripts/require-macbook.mjs && NEXORA_ALLOW_PLAINTEXT_ONLY=1 node ../scripts/enforce-env-policy.mjs release";
 
   run(policyCommand, appCwd);
+  process.env.EXPO_METRO_NO_CACHE = "1";
   run(`command -v eas >/dev/null 2>&1 && eas update --branch production --message \"auto release ${nextVersion}\" --non-interactive || npx eas-cli update --branch production --message \"auto release ${nextVersion}\" --non-interactive`, appCwd);
 
   console.log(`✅ Auto release klaar: ${nextVersion}`);

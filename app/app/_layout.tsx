@@ -234,19 +234,7 @@ export default function RootLayout() {
         await new Promise(r => setTimeout(r, 1200));
 
         const doInstall = async () => {
-          // Try OTA update first (works regardless of apkUrl)
-          try {
-            if (!__DEV__ && Updates.isEnabled) {
-              const otaUpdate = await Updates.checkForUpdateAsync();
-              if (otaUpdate.isAvailable) {
-                await Updates.fetchUpdateAsync();
-                await Updates.reloadAsync();
-                return;
-              }
-            }
-          } catch {}
-
-          // Fallback: download APK if URL is provided
+          // Server reports a newer runtimeVersion → OTA cannot bridge versions, go straight to APK
           if (!data.apkUrl) { router.push("/profile"); return; }
           const normalizedUrl = String(data.apkUrl).replace(/^http:\/\//i, "https://");
           try {
