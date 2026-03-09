@@ -1136,22 +1136,34 @@ export default function SportsScreen() {
           </View>
         )}
 
-        <View style={[styles.statusFilter, { marginTop: 8 }]}> 
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={styles.viewTabsBar}
+          contentContainerStyle={styles.viewTabsContent}
+        >
           {([
-            { id: "competitions", label: "Competities" },
-            { id: "live", label: "Live" },
-            { id: "upcoming", label: "Volgende" },
-            { id: "menu", label: "Sport Menu" },
-          ] as const).map((view) => (
-            <TouchableOpacity
-              key={view.id}
-              style={[styles.statusBtn, sportsView === view.id && styles.statusBtnActive]}
-              onPress={() => setSportsView(view.id)}
-            >
-              <Text style={[styles.statusBtnText, sportsView === view.id && styles.statusBtnTextActive]}>{view.label}</Text>
-            </TouchableOpacity>
-          ))}
-        </View>
+            { id: "competitions" as const, label: "COMPETITIES", icon: "apps-outline" as const },
+            { id: "live" as const, label: "LIVE", icon: "radio-button-on-outline" as const },
+            { id: "upcoming" as const, label: "SCHEMA", icon: "calendar-outline" as const },
+            { id: "menu" as const, label: "ANALYSE", icon: "analytics-outline" as const },
+          ]).map((view) => {
+            const isActive = sportsView === view.id;
+            return (
+              <TouchableOpacity
+                key={view.id}
+                style={styles.viewTab}
+                onPress={() => setSportsView(view.id)}
+              >
+                <View style={styles.viewTabInner}>
+                  <Ionicons name={view.icon} size={14} color={isActive ? COLORS.accent : COLORS.textMuted} />
+                  <Text style={[styles.viewTabText, isActive && styles.viewTabTextActive]}>{view.label}</Text>
+                </View>
+                {isActive && <View style={styles.viewTabIndicator} />}
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
 
         {/* Hero match banner — live match first, fall back to first upcoming */}
         {(showLive || showUpcoming) && (sortedLive.length > 0 || sortedUpcoming.length > 0) && (() => {
@@ -1182,6 +1194,7 @@ export default function SportsScreen() {
                     </View>
                   )}
                 </View>
+                <Text style={styles.heroMatchDayLabel}>{isLive ? "LIVE NU" : "MATCH DAY"}</Text>
                 <View style={styles.heroTeamRow}>
                   <View style={styles.heroTeamBlock}>
                     <TeamLogo uri={hero.homeTeamLogo} teamName={hero.homeTeam} size={76} />
@@ -1362,41 +1375,15 @@ export default function SportsScreen() {
                 <Text style={styles.emptySubText}>Bekijk de geplande wedstrijden hieronder</Text>
               </View>
             ) : (
-              (() => {
-                const groups: { league: string; matches: any[] }[] = [];
-                sortedLive.slice(0, 60).forEach((m: any) => {
-                  const last = groups[groups.length - 1];
-                  if (last && last.league === m.league) { last.matches.push(m); }
-                  else { groups.push({ league: m.league, matches: [m] }); }
-                });
-                return groups.map((group, gi) => (
-                  <View key={group.league + gi + "l"}>
-                    <View style={styles.competitionGroupHeader}>
-                      {getLeagueLogo(group.league) ? (
-                        <Image
-                          source={typeof getLeagueLogo(group.league) === "number" ? getLeagueLogo(group.league) as any : { uri: getLeagueLogo(group.league) as string }}
-                          style={styles.competitionGroupLogo}
-                          resizeMode="contain"
-                        />
-                      ) : (
-                        <Ionicons name="football-outline" size={14} color={COLORS.textMuted} />
-                      )}
-                      <Text style={styles.competitionGroupName} numberOfLines={1}>{group.league}</Text>
-                      <View style={styles.competitionGroupLine} />
-                      <Text style={styles.competitionGroupCount}>{group.matches.length}</Text>
-                    </View>
-                    {group.matches.map((match: any) => (
-                      <UpcomingMatchRow
-                        key={match.id}
-                        match={match}
-                        onPress={() => handleMatchPress(match)}
-                        onToggleNotification={() => toggleMatchNotification(match)}
-                        notificationsEnabled={Boolean(matchSubscriptions[String(match?.id || "")])}
-                      />
-                    ))}
-                  </View>
-                ));
-              })()
+              sortedLive.slice(0, 60).map((match: any) => (
+                <UpcomingMatchRow
+                  key={match.id}
+                  match={match}
+                  onPress={() => handleMatchPress(match)}
+                  onToggleNotification={() => toggleMatchNotification(match)}
+                  notificationsEnabled={Boolean(matchSubscriptions[String(match?.id || "")])}
+                />
+              ))
             )}
           </View>
         )}
@@ -1423,80 +1410,28 @@ export default function SportsScreen() {
             ) : (
               <>
                 {sortedUpcoming.length > 0 && <Text style={styles.subSectionTitle}>Binnenkort</Text>}
-                {(() => {
-                  const groups: { league: string; matches: any[] }[] = [];
-                  sortedUpcoming.slice(0, 60).forEach((m: any) => {
-                    const last = groups[groups.length - 1];
-                    if (last && last.league === m.league) { last.matches.push(m); }
-                    else { groups.push({ league: m.league, matches: [m] }); }
-                  });
-                  return groups.map((group, gi) => (
-                    <View key={group.league + gi}>
-                      <View style={styles.competitionGroupHeader}>
-                        {getLeagueLogo(group.league) ? (
-                          <Image
-                            source={typeof getLeagueLogo(group.league) === "number" ? getLeagueLogo(group.league) as any : { uri: getLeagueLogo(group.league) as string }}
-                            style={styles.competitionGroupLogo}
-                            resizeMode="contain"
-                          />
-                        ) : (
-                          <Ionicons name="football-outline" size={14} color={COLORS.textMuted} />
-                        )}
-                        <Text style={styles.competitionGroupName} numberOfLines={1}>{group.league}</Text>
-                        <View style={styles.competitionGroupLine} />
-                        <Text style={styles.competitionGroupCount}>{group.matches.length}</Text>
-                      </View>
-                      {group.matches.map((match: any) => (
-                        <UpcomingMatchRow
-                          key={match.id}
-                          match={match}
-                          onPress={() => handleMatchPress(match)}
-                          onToggleNotification={() => toggleMatchNotification(match)}
-                          notificationsEnabled={Boolean(matchSubscriptions[String(match?.id || "")])}
-                        />
-                      ))}
-                    </View>
-                  ));
-                })()}
+                {sortedUpcoming.slice(0, 60).map((match: any) => (
+                  <UpcomingMatchRow
+                    key={match.id}
+                    match={match}
+                    onPress={() => handleMatchPress(match)}
+                    onToggleNotification={() => toggleMatchNotification(match)}
+                    notificationsEnabled={Boolean(matchSubscriptions[String(match?.id || "")])}
+                  />
+                ))}
 
                 {sortedFinished.length > 0 && (
                   <View style={{ marginTop: 10 }}>
                     <Text style={styles.subSectionTitle}>Afgelopen</Text>
-                    {(() => {
-                      const groups: { league: string; matches: any[] }[] = [];
-                      sortedFinished.slice(0, 60).forEach((m: any) => {
-                        const last = groups[groups.length - 1];
-                        if (last && last.league === m.league) { last.matches.push(m); }
-                        else { groups.push({ league: m.league, matches: [m] }); }
-                      });
-                      return groups.map((group, gi) => (
-                        <View key={group.league + gi + "f"}>
-                          <View style={styles.competitionGroupHeader}>
-                            {getLeagueLogo(group.league) ? (
-                              <Image
-                                source={typeof getLeagueLogo(group.league) === "number" ? getLeagueLogo(group.league) as any : { uri: getLeagueLogo(group.league) as string }}
-                                style={styles.competitionGroupLogo}
-                                resizeMode="contain"
-                              />
-                            ) : (
-                              <Ionicons name="football-outline" size={14} color={COLORS.textMuted} />
-                            )}
-                            <Text style={styles.competitionGroupName} numberOfLines={1}>{group.league}</Text>
-                            <View style={styles.competitionGroupLine} />
-                            <Text style={styles.competitionGroupCount}>{group.matches.length}</Text>
-                          </View>
-                          {group.matches.map((match: any) => (
-                            <UpcomingMatchRow
-                              key={match.id}
-                              match={match}
-                              onPress={() => handleMatchPress(match)}
-                              onToggleNotification={() => toggleMatchNotification(match)}
-                              notificationsEnabled={Boolean(matchSubscriptions[String(match?.id || "")])}
-                            />
-                          ))}
-                        </View>
-                      ));
-                    })()}
+                    {sortedFinished.slice(0, 60).map((match: any) => (
+                      <UpcomingMatchRow
+                        key={match.id}
+                        match={match}
+                        onPress={() => handleMatchPress(match)}
+                        onToggleNotification={() => toggleMatchNotification(match)}
+                        notificationsEnabled={Boolean(matchSubscriptions[String(match?.id || "")])}
+                      />
+                    ))}
                   </View>
                 )}
               </>
@@ -1800,6 +1735,54 @@ const styles = StyleSheet.create({
   sectionHeader: { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 20, marginBottom: 14 },
   sectionTitle: { fontFamily: "Inter_700Bold", fontSize: 18, color: COLORS.text, marginBottom: 12, paddingHorizontal: 20 },
   subSectionTitle: { fontFamily: "Inter_700Bold", fontSize: 14, color: COLORS.textMuted, marginBottom: 10, paddingHorizontal: 20 },
+  viewTabsBar: {
+    flexGrow: 0,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+    backgroundColor: COLORS.surface,
+    marginTop: 8,
+  },
+  viewTabsContent: {
+    flexDirection: "row",
+    paddingHorizontal: 16,
+  },
+  viewTab: {
+    paddingHorizontal: 16,
+    paddingVertical: 0,
+    position: "relative",
+    marginRight: 4,
+  },
+  viewTabInner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingVertical: 12,
+  },
+  viewTabText: {
+    fontFamily: "Inter_700Bold",
+    fontSize: 12,
+    color: COLORS.textMuted,
+    letterSpacing: 0.8,
+  },
+  viewTabTextActive: {
+    color: COLORS.accent,
+  },
+  viewTabIndicator: {
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: 2,
+    backgroundColor: COLORS.accent,
+    borderRadius: 1,
+  },
+  heroMatchDayLabel: {
+    fontFamily: "Inter_800ExtraBold",
+    fontSize: 28,
+    color: COLORS.text,
+    letterSpacing: 1.5,
+    textTransform: "uppercase",
+  },
   competitionGroupHeader: {
     flexDirection: "row",
     alignItems: "center",

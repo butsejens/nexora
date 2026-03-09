@@ -226,10 +226,17 @@ const AD_BLOCK_JS = `
     var text = String(msg || '').toLowerCase();
     return text.includes('removechild') || text.includes('notfounderror') || text.includes('not a child') || text.includes('hierarchyrequesterror');
   };
-  window.onerror = function(message){
-    if (_swallowRemoveChildError(message)) return true;
+  window.onerror = function(message, source, lineno, colno, error){
+    var msg = error ? String(error.message || error.name || message || '') : String(message || '');
+    if (_swallowRemoveChildError(msg)) return true;
     return false;
   };
+  window.addEventListener('error', function(ev){
+    try{
+      var msg = ev.error ? String(ev.error.message || ev.error.name || '') : String(ev.message || '');
+      if(_swallowRemoveChildError(msg)){ ev.preventDefault(); ev.stopImmediatePropagation(); }
+    }catch(e){}
+  }, true);
   window.addEventListener('unhandledrejection', function(event){
     try{
       var reason = event && event.reason ? (event.reason.message || event.reason) : '';
@@ -369,9 +376,9 @@ const AD_BLOCK_JS = `
     new MutationObserver(function(muts){
       muts.forEach(function(mut){
         mut.addedNodes.forEach(function(n){
-          if(n.nodeType===1 && n.tagName==='META' && (n.getAttribute('http-equiv')||'').toLowerCase()==='refresh') n.remove();
-          if(n.nodeType===1 && n.tagName==='IFRAME'){ var src=n.getAttribute('src')||''; if(_isAdUrl(src)) n.remove(); }
-          if(n.nodeType===1 && n.tagName==='SCRIPT'){ var src=n.getAttribute('src')||''; if(_isAdUrl(src)) n.remove(); }
+          try{ if(n.nodeType===1 && n.tagName==='META' && (n.getAttribute('http-equiv')||'').toLowerCase()==='refresh') n.remove(); }catch(e){}
+          try{ if(n.nodeType===1 && n.tagName==='IFRAME'){ var src=n.getAttribute('src')||''; if(_isAdUrl(src)) n.remove(); } }catch(e){}
+          try{ if(n.nodeType===1 && n.tagName==='SCRIPT'){ var src=n.getAttribute('src')||''; if(_isAdUrl(src)) n.remove(); } }catch(e){}
         });
       });
     }).observe(document.documentElement||document.body||document, {childList:true, subtree:true});
