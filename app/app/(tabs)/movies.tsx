@@ -14,6 +14,7 @@ import { apiRequest } from "@/lib/query-client";
 import { buildErrorReference, normalizeApiError } from "@/lib/error-messages";
 import { RealContentCard, RealHeroBanner } from "@/components/RealContentCard";
 import { SafeHaptics } from "@/lib/safeHaptics";
+import { SilentResetBoundary } from "@/components/SilentResetBoundary";
 
 const CATEGORY_SORT: Record<string, string> = {
   trending: "popularity.desc",
@@ -430,6 +431,7 @@ export default function MoviesScreen() {
         </View>
       ) : null}
 
+      <SilentResetBoundary>
       <FlatList
         data={[]}
         keyExtractor={() => ""}
@@ -465,51 +467,51 @@ export default function MoviesScreen() {
             <View style={search.trim() ? undefined : { display: "none" }}>
               <View style={styles.section}>
                 <Text style={styles.sectionTitle}>Zoekresultaten</Text>
-                {filteredIptv.length > 0 && (
+                <View style={filteredIptv.length > 0 ? undefined : { display: "none" }}>
                   <FlatList horizontal data={filteredIptv} keyExtractor={(item: any) => item.id}
                     renderItem={({ item }: any) => renderCard(item)}
                     contentContainerStyle={styles.carouselPadding} showsHorizontalScrollIndicator={false}
                     removeClippedSubviews={false} />
-                )}
-                {(filteredTmdb ?? []).length > 0 && (
+                </View>
+                <View style={(filteredTmdb ?? []).length > 0 ? undefined : { display: "none" }}>
                   <FlatList horizontal data={filteredTmdb ?? []} keyExtractor={(item: any) => item.id}
                     renderItem={({ item }: any) => renderCard(item)}
                     contentContainerStyle={styles.carouselPadding} showsHorizontalScrollIndicator={false}
                     removeClippedSubviews={false} />
-                )}
-                {filteredArchive.length > 0 && (
+                </View>
+                <View style={filteredArchive.length > 0 ? undefined : { display: "none" }}>
                   <FlatList horizontal data={filteredArchive} keyExtractor={(item: any) => item.id}
                     renderItem={({ item }: any) => renderCard(item)}
                     contentContainerStyle={styles.carouselPadding} showsHorizontalScrollIndicator={false}
                     removeClippedSubviews={false} />
-                )}
-                {filteredIptv.length === 0 && (filteredTmdb ?? []).length === 0 && filteredArchive.length === 0 && (
+                </View>
+                <View style={filteredIptv.length === 0 && (filteredTmdb ?? []).length === 0 && filteredArchive.length === 0 ? undefined : { display: "none" }}>
                   <View style={{ alignItems: "center", paddingTop: 40, gap: 10 }}>
                     <Ionicons name="film-outline" size={40} color={COLORS.textMuted} />
                     <Text style={{ fontFamily: "Inter_400Regular", color: COLORS.textMuted }}>Geen films gevonden voor &quot;{search}&quot;</Text>
                   </View>
-                )}
+                </View>
               </View>
             </View>
 
             {/* Normal catalog – always mounted, hidden while searching to avoid removeChild crash */}
             <View style={search.trim() ? { display: "none" } : undefined}>
-              {/* Hero banner */}
-              {featured && (
+              {/* Hero banner - always mounted */}
+              <View style={featured ? undefined : { display: "none" }}>
                 <View style={styles.heroFrame}>
                   <RealHeroBanner
-                    item={featured}
-                    onPlay={() => goToPlayer(featured)}
-                    onInfo={() => goToDetail(featured)}
+                    item={featured ?? { id: "", title: "", poster: null, backdrop: null, synopsis: "", year: undefined, imdb: undefined, genre: [], quality: "", isIptv: false, streamUrl: undefined, tmdbId: undefined, color: "" }}
+                    onPlay={() => featured && goToPlayer(featured)}
+                    onInfo={() => featured && goToDetail(featured)}
                   />
                 </View>
-              )}
+              </View>
 
-              {/* IPTV Playlist */}
-              {iptvMovies.length > 0 && (
+              {/* IPTV Playlist - always mounted */}
+              <View style={iptvMovies.length > 0 ? undefined : { display: "none" }}>
                 <View style={styles.section}>
                   <Text style={styles.sectionTitle}>Jouw Playlist</Text>
-                  {iptvGroups.length > 2 && (
+                  <View style={iptvGroups.length > 2 ? undefined : { display: "none" }}>
                     <FlatList
                       horizontal data={iptvGroups} keyExtractor={g => g}
                       renderItem={({ item }) => (
@@ -521,14 +523,14 @@ export default function MoviesScreen() {
                       )}
                       contentContainerStyle={styles.chipRow} showsHorizontalScrollIndicator={false}
                       removeClippedSubviews={false} />
-                  )}
+                  </View>
                   <FlatList
                     horizontal data={filteredIptv} keyExtractor={(item: any) => item.id}
                     renderItem={({ item }: any) => renderCard(item)}
                     contentContainerStyle={styles.carouselPadding} showsHorizontalScrollIndicator={false}
                     removeClippedSubviews={false} />
                 </View>
-              )}
+              </View>
 
               {renderMainRow("Trending deze week", dedupTrending, "trending")}
               {renderMainRow("Nieuw in bioscoop", dedupNewReleases, "newReleases")}
@@ -539,8 +541,8 @@ export default function MoviesScreen() {
               {/* Genre rows — 15 genres, each with load-more */}
               {movieGenres.map((genre: any) => genre.items?.length > 0 && renderGenreRow(genre))}
 
-              {/* Free public domain movies via Internet Archive */}
-              {archiveMovies.length > 0 && (
+              {/* Free public domain movies via Internet Archive - always mounted */}
+              <View style={archiveMovies.length > 0 ? undefined : { display: "none" }}>
                 <View style={styles.section}>
                   <Text style={styles.sectionTitle}>Gratis Films (Archief)</Text>
                   <FlatList
@@ -553,7 +555,7 @@ export default function MoviesScreen() {
                     removeClippedSubviews={false}
                   />
                 </View>
-              )}
+              </View>
 
               {/* Decade rows */}
               {movieDecades.map((decade: any) => (
@@ -595,6 +597,7 @@ export default function MoviesScreen() {
         }
         showsVerticalScrollIndicator={false}
       />
+      </SilentResetBoundary>
     </View>
   );
 }

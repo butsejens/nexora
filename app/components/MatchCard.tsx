@@ -52,30 +52,55 @@ const SPORT_ICONS: Record<string, string> = {
   formula1: "car-sports",
 };
 
-export const TeamLogo = React.memo(function TeamLogo({ uri, teamName, size = 48 }: { uri?: string | null; teamName: string; size?: number }) {
+// ── TeamLogo ─────────────────────────────────────────────────────────────────
+
+export const TeamLogo = React.memo(function TeamLogo({
+  uri,
+  teamName,
+  size = 48,
+}: {
+  uri?: string | null;
+  teamName: string;
+  size?: number;
+}) {
   const [error, setError] = useState(false);
   const [imageLoaded, setImageLoaded] = useState(false);
   const resolved = !error ? resolveTeamLogoUri(teamName, uri) : null;
   const initials = getInitials(teamName, 2);
 
-  // Support both local require (number) and remote URI (string)
-  const imageSource = resolved != null
-    ? (typeof resolved === "number" ? resolved : { uri: resolved as string })
-    : null;
+  const imageSource =
+    resolved != null
+      ? typeof resolved === "number"
+        ? resolved
+        : { uri: resolved as string }
+      : null;
 
   return (
-    <View style={[
-      imageSource ? logoStyles.container : logoStyles.fallback,
-      { width: size, height: size, borderRadius: size / 2 },
-    ]}>
-      <Text style={[logoStyles.initials, { fontSize: size * 0.28 }, imageLoaded && { opacity: 0 }]}>{initials}</Text>
+    <View
+      style={[
+        logoStyles.container,
+        { width: size, height: size, borderRadius: size / 2 },
+      ]}
+    >
+      <Text
+        style={[
+          logoStyles.initials,
+          { fontSize: size * 0.28 },
+          imageLoaded && { opacity: 0 },
+        ]}
+      >
+        {initials}
+      </Text>
       {imageSource ? (
         <Image
           source={imageSource as any}
-          style={{ width: size - 8, height: size - 8, position: "absolute" }}
+          style={{ width: size - 10, height: size - 10, position: "absolute" }}
           resizeMode="contain"
           onLoad={() => setImageLoaded(true)}
-          onError={() => { setError(true); setImageLoaded(false); }}
+          onError={() => {
+            setError(true);
+            setImageLoaded(false);
+          }}
         />
       ) : null}
     </View>
@@ -87,43 +112,62 @@ const logoStyles = StyleSheet.create({
     backgroundColor: COLORS.cardElevated,
     alignItems: "center",
     justifyContent: "center",
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    elevation: 3,
-    // @ts-ignore – web uses boxShadow
-    boxShadow: "0px 2px 4px rgba(0,0,0,0.2)",
-  },
-  fallback: {
-    backgroundColor: COLORS.cardElevated,
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 1,
-    borderColor: COLORS.border,
+    borderWidth: 1.5,
+    borderColor: "rgba(255,255,255,0.08)",
+    // @ts-ignore
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.4,
+    shadowRadius: 4,
+    elevation: 4,
   },
   initials: {
     fontFamily: "Inter_800ExtraBold",
-    color: COLORS.text,
+    color: COLORS.textMuted,
   },
 });
 
-export const MatchCard = React.memo(function MatchCard({ match, onPress, onToggleNotification, notificationsEnabled }: Props) {
+// ── MatchCard (vertical carousel card) ───────────────────────────────────────
+
+export const MatchCard = React.memo(function MatchCard({
+  match,
+  onPress,
+  onToggleNotification,
+  notificationsEnabled,
+}: Props) {
   const scaleAnim = useRef(new Animated.Value(1)).current;
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const isLive = match.status === "live";
 
   const handlePressIn = () => {
-    Animated.spring(scaleAnim, { toValue: 0.96, useNativeDriver: true, speed: 30 }).start();
+    Animated.spring(scaleAnim, {
+      toValue: 0.96,
+      useNativeDriver: true,
+      speed: 30,
+    }).start();
   };
   const handlePressOut = () => {
-    Animated.spring(scaleAnim, { toValue: 1, useNativeDriver: true, speed: 20 }).start();
+    Animated.spring(scaleAnim, {
+      toValue: 1,
+      useNativeDriver: true,
+      speed: 20,
+    }).start();
   };
 
   useEffect(() => {
     if (!isLive) return;
     const loop = Animated.loop(
       Animated.sequence([
-        Animated.timing(pulseAnim, { toValue: 0.4, duration: 900, useNativeDriver: true }),
-        Animated.timing(pulseAnim, { toValue: 1, duration: 900, useNativeDriver: true }),
+        Animated.timing(pulseAnim, {
+          toValue: 0.3,
+          duration: 1000,
+          useNativeDriver: true,
+        }),
+        Animated.timing(pulseAnim, {
+          toValue: 1,
+          duration: 1000,
+          useNativeDriver: true,
+        }),
       ])
     );
     loop.start();
@@ -133,18 +177,20 @@ export const MatchCard = React.memo(function MatchCard({ match, onPress, onToggl
   const leagueLogo = getLeagueLogo(match.league);
 
   return (
-    <Animated.View style={[styles.wrapper, { transform: [{ scale: scaleAnim }] }]}>
-      {/* Live glow ring */}
+    <Animated.View
+      style={[styles.wrapper, { transform: [{ scale: scaleAnim }] }]}
+    >
+      {/* Live glow aura */}
       {isLive && (
         <Animated.View
-          style={[
-            styles.liveGlowRing,
-            { opacity: pulseAnim },
-          ]}
+          style={[styles.liveGlowRing, { opacity: pulseAnim }]}
         />
       )}
       <TouchableOpacity
-        onPress={() => { SafeHaptics.impactMedium(); onPress(); }}
+        onPress={() => {
+          SafeHaptics.impactMedium();
+          onPress();
+        }}
         onPressIn={handlePressIn}
         onPressOut={handlePressOut}
         activeOpacity={1}
@@ -153,27 +199,54 @@ export const MatchCard = React.memo(function MatchCard({ match, onPress, onToggl
           colors={[...match.heroGradient] as any}
           style={[styles.card, isLive && styles.cardLive]}
           start={{ x: 0, y: 0 }}
-          end={{ x: 0, y: 1 }}
+          end={{ x: 0.3, y: 1 }}
         >
           {/* League header */}
           <View style={styles.leagueHeaderRow}>
             <View style={styles.leagueLeft}>
               {leagueLogo ? (
-                <Image source={typeof leagueLogo === "number" ? leagueLogo : { uri: leagueLogo as string }} style={styles.leagueLogo} resizeMode="contain" />
+                <View style={styles.leagueLogoCircle}>
+                  <Image
+                    source={
+                      typeof leagueLogo === "number"
+                        ? leagueLogo
+                        : { uri: leagueLogo as string }
+                    }
+                    style={styles.leagueLogo}
+                    resizeMode="contain"
+                  />
+                </View>
               ) : (
-                <MaterialCommunityIcons name={(SPORT_ICONS[match.sport] || "soccer") as any} size={13} color={COLORS.textMuted} />
+                <View style={styles.leagueLogoCircle}>
+                  <MaterialCommunityIcons
+                    name={(SPORT_ICONS[match.sport] || "soccer") as any}
+                    size={12}
+                    color={COLORS.textMuted}
+                  />
+                </View>
               )}
-              <Text style={styles.league} numberOfLines={1}>{match.league}</Text>
+              <Text style={styles.league} numberOfLines={1}>
+                {match.league}
+              </Text>
             </View>
             {onToggleNotification ? (
               <TouchableOpacity
-                onPress={(e) => { e.stopPropagation(); SafeHaptics.selection(); onToggleNotification(); }}
-                style={[styles.alertBtn, notificationsEnabled && styles.alertBtnActive]}
+                onPress={(e) => {
+                  e.stopPropagation();
+                  SafeHaptics.selection();
+                  onToggleNotification();
+                }}
+                style={[
+                  styles.alertBtn,
+                  notificationsEnabled && styles.alertBtnActive,
+                ]}
                 hitSlop={{ top: 10, right: 10, bottom: 10, left: 10 }}
               >
                 <Ionicons
-                  name={notificationsEnabled ? "notifications" : "notifications-outline"}
-                  size={13}
+                  name={
+                    notificationsEnabled ? "notifications" : "notifications-outline"
+                  }
+                  size={12}
                   color={notificationsEnabled ? "#fff" : COLORS.textMuted}
                 />
               </TouchableOpacity>
@@ -182,28 +255,57 @@ export const MatchCard = React.memo(function MatchCard({ match, onPress, onToggl
 
           {/* Home team */}
           <View style={styles.teamSection}>
-            <TeamLogo uri={match.homeTeamLogo} teamName={match.homeTeam} size={50} />
-            <Text style={styles.teamName} numberOfLines={2} adjustsFontSizeToFit minimumFontScale={0.8}>{match.homeTeam}</Text>
+            <View style={styles.teamLogoWrap}>
+              <TeamLogo uri={match.homeTeamLogo} teamName={match.homeTeam} size={52} />
+            </View>
+            <Text
+              style={styles.teamName}
+              numberOfLines={2}
+              adjustsFontSizeToFit
+              minimumFontScale={0.8}
+            >
+              {match.homeTeam}
+            </Text>
           </View>
 
           {/* Score / time center */}
           {isLive || match.status === "finished" ? (
-            <View style={[styles.scoreCenterBox, isLive && styles.scoreCenterBoxLive]}>
-              <Text style={[styles.scoreNum, isLive && styles.scoreNumLive]}>{match.homeScore}</Text>
-              <Text style={styles.scoreSep}>:</Text>
-              <Text style={[styles.scoreNum, isLive && styles.scoreNumLive]}>{match.awayScore}</Text>
+            <View
+              style={[
+                styles.scoreCenterBox,
+                isLive && styles.scoreCenterBoxLive,
+              ]}
+            >
+              <Text style={[styles.scoreNum, isLive && styles.scoreNumLive]}>
+                {match.homeScore}
+              </Text>
+              <Text style={styles.scoreSep}>—</Text>
+              <Text style={[styles.scoreNum, isLive && styles.scoreNumLive]}>
+                {match.awayScore}
+              </Text>
             </View>
           ) : (
             <View style={styles.timeCenterBox}>
-              <Ionicons name="time-outline" size={11} color={COLORS.accent} />
-              <Text style={styles.timeCenterText} numberOfLines={1}>{match.startTime}</Text>
+              <Ionicons name="time-outline" size={10} color={COLORS.accent} />
+              <Text style={styles.timeCenterText} numberOfLines={1}>
+                {match.startTime}
+              </Text>
             </View>
           )}
 
           {/* Away team */}
           <View style={styles.teamSection}>
-            <TeamLogo uri={match.awayTeamLogo} teamName={match.awayTeam} size={50} />
-            <Text style={styles.teamName} numberOfLines={2} adjustsFontSizeToFit minimumFontScale={0.8}>{match.awayTeam}</Text>
+            <View style={styles.teamLogoWrap}>
+              <TeamLogo uri={match.awayTeamLogo} teamName={match.awayTeam} size={52} />
+            </View>
+            <Text
+              style={styles.teamName}
+              numberOfLines={2}
+              adjustsFontSizeToFit
+              minimumFontScale={0.8}
+            >
+              {match.awayTeam}
+            </Text>
           </View>
 
           {/* Live badge */}
@@ -212,11 +314,20 @@ export const MatchCard = React.memo(function MatchCard({ match, onPress, onToggl
               <LiveBadge minute={match.minute} small />
             </View>
           )}
+          {match.status === "finished" && (
+            <View style={styles.liveBadgeRow}>
+              <View style={styles.finishedChip}>
+                <Text style={styles.finishedChipText}>FT</Text>
+              </View>
+            </View>
+          )}
         </LinearGradient>
       </TouchableOpacity>
     </Animated.View>
   );
 });
+
+// ── UpcomingMatchRow (full-width list card) ───────────────────────────────────
 
 export const UpcomingMatchRow = React.memo(function UpcomingMatchRow({
   match,
@@ -229,133 +340,261 @@ export const UpcomingMatchRow = React.memo(function UpcomingMatchRow({
   onToggleNotification?: () => void;
   notificationsEnabled?: boolean;
 }) {
+  const pulseAnim = useRef(new Animated.Value(1)).current;
   const leagueLogo = getLeagueLogo(match.league);
   const isLive = match.status === "live";
   const isFinished = match.status === "finished";
 
+  useEffect(() => {
+    if (!isLive) return;
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulseAnim, {
+          toValue: 0.4,
+          duration: 900,
+          useNativeDriver: true,
+        }),
+        Animated.timing(pulseAnim, {
+          toValue: 1,
+          duration: 900,
+          useNativeDriver: true,
+        }),
+      ])
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [isLive, pulseAnim]);
+
   return (
     <TouchableOpacity
-      onPress={() => { SafeHaptics.selection(); onPress(); }}
-      activeOpacity={0.85}
-      style={styles.upcomingRowOuter}
+      onPress={() => {
+        SafeHaptics.selection();
+        onPress();
+      }}
+      activeOpacity={0.88}
+      style={[
+        styles.rowOuter,
+        isLive && styles.rowOuterLive,
+        isFinished && styles.rowOuterFinished,
+      ]}
     >
       <LinearGradient
-        colors={isLive
-          ? ["#1e1040", "#130c28", "#0f0d20"] as const
-          : ["#13142a", "#0e1020", "#0b0c1c"] as const
+        colors={
+          isLive
+            ? (["#1c0a0a", "#150808", "#100808"] as const)
+            : isFinished
+            ? (["#0f0f13", "#0c0c10", "#0a0a0e"] as const)
+            : (["#131318", "#0f0f14", "#0d0d12"] as const)
         }
-        style={styles.upcomingRow}
+        style={styles.rowGrad}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
       >
-        {/* League header row */}
-        <View style={styles.upcomingLeagueRow}>
-          <View style={styles.upcomingLeagueLeft}>
+        {/* Top bar: league + status + notification */}
+        <View style={styles.rowTopBar}>
+          <View style={styles.rowLeagueLeft}>
             {leagueLogo ? (
-              <Image
-                source={typeof leagueLogo === "number" ? leagueLogo : { uri: leagueLogo as string }}
-                style={styles.upcomingLeagueBadge}
-                resizeMode="contain"
-              />
+              <View style={styles.rowLeagueBadge}>
+                <Image
+                  source={
+                    typeof leagueLogo === "number"
+                      ? leagueLogo
+                      : { uri: leagueLogo as string }
+                  }
+                  style={styles.rowLeagueImg}
+                  resizeMode="contain"
+                />
+              </View>
             ) : (
-              <View style={styles.upcomingLeagueDot} />
+              <View style={[styles.rowLeagueBadge, styles.rowLeagueDotFallback]}>
+                <View style={styles.rowLeagueDot} />
+              </View>
             )}
-            <Text style={styles.upcomingLeagueName} numberOfLines={1}>{match.league} on NEXORA</Text>
+            <Text style={styles.rowLeagueName} numberOfLines={1}>
+              {match.league.toUpperCase()}
+            </Text>
           </View>
-          <View style={styles.upcomingLeagueRight}>
+
+          <View style={styles.rowTopRight}>
             {isLive ? (
-              <View style={styles.upcomingLiveBadge}>
-                <View style={styles.upcomingLiveDot} />
-                <Text style={styles.upcomingLiveText}>LIVE{match.minute != null ? ` ${match.minute}'` : ""}</Text>
+              <View style={styles.liveChip}>
+                <Animated.View
+                  style={[styles.liveDotSmall, { opacity: pulseAnim }]}
+                />
+                <Text style={styles.liveChipText}>
+                  LIVE{match.minute != null ? ` ${match.minute}'` : ""}
+                </Text>
               </View>
             ) : isFinished ? (
-              <View style={styles.upcomingFinishedBadge}>
-                <Text style={styles.upcomingFinishedBadgeText}>FULL TIME</Text>
+              <View style={styles.finishedChipRow}>
+                <Text style={styles.finishedRowText}>AFGELOPEN</Text>
               </View>
             ) : match.startTime ? (
-              <View style={styles.upcomingTimeBadge}>
-                <Text style={styles.upcomingTimeBadgeText}>{match.startTime}</Text>
+              <View style={styles.timeChip}>
+                <Ionicons
+                  name="time-outline"
+                  size={10}
+                  color={COLORS.accent}
+                />
+                <Text style={styles.timeChipText}>{match.startTime}</Text>
               </View>
             ) : null}
             {onToggleNotification ? (
               <TouchableOpacity
-                onPress={(e) => { e.stopPropagation(); SafeHaptics.selection(); onToggleNotification(); }}
-                style={[styles.upcomingAlertBtn, notificationsEnabled && styles.upcomingAlertBtnActive]}
+                onPress={(e) => {
+                  e.stopPropagation();
+                  SafeHaptics.selection();
+                  onToggleNotification();
+                }}
+                style={[
+                  styles.rowAlertBtn,
+                  notificationsEnabled && styles.rowAlertBtnActive,
+                ]}
                 hitSlop={{ top: 8, right: 8, bottom: 8, left: 8 }}
               >
-                <Ionicons name={notificationsEnabled ? "notifications" : "notifications-outline"} size={12} color={notificationsEnabled ? "#fff" : COLORS.textMuted} />
+                <Ionicons
+                  name={
+                    notificationsEnabled
+                      ? "notifications"
+                      : "notifications-outline"
+                  }
+                  size={13}
+                  color={notificationsEnabled ? "#fff" : COLORS.textMuted}
+                />
               </TouchableOpacity>
             ) : null}
           </View>
         </View>
 
-        {/* Teams row */}
-        <View style={styles.upcomingTeamsRow}>
+        {/* Teams + Score row */}
+        <View style={styles.rowTeamsSection}>
           {/* Home */}
-          <View style={styles.upcomingTeamBlock}>
-            <TeamLogo uri={match.homeTeamLogo} teamName={match.homeTeam} size={52} />
-            <Text style={styles.upcomingTeamName} numberOfLines={2}>{match.homeTeam}</Text>
+          <View style={styles.rowTeamBlock}>
+            <TeamLogo
+              uri={match.homeTeamLogo}
+              teamName={match.homeTeam}
+              size={56}
+            />
+            <Text style={styles.rowTeamName} numberOfLines={2}>
+              {match.homeTeam}
+            </Text>
           </View>
 
-          {/* Score / VS */}
-          <View style={styles.upcomingCenterBlock}>
+          {/* Center: score or VS */}
+          <View style={styles.rowCenterBlock}>
             {isLive || isFinished ? (
-              <View style={[styles.upcomingScoreBox, isLive && styles.upcomingScoreBoxLive]}>
-                <Text style={[styles.upcomingScore, isLive && styles.upcomingScoreLive]}>
-                  {match.homeScore} - {match.awayScore}
-                </Text>
-                {isFinished && <Text style={styles.upcomingFullTimeLabel}>FULL TIME</Text>}
-              </View>
+              <>
+                <View
+                  style={[
+                    styles.rowScoreBox,
+                    isLive && styles.rowScoreBoxLive,
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.rowScore,
+                      isLive && styles.rowScoreLive,
+                    ]}
+                  >
+                    {match.homeScore}
+                  </Text>
+                  <Text style={styles.rowScoreSep}>
+                    {isLive ? "·" : "-"}
+                  </Text>
+                  <Text
+                    style={[
+                      styles.rowScore,
+                      isLive && styles.rowScoreLive,
+                    ]}
+                  >
+                    {match.awayScore}
+                  </Text>
+                </View>
+                {isFinished && (
+                  <Text style={styles.fullTimeLabel}>FULL TIME</Text>
+                )}
+              </>
             ) : (
-              <View style={styles.upcomingVsBox}>
-                <Text style={styles.upcomingVsText}>VS</Text>
+              <View style={styles.rowVsBox}>
+                <Text style={styles.rowVsText}>VS</Text>
               </View>
             )}
           </View>
 
           {/* Away */}
-          <View style={styles.upcomingTeamBlock}>
-            <TeamLogo uri={match.awayTeamLogo} teamName={match.awayTeam} size={52} />
-            <Text style={styles.upcomingTeamName} numberOfLines={2}>{match.awayTeam}</Text>
+          <View style={styles.rowTeamBlock}>
+            <TeamLogo
+              uri={match.awayTeamLogo}
+              teamName={match.awayTeam}
+              size={56}
+            />
+            <Text style={styles.rowTeamName} numberOfLines={2}>
+              {match.awayTeam}
+            </Text>
           </View>
+        </View>
+
+        {/* Bottom action strip */}
+        <View style={styles.rowActionStrip}>
+          <Text style={styles.rowActionText}>
+            {isLive
+              ? "Bekijk live wedstrijd"
+              : isFinished
+              ? "Bekijk samenvatting"
+              : "Wedstrijddetails"}
+          </Text>
+          <Ionicons
+            name="chevron-forward"
+            size={13}
+            color="rgba(255,255,255,0.35)"
+          />
         </View>
       </LinearGradient>
     </TouchableOpacity>
   );
 });
 
+// ── StyleSheet ────────────────────────────────────────────────────────────────
+
 const styles = StyleSheet.create({
+  // ─ MatchCard ─────────────────────────────────────────────────────────────
   wrapper: {
     marginRight: 14,
     position: "relative",
   },
   liveGlowRing: {
     position: "absolute",
-    top: -3,
-    left: -3,
-    right: -3,
-    bottom: -3,
-    borderRadius: 25,
+    top: -4,
+    left: -4,
+    right: -4,
+    bottom: -4,
+    borderRadius: 26,
     borderWidth: 2,
     borderColor: COLORS.live,
     zIndex: 0,
     // @ts-ignore
     shadowColor: COLORS.live,
     shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.8,
-    shadowRadius: 8,
+    shadowOpacity: 1,
+    shadowRadius: 12,
   },
   card: {
-    width: 160,
-    height: 300,
+    width: 164,
+    height: 308,
     borderRadius: 22,
-    padding: 12,
-    borderWidth: 2,
-    borderColor: COLORS.borderLight,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.08)",
     justifyContent: "space-between",
+    // @ts-ignore
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.5,
+    shadowRadius: 16,
+    elevation: 10,
   },
   cardLive: {
-    borderColor: `${COLORS.live}88`,
+    borderColor: `${COLORS.live}66`,
   },
   leagueHeaderRow: {
     flexDirection: "row",
@@ -365,27 +604,37 @@ const styles = StyleSheet.create({
   leagueLeft: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 5,
+    gap: 6,
     flex: 1,
   },
+  leagueLogoCircle: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: "rgba(255,255,255,0.07)",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.1)",
+  },
   leagueLogo: {
-    width: 16,
-    height: 16,
+    width: 14,
+    height: 14,
   },
   league: {
     fontFamily: "Inter_500Medium",
     fontSize: 10,
     color: COLORS.textMuted,
-    letterSpacing: 0.2,
+    letterSpacing: 0.3,
     flex: 1,
   },
   alertBtn: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
+    width: 26,
+    height: 26,
+    borderRadius: 13,
     borderWidth: 1,
     borderColor: COLORS.border,
-    backgroundColor: COLORS.overlay,
+    backgroundColor: "rgba(0,0,0,0.35)",
     alignItems: "center",
     justifyContent: "center",
   },
@@ -395,7 +644,15 @@ const styles = StyleSheet.create({
   },
   teamSection: {
     alignItems: "center",
-    gap: 6,
+    gap: 8,
+  },
+  teamLogoWrap: {
+    // @ts-ignore
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.5,
+    shadowRadius: 8,
+    elevation: 6,
   },
   teamName: {
     fontFamily: "Inter_600SemiBold",
@@ -408,31 +665,34 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 6,
-    backgroundColor: COLORS.overlay,
-    borderRadius: 12,
-    paddingVertical: 6,
-    paddingHorizontal: 10,
+    gap: 8,
+    backgroundColor: "rgba(0,0,0,0.45)",
+    borderRadius: 14,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: "rgba(255,255,255,0.08)",
     alignSelf: "center",
   },
   scoreCenterBoxLive: {
-    backgroundColor: "rgba(255,59,48,0.12)",
+    backgroundColor: "rgba(255,48,64,0.14)",
     borderColor: `${COLORS.live}55`,
   },
   scoreNum: {
     fontFamily: "Inter_800ExtraBold",
-    fontSize: 24,
+    fontSize: 26,
     color: COLORS.text,
   },
   scoreNumLive: {
-    color: COLORS.text,
-    fontSize: 26,
+    color: "#fff",
+    // @ts-ignore
+    textShadowColor: COLORS.live,
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 6,
   },
   scoreSep: {
     fontFamily: "Inter_400Regular",
-    fontSize: 18,
+    fontSize: 16,
     color: COLORS.textMuted,
   },
   timeCenterBox: {
@@ -456,187 +716,262 @@ const styles = StyleSheet.create({
   liveBadgeRow: {
     alignItems: "center",
   },
-  upcomingRowOuter: {
+  finishedChip: {
+    backgroundColor: "rgba(255,255,255,0.07)",
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.1)",
+  },
+  finishedChipText: {
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 10,
+    color: COLORS.textMuted,
+    letterSpacing: 1,
+  },
+
+  // ─ UpcomingMatchRow ─────────────────────────────────────────────────────
+  rowOuter: {
     marginHorizontal: 16,
-    marginBottom: 12,
+    marginBottom: 10,
     borderRadius: 20,
     overflow: "hidden",
     borderWidth: 1,
-    borderColor: "rgba(110,90,220,0.25)",
+    borderColor: "rgba(255,255,255,0.06)",
+    // @ts-ignore
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.35,
+    shadowRadius: 12,
+    elevation: 8,
   },
-  upcomingRow: {
-    paddingHorizontal: 16,
+  rowOuterLive: {
+    borderColor: `${COLORS.live}44`,
+    // @ts-ignore
+    shadowColor: COLORS.live,
+    shadowOpacity: 0.18,
+    shadowRadius: 16,
+  },
+  rowOuterFinished: {
+    borderColor: "rgba(255,255,255,0.04)",
+    opacity: 0.85,
+  },
+  rowGrad: {
+    paddingHorizontal: 18,
     paddingTop: 14,
-    paddingBottom: 18,
-    gap: 16,
+    paddingBottom: 12,
     borderRadius: 20,
+    gap: 14,
   },
-  upcomingLeagueRow: {
+  rowTopBar: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    marginBottom: 10,
   },
-  upcomingLeagueLeft: {
+  rowLeagueLeft: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 7,
+    gap: 8,
     flex: 1,
   },
-  upcomingLeagueBadge: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
+  rowLeagueBadge: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: "rgba(255,255,255,0.06)",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.1)",
+    overflow: "hidden",
   },
-  upcomingLeagueDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
+  rowLeagueDotFallback: {
+    backgroundColor: "rgba(255,255,255,0.05)",
+  },
+  rowLeagueImg: {
+    width: 16,
+    height: 16,
+  },
+  rowLeagueDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
     backgroundColor: COLORS.textMuted,
   },
-  upcomingLeagueName: {
+  rowLeagueName: {
     fontFamily: "Inter_600SemiBold",
-    fontSize: 11,
+    fontSize: 10,
     color: COLORS.textMuted,
-    letterSpacing: 0.2,
+    letterSpacing: 0.8,
     flex: 1,
   },
-  upcomingLeagueRight: {
+  rowTopRight: {
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
   },
-  upcomingLiveBadge: {
+  liveChip: {
     flexDirection: "row",
     alignItems: "center",
     gap: 5,
-    backgroundColor: "rgba(255,48,64,0.15)",
-    borderRadius: 8,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
+    backgroundColor: "rgba(255,48,64,0.16)",
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
     borderWidth: 1,
     borderColor: `${COLORS.live}55`,
   },
-  upcomingLiveDot: {
-    width: 5,
-    height: 5,
+  liveDotSmall: {
+    width: 6,
+    height: 6,
     borderRadius: 3,
     backgroundColor: COLORS.live,
   },
-  upcomingLiveText: {
+  liveChipText: {
     fontFamily: "Inter_700Bold",
     fontSize: 10,
     color: COLORS.live,
-    letterSpacing: 0.5,
+    letterSpacing: 0.6,
   },
-  upcomingFinishedBadge: {
-    backgroundColor: COLORS.cardElevated,
+  finishedChipRow: {
+    backgroundColor: "rgba(255,255,255,0.05)",
     borderRadius: 8,
     paddingHorizontal: 8,
     paddingVertical: 3,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: "rgba(255,255,255,0.08)",
   },
-  upcomingFinishedBadgeText: {
+  finishedRowText: {
     fontFamily: "Inter_600SemiBold",
-    fontSize: 10,
+    fontSize: 9,
     color: COLORS.textMuted,
-    letterSpacing: 0.5,
+    letterSpacing: 0.8,
+    textTransform: "uppercase",
   },
-  upcomingTimeBadge: {
+  timeChip: {
     flexDirection: "row",
     alignItems: "center",
     gap: 4,
     backgroundColor: COLORS.accentGlow,
     borderRadius: 8,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
+    paddingHorizontal: 9,
+    paddingVertical: 4,
     borderWidth: 1,
     borderColor: `${COLORS.accent}44`,
   },
-  upcomingTimeBadgeText: {
+  timeChipText: {
     fontFamily: "Inter_700Bold",
     fontSize: 10,
     color: COLORS.accent,
+    letterSpacing: 0.3,
   },
-  upcomingTeamsRow: {
+  rowAlertBtn: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.1)",
+    backgroundColor: "rgba(0,0,0,0.3)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  rowAlertBtnActive: {
+    backgroundColor: COLORS.accent,
+    borderColor: COLORS.accent,
+  },
+  rowTeamsSection: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: 8,
   },
-  upcomingTeamBlock: {
+  rowTeamBlock: {
     flex: 1,
     alignItems: "center",
     gap: 10,
   },
-  upcomingTeamName: {
+  rowTeamName: {
     fontFamily: "Inter_700Bold",
     fontSize: 13,
     color: COLORS.text,
     textAlign: "center",
     lineHeight: 17,
   },
-  upcomingCenterBlock: {
-    width: 90,
+  rowCenterBlock: {
+    width: 96,
     alignItems: "center",
     gap: 4,
   },
-  upcomingScoreBox: {
-    backgroundColor: "rgba(255,255,255,0.08)",
-    borderRadius: 14,
+  rowScoreBox: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: "rgba(255,255,255,0.06)",
+    borderRadius: 16,
     paddingHorizontal: 14,
     paddingVertical: 10,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.12)",
-    alignItems: "center",
+    borderColor: "rgba(255,255,255,0.08)",
   },
-  upcomingScoreBoxLive: {
-    backgroundColor: "rgba(255,48,64,0.18)",
-    borderColor: `${COLORS.live}66`,
+  rowScoreBoxLive: {
+    backgroundColor: "rgba(255,48,64,0.16)",
+    borderColor: `${COLORS.live}55`,
   },
-  upcomingScore: {
+  rowScore: {
     fontFamily: "Inter_800ExtraBold",
-    fontSize: 20,
+    fontSize: 28,
     color: COLORS.text,
-    letterSpacing: 1,
+    minWidth: 24,
+    textAlign: "center",
   },
-  upcomingScoreLive: {
-    color: COLORS.live,
+  rowScoreLive: {
+    color: "#fff",
+    // @ts-ignore
+    textShadowColor: COLORS.live,
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 8,
   },
-  upcomingFullTimeLabel: {
+  rowScoreSep: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 18,
+    color: "rgba(255,255,255,0.3)",
+    marginHorizontal: 2,
+  },
+  fullTimeLabel: {
     fontFamily: "Inter_600SemiBold",
     fontSize: 9,
     color: COLORS.textMuted,
-    letterSpacing: 0.5,
+    letterSpacing: 0.8,
+    textTransform: "uppercase",
     marginTop: 2,
   },
-  upcomingVsBox: {
-    backgroundColor: "rgba(255,255,255,0.06)",
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
+  rowVsBox: {
+    backgroundColor: "rgba(255,255,255,0.05)",
+    borderRadius: 14,
+    paddingHorizontal: 18,
+    paddingVertical: 10,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.1)",
+    borderColor: "rgba(255,255,255,0.07)",
   },
-  upcomingVsText: {
+  rowVsText: {
     fontFamily: "Inter_800ExtraBold",
     fontSize: 14,
-    color: COLORS.textMuted,
-    letterSpacing: 2,
+    color: "rgba(255,255,255,0.35)",
+    letterSpacing: 3,
   },
-  upcomingAlertBtn: {
-    width: 26,
-    height: 26,
-    borderRadius: 13,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    backgroundColor: COLORS.overlay,
+  rowActionStrip: {
+    flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
+    justifyContent: "flex-end",
+    gap: 4,
+    paddingTop: 6,
+    borderTopWidth: 1,
+    borderTopColor: "rgba(255,255,255,0.05)",
   },
-  upcomingAlertBtnActive: {
-    backgroundColor: COLORS.accent,
-    borderColor: COLORS.accent,
+  rowActionText: {
+    fontFamily: "Inter_500Medium",
+    fontSize: 11,
+    color: "rgba(255,255,255,0.3)",
+    letterSpacing: 0.2,
   },
 });
