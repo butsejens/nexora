@@ -30,6 +30,15 @@ import { SafeHaptics } from "@/lib/safeHaptics";
 
 const CHANGELOG: { version: string; date: string; changes: string[] }[] = [
   {
+    version: "2.0.38",
+    date: "2026-03-09",
+    changes: [
+      "Nieuw sport UI design: tab-navigatie met iconen, MATCH DAY hero banner, nieuwe wedstrijdkaarten",
+      "RemoveChild fout volledig opgelost in film/serie speler",
+      "Wedstrijdkaarten tonen nu league badge, divider en grotere teamlogo's",
+    ],
+  },
+  {
     version: "2.0.37",
     date: "2026-03-09",
     changes: [
