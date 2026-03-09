@@ -317,14 +317,14 @@ export default function MoviesScreen() {
     return archiveMovies.filter((m: any) => (m.title || "").toLowerCase().includes(q));
   }, [search, archiveMovies]);
 
-  const renderCard = (item: any) => (
+  const renderCard = useCallback((item: any) => (
     <RealContentCard
       item={item}
       onPress={() => goToDetail(item)}
       onFavorite={() => toggleFavorite(item.id)}
       isFavorite={isFavorite(item.id)}
     />
-  );
+  ), [goToDetail, toggleFavorite, isFavorite]);
 
   const renderMainRow = (title: string, baseItems: any[], categoryKey: string) => {
     const extra = categoryExtras[categoryKey];
@@ -345,6 +345,10 @@ export default function MoviesScreen() {
           contentContainerStyle={styles.carouselPadding}
           showsHorizontalScrollIndicator={false}
           removeClippedSubviews={false}
+          initialNumToRender={4}
+          maxToRenderPerBatch={3}
+          windowSize={5}
+          scrollEventThrottle={16}
           ListFooterComponent={() => (
             <TouchableOpacity
               style={styles.loadMoreBtn}
@@ -376,6 +380,10 @@ export default function MoviesScreen() {
           contentContainerStyle={styles.carouselPadding}
           showsHorizontalScrollIndicator={false}
           removeClippedSubviews={false}
+          initialNumToRender={4}
+          maxToRenderPerBatch={3}
+          windowSize={5}
+          scrollEventThrottle={16}
           ListFooterComponent={
             <TouchableOpacity
               style={styles.loadMoreBtn}
@@ -528,7 +536,8 @@ export default function MoviesScreen() {
                     horizontal data={filteredIptv} keyExtractor={(item: any) => item.id}
                     renderItem={({ item }: any) => renderCard(item)}
                     contentContainerStyle={styles.carouselPadding} showsHorizontalScrollIndicator={false}
-                    removeClippedSubviews={false} />
+                    removeClippedSubviews={false}
+                    initialNumToRender={4} maxToRenderPerBatch={3} windowSize={5} scrollEventThrottle={16} />
                 </View>
               </View>
 
@@ -553,6 +562,10 @@ export default function MoviesScreen() {
                     contentContainerStyle={styles.carouselPadding}
                     showsHorizontalScrollIndicator={false}
                     removeClippedSubviews={false}
+                    initialNumToRender={4}
+                    maxToRenderPerBatch={3}
+                    windowSize={5}
+                    scrollEventThrottle={16}
                   />
                 </View>
               </View>
@@ -570,6 +583,10 @@ export default function MoviesScreen() {
                       contentContainerStyle={styles.carouselPadding}
                       showsHorizontalScrollIndicator={false}
                       removeClippedSubviews={false}
+                      initialNumToRender={4}
+                      maxToRenderPerBatch={3}
+                      windowSize={5}
+                      scrollEventThrottle={16}
                     />
                   </View>
                 )
@@ -596,6 +613,7 @@ export default function MoviesScreen() {
           </>
         }
         showsVerticalScrollIndicator={false}
+        scrollEventThrottle={16}
       />
       </SilentResetBoundary>
     </View>

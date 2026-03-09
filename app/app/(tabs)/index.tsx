@@ -1189,7 +1189,7 @@ export default function SportsScreen() {
               activeOpacity={0.9}
             >
               <LinearGradient
-                colors={[...(hero.heroGradient || ["#1a1152", "#0d1033", "#070b1e"])] as any}
+                colors={[...(hero.heroGradient || [COLORS.cardElevated, COLORS.surface, COLORS.background])] as any}
                 style={styles.heroMatchGrad}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 1 }}

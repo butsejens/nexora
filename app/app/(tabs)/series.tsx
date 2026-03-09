@@ -293,14 +293,14 @@ export default function SeriesScreen() {
     return results.filter((m: any) => { if (seen.has(m.id)) return false; seen.add(m.id); return true; });
   }, [search, trending, newReleases, topRated, popular, airingToday]);
 
-  const renderCard = (item: any) => (
+  const renderCard = useCallback((item: any) => (
     <RealContentCard
       item={item}
       onPress={() => goToDetail(item)}
       onFavorite={() => toggleFavorite(item.id)}
       isFavorite={isFavorite(item.id)}
     />
-  );
+  ), [goToDetail, toggleFavorite, isFavorite]);
 
   const renderMainRow = (title: string, baseItems: any[], categoryKey: string) => {
     const extra = categoryExtras[categoryKey];
@@ -321,6 +321,10 @@ export default function SeriesScreen() {
           contentContainerStyle={styles.carouselPadding}
           showsHorizontalScrollIndicator={false}
           removeClippedSubviews={false}
+          initialNumToRender={4}
+          maxToRenderPerBatch={3}
+          windowSize={5}
+          scrollEventThrottle={16}
           ListFooterComponent={() => (
             <TouchableOpacity
               style={styles.loadMoreBtn}
@@ -352,6 +356,10 @@ export default function SeriesScreen() {
           contentContainerStyle={styles.carouselPadding}
           showsHorizontalScrollIndicator={false}
           removeClippedSubviews={false}
+          initialNumToRender={4}
+          maxToRenderPerBatch={3}
+          windowSize={5}
+          scrollEventThrottle={16}
           ListFooterComponent={
             <TouchableOpacity
               style={styles.loadMoreBtn}
@@ -498,7 +506,8 @@ export default function SeriesScreen() {
                     horizontal data={filteredIptv} keyExtractor={(item: any) => item.id}
                     renderItem={({ item }: any) => renderCard(item)}
                     contentContainerStyle={styles.carouselPadding} showsHorizontalScrollIndicator={false}
-                    removeClippedSubviews={false} />
+                    removeClippedSubviews={false}
+                    initialNumToRender={4} maxToRenderPerBatch={3} windowSize={5} scrollEventThrottle={16} />
                 </View>
               </View>
 
@@ -524,6 +533,10 @@ export default function SeriesScreen() {
                       contentContainerStyle={styles.carouselPadding}
                       showsHorizontalScrollIndicator={false}
                       removeClippedSubviews={false}
+                      initialNumToRender={4}
+                      maxToRenderPerBatch={3}
+                      windowSize={5}
+                      scrollEventThrottle={16}
                     />
                   </View>
                 )
@@ -550,6 +563,7 @@ export default function SeriesScreen() {
           </>
         }
         showsVerticalScrollIndicator={false}
+        scrollEventThrottle={16}
       />
       </SilentResetBoundary>
     </View>
