@@ -140,7 +140,6 @@ const styles = StyleSheet.create({
   logoImage: {
     width: 168,
     height: 168,
-    borderRadius: 36,
   },
   accentLine: {
     width: 60,

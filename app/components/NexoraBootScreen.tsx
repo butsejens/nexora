@@ -118,7 +118,6 @@ const styles = StyleSheet.create({
   logoImage: {
     width: 176,
     height: 176,
-    borderRadius: 40,
   },
   card: {
     width: "100%",

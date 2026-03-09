@@ -371,7 +371,7 @@ function DateSelector({ date, onDateChange }: { date: string; onDateChange: (d: 
           style={dsStyles.dateLabel}
           onPress={() => { setInputVal(date); setEditing(true); }}
         >
-          <Ionicons name="calendar-outline" size={14} color={COLORS.accent} />
+          <Ionicons name="calendar-outline" size={14} color="#a89ef5" />
           <Text style={dsStyles.dateLabelText}>{formatDateDisplay(date)}</Text>
           {date !== todayUTC() && <Text style={dsStyles.dateYmd}>{date}</Text>}
         </TouchableOpacity>
@@ -394,35 +394,35 @@ const dsStyles = StyleSheet.create({
   row: {
     flexDirection: "row", alignItems: "center", justifyContent: "center",
     paddingHorizontal: 12, paddingVertical: 10, gap: 6,
-    borderBottomWidth: 1, borderBottomColor: COLORS.border,
-    backgroundColor: COLORS.overlayLight,
+    borderBottomWidth: 1, borderBottomColor: "rgba(110,90,220,0.2)",
+    backgroundColor: "#0d0e20",
   },
   arrowBtn: {
     width: 36, height: 36, borderRadius: 18,
-    backgroundColor: COLORS.cardElevated, alignItems: "center", justifyContent: "center",
-    borderWidth: 1, borderColor: COLORS.border,
+    backgroundColor: "#181930", alignItems: "center", justifyContent: "center",
+    borderWidth: 1, borderColor: "rgba(110,90,220,0.3)",
   },
   dateLabel: {
     flexDirection: "row", alignItems: "center", gap: 6,
     paddingHorizontal: 16, paddingVertical: 8,
-    backgroundColor: COLORS.cardElevated, borderRadius: 20,
-    borderWidth: 1, borderColor: COLORS.accent + "55",
+    backgroundColor: "#181930", borderRadius: 20,
+    borderWidth: 1, borderColor: "#8b7cf066",
     minWidth: 140, justifyContent: "center",
   },
   dateLabelText: { fontFamily: "Inter_600SemiBold", fontSize: 14, color: COLORS.text },
   dateYmd: { fontFamily: "Inter_400Regular", fontSize: 10, color: COLORS.textMuted },
   input: {
-    backgroundColor: COLORS.cardElevated, borderRadius: 20,
-    borderWidth: 1, borderColor: COLORS.accent,
+    backgroundColor: "#181930", borderRadius: 20,
+    borderWidth: 1, borderColor: "#8b7cf0",
     paddingHorizontal: 16, paddingVertical: 8,
     fontFamily: "Inter_500Medium", fontSize: 14, color: COLORS.text,
     minWidth: 140, textAlign: "center",
   },
   todayBtn: {
     paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12,
-    backgroundColor: COLORS.accentGlow, borderWidth: 1, borderColor: COLORS.accent + "44",
+    backgroundColor: "rgba(100,80,220,0.18)", borderWidth: 1, borderColor: "#8b7cf066",
   },
-  todayBtnText: { fontFamily: "Inter_500Medium", fontSize: 11, color: COLORS.accent },
+  todayBtnText: { fontFamily: "Inter_500Medium", fontSize: 11, color: "#a89ef5" },
 });
 
 // ── Main ────────────────────────────────────────────────────────────────────
@@ -1054,26 +1054,38 @@ export default function SportsScreen() {
             ))}
           </View>
 
-          {/* League Filter */}
+          {/* League Filter — circular logo badges */}
           <ScrollView horizontal showsHorizontalScrollIndicator={false}
-            style={styles.leagueFilterScroll} contentContainerStyle={styles.leagueFilterRow}>
-            {LEAGUES.map(league => (
-              <TouchableOpacity
-                key={league.name}
-                style={[styles.leagueChip, leagueFilter === league.name && styles.leagueChipActive]}
-                onPress={() => {
-                  toggleFiltersVisibility(true);
-                  setLeagueFilter(league.name);
-                }}
-              >
-                <Ionicons
-                  name={league.icon as any} size={13}
-                  color={leagueFilter === league.name ? COLORS.accent : COLORS.textMuted} />
-                <Text style={[styles.leagueChipText, leagueFilter === league.name && styles.leagueChipTextActive]}>
-                  {league.displayName}
-                </Text>
-              </TouchableOpacity>
-            ))}
+            style={styles.leagueFilterScroll} contentContainerStyle={styles.leagueBadgesRow}>
+            {LEAGUES.map(league => {
+              const logo = league.name !== "Alle" ? getLeagueLogo(league.name) : null;
+              const isActive = leagueFilter === league.name;
+              return (
+                <TouchableOpacity
+                  key={league.name}
+                  style={styles.leagueBadgeWrap}
+                  onPress={() => {
+                    toggleFiltersVisibility(true);
+                    setLeagueFilter(league.name);
+                  }}
+                >
+                  <View style={[styles.leagueBadgeCircle, isActive && styles.leagueBadgeCircleActive]}>
+                    {logo ? (
+                      <Image
+                        source={typeof logo === "number" ? logo : { uri: logo as string }}
+                        style={styles.leagueBadgeImg}
+                        resizeMode="contain"
+                      />
+                    ) : (
+                      <Ionicons name="apps-outline" size={22} color={isActive ? "#fff" : COLORS.textMuted} />
+                    )}
+                  </View>
+                  <Text style={[styles.leagueBadgeLabel, isActive && styles.leagueBadgeLabelActive]} numberOfLines={1}>
+                    {league.displayName}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
           </ScrollView>
       </Animated.View>
 
@@ -1143,10 +1155,10 @@ export default function SportsScreen() {
           contentContainerStyle={styles.viewTabsContent}
         >
           {([
-            { id: "competitions" as const, label: "COMPETITIES", icon: "apps-outline" as const },
-            { id: "live" as const, label: "LIVE", icon: "radio-button-on-outline" as const },
-            { id: "upcoming" as const, label: "SCHEMA", icon: "calendar-outline" as const },
-            { id: "menu" as const, label: "ANALYSE", icon: "analytics-outline" as const },
+            { id: "competitions" as const, label: "EXPLORE",  icon: "apps-outline" as const },
+            { id: "live" as const,         label: "LIVE",     icon: "radio-button-on-outline" as const },
+            { id: "upcoming" as const,     label: "MATCHES",  icon: "calendar-outline" as const },
+            { id: "menu" as const,         label: "ANALYSE",  icon: "analytics-outline" as const },
           ]).map((view) => {
             const isActive = sportsView === view.id;
             return (
@@ -1177,7 +1189,7 @@ export default function SportsScreen() {
               activeOpacity={0.9}
             >
               <LinearGradient
-                colors={[...(hero.heroGradient || ["#0B2359", "#0d1b3e"])] as any}
+                colors={[...(hero.heroGradient || ["#1a1152", "#0d1033", "#070b1e"])] as any}
                 style={styles.heroMatchGrad}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 1 }}
@@ -1194,7 +1206,10 @@ export default function SportsScreen() {
                     </View>
                   )}
                 </View>
-                <Text style={styles.heroMatchDayLabel}>{isLive ? "LIVE NU" : "MATCH DAY"}</Text>
+                <Text style={styles.heroMatchDayLabel}>{isLive ? "LIVE NOW" : "MATCH DAY"}</Text>
+                <Text style={styles.heroMatchDaySub}>
+                  {isLive ? `CATCH THE MATCH LIVE ON NEXORA` : `CATCH THE MATCH LIVE ON NEXORA APP`}
+                </Text>
                 <View style={styles.heroTeamRow}>
                   <View style={styles.heroTeamBlock}>
                     <TeamLogo uri={hero.homeTeamLogo} teamName={hero.homeTeam} size={76} />
@@ -1445,7 +1460,7 @@ export default function SportsScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: COLORS.background },
+  container: { flex: 1, backgroundColor: "#0b0c1c" },
   scroll: { flex: 1 },
   heroHeadline: {
     fontFamily: "Inter_800ExtraBold",
@@ -1573,28 +1588,47 @@ const styles = StyleSheet.create({
   sourceText: { fontFamily: "Inter_400Regular", fontSize: 10, color: COLORS.textMuted },
   statusFilter: {
     flexDirection: "row", paddingHorizontal: 16, paddingVertical: 10, gap: 8,
-    borderBottomWidth: 1, borderBottomColor: COLORS.border,
-    backgroundColor: COLORS.overlayLight,
+    borderBottomWidth: 1, borderBottomColor: "rgba(110,90,220,0.2)",
+    backgroundColor: "#0d0e20",
   },
   statusBtn: {
     flexDirection: "row", alignItems: "center", gap: 5,
     paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20,
     borderWidth: 1, borderColor: COLORS.border, backgroundColor: COLORS.cardElevated,
   },
-  statusBtnActive: { borderColor: COLORS.accent, backgroundColor: COLORS.accentGlow },
+  statusBtnActive: { borderColor: "#8b7cf0", backgroundColor: "rgba(100,80,220,0.22)" },
   statusBtnText: { fontFamily: "Inter_500Medium", fontSize: 13, color: COLORS.textMuted },
-  statusBtnTextActive: { color: COLORS.accent },
+  statusBtnTextActive: { color: "#a89ef5" },
   liveDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: COLORS.live },
-  leagueFilterScroll: { flexGrow: 0, borderBottomWidth: 1, borderBottomColor: COLORS.border, backgroundColor: COLORS.overlayLight },
-  leagueFilterRow: { flexDirection: "row", gap: 8, paddingHorizontal: 16, paddingVertical: 10 },
-  leagueChip: {
-    flexDirection: "row", alignItems: "center", gap: 6,
-    paddingHorizontal: 14, paddingVertical: 7, borderRadius: 20,
-    borderWidth: 1, borderColor: COLORS.border, backgroundColor: COLORS.cardElevated,
+  leagueFilterScroll: { flexGrow: 0, borderBottomWidth: 1, borderBottomColor: "rgba(110,90,220,0.2)", backgroundColor: "#0d0e20" },
+  leagueBadgesRow: { flexDirection: "row", gap: 14, paddingHorizontal: 16, paddingVertical: 12 },
+  leagueBadgeWrap: { alignItems: "center", width: 58, gap: 5 },
+  leagueBadgeCircle: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: COLORS.cardElevated,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    overflow: "hidden",
   },
-  leagueChipActive: { borderColor: COLORS.accent, backgroundColor: COLORS.accentGlow },
-  leagueChipText: { fontFamily: "Inter_500Medium", fontSize: 12, color: COLORS.textMuted },
-  leagueChipTextActive: { color: COLORS.accent },
+  leagueBadgeCircleActive: {
+    backgroundColor: "rgba(100,80,220,0.35)",
+    borderColor: "#8b7cf0",
+  },
+  leagueBadgeImg: { width: 38, height: 38 },
+  leagueBadgeLabel: {
+    fontFamily: "Inter_500Medium",
+    fontSize: 9,
+    color: COLORS.textMuted,
+    textAlign: "center",
+  },
+  leagueBadgeLabelActive: {
+    color: "#a89ef5",
+    fontFamily: "Inter_700Bold",
+  },
   competitionsSection: { marginBottom: 20, marginTop: 16 },
   sportToolsSection: { marginBottom: 20, marginTop: 10 },
   sportMenuRow: { paddingHorizontal: 20, paddingRight: 8, gap: 12 },
@@ -1738,8 +1772,8 @@ const styles = StyleSheet.create({
   viewTabsBar: {
     flexGrow: 0,
     borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
-    backgroundColor: COLORS.surface,
+    borderBottomColor: "rgba(110,90,220,0.3)",
+    backgroundColor: "#0d0e20",
     marginTop: 8,
   },
   viewTabsContent: {
@@ -1765,7 +1799,7 @@ const styles = StyleSheet.create({
     letterSpacing: 0.8,
   },
   viewTabTextActive: {
-    color: COLORS.accent,
+    color: "#a89ef5",
   },
   viewTabIndicator: {
     position: "absolute",
@@ -1773,15 +1807,23 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     height: 2,
-    backgroundColor: COLORS.accent,
+    backgroundColor: "#8b7cf0",
     borderRadius: 1,
   },
   heroMatchDayLabel: {
     fontFamily: "Inter_800ExtraBold",
-    fontSize: 28,
+    fontSize: 32,
     color: COLORS.text,
-    letterSpacing: 1.5,
+    letterSpacing: 2,
     textTransform: "uppercase",
+  },
+  heroMatchDaySub: {
+    fontFamily: "Inter_500Medium",
+    fontSize: 11,
+    color: "rgba(255,255,255,0.55)",
+    letterSpacing: 1,
+    textTransform: "uppercase",
+    marginTop: -6,
   },
   competitionGroupHeader: {
     flexDirection: "row",
@@ -1830,8 +1872,8 @@ const styles = StyleSheet.create({
     marginBottom: 4,
     borderRadius: 24,
     overflow: "hidden",
-    borderWidth: 2,
-    borderColor: "rgba(174,205,248,0.45)",
+    borderWidth: 1,
+    borderColor: "rgba(120,100,220,0.4)",
   },
   heroMatchWrapperLive: {
     borderColor: `${COLORS.live}66`,

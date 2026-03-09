@@ -235,84 +235,91 @@ export const UpcomingMatchRow = React.memo(function UpcomingMatchRow({
 
   return (
     <TouchableOpacity
-      style={styles.upcomingRow}
       onPress={() => { SafeHaptics.selection(); onPress(); }}
-      activeOpacity={0.8}
+      activeOpacity={0.85}
+      style={styles.upcomingRowOuter}
     >
-      {/* League header row */}
-      <View style={styles.upcomingLeagueRow}>
-        <View style={styles.upcomingLeagueLeft}>
-          {leagueLogo ? (
-            <Image
-              source={typeof leagueLogo === "number" ? leagueLogo : { uri: leagueLogo as string }}
-              style={styles.upcomingLeagueBadge}
-              resizeMode="contain"
-            />
-          ) : (
-            <View style={styles.upcomingLeagueDot} />
-          )}
-          <Text style={styles.upcomingLeagueName} numberOfLines={1}>{match.league}</Text>
-        </View>
-        <View style={styles.upcomingLeagueRight}>
-          {isLive ? (
-            <View style={styles.upcomingLiveBadge}>
-              <View style={styles.upcomingLiveDot} />
-              <Text style={styles.upcomingLiveText}>LIVE{match.minute != null ? ` ${match.minute}'` : ""}</Text>
-            </View>
-          ) : isFinished ? (
-            <View style={styles.upcomingFinishedBadge}>
-              <Text style={styles.upcomingFinishedBadgeText}>EINDE</Text>
-            </View>
-          ) : match.startTime ? (
-            <View style={styles.upcomingTimeBadge}>
-              <Ionicons name="time-outline" size={10} color={COLORS.accent} />
-              <Text style={styles.upcomingTimeBadgeText}>{match.startTime}</Text>
-            </View>
-          ) : null}
-          {onToggleNotification ? (
-            <TouchableOpacity
-              onPress={(e) => { e.stopPropagation(); SafeHaptics.selection(); onToggleNotification(); }}
-              style={[styles.upcomingAlertBtn, notificationsEnabled && styles.upcomingAlertBtnActive]}
-              hitSlop={{ top: 8, right: 8, bottom: 8, left: 8 }}
-            >
-              <Ionicons name={notificationsEnabled ? "notifications" : "notifications-outline"} size={12} color={notificationsEnabled ? "#fff" : COLORS.textMuted} />
-            </TouchableOpacity>
-          ) : null}
-        </View>
-      </View>
-
-      {/* Divider */}
-      <View style={styles.upcomingDivider} />
-
-      {/* Teams row */}
-      <View style={styles.upcomingTeamsRow}>
-        {/* Home */}
-        <View style={styles.upcomingTeamBlock}>
-          <TeamLogo uri={match.homeTeamLogo} teamName={match.homeTeam} size={40} />
-          <Text style={styles.upcomingTeamName} numberOfLines={2}>{match.homeTeam}</Text>
+      <LinearGradient
+        colors={isLive
+          ? ["#1e1040", "#130c28", "#0f0d20"] as const
+          : ["#13142a", "#0e1020", "#0b0c1c"] as const
+        }
+        style={styles.upcomingRow}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+      >
+        {/* League header row */}
+        <View style={styles.upcomingLeagueRow}>
+          <View style={styles.upcomingLeagueLeft}>
+            {leagueLogo ? (
+              <Image
+                source={typeof leagueLogo === "number" ? leagueLogo : { uri: leagueLogo as string }}
+                style={styles.upcomingLeagueBadge}
+                resizeMode="contain"
+              />
+            ) : (
+              <View style={styles.upcomingLeagueDot} />
+            )}
+            <Text style={styles.upcomingLeagueName} numberOfLines={1}>{match.league} on NEXORA</Text>
+          </View>
+          <View style={styles.upcomingLeagueRight}>
+            {isLive ? (
+              <View style={styles.upcomingLiveBadge}>
+                <View style={styles.upcomingLiveDot} />
+                <Text style={styles.upcomingLiveText}>LIVE{match.minute != null ? ` ${match.minute}'` : ""}</Text>
+              </View>
+            ) : isFinished ? (
+              <View style={styles.upcomingFinishedBadge}>
+                <Text style={styles.upcomingFinishedBadgeText}>FULL TIME</Text>
+              </View>
+            ) : match.startTime ? (
+              <View style={styles.upcomingTimeBadge}>
+                <Text style={styles.upcomingTimeBadgeText}>{match.startTime}</Text>
+              </View>
+            ) : null}
+            {onToggleNotification ? (
+              <TouchableOpacity
+                onPress={(e) => { e.stopPropagation(); SafeHaptics.selection(); onToggleNotification(); }}
+                style={[styles.upcomingAlertBtn, notificationsEnabled && styles.upcomingAlertBtnActive]}
+                hitSlop={{ top: 8, right: 8, bottom: 8, left: 8 }}
+              >
+                <Ionicons name={notificationsEnabled ? "notifications" : "notifications-outline"} size={12} color={notificationsEnabled ? "#fff" : COLORS.textMuted} />
+              </TouchableOpacity>
+            ) : null}
+          </View>
         </View>
 
-        {/* Score / VS */}
-        <View style={styles.upcomingCenterBlock}>
-          {isLive || isFinished ? (
-            <View style={[styles.upcomingScoreBox, isLive && styles.upcomingScoreBoxLive]}>
-              <Text style={[styles.upcomingScore, isLive && styles.upcomingScoreLive]}>
-                {match.homeScore} - {match.awayScore}
-              </Text>
-            </View>
-          ) : (
-            <View style={styles.upcomingVsBox}>
-              <Text style={styles.upcomingVsText}>VS</Text>
-            </View>
-          )}
-        </View>
+        {/* Teams row */}
+        <View style={styles.upcomingTeamsRow}>
+          {/* Home */}
+          <View style={styles.upcomingTeamBlock}>
+            <TeamLogo uri={match.homeTeamLogo} teamName={match.homeTeam} size={52} />
+            <Text style={styles.upcomingTeamName} numberOfLines={2}>{match.homeTeam}</Text>
+          </View>
 
-        {/* Away */}
-        <View style={styles.upcomingTeamBlock}>
-          <TeamLogo uri={match.awayTeamLogo} teamName={match.awayTeam} size={40} />
-          <Text style={styles.upcomingTeamName} numberOfLines={2}>{match.awayTeam}</Text>
+          {/* Score / VS */}
+          <View style={styles.upcomingCenterBlock}>
+            {isLive || isFinished ? (
+              <View style={[styles.upcomingScoreBox, isLive && styles.upcomingScoreBoxLive]}>
+                <Text style={[styles.upcomingScore, isLive && styles.upcomingScoreLive]}>
+                  {match.homeScore} - {match.awayScore}
+                </Text>
+                {isFinished && <Text style={styles.upcomingFullTimeLabel}>FULL TIME</Text>}
+              </View>
+            ) : (
+              <View style={styles.upcomingVsBox}>
+                <Text style={styles.upcomingVsText}>VS</Text>
+              </View>
+            )}
+          </View>
+
+          {/* Away */}
+          <View style={styles.upcomingTeamBlock}>
+            <TeamLogo uri={match.awayTeamLogo} teamName={match.awayTeam} size={52} />
+            <Text style={styles.upcomingTeamName} numberOfLines={2}>{match.awayTeam}</Text>
+          </View>
         </View>
-      </View>
+      </LinearGradient>
     </TouchableOpacity>
   );
 });
@@ -449,17 +456,20 @@ const styles = StyleSheet.create({
   liveBadgeRow: {
     alignItems: "center",
   },
-  upcomingRow: {
-    backgroundColor: COLORS.card,
-    borderRadius: 18,
-    paddingHorizontal: 14,
-    paddingTop: 12,
-    paddingBottom: 14,
+  upcomingRowOuter: {
     marginHorizontal: 16,
-    marginBottom: 10,
+    marginBottom: 12,
+    borderRadius: 20,
+    overflow: "hidden",
     borderWidth: 1,
-    borderColor: COLORS.border,
-    gap: 0,
+    borderColor: "rgba(110,90,220,0.25)",
+  },
+  upcomingRow: {
+    paddingHorizontal: 16,
+    paddingTop: 14,
+    paddingBottom: 18,
+    gap: 16,
+    borderRadius: 20,
   },
   upcomingLeagueRow: {
     flexDirection: "row",
@@ -474,9 +484,9 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   upcomingLeagueBadge: {
-    width: 18,
-    height: 18,
-    borderRadius: 9,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
   },
   upcomingLeagueDot: {
     width: 8,
@@ -549,11 +559,6 @@ const styles = StyleSheet.create({
     fontSize: 10,
     color: COLORS.accent,
   },
-  upcomingDivider: {
-    height: 1,
-    backgroundColor: COLORS.border,
-    marginBottom: 12,
-  },
   upcomingTeamsRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -563,52 +568,62 @@ const styles = StyleSheet.create({
   upcomingTeamBlock: {
     flex: 1,
     alignItems: "center",
-    gap: 8,
+    gap: 10,
   },
   upcomingTeamName: {
     fontFamily: "Inter_700Bold",
-    fontSize: 12,
+    fontSize: 13,
     color: COLORS.text,
     textAlign: "center",
-    lineHeight: 16,
+    lineHeight: 17,
   },
   upcomingCenterBlock: {
-    width: 80,
+    width: 90,
     alignItems: "center",
+    gap: 4,
   },
   upcomingScoreBox: {
-    backgroundColor: COLORS.cardElevated,
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    backgroundColor: "rgba(255,255,255,0.08)",
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: "rgba(255,255,255,0.12)",
+    alignItems: "center",
   },
   upcomingScoreBoxLive: {
-    backgroundColor: "rgba(255,48,64,0.12)",
-    borderColor: `${COLORS.live}55`,
+    backgroundColor: "rgba(255,48,64,0.18)",
+    borderColor: `${COLORS.live}66`,
   },
   upcomingScore: {
     fontFamily: "Inter_800ExtraBold",
-    fontSize: 18,
+    fontSize: 20,
     color: COLORS.text,
+    letterSpacing: 1,
   },
   upcomingScoreLive: {
     color: COLORS.live,
   },
+  upcomingFullTimeLabel: {
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 9,
+    color: COLORS.textMuted,
+    letterSpacing: 0.5,
+    marginTop: 2,
+  },
   upcomingVsBox: {
-    backgroundColor: COLORS.cardElevated,
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
+    backgroundColor: "rgba(255,255,255,0.06)",
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: "rgba(255,255,255,0.1)",
   },
   upcomingVsText: {
     fontFamily: "Inter_800ExtraBold",
-    fontSize: 13,
+    fontSize: 14,
     color: COLORS.textMuted,
-    letterSpacing: 1,
+    letterSpacing: 2,
   },
   upcomingAlertBtn: {
     width: 26,
