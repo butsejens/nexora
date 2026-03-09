@@ -343,6 +343,7 @@ export default function MoviesScreen() {
           renderItem={({ item }: any) => renderCard(item)}
           contentContainerStyle={styles.carouselPadding}
           showsHorizontalScrollIndicator={false}
+          removeClippedSubviews={false}
           ListFooterComponent={() => (
             <TouchableOpacity
               style={styles.loadMoreBtn}
@@ -373,6 +374,7 @@ export default function MoviesScreen() {
           renderItem={({ item }: any) => renderCard(item)}
           contentContainerStyle={styles.carouselPadding}
           showsHorizontalScrollIndicator={false}
+          removeClippedSubviews={false}
           ListFooterComponent={
             <TouchableOpacity
               style={styles.loadMoreBtn}
@@ -459,23 +461,27 @@ export default function MoviesScreen() {
               )}
             </View>
 
-            {search.trim() ? (
+            {/* Search results – always mounted, hidden when not searching to avoid removeChild crash */}
+            <View style={search.trim() ? undefined : { display: "none" }}>
               <View style={styles.section}>
                 <Text style={styles.sectionTitle}>Zoekresultaten</Text>
                 {filteredIptv.length > 0 && (
                   <FlatList horizontal data={filteredIptv} keyExtractor={(item: any) => item.id}
                     renderItem={({ item }: any) => renderCard(item)}
-                    contentContainerStyle={styles.carouselPadding} showsHorizontalScrollIndicator={false} />
+                    contentContainerStyle={styles.carouselPadding} showsHorizontalScrollIndicator={false}
+                    removeClippedSubviews={false} />
                 )}
                 {(filteredTmdb ?? []).length > 0 && (
                   <FlatList horizontal data={filteredTmdb ?? []} keyExtractor={(item: any) => item.id}
                     renderItem={({ item }: any) => renderCard(item)}
-                    contentContainerStyle={styles.carouselPadding} showsHorizontalScrollIndicator={false} />
+                    contentContainerStyle={styles.carouselPadding} showsHorizontalScrollIndicator={false}
+                    removeClippedSubviews={false} />
                 )}
                 {filteredArchive.length > 0 && (
                   <FlatList horizontal data={filteredArchive} keyExtractor={(item: any) => item.id}
                     renderItem={({ item }: any) => renderCard(item)}
-                    contentContainerStyle={styles.carouselPadding} showsHorizontalScrollIndicator={false} />
+                    contentContainerStyle={styles.carouselPadding} showsHorizontalScrollIndicator={false}
+                    removeClippedSubviews={false} />
                 )}
                 {filteredIptv.length === 0 && (filteredTmdb ?? []).length === 0 && filteredArchive.length === 0 && (
                   <View style={{ alignItems: "center", paddingTop: 40, gap: 10 }}>
@@ -484,101 +490,106 @@ export default function MoviesScreen() {
                   </View>
                 )}
               </View>
-            ) : (
-              <>
-                {/* Hero banner */}
-                {featured && (
-                  <View style={styles.heroFrame}>
-                    <RealHeroBanner
-                      item={featured}
-                      onPlay={() => goToPlayer(featured)}
-                      onInfo={() => goToDetail(featured)}
-                    />
-                  </View>
-                )}
+            </View>
 
-                {/* IPTV Playlist */}
-                {iptvMovies.length > 0 && (
-                  <View style={styles.section}>
-                    <Text style={styles.sectionTitle}>Jouw Playlist</Text>
-                    {iptvGroups.length > 2 && (
-                      <FlatList
-                        horizontal data={iptvGroups} keyExtractor={g => g}
-                        renderItem={({ item }) => (
-                          <TouchableOpacity
-                            style={[styles.chip, groupFilter === item && styles.chipActive]}
-                            onPress={() => setGroupFilter(item)}>
-                            <Text style={[styles.chipText, groupFilter === item && styles.chipTextActive]}>{item}</Text>
-                          </TouchableOpacity>
-                        )}
-                        contentContainerStyle={styles.chipRow} showsHorizontalScrollIndicator={false} />
-                    )}
+            {/* Normal catalog – always mounted, hidden while searching to avoid removeChild crash */}
+            <View style={search.trim() ? { display: "none" } : undefined}>
+              {/* Hero banner */}
+              {featured && (
+                <View style={styles.heroFrame}>
+                  <RealHeroBanner
+                    item={featured}
+                    onPlay={() => goToPlayer(featured)}
+                    onInfo={() => goToDetail(featured)}
+                  />
+                </View>
+              )}
+
+              {/* IPTV Playlist */}
+              {iptvMovies.length > 0 && (
+                <View style={styles.section}>
+                  <Text style={styles.sectionTitle}>Jouw Playlist</Text>
+                  {iptvGroups.length > 2 && (
                     <FlatList
-                      horizontal data={filteredIptv} keyExtractor={(item: any) => item.id}
-                      renderItem={({ item }: any) => renderCard(item)}
-                      contentContainerStyle={styles.carouselPadding} showsHorizontalScrollIndicator={false} />
-                  </View>
-                )}
+                      horizontal data={iptvGroups} keyExtractor={g => g}
+                      renderItem={({ item }) => (
+                        <TouchableOpacity
+                          style={[styles.chip, groupFilter === item && styles.chipActive]}
+                          onPress={() => setGroupFilter(item)}>
+                          <Text style={[styles.chipText, groupFilter === item && styles.chipTextActive]}>{item}</Text>
+                        </TouchableOpacity>
+                      )}
+                      contentContainerStyle={styles.chipRow} showsHorizontalScrollIndicator={false}
+                      removeClippedSubviews={false} />
+                  )}
+                  <FlatList
+                    horizontal data={filteredIptv} keyExtractor={(item: any) => item.id}
+                    renderItem={({ item }: any) => renderCard(item)}
+                    contentContainerStyle={styles.carouselPadding} showsHorizontalScrollIndicator={false}
+                    removeClippedSubviews={false} />
+                </View>
+              )}
 
-                {renderMainRow("Trending deze week", dedupTrending, "trending")}
-                {renderMainRow("Nieuw in bioscoop", dedupNewReleases, "newReleases")}
-                {renderMainRow("Best beoordeeld", dedupTopRated, "topRated")}
-                {renderMainRow("Populair nu", dedupPopular, "popular")}
-                {renderMainRow("Binnenkort", dedupUpcoming, "upcoming")}
+              {renderMainRow("Trending deze week", dedupTrending, "trending")}
+              {renderMainRow("Nieuw in bioscoop", dedupNewReleases, "newReleases")}
+              {renderMainRow("Best beoordeeld", dedupTopRated, "topRated")}
+              {renderMainRow("Populair nu", dedupPopular, "popular")}
+              {renderMainRow("Binnenkort", dedupUpcoming, "upcoming")}
 
-                {/* Genre rows — 15 genres, each with load-more */}
-                {movieGenres.map((genre: any) => genre.items?.length > 0 && renderGenreRow(genre))}
+              {/* Genre rows — 15 genres, each with load-more */}
+              {movieGenres.map((genre: any) => genre.items?.length > 0 && renderGenreRow(genre))}
 
-                {/* Free public domain movies via Internet Archive */}
-                {archiveMovies.length > 0 && (
-                  <View style={styles.section}>
-                    <Text style={styles.sectionTitle}>Gratis Films (Archief)</Text>
+              {/* Free public domain movies via Internet Archive */}
+              {archiveMovies.length > 0 && (
+                <View style={styles.section}>
+                  <Text style={styles.sectionTitle}>Gratis Films (Archief)</Text>
+                  <FlatList
+                    horizontal
+                    data={archiveMovies}
+                    keyExtractor={(item: any) => item.id}
+                    renderItem={({ item }: any) => renderCard(item)}
+                    contentContainerStyle={styles.carouselPadding}
+                    showsHorizontalScrollIndicator={false}
+                    removeClippedSubviews={false}
+                  />
+                </View>
+              )}
+
+              {/* Decade rows */}
+              {movieDecades.map((decade: any) => (
+                decade.items?.length > 0 && (
+                  <View key={decade.decade} style={styles.section}>
+                    <Text style={styles.sectionTitle}>Beste van de {decade.name}</Text>
                     <FlatList
                       horizontal
-                      data={archiveMovies}
-                      keyExtractor={(item: any) => item.id}
+                      data={decade.items}
+                      keyExtractor={(item: any) => `${decade.decade}-${item.id}`}
                       renderItem={({ item }: any) => renderCard(item)}
                       contentContainerStyle={styles.carouselPadding}
                       showsHorizontalScrollIndicator={false}
+                      removeClippedSubviews={false}
                     />
                   </View>
-                )}
+                )
+              ))}
 
-                {/* Decade rows */}
-                {movieDecades.map((decade: any) => (
-                  decade.items?.length > 0 && (
-                    <View key={decade.decade} style={styles.section}>
-                      <Text style={styles.sectionTitle}>Beste van de {decade.name}</Text>
-                      <FlatList
-                        horizontal
-                        data={decade.items}
-                        keyExtractor={(item: any) => `${decade.decade}-${item.id}`}
-                        renderItem={({ item }: any) => renderCard(item)}
-                        contentContainerStyle={styles.carouselPadding}
-                        showsHorizontalScrollIndicator={false}
-                      />
-                    </View>
-                  )
-                ))}
-
-                {isLoading && (
-                  <View style={{ padding: 40, alignItems: "center" }}>
-                    <ActivityIndicator color={COLORS.accent} />
-                    <Text style={{ color: COLORS.textMuted, fontFamily: "Inter_400Regular", fontSize: 13, marginTop: 12 }}>
-                      Films laden...
-                    </Text>
-                  </View>
-                )}
-                {isError && !iptvMovies.length && (
-                  <View style={{ padding: 40, alignItems: "center", gap: 10 }}>
-                    <Ionicons name="cloud-offline-outline" size={40} color={COLORS.textMuted} />
-                    <Text style={{ fontFamily: "Inter_500Medium", color: COLORS.textMuted, textAlign: "center" }}>
-                      {normalizedCatalogError?.userMessage || "Kan films niet laden."}
-                    </Text>
-                  </View>
-                )}
-              </>
-            )}
+              {isLoading && (
+                <View style={{ padding: 40, alignItems: "center" }}>
+                  <ActivityIndicator color={COLORS.accent} />
+                  <Text style={{ color: COLORS.textMuted, fontFamily: "Inter_400Regular", fontSize: 13, marginTop: 12 }}>
+                    Films laden...
+                  </Text>
+                </View>
+              )}
+              {isError && !iptvMovies.length && (
+                <View style={{ padding: 40, alignItems: "center", gap: 10 }}>
+                  <Ionicons name="cloud-offline-outline" size={40} color={COLORS.textMuted} />
+                  <Text style={{ fontFamily: "Inter_500Medium", color: COLORS.textMuted, textAlign: "center" }}>
+                    {normalizedCatalogError?.userMessage || "Kan films niet laden."}
+                  </Text>
+                </View>
+              )}
+            </View>
             <View style={{ height: bottomPad }} />
           </>
         }
