@@ -5,6 +5,7 @@ import {
   Animated,
   StyleSheet,
   Platform,
+  Image,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { COLORS } from "@/constants/colors";
@@ -84,10 +85,7 @@ export function NexoraIntro({ onFinish }: Props) {
       <View style={styles.contentWrap}>
         {/* Logo */}
         <Animated.View style={{ transform: [{ scale: logoScale }], opacity: logoOpacity, alignItems: "center" }}>
-          <Text style={styles.logo}>
-            <Text style={styles.logoN}>N</Text>
-            <Text style={styles.logoRest}>EXORA</Text>
-          </Text>
+          <Image source={require("@/assets/images/icon.png")} style={styles.logoImage} resizeMode="contain" />
         </Animated.View>
 
         {/* Red accent line */}
@@ -139,16 +137,10 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: 0,
   },
-  logo: {
-    fontSize: 56,
-    letterSpacing: 8,
-    fontFamily: "Inter_800ExtraBold",
-  },
-  logoN: {
-    color: COLORS.accent,
-  },
-  logoRest: {
-    color: COLORS.text,
+  logoImage: {
+    width: 168,
+    height: 168,
+    borderRadius: 36,
   },
   accentLine: {
     width: 60,

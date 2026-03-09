@@ -30,6 +30,15 @@ import { SafeHaptics } from "@/lib/safeHaptics";
 
 const CHANGELOG: { version: string; date: string; changes: string[] }[] = [
   {
+    version: "2.0.39",
+    date: "2026-03-09",
+    changes: [
+      "Nieuwe NEXORA logo branding toegepast op app-icoon, splash en opstart-intro",
+      "Boot/intro screen toont nu het nieuwe logo op gsm",
+      "Versie- en updateflow gesynchroniseerd voor betrouwbare update melding",
+    ],
+  },
+  {
     version: "2.0.38",
     date: "2026-03-09",
     changes: [

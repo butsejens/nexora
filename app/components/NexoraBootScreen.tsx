@@ -1,5 +1,5 @@
 import React, { useRef, useEffect } from "react";
-import { View, Text, StyleSheet, Animated } from "react-native";
+import { View, Text, StyleSheet, Animated, Image } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { BlurView } from "expo-blur";
 import { COLORS } from "@/constants/colors";
@@ -51,15 +51,14 @@ export function NexoraBootScreen({ progress, message }: Props) {
 
       <View style={styles.centerWrap}>
         {/* Larger Logo */}
-        <Animated.Text
+        <Animated.View
           style={[
-            styles.logoText,
+            styles.logoWrap,
             { transform: [{ scale: pulseAnim }] },
           ]}
         >
-          <Text style={styles.logoN}>N</Text>
-          <Text style={styles.logoRest}>EXORA</Text>
-        </Animated.Text>
+          <Image source={require("@/assets/images/icon.png")} style={styles.logoImage} resizeMode="contain" />
+        </Animated.View>
 
         {/* Progress Card */}
         <BlurView intensity={75} tint="dark" style={styles.card}>
@@ -113,14 +112,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     gap: 32,
   },
-  logoText: {
-    fontSize: 72,
-    letterSpacing: 8,
-    fontWeight: "800",
-    fontFamily: "Inter_800ExtraBold",
+  logoWrap: {
+    alignItems: "center",
   },
-  logoN: { color: COLORS.accent },
-  logoRest: { color: COLORS.text },
+  logoImage: {
+    width: 176,
+    height: 176,
+    borderRadius: 40,
+  },
   card: {
     width: "100%",
     maxWidth: 420,
