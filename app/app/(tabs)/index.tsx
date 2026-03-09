@@ -1148,12 +1148,7 @@ export default function SportsScreen() {
           </View>
         )}
 
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          style={styles.viewTabsBar}
-          contentContainerStyle={styles.viewTabsContent}
-        >
+        <View style={styles.viewTabsBar}>
           {([
             { id: "competitions" as const, label: "EXPLORE",  icon: "apps-outline" as const },
             { id: "live" as const,         label: "LIVE",     icon: "radio-button-on-outline" as const },
@@ -1164,18 +1159,15 @@ export default function SportsScreen() {
             return (
               <TouchableOpacity
                 key={view.id}
-                style={styles.viewTab}
+                style={[styles.viewTab, isActive && styles.viewTabActive]}
                 onPress={() => setSportsView(view.id)}
               >
-                <View style={styles.viewTabInner}>
-                  <Ionicons name={view.icon} size={14} color={isActive ? COLORS.accent : COLORS.textMuted} />
-                  <Text style={[styles.viewTabText, isActive && styles.viewTabTextActive]}>{view.label}</Text>
-                </View>
-                {isActive && <View style={styles.viewTabIndicator} />}
+                <Ionicons name={view.icon} size={14} color={isActive ? COLORS.accent : COLORS.textMuted} />
+                <Text style={[styles.viewTabText, isActive && styles.viewTabTextActive]}>{view.label}</Text>
               </TouchableOpacity>
             );
           })}
-        </ScrollView>
+        </View>
 
         {/* Hero match banner — live match first, fall back to first upcoming */}
         {(showLive || showUpcoming) && (sortedLive.length > 0 || sortedUpcoming.length > 0) && (() => {
@@ -1206,21 +1198,17 @@ export default function SportsScreen() {
                     </View>
                   )}
                 </View>
-                <Text style={styles.heroMatchDayLabel}>{isLive ? "LIVE NOW" : "MATCH DAY"}</Text>
-                <Text style={styles.heroMatchDaySub}>
-                  {isLive ? `CATCH THE MATCH LIVE ON NEXORA` : `CATCH THE MATCH LIVE ON NEXORA APP`}
-                </Text>
                 <View style={styles.heroTeamRow}>
                   <View style={styles.heroTeamBlock}>
-                    <TeamLogo uri={hero.homeTeamLogo} teamName={hero.homeTeam} size={76} />
+                    <TeamLogo uri={hero.homeTeamLogo} teamName={hero.homeTeam} size={80} />
                     <Text style={styles.heroTeamName} numberOfLines={2}>{hero.homeTeam}</Text>
                   </View>
-                  <View style={styles.heroScoreBlock}>
+                  <View style={[styles.heroScoreBlock, isLive && styles.heroScoreBlockLive]}>
                     {isLive ? (
                       <>
-                        <Text style={styles.heroScore}>{hero.homeScore}</Text>
+                        <Text style={[styles.heroScore, styles.heroScoreLive]}>{hero.homeScore}</Text>
                         <Text style={styles.heroScoreSep}>:</Text>
-                        <Text style={styles.heroScore}>{hero.awayScore}</Text>
+                        <Text style={[styles.heroScore, styles.heroScoreLive]}>{hero.awayScore}</Text>
                       </>
                     ) : (
                       <View style={{ alignItems: "center", gap: 4 }}>
@@ -1230,7 +1218,7 @@ export default function SportsScreen() {
                     )}
                   </View>
                   <View style={styles.heroTeamBlock}>
-                    <TeamLogo uri={hero.awayTeamLogo} teamName={hero.awayTeam} size={76} />
+                    <TeamLogo uri={hero.awayTeamLogo} teamName={hero.awayTeam} size={80} />
                     <Text style={styles.heroTeamName} numberOfLines={2}>{hero.awayTeam}</Text>
                   </View>
                 </View>
@@ -1462,111 +1450,6 @@ export default function SportsScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
   scroll: { flex: 1 },
-  heroHeadline: {
-    fontFamily: "Inter_800ExtraBold",
-    fontSize: 22,
-    lineHeight: 30,
-    color: COLORS.text,
-    textAlign: "center",
-    marginHorizontal: 24,
-    marginTop: 14,
-    marginBottom: 16,
-  },
-  sportHeroFrame: {
-    marginHorizontal: 14,
-    borderRadius: 26,
-    borderWidth: 2,
-    borderColor: COLORS.borderLight,
-    padding: 12,
-    backgroundColor: COLORS.overlayLight,
-    marginBottom: 12,
-  },
-  sportHeroCard: {
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    backgroundColor: COLORS.card,
-    padding: 14,
-    gap: 12,
-  },
-  sportHeroTop: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  sportHeroLeague: {
-    fontFamily: "Inter_700Bold",
-    fontSize: 14,
-    color: COLORS.textSecondary,
-    flex: 1,
-  },
-  sportHeroTeams: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-  sportHeroTeamPill: {
-    flex: 1,
-    backgroundColor: COLORS.cardElevated,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: 12,
-    paddingVertical: 10,
-    paddingHorizontal: 10,
-  },
-  sportHeroTeamText: {
-    fontFamily: "Inter_700Bold",
-    color: COLORS.text,
-    fontSize: 14,
-    textAlign: "center",
-  },
-  sportHeroVs: {
-    fontFamily: "Inter_800ExtraBold",
-    color: COLORS.textMuted,
-    fontSize: 12,
-    letterSpacing: 1,
-  },
-  sportHeroAction: {
-    alignSelf: "flex-start",
-    backgroundColor: COLORS.overlay,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: COLORS.borderLight,
-    paddingHorizontal: 14,
-    paddingVertical: 9,
-  },
-  sportHeroActionText: {
-    fontFamily: "Inter_700Bold",
-    color: COLORS.text,
-    fontSize: 14,
-  },
-  summaryWrap: {
-    marginHorizontal: 16,
-    marginTop: 4,
-    marginBottom: 8,
-    backgroundColor: COLORS.overlayLight,
-    borderWidth: 1,
-    borderColor: COLORS.borderLight,
-    borderRadius: 18,
-    padding: 14,
-    gap: 10,
-  },
-  summaryHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  summaryTitle: { fontFamily: "Inter_700Bold", fontSize: 14, color: COLORS.text },
-  summaryMeta: { fontFamily: "Inter_400Regular", fontSize: 11, color: COLORS.textMuted },
-  summaryGrid: { flexDirection: "row", gap: 8 },
-  summaryCard: {
-    flex: 1,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    backgroundColor: COLORS.card,
-    paddingVertical: 10,
-    alignItems: "center",
-    gap: 2,
-  },
-  summaryValue: { fontFamily: "Inter_800ExtraBold", fontSize: 18, color: COLORS.accent },
-  summaryLabel: { fontFamily: "Inter_500Medium", fontSize: 11, color: COLORS.textMuted },
   warnBanner: {
     flexDirection: "row", alignItems: "center", gap: 8,
     marginHorizontal: 16, marginTop: 8, padding: 12, borderRadius: 14,
@@ -1646,18 +1529,6 @@ const styles = StyleSheet.create({
   competitionsSection: { marginBottom: 24, marginTop: 16 },
   sportToolsSection: { marginBottom: 24, marginTop: 12 },
   sportMenuRow: { paddingHorizontal: 20, paddingRight: 8, gap: 12 },
-  sportMenuChip: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    paddingHorizontal: 14,
-    paddingVertical: 9,
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    backgroundColor: COLORS.card,
-  },
-  sportMenuChipText: { fontFamily: "Inter_600SemiBold", fontSize: 12, color: COLORS.textSecondary },
   sportToolPanel: {
     marginTop: 14,
     marginHorizontal: 20,
@@ -1703,19 +1574,6 @@ const styles = StyleSheet.create({
   sportToolBadgeNegative: { borderColor: `${COLORS.live}66`, backgroundColor: "rgba(255,48,64,0.16)" },
   sportToolBadgeText: { fontFamily: "Inter_600SemiBold", fontSize: 10, color: COLORS.text },
   sportToolEmpty: { fontFamily: "Inter_500Medium", fontSize: 12, color: COLORS.textMuted },
-  builderPickRow: { gap: 8, paddingVertical: 2, paddingRight: 4 },
-  builderPickChip: {
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    backgroundColor: COLORS.card,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    maxWidth: 230,
-  },
-  builderPickChipActive: { borderColor: COLORS.green, backgroundColor: "rgba(0,230,118,0.14)" },
-  builderPickChipText: { fontFamily: "Inter_500Medium", fontSize: 11, color: COLORS.textMuted },
-  builderPickChipTextActive: { color: COLORS.green },
   sportToolCard: {
     width: 240,
     borderRadius: 18,
@@ -1806,13 +1664,17 @@ const styles = StyleSheet.create({
   },
   countryCompetitionLabel: { fontFamily: "Inter_500Medium", fontSize: 10, color: COLORS.textMuted, textTransform: "uppercase", letterSpacing: 0.4 },
   countryCompetitionName: { fontFamily: "Inter_600SemiBold", fontSize: 13, color: COLORS.text },
-  sectionHeader: { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 20, marginBottom: 14 },
+  sectionHeader: { flexDirection: "row", alignItems: "center", gap: 8, paddingRight: 20, marginBottom: 14 },
   sectionTitle: {
     fontFamily: "Inter_800ExtraBold",
     fontSize: 18,
     color: COLORS.text,
     marginBottom: 12,
-    paddingHorizontal: 20,
+    marginLeft: 20,
+    paddingRight: 20,
+    paddingLeft: 10,
+    borderLeftWidth: 3,
+    borderLeftColor: COLORS.accent,
     letterSpacing: -0.3,
   },
   subSectionTitle: {
@@ -1825,89 +1687,32 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
   },
   viewTabsBar: {
-    flexGrow: 0,
+    flexDirection: "row",
     borderBottomWidth: 1,
     borderBottomColor: "rgba(255,255,255,0.06)",
     backgroundColor: COLORS.surface,
     marginTop: 8,
   },
-  viewTabsContent: {
-    flexDirection: "row",
-    paddingHorizontal: 16,
-  },
   viewTab: {
-    paddingHorizontal: 16,
-    paddingVertical: 0,
-    position: "relative",
-    marginRight: 4,
-  },
-  viewTabInner: {
+    flex: 1,
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
-    paddingVertical: 12,
+    justifyContent: "center",
+    gap: 5,
+    paddingVertical: 13,
+  },
+  viewTabActive: {
+    borderBottomWidth: 2,
+    borderBottomColor: COLORS.accent,
   },
   viewTabText: {
     fontFamily: "Inter_700Bold",
-    fontSize: 12,
+    fontSize: 10,
     color: COLORS.textMuted,
     letterSpacing: 0.8,
   },
   viewTabTextActive: {
     color: COLORS.accent,
-  },
-  viewTabIndicator: {
-    position: "absolute",
-    bottom: 0,
-    left: 0,
-    right: 0,
-    height: 2,
-    backgroundColor: COLORS.accent,
-    borderRadius: 1,
-  },
-  heroMatchDayLabel: {
-    fontFamily: "Inter_800ExtraBold",
-    fontSize: 28,
-    color: COLORS.text,
-    letterSpacing: 1.5,
-    textTransform: "uppercase",
-  },
-  heroMatchDaySub: {
-    fontFamily: "Inter_600SemiBold",
-    fontSize: 10,
-    color: "rgba(255,255,255,0.45)",
-    letterSpacing: 2,
-    textTransform: "uppercase",
-    marginTop: -4,
-  },
-  competitionGroupHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    paddingHorizontal: 16,
-    paddingVertical: 6,
-    marginTop: 16,
-    marginBottom: 6,
-  },
-  competitionGroupLogo: { width: 18, height: 18 },
-  competitionGroupName: {
-    fontFamily: "Inter_700Bold",
-    fontSize: 11,
-    color: COLORS.textSecondary,
-    letterSpacing: 1,
-    textTransform: "uppercase",
-  },
-  competitionGroupLine: { flex: 1, height: 1, backgroundColor: "rgba(255,255,255,0.07)" },
-  competitionGroupCount: {
-    fontFamily: "Inter_600SemiBold",
-    fontSize: 10,
-    color: COLORS.textMuted,
-    backgroundColor: COLORS.cardElevated,
-    borderRadius: 8,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.07)",
   },
   carouselPadding: { paddingHorizontal: 20, paddingRight: 8 },
   liveSection: { marginBottom: 32, marginTop: 8 },
@@ -2008,10 +1813,19 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.12)",
   },
+  heroScoreBlockLive: {
+    backgroundColor: "rgba(229,9,20,0.15)",
+    borderColor: `${COLORS.live}55`,
+  },
   heroScore: {
     fontFamily: "Inter_800ExtraBold",
     fontSize: 42,
     color: COLORS.text,
+  },
+  heroScoreLive: {
+    textShadowColor: COLORS.live,
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 14,
   },
   heroScoreSep: {
     fontFamily: "Inter_400Regular",

@@ -162,7 +162,7 @@ export default function SeriesScreen() {
   }, [isTabLoading]);
 
   // ── Navigation helpers ─────────────────────────────────────────────────────
-  const goToDetail = (item: any) => {
+  const goToDetail = useCallback((item: any) => {
     if (item.isIptv) {
       router.push({
         pathname: "/detail",
@@ -175,9 +175,9 @@ export default function SeriesScreen() {
     } else {
       router.push({ pathname: "/detail", params: { id: item.id, type: "series", title: item.title } });
     }
-  };
+  }, []);
 
-  const goToPlayer = (item: any) => {
+  const goToPlayer = useCallback((item: any) => {
     SafeHaptics.impactLight();
     const tmdbId = item.tmdbId ? String(item.tmdbId) : (!item.isIptv ? item.id : null);
     if (item.isIptv && item.streamUrl) {
@@ -202,7 +202,7 @@ export default function SeriesScreen() {
     } else {
       goToDetail(item);
     }
-  };
+  }, [goToDetail]);
 
   // ── Load more per genre ───────────────────────────────────────────────────
   const loadMoreGenre = useCallback(async (genreId: number) => {
