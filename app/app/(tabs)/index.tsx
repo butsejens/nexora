@@ -30,13 +30,13 @@ import {
   toEventHash,
 } from "@/lib/match-notifications";
 
-// ── Sport design tokens ──────────────────────────────────────────────────────
-const SP_ACCENT      = "#5D60E8";
-const SP_ACCENT_GLOW = "rgba(93,96,232,0.18)";
-const SP_BG          = "#0B0D1A";
-const SP_CARD        = "#141626";
-const SP_ELEVATED    = "#1D2040";
-const SP_BORDER      = "rgba(93,96,232,0.16)";
+// ── Sport design tokens (aliased to unified palette) ─────────────────────────
+const SP_ACCENT      = COLORS.accent;
+const SP_ACCENT_GLOW = COLORS.accentGlow;
+const SP_BG          = COLORS.background;
+const SP_CARD        = COLORS.card;
+const SP_ELEVATED    = COLORS.cardElevated;
+const SP_BORDER      = COLORS.border;
 
 type SportsPayload = {
   date?: string;
@@ -1322,7 +1322,8 @@ export default function SportsScreen() {
               {(selectedCountry?.competitions || []).map((comp) => (
                 <TouchableOpacity
                   key={comp.id}
-                  style={[styles.competitionRow, { borderColor: `${comp.color}44` }]}
+                  activeOpacity={0.75}
+                  style={[styles.competitionRow, { borderColor: `${comp.color}33` }]}
                   onPress={() => {
                     if (comp.tier === "national" && comp.nationalTeamName) {
                       router.push({
@@ -1334,14 +1335,19 @@ export default function SportsScreen() {
                     }
                   }}
                 >
-                  <View style={[styles.competitionIcon, { backgroundColor: `${comp.color}22` }]}>
-                    <Ionicons name={tierIcon(comp.tier) as any} size={15} color={comp.color} />
+                  <View style={[styles.competitionAccentBar, { backgroundColor: comp.color }]} />
+                  <View style={styles.competitionRowContent}>
+                    <View style={[styles.competitionIcon, { backgroundColor: `${comp.color}18` }]}>
+                      <Ionicons name={tierIcon(comp.tier) as any} size={16} color={comp.color} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.competitionName} numberOfLines={1}>{comp.league}</Text>
+                      <View style={[styles.competitionTierBadge, { borderColor: `${comp.color}55` }]}>
+                        <Text style={[styles.competitionTierText, { color: comp.color }]}>{tierLabel(comp.tier)}</Text>
+                      </View>
+                    </View>
+                    <Ionicons name="chevron-forward" size={13} color={COLORS.textMuted} />
                   </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.competitionTier}>{tierLabel(comp.tier)}</Text>
-                    <Text style={styles.competitionName} numberOfLines={1}>{comp.league}</Text>
-                  </View>
-                  <Ionicons name="chevron-forward" size={13} color={COLORS.textMuted} />
                 </TouchableOpacity>
               ))}
             </View>
@@ -1360,12 +1366,12 @@ const styles = StyleSheet.create({
   /* ── Tab bar ── */
   tabBar: {
     flexDirection: "row",
-    backgroundColor: "#0F1123",
-    paddingHorizontal: 10,
+    backgroundColor: COLORS.surface,
+    paddingHorizontal: 12,
     paddingVertical: 8,
     gap: 6,
     borderBottomWidth: 1,
-    borderBottomColor: "rgba(255,255,255,0.05)",
+    borderBottomColor: COLORS.border,
   },
   tabItem: {
     flex: 1,
@@ -1373,12 +1379,12 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     gap: 5,
-    paddingVertical: 8,
-    borderRadius: 20,
+    paddingVertical: 9,
+    borderRadius: 22,
   },
   tabItemActive: {
-    backgroundColor: SP_ACCENT,
-    borderRadius: 20,
+    backgroundColor: COLORS.accent,
+    borderRadius: 22,
   },
   tabText: { fontFamily: "Inter_700Bold", fontSize: 10, color: COLORS.textMuted, letterSpacing: 0.8 },
   tabTextActive: { color: "#fff" },
@@ -1439,7 +1445,7 @@ const styles = StyleSheet.create({
     color: COLORS.text,
     paddingLeft: 10,
     borderLeftWidth: 3,
-    borderLeftColor: SP_ACCENT,
+    borderLeftColor: COLORS.accent,
     letterSpacing: -0.3,
   },
   subHead: {
@@ -1791,16 +1797,16 @@ const styles = StyleSheet.create({
   countryRow: { paddingHorizontal: 16, paddingRight: 8, gap: 8 },
   countryChip: {
     flexDirection: "row", alignItems: "center", gap: 6,
-    paddingHorizontal: 12, paddingVertical: 8, borderRadius: 18,
+    paddingHorizontal: 14, paddingVertical: 9, borderRadius: 20,
     backgroundColor: COLORS.cardElevated, borderWidth: 1, borderColor: COLORS.border,
   },
-  countryChipActive: { borderColor: SP_ACCENT, backgroundColor: SP_ACCENT_GLOW },
-  countryFlag: { fontSize: 14 },
-  countryName: { fontFamily: "Inter_500Medium", fontSize: 12, color: COLORS.textMuted },
-  countryNameActive: { color: SP_ACCENT },
+  countryChipActive: { borderColor: COLORS.accent, backgroundColor: `${COLORS.accent}18` },
+  countryFlag: { fontSize: 15 },
+  countryName: { fontFamily: "Inter_600SemiBold", fontSize: 12, color: COLORS.textMuted },
+  countryNameActive: { color: COLORS.accent },
   competitionsPanel: {
-    marginTop: 12, marginHorizontal: 16, borderRadius: 18,
-    borderWidth: 1, borderColor: "rgba(255,255,255,0.06)",
+    marginTop: 14, marginHorizontal: 16, borderRadius: 18,
+    borderWidth: 1, borderColor: COLORS.border,
     backgroundColor: COLORS.card, padding: 14, gap: 8,
   },
   competitionsPanelTitle: {
@@ -1808,13 +1814,22 @@ const styles = StyleSheet.create({
     marginBottom: 4, textTransform: "uppercase", letterSpacing: 0.8,
   },
   competitionRow: {
-    flexDirection: "row", alignItems: "center", gap: 10,
+    flexDirection: "row", alignItems: "stretch",
     borderRadius: 14, borderWidth: 1, backgroundColor: COLORS.cardElevated,
-    paddingHorizontal: 12, paddingVertical: 11,
+    overflow: "hidden",
   },
-  competitionIcon: { width: 28, height: 28, borderRadius: 14, alignItems: "center", justifyContent: "center" },
-  competitionTier: { fontFamily: "Inter_500Medium", fontSize: 10, color: COLORS.textMuted, textTransform: "uppercase", letterSpacing: 0.4 },
-  competitionName: { fontFamily: "Inter_600SemiBold", fontSize: 13, color: COLORS.text },
+  competitionAccentBar: { width: 4 },
+  competitionRowContent: {
+    flex: 1, flexDirection: "row", alignItems: "center", gap: 12,
+    paddingHorizontal: 12, paddingVertical: 13,
+  },
+  competitionIcon: { width: 38, height: 38, borderRadius: 11, alignItems: "center", justifyContent: "center" },
+  competitionTierBadge: {
+    alignSelf: "flex-start", marginTop: 4,
+    borderRadius: 5, borderWidth: 1, paddingHorizontal: 6, paddingVertical: 1,
+  },
+  competitionTierText: { fontFamily: "Inter_600SemiBold", fontSize: 9, textTransform: "uppercase", letterSpacing: 0.4 },
+  competitionName: { fontFamily: "Inter_700Bold", fontSize: 14, color: COLORS.text },
 
   /* ── Empty / loading states ── */
   emptyState: { alignItems: "center", paddingVertical: 36, paddingHorizontal: 24, gap: 10 },

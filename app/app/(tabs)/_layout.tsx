@@ -18,16 +18,18 @@ function TabIcon({
   children: React.ReactNode;
 }) {
   return (
-    <View
-      style={[
-        tabIconStyles.wrap,
-        focused && {
-          backgroundColor: accentColor + "28",
-          borderRadius: 14,
-        },
-      ]}
-    >
-      {children}
+    <View style={tabIconStyles.wrap}>
+      {focused && (
+        <View style={[tabIconStyles.activeDot, { backgroundColor: accentColor }]} />
+      )}
+      <View
+        style={[
+          tabIconStyles.iconBg,
+          focused && { backgroundColor: accentColor + "28" },
+        ]}
+      >
+        {children}
+      </View>
     </View>
   );
 }
@@ -35,9 +37,24 @@ function TabIcon({
 const tabIconStyles = StyleSheet.create({
   wrap: {
     width: 48,
-    height: 36,
+    height: 40,
+    alignItems: "center",
+    justifyContent: "flex-end",
+    paddingBottom: 4,
+  },
+  activeDot: {
+    position: "absolute",
+    top: 0,
+    width: 22,
+    height: 3,
+    borderRadius: 1.5,
+  },
+  iconBg: {
+    width: 46,
+    height: 30,
     alignItems: "center",
     justifyContent: "center",
+    borderRadius: 12,
   },
 });
 

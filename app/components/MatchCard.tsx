@@ -260,9 +260,10 @@ export const MatchCard = React.memo(function MatchCard({
             </View>
             <Text
               style={styles.teamName}
-              numberOfLines={2}
+              numberOfLines={1}
               adjustsFontSizeToFit
-              minimumFontScale={0.8}
+              minimumFontScale={0.65}
+              ellipsizeMode="tail"
             >
               {match.homeTeam}
             </Text>
@@ -300,9 +301,10 @@ export const MatchCard = React.memo(function MatchCard({
             </View>
             <Text
               style={styles.teamName}
-              numberOfLines={2}
+              numberOfLines={1}
               adjustsFontSizeToFit
-              minimumFontScale={0.8}
+              minimumFontScale={0.65}
+              ellipsizeMode="tail"
             >
               {match.awayTeam}
             </Text>
@@ -381,17 +383,15 @@ export const UpcomingMatchRow = React.memo(function UpcomingMatchRow({
       <LinearGradient
         colors={
           isLive
-            ? (["#1F0A0A", "#160606", "#110505"] as const)
+            ? (["#1c0a0a", "#150808", "#100808"] as const)
             : isFinished
-            ? (["#111115", "#0D0D11", "#0B0B0F"] as const)
-            : (["#141420", "#0F0F1A", "#0D0D17"] as const)
+            ? (["#0f0f13", "#0c0c10", "#0a0a0e"] as const)
+            : (["#131318", "#0f0f14", "#0d0d12"] as const)
         }
         style={styles.rowGrad}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
       >
-        {/* Live left-edge accent stripe */}
-        {isLive && <View style={styles.liveEdgeStripe} />}
         {/* Top bar: league + status + notification */}
         <View style={styles.rowTopBar}>
           <View style={styles.rowLeagueLeft}>
@@ -475,7 +475,7 @@ export const UpcomingMatchRow = React.memo(function UpcomingMatchRow({
             <TeamLogo
               uri={match.homeTeamLogo}
               teamName={match.homeTeam}
-              size={64}
+              size={56}
             />
             <Text style={styles.rowTeamName} numberOfLines={2}>
               {match.homeTeam}
@@ -528,7 +528,7 @@ export const UpcomingMatchRow = React.memo(function UpcomingMatchRow({
             <TeamLogo
               uri={match.awayTeamLogo}
               teamName={match.awayTeam}
-              size={64}
+              size={56}
             />
             <Text style={styles.rowTeamName} numberOfLines={2}>
               {match.awayTeam}
@@ -536,6 +536,21 @@ export const UpcomingMatchRow = React.memo(function UpcomingMatchRow({
           </View>
         </View>
 
+        {/* Bottom action strip */}
+        <View style={styles.rowActionStrip}>
+          <Text style={styles.rowActionText}>
+            {isLive
+              ? "Bekijk live wedstrijd"
+              : isFinished
+              ? "Bekijk samenvatting"
+              : "Wedstrijddetails"}
+          </Text>
+          <Ionicons
+            name="chevron-forward"
+            size={13}
+            color="rgba(255,255,255,0.35)"
+          />
+        </View>
       </LinearGradient>
     </TouchableOpacity>
   );
@@ -563,7 +578,7 @@ const styles = StyleSheet.create({
     shadowColor: COLORS.live,
     shadowOffset: { width: 0, height: 0 },
     shadowOpacity: 1,
-    shadowRadius: 20,
+    shadowRadius: 12,
   },
   card: {
     width: 164,
@@ -721,36 +736,35 @@ const styles = StyleSheet.create({
   // ─ UpcomingMatchRow ─────────────────────────────────────────────────────
   rowOuter: {
     marginHorizontal: 16,
-    marginBottom: 12,
-    borderRadius: 22,
+    marginBottom: 10,
+    borderRadius: 20,
     overflow: "hidden",
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.07)",
+    borderColor: "rgba(255,255,255,0.06)",
     // @ts-ignore
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.4,
-    shadowRadius: 14,
+    shadowOpacity: 0.35,
+    shadowRadius: 12,
     elevation: 8,
   },
   rowOuterLive: {
-    borderColor: `${COLORS.live}55`,
+    borderColor: `${COLORS.live}44`,
     // @ts-ignore
     shadowColor: COLORS.live,
-    shadowOpacity: 0.28,
-    shadowRadius: 24,
-    elevation: 12,
+    shadowOpacity: 0.18,
+    shadowRadius: 16,
   },
   rowOuterFinished: {
     borderColor: "rgba(255,255,255,0.04)",
-    opacity: 0.82,
+    opacity: 0.85,
   },
   rowGrad: {
-    paddingHorizontal: 20,
-    paddingTop: 16,
-    paddingBottom: 16,
-    borderRadius: 22,
-    gap: 16,
+    paddingHorizontal: 18,
+    paddingTop: 14,
+    paddingBottom: 12,
+    borderRadius: 20,
+    gap: 14,
   },
   rowTopBar: {
     flexDirection: "row",
@@ -764,9 +778,9 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   rowLeagueBadge: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
     backgroundColor: "rgba(255,255,255,0.06)",
     alignItems: "center",
     justifyContent: "center",
@@ -886,38 +900,28 @@ const styles = StyleSheet.create({
     lineHeight: 17,
   },
   rowCenterBlock: {
-    width: 108,
+    width: 96,
     alignItems: "center",
     gap: 4,
-  },
-  liveEdgeStripe: {
-    position: "absolute",
-    left: 0,
-    top: 0,
-    bottom: 0,
-    width: 3,
-    backgroundColor: COLORS.live,
-    borderTopLeftRadius: 3,
-    borderBottomLeftRadius: 3,
   },
   rowScoreBox: {
     flexDirection: "row",
     alignItems: "center",
     gap: 4,
-    backgroundColor: "rgba(255,255,255,0.07)",
+    backgroundColor: "rgba(255,255,255,0.06)",
     borderRadius: 16,
-    paddingHorizontal: 16,
+    paddingHorizontal: 14,
     paddingVertical: 10,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.1)",
+    borderColor: "rgba(255,255,255,0.08)",
   },
   rowScoreBoxLive: {
-    backgroundColor: "rgba(255,48,64,0.22)",
-    borderColor: "rgba(255,48,64,0.5)",
+    backgroundColor: "rgba(255,48,64,0.16)",
+    borderColor: `${COLORS.live}55`,
   },
   rowScore: {
     fontFamily: "Inter_800ExtraBold",
-    fontSize: 34,
+    fontSize: 28,
     color: COLORS.text,
     minWidth: 24,
     textAlign: "center",
@@ -944,17 +948,32 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   rowVsBox: {
-    backgroundColor: "rgba(255,255,255,0.06)",
+    backgroundColor: "rgba(255,255,255,0.05)",
     borderRadius: 14,
     paddingHorizontal: 18,
     paddingVertical: 10,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.08)",
+    borderColor: "rgba(255,255,255,0.07)",
   },
   rowVsText: {
     fontFamily: "Inter_800ExtraBold",
     fontSize: 14,
     color: "rgba(255,255,255,0.35)",
     letterSpacing: 3,
+  },
+  rowActionStrip: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "flex-end",
+    gap: 4,
+    paddingTop: 6,
+    borderTopWidth: 1,
+    borderTopColor: "rgba(255,255,255,0.05)",
+  },
+  rowActionText: {
+    fontFamily: "Inter_500Medium",
+    fontSize: 11,
+    color: "rgba(255,255,255,0.3)",
+    letterSpacing: 0.2,
   },
 });

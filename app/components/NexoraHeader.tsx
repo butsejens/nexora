@@ -4,7 +4,6 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { BlurView } from "expo-blur";
-import { LinearGradient } from "expo-linear-gradient";
 import { COLORS } from "@/constants/colors";
 
 interface Props {
@@ -94,12 +93,6 @@ export function NexoraHeader({
       ) : (
         <View style={styles.flatWrap}>{content}</View>
       )}
-      {/* Bottom fade – content emerges from header */}
-      <LinearGradient
-        colors={["rgba(9,9,13,0.0)", "rgba(9,9,13,0.0)"]}
-        style={styles.bottomFade}
-        pointerEvents="none"
-      />
     </View>
   );
 }
@@ -108,7 +101,9 @@ const styles = StyleSheet.create({
   container: {
     paddingHorizontal: 16,
     paddingBottom: 8,
-    backgroundColor: "transparent",
+    backgroundColor: COLORS.background,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
   },
   flatWrap: {
     backgroundColor: "transparent",
@@ -116,13 +111,6 @@ const styles = StyleSheet.create({
   bgBlur: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: "rgba(8,8,12,0.38)",
-  },
-  bottomFade: {
-    position: "absolute",
-    bottom: -20,
-    left: 0,
-    right: 0,
-    height: 20,
   },
   contentRow: {
     flexDirection: "row",
@@ -138,17 +126,11 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   logoText: {
-    fontSize: 22,
-    letterSpacing: 3,
+    fontSize: 24,
+    letterSpacing: 4,
     fontFamily: "Inter_800ExtraBold",
   },
-  logoN: {
-    color: COLORS.accent,
-    // @ts-ignore
-    textShadowColor: COLORS.accent,
-    textShadowOffset: { width: 0, height: 0 },
-    textShadowRadius: 10,
-  },
+  logoN: { color: COLORS.accent },
   logoRest: { color: COLORS.text },
   sectionTitle: {
     fontSize: 11,
@@ -160,32 +142,26 @@ const styles = StyleSheet.create({
   actions: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 7,
+    gap: 6,
   },
   iconBtn: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     backgroundColor: COLORS.cardElevated,
     borderWidth: 1,
-    borderColor: COLORS.borderLight,
+    borderColor: COLORS.border,
     alignItems: "center",
     justifyContent: "center",
   },
   profileBtn: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     backgroundColor: COLORS.cardElevated,
-    borderWidth: 1.5,
+    borderWidth: 1,
     borderColor: COLORS.accent,
     alignItems: "center",
     justifyContent: "center",
-    // @ts-ignore
-    shadowColor: COLORS.accent,
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.5,
-    shadowRadius: 8,
-    elevation: 4,
   },
 });

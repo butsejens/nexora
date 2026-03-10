@@ -1,33 +1,54 @@
 export const COLORS = {
-  background: "#09090D",
-  surface: "#14141B",
-  card: "#1A1A23",
-  cardElevated: "#242432",
-  accent: "#E50914",
-  accentDim: "#B20710",
-  accentGlow: "rgba(229, 9, 20, 0.22)",
-  accentGlowStrong: "rgba(229, 9, 20, 0.36)",
-  live: "#FF3040",
-  liveGlow: "rgba(255, 48, 64, 0.24)",
-  text: "#FFFFFF",
-  textSecondary: "#D8D8E2",
-  textMuted: "#9D9DAA",
-  border: "#30303C",
-  borderLight: "#49495A",
-  gold: "#FFD700",
+  // Core backgrounds — deep navy sports broadcast palette
+  background:   "#070B1A",
+  surface:      "#0D1221",
+  card:         "#11162A",
+  cardElevated: "#182035",
+  cardBright:   "#1E2740",
+
+  // Accent — SofaScore-inspired coral red
+  accent:          "#FF2D55",
+  accentDim:       "#CC2444",
+  accentGlow:      "rgba(255, 45, 85, 0.22)",
+  accentGlowStrong:"rgba(255, 45, 85, 0.40)",
+
+  // Live indicator
+  live:     "#FF3B5C",
+  liveGlow: "rgba(255, 59, 92, 0.28)",
+
+  // Text hierarchy
+  text:          "#FFFFFF",
+  textSecondary: "#A8B0D3",
+  textMuted:     "#5A6180",
+  textFaint:     "#383E5C",
+
+  // Borders
+  border:      "#1E2740",
+  borderLight: "#2A3350",
+  borderGlow:  "rgba(255, 45, 85, 0.20)",
+
+  // Status
+  gold:  "#FFD700",
   green: "#00E676",
-  overlay: "rgba(4, 4, 10, 0.84)",
-  overlayLight: "rgba(20, 20, 30, 0.72)",
-  tabBar: "#111119",
-  tabBarBorder: "#323242",
+  blue:  "#3A7EFF",
+  yellow:"#FFB300",
+
+  // Overlays
+  overlay:      "rgba(7, 11, 26, 0.90)",
+  overlayLight: "rgba(17, 22, 42, 0.80)",
+  overlayCard:  "rgba(7, 11, 26, 0.60)",
+
+  // Tab bar
+  tabBar:       "#0A0F1E",
+  tabBarBorder: "#1E2740",
 };
 
 export default {
   light: {
-    text: COLORS.text,
-    background: COLORS.background,
-    tint: COLORS.accent,
+    text:           COLORS.text,
+    background:     COLORS.background,
+    tint:           COLORS.accent,
     tabIconDefault: COLORS.textMuted,
-    tabIconSelected: COLORS.accent,
+    tabIconSelected:COLORS.accent,
   },
 };

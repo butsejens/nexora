@@ -201,9 +201,9 @@ export const DESIGN_COLORS = {
     light: 'rgba(255, 255, 255, 0.16)',
   },
 
-  // Overlays & Glass Effect
-  glass: 'rgba(17, 17, 25, 0.92)',
-  glassLight: 'rgba(20, 20, 30, 0.72)',
+  // Overlays & Glass Effect — dark navy sports palette
+  glass: 'rgba(10, 14, 28, 0.94)',
+  glassLight: 'rgba(17, 22, 42, 0.80)',
 
   // Interactive states
   overlay: {

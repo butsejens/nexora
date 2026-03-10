@@ -3,6 +3,7 @@ import {
   View, Text, StyleSheet, TouchableOpacity, ScrollView,
   Image, Platform, ActivityIndicator, FlatList,
 } from "react-native";
+import { MatchRowCard } from "@/components/premium";
 import { router, useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
@@ -144,12 +145,23 @@ export default function CompetitionScreen() {
           <Ionicons name="chevron-back" size={24} color={COLORS.text} />
         </TouchableOpacity>
         <View style={styles.headerContent}>
-          <MaterialCommunityIcons name="soccer" size={32} color="rgba(255,255,255,0.3)" />
+          <View style={styles.headerIconWrap}>
+            <MaterialCommunityIcons name={isCup ? "trophy-outline" as any : "soccer"} size={26} color="rgba(255,255,255,0.95)" />
+          </View>
           <Text style={styles.leagueTitle}>{leagueName}</Text>
-          <Text style={styles.leagueSub}>
-            Voetbal{seasonLabel ? ` • ${seasonLabel}` : ""}
-            {isCup ? " • Beker" : ""}
-          </Text>
+          <View style={styles.headerBadgeRow}>
+            <View style={styles.headerBadge}>
+              <Text style={styles.headerBadgeText}>{isCup ? "Beker" : "Competitie"}</Text>
+            </View>
+            {seasonLabel ? (
+              <View style={[styles.headerBadge, styles.headerBadgeSeason]}>
+                <Text style={styles.headerBadgeText}>{seasonLabel}</Text>
+              </View>
+            ) : null}
+            <View style={styles.headerBadge}>
+              <Text style={styles.headerBadgeText}>Voetbal</Text>
+            </View>
+          </View>
         </View>
       </LinearGradient>
 
@@ -217,13 +229,40 @@ export default function CompetitionScreen() {
           <FlatList
             data={competitionMatches}
             keyExtractor={(item, idx) => String((item as any).id || idx)}
-            renderItem={({ item }) => (
-              <CompMatchRow
-                match={item}
-                league={leagueName}
-                espnLeague={espnLeague || item.espnLeague || ""}
-              />
-            )}
+            renderItem={({ item }) => {
+              const m = item as any;
+              const startTime = m.startDate ? formatMatchTime(m.startDate) : undefined;
+              return (
+                <MatchRowCard
+                  match={{
+                    id: String(m.id || ""),
+                    homeTeam: m.homeTeam || "",
+                    awayTeam: m.awayTeam || "",
+                    homeTeamLogo: m.homeTeamLogo,
+                    awayTeamLogo: m.awayTeamLogo,
+                    homeScore: m.homeScore ?? 0,
+                    awayScore: m.awayScore ?? 0,
+                    status: m.status || "upcoming",
+                    minute: m.minute,
+                    startTime,
+                    league: leagueName,
+                  }}
+                  onPress={() => {
+                    router.push({
+                      pathname: "/match-detail",
+                      params: {
+                        matchId: m.id,
+                        homeTeam: m.homeTeam,
+                        awayTeam: m.awayTeam,
+                        sport: "soccer",
+                        league: leagueName,
+                        espnLeague: espnLeague || m.espnLeague || "",
+                      },
+                    });
+                  }}
+                />
+              );
+            }}
             contentContainerStyle={styles.listContent}
             showsVerticalScrollIndicator={false}
           />
@@ -475,11 +514,26 @@ function ScorerRow({ scorer, rank, league, espnLeague }: { scorer: any; rank: nu
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
-  header: { paddingHorizontal: 16, paddingBottom: 20 },
-  backBtn: { width: 38, height: 38, alignItems: "center", justifyContent: "center", marginBottom: 8 },
-  headerContent: { alignItems: "center", gap: 6 },
-  leagueTitle: { fontFamily: "Inter_800ExtraBold", fontSize: 22, color: COLORS.text },
-  leagueSub: { fontFamily: "Inter_400Regular", fontSize: 13, color: "rgba(255,255,255,0.5)" },
+  header: { paddingHorizontal: 16, paddingBottom: 28 },
+  backBtn: { width: 38, height: 38, alignItems: "center", justifyContent: "center", marginBottom: 10 },
+  headerContent: { alignItems: "center", gap: 10 },
+  headerIconWrap: {
+    width: 56, height: 56, borderRadius: 28,
+    backgroundColor: "rgba(255,255,255,0.12)",
+    borderWidth: 1, borderColor: "rgba(255,255,255,0.2)",
+    alignItems: "center", justifyContent: "center",
+  },
+  leagueTitle: { fontFamily: "Inter_800ExtraBold", fontSize: 24, color: COLORS.text, textAlign: "center" },
+  headerBadgeRow: { flexDirection: "row", gap: 6, flexWrap: "wrap", justifyContent: "center" },
+  headerBadge: {
+    borderRadius: 20, borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.2)", backgroundColor: "rgba(255,255,255,0.1)",
+    paddingHorizontal: 10, paddingVertical: 4,
+  },
+  headerBadgeSeason: {
+    borderColor: `${COLORS.accent}66`, backgroundColor: `${COLORS.accent}22`,
+  },
+  headerBadgeText: { fontFamily: "Inter_600SemiBold", fontSize: 11, color: "rgba(255,255,255,0.75)" },
   tabBar: { flexDirection: "row", borderBottomWidth: 1, borderBottomColor: COLORS.border, backgroundColor: COLORS.overlayLight },
   tab: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, paddingVertical: 13 },
   tabActive: { borderBottomWidth: 2, borderBottomColor: COLORS.accent },

@@ -1,22 +1,24 @@
 /**
- * MATCH ROW CARD - Premium Horizontal Match Card
+ * MATCH ROW CARD — Premium Match Card (v2.2)
  *
- * Full-width card for displaying matches in lists below the hero section.
- * Used for live, upcoming, and finished matches with consistent styling.
+ * Professional LEFT TEAM | MATCH CENTER | RIGHT TEAM layout.
+ * - Team names never break awkwardly (numberOfLines + adjustsFontSizeToFit)
+ * - Action buttons: Watch · Stats · Lineups · Remind
+ * - Live: possession bar, minute, live pulse
+ * - Dark navy design system (#070B1A / #11162A / #FF2D55)
  */
 
-import React, { useEffect, useRef } from 'react';
+import React, { useRef, useCallback, memo } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   TouchableOpacity,
   Animated,
-  Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { COLORS } from '@/constants/colors';
-import { TYPOGRAPHY, SPACING, SHADOWS, DESIGN_COLORS, SIZES } from '@/constants/design-system';
+import { COLORS }  from '@/constants/colors';
+import { SPACING } from '@/constants/design-system';
 import { TeamLogo } from '@/components/MatchCard';
 
 export interface MatchRowCardProps {
@@ -32,272 +34,419 @@ export interface MatchRowCardProps {
     minute?: number;
     startTime?: string;
     league?: string;
+    possession?: { home: number; away: number };
+    redCards?: { home: number; away: number };
   };
   onPress?: () => void;
   onNotificationToggle?: () => void;
+  isNotificationOn?: boolean;
+  showActions?: boolean;
+  onWatchPress?: () => void;
+  onStatsPress?: () => void;
+  onLineupsPress?: () => void;
 }
 
-export const MatchRowCard = React.memo(
-  ({ match, onPress, onNotificationToggle }: MatchRowCardProps) => {
-    const scaleAnim = useRef(new Animated.Value(1)).current;
+const LOGO_SIZE = 36;
 
-    const handlePressIn = () => {
-      Animated.spring(scaleAnim, {
-        toValue: 0.96,
-        useNativeDriver: true,
-        speed: 16,
-      }).start();
-    };
+// Animated live dot
+const LivePulse = memo(function LivePulse() {
+  const pulse = useRef(new Animated.Value(1)).current;
+  React.useEffect(() => {
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulse, { toValue: 1.6, duration: 900, useNativeDriver: true }),
+        Animated.timing(pulse, { toValue: 1.0, duration: 900, useNativeDriver: true }),
+      ])
+    ).start();
+  }, [pulse]);
+  return (
+    <View style={s.pulseWrap}>
+      <Animated.View style={[s.pulseRing, { transform: [{ scale: pulse }] }]} />
+      <View style={s.pulseDot} />
+    </View>
+  );
+});
 
-    const handlePressOut = () => {
-      Animated.spring(scaleAnim, {
-        toValue: 1,
-        useNativeDriver: true,
-        speed: 16,
-      }).start();
-    };
+// Single action button
+const ActionBtn = memo(function ActionBtn({
+  icon, label, onPress, primary,
+}: { icon: string; label: string; onPress?: () => void; primary?: boolean }) {
+  return (
+    <TouchableOpacity activeOpacity={0.75} onPress={onPress} style={[s.actionBtn, primary && s.actionBtnPrimary]}>
+      <Ionicons name={icon as any} size={12} color={primary ? '#fff' : COLORS.textSecondary} />
+      <Text style={[s.actionBtnText, primary && { color: '#fff' }]}>{label}</Text>
+    </TouchableOpacity>
+  );
+});
 
-    const isLive = match.status === 'live';
-    const isFinished = match.status === 'finished';
+function MatchRowCardInner({
+  match,
+  onPress,
+  onNotificationToggle,
+  isNotificationOn = false,
+  showActions = false,
+  onWatchPress,
+  onStatsPress,
+  onLineupsPress,
+}: MatchRowCardProps) {
+  const scale = useRef(new Animated.Value(1)).current;
 
-    // Get team abbreviations
-    const homeAbbr = match.homeTeam.substring(0, 3).toUpperCase();
-    const awayAbbr = match.awayTeam.substring(0, 3).toUpperCase();
+  const onPressIn  = useCallback(() =>
+    Animated.spring(scale, { toValue: 0.975, useNativeDriver: true, damping: 18 }).start(), [scale]);
+  const onPressOut = useCallback(() =>
+    Animated.spring(scale, { toValue: 1.0,   useNativeDriver: true, damping: 14 }).start(), [scale]);
 
-    // Format score or status
-    const getScoreDisplay = () => {
-      if (isLive || isFinished) {
-        return `${match.homeScore}:${match.awayScore}`;
-      }
-      return 'VS';
-    };
+  const live     = match.status === 'live';
+  const finished = match.status === 'finished';
+  const upcoming = match.status === 'upcoming';
 
-    // Format time
-    const getTimeDisplay = () => {
-      if (isLive && match.minute) {
-        return `${match.minute}'`;
-      }
-      if (isFinished) {
-        return 'FT';
-      }
-      if (match.startTime) {
-        return match.startTime;
-      }
-      return '--';
-    };
+  const barColor = live ? COLORS.live : finished ? COLORS.borderLight : COLORS.accent;
 
-    return (
-      <Animated.View
-        style={[
-          {
-            transform: [{ scale: scaleAnim }],
-          },
-        ]}
-      >
-        <TouchableOpacity
-          activeOpacity={1}
-          onPressIn={handlePressIn}
-          onPressOut={handlePressOut}
-          onPress={onPress}
-          style={[
-            styles.cardContainer,
-            isLive && styles.cardLive,
-          ]}
-        >
-          {/* Left accent bar */}
-          <View
-            style={[
-              styles.accentBar,
-              isLive && styles.accentBarLive,
-            ]}
-          />
+  const homeWin = !upcoming && (match.homeScore > match.awayScore);
+  const awayWin = !upcoming && (match.awayScore > match.homeScore);
 
-          {/* Home team block */}
-          <View style={styles.teamBlock}>
-            <TeamLogo
-              uri={match.homeTeamLogo}
-              teamName={match.homeTeam}
-              size={32}
-            />
-            <View style={styles.teamInfo}>
-              <Text style={styles.teamName}>{match.homeTeam}</Text>
-              <Text style={styles.teamAbbr}>{homeAbbr}</Text>
+  const timeLabel = live
+    ? `${match.minute ?? 0}'`
+    : finished ? 'FT'
+    : match.startTime ?? '';
+
+  return (
+    <Animated.View style={[s.wrap, { transform: [{ scale }] }]}>
+      <TouchableOpacity activeOpacity={1} onPress={onPress} onPressIn={onPressIn} onPressOut={onPressOut}>
+        <View style={[s.card, live && s.cardLive]}>
+
+          {/* Top accent line */}
+          <View style={[s.topBar, { backgroundColor: barColor }]} />
+
+          {/* ── Main row ── */}
+          <View style={s.row}>
+
+            {/* Home team */}
+            <View style={s.teamCol}>
+              <TeamLogo uri={match.homeTeamLogo} teamName={match.homeTeam} size={LOGO_SIZE} />
+              <View style={s.nameWrap}>
+                <Text
+                  style={[s.teamName, homeWin && s.teamNameBold]}
+                  numberOfLines={2}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.72}
+                  ellipsizeMode="tail"
+                >
+                  {match.homeTeam}
+                </Text>
+                {!upcoming && (match.redCards?.home ?? 0) > 0 && (
+                  <Text style={s.cards}>{'🟥'.repeat(Math.min(match.redCards!.home, 3))}</Text>
+                )}
+              </View>
             </View>
-          </View>
 
-          {/* Score/Status center */}
-          <View style={styles.scoreCenter}>
-            <Text
-              style={[
-                styles.scoreText,
-                isLive && styles.scoreTextLive,
-              ]}
-            >
-              {getScoreDisplay()}
-            </Text>
-            <Text
-              style={[
-                styles.timeText,
-                isLive && styles.timeTextLive,
-              ]}
-            >
-              {getTimeDisplay()}
-            </Text>
-          </View>
+            {/* Center */}
+            <View style={s.center}>
+              {live && <LivePulse />}
 
-          {/* Away team block */}
-          <View style={styles.teamBlock}>
-            <TeamLogo
-              uri={match.awayTeamLogo}
-              teamName={match.awayTeam}
-              size={32}
-            />
-            <View style={styles.teamInfo}>
-              <Text style={styles.teamName}>{match.awayTeam}</Text>
-              <Text style={styles.teamAbbr}>{awayAbbr}</Text>
+              {!upcoming ? (
+                <Text style={[s.score, live && s.scoreLive]}>
+                  {match.homeScore ?? 0}
+                  <Text style={s.scoreSep}> : </Text>
+                  {match.awayScore ?? 0}
+                </Text>
+              ) : (
+                <Text style={s.kickoff}>{timeLabel}</Text>
+              )}
+
+              {live ? (
+                <View style={s.livePill}>
+                  <Text style={s.livePillText}>{match.minute ?? 0}&apos;</Text>
+                </View>
+              ) : (
+                <Text style={s.statusText}>
+                  {finished ? 'FULL TIME' : timeLabel}
+                </Text>
+              )}
+
+              {match.league ? (
+                <Text style={s.leagueLabel} numberOfLines={1}>{match.league}</Text>
+              ) : null}
             </View>
+
+            {/* Away team */}
+            <View style={[s.teamCol, s.teamColRight]}>
+              <View style={[s.nameWrap, s.nameWrapRight]}>
+                <Text
+                  style={[s.teamName, s.teamNameRight, awayWin && s.teamNameBold]}
+                  numberOfLines={2}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.72}
+                  ellipsizeMode="tail"
+                >
+                  {match.awayTeam}
+                </Text>
+                {!upcoming && (match.redCards?.away ?? 0) > 0 && (
+                  <Text style={[s.cards, s.cardsRight]}>{'🟥'.repeat(Math.min(match.redCards!.away, 3))}</Text>
+                )}
+              </View>
+              <TeamLogo uri={match.awayTeamLogo} teamName={match.awayTeam} size={LOGO_SIZE} />
+            </View>
+
           </View>
 
-          {/* Right action area */}
-          <View style={styles.actionArea}>
-            <TouchableOpacity
-              onPress={(e) => {
-                e.stopPropagation();
-                onNotificationToggle?.();
-              }}
-              style={styles.iconButton}
-            >
-              <Ionicons
-                name="notifications-outline"
-                size={18}
-                color={COLORS.textMuted}
-              />
-            </TouchableOpacity>
-            <Ionicons
-              name="chevron-forward"
-              size={18}
-              color={COLORS.textMuted}
-            />
-          </View>
-        </TouchableOpacity>
-      </Animated.View>
-    );
-  }
-);
+          {/* Possession bar (live only) */}
+          {live && match.possession && (
+            <View style={s.possRow}>
+              <Text style={s.possLabel}>{match.possession.home}%</Text>
+              <View style={s.possBar}>
+                <View style={[s.possHome, { flex: match.possession.home }]} />
+                <View style={[s.possAway, { flex: match.possession.away }]} />
+              </View>
+              <Text style={s.possLabel}>{match.possession.away}%</Text>
+            </View>
+          )}
 
-MatchRowCard.displayName = 'MatchRowCard';
+          {/* Action buttons */}
+          {showActions && (
+            <View style={s.actions}>
+              <View style={s.actionsDivider} />
+              <View style={s.actionsRow}>
+                <ActionBtn icon="play-circle-outline" label="Watch"   onPress={onWatchPress}       primary={live} />
+                <ActionBtn icon="bar-chart-outline"   label="Stats"   onPress={onStatsPress} />
+                <ActionBtn icon="people-outline"      label="Lineups" onPress={onLineupsPress} />
+                <ActionBtn
+                  icon={isNotificationOn ? 'notifications' : 'notifications-outline'}
+                  label="Remind"
+                  onPress={onNotificationToggle}
+                />
+              </View>
+            </View>
+          )}
 
-const styles = StyleSheet.create({
-  cardContainer: {
+        </View>
+      </TouchableOpacity>
+    </Animated.View>
+  );
+}
+
+export const MatchRowCard = memo(MatchRowCardInner);
+export default MatchRowCard;
+
+// ─────────────────────────────────────────────────────────────────────────────
+
+const s = StyleSheet.create({
+  wrap: {
     marginHorizontal: SPACING.lg,
-    marginBottom: SPACING.md,
-    height: SIZES.matchCard.row.height,
-    borderRadius: SIZES.matchCard.row.borderRadius,
+    marginBottom: 8,
+  },
+  card: {
     backgroundColor: COLORS.card,
+    borderRadius: 14,
+    overflow: 'hidden',
     borderWidth: 1,
-    borderColor: DESIGN_COLORS.border.subtle,
+    borderColor: COLORS.border,
+  },
+  cardLive: {
+    borderColor: 'rgba(255, 59, 92, 0.35)',
+    shadowColor: COLORS.live,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.18,
+    shadowRadius: 10,
+    elevation: 4,
+  },
+  topBar: {
+    height: 2,
+  },
+  row: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingRight: SPACING.md,
-    overflow: 'hidden',
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.5,
-        shadowRadius: 12,
-      },
-      android: {
-        elevation: 6,
-      },
-    }),
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    minHeight: 68,
   },
 
-  cardLive: {
-    borderColor: DESIGN_COLORS.liveGlow.border,
-    ...Platform.select({
-      ios: {
-        shadowColor: COLORS.live,
-        shadowOpacity: 0.24,
-        shadowRadius: 16,
-      },
-      android: {
-        elevation: 8,
-      },
-    }),
+  // Teams ─────────────────────────────────────────────────────────────────────
+  teamCol: {
+    flex: 5,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    minWidth: 0,        // allow flex to shrink text
+  },
+  teamColRight: {
+    flexDirection: 'row-reverse',
+  },
+  nameWrap: {
+    flex: 1,
+    minWidth: 0,
+  },
+  nameWrapRight: {
+    alignItems: 'flex-end',
+  },
+  teamName: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: COLORS.textSecondary,
+    lineHeight: 16,
+  },
+  teamNameRight: {
+    textAlign: 'right',
+  },
+  teamNameBold: {
+    color: COLORS.text,
+    fontWeight: '700',
+  },
+  cards: {
+    fontSize: 9,
+    marginTop: 2,
+  },
+  cardsRight: {
+    textAlign: 'right',
   },
 
-  accentBar: {
-    width: 4,
-    height: '100%',
-    backgroundColor: COLORS.accent,
-    marginRight: SPACING.md,
+  // Center ────────────────────────────────────────────────────────────────────
+  center: {
+    flex: 3,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 4,
+    minWidth: 72,
+  },
+  score: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: COLORS.text,
+    letterSpacing: 0.5,
+    includeFontPadding: false,
+  },
+  scoreLive: {
+    color: COLORS.live,
+    textShadowColor: 'rgba(255, 59, 92, 0.45)',
+    textShadowRadius: 10,
+    textShadowOffset: { width: 0, height: 0 },
+  },
+  scoreSep: {
+    color: COLORS.textMuted,
+    fontWeight: '400',
+  },
+  kickoff: {
+    fontSize: 19,
+    fontWeight: '700',
+    color: COLORS.textSecondary,
+    letterSpacing: 0.5,
+  },
+  statusText: {
+    fontSize: 9,
+    fontWeight: '600',
+    color: COLORS.textMuted,
+    letterSpacing: 0.8,
+    marginTop: 3,
+    textTransform: 'uppercase',
+  },
+  livePill: {
+    marginTop: 4,
+    backgroundColor: COLORS.live,
+    borderRadius: 5,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+  },
+  livePillText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#fff',
+    letterSpacing: 0.3,
+  },
+  leagueLabel: {
+    fontSize: 8,
+    fontWeight: '500',
+    color: COLORS.textFaint,
+    marginTop: 3,
+    letterSpacing: 0.3,
+    textAlign: 'center',
   },
 
-  accentBarLive: {
+  // Live pulse dot ─────────────────────────────────────────────────────────────
+  pulseWrap: {
+    width: 14,
+    height: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 5,
+  },
+  pulseRing: {
+    position: 'absolute',
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    backgroundColor: 'rgba(255, 59, 92, 0.25)',
+  },
+  pulseDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 3.5,
     backgroundColor: COLORS.live,
   },
 
-  teamBlock: {
+  // Possession ─────────────────────────────────────────────────────────────────
+  possRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingBottom: 8,
+    gap: 8,
+  },
+  possBar: {
+    flex: 1,
+    height: 3,
+    borderRadius: 2,
+    flexDirection: 'row',
+    overflow: 'hidden',
+    backgroundColor: COLORS.surface,
+  },
+  possHome: {
+    backgroundColor: COLORS.accent,
+  },
+  possAway: {
+    backgroundColor: COLORS.borderLight,
+  },
+  possLabel: {
+    fontSize: 9,
+    fontWeight: '600',
+    color: COLORS.textMuted,
+    width: 26,
+    textAlign: 'center',
+  },
+
+  // Actions ─────────────────────────────────────────────────────────────────────
+  actions: {
+    paddingHorizontal: 12,
+    paddingBottom: 10,
+  },
+  actionsDivider: {
+    height: 1,
+    backgroundColor: COLORS.border,
+    marginBottom: 8,
+  },
+  actionsRow: {
+    flexDirection: 'row',
+    gap: 6,
+  },
+  actionBtn: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: SPACING.md,
-  },
-
-  teamInfo: {
-    marginLeft: SPACING.sm,
-  },
-
-  teamName: {
-    ...TYPOGRAPHY.body,
-    color: COLORS.text,
-    fontWeight: '600',
-  },
-
-  teamAbbr: {
-    ...TYPOGRAPHY.caption,
-    color: COLORS.textMuted,
-    marginTop: 2,
-  },
-
-  scoreCenter: {
-    alignItems: 'center',
     justifyContent: 'center',
-    marginHorizontal: SPACING.lg,
+    gap: 3,
+    paddingVertical: 7,
+    borderRadius: 8,
+    backgroundColor: COLORS.cardElevated,
+    borderWidth: 1,
+    borderColor: COLORS.border,
   },
-
-  scoreText: {
-    ...TYPOGRAPHY.cardTitle,
-    color: COLORS.text,
-    fontWeight: '800',
-    fontSize: 20,
+  actionBtnPrimary: {
+    backgroundColor: COLORS.accent,
+    borderColor: COLORS.accent,
   },
-
-  scoreTextLive: {
-    color: COLORS.text,
-    ...SHADOWS.textGlowLive,
-  },
-
-  timeText: {
-    ...TYPOGRAPHY.small,
-    color: COLORS.textMuted,
-    marginTop: 2,
-  },
-
-  timeTextLive: {
-    color: COLORS.live,
-  },
-
-  actionArea: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.sm,
-    marginLeft: SPACING.md,
-  },
-
-  iconButton: {
-    padding: SPACING.xs,
-    marginRight: SPACING.xs,
+  actionBtnText: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: COLORS.textSecondary,
+    letterSpacing: 0.2,
   },
 });

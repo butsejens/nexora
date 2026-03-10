@@ -18,13 +18,14 @@ import { TeamLogo } from "@/components/MatchCard";
 import { buildErrorReference, normalizeApiError } from "@/lib/error-messages";
 
 const TABS = [
-  { id: "stream", label: "Stream", icon: "play-circle-outline" },
-  { id: "stats", label: "Stats", icon: "bar-chart-outline" },
-  { id: "lineups", label: "Opstelling", icon: "people-outline" },
-  { id: "ai", label: "AI Analyse", icon: "sparkles" },
+  { id: "stream",   label: "Stream",   icon: "play-circle-outline" },
+  { id: "stats",    label: "Stats",    icon: "bar-chart-outline" },
+  { id: "lineups",  label: "Lineups",  icon: "people-outline" },
+  { id: "timeline", label: "Timeline", icon: "time-outline" },
+  { id: "ai",       label: "Analysis", icon: "analytics-outline" },
 ] as const;
 
-type TabId = "stream" | "stats" | "lineups" | "ai";
+type TabId = "stream" | "stats" | "lineups" | "timeline" | "ai";
 
 function buildFormationRows(players: any[], formationRaw?: string) {
   const starters = (Array.isArray(players) ? players : [])
@@ -315,7 +316,7 @@ export default function MatchDetailScreen() {
   return (
     <View style={styles.container}>
       {/* Header */}
-      <LinearGradient colors={["#1A0508", "#100F1C", COLORS.background]} style={[styles.header, { paddingTop: topPad + 8 }]}>
+      <LinearGradient colors={[COLORS.cardElevated, COLORS.surface, COLORS.background]} style={[styles.header, { paddingTop: topPad + 8 }]}>
         <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
           <Ionicons name="chevron-back" size={24} color={COLORS.text} />
         </TouchableOpacity>
@@ -693,6 +694,48 @@ export default function MatchDetailScreen() {
               <MaterialCommunityIcons name="information-outline" size={16} color={COLORS.accent} />
               <Text style={styles.tipText}>Live analyse start automatisch zodra de wedstrijd live is.</Text>
             </View>
+          )}
+        </ScrollView>
+      )}
+
+      {/* Timeline Tab */}
+      {activeTab === "timeline" && (
+        <ScrollView style={styles.tabContent} contentContainerStyle={styles.tabContentInner} showsVerticalScrollIndicator={false}>
+          {detailLoading ? (
+            <LoadingState />
+          ) : matchDetail?.keyEvents?.length > 0 ? (
+            <>
+              <Text style={styles.sectionLabel}>WEDSTRIJD TIJDLIJN</Text>
+              <View style={styles.timelineCard}>
+                {matchDetail.keyEvents.map((ev: any, i: number) => {
+                  const typeStr = String(ev?.type || "").toLowerCase();
+                  const isGoal = typeStr.includes("goal");
+                  const isRed = typeStr.includes("red");
+                  const isYellow = typeStr.includes("yellow") || typeStr.includes("card");
+                  const isSub = typeStr.includes("sub") || typeStr.includes("wissel");
+                  const dotColor = isGoal ? COLORS.accent : isRed ? COLORS.live : isYellow ? "#FFD700" : isSub ? "#5D60E8" : COLORS.textMuted;
+                  const isLast = i === matchDetail.keyEvents.length - 1;
+                  return (
+                    <View key={i} style={styles.timelineItem}>
+                      {!isLast && <View style={styles.timelineConnector} />}
+                      <View style={[styles.timelineDot, { backgroundColor: dotColor }]}>
+                        <Ionicons name={eventIconByType(ev?.type)} size={12} color="#fff" />
+                      </View>
+                      <View style={styles.timelineContent}>
+                        <Text style={[styles.timelineMinuteLabel, { color: dotColor }]}>
+                          {ev?.time != null ? `${ev.time}'` : "—"}
+                        </Text>
+                        <Text style={styles.timelineEventText} numberOfLines={3}>
+                          {ev?.text || ev?.detail || ev?.type || "Event"}
+                        </Text>
+                      </View>
+                    </View>
+                  );
+                })}
+              </View>
+            </>
+          ) : (
+            <EmptyState icon="time-outline" text="Nog geen events beschikbaar" />
           )}
         </ScrollView>
       )}
@@ -1410,7 +1453,7 @@ const styles = StyleSheet.create({
     flexGrow: 0,
     backgroundColor: COLORS.surface,
     borderBottomWidth: 1,
-    borderBottomColor: "rgba(255,255,255,0.06)",
+    borderBottomColor: COLORS.border,
   },
   tabBar: {
     flexDirection: "row",
@@ -2106,5 +2149,51 @@ const styles = StyleSheet.create({
   },
   aiWaitCard: {
     gap: 10,
+  },
+  // Timeline tab
+  timelineCard: {
+    backgroundColor: COLORS.card,
+    borderRadius: 18,
+    padding: 16,
+    paddingBottom: 2,
+  },
+  timelineItem: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 12,
+    paddingBottom: 20,
+    position: "relative",
+  },
+  timelineConnector: {
+    position: "absolute",
+    left: 13,
+    top: 28,
+    bottom: 0,
+    width: 1,
+    backgroundColor: COLORS.border,
+  },
+  timelineDot: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+  },
+  timelineContent: {
+    flex: 1,
+    gap: 2,
+    paddingTop: 3,
+  },
+  timelineMinuteLabel: {
+    fontFamily: "Inter_700Bold",
+    fontSize: 11,
+    letterSpacing: 0.3,
+  },
+  timelineEventText: {
+    fontFamily: "Inter_500Medium",
+    fontSize: 13,
+    color: COLORS.textSecondary,
+    lineHeight: 19,
   },
 });

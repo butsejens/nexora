@@ -195,6 +195,14 @@ const AD_DOMAINS = [
 // Once a video element is detected playing, block all non-player interactions.
 const AD_BLOCK_JS = `
 (function(){
+  // ── Patch removeChild to never throw (prevents DOMException crashes) ───────
+  try{
+    var _origRc = Node.prototype.removeChild;
+    Node.prototype.removeChild = function(child){
+      try{ return _origRc.call(this, child); }catch(e){ return child; }
+    };
+  }catch(e){}
+
   var _host = window.location.hostname;
   var _videoFound = false;
 
@@ -581,7 +589,7 @@ const FORCE_PLAY_JS = `
       var id = (el.id || '').toLowerCase();
       var cls = (typeof el.className === 'string' ? el.className : '').toLowerCase();
       if (!patterns.test(id + ' ' + cls)) continue;
-      try { if (!el.querySelector('video,canvas')) el.remove(); } catch(e){}
+      try { if (el.isConnected && !el.querySelector('video,canvas')) el.remove(); } catch(e){}
     }
   }
 
@@ -1062,7 +1070,6 @@ export default function PlayerScreen() {
           userAgent="Mozilla/5.0 (Linux; Android 12; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
           injectedJavaScriptBeforeContentLoaded={AD_BLOCK_JS}
           onLoad={() => { setIsLoading(false); setStreamError(null); setStreamErrorRef(""); injectEmbedAutoplay(); }}
-          onLoadEnd={() => { injectEmbedAutoplay(); }}
           onError={(event) => {
             const msg = String(event?.nativeEvent?.description || "");
             if (/removechild|notfounderror|not a child|hierarchyrequesterror/i.test(msg)) {
