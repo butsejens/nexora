@@ -65,6 +65,8 @@ export const RealContentCard = React.memo(function RealContentCard({ item, onPre
     >
       <TouchableOpacity
         onPress={() => {
+          scaleAnim.stopAnimation();
+          scaleAnim.setValue(1);
           SafeHaptics.impactLight();
           onPress();
         }}
@@ -173,7 +175,7 @@ export const RealHeroBanner = React.memo(function RealHeroBanner({ item, onPlay,
       <TouchableOpacity
         onPressIn={handlePressIn}
         onPressOut={handlePressOut}
-        onPress={onPlay}
+        onPress={() => { scaleAnim.stopAnimation(); scaleAnim.setValue(1); onPlay(); }}
         activeOpacity={1}
       >
         <View style={styles.heroBanner}>
@@ -230,7 +232,7 @@ export const RealHeroBanner = React.memo(function RealHeroBanner({ item, onPlay,
             </View>
 
             <View style={styles.heroActions}>
-              <TouchableOpacity style={styles.playButton} onPress={onPlay} activeOpacity={0.85}>
+              <TouchableOpacity style={styles.playButton} onPress={() => { scaleAnim.stopAnimation(); scaleAnim.setValue(1); onPlay(); }} activeOpacity={0.85}>
                 <Ionicons name="play" size={18} color={COLORS.background} />
                 <Text style={styles.playText}>Play</Text>
               </TouchableOpacity>
