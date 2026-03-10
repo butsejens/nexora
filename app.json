@@ -1,3 +1,10 @@
 {
-  "expo": {}
+  "expo": {
+    "android": {
+      "package": "com.butsejens.nexoramonorepo"
+    },
+    "ios": {
+      "bundleIdentifier": "com.butsejens.nexoramonorepo"
+    }
+  }
 }
