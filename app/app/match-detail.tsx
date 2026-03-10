@@ -315,7 +315,7 @@ export default function MatchDetailScreen() {
   return (
     <View style={styles.container}>
       {/* Header */}
-      <LinearGradient colors={[COLORS.card, COLORS.background]} style={[styles.header, { paddingTop: topPad + 8 }]}>
+      <LinearGradient colors={["#1A0508", "#100F1C", COLORS.background]} style={[styles.header, { paddingTop: topPad + 8 }]}>
         <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
           <Ionicons name="chevron-back" size={24} color={COLORS.text} />
         </TouchableOpacity>
@@ -382,7 +382,7 @@ export default function MatchDetailScreen() {
             style={[styles.tab, activeTab === tab.id && styles.tabActive]}
             onPress={() => handleTabChange(tab.id)}
           >
-            <Ionicons name={tab.icon as any} size={15} color={activeTab === tab.id ? COLORS.accent : COLORS.textMuted} />
+            <Ionicons name={tab.icon as any} size={14} color={activeTab === tab.id ? "#fff" : COLORS.textMuted} />
             <Text style={[styles.tabText, activeTab === tab.id && styles.tabTextActive]}>{tab.label}</Text>
           </TouchableOpacity>
         ))}
@@ -746,7 +746,7 @@ function MiniAIPill({ prediction, homeTeam, awayTeam, loading, onPress }: any) {
 function TeamSide({ name, logo, onPress }: { name: string; logo?: string; onPress?: () => void }) {
   return (
     <TouchableOpacity style={styles.teamSide} onPress={onPress} activeOpacity={onPress ? 0.7 : 1}>
-      <TeamLogo uri={logo} teamName={name} size={60} />
+      <TeamLogo uri={logo} teamName={name} size={64} />
       <Text style={styles.teamName} numberOfLines={2}>{name}</Text>
       {onPress && <Text style={styles.tapHint}>Tik voor info</Text>}
     </TouchableOpacity>
@@ -1343,22 +1343,29 @@ const styles = StyleSheet.create({
   header: { paddingHorizontal: 20, paddingBottom: 16 },
   backBtn: {
     marginBottom: 12,
-    width: 40,
-    height: 40,
+    width: 44,
+    height: 44,
     alignItems: "center",
     justifyContent: "center",
+    backgroundColor: "rgba(255,255,255,0.09)",
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.12)",
+    alignSelf: "flex-start",
+  },
+  matchHeader: { alignItems: "center", gap: 10 },
+  leagueName: {
+    fontFamily: "Inter_700Bold",
+    fontSize: 11,
+    color: "rgba(255,255,255,0.65)",
+    letterSpacing: 2,
+    textTransform: "uppercase",
     backgroundColor: "rgba(255,255,255,0.08)",
     borderRadius: 20,
+    paddingHorizontal: 14,
+    paddingVertical: 5,
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.1)",
-  },
-  matchHeader: { alignItems: "center", gap: 8 },
-  leagueName: {
-    fontFamily: "Inter_600SemiBold",
-    fontSize: 11,
-    color: COLORS.textMuted,
-    letterSpacing: 1.5,
-    textTransform: "uppercase",
   },
   scoreRow: { flexDirection: "row", alignItems: "center", width: "100%", paddingHorizontal: 8 },
   teamSide: { flex: 1, alignItems: "center", gap: 8 },
@@ -1373,12 +1380,12 @@ const styles = StyleSheet.create({
   scoreCenter: { width: 100, alignItems: "center", gap: 5 },
   score: {
     fontFamily: "Inter_800ExtraBold",
-    fontSize: 38,
+    fontSize: 48,
     color: COLORS.text,
     // @ts-ignore
-    textShadowColor: "rgba(255,48,64,0.5)",
+    textShadowColor: "rgba(255,48,64,0.6)",
     textShadowOffset: { width: 0, height: 0 },
-    textShadowRadius: 12,
+    textShadowRadius: 16,
   },
   vsText: {
     fontFamily: "Inter_800ExtraBold",
@@ -1400,25 +1407,31 @@ const styles = StyleSheet.create({
   venueRow: { flexDirection: "row", alignItems: "center", gap: 4, marginTop: 2 },
   venueText: { fontFamily: "Inter_400Regular", fontSize: 11, color: COLORS.textMuted },
   tabBarScroll: {
-    borderBottomWidth: 1,
-    borderBottomColor: "rgba(255,255,255,0.07)",
     flexGrow: 0,
     backgroundColor: COLORS.surface,
+    borderBottomWidth: 1,
+    borderBottomColor: "rgba(255,255,255,0.06)",
   },
-  tabBar: { flexDirection: "row", paddingHorizontal: 4 },
+  tabBar: {
+    flexDirection: "row",
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    gap: 6,
+  },
   tab: {
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 20,
   },
   tabActive: {
-    borderBottomWidth: 2,
-    borderBottomColor: COLORS.accent,
+    backgroundColor: COLORS.accent,
+    borderRadius: 20,
   },
-  tabText: { fontFamily: "Inter_600SemiBold", fontSize: 13, color: COLORS.textMuted },
-  tabTextActive: { color: COLORS.accent, fontFamily: "Inter_700Bold" },
+  tabText: { fontFamily: "Inter_600SemiBold", fontSize: 12, color: COLORS.textMuted, letterSpacing: 0.4 },
+  tabTextActive: { color: "#fff", fontFamily: "Inter_700Bold" },
   streamContainer: { flex: 1 },
   videoBox: { width: "100%", aspectRatio: 16 / 9, backgroundColor: "#000" },
   serverSection: {
@@ -1549,14 +1562,14 @@ const styles = StyleSheet.create({
   },
   statBar: {
     flexDirection: "row",
-    height: 6,
-    borderRadius: 3,
+    height: 8,
+    borderRadius: 4,
     overflow: "hidden",
     width: "100%",
     backgroundColor: COLORS.cardElevated,
   },
-  statBarHome: { backgroundColor: COLORS.accent, borderRadius: 3 },
-  statBarAway: { backgroundColor: COLORS.live, borderRadius: 3 },
+  statBarHome: { backgroundColor: COLORS.accent, borderRadius: 4 },
+  statBarAway: { backgroundColor: "#5D60E8", borderRadius: 4 },
   noStatsText: {
     fontFamily: "Inter_400Regular",
     fontSize: 14,
@@ -1568,21 +1581,21 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
-    paddingVertical: 10,
+    paddingVertical: 11,
     borderBottomWidth: 1,
     borderBottomColor: "rgba(255,255,255,0.05)",
   },
   eventBadge: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: "rgba(255,48,64,0.12)",
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: "rgba(229,9,20,0.14)",
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 1,
-    borderColor: "rgba(255,48,64,0.25)",
+    borderColor: "rgba(229,9,20,0.3)",
   },
-  eventText: { fontFamily: "Inter_400Regular", fontSize: 13, color: COLORS.text, flex: 1, lineHeight: 18 },
+  eventText: { fontFamily: "Inter_500Medium", fontSize: 13, color: COLORS.text, flex: 1, lineHeight: 19 },
   lineupTeamSection: { marginBottom: 22 },
   lineupViewToggleRow: { flexDirection: "row", gap: 8, marginBottom: 14 },
   lineupViewBtn: {

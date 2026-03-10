@@ -5,6 +5,41 @@ import React from "react";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { COLORS } from "@/constants/colors";
 
+const SP_ACCENT = "#5D60E8";
+
+function TabIcon({
+  focused,
+  accentColor,
+  children,
+}: {
+  focused: boolean;
+  accentColor: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <View
+      style={[
+        tabIconStyles.wrap,
+        focused && {
+          backgroundColor: accentColor + "28",
+          borderRadius: 14,
+        },
+      ]}
+    >
+      {children}
+    </View>
+  );
+}
+
+const tabIconStyles = StyleSheet.create({
+  wrap: {
+    width: 48,
+    height: 36,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+});
+
 export default function TabLayout() {
   const isWeb = Platform.OS === "web";
   const isIOS = Platform.OS === "ios";
@@ -13,8 +48,7 @@ export default function TabLayout() {
     <Tabs
       screenOptions={{
         headerShown: false,
-        tabBarActiveTintColor: COLORS.accent,
-        tabBarInactiveTintColor: COLORS.textMuted,
+        tabBarShowLabel: false,
         tabBarStyle: {
           position: "absolute",
           backgroundColor: isIOS ? "transparent" : COLORS.tabBar,
@@ -22,23 +56,27 @@ export default function TabLayout() {
           borderRadius: isIOS ? 36 : 28,
           marginHorizontal: isIOS ? 16 : 14,
           marginBottom: isIOS ? 16 : 14,
-          height: isIOS ? 76 : 70,
-          paddingTop: isIOS ? 8 : 6,
-          paddingBottom: isIOS ? 10 : 8,
+          height: isIOS ? 72 : 68,
+          paddingTop: 0,
+          paddingBottom: 0,
           overflow: "hidden",
           elevation: 0,
-          ...(isWeb ? { height: 78, paddingBottom: 10 } : {}),
+          // @ts-ignore
+          shadowColor: COLORS.accent,
+          shadowOffset: { width: 0, height: 4 },
+          shadowOpacity: 0.22,
+          shadowRadius: 20,
+          ...(isWeb ? { height: 72, paddingBottom: 0 } : {}),
         },
-        tabBarLabelStyle: {
-          fontFamily: "Inter_600SemiBold",
-          fontSize: 10,
-          marginTop: 1,
-          letterSpacing: 0.2,
+        tabBarItemStyle: {
+          flex: 1,
+          alignItems: "center",
+          justifyContent: "center",
         },
         tabBarBackground: () =>
           isIOS ? (
             <View style={StyleSheet.absoluteFill}>
-              <BlurView intensity={80} tint="dark" style={StyleSheet.absoluteFill} />
+              <BlurView intensity={85} tint="dark" style={StyleSheet.absoluteFill} />
               <View style={styles.glassOverlay} />
             </View>
           ) : isWeb ? (
@@ -52,8 +90,14 @@ export default function TabLayout() {
         name="index"
         options={{
           title: "Sports",
-          tabBarIcon: ({ color, size }: { color: string; size?: number }) => (
-            <MaterialCommunityIcons name="soccer" size={size ?? 22} color={color} />
+          tabBarIcon: ({ focused }) => (
+            <TabIcon focused={focused} accentColor={SP_ACCENT}>
+              <MaterialCommunityIcons
+                name="soccer"
+                size={26}
+                color={focused ? SP_ACCENT : COLORS.textMuted}
+              />
+            </TabIcon>
           ),
         }}
       />
@@ -61,8 +105,14 @@ export default function TabLayout() {
         name="livetv"
         options={{
           title: "Live TV",
-          tabBarIcon: ({ color, size }: { color: string; size?: number }) => (
-            <Ionicons name="tv-outline" size={size ?? 22} color={color} />
+          tabBarIcon: ({ focused }) => (
+            <TabIcon focused={focused} accentColor={COLORS.accent}>
+              <Ionicons
+                name={focused ? "tv" : "tv-outline"}
+                size={24}
+                color={focused ? COLORS.accent : COLORS.textMuted}
+              />
+            </TabIcon>
           ),
         }}
       />
@@ -70,8 +120,14 @@ export default function TabLayout() {
         name="movies"
         options={{
           title: "Movies",
-          tabBarIcon: ({ color, size }: { color: string; size?: number }) => (
-            <Ionicons name="film-outline" size={size ?? 22} color={color} />
+          tabBarIcon: ({ focused }) => (
+            <TabIcon focused={focused} accentColor={COLORS.accent}>
+              <Ionicons
+                name={focused ? "film" : "film-outline"}
+                size={24}
+                color={focused ? COLORS.accent : COLORS.textMuted}
+              />
+            </TabIcon>
           ),
         }}
       />
@@ -79,8 +135,14 @@ export default function TabLayout() {
         name="series"
         options={{
           title: "Series",
-          tabBarIcon: ({ color, size }: { color: string; size?: number }) => (
-            <Ionicons name="layers-outline" size={size ?? 22} color={color} />
+          tabBarIcon: ({ focused }) => (
+            <TabIcon focused={focused} accentColor={COLORS.accent}>
+              <Ionicons
+                name={focused ? "layers" : "layers-outline"}
+                size={24}
+                color={focused ? COLORS.accent : COLORS.textMuted}
+              />
+            </TabIcon>
           ),
         }}
       />
@@ -88,8 +150,14 @@ export default function TabLayout() {
         name="downloads"
         options={{
           title: "Downloads",
-          tabBarIcon: ({ color, size }: { color: string; size?: number }) => (
-            <Ionicons name="arrow-down-circle-outline" size={size ?? 22} color={color} />
+          tabBarIcon: ({ focused }) => (
+            <TabIcon focused={focused} accentColor={COLORS.accent}>
+              <Ionicons
+                name={focused ? "arrow-down-circle" : "arrow-down-circle-outline"}
+                size={24}
+                color={focused ? COLORS.accent : COLORS.textMuted}
+              />
+            </TabIcon>
           ),
         }}
       />
@@ -109,8 +177,8 @@ const styles = StyleSheet.create({
   glassOverlay: {
     ...StyleSheet.absoluteFillObject,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.09)",
+    borderColor: "rgba(255,255,255,0.10)",
     borderRadius: 36,
-    backgroundColor: "rgba(9,9,13,0.88)",
+    backgroundColor: "rgba(9,9,13,0.85)",
   },
 });

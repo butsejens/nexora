@@ -1045,7 +1045,7 @@ export default function SportsScreen() {
           const active = sportsView === tab.id;
           return (
             <TouchableOpacity key={tab.id} style={[styles.tabItem, active && styles.tabItemActive]} onPress={() => setSportsView(tab.id)}>
-              <Ionicons name={tab.icon} size={15} color={active ? COLORS.accent : COLORS.textMuted} />
+              <Ionicons name={tab.icon} size={15} color={active ? "#fff" : COLORS.textMuted} />
               <Text style={[styles.tabText, active && styles.tabTextActive]}>{tab.label}</Text>
             </TouchableOpacity>
           );
@@ -1079,7 +1079,7 @@ export default function SportsScreen() {
                 {logo ? (
                   <Image source={typeof logo === "number" ? logo : { uri: logo as string }} style={styles.leagueChipLogo} resizeMode="contain" />
                 ) : (
-                  <Ionicons name="apps-outline" size={14} color={isActive ? COLORS.accent : COLORS.textMuted} />
+                  <Ionicons name="apps-outline" size={14} color={isActive ? "#fff" : COLORS.textMuted} />
                 )}
                 <Text style={[styles.leagueChipText, isActive && styles.leagueChipTextActive]} numberOfLines={1}>{league.displayName}</Text>
               </TouchableOpacity>
@@ -1512,8 +1512,11 @@ const styles = StyleSheet.create({
   tabBar: {
     flexDirection: "row",
     backgroundColor: "#0F1123",
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    gap: 6,
     borderBottomWidth: 1,
-    borderBottomColor: "rgba(255,255,255,0.06)",
+    borderBottomColor: "rgba(255,255,255,0.05)",
   },
   tabItem: {
     flex: 1,
@@ -1521,11 +1524,15 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     gap: 5,
-    paddingVertical: 13,
+    paddingVertical: 8,
+    borderRadius: 20,
   },
-  tabItemActive: { borderBottomWidth: 2, borderBottomColor: SP_ACCENT },
+  tabItemActive: {
+    backgroundColor: SP_ACCENT,
+    borderRadius: 20,
+  },
   tabText: { fontFamily: "Inter_700Bold", fontSize: 10, color: COLORS.textMuted, letterSpacing: 0.8 },
-  tabTextActive: { color: SP_ACCENT },
+  tabTextActive: { color: "#fff" },
 
   /* ── League filter bar ── */
   leagueBar: {
@@ -1545,10 +1552,10 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.07)",
   },
-  leagueChipActive: { backgroundColor: SP_ACCENT_GLOW, borderColor: SP_ACCENT },
+  leagueChipActive: { backgroundColor: SP_ACCENT, borderColor: SP_ACCENT },
   leagueChipLogo: { width: 18, height: 18 },
   leagueChipText: { fontFamily: "Inter_600SemiBold", fontSize: 11, color: COLORS.textMuted },
-  leagueChipTextActive: { color: SP_ACCENT },
+  leagueChipTextActive: { color: "#fff" },
 
   /* ── Banners ── */
   banner: {
