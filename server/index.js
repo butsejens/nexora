@@ -2810,8 +2810,24 @@ app.get("/api/app-version", (req, res) => {
   const isCloudHost = String(req.headers["x-forwarded-host"] || req.get("host") || "").includes("onrender.com");
   const proto = forwardedProto || (isCloudHost ? "https" : req.protocol);
   const host  = req.headers["x-forwarded-host"]  || req.get("host");
-  const apkUrl = storedApkUrl || `${proto}://${host}/downloads/nexora.apk`;
+  // Always expose the download through our own redirect endpoint so the app
+  // never needs to open a raw GitHub URL (avoids browser-specific download issues).
+  const apkUrl = storedApkUrl ? `${proto}://${host}/api/download/apk` : `${proto}://${host}/downloads/nexora.apk`;
   res.json({ version, apkUrl });
+});
+
+// ── APK download redirect ──────────────────────────────────────────────────────
+// Redirects to the current GitHub release APK so the app always uses a stable
+// Render URL and GitHub URL changes only require a server-side update.
+app.get("/api/download/apk", (req, res) => {
+  try {
+    const vf = join(__dirname, "app-version.json");
+    if (existsSync(vf)) {
+      const data = JSON.parse(readFileSync(vf, "utf8"));
+      if (data.apkUrl) return res.redirect(302, data.apkUrl);
+    }
+  } catch {}
+  res.status(404).json({ error: "APK not available" });
 });
 
 // Image proxy – forwards images that require specific Referer headers (e.g. Transfermarkt CDN)
