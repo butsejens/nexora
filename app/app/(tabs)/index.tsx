@@ -99,18 +99,18 @@ async function fetchSportsPayloadWithTimeout(path: string, timeoutMs = 6500): Pr
   ]);
 }
 
-const LEAGUES = [
-  { name: "Alle", icon: "apps-outline", displayName: "Alle" },
-  { name: "UEFA Champions League", icon: "star-outline", displayName: "Champions League" },
-  { name: "UEFA Europa League", icon: "trophy-outline", displayName: "Europa League" },
-  { name: "UEFA Conference League", icon: "trophy-outline", displayName: "Conference League" },
-  { name: "Premier League", icon: "football-outline", displayName: "Premier League" },
-  { name: "La Liga", icon: "football-outline", displayName: "La Liga" },
-  { name: "Bundesliga", icon: "football-outline", displayName: "Bundesliga" },
-  { name: "Serie A", icon: "football-outline", displayName: "Serie A" },
-  { name: "Ligue 1", icon: "football-outline", displayName: "Ligue 1" },
-  { name: "Jupiler Pro League", icon: "football-outline", displayName: "Jupiler Pro" },
+const SPORT_CATEGORIES = [
+  { id: "all",        label: "All Sports",  icon: "apps-outline"                as const },
+  { id: "football",   label: "Football",    icon: "football-outline"            as const },
+  { id: "basketball", label: "Basketball",  icon: "basketball-outline"          as const },
+  { id: "mma",        label: "MMA",         icon: "fitness-outline"             as const },
+  { id: "motorsport", label: "Motorsport",  icon: "car-sport-outline"           as const },
+  { id: "tennis",     label: "Tennis",      icon: "tennisball-outline"          as const },
+  { id: "baseball",   label: "Baseball",    icon: "baseball-outline"            as const },
+  { id: "ice_hockey", label: "Ice Hockey",  icon: "snow-outline"                as const },
+  { id: "other",      label: "Other",       icon: "ellipsis-horizontal-outline" as const },
 ];
+type SportCategoryId = typeof SPORT_CATEGORIES[number]["id"];
 
 const SPORT_TOOL_CARDS = [
   {
@@ -690,19 +690,22 @@ function CountryCard({ country, active, onPress }: { country: CountryCatalog; ac
     <TouchableOpacity onPress={onPress} activeOpacity={0.82} style={[countryCardStyles.card, active && countryCardStyles.cardActive]}>
       <Text style={countryCardStyles.flag}>{flagFromIso2(country.countryCode)}</Text>
       <Text style={[countryCardStyles.name, active && countryCardStyles.nameActive]} numberOfLines={1}>{country.countryName}</Text>
+      {active && <Ionicons name="checkmark-circle" size={14} color={P.accent} />}
     </TouchableOpacity>
   );
 }
 
 const countryCardStyles = StyleSheet.create({
   card: {
-    width: 88, height: 70, borderRadius: 12, backgroundColor: P.elevated,
-    alignItems: "center", justifyContent: "center", gap: 6, marginRight: 10,
+    width: "48%", height: 62, borderRadius: 12, backgroundColor: P.elevated,
+    flexDirection: "row", alignItems: "center", gap: 10,
+    paddingHorizontal: 12, paddingVertical: 10,
     borderWidth: 1, borderColor: P.border,
+    shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 4, elevation: 2,
   },
-  cardActive: { borderColor: P.accent, backgroundColor: `${P.accent}18` },
-  flag: { fontSize: 26 },
-  name: { color: P.muted, fontSize: 11, fontWeight: "600" },
+  cardActive: { borderColor: P.accent, backgroundColor: `${P.accent}14` },
+  flag: { fontSize: 22 },
+  name: { color: P.muted, fontSize: 13, fontWeight: "600", flex: 1 },
   nameActive: { color: P.text },
 });
 
@@ -748,12 +751,12 @@ const hlStyles = StyleSheet.create({
 export default function SportsScreen() {
   const insets = useSafeAreaInsets();
   const { width: screenWidth } = useWindowDimensions();
-  const contentWidth = Math.min(screenWidth, 1100);
+  const contentWidth = Math.min(screenWidth, 1200);
   const qc = useQueryClient();
 
   const [refreshing, setRefreshing] = useState(false);
   const [statusFilter, setStatusFilter] = useState<"all" | "live" | "upcoming">("all");
-  const [leagueFilter, setLeagueFilter] = useState<string>("Alle");
+  const [sportCategory, setSportCategory] = useState<SportCategoryId>("all");
   const [selectedCountryCode, setSelectedCountryCode] = useState<string>(COUNTRY_COMPETITIONS[0]?.countryCode || "BE");
   const [selectedDate, setSelectedDate] = useState<string>(todayUTC());
   const [sportsView, setSportsView] = useState<"competitions" | "live" | "upcoming" | "menu">("competitions");
@@ -833,8 +836,8 @@ export default function SportsScreen() {
   });
 
   const toolsQuery = useQuery({
-    queryKey: ["sports", "menu-tools", selectedDate, leagueFilter],
-    queryFn: () => fetchSportsMenuTools(`/api/sports/menu-tools?date=${encodeURIComponent(selectedDate)}&league=${encodeURIComponent(leagueFilter)}`),
+    queryKey: ["sports", "menu-tools", selectedDate, sportCategory],
+    queryFn: () => fetchSportsMenuTools(`/api/sports/menu-tools?date=${encodeURIComponent(selectedDate)}&league=${encodeURIComponent(sportCategory)}`),
     refetchInterval: 30_000,
     staleTime: 20_000,
     retry: 1,
@@ -901,19 +904,29 @@ export default function SportsScreen() {
   const normalizedApiError = rawApiError ? normalizeApiError(rawApiError) : null;
   const apiErrorRef = useMemo(() => (rawApiError ? buildErrorReference("NX-SPR") : ""), [rawApiError]);
 
-  const filterByLeague = (matches: any[]) => {
-    if (leagueFilter === "Alle") return matches;
-    return matches.filter(m => {
-      const ml = String(m.league || "").toLowerCase();
-      const fl = leagueFilter.toLowerCase();
-      return m.league === leagueFilter || ml.includes(fl) || fl.includes(ml);
+  const filterBySport = (matches: any[]) => {
+    if (sportCategory === "all") return matches;
+    return matches.filter((m) => {
+      const sport = String(m?.sport || "").toLowerCase();
+      const league = String(m?.league || "").toLowerCase();
+      switch (sportCategory) {
+        case "football":   return sport === "football" || sport === "soccer" || league.includes("liga") || league.includes("league") || league.includes("bundesliga") || league.includes("serie") || league.includes("ligue") || league.includes("jupiler") || league.includes("uefa") || league.includes("eredivisie");
+        case "basketball": return sport === "basketball" || league.includes("nba") || league.includes("basketball");
+        case "mma":        return sport === "mma" || sport === "ufc" || league.includes("ufc") || league.includes("mma");
+        case "motorsport": return sport === "motorsport" || sport === "f1" || sport === "motogp" || league.includes("formula") || league.includes("f1") || league.includes("nascar") || league.includes("motogp");
+        case "tennis":     return sport === "tennis" || league.includes("tennis") || league.includes("atp") || league.includes("wta");
+        case "baseball":   return sport === "baseball" || league.includes("baseball") || league.includes("mlb");
+        case "ice_hockey": return sport === "ice_hockey" || sport === "hockey" || league.includes("hockey") || league.includes("nhl");
+        case "other":      return !isFootballMatch(m) && sport !== "basketball" && sport !== "mma" && sport !== "motorsport" && sport !== "tennis" && sport !== "baseball" && sport !== "ice_hockey";
+        default:           return true;
+      }
     });
   };
 
-  const rawLive = filterByLeague(allLive);
-  const rawUpcoming = filterByLeague(allUpcoming);
-  const rawFinished = filterByLeague(allFinished);
-  const filterEmpty = leagueFilter !== "Alle" && rawLive.length === 0 && rawUpcoming.length === 0 && rawFinished.length === 0;
+  const rawLive = filterBySport(allLive);
+  const rawUpcoming = filterBySport(allUpcoming);
+  const rawFinished = filterBySport(allFinished);
+  const filterEmpty = sportCategory !== "all" && rawLive.length === 0 && rawUpcoming.length === 0 && rawFinished.length === 0;
 
   const displayLive = filterEmpty ? allLive : rawLive;
   const displayUpcoming = filterEmpty ? allUpcoming : rawUpcoming;
@@ -1188,7 +1201,7 @@ export default function SportsScreen() {
     return "flag-outline";
   };
 
-  const bottomPad = Platform.OS === "web" ? 44 : insets.bottom + 120;
+  const bottomPad = Platform.OS === "web" ? 44 : insets.bottom + 100;
   const showLive = sportsView === "live" && statusFilter !== "upcoming";
   const showUpcoming = sportsView === "upcoming" && statusFilter !== "live";
   const showMenuSection = sportsView === "menu";
@@ -1211,6 +1224,8 @@ export default function SportsScreen() {
   return (
     <View style={styles.container}>
       <NexoraHeader
+        title="SPORT"
+        titleColor={P.accent}
         showSearch
         showNotification
         showFavorites
@@ -1261,7 +1276,7 @@ export default function SportsScreen() {
         {filterEmpty && (
           <View style={styles.banner}>
             <Ionicons name="information-circle-outline" size={14} color={P.accent} />
-            <Text style={styles.bannerText}>Geen wedstrijden voor &quot;{leagueFilter}&quot; – alle competities getoond.</Text>
+            <Text style={styles.bannerText}>No matches for &quot;{SPORT_CATEGORIES.find(c => c.id === sportCategory)?.label}&quot; – showing all sports.</Text>
           </View>
         )}
         {normalizedApiError && (
@@ -1285,6 +1300,28 @@ export default function SportsScreen() {
         ══════════════════════════════════════════ */}
         {showCompetitionsSection && (
           <>
+            {/* ── SPORT CATEGORIES FILTER ── */}
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={{ paddingHorizontal: 16, paddingVertical: 12, gap: 8, flexDirection: "row" }}
+            >
+              {SPORT_CATEGORIES.map((cat) => {
+                const isActive = sportCategory === cat.id;
+                return (
+                  <TouchableOpacity
+                    key={cat.id}
+                    onPress={() => setSportCategory(cat.id as SportCategoryId)}
+                    activeOpacity={0.75}
+                    style={[styles.sportCatPill, isActive && styles.sportCatPillActive]}
+                  >
+                    <Ionicons name={cat.icon} size={14} color={isActive ? "#fff" : P.muted} />
+                    <Text style={[styles.sportCatLabel, isActive && styles.sportCatLabelActive]}>{cat.label}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+
             {/* ── LIVE NOW ── */}
             <SectionTitle
               title="🔴 Live Nu"
@@ -1350,7 +1387,7 @@ export default function SportsScreen() {
 
             {/* ── LANDEN ── */}
             <SectionTitle title="Landen" />
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.carouselContent}>
+            <View style={styles.countryGrid}>
               {COUNTRY_COMPETITIONS.map((country) => (
                 <CountryCard
                   key={country.countryCode}
@@ -1359,7 +1396,7 @@ export default function SportsScreen() {
                   onPress={() => setSelectedCountryCode(country.countryCode)}
                 />
               ))}
-            </ScrollView>
+            </View>
 
             {/* ── HIGHLIGHTS & REPLAYS ── */}
             {sortedFinished.length > 0 && (
@@ -1773,4 +1810,20 @@ const styles = StyleSheet.create({
   toolBadgeNeg: { backgroundColor: "rgba(255,45,85,0.12)", borderColor: "rgba(255,45,85,0.28)" },
   toolBadgeText: { color: P.muted, fontSize: 9, fontWeight: "700", letterSpacing: 0.5 },
   toolEmpty: { color: P.muted, fontSize: 13, textAlign: "center", paddingVertical: 16 },
+
+  /* ── Sport category filter ── */
+  sportCatPill: {
+    flexDirection: "row", alignItems: "center", gap: 5,
+    paddingHorizontal: 12, paddingVertical: 7, borderRadius: 20,
+    backgroundColor: P.elevated, borderWidth: 1, borderColor: P.border,
+  },
+  sportCatPillActive: { backgroundColor: P.accent, borderColor: P.accent },
+  sportCatLabel: { color: P.muted, fontSize: 12, fontWeight: "600" },
+  sportCatLabelActive: { color: "#fff" },
+
+  /* ── Country grid ── */
+  countryGrid: {
+    flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between",
+    paddingHorizontal: 16, gap: 8,
+  },
 });

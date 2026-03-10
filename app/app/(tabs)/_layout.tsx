@@ -4,7 +4,6 @@ import { Platform, StyleSheet, View } from "react-native";
 import React from "react";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { COLORS } from "@/constants/colors";
-import { DESIGN_COLORS, SIZES, LAYOUT, SHADOWS } from "@/constants/design-system";
 
 const SP_ACCENT = COLORS.accent;
 
@@ -69,23 +68,23 @@ export default function TabLayout() {
         tabBarShowLabel: false,
         tabBarStyle: {
           position: "absolute",
-          backgroundColor: isIOS ? "transparent" : DESIGN_COLORS.glass,
+          backgroundColor: isIOS ? "transparent" : "rgba(10,10,18,0.82)",
           borderTopWidth: 1,
-          borderTopColor: DESIGN_COLORS.border.light,
-          borderRadius: isIOS ? 36 : 28,
-          marginHorizontal: isIOS ? 16 : 14,
-          marginBottom: isIOS ? 16 : 14,
-          height: isIOS ? 72 : 68,
+          borderTopColor: "rgba(255,255,255,0.06)",
+          borderRadius: isIOS ? 28 : 24,
+          marginHorizontal: isIOS ? 14 : 12,
+          marginBottom: isIOS ? 14 : 12,
+          height: isIOS ? 62 : 58,
           paddingTop: 0,
           paddingBottom: 0,
           overflow: "hidden",
           elevation: 0,
           // @ts-ignore
-          shadowColor: COLORS.accent,
-          shadowOffset: { width: 0, height: 8 },
-          shadowOpacity: 0.28,
-          shadowRadius: 24,
-          ...(isWeb ? { height: 72, paddingBottom: 0 } : {}),
+          shadowColor: "#000",
+          shadowOffset: { width: 0, height: 4 },
+          shadowOpacity: 0.18,
+          shadowRadius: 16,
+          ...(isWeb ? { height: 62, paddingBottom: 0 } : {}),
         },
         tabBarItemStyle: {
           flex: 1,
@@ -95,12 +94,12 @@ export default function TabLayout() {
         tabBarBackground: () =>
           isIOS ? (
             <View style={StyleSheet.absoluteFill}>
-              <BlurView intensity={90} tint="dark" style={StyleSheet.absoluteFill} />
+              <BlurView intensity={72} tint="dark" style={StyleSheet.absoluteFill} />
               <View style={styles.glassOverlay} />
             </View>
           ) : isWeb ? (
             <View
-              style={[StyleSheet.absoluteFill, { backgroundColor: DESIGN_COLORS.glass }]}
+              style={[StyleSheet.absoluteFill, { backgroundColor: "rgba(10,10,18,0.82)" }]}
             />
           ) : null,
       }}
@@ -196,8 +195,8 @@ const styles = StyleSheet.create({
   glassOverlay: {
     ...StyleSheet.absoluteFillObject,
     borderWidth: 1,
-    borderColor: DESIGN_COLORS.border.light,
-    borderRadius: 36,
-    backgroundColor: DESIGN_COLORS.glass,
+    borderColor: "rgba(255,255,255,0.06)",
+    borderRadius: 28,
+    backgroundColor: "rgba(10,10,18,0.55)",
   },
 });

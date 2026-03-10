@@ -8,6 +8,7 @@ import { COLORS } from "@/constants/colors";
 
 interface Props {
   title?: string;
+  titleColor?: string;
   showSearch?: boolean;
   showNotification?: boolean;
   showFavorites?: boolean;
@@ -21,6 +22,7 @@ interface Props {
 
 export function NexoraHeader({
   title,
+  titleColor,
   showSearch = true,
   showNotification = false,
   showFavorites = false,
@@ -49,7 +51,7 @@ export function NexoraHeader({
           <Text style={styles.logoN}>N</Text>
           <Text style={styles.logoRest}>EXORA</Text>
         </Text>
-        {title ? <Text style={styles.sectionTitle}>{title}</Text> : null}
+        {title ? <Text style={[styles.sectionTitle, titleColor ? { color: titleColor } : null]}>{title}</Text> : null}
       </View>
 
       <View style={styles.actions}>
