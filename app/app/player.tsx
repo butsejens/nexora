@@ -645,6 +645,16 @@ video{width:100%;height:100%;object-fit:contain;display:block;background:#000}
     if(!stateTimer){ stateTimer = setTimeout(function(){ stateTimer=null; sendState(); }, 800); }
   }
 
+  // Try unmuted play first; fall back to muted play (Android autoplay policy)
+  function tryPlay(){
+    v.muted = false;
+    var p = v.play();
+    if(p && p.catch) p.catch(function(){
+      v.muted = true;
+      v.play().catch(function(){});
+    });
+  }
+
   v.addEventListener('play',            sendState);
   v.addEventListener('pause',           sendState);
   v.addEventListener('loadedmetadata',  sendState);
@@ -656,7 +666,19 @@ video{width:100%;height:100%;object-fit:contain;display:block;background:#000}
   window.addEventListener('message', function(e){
     try{
       var cmd = JSON.parse(e.data || '{}');
-      if(cmd.type === 'toggle'){ v.paused ? v.play().catch(function(){}) : v.pause(); }
+      if(cmd.type === 'toggle'){
+        if(v.paused){
+          // For live streams: seek to live edge before resuming so buffer is fresh
+          try{
+            if(isLive && v.seekable && v.seekable.length > 0){
+              v.currentTime = v.seekable.end(v.seekable.length - 1);
+            }
+          }catch(ex){}
+          tryPlay();
+        } else {
+          v.pause();
+        }
+      }
       if(cmd.type === 'seek')   { v.currentTime = Number(cmd.time) || 0; }
       if(cmd.type === 'seekRel'){ v.currentTime = Math.max(0, (v.currentTime||0) + (Number(cmd.delta)||0)); }
     }catch(e){}
@@ -668,23 +690,33 @@ video{width:100%;height:100%;object-fit:contain;display:block;background:#000}
   }
 
   function tryDirect(url){
-    v.src = url; v.muted = false;
-    v.play().catch(function(){});
+    v.src = url;
+    tryPlay();
     v.onerror = function(){ if(fallback && tried < 1){ tried++; tryDirect(fallback); } else { showError(); } };
   }
 
   function loadWithHls(url, onFail){
-    var h = new Hls({enableWorker:false,lowLatencyMode:true,backBufferLength:0,maxBufferLength:30});
+    // lowLatencyMode:false is better for standard IPTV streams (non-LL-HLS)
+    var h = new Hls({enableWorker:false,lowLatencyMode:false,backBufferLength:0,maxBufferLength:20,
+      manifestLoadingMaxRetry:2,levelLoadingMaxRetry:2,fragLoadingMaxRetry:2});
     h.loadSource(url); h.attachMedia(v);
-    h.on(Hls.Events.MANIFEST_PARSED, function(){ v.muted=false; v.play().catch(function(){}); });
+    h.on(Hls.Events.MANIFEST_PARSED, function(){ tryPlay(); });
     h.on(Hls.Events.LEVEL_LOADED,    function(e,d){ isLive = !!(d&&d.details&&d.details.live); sendState(); });
-    h.on(Hls.Events.ERROR,           function(e,d){ if(d.fatal){ h.destroy(); onFail(); } });
+    h.on(Hls.Events.ERROR, function(e,d){
+      if(!d.fatal) return;
+      if(d.type === Hls.ErrorTypes.MEDIA_ERROR){
+        // Try to recover media errors before giving up
+        h.recoverMediaError();
+      } else {
+        h.destroy(); onFail();
+      }
+    });
   }
 
   if(typeof Hls !== 'undefined' && Hls.isSupported()){
     loadWithHls(primary, function(){ tryDirect(fallback || primary); });
   } else if(v.canPlayType('application/vnd.apple.mpegurl')){
-    v.src = primary; v.play().catch(function(){});
+    v.src = primary; tryPlay();
   } else {
     tryDirect(primary);
   }
