@@ -2816,18 +2816,30 @@ app.get("/api/app-version", (req, res) => {
   res.json({ version, apkUrl });
 });
 
-// ── APK download redirect ──────────────────────────────────────────────────────
-// Redirects to the current GitHub release APK so the app always uses a stable
-// Render URL and GitHub URL changes only require a server-side update.
-app.get("/api/download/apk", (req, res) => {
+// ── APK download proxy ─────────────────────────────────────────────────────────
+// Streams the APK through Render so the user never gets redirected to GitHub.
+app.get("/api/download/apk", async (req, res) => {
   try {
     const vf = join(__dirname, "app-version.json");
     if (existsSync(vf)) {
       const data = JSON.parse(readFileSync(vf, "utf8"));
-      if (data.apkUrl) return res.redirect(302, data.apkUrl);
+      if (data.apkUrl) {
+        const upstream = await fetch(data.apkUrl, { timeout: 60000 });
+        if (!upstream.ok) {
+          return res.status(502).json({ error: `APK niet beschikbaar (${upstream.status})` });
+        }
+        res.setHeader("Content-Type", "application/vnd.android.package-archive");
+        res.setHeader("Content-Disposition", 'attachment; filename="nexora.apk"');
+        const contentLength = upstream.headers.get("content-length");
+        if (contentLength) res.setHeader("Content-Length", contentLength);
+        upstream.body.pipe(res);
+        return;
+      }
     }
-  } catch {}
-  res.status(404).json({ error: "APK not available" });
+  } catch (err) {
+    console.error("[apk-proxy] error:", err?.message);
+  }
+  res.status(404).json({ error: "APK niet beschikbaar" });
 });
 
 // Image proxy – forwards images that require specific Referer headers (e.g. Transfermarkt CDN)
