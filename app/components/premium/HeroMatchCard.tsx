@@ -17,8 +17,8 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { COLORS } from '@/constants/colors';
 import { TYPOGRAPHY, SPACING, SHADOWS, DESIGN_COLORS, SIZES, ANIMATIONS, CARD_STYLES } from '@/constants/design-system';
-import { TeamLogo } from './MatchCard';
-import { LiveBadge } from './LiveBadge';
+import { TeamLogo } from '@/components/MatchCard';
+import { LiveBadge } from '@/components/LiveBadge';
 
 export interface HeroMatchCardProps {
   match: {

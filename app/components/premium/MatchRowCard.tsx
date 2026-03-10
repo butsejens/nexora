@@ -17,7 +17,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '@/constants/colors';
 import { TYPOGRAPHY, SPACING, SHADOWS, DESIGN_COLORS, SIZES } from '@/constants/design-system';
-import { TeamLogo } from './MatchCard';
+import { TeamLogo } from '@/components/MatchCard';
 
 export interface MatchRowCardProps {
   match: {
