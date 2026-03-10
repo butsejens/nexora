@@ -648,40 +648,35 @@ const TOP_COMPETITIONS = [
   { id: "uel", league: "UEFA Europa League", espn: "uefa.europa", color: "#f47920", emoji: "🏆" },
 ];
 
-function PopularCompetitionCard({ comp, onPress }: { comp: typeof TOP_COMPETITIONS[0]; onPress: () => void }) {
+function PopularCompetitionCard({ comp, onPress, cardWidth }: { comp: typeof TOP_COMPETITIONS[0]; onPress: () => void; cardWidth: number }) {
   const logo = getLeagueLogo(comp.league);
   return (
-    <TouchableOpacity onPress={onPress} activeOpacity={0.82} style={popCompStyles.card}>
-      <View style={[popCompStyles.colorBar, { backgroundColor: comp.color }]} />
-      <View style={popCompStyles.content}>
-        <View style={popCompStyles.logoWrap}>
-          {logo ? (
-            <Image source={typeof logo === "number" ? logo : { uri: logo as string }} style={popCompStyles.logo} resizeMode="contain" />
-          ) : (
-            <Text style={popCompStyles.emoji}>{comp.emoji}</Text>
-          )}
-        </View>
-        <Text style={popCompStyles.name} numberOfLines={2}>{comp.league}</Text>
+    <TouchableOpacity onPress={onPress} activeOpacity={0.82} style={[popCompStyles.card, { width: cardWidth }]}>
+      <View style={[popCompStyles.colorTop, { backgroundColor: comp.color }]} />
+      <View style={popCompStyles.logoWrap}>
+        {logo ? (
+          <Image source={typeof logo === "number" ? logo : { uri: logo as string }} style={popCompStyles.logo} resizeMode="contain" />
+        ) : (
+          <Text style={popCompStyles.emoji}>{comp.emoji}</Text>
+        )}
       </View>
-      <Ionicons name="chevron-forward" size={14} color={P.muted} style={popCompStyles.chevron} />
+      <Text style={popCompStyles.name} numberOfLines={2}>{comp.league}</Text>
     </TouchableOpacity>
   );
 }
 
 const popCompStyles = StyleSheet.create({
   card: {
-    flex: 1, margin: 5, height: 76, borderRadius: 14, backgroundColor: P.elevated,
-    flexDirection: "row", alignItems: "center", overflow: "hidden",
+    height: 116, borderRadius: 14, backgroundColor: P.elevated,
+    overflow: "hidden", alignItems: "center", paddingBottom: 10,
     borderWidth: 1, borderColor: P.border,
-    shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.25, shadowRadius: 4, elevation: 3,
+    shadowColor: "#000", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 6, elevation: 4,
   },
-  colorBar: { width: 3, alignSelf: "stretch" },
-  content: { flex: 1, flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 10 },
-  logoWrap: { width: 36, height: 36, alignItems: "center", justifyContent: "center" },
-  logo: { width: 32, height: 32 },
-  emoji: { fontSize: 22 },
-  name: { flex: 1, color: P.text, fontSize: 12, fontWeight: "700", lineHeight: 16 },
-  chevron: { marginRight: 10 },
+  colorTop: { width: "100%", height: 5 },
+  logoWrap: { flex: 1, alignItems: "center", justifyContent: "center", paddingTop: 6 },
+  logo: { width: 52, height: 52 },
+  emoji: { fontSize: 34 },
+  name: { color: P.text, fontSize: 10, fontWeight: "700", textAlign: "center", paddingHorizontal: 6, lineHeight: 13 },
 });
 
 // ── Country Card ──────────────────────────────────────────────────────────────
@@ -752,6 +747,7 @@ export default function SportsScreen() {
   const insets = useSafeAreaInsets();
   const { width: screenWidth } = useWindowDimensions();
   const contentWidth = Math.min(screenWidth, 1200);
+  const compCardWidth = Math.floor((Math.min(screenWidth, 480) - 16 * 2 - 10 * 3) / 4);
   const qc = useQueryClient();
 
   const [refreshing, setRefreshing] = useState(false);
@@ -1375,15 +1371,23 @@ export default function SportsScreen() {
 
             {/* ── POPULAIRE COMPETITIES ── */}
             <SectionTitle title="Populaire Competities" accent />
-            <View style={styles.compGrid}>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              decelerationRate={0.9}
+              snapToInterval={compCardWidth + 10}
+              snapToAlignment="start"
+              contentContainerStyle={{ paddingHorizontal: 16, gap: 10, paddingBottom: 4 }}
+            >
               {TOP_COMPETITIONS.map((comp) => (
                 <PopularCompetitionCard
                   key={comp.id}
                   comp={comp}
+                  cardWidth={compCardWidth}
                   onPress={() => router.push({ pathname: "/competition", params: { league: comp.league, sport: "soccer", espnLeague: comp.espn } })}
                 />
               ))}
-            </View>
+            </ScrollView>
 
             {/* ── LANDEN ── */}
             <SectionTitle title="Landen" />
@@ -1439,40 +1443,6 @@ export default function SportsScreen() {
               ))}
             </View>
 
-            {/* All countries section */}
-            <SectionTitle title="Alle Competities" />
-            {COUNTRY_COMPETITIONS.map((country) => (
-              <View key={country.countryCode} style={styles.countrySection}>
-                <View style={styles.countrySectionHead}>
-                  <Text style={styles.countrySectionFlag}>{flagFromIso2(country.countryCode)}</Text>
-                  <Text style={styles.countrySectionName}>{country.countryName}</Text>
-                </View>
-                {country.competitions.map((comp) => (
-                  <TouchableOpacity
-                    key={comp.id}
-                    activeOpacity={0.75}
-                    style={styles.compListRow}
-                    onPress={() => {
-                      if (comp.tier === "national" && comp.nationalTeamName) {
-                        router.push({ pathname: "/team-detail", params: { teamId: `name:${encodeURIComponent(comp.nationalTeamName)}`, teamName: comp.nationalTeamName, sport: "soccer", league: comp.espn } });
-                      } else {
-                        handleCompetitionPress(comp);
-                      }
-                    }}
-                  >
-                    <View style={[styles.compListAccent, { backgroundColor: comp.color }]} />
-                    <View style={[styles.compListIcon, { backgroundColor: `${comp.color}18` }]}>
-                      <Ionicons name={tierIcon(comp.tier) as any} size={15} color={comp.color} />
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.compListName} numberOfLines={1}>{comp.league}</Text>
-                      <Text style={[styles.compListTier, { color: comp.color }]}>{tierLabel(comp.tier)}</Text>
-                    </View>
-                    <Ionicons name="chevron-forward" size={13} color={P.muted} />
-                  </TouchableOpacity>
-                ))}
-              </View>
-            ))}
           </>
         )}
 

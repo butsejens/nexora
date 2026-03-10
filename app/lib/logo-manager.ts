@@ -5,20 +5,64 @@ const LOCAL_LOGOS = {
   raalLaLouviere: require("../assets/logos/raal-la-louviere.png"),
 };
 
+// ESPN CDN league logo IDs (soccer/500/*.png)
+// Source: a.espncdn.com/i/leaguelogos/soccer/500/{id}.png
+const ESPN = (id: number) => `https://a.espncdn.com/i/leaguelogos/soccer/500/${id}.png`;
+
 const LEAGUE_LOGO_MAP: Record<string, string | number> = {
-  "Premier League": "https://a.espncdn.com/i/leaguelogos/soccer/500/23.png",
-  "UEFA Champions League": "https://a.espncdn.com/i/leaguelogos/soccer/500/1.png",
-  "Champions League": "https://a.espncdn.com/i/leaguelogos/soccer/500/1.png",
-  "UEFA Europa League": "https://a.espncdn.com/i/leaguelogos/soccer/500/2.png",
-  "Europa League": "https://a.espncdn.com/i/leaguelogos/soccer/500/2.png",
-  "UEFA Conference League": "https://a.espncdn.com/i/leaguelogos/soccer/500/3.png",
-  "Conference League": "https://a.espncdn.com/i/leaguelogos/soccer/500/3.png",
-  "La Liga": "https://a.espncdn.com/i/leaguelogos/soccer/500/15.png",
-  Bundesliga: "https://a.espncdn.com/i/leaguelogos/soccer/500/10.png",
-  "Jupiler Pro League": LOCAL_LOGOS.jupilerProLeague,
-  "Ligue 1": "https://a.espncdn.com/i/leaguelogos/soccer/500/9.png",
-  "Serie A": "https://a.espncdn.com/i/leaguelogos/soccer/500/12.png",
-  NBA: "https://a.espncdn.com/i/leaguelogos/basketball/500/nba.png",
+  // ── Top European leagues ──────────────────────────────────────────────────
+  "Premier League":          ESPN(23),
+  "Championship":            ESPN(24),
+  "EFL Championship":        ESPN(24),
+  "League One":              ESPN(25),
+  "FA Cup":                  ESPN(30),
+  "EFL Cup":                 ESPN(31),
+
+  "La Liga":                 ESPN(15),
+  "La Liga 2":               ESPN(17),
+  "Segunda División":        ESPN(17),
+  "Copa del Rey":            ESPN(16),
+
+  "Bundesliga":              ESPN(10),
+  "2. Bundesliga":           ESPN(19),
+  "DFB-Pokal":               ESPN(20),
+
+  "Serie A":                 ESPN(12),
+  "Serie B":                 ESPN(13),
+  "Coppa Italia":            ESPN(14),
+
+  "Ligue 1":                 ESPN(9),
+  "Ligue 2":                 ESPN(55),
+
+  "Eredivisie":              ESPN(11),
+  "Eerste Divisie":          ESPN(31),
+
+  "Jupiler Pro League":      LOCAL_LOGOS.jupilerProLeague,
+  "Belgian Pro League":      LOCAL_LOGOS.jupilerProLeague,
+
+  "Primeira Liga":           ESPN(24),
+  "Liga Portugal":           ESPN(24),
+
+  "Super League":            ESPN(53),
+  "Scottish Premiership":    ESPN(54),
+  "Premiership":             ESPN(54),
+
+  // ── UEFA Competitions ─────────────────────────────────────────────────────
+  "UEFA Champions League":   ESPN(1),
+  "Champions League":        ESPN(1),
+  "UCL":                     ESPN(1),
+  "UEFA Europa League":      ESPN(2),
+  "Europa League":           ESPN(2),
+  "UEL":                     ESPN(2),
+  "UEFA Conference League":  ESPN(3),
+  "Conference League":       ESPN(3),
+  "UECL":                    ESPN(3),
+  "UEFA Nations League":     ESPN(72),
+  "Nations League":          ESPN(72),
+
+  // ── Basketball ────────────────────────────────────────────────────────────
+  "NBA":             "https://a.espncdn.com/i/leaguelogos/basketball/500/nba.png",
+  "EuroLeague":      "https://a.espncdn.com/i/leaguelogos/basketball/500/euroleague.png",
 };
 
 function normalizeName(value: string): string {
@@ -33,7 +77,14 @@ function normalizeName(value: string): string {
 
 export function getLeagueLogo(leagueName?: string): string | number | null {
   const key = String(leagueName || "").trim();
-  return LEAGUE_LOGO_MAP[key] ?? null;
+  // Exact match first
+  if (LEAGUE_LOGO_MAP[key] != null) return LEAGUE_LOGO_MAP[key];
+  // Case-insensitive fallback
+  const normalized = key.toLowerCase();
+  const found = Object.entries(LEAGUE_LOGO_MAP).find(
+    ([k]) => k.toLowerCase() === normalized
+  );
+  return found?.[1] ?? null;
 }
 
 export function resolveTeamLogoUri(teamName?: string, logoUri?: string | null): string | number | null {

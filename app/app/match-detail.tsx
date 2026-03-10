@@ -17,10 +17,24 @@ import { openInVlc } from "@/lib/vlc";
 import { TeamLogo } from "@/components/MatchCard";
 import { buildErrorReference, normalizeApiError } from "@/lib/error-messages";
 
+const BLOCK_POPUP_JS = `
+  (function() {
+    try {
+      window.open = function() { return null; };
+      document.addEventListener('click', function(e) {
+        var a = e.target && e.target.closest ? e.target.closest('a[target="_blank"]') : null;
+        if (a) { e.preventDefault(); e.stopPropagation(); }
+      }, true);
+      window.addEventListener('beforeunload', function(e) { e.stopImmediatePropagation(); }, true);
+    } catch(err) {}
+  })();
+  true;
+`;
+
 const TABS = [
   { id: "stream",   label: "Stream",   icon: "play-circle-outline" },
   { id: "stats",    label: "Stats",    icon: "bar-chart-outline" },
-  { id: "lineups",  label: "Lineups",  icon: "people-outline" },
+  { id: "lineups",  label: "Matchen",  icon: "people-outline" },
   { id: "timeline", label: "Timeline", icon: "time-outline" },
   { id: "ai",       label: "Analysis", icon: "analytics-outline" },
 ] as const;
@@ -400,9 +414,8 @@ export default function MatchDetailScreen() {
         />
       )}
 
-      {/* Stream Tab */}
-      {activeTab === "stream" && (
-        <View style={styles.streamContainer}>
+      {/* Stream Tab — always mounted, hidden when not active */}
+      <View style={[styles.streamContainer, activeTab !== "stream" ? { display: "none" } : null]}>
           {isLive ? (
             <>
               <View style={styles.videoBox}>
@@ -410,6 +423,16 @@ export default function MatchDetailScreen() {
                   style={{ flex: 1, backgroundColor: "#000" }}
                   allowsFullscreenVideo mediaPlaybackRequiresUserAction={false}
                   javaScriptEnabled domStorageEnabled
+                  setSupportMultipleWindows={false}
+                  allowsInlineMediaPlayback
+                  injectedJavaScript={BLOCK_POPUP_JS}
+                  onShouldStartLoadWithRequest={(req) => {
+                    const url = (req.url || "").toLowerCase();
+                    if (url.includes("google.com") && (url.includes("consent") || url.includes("interstitial") || url.includes("sorry"))) return false;
+                    if (url.includes("accounts.google.com")) return false;
+                    if (url.includes("googleads.") || url.includes("googlesyndication.")) return false;
+                    return true;
+                  }}
                   onError={(event) => {
                     const err = event?.nativeEvent?.description || "WebView stream fout";
                     setStreamWebError(err);
@@ -491,11 +514,9 @@ export default function MatchDetailScreen() {
             </View>
           )}
         </View>
-      )}
 
-      {/* Stats Tab */}
-      {activeTab === "stats" && (
-        <ScrollView style={styles.tabContent} contentContainerStyle={styles.tabContentInner} showsVerticalScrollIndicator={false}>
+      {/* Stats Tab — always mounted, hidden when not active */}
+      <ScrollView style={[styles.tabContent, activeTab !== "stats" ? { display: "none" } : null]} contentContainerStyle={styles.tabContentInner} showsVerticalScrollIndicator={false}>
           {detailLoading ? (
             <LoadingState />
           ) : matchDetail ? (
@@ -535,11 +556,9 @@ export default function MatchDetailScreen() {
             <EmptyState icon="stats-chart-outline" text="Statistieken niet beschikbaar voor deze wedstrijd" />
           )}
         </ScrollView>
-      )}
 
-      {/* Lineups Tab */}
-      {activeTab === "lineups" && (
-        <ScrollView style={styles.tabContent} contentContainerStyle={styles.tabContentInner} showsVerticalScrollIndicator={false}>
+      {/* Lineups/Matchen Tab — always mounted, hidden when not active */}
+      <ScrollView style={[styles.tabContent, activeTab !== "lineups" ? { display: "none" } : null]} contentContainerStyle={styles.tabContentInner} showsVerticalScrollIndicator={false}>
           <View style={styles.lineupViewToggleRow}>
             <TouchableOpacity
               style={[styles.lineupViewBtn, lineupView === "pitch" ? styles.lineupViewBtnActive : null]}
@@ -617,11 +636,9 @@ export default function MatchDetailScreen() {
             <EmptyState icon="people-outline" text="Opstelling nog niet beschikbaar" />
           )}
         </ScrollView>
-      )}
 
-      {/* AI Analysis Tab */}
-      {activeTab === "ai" && (
-        <ScrollView style={styles.tabContent} contentContainerStyle={styles.tabContentInner} showsVerticalScrollIndicator={false}>
+      {/* AI Analysis Tab — always mounted, hidden when not active */}
+      <ScrollView style={[styles.tabContent, activeTab !== "ai" ? { display: "none" } : null]} contentContainerStyle={styles.tabContentInner} showsVerticalScrollIndicator={false}>
           {preMatchLoading && !preMatchPrediction ? (
             <View style={styles.aiLoading}>
               <ActivityIndicator size="large" color={COLORS.accent} />
@@ -696,11 +713,9 @@ export default function MatchDetailScreen() {
             </View>
           )}
         </ScrollView>
-      )}
 
-      {/* Timeline Tab */}
-      {activeTab === "timeline" && (
-        <ScrollView style={styles.tabContent} contentContainerStyle={styles.tabContentInner} showsVerticalScrollIndicator={false}>
+      {/* Timeline Tab — always mounted, hidden when not active */}
+      <ScrollView style={[styles.tabContent, activeTab !== "timeline" ? { display: "none" } : null]} contentContainerStyle={styles.tabContentInner} showsVerticalScrollIndicator={false}>
           {detailLoading ? (
             <LoadingState />
           ) : matchDetail?.keyEvents?.length > 0 ? (
@@ -738,7 +753,6 @@ export default function MatchDetailScreen() {
             <EmptyState icon="time-outline" text="Nog geen events beschikbaar" />
           )}
         </ScrollView>
-      )}
     </View>
   );
 }
@@ -966,7 +980,7 @@ function CombinedPitchView({ homeTeamData, awayTeamData }: { homeTeamData: any; 
 
       {/* Away team label */}
       <View style={styles.pitchTeamLabelRow}>
-        <Text style={[styles.pitchTeamLabel, { color: COLORS.live }]}>{awayTeamData?.team?.toUpperCase()}</Text>
+        <Text style={[styles.pitchTeamLabel, { color: "#5D9EFF" }]}>{awayTeamData?.team?.toUpperCase()}</Text>
         {awayTeamData?.formation ? <Text style={styles.pitchFormLabel}>{awayTeamData.formation}</Text> : null}
       </View>
 
@@ -974,7 +988,7 @@ function CombinedPitchView({ homeTeamData, awayTeamData }: { homeTeamData: any; 
       {awayRows.map((row, ri) => (
         <View key={`away_${ri}`} style={styles.combinedPitchRow}>
           {row.map((p: any, pi: number) => (
-            <PitchDot key={`a_${p?.id || p?.name || pi}`} player={p} color={COLORS.live} />
+            <PitchDot key={`a_${p?.id || p?.name || pi}`} player={p} color="#5D9EFF" />
           ))}
         </View>
       ))}
@@ -1892,11 +1906,11 @@ const styles = StyleSheet.create({
   },
   combinedPitchRow: {
     flexDirection: "row",
-    justifyContent: "space-evenly",
+    justifyContent: "center",
     alignItems: "center",
     zIndex: 2,
-    gap: 2,
-    paddingHorizontal: 4,
+    gap: 6,
+    paddingHorizontal: 8,
   },
   pitchDivider: {
     height: 1,
@@ -1976,9 +1990,7 @@ const styles = StyleSheet.create({
   pitchDotWrap: {
     alignItems: "center",
     gap: 2,
-    minWidth: 36,
-    flex: 1,
-    maxWidth: 60,
+    width: 52,
   },
   pitchDotCircle: {
     width: 30,
