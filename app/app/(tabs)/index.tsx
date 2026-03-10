@@ -505,14 +505,14 @@ function LiveNowCard({ match, onPress }: { match: any; onPress: () => void }) {
         {/* Teams + score */}
         <View style={liveCardStyles.teamsRow}>
           <View style={liveCardStyles.teamBlock}>
-            <TeamLogo uri={match?.homeTeamLogo} size={44} />
+            <TeamLogo uri={match?.homeTeamLogo} teamName={match?.homeTeam || ""} size={44} />
             <Text style={liveCardStyles.teamName} numberOfLines={1}>{match?.homeTeam || "Thuis"}</Text>
           </View>
           <View style={liveCardStyles.scoreBlock}>
             <Text style={liveCardStyles.score}>{homeScore} - {awayScore}</Text>
           </View>
           <View style={liveCardStyles.teamBlock}>
-            <TeamLogo uri={match?.awayTeamLogo} size={44} />
+            <TeamLogo uri={match?.awayTeamLogo} teamName={match?.awayTeam || ""} size={44} />
             <Text style={liveCardStyles.teamName} numberOfLines={1}>{match?.awayTeam || "Uit"}</Text>
           </View>
         </View>
@@ -579,7 +579,7 @@ function TodayMatchCard({ match, onPress }: { match: any; onPress: () => void })
         {/* Teams */}
         <View style={todayCardStyles.teamsRow}>
           <View style={todayCardStyles.teamBlock}>
-            <TeamLogo uri={match?.homeTeamLogo} size={36} />
+            <TeamLogo uri={match?.homeTeamLogo} teamName={match?.homeTeam || ""} size={36} />
             <Text style={todayCardStyles.teamName} numberOfLines={1}>{match?.homeTeam || "Thuis"}</Text>
           </View>
           <View style={todayCardStyles.center}>
@@ -601,7 +601,7 @@ function TodayMatchCard({ match, onPress }: { match: any; onPress: () => void })
             )}
           </View>
           <View style={todayCardStyles.teamBlock}>
-            <TeamLogo uri={match?.awayTeamLogo} size={36} />
+            <TeamLogo uri={match?.awayTeamLogo} teamName={match?.awayTeam || ""} size={36} />
             <Text style={todayCardStyles.teamName} numberOfLines={1}>{match?.awayTeam || "Uit"}</Text>
           </View>
         </View>
