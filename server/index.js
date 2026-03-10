@@ -2763,19 +2763,23 @@ app.get("/health", (req, res) => {
 });
 
 // ── App version / update check ────────────────────────────────────────────────
-// Update server/app-version.json when you build a new APK.
-// Copy the new APK to server/public/downloads/nexora.apk.
+// Update server/app-version.json when you build a new APK (apkUrl is written by auto-release).
 app.get("/api/app-version", (req, res) => {
   let version = "1.5.0";
+  let storedApkUrl = null;
   try {
     const vf = join(__dirname, "app-version.json");
-    if (existsSync(vf)) version = JSON.parse(readFileSync(vf, "utf8")).version || version;
+    if (existsSync(vf)) {
+      const data = JSON.parse(readFileSync(vf, "utf8"));
+      version = data.version || version;
+      storedApkUrl = data.apkUrl || null;
+    }
   } catch {}
   const forwardedProto = String(req.headers["x-forwarded-proto"] || "").split(",")[0].trim();
   const isCloudHost = String(req.headers["x-forwarded-host"] || req.get("host") || "").includes("onrender.com");
   const proto = forwardedProto || (isCloudHost ? "https" : req.protocol);
   const host  = req.headers["x-forwarded-host"]  || req.get("host");
-  const apkUrl = `${proto}://${host}/downloads/nexora.apk`;
+  const apkUrl = storedApkUrl || `${proto}://${host}/downloads/nexora.apk`;
   res.json({ version, apkUrl });
 });
 

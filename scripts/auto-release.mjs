@@ -9,7 +9,6 @@ const androidGradlePath = path.join(repoRoot, "app", "android", "app", "build.gr
 const appPkgPath = path.join(repoRoot, "app", "package.json");
 const serverPkgPath = path.join(repoRoot, "server", "package.json");
 const releaseApkPath = path.join(repoRoot, "app", "android", "app", "build", "outputs", "apk", "release", "app-release.apk");
-const publishedApkPath = path.join(repoRoot, "server", "public", "downloads", "nexora.apk");
 
 function run(command, cwd = repoRoot) {
   execSync(command, { cwd, stdio: "inherit", env: process.env });
@@ -48,13 +47,16 @@ function hasEncryptedEnvPair() {
   return fs.existsSync(path.join(repoRoot, "app", ".env.enc")) && fs.existsSync(path.join(repoRoot, "server", ".env.enc"));
 }
 
-function buildAndPublishApk() {
+function buildApk() {
   const androidCwd = path.join(repoRoot, "app", "android");
   run("./gradlew assembleRelease --rerun-tasks", androidCwd);
   if (!fs.existsSync(releaseApkPath)) {
     throw new Error("APK build voltooid zonder release artifact: app-release.apk ontbreekt");
   }
-  fs.copyFileSync(releaseApkPath, publishedApkPath);
+}
+
+function publishGithubRelease(version) {
+  run(`gh release create "v${version}" "${releaseApkPath}" --title "v${version}" --notes "Nexora v${version}" --latest --repo butsejens/nexora`);
 }
 
 function main() {
@@ -68,6 +70,7 @@ function main() {
 
   const serverVersion = readJson(serverVersionPath);
   serverVersion.version = nextVersion;
+  serverVersion.apkUrl = `https://github.com/butsejens/nexora/releases/download/v${nextVersion}/nexora.apk`;
   writeJson(serverVersionPath, serverVersion);
 
   const appPkg = readJson(appPkgPath);
@@ -82,9 +85,9 @@ function main() {
 
   run("npm -w app run lint");
   run("node --check server/index.js");
-  buildAndPublishApk();
+  buildApk();
 
-  run("git add app/app.json server/app-version.json app/package.json server/package.json server/public/downloads/nexora.apk");
+  run("git add app/app.json server/app-version.json app/package.json server/package.json");
   run("git add -f app/android/app/build.gradle");
 
   try {
@@ -95,6 +98,8 @@ function main() {
   }
 
   run("git push");
+
+  publishGithubRelease(nextVersion);
 
   const appCwd = path.join(repoRoot, "app");
   const policyCommand = hasEncryptedEnvPair()
