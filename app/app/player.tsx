@@ -20,6 +20,7 @@ import { useNexora } from "@/context/NexoraContext";
 import { SafeHaptics } from "@/lib/safeHaptics";
 import { openInVlc } from "@/lib/vlc";
 import { buildErrorReference } from "@/lib/error-messages";
+import { SilentResetBoundary } from "@/components/SilentResetBoundary";
 
 // ─── Stream providers ──────────────────────────────────────────────────────────
 const STREAM_PROVIDERS = [
@@ -1059,6 +1060,7 @@ export default function PlayerScreen() {
 
       {/* Video area */}
       <View style={styles.videoArea}>
+        <SilentResetBoundary>
         {hasSource ? (
           Platform.OS === "web" ? renderWebPlayer() : renderNativePlayer()
         ) : (
@@ -1072,6 +1074,7 @@ export default function PlayerScreen() {
             </TouchableOpacity>
           </View>
         )}
+        </SilentResetBoundary>
 
         {/* Spinner */}
         {isLoading && hasSource && Platform.OS !== "web" && (

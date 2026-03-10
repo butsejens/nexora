@@ -320,12 +320,11 @@ export default function SeriesScreen() {
           renderItem={({ item }: any) => renderCard(item)}
           contentContainerStyle={styles.carouselPadding}
           showsHorizontalScrollIndicator={false}
-          removeClippedSubviews={false}
           initialNumToRender={4}
           maxToRenderPerBatch={3}
           windowSize={5}
           scrollEventThrottle={16}
-          ListFooterComponent={() => (
+          ListFooterComponent={
             <TouchableOpacity
               style={styles.loadMoreBtn}
               onPress={() => loadMoreCategory(categoryKey)}
@@ -336,7 +335,7 @@ export default function SeriesScreen() {
                 : <><Ionicons name="add" size={22} color={COLORS.accent} /><Text style={styles.loadMoreText}>Meer</Text></>
               }
             </TouchableOpacity>
-          )}
+          }
         />
       </View>
     );
@@ -355,7 +354,6 @@ export default function SeriesScreen() {
           renderItem={({ item }: any) => renderCard(item)}
           contentContainerStyle={styles.carouselPadding}
           showsHorizontalScrollIndicator={false}
-          removeClippedSubviews={false}
           initialNumToRender={4}
           maxToRenderPerBatch={3}
           windowSize={5}
@@ -454,14 +452,12 @@ export default function SeriesScreen() {
                 <View style={filteredIptv.length > 0 ? undefined : { display: "none" }}>
                   <FlatList horizontal data={filteredIptv} keyExtractor={(item: any) => item.id}
                     renderItem={({ item }: any) => renderCard(item)}
-                    contentContainerStyle={styles.carouselPadding} showsHorizontalScrollIndicator={false}
-                    removeClippedSubviews={false} />
+                    contentContainerStyle={styles.carouselPadding} showsHorizontalScrollIndicator={false} />
                 </View>
                 <View style={(filteredTmdb ?? []).length > 0 ? undefined : { display: "none" }}>
                   <FlatList horizontal data={filteredTmdb ?? []} keyExtractor={(item: any) => item.id}
                     renderItem={({ item }: any) => renderCard(item)}
-                    contentContainerStyle={styles.carouselPadding} showsHorizontalScrollIndicator={false}
-                    removeClippedSubviews={false} />
+                    contentContainerStyle={styles.carouselPadding} showsHorizontalScrollIndicator={false} />
                 </View>
                 <View style={filteredIptv.length === 0 && (filteredTmdb ?? []).length === 0 ? undefined : { display: "none" }}>
                   <View style={{ alignItems: "center", paddingTop: 40, gap: 10 }}>
@@ -499,14 +495,12 @@ export default function SeriesScreen() {
                           <Text style={[styles.chipText, groupFilter === item && styles.chipTextActive]}>{item}</Text>
                         </TouchableOpacity>
                       )}
-                      contentContainerStyle={styles.chipRow} showsHorizontalScrollIndicator={false}
-                      removeClippedSubviews={false} />
+                      contentContainerStyle={styles.chipRow} showsHorizontalScrollIndicator={false} />
                   </View>
                   <FlatList
                     horizontal data={filteredIptv} keyExtractor={(item: any) => item.id}
                     renderItem={({ item }: any) => renderCard(item)}
                     contentContainerStyle={styles.carouselPadding} showsHorizontalScrollIndicator={false}
-                    removeClippedSubviews={false}
                     initialNumToRender={4} maxToRenderPerBatch={3} windowSize={5} scrollEventThrottle={16} />
                 </View>
               </View>
@@ -532,7 +526,6 @@ export default function SeriesScreen() {
                       renderItem={({ item }: any) => renderCard(item)}
                       contentContainerStyle={styles.carouselPadding}
                       showsHorizontalScrollIndicator={false}
-                      removeClippedSubviews={false}
                       initialNumToRender={4}
                       maxToRenderPerBatch={3}
                       windowSize={5}

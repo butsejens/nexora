@@ -64,19 +64,22 @@ export default function FavoritesScreen() {
   const { data: tmdbData } = useQuery({
     queryKey: ["favorites", "tmdb", tmdbFavs.join(",")],
     queryFn: async () => {
-      const out: any[] = [];
-      for (const id of tmdbFavs.slice(0, 80)) {
-        try {
-          const m = await fetchMovieFull(id);
-          out.push({ ...m, _type: "movie" });
-          continue;
-        } catch {}
-        try {
-          const s = await fetchSeriesFull(id);
-          out.push({ ...s, _type: "series" });
-        } catch {}
-      }
-      return out;
+      const results = await Promise.allSettled(
+        tmdbFavs.slice(0, 80).map(async (id) => {
+          try {
+            const m = await fetchMovieFull(id);
+            return { ...m, _type: "movie" as const };
+          } catch {}
+          try {
+            const s = await fetchSeriesFull(id);
+            return { ...s, _type: "series" as const };
+          } catch {}
+          return null;
+        }),
+      );
+      return results
+        .filter((r): r is PromiseFulfilledResult<any> => r.status === "fulfilled" && r.value != null)
+        .map((r) => r.value);
     },
     enabled: tmdbFavs.length > 0,
     staleTime: 60_000,

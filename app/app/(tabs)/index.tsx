@@ -438,7 +438,6 @@ export default function SportsScreen() {
   const [selectedDate, setSelectedDate] = useState<string>(todayUTC());
   const [sportsView, setSportsView] = useState<"competitions" | "live" | "upcoming" | "menu">("competitions");
   const [activeSportTool, setActiveSportTool] = useState<SportToolId>("football-predictions");
-  const [filtersVisible, setFiltersVisible] = useState(true);
   const [loadingGuardReached, setLoadingGuardReached] = useState(false);
   const [matchSubscriptions, setMatchSubscriptions] = useState<Record<string, MatchSubscription>>({});
   const subscriptionsRef = useRef<Record<string, MatchSubscription>>({});
@@ -455,7 +454,6 @@ export default function SportsScreen() {
     if (now - lastFilterToggleAtRef.current < 220) return;
     lastFilterToggleAtRef.current = now;
     showFiltersRef.current = visible;
-    setFiltersVisible(visible);
     Animated.timing(filterAnim, { toValue: visible ? 1 : 0, duration: 180, useNativeDriver: false }).start();
   }, [filterAnim]);
 
@@ -1010,6 +1008,13 @@ export default function SportsScreen() {
   const showCompetitionsSection = sportsView === "competitions";
   const showLiveSection = showLive && (sortedLive.length > 0 || liveFirstLoad);
 
+  const heroMatch = useMemo(() => {
+    if (!showLive && !showUpcoming) return null;
+    if (sortedLive.length === 0 && sortedUpcoming.length === 0) return null;
+    const isLive = sortedLive.length > 0;
+    return { match: isLive ? sortedLive[0] : sortedUpcoming[0], isLive };
+  }, [showLive, showUpcoming, sortedLive, sortedUpcoming]);
+
   return (
     <View style={styles.container}>
       <NexoraHeader
@@ -1041,7 +1046,7 @@ export default function SportsScreen() {
 
       {/* ── Collapsible league filter ── */}
       <Animated.View
-        pointerEvents={filtersVisible ? "auto" : "none"}
+        pointerEvents={showFiltersRef.current ? "auto" : "none"}
         style={{
           overflow: "hidden",
           opacity: filterAnim,
@@ -1113,21 +1118,30 @@ export default function SportsScreen() {
         {/* ─────────────────────────────────────
             HERO MATCH CARD
         ───────────────────────────────────── */}
-        {(showLive || showUpcoming) && (sortedLive.length > 0 || sortedUpcoming.length > 0) && (() => {
-          const isLive = sortedLive.length > 0;
-          const hero = isLive ? sortedLive[0] : sortedUpcoming[0];
+        {heroMatch && (() => {
+          const { match: hero, isLive } = heroMatch;
           const leagueLogo = getLeagueLogo(hero.league);
+          const gradColors = Array.isArray(hero.heroGradient) && hero.heroGradient.length >= 2
+            ? hero.heroGradient
+            : ["#101828", "#0b1220"];
           return (
             <TouchableOpacity
               style={[styles.heroCard, isLive && styles.heroCardLive]}
               onPress={() => handleMatchPress(hero)}
               activeOpacity={0.92}
             >
-              {/* Gradient overlay */}
+              {/* League-branded background gradient */}
               <LinearGradient
-                colors={["rgba(0,0,0,0)", "rgba(0,0,0,0.7)"]}
+                colors={gradColors}
                 style={StyleSheet.absoluteFill}
                 start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+              />
+              {/* Darker bottom overlay for text readability */}
+              <LinearGradient
+                colors={["rgba(0,0,0,0)", "rgba(0,0,0,0.55)"]}
+                style={StyleSheet.absoluteFill}
+                start={{ x: 0, y: 0.3 }}
                 end={{ x: 0, y: 1 }}
               />
 
@@ -1156,7 +1170,7 @@ export default function SportsScreen() {
               {/* Teams + score */}
               <View style={styles.heroTeamsRow}>
                 <View style={styles.heroTeamCol}>
-                  <TeamLogo uri={hero.homeTeamLogo} teamName={hero.homeTeam} size={88} />
+                  <TeamLogo uri={hero.homeTeamLogo} teamName={hero.homeTeam} size={96} />
                   <Text style={styles.heroTeamLabel} numberOfLines={2}>{hero.homeTeam}</Text>
                 </View>
 
@@ -1176,7 +1190,7 @@ export default function SportsScreen() {
                 </View>
 
                 <View style={styles.heroTeamCol}>
-                  <TeamLogo uri={hero.awayTeamLogo} teamName={hero.awayTeam} size={88} />
+                  <TeamLogo uri={hero.awayTeamLogo} teamName={hero.awayTeam} size={96} />
                   <Text style={styles.heroTeamLabel} numberOfLines={2}>{hero.awayTeam}</Text>
                 </View>
               </View>
@@ -1220,7 +1234,7 @@ export default function SportsScreen() {
                 >
                   <View style={styles.matchLiveBar} />
                   <View style={styles.matchTeamSide}>
-                    <TeamLogo uri={match.homeTeamLogo} teamName={match.homeTeam} size={34} />
+                    <TeamLogo uri={match.homeTeamLogo} teamName={match.homeTeam} size={40} />
                     <Text style={styles.matchTeamName} numberOfLines={1}>{match.homeTeam}</Text>
                   </View>
                   <View style={styles.matchCenterCol}>
@@ -1232,7 +1246,7 @@ export default function SportsScreen() {
                     <LiveBadge minute={match.minute} small />
                   </View>
                   <View style={[styles.matchTeamSide, { alignItems: "flex-end" }]}>
-                    <TeamLogo uri={match.awayTeamLogo} teamName={match.awayTeam} size={34} />
+                    <TeamLogo uri={match.awayTeamLogo} teamName={match.awayTeam} size={40} />
                     <Text style={styles.matchTeamName} numberOfLines={1}>{match.awayTeam}</Text>
                   </View>
                   <TouchableOpacity style={styles.matchBellBtn} onPress={() => toggleMatchNotification(match)}>
@@ -1282,7 +1296,7 @@ export default function SportsScreen() {
                         activeOpacity={0.85}
                       >
                         <View style={styles.matchTeamSide}>
-                          <TeamLogo uri={match.homeTeamLogo} teamName={match.homeTeam} size={34} />
+                          <TeamLogo uri={match.homeTeamLogo} teamName={match.homeTeam} size={40} />
                           <Text style={styles.matchTeamName} numberOfLines={1}>{match.homeTeam}</Text>
                         </View>
                         <View style={styles.matchCenterCol}>
@@ -1290,7 +1304,7 @@ export default function SportsScreen() {
                           <Text style={styles.matchLeagueLabel} numberOfLines={1}>{match.league}</Text>
                         </View>
                         <View style={[styles.matchTeamSide, { alignItems: "flex-end" }]}>
-                          <TeamLogo uri={match.awayTeamLogo} teamName={match.awayTeam} size={34} />
+                          <TeamLogo uri={match.awayTeamLogo} teamName={match.awayTeam} size={40} />
                           <Text style={styles.matchTeamName} numberOfLines={1}>{match.awayTeam}</Text>
                         </View>
                         <TouchableOpacity style={styles.matchBellBtn} onPress={() => toggleMatchNotification(match)}>
@@ -1315,7 +1329,7 @@ export default function SportsScreen() {
                         activeOpacity={0.85}
                       >
                         <View style={styles.matchTeamSide}>
-                          <TeamLogo uri={match.homeTeamLogo} teamName={match.homeTeam} size={34} />
+                          <TeamLogo uri={match.homeTeamLogo} teamName={match.homeTeam} size={40} />
                           <Text style={styles.matchTeamName} numberOfLines={1}>{match.homeTeam}</Text>
                         </View>
                         <View style={styles.matchCenterCol}>
@@ -1327,7 +1341,7 @@ export default function SportsScreen() {
                           <Text style={styles.matchFinishedLabel}>FT</Text>
                         </View>
                         <View style={[styles.matchTeamSide, { alignItems: "flex-end" }]}>
-                          <TeamLogo uri={match.awayTeamLogo} teamName={match.awayTeam} size={34} />
+                          <TeamLogo uri={match.awayTeamLogo} teamName={match.awayTeam} size={40} />
                           <Text style={styles.matchTeamName} numberOfLines={1}>{match.awayTeam}</Text>
                         </View>
                         <View style={styles.matchBellBtn} />
@@ -1532,13 +1546,13 @@ const styles = StyleSheet.create({
   bannerCode: { fontFamily: "Inter_400Regular", color: COLORS.textMuted, fontSize: 10 },
 
   /* ── Sections ── */
-  section: { marginTop: 24, marginBottom: 8 },
+  section: { marginTop: 28, marginBottom: 8 },
   sectionHead: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     paddingRight: 20,
-    marginBottom: 14,
+    marginBottom: 16,
     marginLeft: 20,
   },
   sectionTitle: {
@@ -1563,29 +1577,29 @@ const styles = StyleSheet.create({
   /* ── Hero card ── */
   heroCard: {
     marginHorizontal: 16,
-    marginTop: 16,
-    marginBottom: 8,
-    borderRadius: 24,
+    marginTop: 18,
+    marginBottom: 12,
+    borderRadius: 28,
     overflow: "hidden",
-    minHeight: 220,
-    backgroundColor: COLORS.card,
+    minHeight: 260,
+    backgroundColor: "#101828",
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.08)",
+    borderColor: "rgba(255,255,255,0.10)",
     // @ts-ignore
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.5,
-    shadowRadius: 24,
-    elevation: 14,
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.6,
+    shadowRadius: 28,
+    elevation: 16,
     justifyContent: "space-between",
-    padding: 20,
-    gap: 16,
+    padding: 24,
+    gap: 18,
   },
   heroCardLive: {
     borderColor: `${COLORS.live}44`,
     // @ts-ignore
     shadowColor: COLORS.live,
-    shadowOpacity: 0.2,
+    shadowOpacity: 0.25,
   },
   heroTopRow: {
     flexDirection: "row",
@@ -1630,15 +1644,15 @@ const styles = StyleSheet.create({
     gap: 8,
     flex: 1,
   },
-  heroTeamCol: { flex: 1, alignItems: "center", gap: 10 },
+  heroTeamCol: { flex: 1, alignItems: "center", gap: 12 },
   heroTeamLabel: {
     fontFamily: "Inter_700Bold",
-    fontSize: 13,
+    fontSize: 14,
     color: COLORS.text,
     textAlign: "center",
-    lineHeight: 18,
+    lineHeight: 19,
   },
-  heroScoreCol: { alignItems: "center", justifyContent: "center", minWidth: 100 },
+  heroScoreCol: { alignItems: "center", justifyContent: "center", minWidth: 110 },
   heroScorePill: {
     flexDirection: "row",
     alignItems: "center",
@@ -1696,25 +1710,25 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     marginHorizontal: 16,
-    marginBottom: 8,
+    marginBottom: 10,
     backgroundColor: COLORS.card,
-    borderRadius: 18,
+    borderRadius: 20,
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.06)",
-    paddingHorizontal: 14,
-    paddingVertical: 14,
+    paddingHorizontal: 16,
+    paddingVertical: 16,
     // @ts-ignore
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-    elevation: 3,
+    shadowOpacity: 0.15,
+    shadowRadius: 6,
+    elevation: 2,
   },
   matchCardLiveItem: {
     borderColor: `${COLORS.live}33`,
     backgroundColor: COLORS.cardElevated,
   },
-  matchCardFinished: { opacity: 0.68 },
+  matchCardFinished: { opacity: 0.6 },
   matchLiveBar: {
     position: "absolute",
     left: 0,
@@ -1727,20 +1741,20 @@ const styles = StyleSheet.create({
   matchTeamSide: {
     flex: 1,
     alignItems: "center",
-    gap: 7,
+    gap: 8,
   },
   matchTeamName: {
     fontFamily: "Inter_600SemiBold",
-    fontSize: 12,
+    fontSize: 11,
     color: COLORS.text,
     textAlign: "center",
-    maxWidth: 90,
+    maxWidth: 85,
   },
   matchCenterCol: {
     alignItems: "center",
     justifyContent: "center",
-    width: 80,
-    gap: 5,
+    width: 85,
+    gap: 4,
   },
   matchScoreWrap: { flexDirection: "row", alignItems: "center", gap: 6 },
   matchScoreValue: {

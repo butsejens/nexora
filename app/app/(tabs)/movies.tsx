@@ -344,12 +344,11 @@ export default function MoviesScreen() {
           renderItem={({ item }: any) => renderCard(item)}
           contentContainerStyle={styles.carouselPadding}
           showsHorizontalScrollIndicator={false}
-          removeClippedSubviews={false}
           initialNumToRender={4}
           maxToRenderPerBatch={3}
           windowSize={5}
           scrollEventThrottle={16}
-          ListFooterComponent={() => (
+          ListFooterComponent={
             <TouchableOpacity
               style={styles.loadMoreBtn}
               onPress={() => loadMoreCategory(categoryKey)}
@@ -360,7 +359,7 @@ export default function MoviesScreen() {
                 : <><Ionicons name="add" size={22} color={COLORS.accent} /><Text style={styles.loadMoreText}>Meer</Text></>
               }
             </TouchableOpacity>
-          )}
+          }
         />
       </View>
     );
@@ -379,7 +378,6 @@ export default function MoviesScreen() {
           renderItem={({ item }: any) => renderCard(item)}
           contentContainerStyle={styles.carouselPadding}
           showsHorizontalScrollIndicator={false}
-          removeClippedSubviews={false}
           initialNumToRender={4}
           maxToRenderPerBatch={3}
           windowSize={5}
@@ -478,20 +476,17 @@ export default function MoviesScreen() {
                 <View style={filteredIptv.length > 0 ? undefined : { display: "none" }}>
                   <FlatList horizontal data={filteredIptv} keyExtractor={(item: any) => item.id}
                     renderItem={({ item }: any) => renderCard(item)}
-                    contentContainerStyle={styles.carouselPadding} showsHorizontalScrollIndicator={false}
-                    removeClippedSubviews={false} />
+                    contentContainerStyle={styles.carouselPadding} showsHorizontalScrollIndicator={false} />
                 </View>
                 <View style={(filteredTmdb ?? []).length > 0 ? undefined : { display: "none" }}>
                   <FlatList horizontal data={filteredTmdb ?? []} keyExtractor={(item: any) => item.id}
                     renderItem={({ item }: any) => renderCard(item)}
-                    contentContainerStyle={styles.carouselPadding} showsHorizontalScrollIndicator={false}
-                    removeClippedSubviews={false} />
+                    contentContainerStyle={styles.carouselPadding} showsHorizontalScrollIndicator={false} />
                 </View>
                 <View style={filteredArchive.length > 0 ? undefined : { display: "none" }}>
                   <FlatList horizontal data={filteredArchive} keyExtractor={(item: any) => item.id}
                     renderItem={({ item }: any) => renderCard(item)}
-                    contentContainerStyle={styles.carouselPadding} showsHorizontalScrollIndicator={false}
-                    removeClippedSubviews={false} />
+                    contentContainerStyle={styles.carouselPadding} showsHorizontalScrollIndicator={false} />
                 </View>
                 <View style={filteredIptv.length === 0 && (filteredTmdb ?? []).length === 0 && filteredArchive.length === 0 ? undefined : { display: "none" }}>
                   <View style={{ alignItems: "center", paddingTop: 40, gap: 10 }}>

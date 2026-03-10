@@ -46,7 +46,7 @@ interface Props {
   width?: number;
 }
 
-export function RealContentCard({ item, onPress, onFavorite, isFavorite, width = 130 }: Props) {
+export const RealContentCard = React.memo(function RealContentCard({ item, onPress, onFavorite, isFavorite, width = 130 }: Props) {
   const scaleAnim = useRef(new Animated.Value(1)).current;
   const [imageError, setImageError] = useState(false);
   const height = Math.round(width * 1.56);
@@ -137,9 +137,9 @@ export function RealContentCard({ item, onPress, onFavorite, isFavorite, width =
       </TouchableOpacity>
     </Animated.View>
   );
-}
+});
 
-export function RealHeroBanner({ item, onPlay, onInfo }: { item: ContentItem; onPlay: () => void; onInfo?: () => void }) {
+export const RealHeroBanner = React.memo(function RealHeroBanner({ item, onPlay, onInfo }: { item: ContentItem; onPlay: () => void; onInfo?: () => void }) {
   const scaleAnim = useRef(new Animated.Value(1)).current;
   const [imageError, setImageError] = useState(false);
 
@@ -148,12 +148,6 @@ export function RealHeroBanner({ item, onPlay, onInfo }: { item: ContentItem; on
   };
   const handlePressOut = () => {
     Animated.spring(scaleAnim, { toValue: 1, useNativeDriver: true, speed: 15 }).start();
-  };
-
-  const qualityColors: Record<string, string> = {
-    "4K": "#FFD700",
-    "FHD": COLORS.accent,
-    "HD": "#10B981",
   };
 
   const backdropUri = item.backdrop || item.poster;
@@ -192,8 +186,8 @@ export function RealHeroBanner({ item, onPlay, onInfo }: { item: ContentItem; on
 
           <View style={styles.heroContent}>
             <View style={styles.topBadges}>
-              <View style={[styles.qualityBadge, { borderColor: qualityColors[item.quality] }]}>
-                <Text style={[styles.qualityText, { color: qualityColors[item.quality] }]}>
+              <View style={[styles.qualityBadge, { borderColor: QUALITY_COLORS[item.quality] }]}>
+                <Text style={[styles.qualityText, { color: QUALITY_COLORS[item.quality] }]}>
                   {item.quality}
                 </Text>
               </View>
@@ -236,7 +230,7 @@ export function RealHeroBanner({ item, onPlay, onInfo }: { item: ContentItem; on
       </TouchableOpacity>
     </Animated.View>
   );
-}
+});
 
 const styles = StyleSheet.create({
   poster: {

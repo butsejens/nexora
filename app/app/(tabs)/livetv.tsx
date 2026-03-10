@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useCallback } from "react";
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity,
   Image, Platform, TextInput, ScrollView, ActivityIndicator,
@@ -13,7 +13,7 @@ import { useNexora } from "@/context/NexoraContext";
 import type { IPTVChannel } from "@/context/NexoraContext";
 import { getInitials } from "@/lib/logo-manager";
 
-function ChannelRow({ channel, onPress, onLongPress }: {
+const ChannelRow = React.memo(function ChannelRow({ channel, onPress, onLongPress }: {
   channel: IPTVChannel; onPress: () => void; onLongPress: () => void;
 }) {
   const [imgError, setImgError] = useState(false);
@@ -38,7 +38,7 @@ function ChannelRow({ channel, onPress, onLongPress }: {
       <Ionicons name="play-circle-outline" size={26} color={COLORS.accent} />
     </TouchableOpacity>
   );
-}
+});
 
 function EmptyState() {
   return (
@@ -86,12 +86,12 @@ export default function LiveTVScreen() {
 
   const bottomPad = Platform.OS === "web" ? 34 : insets.bottom + 90;
 
-  const playChannel = (ch: IPTVChannel) => {
+  const playChannel = useCallback((ch: IPTVChannel) => {
     router.push({
       pathname: "/player",
       params: { streamUrl: ch.url, title: ch.name, type: "livetv", contentId: ch.id },
     });
-  };
+  }, []);
 
   if (!isPremium) {
     return (
