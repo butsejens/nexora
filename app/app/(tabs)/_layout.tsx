@@ -4,8 +4,9 @@ import { Platform, StyleSheet, View } from "react-native";
 import React from "react";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { COLORS } from "@/constants/colors";
+import { DESIGN_COLORS, SIZES, LAYOUT, SHADOWS } from "@/constants/design-system";
 
-const SP_ACCENT = "#5D60E8";
+const SP_ACCENT = COLORS.accent;
 
 function TabIcon({
   focused,
@@ -51,8 +52,9 @@ export default function TabLayout() {
         tabBarShowLabel: false,
         tabBarStyle: {
           position: "absolute",
-          backgroundColor: isIOS ? "transparent" : COLORS.tabBar,
-          borderTopWidth: 0,
+          backgroundColor: isIOS ? "transparent" : DESIGN_COLORS.glass,
+          borderTopWidth: 1,
+          borderTopColor: DESIGN_COLORS.border.light,
           borderRadius: isIOS ? 36 : 28,
           marginHorizontal: isIOS ? 16 : 14,
           marginBottom: isIOS ? 16 : 14,
@@ -63,9 +65,9 @@ export default function TabLayout() {
           elevation: 0,
           // @ts-ignore
           shadowColor: COLORS.accent,
-          shadowOffset: { width: 0, height: 4 },
-          shadowOpacity: 0.22,
-          shadowRadius: 20,
+          shadowOffset: { width: 0, height: 8 },
+          shadowOpacity: 0.28,
+          shadowRadius: 24,
           ...(isWeb ? { height: 72, paddingBottom: 0 } : {}),
         },
         tabBarItemStyle: {
@@ -76,12 +78,12 @@ export default function TabLayout() {
         tabBarBackground: () =>
           isIOS ? (
             <View style={StyleSheet.absoluteFill}>
-              <BlurView intensity={85} tint="dark" style={StyleSheet.absoluteFill} />
+              <BlurView intensity={90} tint="dark" style={StyleSheet.absoluteFill} />
               <View style={styles.glassOverlay} />
             </View>
           ) : isWeb ? (
             <View
-              style={[StyleSheet.absoluteFill, { backgroundColor: COLORS.tabBar }]}
+              style={[StyleSheet.absoluteFill, { backgroundColor: DESIGN_COLORS.glass }]}
             />
           ) : null,
       }}
@@ -177,8 +179,8 @@ const styles = StyleSheet.create({
   glassOverlay: {
     ...StyleSheet.absoluteFillObject,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.10)",
+    borderColor: DESIGN_COLORS.border.light,
     borderRadius: 36,
-    backgroundColor: "rgba(9,9,13,0.85)",
+    backgroundColor: DESIGN_COLORS.glass,
   },
 });

@@ -7,9 +7,11 @@ import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { COLORS } from "@/constants/colors";
+import { SPACING, TYPOGRAPHY } from "@/constants/design-system";
 import { NexoraHeader } from "@/components/NexoraHeader";
 import { TeamLogo } from "@/components/MatchCard";
 import { LiveBadge } from "@/components/LiveBadge";
+import { HeroMatchCard, MatchRowCard } from "@/components/premium";
 import { apiRequest } from "@/lib/query-client";
 import { buildErrorReference, normalizeApiError } from "@/lib/error-messages";
 import { Ionicons } from "@expo/vector-icons";
@@ -1128,101 +1130,11 @@ export default function SportsScreen() {
         ───────────────────────────────────── */}
         {heroMatch && (() => {
           const { match: hero, isLive } = heroMatch;
-          const leagueLogo = getLeagueLogo(hero.league);
-          const gradColors = Array.isArray(hero.heroGradient) && hero.heroGradient.length >= 2
-            ? hero.heroGradient
-            : ["#0D1837", "#060C1D"];
           return (
-            <TouchableOpacity
-              style={[styles.heroCard, isLive && styles.heroCardLive]}
+            <HeroMatchCard
+              match={hero}
               onPress={() => handleMatchPress(hero)}
-              activeOpacity={0.92}
-            >
-              {/* League-branded background gradient */}
-              <LinearGradient
-                colors={gradColors}
-                style={StyleSheet.absoluteFill}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-              />
-              {/* Darker bottom overlay for text readability */}
-              <LinearGradient
-                colors={["rgba(0,0,0,0)", "rgba(0,0,0,0.55)"]}
-                style={StyleSheet.absoluteFill}
-                start={{ x: 0, y: 0.3 }}
-                end={{ x: 0, y: 1 }}
-              />
-
-              {/* MATCH DAY header */}
-              <View style={styles.heroMatchDayRow}>
-                <View style={styles.heroMatchDayBadge}>
-                  <Text style={styles.heroMatchDayText}>MATCH</Text>
-                  <Text style={[styles.heroMatchDayText, styles.heroMatchDayDayWord]}>DAY</Text>
-                </View>
-                {isLive && (
-                  <View style={styles.heroMatchDayLivePill}>
-                    <View style={styles.heroMatchDayDot} />
-                    <Text style={styles.heroMatchDayLiveText}>LIVE</Text>
-                  </View>
-                )}
-              </View>
-
-              {/* Top row */}
-              <View style={styles.heroTopRow}>
-                <View style={styles.heroCompBadge}>
-                  {leagueLogo ? (
-                    <Image
-                      source={typeof leagueLogo === "number" ? leagueLogo : { uri: leagueLogo as string }}
-                      style={styles.heroCompLogo}
-                      resizeMode="contain"
-                    />
-                  ) : null}
-                  <Text style={styles.heroCompText} numberOfLines={1}>{hero.league}</Text>
-                </View>
-                {isLive ? (
-                  <LiveBadge minute={hero.minute} />
-                ) : (
-                  <View style={styles.heroTimePill}>
-                    <Ionicons name="time-outline" size={10} color={COLORS.accent} />
-                    <Text style={styles.heroTimeText}>{hero.startTime}</Text>
-                  </View>
-                )}
-              </View>
-
-              {/* Teams + score */}
-              <View style={styles.heroTeamsRow}>
-                <View style={styles.heroTeamCol}>
-                  <TeamLogo uri={hero.homeTeamLogo} teamName={hero.homeTeam} size={96} />
-                  <Text style={styles.heroTeamLabel} numberOfLines={2}>{hero.homeTeam}</Text>
-                </View>
-
-                <View style={styles.heroScoreCol}>
-                  {isLive ? (
-                    <View style={styles.heroScorePill}>
-                      <Text style={[styles.heroScoreNum, styles.heroScoreNumLive]}>{hero.homeScore}</Text>
-                      <Text style={styles.heroScoreDash}>—</Text>
-                      <Text style={[styles.heroScoreNum, styles.heroScoreNumLive]}>{hero.awayScore}</Text>
-                    </View>
-                  ) : (
-                    <View style={styles.heroVsBlock}>
-                      <Text style={styles.heroVs}>VS</Text>
-                      <Text style={styles.heroKickoff}>{hero.startTime}</Text>
-                    </View>
-                  )}
-                </View>
-
-                <View style={styles.heroTeamCol}>
-                  <TeamLogo uri={hero.awayTeamLogo} teamName={hero.awayTeam} size={96} />
-                  <Text style={styles.heroTeamLabel} numberOfLines={2}>{hero.awayTeam}</Text>
-                </View>
-              </View>
-
-              {/* Footer CTA */}
-              <View style={styles.heroFooter}>
-                <Text style={styles.heroFooterText}>{isLive ? "LIVE VOLGEN" : "WEDSTRIJDDETAILS"}</Text>
-                <Ionicons name="arrow-forward" size={13} color="rgba(255,255,255,0.5)" />
-              </View>
-            </TouchableOpacity>
+            />
           );
         })()}
 
@@ -1248,39 +1160,14 @@ export default function SportsScreen() {
               </View>
             ) : (
               sortedLive.slice(0, 60).map((match: any) => (
-                <TouchableOpacity
+                <MatchRowCard
                   key={match.id}
-                  style={[styles.matchCard, styles.matchCardLiveItem]}
+                  match={match}
                   onPress={() => handleMatchPress(match)}
-                  activeOpacity={0.85}
-                >
-                  <View style={styles.matchLiveBar} />
-                  <View style={styles.matchTeamSide}>
-                    <TeamLogo uri={match.homeTeamLogo} teamName={match.homeTeam} size={40} />
-                    <Text style={styles.matchTeamName} numberOfLines={1}>{match.homeTeam}</Text>
-                  </View>
-                  <View style={styles.matchCenterCol}>
-                    <View style={styles.matchScoreWrap}>
-                      <Text style={styles.matchScoreValue}>{match.homeScore}</Text>
-                      <Text style={styles.matchScoreSep}>-</Text>
-                      <Text style={styles.matchScoreValue}>{match.awayScore}</Text>
-                    </View>
-                    <LiveBadge minute={match.minute} small />
-                  </View>
-                  <View style={[styles.matchTeamSide, { alignItems: "flex-end" }]}>
-                    <TeamLogo uri={match.awayTeamLogo} teamName={match.awayTeam} size={40} />
-                    <Text style={styles.matchTeamName} numberOfLines={1}>{match.awayTeam}</Text>
-                  </View>
-                  <TouchableOpacity style={styles.matchBellBtn} onPress={() => toggleMatchNotification(match)}>
-                    <Ionicons
-                      name={matchSubscriptions[String(match?.id || "")] ? "notifications" : "notifications-outline"}
-                      size={16}
-                      color={matchSubscriptions[String(match?.id || "")] ? COLORS.accent : COLORS.textMuted}
-                    />
-                  </TouchableOpacity>
-                </TouchableOpacity>
+                  onNotificationToggle={() => toggleMatchNotification(match)}
+                />
               ))
-            )}
+            )}}
           </View>
         )}
 
@@ -1311,32 +1198,12 @@ export default function SportsScreen() {
                   <>
                     <Text style={styles.subHead}>Binnenkort</Text>
                     {sortedUpcoming.slice(0, 60).map((match: any) => (
-                      <TouchableOpacity
+                      <MatchRowCard
                         key={match.id}
-                        style={styles.matchCard}
+                        match={match}
                         onPress={() => handleMatchPress(match)}
-                        activeOpacity={0.85}
-                      >
-                        <View style={styles.matchTeamSide}>
-                          <TeamLogo uri={match.homeTeamLogo} teamName={match.homeTeam} size={40} />
-                          <Text style={styles.matchTeamName} numberOfLines={1}>{match.homeTeam}</Text>
-                        </View>
-                        <View style={styles.matchCenterCol}>
-                          <Text style={styles.matchTimeValue}>{match.startTime}</Text>
-                          <Text style={styles.matchLeagueLabel} numberOfLines={1}>{match.league}</Text>
-                        </View>
-                        <View style={[styles.matchTeamSide, { alignItems: "flex-end" }]}>
-                          <TeamLogo uri={match.awayTeamLogo} teamName={match.awayTeam} size={40} />
-                          <Text style={styles.matchTeamName} numberOfLines={1}>{match.awayTeam}</Text>
-                        </View>
-                        <TouchableOpacity style={styles.matchBellBtn} onPress={() => toggleMatchNotification(match)}>
-                          <Ionicons
-                            name={matchSubscriptions[String(match?.id || "")] ? "notifications" : "notifications-outline"}
-                            size={16}
-                            color={matchSubscriptions[String(match?.id || "")] ? COLORS.accent : COLORS.textMuted}
-                          />
-                        </TouchableOpacity>
-                      </TouchableOpacity>
+                        onNotificationToggle={() => toggleMatchNotification(match)}
+                      />
                     ))}
                   </>
                 )}
@@ -1344,30 +1211,12 @@ export default function SportsScreen() {
                   <>
                     <Text style={[styles.subHead, { marginTop: 16 }]}>Afgelopen</Text>
                     {sortedFinished.slice(0, 60).map((match: any) => (
-                      <TouchableOpacity
+                      <MatchRowCard
                         key={match.id}
-                        style={[styles.matchCard, styles.matchCardFinished]}
+                        match={match}
                         onPress={() => handleMatchPress(match)}
-                        activeOpacity={0.85}
-                      >
-                        <View style={styles.matchTeamSide}>
-                          <TeamLogo uri={match.homeTeamLogo} teamName={match.homeTeam} size={40} />
-                          <Text style={styles.matchTeamName} numberOfLines={1}>{match.homeTeam}</Text>
-                        </View>
-                        <View style={styles.matchCenterCol}>
-                          <View style={styles.matchScoreWrap}>
-                            <Text style={styles.matchScoreFinished}>{match.homeScore}</Text>
-                            <Text style={styles.matchScoreSep}>-</Text>
-                            <Text style={styles.matchScoreFinished}>{match.awayScore}</Text>
-                          </View>
-                          <Text style={styles.matchFinishedLabel}>FT</Text>
-                        </View>
-                        <View style={[styles.matchTeamSide, { alignItems: "flex-end" }]}>
-                          <TeamLogo uri={match.awayTeamLogo} teamName={match.awayTeam} size={40} />
-                          <Text style={styles.matchTeamName} numberOfLines={1}>{match.awayTeam}</Text>
-                        </View>
-                        <View style={styles.matchBellBtn} />
-                      </TouchableOpacity>
+                        onNotificationToggle={() => toggleMatchNotification(match)}
+                      />
                     ))}
                   </>
                 )}
