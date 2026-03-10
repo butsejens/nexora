@@ -1639,15 +1639,15 @@ const LEAGUE_IDS = {
 };
 
 const HERO_GRADIENTS = {
-  "Premier League": ["#2a004f", "#120024"],
-  "UEFA Champions League": ["#001a4d", "#000b1f"],
-  "UEFA Europa League": ["#4a2200", "#1d0e00"],
-  "UEFA Conference League": ["#00483f", "#001f1b"],
-  "La Liga": ["#4a0012", "#1f0008"],
-  "Bundesliga": ["#3a0000", "#160000"],
-  "Jupiler Pro League": ["#003014", "#00140a"],
-  "Ligue 1": ["#1a0033", "#0c0018"],
-  "Serie A": ["#330011", "#140007"],
+  "Premier League": ["#1A1A23", "#09090D"],
+  "UEFA Champions League": ["#1A1A23", "#09090D"],
+  "UEFA Europa League": ["#1A1A23", "#09090D"],
+  "UEFA Conference League": ["#1A1A23", "#09090D"],
+  "La Liga": ["#1A1A23", "#09090D"],
+  "Bundesliga": ["#1A1A23", "#09090D"],
+  "Jupiler Pro League": ["#1A1A23", "#09090D"],
+  "Ligue 1": ["#1A1A23", "#09090D"],
+  "Serie A": ["#1A1A23", "#09090D"],
 };
 
 const OFFICIAL_BROADCASTER_URLS = {
