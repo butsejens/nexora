@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import {
-  View, Text, StyleSheet, ScrollView, FlatList,
+  View, Text, StyleSheet, ScrollView,
   RefreshControl, Platform, TouchableOpacity, TextInput, Alert,
   Image, useWindowDimensions, Animated } from "react-native";
 import { router } from "expo-router";
@@ -8,8 +8,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { COLORS } from "@/constants/colors";
 import { NexoraHeader } from "@/components/NexoraHeader";
-import { UpcomingMatchRow, TeamLogo } from "@/components/MatchCard";
-import { SkeletonMatchCard } from "@/components/SkeletonCard";
+import { TeamLogo } from "@/components/MatchCard";
 import { LiveBadge } from "@/components/LiveBadge";
 import { apiRequest } from "@/lib/query-client";
 import { buildErrorReference, normalizeApiError } from "@/lib/error-messages";
@@ -619,9 +618,6 @@ export default function SportsScreen() {
   const normalizedApiError = rawApiError ? normalizeApiError(rawApiError) : null;
   const apiErrorRef = useMemo(() => (rawApiError ? buildErrorReference("NX-SPR") : ""), [rawApiError]);
 
-  const dataSource: string | undefined = todayQuery.data?.source || liveQuery.data?.source;
-  const dataDate: string | undefined = todayQuery.data?.date;
-
   // League filtering with fallback: if filter returns nothing but total > 0, show all
   const filterByLeague = (matches: any[]) => {
     if (leagueFilter === "Alle") return matches;
@@ -1025,287 +1021,402 @@ export default function SportsScreen() {
         onProfile={() => router.push("/profile")}
       />
 
-      {/* Date selector */}
-      <DateSelector date={selectedDate} onDateChange={setSelectedDate} />
+      {/* ── Sticky tab bar ── */}
+      <View style={styles.tabBar}>
+        {([
+          { id: "competitions" as const, label: "EXPLORE",  icon: "apps-outline" as const },
+          { id: "live" as const,         label: "LIVE",     icon: "radio-button-on-outline" as const },
+          { id: "upcoming" as const,     label: "MATCHES",  icon: "calendar-outline" as const },
+          { id: "menu" as const,         label: "ANALYSE",  icon: "analytics-outline" as const },
+        ]).map((tab) => {
+          const active = sportsView === tab.id;
+          return (
+            <TouchableOpacity key={tab.id} style={[styles.tabItem, active && styles.tabItemActive]} onPress={() => setSportsView(tab.id)}>
+              <Ionicons name={tab.icon} size={15} color={active ? COLORS.accent : COLORS.textMuted} />
+              <Text style={[styles.tabText, active && styles.tabTextActive]}>{tab.label}</Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
 
+      {/* ── Collapsible league filter ── */}
       <Animated.View
         pointerEvents={filtersVisible ? "auto" : "none"}
         style={{
-        overflow: "hidden",
-        opacity: filterAnim,
-        maxHeight: filterAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 120] }),
-        }}>
-          {/* Status Filter */}
-          <View style={styles.statusFilter}>
-            {(["all", "live", "upcoming"] as const).map(f => (
+          overflow: "hidden",
+          opacity: filterAnim,
+          maxHeight: filterAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 72] }),
+        }}
+      >
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={styles.leagueBar}
+          contentContainerStyle={styles.leagueBarContent}
+        >
+          {LEAGUES.map(league => {
+            const logo = league.name !== "Alle" ? getLeagueLogo(league.name) : null;
+            const isActive = leagueFilter === league.name;
+            return (
               <TouchableOpacity
-                key={f}
-                style={[styles.statusBtn, statusFilter === f && styles.statusBtnActive]}
-                onPress={() => {
-                  toggleFiltersVisibility(true);
-                  setStatusFilter(f);
-                }}
+                key={league.name}
+                style={[styles.leagueChip, isActive && styles.leagueChipActive]}
+                onPress={() => { toggleFiltersVisibility(true); setLeagueFilter(league.name); }}
               >
-                {f === "live" && <View style={styles.liveDot} />}
-                <Text style={[styles.statusBtnText, statusFilter === f && styles.statusBtnTextActive]}>
-                  {f === "all" ? "Alle" : f === "live" ? "Live" : "Gepland"}
-                </Text>
+                {logo ? (
+                  <Image source={typeof logo === "number" ? logo : { uri: logo as string }} style={styles.leagueChipLogo} resizeMode="contain" />
+                ) : (
+                  <Ionicons name="apps-outline" size={14} color={isActive ? COLORS.accent : COLORS.textMuted} />
+                )}
+                <Text style={[styles.leagueChipText, isActive && styles.leagueChipTextActive]} numberOfLines={1}>{league.displayName}</Text>
               </TouchableOpacity>
-            ))}
-          </View>
-
-          {/* League Filter — circular logo badges */}
-          <ScrollView horizontal showsHorizontalScrollIndicator={false}
-            style={styles.leagueFilterScroll} contentContainerStyle={styles.leagueBadgesRow}>
-            {LEAGUES.map(league => {
-              const logo = league.name !== "Alle" ? getLeagueLogo(league.name) : null;
-              const isActive = leagueFilter === league.name;
-              return (
-                <TouchableOpacity
-                  key={league.name}
-                  style={styles.leagueBadgeWrap}
-                  onPress={() => {
-                    toggleFiltersVisibility(true);
-                    setLeagueFilter(league.name);
-                  }}
-                >
-                  <View style={[styles.leagueBadgeCircle, isActive && styles.leagueBadgeCircleActive]}>
-                    {logo ? (
-                      <Image
-                        source={typeof logo === "number" ? logo : { uri: logo as string }}
-                        style={styles.leagueBadgeImg}
-                        resizeMode="contain"
-                      />
-                    ) : (
-                      <Ionicons name="apps-outline" size={22} color={isActive ? "#fff" : COLORS.textMuted} />
-                    )}
-                  </View>
-                  <Text style={[styles.leagueBadgeLabel, isActive && styles.leagueBadgeLabelActive]} numberOfLines={1}>
-                    {league.displayName}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </ScrollView>
+            );
+          })}
+        </ScrollView>
       </Animated.View>
 
+      {/* ── Main scroll ── */}
       <ScrollView
         style={styles.scroll}
         showsVerticalScrollIndicator={false}
         scrollEventThrottle={16}
         onScroll={handleFeedScroll}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={COLORS.accent} />
-        }
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={COLORS.accent} />}
         contentContainerStyle={{ paddingBottom: bottomPad, width: contentWidth, alignSelf: "center" }}
       >
-        {/* Filter fallback warning */}
+        {/* Banners */}
         {filterEmpty && (
-          <View style={styles.warnBanner}>
+          <View style={styles.banner}>
             <Ionicons name="information-circle-outline" size={14} color={COLORS.accent} />
-            <Text style={styles.warnText}>
-              Geen wedstrijden voor &quot;{leagueFilter}&quot; – alle competities getoond.
-            </Text>
+            <Text style={styles.bannerText}>Geen wedstrijden voor &quot;{leagueFilter}&quot; – alle competities getoond.</Text>
           </View>
         )}
-
-        {/* API error */}
         {normalizedApiError && (
-          <View style={styles.errorBanner}>
+          <View style={[styles.banner, styles.bannerError]}>
             <Ionicons name="warning-outline" size={14} color="#ff6b6b" />
             <View style={{ flex: 1, gap: 2 }}>
-              <Text style={styles.errorText}>{normalizedApiError.userMessage}</Text>
-              <Text style={styles.errorCodeText}>Foutcode: {apiErrorRef || normalizedApiError.code}</Text>
+              <Text style={[styles.bannerText, { color: "#ff6b6b" }]}>{normalizedApiError.userMessage}</Text>
+              <Text style={styles.bannerCode}>Foutcode: {apiErrorRef || normalizedApiError.code}</Text>
             </View>
           </View>
         )}
-
-        {loadingGuardReached && (
-          <View style={styles.warnBanner}>
-            <Ionicons name="time-outline" size={14} color={COLORS.accent} />
-            <Text style={styles.warnText}>
-              Data laden duurt langer dan verwacht. Bestaande resultaten blijven zichtbaar en verversen op de achtergrond.
-            </Text>
-          </View>
-        )}
-
         {noRemoteData && (
-          <View style={styles.warnBanner}>
+          <View style={styles.banner}>
             <Ionicons name="cloud-offline-outline" size={14} color={COLORS.accent} />
-            <Text style={styles.warnText}>
-              Geen live data ontvangen. Alleen echte API-wedstrijden worden getoond zodra beschikbaar.
-            </Text>
+            <Text style={styles.bannerText}>Geen live data ontvangen. Resultaten volgen zodra beschikbaar.</Text>
           </View>
         )}
 
-        {/* Data source badge */}
-        {(dataSource || dataDate) && (
-          <View style={styles.sourceBadge}>
-            <Text style={styles.sourceText}>
-              {dataSource ? `Bron: ${dataSource.toUpperCase()}` : "Bron: -"}
-              {dataDate && dataDate !== selectedDate ? ` • Datum: ${dataDate}` : ""}
-            </Text>
-          </View>
-        )}
+        {/* Date selector — alleen in MATCHES view */}
+        {showUpcoming && <DateSelector date={selectedDate} onDateChange={setSelectedDate} />}
 
-        <View style={styles.viewTabsBar}>
-          {([
-            { id: "competitions" as const, label: "EXPLORE",  icon: "apps-outline" as const },
-            { id: "live" as const,         label: "LIVE",     icon: "radio-button-on-outline" as const },
-            { id: "upcoming" as const,     label: "MATCHES",  icon: "calendar-outline" as const },
-            { id: "menu" as const,         label: "ANALYSE",  icon: "analytics-outline" as const },
-          ]).map((view) => {
-            const isActive = sportsView === view.id;
-            return (
-              <TouchableOpacity
-                key={view.id}
-                style={[styles.viewTab, isActive && styles.viewTabActive]}
-                onPress={() => setSportsView(view.id)}
-              >
-                <Ionicons name={view.icon} size={14} color={isActive ? COLORS.accent : COLORS.textMuted} />
-                <Text style={[styles.viewTabText, isActive && styles.viewTabTextActive]}>{view.label}</Text>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
-
-        {/* Hero match banner — live match first, fall back to first upcoming */}
+        {/* ─────────────────────────────────────
+            HERO MATCH CARD
+        ───────────────────────────────────── */}
         {(showLive || showUpcoming) && (sortedLive.length > 0 || sortedUpcoming.length > 0) && (() => {
           const isLive = sortedLive.length > 0;
           const hero = isLive ? sortedLive[0] : sortedUpcoming[0];
           const leagueLogo = getLeagueLogo(hero.league);
           return (
             <TouchableOpacity
-              style={[styles.heroMatchWrapper, isLive && styles.heroMatchWrapperLive]}
+              style={[styles.heroCard, isLive && styles.heroCardLive]}
               onPress={() => handleMatchPress(hero)}
-              activeOpacity={0.9}
+              activeOpacity={0.92}
             >
+              {/* Gradient overlay */}
               <LinearGradient
-                colors={[...(hero.heroGradient || [COLORS.cardElevated, COLORS.surface, COLORS.background])] as any}
-                style={styles.heroMatchGrad}
+                colors={["rgba(0,0,0,0)", "rgba(0,0,0,0.7)"]}
+                style={StyleSheet.absoluteFill}
                 start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-              >
-                <View style={styles.heroLeagueRow}>
+                end={{ x: 0, y: 1 }}
+              />
+
+              {/* Top row */}
+              <View style={styles.heroTopRow}>
+                <View style={styles.heroCompBadge}>
                   {leagueLogo ? (
-                    <Image source={typeof leagueLogo === "number" ? leagueLogo : { uri: leagueLogo as string }} style={styles.heroLeagueLogo} resizeMode="contain" />
+                    <Image
+                      source={typeof leagueLogo === "number" ? leagueLogo : { uri: leagueLogo as string }}
+                      style={styles.heroCompLogo}
+                      resizeMode="contain"
+                    />
                   ) : null}
-                  <Text style={styles.heroLeagueName} numberOfLines={1}>{hero.league}</Text>
-                  {isLive ? <LiveBadge minute={hero.minute} small /> : (
-                    <View style={styles.heroUpcomingBadge}>
-                      <Ionicons name="time-outline" size={10} color={COLORS.accent} />
-                      <Text style={styles.heroUpcomingTime}>{hero.startTime}</Text>
+                  <Text style={styles.heroCompText} numberOfLines={1}>{hero.league}</Text>
+                </View>
+                {isLive ? (
+                  <LiveBadge minute={hero.minute} />
+                ) : (
+                  <View style={styles.heroTimePill}>
+                    <Ionicons name="time-outline" size={10} color={COLORS.accent} />
+                    <Text style={styles.heroTimeText}>{hero.startTime}</Text>
+                  </View>
+                )}
+              </View>
+
+              {/* Teams + score */}
+              <View style={styles.heroTeamsRow}>
+                <View style={styles.heroTeamCol}>
+                  <TeamLogo uri={hero.homeTeamLogo} teamName={hero.homeTeam} size={88} />
+                  <Text style={styles.heroTeamLabel} numberOfLines={2}>{hero.homeTeam}</Text>
+                </View>
+
+                <View style={styles.heroScoreCol}>
+                  {isLive ? (
+                    <View style={styles.heroScorePill}>
+                      <Text style={[styles.heroScoreNum, styles.heroScoreNumLive]}>{hero.homeScore}</Text>
+                      <Text style={styles.heroScoreDash}>—</Text>
+                      <Text style={[styles.heroScoreNum, styles.heroScoreNumLive]}>{hero.awayScore}</Text>
+                    </View>
+                  ) : (
+                    <View style={styles.heroVsBlock}>
+                      <Text style={styles.heroVs}>VS</Text>
+                      <Text style={styles.heroKickoff}>{hero.startTime}</Text>
                     </View>
                   )}
                 </View>
-                <View style={styles.heroTeamRow}>
-                  <View style={styles.heroTeamBlock}>
-                    <TeamLogo uri={hero.homeTeamLogo} teamName={hero.homeTeam} size={80} />
-                    <Text style={styles.heroTeamName} numberOfLines={2}>{hero.homeTeam}</Text>
-                  </View>
-                  <View style={[styles.heroScoreBlock, isLive && styles.heroScoreBlockLive]}>
-                    {isLive ? (
-                      <>
-                        <Text style={[styles.heroScore, styles.heroScoreLive]}>{hero.homeScore}</Text>
-                        <Text style={styles.heroScoreSep}>:</Text>
-                        <Text style={[styles.heroScore, styles.heroScoreLive]}>{hero.awayScore}</Text>
-                      </>
-                    ) : (
-                      <View style={{ alignItems: "center", gap: 4 }}>
-                        <Text style={styles.heroVsText}>vs</Text>
-                        <Text style={{ fontFamily: "Inter_400Regular", fontSize: 10, color: "rgba(255,255,255,0.5)" }}>Aanvang</Text>
-                      </View>
-                    )}
-                  </View>
-                  <View style={styles.heroTeamBlock}>
-                    <TeamLogo uri={hero.awayTeamLogo} teamName={hero.awayTeam} size={80} />
-                    <Text style={styles.heroTeamName} numberOfLines={2}>{hero.awayTeam}</Text>
-                  </View>
+
+                <View style={styles.heroTeamCol}>
+                  <TeamLogo uri={hero.awayTeamLogo} teamName={hero.awayTeam} size={88} />
+                  <Text style={styles.heroTeamLabel} numberOfLines={2}>{hero.awayTeam}</Text>
                 </View>
-                <View style={styles.heroActionRow}>
-                  <Text style={styles.heroActionText}>{isLive ? "Live · Meer info" : "Bekijk wedstrijd"}</Text>
-                  <Ionicons name="chevron-forward" size={14} color="rgba(255,255,255,0.7)" />
-                </View>
-              </LinearGradient>
+              </View>
+
+              {/* Footer CTA */}
+              <View style={styles.heroFooter}>
+                <Text style={styles.heroFooterText}>{isLive ? "LIVE VOLGEN" : "WEDSTRIJDDETAILS"}</Text>
+                <Ionicons name="arrow-forward" size={13} color="rgba(255,255,255,0.5)" />
+              </View>
             </TouchableOpacity>
           );
         })()}
 
-        {showMenuSection && <View style={styles.sportToolsSection}>
-          <Text style={styles.sectionTitle}>Sport Menu</Text>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.sportMenuRow}
-          >
-            {SPORT_TOOL_CARDS.map((card) => {
-              const isActive = activeSportTool === card.id;
-              return (
-                <TouchableOpacity
-                  key={card.id}
-                  style={[styles.sportToolCard, isActive && { borderColor: card.accent }]}
-                  activeOpacity={0.85}
-                  onPress={() => setActiveSportTool(card.id)}
-                >
-                  <LinearGradient
-                    colors={isActive ? [COLORS.cardElevated, COLORS.card] : [COLORS.card, COLORS.background]}
-                    style={styles.sportToolCardInner}
-                  >
-                    <View style={[styles.sportToolIconWrap, { backgroundColor: `${card.accent}22`, borderColor: `${card.accent}55` }]}>
-                      <Ionicons name={card.icon} size={16} color={card.accent} />
-                    </View>
-                    <Text style={styles.sportToolTitle} numberOfLines={1}>{card.title}</Text>
-                    <Text style={styles.sportToolSubtitle} numberOfLines={2}>{card.subtitle}</Text>
-                    <View style={styles.sportToolActionRow}>
-                      <Text style={[styles.sportToolAction, { color: card.accent }]}>Open menu</Text>
-                      <Ionicons name="chevron-forward" size={14} color={card.accent} />
-                    </View>
-                  </LinearGradient>
-                </TouchableOpacity>
-              );
-            })}
-          </ScrollView>
-
-          <LinearGradient colors={[COLORS.cardElevated, COLORS.background]} style={styles.sportToolPanel}>
-            <View style={styles.sportToolPanelHeader}>
-              <Text style={styles.sportToolPanelTitle}>{activeSportToolCard.title}</Text>
-              <Text style={styles.sportToolPanelCount}>{activeToolRows.length} picks</Text>
+        {/* ─────────────────────────────────────
+            LIVE MATCHES
+        ───────────────────────────────────── */}
+        {showLiveSection && (
+          <View style={styles.section}>
+            <View style={styles.sectionHead}>
+              <Text style={styles.sectionTitle}>Live Nu</Text>
+              <LiveBadge />
             </View>
-            {activeToolRows.length > 0 ? activeToolRows.map((row: any) => (
-              <TouchableOpacity
-                key={row.key}
-                style={styles.sportToolRow}
-                onPress={() => row.item ? handleToolMatchPress(row.item) : handleMatchPress(row.match)}
-              >
-                <Text style={styles.sportToolRowTeams} numberOfLines={1}>{row.title}</Text>
-                <Text style={styles.sportToolRowMeta} numberOfLines={1}>{row.meta}</Text>
-                {Array.isArray(row.badges) && row.badges.length > 0 && (
-                  <View style={styles.sportToolBadgeRow}>
-                    {row.badges.slice(0, 3).map((badge: any, idx: number) => (
-                      <View
-                        key={`${row.key}_badge_${idx}`}
-                        style={[
-                          styles.sportToolBadge,
-                          badge.tone === "positive" && styles.sportToolBadgePositive,
-                          badge.tone === "negative" && styles.sportToolBadgeNegative,
-                        ]}
-                      >
-                        <Text style={styles.sportToolBadgeText}>{badge.label}</Text>
-                      </View>
-                    ))}
+            {liveFirstLoad ? (
+              [1, 2, 3].map(i => (
+                <View key={i} style={styles.matchCardSkeleton}>
+                  <View style={styles.skeletonShimmer} />
+                </View>
+              ))
+            ) : sortedLive.length === 0 ? (
+              <View style={styles.emptyState}>
+                <Ionicons name="radio-button-off-outline" size={28} color={COLORS.textMuted} />
+                <Text style={styles.emptyText}>Geen live wedstrijden</Text>
+              </View>
+            ) : (
+              sortedLive.slice(0, 60).map((match: any) => (
+                <TouchableOpacity
+                  key={match.id}
+                  style={[styles.matchCard, styles.matchCardLiveItem]}
+                  onPress={() => handleMatchPress(match)}
+                  activeOpacity={0.85}
+                >
+                  <View style={styles.matchLiveBar} />
+                  <View style={styles.matchTeamSide}>
+                    <TeamLogo uri={match.homeTeamLogo} teamName={match.homeTeam} size={34} />
+                    <Text style={styles.matchTeamName} numberOfLines={1}>{match.homeTeam}</Text>
                   </View>
-                )}
-              </TouchableOpacity>
-            )) : (
-              <Text style={styles.sportToolEmpty}>Nog geen data beschikbaar voor dit menu.</Text>
+                  <View style={styles.matchCenterCol}>
+                    <View style={styles.matchScoreWrap}>
+                      <Text style={styles.matchScoreValue}>{match.homeScore}</Text>
+                      <Text style={styles.matchScoreSep}>-</Text>
+                      <Text style={styles.matchScoreValue}>{match.awayScore}</Text>
+                    </View>
+                    <LiveBadge minute={match.minute} small />
+                  </View>
+                  <View style={[styles.matchTeamSide, { alignItems: "flex-end" }]}>
+                    <TeamLogo uri={match.awayTeamLogo} teamName={match.awayTeam} size={34} />
+                    <Text style={styles.matchTeamName} numberOfLines={1}>{match.awayTeam}</Text>
+                  </View>
+                  <TouchableOpacity style={styles.matchBellBtn} onPress={() => toggleMatchNotification(match)}>
+                    <Ionicons
+                      name={matchSubscriptions[String(match?.id || "")] ? "notifications" : "notifications-outline"}
+                      size={16}
+                      color={matchSubscriptions[String(match?.id || "")] ? COLORS.accent : COLORS.textMuted}
+                    />
+                  </TouchableOpacity>
+                </TouchableOpacity>
+              ))
             )}
-          </LinearGradient>
-        </View>}
+          </View>
+        )}
 
-        {/* Competitions */}
+        {/* ─────────────────────────────────────
+            MATCHES (Upcoming + Finished)
+        ───────────────────────────────────── */}
+        {showUpcoming && (
+          <View style={styles.section}>
+            <View style={styles.sectionHead}>
+              <Text style={styles.sectionTitle}>
+                {selectedDate === todayUTC() ? "Matchen vandaag" : formatDateDisplay(selectedDate)}
+              </Text>
+            </View>
+            {todayFirstLoad ? (
+              [1, 2, 3].map(i => (
+                <View key={i} style={styles.matchCardSkeleton}>
+                  <View style={styles.skeletonShimmer} />
+                </View>
+              ))
+            ) : sortedUpcoming.length === 0 && sortedFinished.length === 0 ? (
+              <View style={styles.emptyState}>
+                <Ionicons name="calendar-outline" size={28} color={COLORS.textMuted} />
+                <Text style={styles.emptyText}>Geen wedstrijden op {formatDateDisplay(selectedDate)}</Text>
+              </View>
+            ) : (
+              <>
+                {sortedUpcoming.length > 0 && (
+                  <>
+                    <Text style={styles.subHead}>Binnenkort</Text>
+                    {sortedUpcoming.slice(0, 60).map((match: any) => (
+                      <TouchableOpacity
+                        key={match.id}
+                        style={styles.matchCard}
+                        onPress={() => handleMatchPress(match)}
+                        activeOpacity={0.85}
+                      >
+                        <View style={styles.matchTeamSide}>
+                          <TeamLogo uri={match.homeTeamLogo} teamName={match.homeTeam} size={34} />
+                          <Text style={styles.matchTeamName} numberOfLines={1}>{match.homeTeam}</Text>
+                        </View>
+                        <View style={styles.matchCenterCol}>
+                          <Text style={styles.matchTimeValue}>{match.startTime}</Text>
+                          <Text style={styles.matchLeagueLabel} numberOfLines={1}>{match.league}</Text>
+                        </View>
+                        <View style={[styles.matchTeamSide, { alignItems: "flex-end" }]}>
+                          <TeamLogo uri={match.awayTeamLogo} teamName={match.awayTeam} size={34} />
+                          <Text style={styles.matchTeamName} numberOfLines={1}>{match.awayTeam}</Text>
+                        </View>
+                        <TouchableOpacity style={styles.matchBellBtn} onPress={() => toggleMatchNotification(match)}>
+                          <Ionicons
+                            name={matchSubscriptions[String(match?.id || "")] ? "notifications" : "notifications-outline"}
+                            size={16}
+                            color={matchSubscriptions[String(match?.id || "")] ? COLORS.accent : COLORS.textMuted}
+                          />
+                        </TouchableOpacity>
+                      </TouchableOpacity>
+                    ))}
+                  </>
+                )}
+                {sortedFinished.length > 0 && (
+                  <>
+                    <Text style={[styles.subHead, { marginTop: 16 }]}>Afgelopen</Text>
+                    {sortedFinished.slice(0, 60).map((match: any) => (
+                      <TouchableOpacity
+                        key={match.id}
+                        style={[styles.matchCard, styles.matchCardFinished]}
+                        onPress={() => handleMatchPress(match)}
+                        activeOpacity={0.85}
+                      >
+                        <View style={styles.matchTeamSide}>
+                          <TeamLogo uri={match.homeTeamLogo} teamName={match.homeTeam} size={34} />
+                          <Text style={styles.matchTeamName} numberOfLines={1}>{match.homeTeam}</Text>
+                        </View>
+                        <View style={styles.matchCenterCol}>
+                          <View style={styles.matchScoreWrap}>
+                            <Text style={styles.matchScoreFinished}>{match.homeScore}</Text>
+                            <Text style={styles.matchScoreSep}>-</Text>
+                            <Text style={styles.matchScoreFinished}>{match.awayScore}</Text>
+                          </View>
+                          <Text style={styles.matchFinishedLabel}>FT</Text>
+                        </View>
+                        <View style={[styles.matchTeamSide, { alignItems: "flex-end" }]}>
+                          <TeamLogo uri={match.awayTeamLogo} teamName={match.awayTeam} size={34} />
+                          <Text style={styles.matchTeamName} numberOfLines={1}>{match.awayTeam}</Text>
+                        </View>
+                        <View style={styles.matchBellBtn} />
+                      </TouchableOpacity>
+                    ))}
+                  </>
+                )}
+              </>
+            )}
+          </View>
+        )}
+
+        {/* ─────────────────────────────────────
+            ANALYSE / TOOLS
+        ───────────────────────────────────── */}
+        {showMenuSection && (
+          <View style={styles.section}>
+            <View style={styles.sectionHead}>
+              <Text style={styles.sectionTitle}>Analyse</Text>
+            </View>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.toolsRow}>
+              {SPORT_TOOL_CARDS.map((card) => {
+                const isActive = activeSportTool === card.id;
+                return (
+                  <TouchableOpacity
+                    key={card.id}
+                    style={[styles.toolCard, isActive && { borderColor: card.accent }]}
+                    activeOpacity={0.85}
+                    onPress={() => setActiveSportTool(card.id)}
+                  >
+                    <LinearGradient
+                      colors={isActive ? [COLORS.cardElevated, COLORS.card] : [COLORS.card, COLORS.background]}
+                      style={styles.toolCardInner}
+                    >
+                      <View style={[styles.toolIconWrap, { backgroundColor: `${card.accent}22`, borderColor: `${card.accent}55` }]}>
+                        <Ionicons name={card.icon} size={16} color={card.accent} />
+                      </View>
+                      <Text style={styles.toolTitle} numberOfLines={1}>{card.title}</Text>
+                      <Text style={styles.toolSub} numberOfLines={2}>{card.subtitle}</Text>
+                      <View style={styles.toolAction}>
+                        <Text style={[styles.toolActionText, { color: card.accent }]}>Open</Text>
+                        <Ionicons name="chevron-forward" size={12} color={card.accent} />
+                      </View>
+                    </LinearGradient>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+            <LinearGradient colors={[COLORS.cardElevated, COLORS.background]} style={styles.toolPanel}>
+              <View style={styles.toolPanelHead}>
+                <Text style={styles.toolPanelTitle}>{activeSportToolCard.title}</Text>
+                <Text style={styles.toolPanelCount}>{activeToolRows.length} picks</Text>
+              </View>
+              {activeToolRows.length > 0 ? activeToolRows.map((row: any) => (
+                <TouchableOpacity
+                  key={row.key}
+                  style={styles.toolRow}
+                  onPress={() => row.item ? handleToolMatchPress(row.item) : handleMatchPress(row.match)}
+                >
+                  <Text style={styles.toolRowTeams} numberOfLines={1}>{row.title}</Text>
+                  <Text style={styles.toolRowMeta} numberOfLines={1}>{row.meta}</Text>
+                  {Array.isArray(row.badges) && row.badges.length > 0 && (
+                    <View style={styles.toolBadgeRow}>
+                      {row.badges.slice(0, 3).map((badge: any, idx: number) => (
+                        <View
+                          key={`${row.key}_b${idx}`}
+                          style={[styles.toolBadge, badge.tone === "positive" && styles.toolBadgePos, badge.tone === "negative" && styles.toolBadgeNeg]}
+                        >
+                          <Text style={styles.toolBadgeText}>{badge.label}</Text>
+                        </View>
+                      ))}
+                    </View>
+                  )}
+                </TouchableOpacity>
+              )) : (
+                <Text style={styles.toolEmpty}>Nog geen data beschikbaar.</Text>
+              )}
+            </LinearGradient>
+          </View>
+        )}
+
+        {/* ─────────────────────────────────────
+            EXPLORE / COMPETITIONS
+        ───────────────────────────────────── */}
         {showCompetitionsSection && (
-          <View style={styles.competitionsSection}>
-            <Text style={styles.sectionTitle}>Competities</Text>
+          <View style={styles.section}>
+            <View style={styles.sectionHead}>
+              <Text style={styles.sectionTitle}>Competities</Text>
+            </View>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.countryRow}>
               {COUNTRY_COMPETITIONS.map((country) => {
                 const active = selectedCountryCode === country.countryCode;
@@ -1316,129 +1427,39 @@ export default function SportsScreen() {
                     onPress={() => setSelectedCountryCode(country.countryCode)}
                   >
                     <Text style={styles.countryFlag}>{flagFromIso2(country.countryCode)}</Text>
-                    <Text style={[styles.countryChipText, active && styles.countryChipTextActive]}>{country.countryName}</Text>
+                    <Text style={[styles.countryName, active && styles.countryNameActive]}>{country.countryName}</Text>
                   </TouchableOpacity>
                 );
               })}
             </ScrollView>
-
-            <View style={styles.countryCompetitionsPanel}>
-              <Text style={styles.countryPanelTitle}>
-                {selectedCountry?.countryName} · Competities
-              </Text>
+            <View style={styles.competitionsPanel}>
+              <Text style={styles.competitionsPanelTitle}>{selectedCountry?.countryName} · Competities</Text>
               {(selectedCountry?.competitions || []).map((comp) => (
                 <TouchableOpacity
                   key={comp.id}
-                  style={[styles.countryCompetitionCard, { borderColor: `${comp.color}55` }]}
+                  style={[styles.competitionRow, { borderColor: `${comp.color}44` }]}
                   onPress={() => {
                     if (comp.tier === "national" && comp.nationalTeamName) {
                       router.push({
                         pathname: "/team-detail",
-                        params: {
-                          teamId: `name:${encodeURIComponent(comp.nationalTeamName)}`,
-                          teamName: comp.nationalTeamName,
-                          sport: "soccer",
-                          league: comp.espn,
-                        },
+                        params: { teamId: `name:${encodeURIComponent(comp.nationalTeamName)}`, teamName: comp.nationalTeamName, sport: "soccer", league: comp.espn },
                       });
-                      return;
+                    } else {
+                      handleCompetitionPress(comp);
                     }
-                    handleCompetitionPress(comp);
                   }}
                 >
-                  <View style={[styles.countryCompetitionIcon, { backgroundColor: `${comp.color}22` }]}> 
-                    <Ionicons name={tierIcon(comp.tier) as any} size={16} color={comp.color} />
+                  <View style={[styles.competitionIcon, { backgroundColor: `${comp.color}22` }]}>
+                    <Ionicons name={tierIcon(comp.tier) as any} size={15} color={comp.color} />
                   </View>
                   <View style={{ flex: 1 }}>
-                    <Text style={styles.countryCompetitionLabel}>{tierLabel(comp.tier)}</Text>
-                    <Text style={styles.countryCompetitionName} numberOfLines={1}>{comp.league}</Text>
+                    <Text style={styles.competitionTier}>{tierLabel(comp.tier)}</Text>
+                    <Text style={styles.competitionName} numberOfLines={1}>{comp.league}</Text>
                   </View>
-                  <Ionicons name="chevron-forward" size={14} color={COLORS.textMuted} />
+                  <Ionicons name="chevron-forward" size={13} color={COLORS.textMuted} />
                 </TouchableOpacity>
               ))}
             </View>
-          </View>
-        )}
-
-        {/* Live Nu */}
-        {showLiveSection && (
-          <View style={styles.liveSection}>
-            <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>Live Nu</Text>
-              {sortedLive.length > 0 && <LiveBadge />}
-            </View>
-            {liveFirstLoad ? (
-              <FlatList horizontal data={[1, 2, 3]} keyExtractor={item => String(item)}
-                renderItem={() => <SkeletonMatchCard />}
-                contentContainerStyle={styles.carouselPadding}
-                showsHorizontalScrollIndicator={false} />
-            ) : sortedLive.length === 0 ? (
-              <View style={styles.emptySection}>
-                <Text style={styles.emptyText}>Geen live wedstrijden</Text>
-                <Text style={styles.emptySubText}>Bekijk de geplande wedstrijden hieronder</Text>
-              </View>
-            ) : (
-              sortedLive.slice(0, 60).map((match: any) => (
-                <UpcomingMatchRow
-                  key={match.id}
-                  match={match}
-                  onPress={() => handleMatchPress(match)}
-                  onToggleNotification={() => toggleMatchNotification(match)}
-                  notificationsEnabled={Boolean(matchSubscriptions[String(match?.id || "")])}
-                />
-              ))
-            )}
-          </View>
-        )}
-
-        {/* Matchen van de dag */}
-        {showUpcoming && (
-          <View style={styles.upcomingSection}>
-            <Text style={styles.sectionTitle}>
-              {selectedDate === todayUTC() ? "Matchen van de dag" : `Matchen – ${formatDateDisplay(selectedDate)}`}
-            </Text>
-            {todayFirstLoad ? (
-              [1, 2, 3].map(i => (
-                <View key={i} style={styles.skeletonRow}>
-                  <View style={[styles.skeletonBlock, { width: "70%", height: 14 }]} />
-                  <View style={[styles.skeletonBlock, { width: "20%", height: 14 }]} />
-                </View>
-              ))
-            ) : sortedUpcoming.length === 0 && sortedFinished.length === 0 ? (
-              <View style={styles.emptySection}>
-                <Ionicons name="calendar-outline" size={32} color={COLORS.textMuted} style={{ marginBottom: 8 }} />
-                <Text style={styles.emptyText}>Geen wedstrijden op {formatDateDisplay(selectedDate)}</Text>
-                <Text style={styles.emptySubText}>Probeer een andere datum of filter</Text>
-              </View>
-            ) : (
-              <>
-                {sortedUpcoming.length > 0 && <Text style={styles.subSectionTitle}>Binnenkort</Text>}
-                {sortedUpcoming.slice(0, 60).map((match: any) => (
-                  <UpcomingMatchRow
-                    key={match.id}
-                    match={match}
-                    onPress={() => handleMatchPress(match)}
-                    onToggleNotification={() => toggleMatchNotification(match)}
-                    notificationsEnabled={Boolean(matchSubscriptions[String(match?.id || "")])}
-                  />
-                ))}
-
-                {sortedFinished.length > 0 && (
-                  <View style={{ marginTop: 10 }}>
-                    <Text style={styles.subSectionTitle}>Afgelopen</Text>
-                    {sortedFinished.slice(0, 60).map((match: any) => (
-                      <UpcomingMatchRow
-                        key={match.id}
-                        match={match}
-                        onPress={() => handleMatchPress(match)}
-                        onToggleNotification={() => toggleMatchNotification(match)}
-                        notificationsEnabled={Boolean(matchSubscriptions[String(match?.id || "")])}
-                      />
-                    ))}
-                  </View>
-                )}
-              </>
-            )}
           </View>
         )}
 
@@ -1450,250 +1471,15 @@ export default function SportsScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
   scroll: { flex: 1 },
-  warnBanner: {
-    flexDirection: "row", alignItems: "center", gap: 8,
-    marginHorizontal: 16, marginTop: 8, padding: 12, borderRadius: 14,
-    backgroundColor: COLORS.accentGlow, borderWidth: 1, borderColor: `${COLORS.accent}44`,
-  },
-  warnText: {
-    fontFamily: "Inter_400Regular",
-    color: COLORS.accent,
-    fontSize: 12,
-    flex: 1,
-    lineHeight: 17,
-  },
-  errorBanner: {
-    flexDirection: "row", alignItems: "center", gap: 8,
-    marginHorizontal: 16, marginTop: 8, padding: 12, borderRadius: 14,
-    backgroundColor: "rgba(255,48,64,0.10)", borderWidth: 1, borderColor: "rgba(255,48,64,0.25)",
-  },
-  errorText: {
-    fontFamily: "Inter_400Regular",
-    color: "#ff6b6b",
-    fontSize: 12,
-    flex: 1,
-    lineHeight: 17,
-  },
-  errorCodeText: { fontFamily: "Inter_400Regular", color: COLORS.textMuted, fontSize: 10 },
-  sourceBadge: {
-    alignSelf: "flex-end", marginRight: 16, marginTop: 6,
-    paddingHorizontal: 10, paddingVertical: 5, borderRadius: 10,
-    backgroundColor: COLORS.cardElevated,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.06)",
-  },
-  sourceText: { fontFamily: "Inter_500Medium", fontSize: 10, color: COLORS.textMuted },
-  statusFilter: {
-    flexDirection: "row", paddingHorizontal: 16, paddingVertical: 10, gap: 8,
-    borderBottomWidth: 1, borderBottomColor: "rgba(255,255,255,0.06)",
+
+  /* ── Tab bar ── */
+  tabBar: {
+    flexDirection: "row",
     backgroundColor: COLORS.surface,
-  },
-  statusBtn: {
-    flexDirection: "row", alignItems: "center", gap: 5,
-    paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20,
-    borderWidth: 1, borderColor: COLORS.border, backgroundColor: COLORS.cardElevated,
-  },
-  statusBtnActive: { borderColor: COLORS.accent, backgroundColor: COLORS.accentGlow },
-  statusBtnText: { fontFamily: "Inter_500Medium", fontSize: 13, color: COLORS.textMuted },
-  statusBtnTextActive: { color: COLORS.accent },
-  liveDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: COLORS.live },
-  leagueFilterScroll: { flexGrow: 0, borderBottomWidth: 1, borderBottomColor: "rgba(255,255,255,0.06)", backgroundColor: COLORS.surface },
-  leagueBadgesRow: { flexDirection: "row", gap: 14, paddingHorizontal: 16, paddingVertical: 12 },
-  leagueBadgeWrap: { alignItems: "center", width: 58, gap: 5 },
-  leagueBadgeCircle: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    backgroundColor: COLORS.cardElevated,
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    overflow: "hidden",
-  },
-  leagueBadgeCircleActive: {
-    backgroundColor: COLORS.accentGlow,
-    borderColor: COLORS.accent,
-  },
-  leagueBadgeImg: { width: 38, height: 38 },
-  leagueBadgeLabel: {
-    fontFamily: "Inter_500Medium",
-    fontSize: 9,
-    color: COLORS.textMuted,
-    textAlign: "center",
-  },
-  leagueBadgeLabelActive: {
-    color: COLORS.accent,
-    fontFamily: "Inter_700Bold",
-  },
-  competitionsSection: { marginBottom: 24, marginTop: 16 },
-  sportToolsSection: { marginBottom: 24, marginTop: 12 },
-  sportMenuRow: { paddingHorizontal: 20, paddingRight: 8, gap: 12 },
-  sportToolPanel: {
-    marginTop: 14,
-    marginHorizontal: 20,
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.07)",
-    padding: 16,
-    gap: 10,
-  },
-  sportToolPanelHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 2 },
-  sportToolPanelTitle: { fontFamily: "Inter_700Bold", fontSize: 14, color: COLORS.text },
-  sportToolPanelCount: {
-    fontFamily: "Inter_500Medium",
-    fontSize: 11,
-    color: COLORS.textMuted,
-    backgroundColor: COLORS.cardElevated,
-    borderRadius: 8,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-  },
-  sportToolSubTitle: { fontFamily: "Inter_600SemiBold", fontSize: 11, color: COLORS.textSecondary, marginTop: 4 },
-  sportToolRow: {
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.07)",
-    backgroundColor: COLORS.cardElevated,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    gap: 4,
-  },
-  sportToolRowTeams: { fontFamily: "Inter_700Bold", fontSize: 12, color: COLORS.text },
-  sportToolRowMeta: { fontFamily: "Inter_500Medium", fontSize: 11, color: COLORS.textMuted },
-  sportToolBadgeRow: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 2 },
-  sportToolBadge: {
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    backgroundColor: COLORS.card,
-    paddingHorizontal: 7,
-    paddingVertical: 3,
-  },
-  sportToolBadgePositive: { borderColor: `${COLORS.green}66`, backgroundColor: "rgba(0,230,118,0.16)" },
-  sportToolBadgeNegative: { borderColor: `${COLORS.live}66`, backgroundColor: "rgba(255,48,64,0.16)" },
-  sportToolBadgeText: { fontFamily: "Inter_600SemiBold", fontSize: 10, color: COLORS.text },
-  sportToolEmpty: { fontFamily: "Inter_500Medium", fontSize: 12, color: COLORS.textMuted },
-  sportToolCard: {
-    width: 240,
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.08)",
-    backgroundColor: COLORS.card,
-    overflow: "hidden",
-    // @ts-ignore
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 10,
-    elevation: 6,
-  },
-  sportToolCardInner: {
-    paddingHorizontal: 16,
-    paddingVertical: 16,
-    gap: 8,
-    minHeight: 148,
-  },
-  sportToolIconWrap: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 1,
-  },
-  sportToolTitle: { fontFamily: "Inter_700Bold", fontSize: 14, color: COLORS.text },
-  sportToolSubtitle: {
-    fontFamily: "Inter_400Regular",
-    fontSize: 12,
-    color: COLORS.textMuted,
-    lineHeight: 17,
-  },
-  sportToolActionRow: { marginTop: "auto", flexDirection: "row", alignItems: "center", gap: 2 },
-  sportToolAction: { fontFamily: "Inter_600SemiBold", fontSize: 12 },
-  countryRow: { paddingHorizontal: 20, paddingRight: 8, gap: 8 },
-  countryChip: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 18,
-    backgroundColor: COLORS.cardElevated,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  countryChipActive: { borderColor: COLORS.accent, backgroundColor: COLORS.accentGlow },
-  countryFlag: { fontSize: 14 },
-  countryChipText: { fontFamily: "Inter_500Medium", fontSize: 12, color: COLORS.textMuted },
-  countryChipTextActive: { color: COLORS.accent },
-  countryCompetitionsPanel: {
-    marginTop: 12,
-    marginHorizontal: 20,
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.07)",
-    backgroundColor: COLORS.card,
-    padding: 14,
-    gap: 8,
-  },
-  countryPanelTitle: {
-    fontFamily: "Inter_700Bold",
-    fontSize: 12,
-    color: COLORS.textMuted,
-    marginBottom: 4,
-    textTransform: "uppercase",
-    letterSpacing: 0.8,
-  },
-  countryCompetitionCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    borderRadius: 14,
-    borderWidth: 1,
-    backgroundColor: COLORS.cardElevated,
-    paddingHorizontal: 12,
-    paddingVertical: 11,
-  },
-  countryCompetitionIcon: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  countryCompetitionLabel: { fontFamily: "Inter_500Medium", fontSize: 10, color: COLORS.textMuted, textTransform: "uppercase", letterSpacing: 0.4 },
-  countryCompetitionName: { fontFamily: "Inter_600SemiBold", fontSize: 13, color: COLORS.text },
-  sectionHeader: { flexDirection: "row", alignItems: "center", gap: 8, paddingRight: 20, marginBottom: 14 },
-  sectionTitle: {
-    fontFamily: "Inter_800ExtraBold",
-    fontSize: 18,
-    color: COLORS.text,
-    marginBottom: 12,
-    marginLeft: 20,
-    paddingRight: 20,
-    paddingLeft: 10,
-    borderLeftWidth: 3,
-    borderLeftColor: COLORS.accent,
-    letterSpacing: -0.3,
-  },
-  subSectionTitle: {
-    fontFamily: "Inter_700Bold",
-    fontSize: 12,
-    color: COLORS.textMuted,
-    marginBottom: 10,
-    paddingHorizontal: 20,
-    letterSpacing: 1.2,
-    textTransform: "uppercase",
-  },
-  viewTabsBar: {
-    flexDirection: "row",
     borderBottomWidth: 1,
     borderBottomColor: "rgba(255,255,255,0.06)",
-    backgroundColor: COLORS.surface,
-    marginTop: 8,
   },
-  viewTab: {
+  tabItem: {
     flex: 1,
     flexDirection: "row",
     alignItems: "center",
@@ -1701,171 +1487,399 @@ const styles = StyleSheet.create({
     gap: 5,
     paddingVertical: 13,
   },
-  viewTabActive: {
-    borderBottomWidth: 2,
-    borderBottomColor: COLORS.accent,
+  tabItemActive: { borderBottomWidth: 2, borderBottomColor: COLORS.accent },
+  tabText: { fontFamily: "Inter_700Bold", fontSize: 10, color: COLORS.textMuted, letterSpacing: 0.8 },
+  tabTextActive: { color: COLORS.accent },
+
+  /* ── League filter bar ── */
+  leagueBar: {
+    backgroundColor: COLORS.background,
+    borderBottomWidth: 1,
+    borderBottomColor: "rgba(255,255,255,0.05)",
   },
-  viewTabText: {
-    fontFamily: "Inter_700Bold",
-    fontSize: 10,
-    color: COLORS.textMuted,
-    letterSpacing: 0.8,
-  },
-  viewTabTextActive: {
-    color: COLORS.accent,
-  },
-  carouselPadding: { paddingHorizontal: 20, paddingRight: 8 },
-  liveSection: { marginBottom: 32, marginTop: 8 },
-  upcomingSection: { marginBottom: 32, marginTop: 8 },
-  emptySection: {
+  leagueBarContent: { flexDirection: "row", paddingHorizontal: 16, paddingVertical: 10, gap: 8, alignItems: "center" },
+  leagueChip: {
+    flexDirection: "row",
     alignItems: "center",
-    paddingVertical: 36,
-    paddingHorizontal: 24,
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 20,
+    backgroundColor: COLORS.cardElevated,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.07)",
+  },
+  leagueChipActive: { backgroundColor: COLORS.accentGlow, borderColor: COLORS.accent },
+  leagueChipLogo: { width: 18, height: 18 },
+  leagueChipText: { fontFamily: "Inter_600SemiBold", fontSize: 11, color: COLORS.textMuted },
+  leagueChipTextActive: { color: COLORS.accent },
+
+  /* ── Banners ── */
+  banner: {
+    flexDirection: "row",
+    alignItems: "center",
     gap: 8,
-  },
-  emptyText: {
-    fontFamily: "Inter_600SemiBold",
-    fontSize: 15,
-    color: COLORS.textMuted,
-    textAlign: "center",
-  },
-  emptySubText: {
-    fontFamily: "Inter_400Regular",
-    fontSize: 12,
-    color: COLORS.textMuted,
-    textAlign: "center",
-    lineHeight: 18,
-  },
-  skeletonRow: {
-    flexDirection: "row", justifyContent: "space-between", alignItems: "center",
-    marginHorizontal: 20, marginBottom: 12, padding: 16,
-    backgroundColor: COLORS.card, borderRadius: 16,
-  },
-  skeletonBlock: { backgroundColor: COLORS.cardElevated, borderRadius: 6, height: 14 },
-  heroMatchWrapper: {
     marginHorizontal: 16,
-    marginTop: 12,
-    marginBottom: 4,
+    marginTop: 10,
+    padding: 12,
+    borderRadius: 14,
+    backgroundColor: COLORS.accentGlow,
+    borderWidth: 1,
+    borderColor: `${COLORS.accent}44`,
+  },
+  bannerError: { backgroundColor: "rgba(255,48,64,0.10)", borderColor: "rgba(255,48,64,0.25)" },
+  bannerText: { fontFamily: "Inter_400Regular", color: COLORS.accent, fontSize: 12, flex: 1, lineHeight: 17 },
+  bannerCode: { fontFamily: "Inter_400Regular", color: COLORS.textMuted, fontSize: 10 },
+
+  /* ── Sections ── */
+  section: { marginTop: 24, marginBottom: 8 },
+  sectionHead: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingRight: 20,
+    marginBottom: 14,
+    marginLeft: 20,
+  },
+  sectionTitle: {
+    fontFamily: "Inter_800ExtraBold",
+    fontSize: 18,
+    color: COLORS.text,
+    paddingLeft: 10,
+    borderLeftWidth: 3,
+    borderLeftColor: COLORS.accent,
+    letterSpacing: -0.3,
+  },
+  subHead: {
+    fontFamily: "Inter_700Bold",
+    fontSize: 11,
+    color: COLORS.textMuted,
+    textTransform: "uppercase",
+    letterSpacing: 1.2,
+    marginBottom: 8,
+    paddingHorizontal: 20,
+  },
+
+  /* ── Hero card ── */
+  heroCard: {
+    marginHorizontal: 16,
+    marginTop: 16,
+    marginBottom: 8,
     borderRadius: 24,
     overflow: "hidden",
+    minHeight: 220,
+    backgroundColor: COLORS.card,
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.08)",
     // @ts-ignore
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 8 },
+    shadowOffset: { width: 0, height: 10 },
     shadowOpacity: 0.5,
-    shadowRadius: 20,
-    elevation: 12,
-  },
-  heroMatchWrapperLive: {
-    borderColor: `${COLORS.live}55`,
-    // @ts-ignore
-    shadowColor: COLORS.live,
-    shadowOpacity: 0.25,
-  },
-  heroMatchGrad: {
+    shadowRadius: 24,
+    elevation: 14,
+    justifyContent: "space-between",
     padding: 20,
     gap: 16,
   },
-  heroLeagueRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
+  heroCardLive: {
+    borderColor: `${COLORS.live}44`,
+    // @ts-ignore
+    shadowColor: COLORS.live,
+    shadowOpacity: 0.2,
   },
-  heroLeagueLogo: {
-    width: 22,
-    height: 22,
-  },
-  heroLeagueName: {
-    fontFamily: "Inter_600SemiBold",
-    fontSize: 12,
-    color: "rgba(255,255,255,0.65)",
-    flex: 1,
-    textTransform: "uppercase",
-    letterSpacing: 0.8,
-  },
-  heroTeamRow: {
+  heroTopRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: 12,
   },
-  heroTeamBlock: {
-    flex: 1,
-    alignItems: "center",
-    gap: 10,
-  },
-  heroTeamName: {
-    fontFamily: "Inter_700Bold",
-    fontSize: 14,
-    color: COLORS.text,
-    textAlign: "center",
-    lineHeight: 18,
-  },
-  heroScoreBlock: {
+  heroCompBadge: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
-    backgroundColor: "rgba(0,0,0,0.4)",
-    borderRadius: 18,
-    paddingHorizontal: 18,
-    paddingVertical: 12,
+    gap: 7,
+    backgroundColor: "rgba(0,0,0,0.35)",
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.12)",
+    borderColor: "rgba(255,255,255,0.08)",
   },
-  heroScoreBlockLive: {
-    backgroundColor: "rgba(229,9,20,0.15)",
-    borderColor: `${COLORS.live}55`,
-  },
-  heroScore: {
-    fontFamily: "Inter_800ExtraBold",
-    fontSize: 42,
-    color: COLORS.text,
-  },
-  heroScoreLive: {
-    textShadowColor: COLORS.live,
-    textShadowOffset: { width: 0, height: 0 },
-    textShadowRadius: 14,
-  },
-  heroScoreSep: {
-    fontFamily: "Inter_400Regular",
-    fontSize: 28,
-    color: COLORS.textMuted,
-  },
-  heroActionRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 6,
-    paddingTop: 4,
-    borderTopWidth: 1,
-    borderTopColor: "rgba(255,255,255,0.08)",
-  },
-  heroActionText: {
+  heroCompLogo: { width: 20, height: 20 },
+  heroCompText: {
     fontFamily: "Inter_600SemiBold",
-    fontSize: 12,
-    color: "rgba(255,255,255,0.6)",
-    letterSpacing: 0.5,
+    fontSize: 11,
+    color: "rgba(255,255,255,0.7)",
+    textTransform: "uppercase",
+    letterSpacing: 0.6,
   },
-  heroUpcomingBadge: {
+  heroTimePill: {
     flexDirection: "row",
     alignItems: "center",
     gap: 4,
     backgroundColor: COLORS.accentGlow,
     borderRadius: 8,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
+    paddingHorizontal: 9,
+    paddingVertical: 4,
     borderWidth: 1,
     borderColor: `${COLORS.accent}55`,
   },
-  heroUpcomingTime: {
+  heroTimeText: { fontFamily: "Inter_700Bold", fontSize: 11, color: COLORS.accent },
+  heroTeamsRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+    flex: 1,
+  },
+  heroTeamCol: { flex: 1, alignItems: "center", gap: 10 },
+  heroTeamLabel: {
+    fontFamily: "Inter_700Bold",
+    fontSize: 13,
+    color: COLORS.text,
+    textAlign: "center",
+    lineHeight: 18,
+  },
+  heroScoreCol: { alignItems: "center", justifyContent: "center", minWidth: 100 },
+  heroScorePill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    backgroundColor: "rgba(0,0,0,0.45)",
+    borderRadius: 20,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.12)",
+  },
+  heroScoreNum: {
+    fontFamily: "Inter_800ExtraBold",
+    fontSize: 48,
+    color: COLORS.text,
+  },
+  heroScoreNumLive: {
+    textShadowColor: COLORS.live,
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 16,
+  },
+  heroScoreDash: { fontFamily: "Inter_400Regular", fontSize: 28, color: COLORS.textMuted },
+  heroVsBlock: { alignItems: "center", gap: 6 },
+  heroVs: {
+    fontFamily: "Inter_800ExtraBold",
+    fontSize: 28,
+    color: "rgba(255,255,255,0.35)",
+    letterSpacing: 4,
+  },
+  heroKickoff: {
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 13,
+    color: COLORS.textMuted,
+    textAlign: "center",
+  },
+  heroFooter: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    paddingTop: 14,
+    borderTopWidth: 1,
+    borderTopColor: "rgba(255,255,255,0.07)",
+  },
+  heroFooterText: {
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 11,
+    color: "rgba(255,255,255,0.45)",
+    letterSpacing: 1.2,
+    textTransform: "uppercase",
+  },
+
+  /* ── Match cards ── */
+  matchCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginHorizontal: 16,
+    marginBottom: 8,
+    backgroundColor: COLORS.card,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.06)",
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    // @ts-ignore
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  matchCardLiveItem: {
+    borderColor: `${COLORS.live}33`,
+    backgroundColor: COLORS.cardElevated,
+  },
+  matchCardFinished: { opacity: 0.68 },
+  matchLiveBar: {
+    position: "absolute",
+    left: 0,
+    top: 12,
+    bottom: 12,
+    width: 3,
+    borderRadius: 3,
+    backgroundColor: COLORS.live,
+  },
+  matchTeamSide: {
+    flex: 1,
+    alignItems: "center",
+    gap: 7,
+  },
+  matchTeamName: {
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 12,
+    color: COLORS.text,
+    textAlign: "center",
+    maxWidth: 90,
+  },
+  matchCenterCol: {
+    alignItems: "center",
+    justifyContent: "center",
+    width: 80,
+    gap: 5,
+  },
+  matchScoreWrap: { flexDirection: "row", alignItems: "center", gap: 6 },
+  matchScoreValue: {
+    fontFamily: "Inter_800ExtraBold",
+    fontSize: 22,
+    color: COLORS.text,
+  },
+  matchScoreFinished: {
+    fontFamily: "Inter_700Bold",
+    fontSize: 20,
+    color: COLORS.textSecondary,
+  },
+  matchScoreSep: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 16,
+    color: COLORS.textMuted,
+  },
+  matchTimeValue: {
+    fontFamily: "Inter_800ExtraBold",
+    fontSize: 16,
+    color: COLORS.text,
+  },
+  matchLeagueLabel: {
+    fontFamily: "Inter_500Medium",
+    fontSize: 10,
+    color: COLORS.textMuted,
+    textAlign: "center",
+  },
+  matchFinishedLabel: {
     fontFamily: "Inter_700Bold",
     fontSize: 10,
-    color: COLORS.accent,
+    color: COLORS.textMuted,
+    letterSpacing: 0.8,
   },
-  heroVsText: {
-    fontFamily: "Inter_800ExtraBold",
-    fontSize: 26,
-    color: "rgba(255,255,255,0.55)",
+  matchBellBtn: {
+    width: 32,
+    height: 32,
+    alignItems: "center",
+    justifyContent: "center",
   },
+  matchCardSkeleton: {
+    marginHorizontal: 16,
+    marginBottom: 8,
+    height: 76,
+    borderRadius: 18,
+    backgroundColor: COLORS.card,
+    overflow: "hidden",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.04)",
+  },
+  skeletonShimmer: {
+    flex: 1,
+    backgroundColor: COLORS.cardElevated,
+    opacity: 0.6,
+  },
+
+  /* ── Analyse tools ── */
+  toolsRow: { paddingHorizontal: 16, paddingRight: 8, gap: 12 },
+  toolCard: {
+    width: 220,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.07)",
+    backgroundColor: COLORS.card,
+    overflow: "hidden",
+    // @ts-ignore
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 10,
+    elevation: 5,
+  },
+  toolCardInner: { padding: 16, gap: 8, minHeight: 136 },
+  toolIconWrap: { width: 32, height: 32, borderRadius: 16, alignItems: "center", justifyContent: "center", borderWidth: 1 },
+  toolTitle: { fontFamily: "Inter_700Bold", fontSize: 13, color: COLORS.text },
+  toolSub: { fontFamily: "Inter_400Regular", fontSize: 11, color: COLORS.textMuted, lineHeight: 16 },
+  toolAction: { marginTop: "auto", flexDirection: "row", alignItems: "center", gap: 2 },
+  toolActionText: { fontFamily: "Inter_600SemiBold", fontSize: 11 },
+  toolPanel: {
+    marginHorizontal: 16,
+    marginTop: 12,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.06)",
+    padding: 16,
+    gap: 10,
+  },
+  toolPanelHead: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 2 },
+  toolPanelTitle: { fontFamily: "Inter_700Bold", fontSize: 14, color: COLORS.text },
+  toolPanelCount: {
+    fontFamily: "Inter_500Medium", fontSize: 11, color: COLORS.textMuted,
+    backgroundColor: COLORS.cardElevated, borderRadius: 8, paddingHorizontal: 8, paddingVertical: 2,
+  },
+  toolRow: {
+    borderRadius: 14, borderWidth: 1, borderColor: "rgba(255,255,255,0.06)",
+    backgroundColor: COLORS.cardElevated, paddingHorizontal: 14, paddingVertical: 12, gap: 4,
+  },
+  toolRowTeams: { fontFamily: "Inter_700Bold", fontSize: 12, color: COLORS.text },
+  toolRowMeta: { fontFamily: "Inter_500Medium", fontSize: 11, color: COLORS.textMuted },
+  toolBadgeRow: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 2 },
+  toolBadge: {
+    borderRadius: 8, borderWidth: 1, borderColor: COLORS.border,
+    backgroundColor: COLORS.card, paddingHorizontal: 7, paddingVertical: 3,
+  },
+  toolBadgePos: { borderColor: `${COLORS.green}66`, backgroundColor: "rgba(0,230,118,0.16)" },
+  toolBadgeNeg: { borderColor: `${COLORS.live}66`, backgroundColor: "rgba(255,48,64,0.16)" },
+  toolBadgeText: { fontFamily: "Inter_600SemiBold", fontSize: 10, color: COLORS.text },
+  toolEmpty: { fontFamily: "Inter_500Medium", fontSize: 12, color: COLORS.textMuted },
+
+  /* ── Competitions ── */
+  countryRow: { paddingHorizontal: 16, paddingRight: 8, gap: 8 },
+  countryChip: {
+    flexDirection: "row", alignItems: "center", gap: 6,
+    paddingHorizontal: 12, paddingVertical: 8, borderRadius: 18,
+    backgroundColor: COLORS.cardElevated, borderWidth: 1, borderColor: COLORS.border,
+  },
+  countryChipActive: { borderColor: COLORS.accent, backgroundColor: COLORS.accentGlow },
+  countryFlag: { fontSize: 14 },
+  countryName: { fontFamily: "Inter_500Medium", fontSize: 12, color: COLORS.textMuted },
+  countryNameActive: { color: COLORS.accent },
+  competitionsPanel: {
+    marginTop: 12, marginHorizontal: 16, borderRadius: 18,
+    borderWidth: 1, borderColor: "rgba(255,255,255,0.06)",
+    backgroundColor: COLORS.card, padding: 14, gap: 8,
+  },
+  competitionsPanelTitle: {
+    fontFamily: "Inter_700Bold", fontSize: 11, color: COLORS.textMuted,
+    marginBottom: 4, textTransform: "uppercase", letterSpacing: 0.8,
+  },
+  competitionRow: {
+    flexDirection: "row", alignItems: "center", gap: 10,
+    borderRadius: 14, borderWidth: 1, backgroundColor: COLORS.cardElevated,
+    paddingHorizontal: 12, paddingVertical: 11,
+  },
+  competitionIcon: { width: 28, height: 28, borderRadius: 14, alignItems: "center", justifyContent: "center" },
+  competitionTier: { fontFamily: "Inter_500Medium", fontSize: 10, color: COLORS.textMuted, textTransform: "uppercase", letterSpacing: 0.4 },
+  competitionName: { fontFamily: "Inter_600SemiBold", fontSize: 13, color: COLORS.text },
+
+  /* ── Empty / loading states ── */
+  emptyState: { alignItems: "center", paddingVertical: 36, paddingHorizontal: 24, gap: 10 },
+  emptyText: { fontFamily: "Inter_500Medium", fontSize: 14, color: COLORS.textMuted, textAlign: "center" },
 });
