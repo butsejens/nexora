@@ -28,6 +28,14 @@ import {
   toEventHash,
 } from "@/lib/match-notifications";
 
+// ── Sport design tokens ──────────────────────────────────────────────────────
+const SP_ACCENT      = "#5D60E8";
+const SP_ACCENT_GLOW = "rgba(93,96,232,0.18)";
+const SP_BG          = "#0B0D1A";
+const SP_CARD        = "#141626";
+const SP_ELEVATED    = "#1D2040";
+const SP_BORDER      = "rgba(93,96,232,0.16)";
+
 type SportsPayload = {
   date?: string;
   source?: string;
@@ -1030,8 +1038,8 @@ export default function SportsScreen() {
       <View style={styles.tabBar}>
         {([
           { id: "competitions" as const, label: "EXPLORE",  icon: "apps-outline" as const },
-          { id: "live" as const,         label: "LIVE",     icon: "radio-button-on-outline" as const },
-          { id: "upcoming" as const,     label: "MATCHES",  icon: "calendar-outline" as const },
+          { id: "live" as const,         label: "STATS",    icon: "bar-chart-outline" as const },
+          { id: "upcoming" as const,     label: "LINEUP",   icon: "people-outline" as const },
           { id: "menu" as const,         label: "ANALYSE",  icon: "analytics-outline" as const },
         ]).map((tab) => {
           const active = sportsView === tab.id;
@@ -1123,7 +1131,7 @@ export default function SportsScreen() {
           const leagueLogo = getLeagueLogo(hero.league);
           const gradColors = Array.isArray(hero.heroGradient) && hero.heroGradient.length >= 2
             ? hero.heroGradient
-            : ["#101828", "#0b1220"];
+            : ["#0D1837", "#060C1D"];
           return (
             <TouchableOpacity
               style={[styles.heroCard, isLive && styles.heroCardLive]}
@@ -1144,6 +1152,20 @@ export default function SportsScreen() {
                 start={{ x: 0, y: 0.3 }}
                 end={{ x: 0, y: 1 }}
               />
+
+              {/* MATCH DAY header */}
+              <View style={styles.heroMatchDayRow}>
+                <View style={styles.heroMatchDayBadge}>
+                  <Text style={styles.heroMatchDayText}>MATCH</Text>
+                  <Text style={[styles.heroMatchDayText, styles.heroMatchDayDayWord]}>DAY</Text>
+                </View>
+                {isLive && (
+                  <View style={styles.heroMatchDayLivePill}>
+                    <View style={styles.heroMatchDayDot} />
+                    <Text style={styles.heroMatchDayLiveText}>LIVE</Text>
+                  </View>
+                )}
+              </View>
 
               {/* Top row */}
               <View style={styles.heroTopRow}>
@@ -1483,13 +1505,13 @@ export default function SportsScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: COLORS.background },
+  container: { flex: 1, backgroundColor: SP_BG },
   scroll: { flex: 1 },
 
   /* ── Tab bar ── */
   tabBar: {
     flexDirection: "row",
-    backgroundColor: COLORS.surface,
+    backgroundColor: "#0F1123",
     borderBottomWidth: 1,
     borderBottomColor: "rgba(255,255,255,0.06)",
   },
@@ -1501,13 +1523,13 @@ const styles = StyleSheet.create({
     gap: 5,
     paddingVertical: 13,
   },
-  tabItemActive: { borderBottomWidth: 2, borderBottomColor: COLORS.accent },
+  tabItemActive: { borderBottomWidth: 2, borderBottomColor: SP_ACCENT },
   tabText: { fontFamily: "Inter_700Bold", fontSize: 10, color: COLORS.textMuted, letterSpacing: 0.8 },
-  tabTextActive: { color: COLORS.accent },
+  tabTextActive: { color: SP_ACCENT },
 
   /* ── League filter bar ── */
   leagueBar: {
-    backgroundColor: COLORS.background,
+    backgroundColor: SP_BG,
     borderBottomWidth: 1,
     borderBottomColor: "rgba(255,255,255,0.05)",
   },
@@ -1523,10 +1545,10 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.07)",
   },
-  leagueChipActive: { backgroundColor: COLORS.accentGlow, borderColor: COLORS.accent },
+  leagueChipActive: { backgroundColor: SP_ACCENT_GLOW, borderColor: SP_ACCENT },
   leagueChipLogo: { width: 18, height: 18 },
   leagueChipText: { fontFamily: "Inter_600SemiBold", fontSize: 11, color: COLORS.textMuted },
-  leagueChipTextActive: { color: COLORS.accent },
+  leagueChipTextActive: { color: SP_ACCENT },
 
   /* ── Banners ── */
   banner: {
@@ -1561,7 +1583,7 @@ const styles = StyleSheet.create({
     color: COLORS.text,
     paddingLeft: 10,
     borderLeftWidth: 3,
-    borderLeftColor: COLORS.accent,
+    borderLeftColor: SP_ACCENT,
     letterSpacing: -0.3,
   },
   subHead: {
@@ -1581,10 +1603,10 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     borderRadius: 28,
     overflow: "hidden",
-    minHeight: 260,
-    backgroundColor: "#101828",
+    minHeight: 300,
+    backgroundColor: "#0D1A38",
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.10)",
+    borderColor: SP_BORDER,
     // @ts-ignore
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 12 },
@@ -1629,14 +1651,14 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 4,
-    backgroundColor: COLORS.accentGlow,
+    backgroundColor: SP_ACCENT_GLOW,
     borderRadius: 8,
     paddingHorizontal: 9,
     paddingVertical: 4,
     borderWidth: 1,
-    borderColor: `${COLORS.accent}55`,
+    borderColor: SP_BORDER,
   },
-  heroTimeText: { fontFamily: "Inter_700Bold", fontSize: 11, color: COLORS.accent },
+  heroTimeText: { fontFamily: "Inter_700Bold", fontSize: 11, color: SP_ACCENT },
   heroTeamsRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -1705,16 +1727,61 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
   },
 
-  /* ── Match cards ── */
+  /* ── Hero MATCH DAY header ── */
+  heroMatchDayRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  heroMatchDayBadge: {
+    flexDirection: "row",
+    alignItems: "flex-end",
+    gap: 5,
+  },
+  heroMatchDayText: {
+    fontFamily: "Inter_800ExtraBold",
+    fontSize: 26,
+    color: COLORS.text,
+    letterSpacing: -0.5,
+    lineHeight: 30,
+  },
+  heroMatchDayDayWord: {
+    color: SP_ACCENT,
+  },
+  heroMatchDayLivePill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    backgroundColor: "rgba(255,48,64,0.18)",
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: `${COLORS.live}44`,
+  },
+  heroMatchDayDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: COLORS.live,
+  },
+  heroMatchDayLiveText: {
+    fontFamily: "Inter_700Bold",
+    fontSize: 11,
+    color: COLORS.live,
+    letterSpacing: 1,
+  },
+
+
   matchCard: {
     flexDirection: "row",
     alignItems: "center",
     marginHorizontal: 16,
     marginBottom: 10,
-    backgroundColor: COLORS.card,
+    backgroundColor: SP_CARD,
     borderRadius: 20,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.06)",
+    borderColor: SP_BORDER,
     paddingHorizontal: 16,
     paddingVertical: 16,
     // @ts-ignore
@@ -1726,7 +1793,7 @@ const styles = StyleSheet.create({
   },
   matchCardLiveItem: {
     borderColor: `${COLORS.live}33`,
-    backgroundColor: COLORS.cardElevated,
+    backgroundColor: SP_ELEVATED,
   },
   matchCardFinished: { opacity: 0.6 },
   matchLiveBar: {
@@ -1871,10 +1938,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12, paddingVertical: 8, borderRadius: 18,
     backgroundColor: COLORS.cardElevated, borderWidth: 1, borderColor: COLORS.border,
   },
-  countryChipActive: { borderColor: COLORS.accent, backgroundColor: COLORS.accentGlow },
+  countryChipActive: { borderColor: SP_ACCENT, backgroundColor: SP_ACCENT_GLOW },
   countryFlag: { fontSize: 14 },
   countryName: { fontFamily: "Inter_500Medium", fontSize: 12, color: COLORS.textMuted },
-  countryNameActive: { color: COLORS.accent },
+  countryNameActive: { color: SP_ACCENT },
   competitionsPanel: {
     marginTop: 12, marginHorizontal: 16, borderRadius: 18,
     borderWidth: 1, borderColor: "rgba(255,255,255,0.06)",

@@ -1223,6 +1223,28 @@ function AIPredictionView({ prediction, homeTeam, awayTeam }: any) {
         </View>
       )}
 
+      {/* Formation + Pressure index */}
+      {(prediction.formation || prediction.pressureIndex != null) && (
+        <View style={styles.infoCard}>
+          <Text style={styles.infoCardTitle}>FORMATIE & PRESSING</Text>
+          {prediction.formation && (
+            <View style={styles.factorRow}>
+              <MaterialCommunityIcons name="soccer-field" size={13} color={COLORS.accent} />
+              <Text style={[styles.factorText, { marginLeft: 4 }]}>{prediction.formation}</Text>
+            </View>
+          )}
+          {prediction.pressureIndex != null && (
+            <View style={[styles.factorRow, { marginTop: 6 }]}>
+              <Text style={[styles.infoCardTitle, { fontSize: 10, marginBottom: 0 }]}>PRESSING THUISPLOEG</Text>
+              <View style={{ flex: 1, height: 6, backgroundColor: "rgba(255,255,255,0.08)", borderRadius: 3, marginLeft: 8, overflow: "hidden" }}>
+                <View style={{ width: `${Math.min(100, Number(prediction.pressureIndex) || 0)}%`, height: "100%", backgroundColor: COLORS.accent, borderRadius: 3 }} />
+              </View>
+              <Text style={[styles.factorText, { marginLeft: 6, minWidth: 28, textAlign: "right" }]}>{Number(prediction.pressureIndex) || 0}</Text>
+            </View>
+          )}
+        </View>
+      )}
+
       {/* Form bubbles */}
       {(prediction.formHome || prediction.formAway) && (
         <View style={styles.formRow}>

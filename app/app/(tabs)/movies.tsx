@@ -24,6 +24,12 @@ const CATEGORY_SORT: Record<string, string> = {
   upcoming: "primary_release_date.asc",
 };
 
+const IPTV_PALETTE = ["#1B2B4B","#2B1B4B","#1B4B2B","#4B1B2B","#4B2B1B","#1B3B4B","#2B4B1B","#3B1B4B","#1B4B3B","#2B3B1B"];
+function iptvColor(title: string): string {
+  let h = 0; for (const c of String(title || "")) h = (h * 31 + c.charCodeAt(0)) & 0xffff;
+  return IPTV_PALETTE[h % IPTV_PALETTE.length];
+}
+
 async function withTimeout<T>(promise: Promise<T>, ms = 8000): Promise<T> {
   return await Promise.race([
     promise,
@@ -134,7 +140,7 @@ export default function MoviesScreen() {
       backdrop: c.backdrop || null, synopsis: c.synopsis || "",
       year: c.year, imdb: c.rating, genre: [], quality: "HD",
       isIptv: true, streamUrl: c.url, tmdbId: c.tmdbId,
-      color: COLORS.card,
+      color: iptvColor(c.title || c.name || ""),
     }));
   }, [iptvMovies, groupFilter, search]);
 
@@ -319,7 +325,7 @@ export default function MoviesScreen() {
 
   const renderCard = useCallback((item: any) => (
     <RealContentCard
-      item={item}
+      item={{ ...item, isIptv: item.isIptv ?? false }}
       onPress={() => goToDetail(item)}
       onFavorite={() => toggleFavorite(item.id)}
       isFavorite={isFavorite(item.id)}

@@ -36,6 +36,7 @@ interface ContentItem {
   isTrending?: boolean;
   duration?: string;
   seasons?: number;
+  isIptv?: boolean;
 }
 
 interface Props {
@@ -80,12 +81,19 @@ export const RealContentCard = React.memo(function RealContentCard({ item, onPre
               onError={() => setImageError(true)}
             />
           ) : (
-            <LinearGradient
-              colors={[item.color || COLORS.card, `${item.color || COLORS.cardElevated}BB`, COLORS.background]}
-              style={StyleSheet.absoluteFill}
-              start={{ x: 0.2, y: 0 }}
-              end={{ x: 0.8, y: 1 }}
-            />
+            <>
+              <LinearGradient
+                colors={[item.color || COLORS.card, `${item.color || COLORS.cardElevated}BB`, COLORS.background]}
+                style={StyleSheet.absoluteFill}
+                start={{ x: 0.2, y: 0 }}
+                end={{ x: 0.8, y: 1 }}
+              />
+              <View style={styles.posterInitials}>
+                <Text style={styles.posterInitialsText} numberOfLines={2}>
+                  {String(item.title || "?").slice(0, 12).toUpperCase()}
+                </Text>
+              </View>
+            </>
           )}
 
           {/* Bottom gradient overlay */}
@@ -125,6 +133,14 @@ export const RealContentCard = React.memo(function RealContentCard({ item, onPre
                 color={isFavorite ? COLORS.live : COLORS.textSecondary}
               />
             </TouchableOpacity>
+          )}
+
+          {item.isIptv !== undefined && (
+            <View style={[styles.sourceBadge, item.isIptv ? styles.sourceBadgeIptv : styles.sourceBadgeTmdb]}>
+              <Text style={[styles.sourceBadgeText, item.isIptv ? styles.sourceBadgeTextIptv : styles.sourceBadgeTextTmdb]}>
+                {item.isIptv ? "IPTV" : "TMDB"}
+              </Text>
+            </View>
           )}
         </View>
         <Text style={styles.title} numberOfLines={1}>{item.title}</Text>
@@ -292,6 +308,43 @@ const styles = StyleSheet.create({
     borderColor: COLORS.borderLight,
     alignItems: "center",
     justifyContent: "center",
+  },
+  sourceBadge: {
+    position: "absolute",
+    bottom: 8,
+    right: 8,
+    borderRadius: 5,
+    paddingHorizontal: 5,
+    paddingVertical: 2,
+    borderWidth: 1,
+  },
+  sourceBadgeIptv: {
+    backgroundColor: "rgba(0,120,255,0.25)",
+    borderColor: "rgba(80,160,255,0.7)",
+  },
+  sourceBadgeTmdb: {
+    backgroundColor: "rgba(255,180,0,0.20)",
+    borderColor: "rgba(255,180,0,0.60)",
+  },
+  sourceBadgeText: {
+    fontFamily: "Inter_700Bold",
+    fontSize: 8,
+    letterSpacing: 0.4,
+  },
+  sourceBadgeTextIptv: { color: "#80C4FF" },
+  sourceBadgeTextTmdb: { color: "#FFD060" },
+  posterInitials: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 8,
+  },
+  posterInitialsText: {
+    fontFamily: "Inter_800ExtraBold",
+    fontSize: 14,
+    color: "rgba(255,255,255,0.22)",
+    textAlign: "center",
+    letterSpacing: 0.5,
   },
   title: {
     fontFamily: "Inter_600SemiBold",

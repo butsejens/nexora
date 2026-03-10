@@ -2163,6 +2163,33 @@ async function geminiChat(messages, { temperature = 0.4, model } = {}) {
   return data?.choices?.[0]?.message?.content ?? "";
 }
 
+// xAI Grok – API-compatible with OpenAI (XAI_API_KEY env)
+async function xaiChat(messages, { temperature = 0.35, model } = {}) {
+  const key = process.env.XAI_API_KEY;
+  if (!key) {
+    const e = new Error("XAI_API_KEY missing");
+    e.statusCode = 500;
+    throw e;
+  }
+  const useModel = model || process.env.XAI_MODEL || "grok-3-mini";
+  const r = await fetch("https://api.x.ai/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${key}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ model: useModel, temperature, messages }),
+  });
+  const data = await r.json();
+  if (!r.ok) {
+    const e = new Error(`xAI Grok error (${r.status})`);
+    e.statusCode = r.status;
+    e.details = data;
+    throw e;
+  }
+  return data?.choices?.[0]?.message?.content ?? "";
+}
+
 function toNumber(value, fallback = 0) {
   const n = Number(value);
   return Number.isFinite(n) ? n : fallback;
@@ -2680,13 +2707,13 @@ async function aiPredictMatch(payload) {
   const sys = {
     role: "system",
     content:
-      "Je bent een elite voetbalanalist met expertise in xG-modellen, tactische patronen, kaartanalyse en Europese competities. Je beschikt over uitgebreide kennis van voetbalteams en hun recente prestaties. Antwoord ENKEL met geldig JSON zonder extra tekst of markdown. Gebruik alle beschikbare data (score, statistieken, events, rode/gele kaarten, reddingen, buitenspel) voor een nauwkeurige analyse.",
+      "Je bent een elite voetbalanalist met Opta-niveau expertise in xG-modellen, tactische formaties, pressing-systemen, kaartanalyse en alle Europese competities. Je combineert statistische data met diepgaande tactische kennis van bekende clubs, hun spelsystemen en huidige vormlijn. Voor live wedstrijden: analyseer momentum, recente kansen en drukzones uit de laatste 15 minuten. Anti-cheat: gebruik UITSLUITEND de aangeleverde data als feitenbasis; vul ontbrekende velden aan met realistische voetbalkennis. Antwoord ENKEL met geldig JSON zonder extra tekst of markdown.",
   };
   const user = {
     role: "user",
     content:
-        "Analyseer deze voetbalwedstrijd grondig op basis van de onderstaande data.\n\nREGELS:\n- Gebruik de aangeleverde data als primaire bron\n- Rode kaarten hebben grote impact op de uitkomst (numeriek nadeel)\n- Als events beschikbaar zijn: analyseer doelpunten, kaarten en momenten\n- Voor formHome/formAway en h2hSummary: gebruik je algemene voetbalkennis als de data ontbreekt (teams in bekende competities hebben een trackrecord)\n- Gele kaarten verhogen riskLevel\n- Geef thuisploeg licht voordeel bij gelijke kansen\n\nOutput ALLEEN geldig JSON met minimaal deze keys (extra velden zijn toegestaan):\n- prediction: \"Home Win\" | \"Away Win\" | \"Draw\"\n- confidence: 0-100\n- predictedScore: \"X-Y\"\n- homePct: 0-100\n- drawPct: 0-100\n- awayPct: 0-100 (som = 100)\n- xgHome: decimaal of null\n- xgAway: decimaal of null\n- nextGoalProbability: kans op doelpunt komende 15 min (0-100) of null\n- bothTeamsToScorePct: 0-100\n- over25Pct: 0-100\n- edgeScore: 0-100\n- confidenceReason: 1 korte zin\n- summary: tactische analyse 2-3 zinnen in het Nederlands (vermeld rode kaarten/events indien aanwezig)\n- keyFactors: array max 4 strings (meest impactvolle factoren: score, kaarten, schoten, momentum)\n- tacticalNotes: array max 3 strings in het Nederlands\n- momentum: \"Home\" | \"Away\" | \"Balanced\"\n- danger: \"Home Attack\" | \"Away Attack\" | \"Balanced\"\n- riskLevel: \"Low\" | \"Medium\" | \"High\" (hoog bij rode kaarten of veel gele kaarten)\n- tip: scherpe wedtip 1 zin Nederlands\n- h2hSummary: onderlinge duels samenvatting (gebruik algemene kennis als data ontbreekt) of null\n- formHome: recentste 5 resultaten thuisploeg bijv \"WWDLL\" (gebruik algemene kennis) of null\n- formAway: recentste 5 resultaten uitploeg bijv \"LWWDL\" (gebruik algemene kennis) of null\n\nINPUT:\n" +
-        JSON.stringify(enrichedPayload, null, 2),
+      "Analyseer deze voetbalwedstrijd grondig en geef een complete tactische en statistische analyse.\n\nANALYSE-REGELS:\n- Rode kaarten: geef groot nadeel in percentages (verlies minstens 12-18% kans)\n- Live wedstrijden: gebruik exact de huidige score, minuut en recente events als primaire signaalbron\n- Momentum: analyseer welk team de laatste 15 min domineert op basis van events/schoten\n- Gele kaarten stapelen: verhoog riskLevel bij 3+ gele kaarten per team\n- Thuisvoordeel: geef 3-5% extra bij gelijke kansen\n- Gebruik je voetbalkennis voor formHome/formAway en h2hSummary als data ontbreekt\n- Bij bekende clubs (CL, Premier League, etc.): gebruik realistische formaties en sterkhouders\n\nOutput ALLEEN geldig JSON met EXACT deze keys:\n- prediction: \"Home Win\" | \"Away Win\" | \"Draw\"\n- confidence: 0-100\n- predictedScore: \"X-Y\"\n- homePct: 0-100\n- drawPct: 0-100\n- awayPct: 0-100 (som moet exact 100 zijn)\n- xgHome: decimaal xG of null\n- xgAway: decimaal xG of null\n- nextGoalProbability: kans op doelpunt komende 15 min (0-100) of null\n- bothTeamsToScorePct: 0-100\n- over25Pct: kans op meer dan 2.5 doelpunten (0-100)\n- edgeScore: statistische voordeel score (0-100)\n- confidenceReason: maximaal 1 zin waarom deze confidence\n- summary: tactische analyse 3-4 zinnen Nederlands (benoem rode kaarten, dominantie, kansen)\n- keyFactors: array van max 5 strings (score/kaarten/schoten/pressing/momentum in volgorde van impact)\n- tacticalNotes: array van max 4 strings Nederlands (formatie-inzichten, zwakke zones, sleutelduels)\n- momentum: \"Home\" | \"Away\" | \"Balanced\"\n- danger: \"Home Attack\" | \"Away Attack\" | \"Balanced\"\n- riskLevel: \"Low\" | \"Medium\" | \"High\"\n- tip: concrete wedtip 1 zin Nederlands (bv. Asian Handicap, goalline, of correct score)\n- h2hSummary: samenvatting onderlinge duels of null\n- formHome: recentste 5 resultaten thuisploeg \"WWDLL\" of null\n- formAway: recentste 5 resultaten uitploeg \"LWWDL\" of null\n- formation: opstelling-inzicht bv \"4-3-3 vs 4-4-2\" of null\n- pressureIndex: pressing-intensiteit van thuisploeg (0-100) of null\n\nINPUT:\n" +
+      JSON.stringify(enrichedPayload, null, 2),
   };
 
   const providers = [];
@@ -2701,6 +2728,9 @@ async function aiPredictMatch(payload) {
   }
   if (process.env.GROQ_API_KEY) {
     providers.push({ name: "groq", run: () => groqChat([sys, user], { temperature: 0.35 }) });
+  }
+  if (process.env.XAI_API_KEY) {
+    providers.push({ name: "grok", run: () => xaiChat([sys, user], { temperature: 0.35 }) });
   }
   if (process.env.OPENAI_API_KEY) {
     providers.push({ name: "openai", run: () => openaiChat([sys, user], { temperature: 0.35 }) });
@@ -2757,6 +2787,7 @@ app.get("/health", (req, res) => {
     groq: Boolean(process.env.GROQ_API_KEY),
     openai: Boolean(process.env.OPENAI_API_KEY),
     gemini: Boolean(process.env.GEMINI_API_KEY),
+    grok: Boolean(process.env.XAI_API_KEY),
   };
   const aiReady = Object.values(aiProviders).some(Boolean);
   res.json({ ok: true, time: new Date().toISOString(), source: footballSource(), tz: TZ, aiReady, aiProviders, zilliz: _zillizReady, tmdb: Boolean(process.env.TMDB_API_KEY), apify: Boolean(process.env.APIFY_TOKEN) });

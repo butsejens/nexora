@@ -37,9 +37,9 @@ export async function openInVlc(streamUrl: string, title = "Nexora stream") {
 
   try {
     await Linking.openURL(raw);
-    Alert.alert("VLC niet gevonden", `${title} is geopend met de standaard videospeler. Installeer VLC voor betere IPTV afspeelstabiliteit.`);
+    // Stream opened in system default player — no alert needed
   } catch {
-    Alert.alert("VLC niet gevonden", "Installeer VLC Media Player om deze stream direct te openen.");
+    Alert.alert("Kan stream niet openen", "Installeer VLC Media Player om deze IPTV stream te openen.");
   }
 
   return false;

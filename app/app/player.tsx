@@ -1044,6 +1044,7 @@ export default function PlayerScreen() {
           onShouldStartLoadWithRequest={makeNavGuard(embedUrl)}
           onNavigationStateChange={makeNavStateGuard(embedUrl)}
           scalesPageToFit={false}
+          onRenderProcessGone={() => { setIsLoading(false); }}
         />
       );
     }
@@ -1107,12 +1108,8 @@ export default function PlayerScreen() {
         )}
       </View>
 
-      {/* ─── Full-screen interceptor — HLS and embed modes ──────────────────
-          Intercepts all taps when controls are hidden:
-          - HLS: shows overlay controls
-          - Embed: shows controls AND prevents ad tap-throughs
-      ─────────────────────────────────────────────────────────────────────── */}
-      {(hlsHtml || embedUrl) && Platform.OS !== "web" && !controlsVisible && (
+      {/* ─── Full-screen interceptor — HLS only ─────────────────────────── */}
+      {hlsHtml && Platform.OS !== "web" && !controlsVisible && (
         <TouchableOpacity
           style={styles.hlsTouchScreen}
           onPress={showControls}
@@ -1120,120 +1117,127 @@ export default function PlayerScreen() {
         />
       )}
 
-      {/* ─── Controls overlay ─────────────────────────────────────────────── */}
-      <Animated.View
-        style={[styles.overlay, { opacity: controlsOpacity }]}
-        pointerEvents={controlsVisible ? "auto" : "none"}
-      >
-        {/* Background tap area — FIRST child = lowest priority.
-            Tapping empty space dismisses the overlay; buttons (rendered after)
-            still receive touches normally because they're higher in paint order. */}
-        <TouchableOpacity
-          style={StyleSheet.absoluteFillObject}
-          onPress={() => setControlsVisible(false)}
-          activeOpacity={1}
-        />
-        {/* Top bar */}
-        <LinearGradient colors={["rgba(0,0,0,0.85)", "transparent"]} style={styles.topGrad}>
-          <View style={[styles.topBar, { paddingTop: Platform.OS === "web" ? 67 : insets.top + 8 }]}>
-            <TouchableOpacity style={styles.iconBtn} onPress={() => { SafeHaptics.impactLight(); router.back(); }}>
-              <Ionicons name="chevron-down" size={28} color="#fff" />
-            </TouchableOpacity>
-            <View style={styles.titleWrap}>
-              <Text style={styles.playerTitle} numberOfLines={1}>{title || "Nu Afspelen"}</Text>
-              {type === "series" && season && (
-                <Text style={styles.playerSub}>Seizoen {season} · Aflevering {episode || "1"}</Text>
+      {/* ─── Controls overlay — HLS/IPTV: full animated controls ────────── */}
+      {hlsHtml ? (
+        <Animated.View
+          style={[styles.overlay, { opacity: controlsOpacity }]}
+          pointerEvents={controlsVisible ? "auto" : "none"}
+        >
+          {/* Background tap area — dismisses overlay on empty-space tap */}
+          <TouchableOpacity
+            style={StyleSheet.absoluteFillObject}
+            onPress={() => setControlsVisible(false)}
+            activeOpacity={1}
+          />
+          {/* Top bar */}
+          <LinearGradient colors={["rgba(0,0,0,0.85)", "transparent"]} style={styles.topGrad}>
+            <View style={[styles.topBar, { paddingTop: Platform.OS === "web" ? 67 : insets.top + 8 }]}>
+              <TouchableOpacity style={styles.iconBtn} onPress={() => { SafeHaptics.impactLight(); router.back(); }}>
+                <Ionicons name="chevron-down" size={28} color="#fff" />
+              </TouchableOpacity>
+              <View style={styles.titleWrap}>
+                <Text style={styles.playerTitle} numberOfLines={1}>{title || "Nu Afspelen"}</Text>
+                {type === "series" && season && (
+                  <Text style={styles.playerSub}>Seizoen {season} · Aflevering {episode || "1"}</Text>
+                )}
+              </View>
+              <TouchableOpacity
+                style={styles.iconBtn}
+                onPress={() => { toggleFavorite(contentId || String(title)); SafeHaptics.impactLight(); }}
+              >
+                <Ionicons
+                  name={isFavorite(contentId || String(title)) ? "heart" : "heart-outline"}
+                  size={22}
+                  color={isFavorite(contentId || String(title)) ? COLORS.live : "#fff"}
+                />
+              </TouchableOpacity>
+              {!!streamUrl && (
+                <TouchableOpacity style={styles.iconBtn} onPress={handleOpenInVlc}>
+                  <Ionicons name="open-outline" size={20} color="#fff" />
+                </TouchableOpacity>
               )}
-            </View>
-            <TouchableOpacity
-              style={styles.iconBtn}
-              onPress={() => { toggleFavorite(contentId || String(title)); SafeHaptics.impactLight(); }}
-            >
-              <Ionicons
-                name={isFavorite(contentId || String(title)) ? "heart" : "heart-outline"}
-                size={22}
-                color={isFavorite(contentId || String(title)) ? COLORS.live : "#fff"}
-              />
-            </TouchableOpacity>
-            {!!streamUrl && (
-              <TouchableOpacity style={styles.iconBtn} onPress={handleOpenInVlc}>
-                <Ionicons name="open-outline" size={20} color="#fff" />
-              </TouchableOpacity>
-            )}
-            {(!!streamUrl || !!embedUrl) && (
-              <TouchableOpacity style={styles.iconBtn} onPress={handleShare}>
-                <Ionicons name="download-outline" size={20} color="#fff" />
-              </TouchableOpacity>
-            )}
-          </View>
-        </LinearGradient>
-
-        {/* HLS center controls: skip-back | play-pause | skip-forward */}
-        {hlsHtml && Platform.OS !== "web" && (
-          <View style={styles.hlsCenterRow}>
-            <TouchableOpacity style={styles.hlsSkipBtn} onPress={() => hlsSeekRelative(-15)}>
-              <Ionicons name="play-back" size={26} color="#fff" />
-              <Text style={styles.hlsSkipLabel}>15</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity style={styles.hlsPlayBtn} onPress={hlsTogglePlay}>
-              <Ionicons name={hlsPaused ? "play" : "pause"} size={46} color="#fff" />
-            </TouchableOpacity>
-
-            <TouchableOpacity style={styles.hlsSkipBtn} onPress={() => hlsSeekRelative(15)}>
-              <Ionicons name="play-forward" size={26} color="#fff" />
-              <Text style={styles.hlsSkipLabel}>15</Text>
-            </TouchableOpacity>
-          </View>
-        )}
-        {/* HLS bottom: seek bar + time */}
-        {hlsHtml && Platform.OS !== "web" && (
-          <LinearGradient colors={["transparent", "rgba(0,0,0,0.8)"]} style={styles.bottomGrad}>
-            <View style={[styles.hlsBottomBar, { paddingBottom: insets.bottom + 16 }]}>
-              {hlsIsLive ? (
-                <View style={styles.livePill}>
-                  <Text style={styles.livePillText}>● LIVE</Text>
-                </View>
-              ) : (
-                <>
-                  <Text style={styles.hlsTime}>{formatTime(hlsCurrentTime)}</Text>
-
-                  <TouchableOpacity
-                    style={styles.hlsSeekOuter}
-                    onLayout={e => setSeekBarWidth(Math.max(1, e.nativeEvent.layout.width))}
-                    onPress={e => {
-                      const pct = e.nativeEvent.locationX / seekBarWidth;
-                      hlsSeekTo(pct * hlsDuration);
-                    }}
-                    activeOpacity={1}
-                  >
-                    <View style={styles.hlsSeekTrack}>
-                      <View style={[styles.hlsSeekFill, { width: `${Math.round(seekProgress * 100)}%` as any }]} />
-                    </View>
-                    <View style={[styles.hlsSeekThumb, { left: `${Math.round(seekProgress * 100)}%` as any }]} />
-                  </TouchableOpacity>
-
-                  <Text style={styles.hlsTime}>{formatTime(hlsDuration)}</Text>
-                </>
+              {(!!streamUrl || !!embedUrl) && (
+                <TouchableOpacity style={styles.iconBtn} onPress={handleShare}>
+                  <Ionicons name="download-outline" size={20} color="#fff" />
+                </TouchableOpacity>
               )}
             </View>
           </LinearGradient>
-        )}
 
-        {/* Embed bottom bar: reload button */}
-        {!hlsHtml && (tmdbId || trailerKey) && (!streamUrl || useFallbackEmbed) && !allProvidersFailed && (
-          <LinearGradient colors={["transparent", "rgba(0,0,0,0.7)"]} style={styles.bottomGrad}>
-            <View style={[styles.bottomBar, { paddingBottom: Platform.OS === "web" ? 34 : insets.bottom + 16 }]}>
+          {/* HLS center controls: skip-back | play-pause | skip-forward */}
+          {Platform.OS !== "web" && (
+            <View style={styles.hlsCenterRow}>
+              <TouchableOpacity style={styles.hlsSkipBtn} onPress={() => hlsSeekRelative(-15)}>
+                <Ionicons name="play-back" size={26} color="#fff" />
+                <Text style={styles.hlsSkipLabel}>15</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity style={styles.hlsPlayBtn} onPress={hlsTogglePlay}>
+                <Ionicons name={hlsPaused ? "play" : "pause"} size={46} color="#fff" />
+              </TouchableOpacity>
+
+              <TouchableOpacity style={styles.hlsSkipBtn} onPress={() => hlsSeekRelative(15)}>
+                <Ionicons name="play-forward" size={26} color="#fff" />
+                <Text style={styles.hlsSkipLabel}>15</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+
+          {/* HLS bottom: seek bar + time */}
+          {Platform.OS !== "web" && (
+            <LinearGradient colors={["transparent", "rgba(0,0,0,0.8)"]} style={styles.bottomGrad}>
+              <View style={[styles.hlsBottomBar, { paddingBottom: insets.bottom + 16 }]}>
+                {hlsIsLive ? (
+                  <View style={styles.livePill}>
+                    <Text style={styles.livePillText}>● LIVE</Text>
+                  </View>
+                ) : (
+                  <>
+                    <Text style={styles.hlsTime}>{formatTime(hlsCurrentTime)}</Text>
+
+                    <TouchableOpacity
+                      style={styles.hlsSeekOuter}
+                      onLayout={e => setSeekBarWidth(Math.max(1, e.nativeEvent.layout.width))}
+                      onPress={e => {
+                        const pct = e.nativeEvent.locationX / seekBarWidth;
+                        hlsSeekTo(pct * hlsDuration);
+                      }}
+                      activeOpacity={1}
+                    >
+                      <View style={styles.hlsSeekTrack}>
+                        <View style={[styles.hlsSeekFill, { width: `${Math.round(seekProgress * 100)}%` as any }]} />
+                      </View>
+                      <View style={[styles.hlsSeekThumb, { left: `${Math.round(seekProgress * 100)}%` as any }]} />
+                    </TouchableOpacity>
+
+                    <Text style={styles.hlsTime}>{formatTime(hlsDuration)}</Text>
+                  </>
+                )}
+              </View>
+            </LinearGradient>
+          )}
+        </Animated.View>
+      ) : (embedUrl && Platform.OS !== "web") ? (
+        /* ─── Embed mode: static minimal overlay — no RN controls, embed player handles its own UI ─── */
+        <View style={styles.embedMinimalOverlay} pointerEvents="box-none">
+          <View style={[styles.embedMinimalBar, { paddingTop: insets.top + 6 }]}>
+            <TouchableOpacity
+              style={styles.embedBackBtn}
+              onPress={() => { SafeHaptics.impactLight(); router.back(); }}
+            >
+              <Ionicons name="chevron-down" size={24} color="#fff" />
+            </TouchableOpacity>
+            {!allProvidersFailed && (
               <TouchableOpacity
-                style={styles.reloadBtn}
+                style={styles.embedServerBtn}
                 onPress={() => { tryNextProvider(); SafeHaptics.impactLight(); }}
               >
-                <Ionicons name="refresh" size={20} color="#fff" />
+                <Ionicons name="refresh" size={18} color="#fff" />
               </TouchableOpacity>
-            </View>
-          </LinearGradient>
-        )}
-      </Animated.View>
+            )}
+          </View>
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -1285,6 +1289,40 @@ const styles = StyleSheet.create({
   },
   tapStripTop:    { position: "absolute", top: 0,    left: 0, right: 0, height: 90, zIndex: 5 },
   tapStripBottom: { position: "absolute", bottom: 0, left: 0, right: 0, height: 90, zIndex: 5 },
+
+  // Embed mode minimal overlay (static, no animation)
+  embedMinimalOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 10,
+    justifyContent: "flex-start",
+  },
+  embedMinimalBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 12,
+    paddingBottom: 8,
+  },
+  embedBackBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: "rgba(0,0,0,0.55)",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.18)",
+  },
+  embedServerBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: "rgba(0,0,0,0.45)",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.14)",
+  },
 
   // Controls overlay
   overlay:  { ...StyleSheet.absoluteFillObject, justifyContent: "space-between", zIndex: 10 },
