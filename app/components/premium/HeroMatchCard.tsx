@@ -8,13 +8,12 @@
  * - Gradient background with overlay for depth
  */
 
-import React, { useRef, useCallback, memo } from 'react';
+import React, { memo } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   TouchableOpacity,
-  Animated,
   Dimensions,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -59,13 +58,6 @@ const HeroMatchCardInner = ({
   onStatsPress,
   onLineupsPress,
 }: HeroMatchCardProps) => {
-  const scale = useRef(new Animated.Value(1)).current;
-
-  const onPressIn  = useCallback(() =>
-    Animated.spring(scale, { toValue: 0.975, useNativeDriver: true, damping: 18 }).start(), [scale]);
-  const onPressOut = useCallback(() =>
-    Animated.spring(scale, { toValue: 1.0,   useNativeDriver: true, damping: 14 }).start(), [scale]);
-
   const live     = match.status === 'live';
   const finished = match.status === 'finished';
   const upcoming = match.status === 'upcoming';
@@ -78,8 +70,8 @@ const HeroMatchCardInner = ({
   const awayWin = !upcoming && (match.awayScore > match.homeScore);
 
   return (
-    <Animated.View style={[s.wrap, { transform: [{ scale }] }]}>
-      <TouchableOpacity activeOpacity={1} onPress={onPress} onPressIn={onPressIn} onPressOut={onPressOut}>
+    <View style={s.wrap}>
+      <TouchableOpacity activeOpacity={0.88} onPress={onPress}>
         <View style={s.card}>
 
           {/* Background gradient */}
@@ -224,7 +216,7 @@ const HeroMatchCardInner = ({
 
         </View>
       </TouchableOpacity>
-    </Animated.View>
+    </View>
   );
 };
 

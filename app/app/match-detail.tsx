@@ -33,8 +33,8 @@ const BLOCK_POPUP_JS = `
 
 const TABS = [
   { id: "stream",   label: "Stream",      icon: "play-circle-outline" },
-  { id: "stats",    label: "Matchen",     icon: "bar-chart-outline" },
-  { id: "lineups",  label: "Opstelling",  icon: "people-outline" },
+  { id: "stats",    label: "Stats",       icon: "bar-chart-outline" },
+  { id: "lineups",  label: "Matchen",     icon: "people-outline" },
   { id: "ai",       label: "Analyse",     icon: "analytics-outline" },
 ] as const;
 
@@ -447,10 +447,6 @@ export default function MatchDetailScreen() {
                 />
               </View>
               <View style={styles.serverSection}>
-                <Text style={styles.serverLabel}>AUTOMATISCH BESTE STREAM</Text>
-                <Text style={styles.serverSubLabel}>
-                  {streamLoading ? "Beste bron zoeken..." : "Link automatisch gekozen en gestart"}
-                </Text>
                 {hasStreamApiIssue ? (
                   <View style={styles.streamErrorCard}>
                     <MaterialCommunityIcons name="wifi-alert" size={14} color={COLORS.live} />
@@ -468,7 +464,7 @@ export default function MatchDetailScreen() {
                 ) : null}
                 <TouchableOpacity style={styles.serverBtn} onPress={handleRetryAutoStream}>
                   <Ionicons name="refresh-outline" size={12} color={COLORS.accent} />
-                  <Text style={styles.serverBtnText}>Nieuwe beste link zoeken</Text>
+                  <Text style={styles.serverBtnText}>Andere stream laden</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={styles.serverBtn}
@@ -480,21 +476,21 @@ export default function MatchDetailScreen() {
                   <Ionicons name="open-outline" size={12} color={COLORS.accent} />
                   <Text style={styles.serverBtnText}>Open in VLC</Text>
                 </TouchableOpacity>
-                <View style={styles.watchSection}>
-                  <Text style={styles.serverLabel}>OFFICIËLE KIJKOPTIES</Text>
-                  {watchOptions.length > 0 ? watchOptions.map((opt: any, idx: number) => (
-                    <TouchableOpacity
-                      key={`watch_${idx}_${opt?.name || ""}`}
-                      style={styles.serverBtn}
-                      onPress={() => handleOpenWatchUrl(String(opt?.url || ""))}
-                    >
-                      <Ionicons name="tv-outline" size={12} color={COLORS.accent} />
-                      <Text style={styles.serverBtnText}>{String(opt?.name || "Kanaal")}</Text>
-                    </TouchableOpacity>
-                  )) : (
-                    <Text style={styles.serverSubLabel}>Nog geen officiële broadcaster info voor deze match.</Text>
-                  )}
-                </View>
+                {watchOptions.length > 0 && (
+                  <View style={styles.watchSection}>
+                    <Text style={styles.serverLabel}>OFFICIËLE KIJKOPTIES</Text>
+                    {watchOptions.map((opt: any, idx: number) => (
+                      <TouchableOpacity
+                        key={`watch_${idx}_${opt?.name || ""}`}
+                        style={styles.serverBtn}
+                        onPress={() => handleOpenWatchUrl(String(opt?.url || ""))}
+                      >
+                        <Ionicons name="tv-outline" size={12} color={COLORS.accent} />
+                        <Text style={styles.serverBtnText}>{String(opt?.name || "Kanaal")}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                )}
               </View>
             </>
           ) : (

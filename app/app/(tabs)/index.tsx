@@ -512,8 +512,8 @@ function LiveNowCard({ match, onPress }: { match: any; onPress: () => void }) {
             <Text style={liveCardStyles.score}>{homeScore} - {awayScore}</Text>
           </View>
           <View style={liveCardStyles.teamBlock}>
-            <TeamLogo uri={match?.awayTeamLogo} teamName={match?.awayTeam || ""} size={44} />
             <Text style={liveCardStyles.teamName} numberOfLines={1}>{match?.awayTeam || "Uit"}</Text>
+            <TeamLogo uri={match?.awayTeamLogo} teamName={match?.awayTeam || ""} size={44} />
           </View>
         </View>
         {/* Stadium */}
@@ -601,8 +601,8 @@ function TodayMatchCard({ match, onPress }: { match: any; onPress: () => void })
             )}
           </View>
           <View style={todayCardStyles.teamBlock}>
-            <TeamLogo uri={match?.awayTeamLogo} teamName={match?.awayTeam || ""} size={36} />
             <Text style={todayCardStyles.teamName} numberOfLines={1}>{match?.awayTeam || "Uit"}</Text>
+            <TeamLogo uri={match?.awayTeamLogo} teamName={match?.awayTeam || ""} size={36} />
           </View>
         </View>
       </View>

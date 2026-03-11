@@ -8,13 +8,12 @@
  * - Dark navy design system (#070B1A / #11162A / #FF2D55)
  */
 
-import React, { useRef, useCallback, memo } from 'react';
+import React, { memo } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   TouchableOpacity,
-  Animated,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS }  from '@/constants/colors';
@@ -48,20 +47,11 @@ export interface MatchRowCardProps {
 
 const LOGO_SIZE = 36;
 
-// Animated live dot
+// Static live dot (no animation — removeChild proof)
 const LivePulse = memo(function LivePulse() {
-  const pulse = useRef(new Animated.Value(1)).current;
-  React.useEffect(() => {
-    Animated.loop(
-      Animated.sequence([
-        Animated.timing(pulse, { toValue: 1.6, duration: 900, useNativeDriver: true }),
-        Animated.timing(pulse, { toValue: 1.0, duration: 900, useNativeDriver: true }),
-      ])
-    ).start();
-  }, [pulse]);
   return (
     <View style={s.pulseWrap}>
-      <Animated.View style={[s.pulseRing, { transform: [{ scale: pulse }] }]} />
+      <View style={s.pulseRing} />
       <View style={s.pulseDot} />
     </View>
   );
@@ -89,13 +79,6 @@ function MatchRowCardInner({
   onStatsPress,
   onLineupsPress,
 }: MatchRowCardProps) {
-  const scale = useRef(new Animated.Value(1)).current;
-
-  const onPressIn  = useCallback(() =>
-    Animated.spring(scale, { toValue: 0.975, useNativeDriver: true, damping: 18 }).start(), [scale]);
-  const onPressOut = useCallback(() =>
-    Animated.spring(scale, { toValue: 1.0,   useNativeDriver: true, damping: 14 }).start(), [scale]);
-
   const live     = match.status === 'live';
   const finished = match.status === 'finished';
   const upcoming = match.status === 'upcoming';
@@ -111,8 +94,8 @@ function MatchRowCardInner({
     : match.startTime ?? '';
 
   return (
-    <Animated.View style={[s.wrap, { transform: [{ scale }] }]}>
-      <TouchableOpacity activeOpacity={1} onPress={onPress} onPressIn={onPressIn} onPressOut={onPressOut}>
+    <View style={s.wrap}>
+      <TouchableOpacity activeOpacity={0.88} onPress={onPress}>
         <View style={[s.card, live && s.cardLive]}>
 
           {/* Top accent line */}
@@ -221,7 +204,7 @@ function MatchRowCardInner({
 
         </View>
       </TouchableOpacity>
-    </Animated.View>
+    </View>
   );
 }
 
