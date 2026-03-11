@@ -32,14 +32,13 @@ const BLOCK_POPUP_JS = `
 `;
 
 const TABS = [
-  { id: "stream",   label: "Stream",   icon: "play-circle-outline" },
-  { id: "stats",    label: "Stats",    icon: "bar-chart-outline" },
-  { id: "lineups",  label: "Matchen",  icon: "people-outline" },
-  { id: "timeline", label: "Timeline", icon: "time-outline" },
-  { id: "ai",       label: "Analysis", icon: "analytics-outline" },
+  { id: "stream",   label: "Stream",      icon: "play-circle-outline" },
+  { id: "stats",    label: "Matchen",     icon: "bar-chart-outline" },
+  { id: "lineups",  label: "Opstelling",  icon: "people-outline" },
+  { id: "ai",       label: "Analyse",     icon: "analytics-outline" },
 ] as const;
 
-type TabId = "stream" | "stats" | "lineups" | "timeline" | "ai";
+type TabId = "stream" | "stats" | "lineups" | "ai";
 
 function buildFormationRows(players: any[], formationRaw?: string) {
   const starters = (Array.isArray(players) ? players : [])
@@ -105,6 +104,8 @@ export default function MatchDetailScreen() {
   const [streamWebError, setStreamWebError] = useState<unknown>(null);
   const [streamErrorRef, setStreamErrorRef] = useState<string>("");
   const isLive = params.status === "live";
+  const isFinished = params.status === "finished" || params.status === "ft" || params.status === "done";
+  const hasScore = isLive || isFinished || (Number(params.homeScore ?? -1) >= 0 && Number(params.awayScore ?? -1) >= 0 && (Number(params.homeScore) > 0 || Number(params.awayScore) > 0));
   const {
     data: streamData,
     isLoading: streamLoading,
@@ -357,6 +358,11 @@ export default function MatchDetailScreen() {
                   <Text style={styles.score}>{liveHomeScore} - {liveAwayScore}</Text>
                   <LiveBadge minute={liveMinute} small />
                 </>
+              ) : isFinished ? (
+                <>
+                  <Text style={styles.score}>{liveHomeScore} - {liveAwayScore}</Text>
+                  <Text style={styles.finishedLabel}>FT</Text>
+                </>
               ) : (
                 <>
                   <Text style={styles.vsText}>VS</Text>
@@ -580,6 +586,27 @@ export default function MatchDetailScreen() {
             <LoadingState />
           ) : matchDetail?.starters?.length > 0 ? (
             <>
+              {/* Combined team header: [Logo] [Naam] | [Naam] [Logo] */}
+              {matchDetail.starters.length >= 2 && (
+                <View style={styles.lineupTeamHeader}>
+                  <View style={styles.lineupTeamSide}>
+                    <TeamLogo uri={matchDetail?.homeTeamLogo || params.homeTeamLogo} teamName={matchDetail.starters[0]?.team} size={36} />
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.lineupTeamName} numberOfLines={1}>{matchDetail.starters[0]?.team}</Text>
+                      {matchDetail.starters[0]?.formation ? <Text style={styles.lineupFormation}>{matchDetail.starters[0].formation}</Text> : null}
+                    </View>
+                  </View>
+                  <View style={styles.lineupTeamDivider}><Text style={styles.lineupVsSmall}>VS</Text></View>
+                  <View style={[styles.lineupTeamSide, { flexDirection: "row-reverse" }]}>
+                    <TeamLogo uri={matchDetail?.awayTeamLogo || params.awayTeamLogo} teamName={matchDetail.starters[1]?.team} size={36} />
+                    <View style={{ flex: 1, alignItems: "flex-end" }}>
+                      <Text style={styles.lineupTeamName} numberOfLines={1}>{matchDetail.starters[1]?.team}</Text>
+                      {matchDetail.starters[1]?.formation ? <Text style={styles.lineupFormation}>{matchDetail.starters[1].formation}</Text> : null}
+                    </View>
+                  </View>
+                </View>
+              )}
+
               {lineupView === "pitch" && matchDetail.starters.length >= 2 ? (
                 <CombinedPitchView
                   homeTeamData={matchDetail.starters[0]}
@@ -589,7 +616,7 @@ export default function MatchDetailScreen() {
                 matchDetail.starters.map((team: any, ti: number) => (
                   <View key={ti} style={styles.lineupTeamSection}>
                     <View style={styles.lineupHeaderRow}>
-                      <Text style={styles.sectionLabel}>{team.team?.toUpperCase()} — OPSTELLING {team.formation ? `(${team.formation})` : ""}</Text>
+                      <Text style={styles.sectionLabel}>{team.team?.toUpperCase()}</Text>
                       <View style={styles.lineupTypeBadge}>
                         <Text style={styles.lineupTypeText}>{team.lineupType === "official" ? "OFFICIEEL" : "VERWACHT"}</Text>
                       </View>
@@ -714,45 +741,6 @@ export default function MatchDetailScreen() {
           )}
         </ScrollView>
 
-      {/* Timeline Tab — always mounted, hidden when not active */}
-      <ScrollView style={[styles.tabContent, activeTab !== "timeline" ? { display: "none" } : null]} contentContainerStyle={styles.tabContentInner} showsVerticalScrollIndicator={false}>
-          {detailLoading ? (
-            <LoadingState />
-          ) : matchDetail?.keyEvents?.length > 0 ? (
-            <>
-              <Text style={styles.sectionLabel}>WEDSTRIJD TIJDLIJN</Text>
-              <View style={styles.timelineCard}>
-                {matchDetail.keyEvents.map((ev: any, i: number) => {
-                  const typeStr = String(ev?.type || "").toLowerCase();
-                  const isGoal = typeStr.includes("goal");
-                  const isRed = typeStr.includes("red");
-                  const isYellow = typeStr.includes("yellow") || typeStr.includes("card");
-                  const isSub = typeStr.includes("sub") || typeStr.includes("wissel");
-                  const dotColor = isGoal ? COLORS.accent : isRed ? COLORS.live : isYellow ? "#FFD700" : isSub ? "#5D60E8" : COLORS.textMuted;
-                  const isLast = i === matchDetail.keyEvents.length - 1;
-                  return (
-                    <View key={i} style={styles.timelineItem}>
-                      {!isLast && <View style={styles.timelineConnector} />}
-                      <View style={[styles.timelineDot, { backgroundColor: dotColor }]}>
-                        <Ionicons name={eventIconByType(ev?.type)} size={12} color="#fff" />
-                      </View>
-                      <View style={styles.timelineContent}>
-                        <Text style={[styles.timelineMinuteLabel, { color: dotColor }]}>
-                          {ev?.time != null ? `${ev.time}'` : "—"}
-                        </Text>
-                        <Text style={styles.timelineEventText} numberOfLines={3}>
-                          {ev?.text || ev?.detail || ev?.type || "Event"}
-                        </Text>
-                      </View>
-                    </View>
-                  );
-                })}
-              </View>
-            </>
-          ) : (
-            <EmptyState icon="time-outline" text="Nog geen events beschikbaar" />
-          )}
-        </ScrollView>
     </View>
   );
 }
@@ -1461,6 +1449,14 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: `${COLORS.accent}44`,
   },
+  finishedLabel: {
+    fontFamily: "Inter_700Bold",
+    fontSize: 11,
+    color: COLORS.textMuted,
+    letterSpacing: 1.5,
+    textTransform: "uppercase",
+    marginTop: 2,
+  },
   venueRow: { flexDirection: "row", alignItems: "center", gap: 4, marginTop: 2 },
   venueText: { fontFamily: "Inter_400Regular", fontSize: 11, color: COLORS.textMuted },
   tabBarScroll: {
@@ -1653,6 +1649,44 @@ const styles = StyleSheet.create({
     borderColor: "rgba(229,9,20,0.3)",
   },
   eventText: { fontFamily: "Inter_500Medium", fontSize: 13, color: COLORS.text, flex: 1, lineHeight: 19 },
+  lineupTeamHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: COLORS.card,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.08)",
+    padding: 12,
+    marginBottom: 14,
+    gap: 8,
+  },
+  lineupTeamSide: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  lineupTeamName: {
+    fontFamily: "Inter_700Bold",
+    fontSize: 13,
+    color: COLORS.text,
+  },
+  lineupFormation: {
+    fontFamily: "Inter_500Medium",
+    fontSize: 10,
+    color: COLORS.accent,
+    marginTop: 1,
+  },
+  lineupTeamDivider: {
+    width: 28,
+    alignItems: "center",
+  },
+  lineupVsSmall: {
+    fontFamily: "Inter_800ExtraBold",
+    fontSize: 11,
+    color: COLORS.textMuted,
+    letterSpacing: 1,
+  },
   lineupTeamSection: { marginBottom: 22 },
   lineupViewToggleRow: { flexDirection: "row", gap: 8, marginBottom: 14 },
   lineupViewBtn: {

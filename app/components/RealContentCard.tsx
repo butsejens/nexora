@@ -1,10 +1,9 @@
-import React, { useRef, useState } from "react";
+import React, { useState } from "react";
 import {
   View,
   Text,
   StyleSheet,
   TouchableOpacity,
-  Animated,
   Image,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
@@ -48,35 +47,17 @@ interface Props {
 }
 
 export const RealContentCard = React.memo(function RealContentCard({ item, onPress, onFavorite, isFavorite, width = 130 }: Props) {
-  const scaleAnim = useRef(new Animated.Value(1)).current;
-  const navigating = useRef(false);
   const [imageError, setImageError] = useState(false);
   const height = Math.round(width * 1.56);
 
-  const handlePressIn = () => {
-    navigating.current = false;
-    Animated.spring(scaleAnim, { toValue: 0.95, useNativeDriver: true, speed: 30 }).start();
-  };
-  const handlePressOut = () => {
-    if (navigating.current) return;
-    Animated.spring(scaleAnim, { toValue: 1, useNativeDriver: true, speed: 20 }).start();
-  };
-
   return (
-    <Animated.View
-      style={[{ width, marginRight: 14 }, { transform: [{ scale: scaleAnim }] }]}
-    >
+    <View style={{ width, marginRight: 14 }}>
       <TouchableOpacity
         onPress={() => {
-          navigating.current = true;
-          scaleAnim.stopAnimation();
-          scaleAnim.setValue(1);
           SafeHaptics.impactLight();
           onPress();
         }}
-        onPressIn={handlePressIn}
-        onPressOut={handlePressOut}
-        activeOpacity={1}
+        activeOpacity={0.78}
       >
         <View style={[styles.poster, { width, height }]}>
           {item.poster && !imageError ? (
@@ -157,40 +138,20 @@ export const RealContentCard = React.memo(function RealContentCard({ item, onPre
           <Ionicons name="star" size={9} color={COLORS.gold} />
         </View>
       </TouchableOpacity>
-    </Animated.View>
+    </View>
   );
 });
 
 export const RealHeroBanner = React.memo(function RealHeroBanner({ item, onPlay, onInfo }: { item: ContentItem; onPlay: () => void; onInfo?: () => void }) {
-  const scaleAnim = useRef(new Animated.Value(1)).current;
-  const navigating = useRef(false);
   const [imageError, setImageError] = useState(false);
-
-  const handlePressIn = () => {
-    navigating.current = false;
-    Animated.spring(scaleAnim, { toValue: 0.98, useNativeDriver: true, speed: 20 }).start();
-  };
-  const handlePressOut = () => {
-    if (navigating.current) return;
-    Animated.spring(scaleAnim, { toValue: 1, useNativeDriver: true, speed: 15 }).start();
-  };
-
-  const handlePlay = () => {
-    navigating.current = true;
-    scaleAnim.stopAnimation();
-    scaleAnim.setValue(1);
-    onPlay();
-  };
 
   const backdropUri = item.backdrop || item.poster;
 
   return (
-    <Animated.View style={[styles.heroBannerWrapper, { transform: [{ scale: scaleAnim }] }]}>
+    <View style={styles.heroBannerWrapper}>
       <TouchableOpacity
-        onPressIn={handlePressIn}
-        onPressOut={handlePressOut}
-        onPress={handlePlay}
-        activeOpacity={1}
+        onPress={onPlay}
+        activeOpacity={0.88}
       >
         <View style={styles.heroBanner}>
           {backdropUri && !imageError ? (
@@ -246,7 +207,7 @@ export const RealHeroBanner = React.memo(function RealHeroBanner({ item, onPlay,
             </View>
 
             <View style={styles.heroActions}>
-              <TouchableOpacity style={styles.playButton} onPress={handlePlay} activeOpacity={0.85}>
+              <TouchableOpacity style={styles.playButton} onPress={onPlay} activeOpacity={0.85}>
                 <Ionicons name="play" size={18} color={COLORS.background} />
                 <Text style={styles.playText}>Play</Text>
               </TouchableOpacity>
@@ -260,7 +221,7 @@ export const RealHeroBanner = React.memo(function RealHeroBanner({ item, onPlay,
           </View>
         </View>
       </TouchableOpacity>
-    </Animated.View>
+    </View>
   );
 });
 

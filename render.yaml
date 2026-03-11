@@ -5,7 +5,7 @@ services:
     rootDir: server
     plan: free
     autoDeploy: true
-    buildCommand: npm install && mkdir -p public/downloads && curl -fL "https://github.com/butsejens/nexora/releases/download/v2.3.7/app-release.apk" -o public/downloads/nexora.apk --max-time 180 --retry 2
+    buildCommand: npm install && mkdir -p public/downloads && curl -fL "https://github.com/butsejens/nexora/releases/download/v2.3.8/app-release.apk" -o public/downloads/nexora.apk --max-time 180 --retry 2
     startCommand: npm start
     envVars:
       - key: NODE_VERSION
