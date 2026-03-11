@@ -424,7 +424,7 @@ function CompMatchRow({ match, league, espnLeague }: { match: any; league: strin
             {match.homeTeam}
           </Text>
         </View>
-        <View style={styles.matchTeamRow}>
+        <View style={[styles.matchTeamRow, { flexDirection: "row-reverse" }]}>
           {awayLogoUri ? (
             <Image
               source={typeof awayLogoUri === "number" ? awayLogoUri : { uri: awayLogoUri as string }}
@@ -436,7 +436,7 @@ function CompMatchRow({ match, league, espnLeague }: { match: any; league: strin
               <Ionicons name="shield" size={10} color={COLORS.textMuted} />
             </View>
           )}
-          <Text style={[styles.matchTeamName, isFinished && match.awayScore > match.homeScore && styles.winnerName]} numberOfLines={1}>
+          <Text style={[styles.matchTeamName, { textAlign: "right" }, isFinished && match.awayScore > match.homeScore && styles.winnerName]} numberOfLines={1}>
             {match.awayTeam}
           </Text>
         </View>
