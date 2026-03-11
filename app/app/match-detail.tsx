@@ -34,7 +34,7 @@ const BLOCK_POPUP_JS = `
 const TABS = [
   { id: "stream",   label: "Stream",      icon: "play-circle-outline" },
   { id: "stats",    label: "Stats",       icon: "bar-chart-outline" },
-  { id: "lineups",  label: "Matchen",     icon: "people-outline" },
+  { id: "lineups",  label: "Lineups",     icon: "people-outline" },
   { id: "ai",       label: "Analyse",     icon: "analytics-outline" },
 ] as const;
 
@@ -434,9 +434,11 @@ export default function MatchDetailScreen() {
                   injectedJavaScript={BLOCK_POPUP_JS}
                   onShouldStartLoadWithRequest={(req) => {
                     const url = (req.url || "").toLowerCase();
-                    if (url.includes("google.com") && (url.includes("consent") || url.includes("interstitial") || url.includes("sorry"))) return false;
-                    if (url.includes("accounts.google.com")) return false;
-                    if (url.includes("googleads.") || url.includes("googlesyndication.")) return false;
+                    // Block alle Google-pagina's (zoekresultaten, consent, redirect, etc.)
+                    if (url.includes("google.") || url.includes("bing.com") || url.includes("yahoo.com")) return false;
+                    if (url.includes("doubleclick.") || url.includes("googleads.") || url.includes("googlesyndication.")) return false;
+                    // Alleen http(s) toestaan
+                    if (!url.startsWith("http://") && !url.startsWith("https://")) return false;
                     return true;
                   }}
                   onError={(event) => {
@@ -806,23 +808,43 @@ function eventIconByType(typeRaw: string) {
 function StatsBars({ homeTeam, awayTeam, homeStats, awayStats }: any) {
   const STAT_LABELS: Record<string, string> = {
     ball_possession: "Balbezit %",
+    possession: "Balbezit %",
     total_shots: "Schoten",
+    shots: "Schoten",
     shots_on_goal: "Op doel",
+    shots_on_target: "Op doel",
     shots_off_goal: "Naast doel",
     blocked_shots: "Geblokkeerd",
     total_passes: "Passes",
+    pass_accuracy: "Pasnauwkeurigheid %",
     fouls: "Overtredingen",
     yellow_cards: "Gele kaarten",
     red_cards: "Rode kaarten",
     corner_kicks: "Hoekschoppen",
+    corners: "Hoekschoppen",
     offsides: "Buitenspel",
     goalkeeper_saves: "Reddingen",
+    saves: "Reddingen",
+    expected_goals: "Verwachte goals (xG)",
+    xg: "Verwachte goals (xG)",
+    total_tackles: "Tackles",
+    clearances: "Afhoudingen",
+    big_chances: "Grote kansen",
   };
 
-  const hasStatValue = (obj: any, key: string) => obj && obj[key] != null && String(obj[key]).trim() !== "";
-  const statsToShow = Object.keys(STAT_LABELS).filter((k) => hasStatValue(homeStats, k) || hasStatValue(awayStats, k));
+  // Dedup: als twee keys dezelfde label hebben, toon er maar één
+  const seenLabels = new Set<string>();
+  const dedupedStats = Object.keys(STAT_LABELS).filter((k) => {
+    const label = STAT_LABELS[k];
+    const hasData = (homeStats?.[k] != null && String(homeStats[k]).trim() !== "") ||
+                    (awayStats?.[k] != null && String(awayStats[k]).trim() !== "");
+    if (!hasData) return false;
+    if (seenLabels.has(label)) return false;
+    seenLabels.add(label);
+    return true;
+  });
 
-  if (statsToShow.length === 0) {
+  if (dedupedStats.length === 0) {
     return (
       <View style={styles.infoCard}>
         <Text style={styles.noStatsText}>Live statistieken worden geladen tijdens de wedstrijd</Text>
@@ -836,16 +858,16 @@ function StatsBars({ homeTeam, awayTeam, homeStats, awayStats }: any) {
         <Text style={styles.statsTeamName} numberOfLines={1}>{homeTeam}</Text>
         <Text style={styles.statsTeamName} numberOfLines={1}>{awayTeam}</Text>
       </View>
-      {statsToShow.map(key => {
-        const rawH = String(homeStats[key] || "0");
-        const rawA = String(awayStats[key] || "0");
+      {dedupedStats.map(key => {
+        const rawH = String(homeStats?.[key] ?? "0");
+        const rawA = String(awayStats?.[key] ?? "0");
         const hVal = parseFloat(rawH.replace("%", "")) || 0;
         const aVal = parseFloat(rawA.replace("%", "")) || 0;
         const total = hVal + aVal || 1;
         const hPct = (hVal / total) * 100;
         return (
           <View key={key} style={styles.statRow}>
-            <Text style={styles.statVal}>{homeStats[key] || "0"}</Text>
+            <Text style={styles.statVal}>{homeStats?.[key] ?? "0"}</Text>
             <View style={styles.statBarContainer}>
               <Text style={styles.statName}>{STAT_LABELS[key]}</Text>
               <View style={styles.statBar}>
@@ -853,7 +875,7 @@ function StatsBars({ homeTeam, awayTeam, homeStats, awayStats }: any) {
                 <View style={[styles.statBarAway, { flex: 100 - hPct }]} />
               </View>
             </View>
-            <Text style={styles.statVal}>{awayStats[key] || "0"}</Text>
+            <Text style={styles.statVal}>{awayStats?.[key] ?? "0"}</Text>
           </View>
         );
       })}
