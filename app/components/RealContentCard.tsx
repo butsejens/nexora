@@ -49,13 +49,16 @@ interface Props {
 
 export const RealContentCard = React.memo(function RealContentCard({ item, onPress, onFavorite, isFavorite, width = 130 }: Props) {
   const scaleAnim = useRef(new Animated.Value(1)).current;
+  const navigating = useRef(false);
   const [imageError, setImageError] = useState(false);
   const height = Math.round(width * 1.56);
 
   const handlePressIn = () => {
+    navigating.current = false;
     Animated.spring(scaleAnim, { toValue: 0.95, useNativeDriver: true, speed: 30 }).start();
   };
   const handlePressOut = () => {
+    if (navigating.current) return;
     Animated.spring(scaleAnim, { toValue: 1, useNativeDriver: true, speed: 20 }).start();
   };
 
@@ -65,6 +68,7 @@ export const RealContentCard = React.memo(function RealContentCard({ item, onPre
     >
       <TouchableOpacity
         onPress={() => {
+          navigating.current = true;
           scaleAnim.stopAnimation();
           scaleAnim.setValue(1);
           SafeHaptics.impactLight();
@@ -159,13 +163,23 @@ export const RealContentCard = React.memo(function RealContentCard({ item, onPre
 
 export const RealHeroBanner = React.memo(function RealHeroBanner({ item, onPlay, onInfo }: { item: ContentItem; onPlay: () => void; onInfo?: () => void }) {
   const scaleAnim = useRef(new Animated.Value(1)).current;
+  const navigating = useRef(false);
   const [imageError, setImageError] = useState(false);
 
   const handlePressIn = () => {
+    navigating.current = false;
     Animated.spring(scaleAnim, { toValue: 0.98, useNativeDriver: true, speed: 20 }).start();
   };
   const handlePressOut = () => {
+    if (navigating.current) return;
     Animated.spring(scaleAnim, { toValue: 1, useNativeDriver: true, speed: 15 }).start();
+  };
+
+  const handlePlay = () => {
+    navigating.current = true;
+    scaleAnim.stopAnimation();
+    scaleAnim.setValue(1);
+    onPlay();
   };
 
   const backdropUri = item.backdrop || item.poster;
@@ -175,7 +189,7 @@ export const RealHeroBanner = React.memo(function RealHeroBanner({ item, onPlay,
       <TouchableOpacity
         onPressIn={handlePressIn}
         onPressOut={handlePressOut}
-        onPress={() => { scaleAnim.stopAnimation(); scaleAnim.setValue(1); onPlay(); }}
+        onPress={handlePlay}
         activeOpacity={1}
       >
         <View style={styles.heroBanner}>
@@ -232,7 +246,7 @@ export const RealHeroBanner = React.memo(function RealHeroBanner({ item, onPlay,
             </View>
 
             <View style={styles.heroActions}>
-              <TouchableOpacity style={styles.playButton} onPress={() => { scaleAnim.stopAnimation(); scaleAnim.setValue(1); onPlay(); }} activeOpacity={0.85}>
+              <TouchableOpacity style={styles.playButton} onPress={handlePlay} activeOpacity={0.85}>
                 <Ionicons name="play" size={18} color={COLORS.background} />
                 <Text style={styles.playText}>Play</Text>
               </TouchableOpacity>
