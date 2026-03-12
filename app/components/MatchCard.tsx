@@ -255,9 +255,6 @@ export const MatchCard = React.memo(function MatchCard({
 
           {/* Home team */}
           <View style={styles.teamSection}>
-            <View style={styles.teamLogoWrap}>
-              <TeamLogo uri={match.homeTeamLogo} teamName={match.homeTeam} size={52} />
-            </View>
             <Text
               style={styles.teamName}
               numberOfLines={1}
@@ -267,6 +264,9 @@ export const MatchCard = React.memo(function MatchCard({
             >
               {match.homeTeam}
             </Text>
+            <View style={styles.teamLogoWrap}>
+              <TeamLogo uri={match.homeTeamLogo} teamName={match.homeTeam} size={52} />
+            </View>
           </View>
 
           {/* Score / time center */}
@@ -296,9 +296,6 @@ export const MatchCard = React.memo(function MatchCard({
 
           {/* Away team */}
           <View style={styles.teamSection}>
-            <View style={styles.teamLogoWrap}>
-              <TeamLogo uri={match.awayTeamLogo} teamName={match.awayTeam} size={52} />
-            </View>
             <Text
               style={styles.teamName}
               numberOfLines={1}
@@ -308,6 +305,9 @@ export const MatchCard = React.memo(function MatchCard({
             >
               {match.awayTeam}
             </Text>
+            <View style={styles.teamLogoWrap}>
+              <TeamLogo uri={match.awayTeamLogo} teamName={match.awayTeam} size={52} />
+            </View>
           </View>
 
           {/* Live badge */}
@@ -472,14 +472,14 @@ export const UpcomingMatchRow = React.memo(function UpcomingMatchRow({
         <View style={styles.rowTeamsSection}>
           {/* Home */}
           <View style={styles.rowTeamBlock}>
+            <Text style={styles.rowTeamName} numberOfLines={2}>
+              {match.homeTeam}
+            </Text>
             <TeamLogo
               uri={match.homeTeamLogo}
               teamName={match.homeTeam}
               size={56}
             />
-            <Text style={styles.rowTeamName} numberOfLines={2}>
-              {match.homeTeam}
-            </Text>
           </View>
 
           {/* Center: score or VS */}
@@ -889,19 +889,18 @@ const styles = StyleSheet.create({
   },
   rowTeamBlock: {
     flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
+    flexDirection: "column",
+    alignItems: "flex-start",
+    gap: 8,
   },
   rowTeamBlockAway: {
-    justifyContent: "flex-end",
+    alignItems: "flex-end",
   },
   rowTeamName: {
     fontFamily: "Inter_700Bold",
     fontSize: 13,
     color: COLORS.text,
     lineHeight: 17,
-    flex: 1,
   },
   rowTeamNameAway: {
     textAlign: "right",

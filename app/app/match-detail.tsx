@@ -16,19 +16,47 @@ import { apiRequest } from "@/lib/query-client";
 import { openInVlc } from "@/lib/vlc";
 import { TeamLogo } from "@/components/MatchCard";
 import { buildErrorReference, normalizeApiError } from "@/lib/error-messages";
+import { SilentResetBoundary } from "@/components/SilentResetBoundary";
 
 const BLOCK_POPUP_JS = `
-  (function() {
-    try {
-      window.open = function() { return null; };
-      document.addEventListener('click', function(e) {
-        var a = e.target && e.target.closest ? e.target.closest('a[target="_blank"]') : null;
-        if (a) { e.preventDefault(); e.stopPropagation(); }
-      }, true);
-      window.addEventListener('beforeunload', function(e) { e.stopImmediatePropagation(); }, true);
-    } catch(err) {}
-  })();
-  true;
+(function(){
+  // Patch removeChild to never throw — prevents DOMException crashes
+  try{
+    var _origRc = Node.prototype.removeChild;
+    Node.prototype.removeChild = function(child){
+      try{ return _origRc.call(this, child); }catch(e){ return child; }
+    };
+  }catch(e){}
+
+  // Swallow removeChild / DOM hierarchy errors silently
+  var _isRcErr = function(msg){
+    var s = String(msg||'').toLowerCase();
+    return s.includes('removechild') || s.includes('notfounderror') || s.includes('not a child') || s.includes('hierarchyrequesterror');
+  };
+  window.onerror = function(message,source,lineno,colno,error){
+    var msg = error ? String(error.message||error.name||message||'') : String(message||'');
+    if(_isRcErr(msg)) return true;
+    return false;
+  };
+  window.addEventListener('error', function(ev){
+    try{
+      var msg = ev.error ? String(ev.error.message||ev.error.name||'') : String(ev.message||'');
+      if(_isRcErr(msg)){ ev.preventDefault(); ev.stopImmediatePropagation(); }
+    }catch(e){}
+  }, true);
+
+  // Block popups / navigation
+  window.open = function(){ return null; };
+  window.alert = function(){};
+  window.confirm = function(){ return true; };
+  window.prompt = function(){ return ''; };
+  document.addEventListener('click', function(e){
+    var a = e.target && e.target.closest ? e.target.closest('a[target="_blank"]') : null;
+    if(a){ e.preventDefault(); e.stopPropagation(); }
+  }, true);
+  window.addEventListener('beforeunload', function(e){ e.stopImmediatePropagation(); }, true);
+})();
+true;
 `;
 
 const TABS = [
@@ -383,12 +411,12 @@ export default function MatchDetailScreen() {
             <View style={styles.scoreCenter}>
               {isLive ? (
                 <>
-                  <Text style={styles.score}>{liveHomeScore} - {liveAwayScore}</Text>
+                  <Text style={styles.score} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>{liveHomeScore} - {liveAwayScore}</Text>
                   <LiveBadge minute={liveMinute} small />
                 </>
               ) : isFinished ? (
                 <>
-                  <Text style={styles.score}>{liveHomeScore} - {liveAwayScore}</Text>
+                  <Text style={styles.score} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>{liveHomeScore} - {liveAwayScore}</Text>
                   <Text style={styles.finishedLabel}>FT</Text>
                 </>
               ) : (
@@ -497,6 +525,7 @@ export default function MatchDetailScreen() {
                       setStreamErrorRef((prev) => prev || buildErrorReference("NX-STR"));
                     }}
                   />
+                  </SilentResetBoundary>
                 </View>
                 <View style={styles.serverSection}>
                   {hasStreamApiIssue ? (
@@ -1631,7 +1660,7 @@ const styles = StyleSheet.create({
     lineHeight: 17,
   },
   tapHint: { fontFamily: "Inter_400Regular", fontSize: 10, color: COLORS.accentDim },
-  scoreCenter: { width: 100, alignItems: "center", gap: 5 },
+  scoreCenter: { minWidth: 100, alignItems: "center", gap: 5 },
   score: {
     fontFamily: "Inter_800ExtraBold",
     fontSize: 48,
