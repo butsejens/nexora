@@ -833,15 +833,6 @@ function eventIconByType(typeRaw: string) {
   return "information-circle-outline" as const;
 }
 
-function eventIconByType(typeRaw: string) {
-  const t = String(typeRaw || "").toLowerCase();
-  if (t.includes("goal")) return "football-outline" as const;
-  if (t.includes("yellow") || t.includes("red") || t.includes("card")) return "card-outline" as const;
-  if (t.includes("sub") || t.includes("wissel")) return "swap-horizontal-outline" as const;
-  if (t.includes("pen")) return "radio-button-on-outline" as const;
-  return "information-circle-outline" as const;
-}
-
 function MatchTimeline({ events, homeTeam, awayTeam }: { events: any[]; homeTeam: string; awayTeam: string }) {
   if (!events?.length) {
     return <EmptyState icon="timer-outline" text="Geen events beschikbaar" />;
@@ -926,7 +917,7 @@ function MatchTimeline({ events, homeTeam, awayTeam }: { events: any[]; homeTeam
   );
 }
 
-
+function StatsBars({ homeTeam, awayTeam, homeStats, awayStats }: { homeTeam: string; awayTeam: string; homeStats: any; awayStats: any }) {
   const STAT_LABELS: Record<string, string> = {
     // Core
     ball_possession: "Balbezit %",
@@ -2521,51 +2512,5 @@ const styles = StyleSheet.create({
   },
   aiWaitCard: {
     gap: 10,
-  },
-  // Timeline tab
-  timelineCard: {
-    backgroundColor: COLORS.card,
-    borderRadius: 18,
-    padding: 16,
-    paddingBottom: 2,
-  },
-  timelineItem: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: 12,
-    paddingBottom: 20,
-    position: "relative",
-  },
-  timelineConnector: {
-    position: "absolute",
-    left: 13,
-    top: 28,
-    bottom: 0,
-    width: 1,
-    backgroundColor: COLORS.border,
-  },
-  timelineDot: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    alignItems: "center",
-    justifyContent: "center",
-    flexShrink: 0,
-  },
-  timelineContent: {
-    flex: 1,
-    gap: 2,
-    paddingTop: 3,
-  },
-  timelineMinuteLabel: {
-    fontFamily: "Inter_700Bold",
-    fontSize: 11,
-    letterSpacing: 0.3,
-  },
-  timelineEventText: {
-    fontFamily: "Inter_500Medium",
-    fontSize: 13,
-    color: COLORS.textSecondary,
-    lineHeight: 19,
   },
 });
