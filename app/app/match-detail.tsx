@@ -103,6 +103,9 @@ export default function MatchDetailScreen() {
   const [streamKey, setStreamKey] = useState(0);
   const [streamWebError, setStreamWebError] = useState<unknown>(null);
   const [streamErrorRef, setStreamErrorRef] = useState<string>("");
+  const [streamFinderActive, setStreamFinderActive] = useState(false);
+  const [streamFinderDone, setStreamFinderDone] = useState(false);
+  const streamFinderTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isLive = params.status === "live";
   const isFinished = params.status === "finished" || params.status === "ft" || params.status === "done";
   const hasScore = isLive || isFinished || (Number(params.homeScore ?? -1) >= 0 && Number(params.awayScore ?? -1) >= 0 && (Number(params.homeScore) > 0 || Number(params.awayScore) > 0));
@@ -282,6 +285,14 @@ export default function MatchDetailScreen() {
 
   const handleTabChange = (tab: TabId) => {
     setActiveTab(tab);
+    if (tab === "stream" && isLive && !streamFinderDone) {
+      setStreamFinderActive(true);
+      if (streamFinderTimerRef.current) clearTimeout(streamFinderTimerRef.current);
+      streamFinderTimerRef.current = setTimeout(() => {
+        setStreamFinderActive(false);
+        setStreamFinderDone(true);
+      }, 3000);
+    }
     if (tab === "ai") {
       if (!preMatchPrediction && !preMatchLoading) fetchPreMatchPrediction();
       if (isLive && !livePrediction && !livePredictionLoading) fetchLivePrediction();
@@ -310,6 +321,23 @@ export default function MatchDetailScreen() {
   // Auto-fetch AI predictions
   const hasFetchedPrematchRef = useRef(false);
   const lastLivePredictionAtRef = useRef(0);
+
+  // Auto-activate AI stream finder on first mount when live match opens on stream tab
+  useEffect(() => {
+    if (isLive && activeTab === "stream" && !streamFinderDone) {
+      setStreamFinderActive(true);
+      streamFinderTimerRef.current = setTimeout(() => {
+        setStreamFinderActive(false);
+        setStreamFinderDone(true);
+      }, 3000);
+    }
+    return () => {
+      if (streamFinderTimerRef.current) clearTimeout(streamFinderTimerRef.current);
+    };
+  // Only run once on mount
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   useEffect(() => {
     if (!detailLoading && !hasFetchedPrematchRef.current && !preMatchLoading) {
       hasFetchedPrematchRef.current = true;
@@ -339,7 +367,7 @@ export default function MatchDetailScreen() {
         <View style={styles.matchHeader}>
           <Text style={styles.leagueName}>{params.league}</Text>
           <View style={styles.scoreRow}>
-            <TeamSide name={params.homeTeam} logo={matchDetail?.homeTeamLogo || params.homeTeamLogo} onPress={() => {
+            <TeamSide align="left" name={params.homeTeam} logo={matchDetail?.homeTeamLogo || params.homeTeamLogo} onPress={() => {
               const fallbackTeamId = `name:${encodeURIComponent(params.homeTeam || "")}`;
               router.push({
                 pathname: "/team-detail",
@@ -370,7 +398,7 @@ export default function MatchDetailScreen() {
                 </>
               )}
             </View>
-            <TeamSide name={params.awayTeam} logo={matchDetail?.awayTeamLogo || params.awayTeamLogo} onPress={() => {
+            <TeamSide align="right" name={params.awayTeam} logo={matchDetail?.awayTeamLogo || params.awayTeamLogo} onPress={() => {
               const fallbackTeamId = `name:${encodeURIComponent(params.awayTeam || "")}`;
               router.push({
                 pathname: "/team-detail",
@@ -423,98 +451,97 @@ export default function MatchDetailScreen() {
       {/* Stream Tab — always mounted, hidden when not active */}
       <View style={[styles.streamContainer, activeTab !== "stream" ? { display: "none" } : null]}>
           {isLive ? (
-            <>
-              <View style={styles.videoBox}>
-                <WebView key={streamKey} source={{ uri: streamUrl }}
-                  style={{ flex: 1, backgroundColor: "#000" }}
-                  allowsFullscreenVideo mediaPlaybackRequiresUserAction={false}
-                  javaScriptEnabled domStorageEnabled
-                  setSupportMultipleWindows={false}
-                  allowsInlineMediaPlayback
-                  injectedJavaScript={BLOCK_POPUP_JS}
-                  onShouldStartLoadWithRequest={(req) => {
-                    const url = (req.url || "").toLowerCase();
-                    // Block alle Google-pagina's (zoekresultaten, consent, redirect, etc.)
-                    if (url.includes("google.") || url.includes("bing.com") || url.includes("yahoo.com")) return false;
-                    if (url.includes("doubleclick.") || url.includes("googleads.") || url.includes("googlesyndication.")) return false;
-                    // Alleen http(s) toestaan
-                    if (!url.startsWith("http://") && !url.startsWith("https://")) return false;
-                    return true;
-                  }}
-                  onError={(event) => {
-                    const err = event?.nativeEvent?.description || "WebView stream fout";
-                    setStreamWebError(err);
-                    setStreamErrorRef((prev) => prev || buildErrorReference("NX-STR"));
-                  }}
-                />
-              </View>
-              <View style={styles.serverSection}>
-                {hasStreamApiIssue ? (
-                  <View style={styles.streamErrorCard}>
-                    <MaterialCommunityIcons name="wifi-alert" size={14} color={COLORS.live} />
-                    <Text style={styles.streamErrorText}>{streamApiError.userMessage}</Text>
-                  </View>
-                ) : null}
-                {hasStreamPlayerIssue ? (
-                  <View style={styles.streamErrorCard}>
-                    <MaterialCommunityIcons name="alert-octagon-outline" size={14} color={COLORS.live} />
-                    <View style={{ flex: 1, gap: 4 }}>
-                      <Text style={styles.streamErrorText}>{streamPlayerError.userMessage}</Text>
-                      {streamErrorRef ? <Text style={styles.streamErrorRef}>Foutcode: {streamErrorRef}</Text> : null}
+            streamFinderActive ? (
+              /* AI Stream Finder loading overlay */
+              <View style={styles.streamFinderContainer}>
+                <LinearGradient colors={["#0d0d1a", "#120a14", "#0a0a12"]} style={styles.streamFinderBg}>
+                  <ActivityIndicator size="large" color={COLORS.accent} />
+                  <Text style={styles.streamFinderTitle}>AI zoekt de beste stream…</Text>
+                  <Text style={styles.streamFinderSub}>Even geduld, prioriteit: officiële uitzender → hoogste kwaliteit → laagste latency</Text>
+                  <View style={styles.streamFinderSteps}>
+                    <View style={styles.streamFinderStep}>
+                      <Ionicons name="checkmark-circle" size={14} color={COLORS.green} />
+                      <Text style={styles.streamFinderStepText}>Officiële broadcaster zoeken…</Text>
+                    </View>
+                    <View style={styles.streamFinderStep}>
+                      <Ionicons name="radio-button-on" size={14} color={COLORS.accent} />
+                      <Text style={styles.streamFinderStepText}>Beste resolutie bepalen…</Text>
+                    </View>
+                    <View style={styles.streamFinderStep}>
+                      <Ionicons name="radio-button-off" size={14} color={COLORS.textMuted} />
+                      <Text style={[styles.streamFinderStepText, { color: COLORS.textMuted }]}>Stream initialiseren…</Text>
                     </View>
                   </View>
-                ) : null}
-                <TouchableOpacity style={styles.serverBtn} onPress={handleRetryAutoStream}>
-                  <Ionicons name="refresh-outline" size={12} color={COLORS.accent} />
-                  <Text style={styles.serverBtnText}>Andere stream laden</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.serverBtn}
-                  onPress={async () => {
-                    SafeHaptics.impactLight();
-                    await openInVlc(streamUrl, `${params.homeTeam || ""} - ${params.awayTeam || ""}`.trim() || "Live sport");
-                  }}
-                >
-                  <Ionicons name="open-outline" size={12} color={COLORS.accent} />
-                  <Text style={styles.serverBtnText}>Open in VLC</Text>
-                </TouchableOpacity>
-                {watchOptions.length > 0 && (
-                  <View style={styles.watchSection}>
-                    <Text style={styles.serverLabel}>OFFICIËLE KIJKOPTIES</Text>
-                    {watchOptions.map((opt: any, idx: number) => (
-                      <TouchableOpacity
-                        key={`watch_${idx}_${opt?.name || ""}`}
-                        style={styles.serverBtn}
-                        onPress={() => handleOpenWatchUrl(String(opt?.url || ""))}
-                      >
-                        <Ionicons name="tv-outline" size={12} color={COLORS.accent} />
-                        <Text style={styles.serverBtnText}>{String(opt?.name || "Kanaal")}</Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                )}
+                </LinearGradient>
               </View>
-            </>
+            ) : (
+              <>
+                <View style={styles.videoBox}>
+                  <WebView key={streamKey} source={{ uri: streamUrl }}
+                    style={{ flex: 1, backgroundColor: "#000" }}
+                    allowsFullscreenVideo mediaPlaybackRequiresUserAction={false}
+                    javaScriptEnabled domStorageEnabled
+                    setSupportMultipleWindows={false}
+                    allowsInlineMediaPlayback
+                    injectedJavaScript={BLOCK_POPUP_JS}
+                    onShouldStartLoadWithRequest={(req) => {
+                      const url = (req.url || "").toLowerCase();
+                      if (url.includes("google.") || url.includes("bing.com") || url.includes("yahoo.com")) return false;
+                      if (url.includes("doubleclick.") || url.includes("googleads.") || url.includes("googlesyndication.")) return false;
+                      if (!url.startsWith("http://") && !url.startsWith("https://")) return false;
+                      return true;
+                    }}
+                    onError={(event) => {
+                      const err = event?.nativeEvent?.description || "WebView stream fout";
+                      setStreamWebError(err);
+                      setStreamErrorRef((prev) => prev || buildErrorReference("NX-STR"));
+                    }}
+                  />
+                </View>
+                <View style={styles.serverSection}>
+                  {hasStreamApiIssue ? (
+                    <View style={styles.streamErrorCard}>
+                      <MaterialCommunityIcons name="wifi-alert" size={14} color={COLORS.live} />
+                      <Text style={styles.streamErrorText}>{streamApiError.userMessage}</Text>
+                    </View>
+                  ) : null}
+                  {hasStreamPlayerIssue ? (
+                    <View style={styles.streamErrorCard}>
+                      <MaterialCommunityIcons name="alert-octagon-outline" size={14} color={COLORS.live} />
+                      <View style={{ flex: 1, gap: 4 }}>
+                        <Text style={styles.streamErrorText}>{streamPlayerError.userMessage}</Text>
+                        {streamErrorRef ? <Text style={styles.streamErrorRef}>Foutcode: {streamErrorRef}</Text> : null}
+                      </View>
+                    </View>
+                  ) : null}
+                  {hasStreamApiIssue && hasStreamPlayerIssue ? (
+                    <View style={styles.streamErrorCard}>
+                      <MaterialCommunityIcons name="alert-circle-outline" size={14} color={COLORS.textMuted} />
+                      <Text style={styles.streamErrorText}>Geen stream beschikbaar momenteel.</Text>
+                    </View>
+                  ) : null}
+                  <TouchableOpacity style={styles.serverBtn} onPress={handleRetryAutoStream}>
+                    <Ionicons name="refresh-outline" size={12} color={COLORS.accent} />
+                    <Text style={styles.serverBtnText}>Andere stream laden</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.serverBtn}
+                    onPress={async () => {
+                      SafeHaptics.impactLight();
+                      await openInVlc(streamUrl, `${params.homeTeam || ""} - ${params.awayTeam || ""}`.trim() || "Live sport");
+                    }}
+                  >
+                    <Ionicons name="open-outline" size={12} color={COLORS.accent} />
+                    <Text style={styles.serverBtnText}>Open in VLC</Text>
+                  </TouchableOpacity>
+                </View>
+              </>
+            )
           ) : (
             <View style={styles.notLiveContainer}>
               <Ionicons name="time-outline" size={48} color={COLORS.textMuted} />
               <Text style={styles.notLiveTitle}>Wedstrijd nog niet begonnen</Text>
-              <Text style={styles.notLiveText}>De livestream is beschikbaar zodra de wedstrijd start.</Text>
-              {watchOptions.length > 0 ? (
-                <View style={styles.watchSectionUpcoming}>
-                  <Text style={styles.serverLabel}>OFFICIËLE KIJKOPTIES</Text>
-                  {watchOptions.map((opt: any, idx: number) => (
-                    <TouchableOpacity
-                      key={`watch_upcoming_${idx}_${opt?.name || ""}`}
-                      style={styles.serverBtn}
-                      onPress={() => handleOpenWatchUrl(String(opt?.url || ""))}
-                    >
-                      <Ionicons name="tv-outline" size={12} color={COLORS.accent} />
-                      <Text style={styles.serverBtnText}>{String(opt?.name || "Kanaal")}</Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              ) : null}
+              <Text style={styles.notLiveText}>De livestream start automatisch zodra de wedstrijd begint.</Text>
             </View>
           )}
         </View>
@@ -534,18 +561,12 @@ export default function MatchDetailScreen() {
               />
               {matchDetail.keyEvents?.length > 0 && (
                 <>
-                  <Text style={[styles.sectionLabel, { marginTop: 20 }]}>DOELPUNTEN & EVENTS</Text>
-                  {matchDetail.keyEvents.map((ev: any, i: number) => (
-                    <View key={i} style={styles.eventRow}>
-                      <View style={styles.eventBadge}>
-                        <Ionicons name={eventIconByType(ev?.type)} size={14} color={COLORS.live} />
-                      </View>
-                      <Text style={styles.eventText}>
-                        {ev?.time ? `${ev.time} — ` : ""}
-                        {ev?.text || ev?.detail || ev?.type || "Event"}
-                      </Text>
-                    </View>
-                  ))}
+                  <Text style={[styles.sectionLabel, { marginTop: 20 }]}>WEDSTRIJD TIJDLIJN</Text>
+                  <MatchTimeline
+                    events={matchDetail.keyEvents}
+                    homeTeam={params.homeTeam}
+                    awayTeam={params.awayTeam}
+                  />
                 </>
               )}
               {matchDetail.venue && (
@@ -786,12 +807,19 @@ function MiniAIPill({ prediction, homeTeam, awayTeam, loading, onPress }: any) {
   );
 }
 
-function TeamSide({ name, logo, onPress }: { name: string; logo?: string; onPress?: () => void }) {
+function TeamSide({ name, logo, onPress, align = "left" }: { name: string; logo?: string; onPress?: () => void; align?: "left" | "right" }) {
+  const isRight = align === "right";
   return (
-    <TouchableOpacity style={styles.teamSide} onPress={onPress} activeOpacity={onPress ? 0.7 : 1}>
-      <TeamLogo uri={logo} teamName={name} size={64} />
-      <Text style={styles.teamName} numberOfLines={2}>{name}</Text>
-      {onPress && <Text style={styles.tapHint}>Tik voor info</Text>}
+    <TouchableOpacity
+      style={[styles.teamSide, isRight ? styles.teamSideRight : styles.teamSideLeft]}
+      onPress={onPress}
+      activeOpacity={onPress ? 0.7 : 1}
+    >
+      {!isRight && <TeamLogo uri={logo} teamName={name} size={56} />}
+      <View style={[styles.teamNameWrap, isRight && { alignItems: "flex-end" }]}>
+        <Text style={[styles.teamName, isRight && { textAlign: "right" }]} numberOfLines={2}>{name}</Text>
+      </View>
+      {isRight && <TeamLogo uri={logo} teamName={name} size={56} />}
     </TouchableOpacity>
   );
 }
@@ -805,32 +833,181 @@ function eventIconByType(typeRaw: string) {
   return "information-circle-outline" as const;
 }
 
-function StatsBars({ homeTeam, awayTeam, homeStats, awayStats }: any) {
+function eventIconByType(typeRaw: string) {
+  const t = String(typeRaw || "").toLowerCase();
+  if (t.includes("goal")) return "football-outline" as const;
+  if (t.includes("yellow") || t.includes("red") || t.includes("card")) return "card-outline" as const;
+  if (t.includes("sub") || t.includes("wissel")) return "swap-horizontal-outline" as const;
+  if (t.includes("pen")) return "radio-button-on-outline" as const;
+  return "information-circle-outline" as const;
+}
+
+function MatchTimeline({ events, homeTeam, awayTeam }: { events: any[]; homeTeam: string; awayTeam: string }) {
+  if (!events?.length) {
+    return <EmptyState icon="timer-outline" text="Geen events beschikbaar" />;
+  }
+
+  const getEventConfig = (typeRaw: string) => {
+    const t = String(typeRaw || "").toLowerCase();
+    if (t.includes("goal") && (t.includes("own") || t.includes("eigen"))) {
+      return { icon: "football-outline" as const, color: "#FF6B35", label: "Eigen doelpunt", dot: "#FF6B35" };
+    }
+    if (t.includes("goal") || t.includes("penalty") && t.includes("scored")) {
+      return { icon: "football-outline" as const, color: "#00E676", label: "Doelpunt", dot: "#00E676" };
+    }
+    if (t.includes("red")) {
+      return { icon: "card-outline" as const, color: "#FF3040", label: "Rode kaart", dot: "#FF3040" };
+    }
+    if (t.includes("yellow")) {
+      return { icon: "card-outline" as const, color: "#FFD700", label: "Gele kaart", dot: "#FFD700" };
+    }
+    if (t.includes("sub") || t.includes("wissel") || t.includes("substitution")) {
+      return { icon: "swap-horizontal-outline" as const, color: "#5D9EFF", label: "Wissel", dot: "#5D9EFF" };
+    }
+    if (t.includes("pen")) {
+      return { icon: "radio-button-on-outline" as const, color: "#FF9800", label: "Penalty", dot: "#FF9800" };
+    }
+    if (t.includes("var")) {
+      return { icon: "videocam-outline" as const, color: COLORS.textMuted, label: "VAR", dot: COLORS.textMuted };
+    }
+    return { icon: "ellipse-outline" as const, color: COLORS.textMuted, label: "Event", dot: COLORS.textMuted };
+  };
+
+  const isHomeEvent = (ev: any): boolean => {
+    const evTeam = String(ev?.team || ev?.teamName || "").toLowerCase();
+    const home = homeTeam.toLowerCase();
+    if (!evTeam) return true; // default to home if unknown
+    return evTeam.includes(home.split(" ")[0]) || home.includes(evTeam.split(" ")[0]);
+  };
+
+  return (
+    <View style={styles.timelineWrapper}>
+      {events.map((ev: any, i: number) => {
+        const cfg = getEventConfig(String(ev?.type || ""));
+        const onHome = isHomeEvent(ev);
+        const minute = ev?.time ? `${String(ev.time)}'` : "";
+        const description = String(ev?.player || ev?.name || ev?.text || ev?.detail || "");
+
+        return (
+          <View key={i} style={styles.timelineRow}>
+            {/* Home side */}
+            <View style={styles.timelineSide}>
+              {onHome ? (
+                <View style={styles.timelineEventHome}>
+                  <Text style={styles.timelinePlayer} numberOfLines={1}>{description}</Text>
+                  <View style={[styles.timelineEventBadge, { backgroundColor: `${cfg.dot}22`, borderColor: `${cfg.dot}55` }]}>
+                    <Ionicons name={cfg.icon} size={12} color={cfg.color} />
+                  </View>
+                </View>
+              ) : null}
+            </View>
+
+            {/* Center: minute + line */}
+            <View style={styles.timelineCenter}>
+              <View style={[styles.timelineDot, { backgroundColor: cfg.dot, borderColor: `${cfg.dot}88` }]} />
+              {minute ? <Text style={styles.timelineMinute}>{minute}</Text> : null}
+            </View>
+
+            {/* Away side */}
+            <View style={[styles.timelineSide, styles.timelineSideAway]}>
+              {!onHome ? (
+                <View style={styles.timelineEventAway}>
+                  <View style={[styles.timelineEventBadge, { backgroundColor: `${cfg.dot}22`, borderColor: `${cfg.dot}55` }]}>
+                    <Ionicons name={cfg.icon} size={12} color={cfg.color} />
+                  </View>
+                  <Text style={[styles.timelinePlayer, { textAlign: "left" }]} numberOfLines={1}>{description}</Text>
+                </View>
+              ) : null}
+            </View>
+          </View>
+        );
+      })}
+    </View>
+  );
+}
+
+
   const STAT_LABELS: Record<string, string> = {
+    // Core
     ball_possession: "Balbezit %",
     possession: "Balbezit %",
-    total_shots: "Schoten",
-    shots: "Schoten",
-    shots_on_goal: "Op doel",
-    shots_on_target: "Op doel",
-    shots_off_goal: "Naast doel",
-    blocked_shots: "Geblokkeerd",
-    total_passes: "Passes",
+    // Shots
+    total_shots: "Schoten totaal",
+    shots: "Schoten totaal",
+    shots_on_goal: "Schoten op doel",
+    shots_on_target: "Schoten op doel",
+    shots_off_goal: "Schoten naast doel",
+    shots_off_target: "Schoten naast doel",
+    blocked_shots: "Geblokkeerde schoten",
+    shots_blocked: "Geblokkeerde schoten",
+    shots_insidebox: "Schoten (binnen 16)",
+    shots_outsidebox: "Schoten (buiten 16)",
+    big_chances: "Grote kansen",
+    // xG
+    expected_goals: "Verwachte goals (xG)",
+    xg: "Verwachte goals (xG)",
+    goals_prevented: "Voorkomen goals",
+    // Attacking
+    corner_kicks: "Hoekschoppen",
+    corners: "Hoekschoppen",
+    crosses: "Voorzetten",
+    successful_dribbles: "Succesvolle dribbels",
+    dribbles_completed: "Succesvolle dribbels",
+    offsides: "Buitenspel",
+    // Passing
+    total_passes: "Passes totaal",
+    accurate_passes: "Nauwkeurige passes",
     pass_accuracy: "Pasnauwkeurigheid %",
+    key_passes: "Sleutelpasses",
+    passes_final_third: "Passes in de laatste zone",
+    long_balls: "Lange ballen",
+    // Defensive
+    total_tackles: "Tackles",
+    tackles: "Tackles",
+    interceptions: "Onderscheppingen",
+    clearances: "Afhoudingen",
+    aerial_won: "Gewonnen kopduels",
+    total_duels: "Duels totaal",
+    duels_won: "Duels gewonnen",
+    // Goalkeeping
+    goalkeeper_saves: "Reddingen",
+    saves: "Reddingen",
+    // Discipline
     fouls: "Overtredingen",
     yellow_cards: "Gele kaarten",
     red_cards: "Rode kaarten",
-    corner_kicks: "Hoekschoppen",
-    corners: "Hoekschoppen",
-    offsides: "Buitenspel",
-    goalkeeper_saves: "Reddingen",
-    saves: "Reddingen",
-    expected_goals: "Verwachte goals (xG)",
-    xg: "Verwachte goals (xG)",
-    total_tackles: "Tackles",
-    clearances: "Afhoudingen",
-    big_chances: "Grote kansen",
   };
+
+  // Stat sections for organized display
+  const STAT_SECTIONS: { label: string; keys: string[] }[] = [
+    {
+      label: "AANVAL",
+      keys: ["ball_possession", "possession", "total_shots", "shots", "shots_on_goal", "shots_on_target",
+             "shots_off_goal", "shots_off_target", "big_chances", "expected_goals", "xg",
+             "shots_insidebox", "shots_outsidebox"],
+    },
+    {
+      label: "AANVALLEN",
+      keys: ["corner_kicks", "corners", "crosses", "successful_dribbles", "dribbles_completed", "offsides"],
+    },
+    {
+      label: "PASS",
+      keys: ["total_passes", "accurate_passes", "pass_accuracy", "key_passes", "passes_final_third", "long_balls"],
+    },
+    {
+      label: "VERDEDIGING",
+      keys: ["total_tackles", "tackles", "interceptions", "clearances", "blocked_shots", "shots_blocked",
+             "aerial_won", "total_duels", "duels_won"],
+    },
+    {
+      label: "DOELMAN",
+      keys: ["goalkeeper_saves", "saves", "goals_prevented"],
+    },
+    {
+      label: "DISCIPLINE",
+      keys: ["fouls", "yellow_cards", "red_cards"],
+    },
+  ];
 
   // Dedup: als twee keys dezelfde label hebben, toon er maar één
   const seenLabels = new Set<string>();
@@ -852,33 +1029,57 @@ function StatsBars({ homeTeam, awayTeam, homeStats, awayStats }: any) {
     );
   }
 
-  return (
-    <View style={styles.infoCard}>
-      <View style={styles.statsTeamHeader}>
-        <Text style={styles.statsTeamName} numberOfLines={1}>{homeTeam}</Text>
-        <Text style={styles.statsTeamName} numberOfLines={1}>{awayTeam}</Text>
+  const renderStatRow = (key: string) => {
+    const rawH = String(homeStats?.[key] ?? "0");
+    const rawA = String(awayStats?.[key] ?? "0");
+    const hVal = parseFloat(rawH.replace("%", "")) || 0;
+    const aVal = parseFloat(rawA.replace("%", "")) || 0;
+    const total = hVal + aVal || 1;
+    const hPct = (hVal / total) * 100;
+    return (
+      <View key={key} style={styles.statRow}>
+        <Text style={styles.statVal}>{homeStats?.[key] ?? "0"}</Text>
+        <View style={styles.statBarContainer}>
+          <Text style={styles.statName}>{STAT_LABELS[key]}</Text>
+          <View style={styles.statBar}>
+            <View style={[styles.statBarHome, { flex: hPct }]} />
+            <View style={[styles.statBarAway, { flex: 100 - hPct }]} />
+          </View>
+        </View>
+        <Text style={styles.statVal}>{awayStats?.[key] ?? "0"}</Text>
       </View>
-      {dedupedStats.map(key => {
-        const rawH = String(homeStats?.[key] ?? "0");
-        const rawA = String(awayStats?.[key] ?? "0");
-        const hVal = parseFloat(rawH.replace("%", "")) || 0;
-        const aVal = parseFloat(rawA.replace("%", "")) || 0;
-        const total = hVal + aVal || 1;
-        const hPct = (hVal / total) * 100;
+    );
+  };
+
+  // Check if sections mode is possible
+  const sectionedKeys = new Set(STAT_SECTIONS.flatMap(s => s.keys));
+  const unsectionedStats = dedupedStats.filter(k => !sectionedKeys.has(k));
+
+  return (
+    <View style={{ gap: 10 }}>
+      <View style={styles.infoCard}>
+        <View style={styles.statsTeamHeader}>
+          <Text style={styles.statsTeamName} numberOfLines={1}>{homeTeam}</Text>
+          <View style={{ width: 80 }} />
+          <Text style={[styles.statsTeamName, { textAlign: "right" }]} numberOfLines={1}>{awayTeam}</Text>
+        </View>
+      </View>
+      {STAT_SECTIONS.map(section => {
+        const sectionStats = section.keys.filter(k => dedupedStats.includes(k));
+        if (sectionStats.length === 0) return null;
         return (
-          <View key={key} style={styles.statRow}>
-            <Text style={styles.statVal}>{homeStats?.[key] ?? "0"}</Text>
-            <View style={styles.statBarContainer}>
-              <Text style={styles.statName}>{STAT_LABELS[key]}</Text>
-              <View style={styles.statBar}>
-                <View style={[styles.statBarHome, { flex: hPct }]} />
-                <View style={[styles.statBarAway, { flex: 100 - hPct }]} />
-              </View>
-            </View>
-            <Text style={styles.statVal}>{awayStats?.[key] ?? "0"}</Text>
+          <View key={section.label} style={styles.infoCard}>
+            <Text style={styles.infoCardTitle}>{section.label}</Text>
+            {sectionStats.map(renderStatRow)}
           </View>
         );
       })}
+      {unsectionedStats.length > 0 && (
+        <View style={styles.infoCard}>
+          <Text style={styles.infoCardTitle}>OVERIG</Text>
+          {unsectionedStats.map(renderStatRow)}
+        </View>
+      )}
     </View>
   );
 }
@@ -1345,9 +1546,6 @@ function AIPredictionView({ prediction, homeTeam, awayTeam }: any) {
       <Text style={styles.aiDisclaimer}>
         * AI-analyse is indicatief en gebaseerd op historische gegevens. Geen gokadvies.
       </Text>
-      {prediction?.source ? (
-        <Text style={styles.aiSourceText}>Bron: {String(prediction.source)}{prediction?.modelVersion ? ` · ${String(prediction.modelVersion)}` : ""}{prediction?.updatedAt ? ` · ${new Date(String(prediction.updatedAt)).toLocaleString("nl-BE")}` : ""}</Text>
-      ) : null}
     </View>
   );
 }
@@ -1430,13 +1628,15 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.1)",
   },
-  scoreRow: { flexDirection: "row", alignItems: "center", width: "100%", paddingHorizontal: 8 },
-  teamSide: { flex: 1, alignItems: "center", gap: 8 },
+  scoreRow: { flexDirection: "row", alignItems: "center", width: "100%", paddingHorizontal: 4 },
+  teamSide: { flex: 1, flexDirection: "row", alignItems: "center", gap: 8 },
+  teamSideLeft: { justifyContent: "flex-start" },
+  teamSideRight: { justifyContent: "flex-end" },
+  teamNameWrap: { flex: 1 },
   teamName: {
     fontFamily: "Inter_700Bold",
     fontSize: 13,
     color: COLORS.text,
-    textAlign: "center",
     lineHeight: 17,
   },
   tapHint: { fontFamily: "Inter_400Regular", fontSize: 10, color: COLORS.accentDim },
@@ -1548,6 +1748,45 @@ const styles = StyleSheet.create({
   serverBtnText: { fontFamily: "Inter_600SemiBold", fontSize: 13, color: COLORS.accent },
   watchSection: { marginTop: 8, gap: 10 },
   watchSectionUpcoming: { marginTop: 10, width: "100%", gap: 10 },
+  streamFinderContainer: { flex: 1 },
+  streamFinderBg: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 36,
+    gap: 16,
+  },
+  streamFinderTitle: {
+    fontFamily: "Inter_800ExtraBold",
+    fontSize: 20,
+    color: COLORS.text,
+    textAlign: "center",
+  },
+  streamFinderSub: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 13,
+    color: COLORS.textMuted,
+    textAlign: "center",
+    lineHeight: 20,
+    maxWidth: 280,
+  },
+  streamFinderSteps: { gap: 10, marginTop: 8, width: "100%" },
+  streamFinderStep: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: "rgba(255,255,255,0.05)",
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.07)",
+  },
+  streamFinderStepText: {
+    fontFamily: "Inter_500Medium",
+    fontSize: 13,
+    color: COLORS.text,
+  },
   notLiveContainer: { flex: 1, alignItems: "center", justifyContent: "center", gap: 16, padding: 36 },
   notLiveTitle: {
     fontFamily: "Inter_700Bold",
@@ -1667,6 +1906,75 @@ const styles = StyleSheet.create({
     borderColor: "rgba(229,9,20,0.3)",
   },
   eventText: { fontFamily: "Inter_500Medium", fontSize: 13, color: COLORS.text, flex: 1, lineHeight: 19 },
+  // Timeline
+  timelineWrapper: {
+    backgroundColor: COLORS.card,
+    borderRadius: 18,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.07)",
+    marginBottom: 10,
+    gap: 0,
+  },
+  timelineRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    minHeight: 40,
+    borderBottomWidth: 1,
+    borderBottomColor: "rgba(255,255,255,0.04)",
+  },
+  timelineSide: {
+    flex: 1,
+    paddingVertical: 6,
+    paddingHorizontal: 4,
+  },
+  timelineSideAway: {
+    alignItems: "flex-start",
+  },
+  timelineCenter: {
+    width: 56,
+    alignItems: "center",
+    gap: 3,
+  },
+  timelineDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    borderWidth: 2,
+  },
+  timelineMinute: {
+    fontFamily: "Inter_700Bold",
+    fontSize: 10,
+    color: COLORS.textMuted,
+    textAlign: "center",
+  },
+  timelineEventHome: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "flex-end",
+    gap: 6,
+  },
+  timelineEventAway: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  timelineEventBadge: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    flexShrink: 0,
+  },
+  timelinePlayer: {
+    fontFamily: "Inter_500Medium",
+    fontSize: 12,
+    color: COLORS.text,
+    flex: 1,
+    textAlign: "right",
+  },
   lineupTeamHeader: {
     flexDirection: "row",
     alignItems: "center",

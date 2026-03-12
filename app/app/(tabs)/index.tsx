@@ -1207,7 +1207,7 @@ export default function SportsScreen() {
   const SPORTS_TABS = [
     { id: "competitions" as const, label: "Explore" },
     { id: "live" as const,         label: "Live" },
-    { id: "upcoming" as const,     label: "Lineups" },
+    { id: "upcoming" as const,     label: "Matchdag" },
     { id: "menu" as const,         label: "Analyse" },
   ];
 

@@ -524,15 +524,15 @@ export const UpcomingMatchRow = React.memo(function UpcomingMatchRow({
           </View>
 
           {/* Away */}
-          <View style={styles.rowTeamBlock}>
+          <View style={[styles.rowTeamBlock, styles.rowTeamBlockAway]}>
+            <Text style={[styles.rowTeamName, styles.rowTeamNameAway]} numberOfLines={2}>
+              {match.awayTeam}
+            </Text>
             <TeamLogo
               uri={match.awayTeamLogo}
               teamName={match.awayTeam}
               size={56}
             />
-            <Text style={styles.rowTeamName} numberOfLines={2}>
-              {match.awayTeam}
-            </Text>
           </View>
         </View>
 
@@ -889,15 +889,22 @@ const styles = StyleSheet.create({
   },
   rowTeamBlock: {
     flex: 1,
+    flexDirection: "row",
     alignItems: "center",
     gap: 10,
+  },
+  rowTeamBlockAway: {
+    justifyContent: "flex-end",
   },
   rowTeamName: {
     fontFamily: "Inter_700Bold",
     fontSize: 13,
     color: COLORS.text,
-    textAlign: "center",
     lineHeight: 17,
+    flex: 1,
+  },
+  rowTeamNameAway: {
+    textAlign: "right",
   },
   rowCenterBlock: {
     width: 96,
