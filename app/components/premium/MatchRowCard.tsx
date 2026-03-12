@@ -106,21 +106,19 @@ function MatchRowCardInner({
 
             {/* Home team */}
             <View style={s.teamCol}>
+              <Text
+                style={[s.teamName, homeWin && s.teamNameBold]}
+                numberOfLines={2}
+                adjustsFontSizeToFit
+                minimumFontScale={0.72}
+                ellipsizeMode="tail"
+              >
+                {match.homeTeam}
+              </Text>
               <TeamLogo uri={match.homeTeamLogo} teamName={match.homeTeam} size={LOGO_SIZE} />
-              <View style={s.nameWrap}>
-                <Text
-                  style={[s.teamName, homeWin && s.teamNameBold]}
-                  numberOfLines={2}
-                  adjustsFontSizeToFit
-                  minimumFontScale={0.72}
-                  ellipsizeMode="tail"
-                >
-                  {match.homeTeam}
-                </Text>
-                {!upcoming && (match.redCards?.home ?? 0) > 0 && (
-                  <Text style={s.cards}>{'🟥'.repeat(Math.min(match.redCards!.home, 3))}</Text>
-                )}
-              </View>
+              {!upcoming && (match.redCards?.home ?? 0) > 0 && (
+                <Text style={s.cards}>{'🟥'.repeat(Math.min(match.redCards!.home, 3))}</Text>
+              )}
             </View>
 
             {/* Center */}
@@ -153,22 +151,20 @@ function MatchRowCardInner({
             </View>
 
             {/* Away team */}
-            <View style={[s.teamCol, s.teamColRight]}>
-              <View style={[s.nameWrap, s.nameWrapRight]}>
-                <Text
-                  style={[s.teamName, s.teamNameRight, awayWin && s.teamNameBold]}
-                  numberOfLines={2}
-                  adjustsFontSizeToFit
-                  minimumFontScale={0.72}
-                  ellipsizeMode="tail"
-                >
-                  {match.awayTeam}
-                </Text>
-                {!upcoming && (match.redCards?.away ?? 0) > 0 && (
-                  <Text style={[s.cards, s.cardsRight]}>{'🟥'.repeat(Math.min(match.redCards!.away, 3))}</Text>
-                )}
-              </View>
+            <View style={s.teamCol}>
+              <Text
+                style={[s.teamName, s.teamNameRight, awayWin && s.teamNameBold]}
+                numberOfLines={2}
+                adjustsFontSizeToFit
+                minimumFontScale={0.72}
+                ellipsizeMode="tail"
+              >
+                {match.awayTeam}
+              </Text>
               <TeamLogo uri={match.awayTeamLogo} teamName={match.awayTeam} size={LOGO_SIZE} />
+              {!upcoming && (match.redCards?.away ?? 0) > 0 && (
+                <Text style={[s.cards, s.cardsRight]}>{'🟥'.repeat(Math.min(match.redCards!.away, 3))}</Text>
+              )}
             </View>
 
           </View>
@@ -240,36 +236,26 @@ const s = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 12,
-    paddingVertical: 10,
-    minHeight: 68,
+    paddingVertical: 12,
+    minHeight: 90,
   },
 
   // Teams ─────────────────────────────────────────────────────────────────────
   teamCol: {
     flex: 5,
-    flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    minWidth: 0,        // allow flex to shrink text
-  },
-  teamColRight: {
-    flexDirection: 'row-reverse',
-  },
-  nameWrap: {
-    flex: 1,
+    gap: 4,
     minWidth: 0,
   },
-  nameWrapRight: {
-    alignItems: 'flex-end',
-  },
   teamName: {
-    fontSize: 13,
+    fontSize: 11,
     fontWeight: '600',
     color: COLORS.textSecondary,
-    lineHeight: 16,
+    lineHeight: 14,
+    textAlign: 'center',
   },
   teamNameRight: {
-    textAlign: 'right',
+    textAlign: 'center',
   },
   teamNameBold: {
     color: COLORS.text,

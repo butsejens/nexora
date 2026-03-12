@@ -18,6 +18,20 @@ import { TeamLogo } from "@/components/MatchCard";
 import { buildErrorReference, normalizeApiError } from "@/lib/error-messages";
 import { SilentResetBoundary } from "@/components/SilentResetBoundary";
 
+/** Safely convert any value to string — prevents [object Object] rendering */
+function safeStr(val: unknown): string {
+  if (val === null || val === undefined) return "";
+  if (typeof val === "string") return val;
+  if (typeof val === "number" || typeof val === "boolean") return String(val);
+  if (typeof val === "object") {
+    if (val instanceof Error) return val.message || "Error";
+    if ("message" in val && typeof (val as any).message === "string") return (val as any).message;
+    if ("name" in val && typeof (val as any).name === "string") return (val as any).name;
+    try { return JSON.stringify(val); } catch { return ""; }
+  }
+  return String(val);
+}
+
 const BLOCK_POPUP_JS = `
 (function(){
   // Patch removeChild to never throw — prevents DOMException crashes
@@ -505,26 +519,27 @@ export default function MatchDetailScreen() {
             ) : (
               <>
                 <View style={styles.videoBox}>
-                  <WebView key={streamKey} source={{ uri: streamUrl }}
-                    style={{ flex: 1, backgroundColor: "#000" }}
-                    allowsFullscreenVideo mediaPlaybackRequiresUserAction={false}
-                    javaScriptEnabled domStorageEnabled
-                    setSupportMultipleWindows={false}
-                    allowsInlineMediaPlayback
-                    injectedJavaScript={BLOCK_POPUP_JS}
-                    onShouldStartLoadWithRequest={(req) => {
-                      const url = (req.url || "").toLowerCase();
-                      if (url.includes("google.") || url.includes("bing.com") || url.includes("yahoo.com")) return false;
-                      if (url.includes("doubleclick.") || url.includes("googleads.") || url.includes("googlesyndication.")) return false;
-                      if (!url.startsWith("http://") && !url.startsWith("https://")) return false;
-                      return true;
-                    }}
-                    onError={(event) => {
-                      const err = event?.nativeEvent?.description || "WebView stream fout";
-                      setStreamWebError(err);
-                      setStreamErrorRef((prev) => prev || buildErrorReference("NX-STR"));
-                    }}
-                  />
+                  <SilentResetBoundary>
+                    <WebView key={streamKey} source={{ uri: streamUrl }}
+                      style={{ flex: 1, backgroundColor: "#000" }}
+                      allowsFullscreenVideo mediaPlaybackRequiresUserAction={false}
+                      javaScriptEnabled domStorageEnabled
+                      setSupportMultipleWindows={false}
+                      allowsInlineMediaPlayback
+                      injectedJavaScript={BLOCK_POPUP_JS}
+                      onShouldStartLoadWithRequest={(req) => {
+                        const url = (req.url || "").toLowerCase();
+                        if (url.includes("google.") || url.includes("bing.com") || url.includes("yahoo.com")) return false;
+                        if (url.includes("doubleclick.") || url.includes("googleads.") || url.includes("googlesyndication.")) return false;
+                        if (!url.startsWith("http://") && !url.startsWith("https://")) return false;
+                        return true;
+                      }}
+                      onError={(event) => {
+                        const err = event?.nativeEvent?.description || "WebView stream fout";
+                        setStreamWebError(err);
+                        setStreamErrorRef((prev) => prev || buildErrorReference("NX-STR"));
+                      }}
+                    />
                   </SilentResetBoundary>
                 </View>
                 <View style={styles.serverSection}>
@@ -581,7 +596,7 @@ export default function MatchDetailScreen() {
             <LoadingState />
           ) : matchDetail ? (
             <>
-              <Text style={styles.sectionLabel}>WEDSTRIJD STATISTIEKEN</Text>
+              <Text style={styles.sectionLabel}>MATCH STATISTICS</Text>
               <StatsBars
                 homeTeam={params.homeTeam}
                 awayTeam={params.awayTeam}
@@ -590,7 +605,7 @@ export default function MatchDetailScreen() {
               />
               {matchDetail.keyEvents?.length > 0 && (
                 <>
-                  <Text style={[styles.sectionLabel, { marginTop: 20 }]}>WEDSTRIJD TIJDLIJN</Text>
+                  <Text style={[styles.sectionLabel, { marginTop: 20 }]}>MATCH TIMELINE</Text>
                   <MatchTimeline
                     events={matchDetail.keyEvents}
                     homeTeam={params.homeTeam}
@@ -765,7 +780,7 @@ export default function MatchDetailScreen() {
                 {livePrediction?.error ? (
                   <View style={styles.tipCard}>
                     <MaterialCommunityIcons name="alert-circle-outline" size={16} color={COLORS.live} />
-                    <Text style={styles.tipText}>{String(livePrediction.error)}</Text>
+                    <Text style={styles.tipText}>{safeStr(livePrediction.error)}</Text>
                   </View>
                 ) : null}
                 <TouchableOpacity style={styles.aiTrigger} onPress={() => fetchLivePrediction()}>
@@ -837,18 +852,16 @@ function MiniAIPill({ prediction, homeTeam, awayTeam, loading, onPress }: any) {
 }
 
 function TeamSide({ name, logo, onPress, align = "left" }: { name: string; logo?: string; onPress?: () => void; align?: "left" | "right" }) {
-  const isRight = align === "right";
   return (
     <TouchableOpacity
-      style={[styles.teamSide, isRight ? styles.teamSideRight : styles.teamSideLeft]}
+      style={styles.teamSide}
       onPress={onPress}
       activeOpacity={onPress ? 0.7 : 1}
     >
-      {!isRight && <TeamLogo uri={logo} teamName={name} size={56} />}
-      <View style={[styles.teamNameWrap, isRight && { alignItems: "flex-end" }]}>
-        <Text style={[styles.teamName, isRight && { textAlign: "right" }]} numberOfLines={2}>{name}</Text>
+      <View style={styles.teamNameWrap}>
+        <Text style={styles.teamName} numberOfLines={2}>{name}</Text>
       </View>
-      {isRight && <TeamLogo uri={logo} teamName={name} size={56} />}
+      <TeamLogo uri={logo} teamName={name} size={56} />
     </TouchableOpacity>
   );
 }
@@ -864,37 +877,43 @@ function eventIconByType(typeRaw: string) {
 
 function MatchTimeline({ events, homeTeam, awayTeam }: { events: any[]; homeTeam: string; awayTeam: string }) {
   if (!events?.length) {
-    return <EmptyState icon="timer-outline" text="Geen events beschikbaar" />;
+    return <EmptyState icon="timer-outline" text="No timeline events available" />;
   }
 
   const getEventConfig = (typeRaw: string) => {
     const t = String(typeRaw || "").toLowerCase();
     if (t.includes("goal") && (t.includes("own") || t.includes("eigen"))) {
-      return { icon: "football-outline" as const, color: "#FF6B35", label: "Eigen doelpunt", dot: "#FF6B35" };
+      return { icon: "football-outline" as const, color: "#FF6B35", label: "Own Goal", dot: "#FF6B35" };
     }
-    if (t.includes("goal") || t.includes("penalty") && t.includes("scored")) {
-      return { icon: "football-outline" as const, color: "#00E676", label: "Doelpunt", dot: "#00E676" };
+    if (t.includes("goal") || (t.includes("penalty") && t.includes("scored"))) {
+      return { icon: "football-outline" as const, color: "#00E676", label: "Goal", dot: "#00E676" };
     }
     if (t.includes("red")) {
-      return { icon: "card-outline" as const, color: "#FF3040", label: "Rode kaart", dot: "#FF3040" };
+      return { icon: "card-outline" as const, color: "#FF3040", label: "Red Card", dot: "#FF3040" };
+    }
+    if (t.includes("yellow_red") || t.includes("second yellow")) {
+      return { icon: "card-outline" as const, color: "#FF8C00", label: "2nd Yellow", dot: "#FF8C00" };
     }
     if (t.includes("yellow")) {
-      return { icon: "card-outline" as const, color: "#FFD700", label: "Gele kaart", dot: "#FFD700" };
+      return { icon: "card-outline" as const, color: "#FFD700", label: "Yellow Card", dot: "#FFD700" };
     }
-    if (t.includes("sub") || t.includes("wissel") || t.includes("substitution")) {
-      return { icon: "swap-horizontal-outline" as const, color: "#5D9EFF", label: "Wissel", dot: "#5D9EFF" };
+    if (t.includes("sub") || t.includes("substitut")) {
+      return { icon: "swap-horizontal-outline" as const, color: "#5D9EFF", label: "Substitution", dot: "#5D9EFF" };
     }
-    if (t.includes("pen")) {
+    if (t.includes("pen") || t.includes("penalty")) {
       return { icon: "radio-button-on-outline" as const, color: "#FF9800", label: "Penalty", dot: "#FF9800" };
     }
     if (t.includes("var")) {
-      return { icon: "videocam-outline" as const, color: COLORS.textMuted, label: "VAR", dot: COLORS.textMuted };
+      return { icon: "videocam-outline" as const, color: "#A78BFA", label: "VAR", dot: "#A78BFA" };
+    }
+    if (t.includes("miss") || t.includes("saved")) {
+      return { icon: "close-circle-outline" as const, color: COLORS.textMuted, label: "Missed", dot: COLORS.textMuted };
     }
     return { icon: "ellipse-outline" as const, color: COLORS.textMuted, label: "Event", dot: COLORS.textMuted };
   };
 
   const isHomeEvent = (ev: any): boolean => {
-    const evTeam = String(ev?.team || ev?.teamName || "").toLowerCase();
+    const evTeam = safeStr(ev?.team || ev?.teamName || "").toLowerCase();
     const home = homeTeam.toLowerCase();
     if (!evTeam) return true; // default to home if unknown
     return evTeam.includes(home.split(" ")[0]) || home.includes(evTeam.split(" ")[0]);
@@ -906,7 +925,7 @@ function MatchTimeline({ events, homeTeam, awayTeam }: { events: any[]; homeTeam
         const cfg = getEventConfig(String(ev?.type || ""));
         const onHome = isHomeEvent(ev);
         const minute = ev?.time ? `${String(ev.time)}'` : "";
-        const description = String(ev?.player || ev?.name || ev?.text || ev?.detail || "");
+        const description = safeStr(ev?.player || ev?.name || ev?.text || ev?.detail || "");
 
         return (
           <View key={i} style={styles.timelineRow}>
@@ -948,88 +967,91 @@ function MatchTimeline({ events, homeTeam, awayTeam }: { events: any[]; homeTeam
 
 function StatsBars({ homeTeam, awayTeam, homeStats, awayStats }: { homeTeam: string; awayTeam: string; homeStats: any; awayStats: any }) {
   const STAT_LABELS: Record<string, string> = {
-    // Core
-    ball_possession: "Balbezit %",
-    possession: "Balbezit %",
+    // Core / Possession
+    ball_possession:       "Possession %",
+    possession:            "Possession %",
     // Shots
-    total_shots: "Schoten totaal",
-    shots: "Schoten totaal",
-    shots_on_goal: "Schoten op doel",
-    shots_on_target: "Schoten op doel",
-    shots_off_goal: "Schoten naast doel",
-    shots_off_target: "Schoten naast doel",
-    blocked_shots: "Geblokkeerde schoten",
-    shots_blocked: "Geblokkeerde schoten",
-    shots_insidebox: "Schoten (binnen 16)",
-    shots_outsidebox: "Schoten (buiten 16)",
-    big_chances: "Grote kansen",
-    // xG
-    expected_goals: "Verwachte goals (xG)",
-    xg: "Verwachte goals (xG)",
-    goals_prevented: "Voorkomen goals",
+    total_shots:           "Total Shots",
+    shots:                 "Total Shots",
+    shots_on_goal:         "Shots on Target",
+    shots_on_target:       "Shots on Target",
+    shots_off_goal:        "Shots off Target",
+    shots_off_target:      "Shots off Target",
+    blocked_shots:         "Shots Blocked",
+    shots_blocked:         "Shots Blocked",
+    shots_insidebox:       "Shots Inside Box",
+    shots_outsidebox:      "Shots Outside Box",
+    big_chances:           "Big Chances",
+    expected_goals:        "Expected Goals (xG)",
+    xg:                    "Expected Goals (xG)",
+    goals_prevented:       "Goals Prevented",
     // Attacking
-    corner_kicks: "Hoekschoppen",
-    corners: "Hoekschoppen",
-    crosses: "Voorzetten",
-    successful_dribbles: "Succesvolle dribbels",
-    dribbles_completed: "Succesvolle dribbels",
-    offsides: "Buitenspel",
+    corner_kicks:          "Corners",
+    corners:               "Corners",
+    crosses:               "Crosses",
+    successful_dribbles:   "Successful Dribbles",
+    dribbles_completed:    "Successful Dribbles",
+    offsides:              "Offsides",
     // Passing
-    total_passes: "Passes totaal",
-    accurate_passes: "Nauwkeurige passes",
-    pass_accuracy: "Pasnauwkeurigheid %",
-    key_passes: "Sleutelpasses",
-    passes_final_third: "Passes in de laatste zone",
-    long_balls: "Lange ballen",
-    // Defensive
-    total_tackles: "Tackles",
-    tackles: "Tackles",
-    interceptions: "Onderscheppingen",
-    clearances: "Afhoudingen",
-    aerial_won: "Gewonnen kopduels",
-    total_duels: "Duels totaal",
-    duels_won: "Duels gewonnen",
+    total_passes:          "Total Passes",
+    accurate_passes:       "Accurate Passes",
+    pass_accuracy:         "Pass Accuracy %",
+    key_passes:            "Key Passes",
+    passes_final_third:    "Passes in Final Third",
+    long_balls:            "Long Balls",
+    // Defending
+    total_tackles:         "Tackles",
+    tackles:               "Tackles",
+    interceptions:         "Interceptions",
+    clearances:            "Clearances",
+    blocks:                "Blocks",
+    aerial_won:            "Aerial Duels Won",
+    total_duels:           "Total Duels",
+    duels_won:             "Duels Won",
     // Goalkeeping
-    goalkeeper_saves: "Reddingen",
-    saves: "Reddingen",
+    goalkeeper_saves:      "Saves",
+    saves:                 "Saves",
     // Discipline
-    fouls: "Overtredingen",
-    yellow_cards: "Gele kaarten",
-    red_cards: "Rode kaarten",
+    fouls:                 "Fouls Committed",
+    yellow_cards:          "Yellow Cards",
+    red_cards:             "Red Cards",
   };
 
-  // Stat sections for organized display
-  const STAT_SECTIONS: { label: string; keys: string[] }[] = [
+  const STAT_SECTIONS: { label: string; icon: string; keys: string[] }[] = [
     {
-      label: "AANVAL",
+      label: "ATTACK",
+      icon: "⚽",
       keys: ["ball_possession", "possession", "total_shots", "shots", "shots_on_goal", "shots_on_target",
-             "shots_off_goal", "shots_off_target", "big_chances", "expected_goals", "xg",
-             "shots_insidebox", "shots_outsidebox"],
+             "shots_off_goal", "shots_off_target", "blocked_shots", "shots_blocked",
+             "shots_insidebox", "shots_outsidebox", "big_chances", "expected_goals", "xg"],
     },
     {
-      label: "AANVALLEN",
+      label: "ATTACKING",
+      icon: "🎯",
       keys: ["corner_kicks", "corners", "crosses", "successful_dribbles", "dribbles_completed", "offsides"],
     },
     {
-      label: "PASS",
+      label: "PASSING",
+      icon: "↗️",
       keys: ["total_passes", "accurate_passes", "pass_accuracy", "key_passes", "passes_final_third", "long_balls"],
     },
     {
-      label: "VERDEDIGING",
-      keys: ["total_tackles", "tackles", "interceptions", "clearances", "blocked_shots", "shots_blocked",
-             "aerial_won", "total_duels", "duels_won"],
+      label: "DEFENDING",
+      icon: "🛡️",
+      keys: ["total_tackles", "tackles", "interceptions", "clearances", "blocks", "aerial_won", "total_duels", "duels_won"],
     },
     {
-      label: "DOELMAN",
+      label: "GOALKEEPING",
+      icon: "🧤",
       keys: ["goalkeeper_saves", "saves", "goals_prevented"],
     },
     {
       label: "DISCIPLINE",
+      icon: "🟨",
       keys: ["fouls", "yellow_cards", "red_cards"],
     },
   ];
 
-  // Dedup: als twee keys dezelfde label hebben, toon er maar één
   const seenLabels = new Set<string>();
   const dedupedStats = Object.keys(STAT_LABELS).filter((k) => {
     const label = STAT_LABELS[k];
@@ -1044,7 +1066,7 @@ function StatsBars({ homeTeam, awayTeam, homeStats, awayStats }: { homeTeam: str
   if (dedupedStats.length === 0) {
     return (
       <View style={styles.infoCard}>
-        <Text style={styles.noStatsText}>Live statistieken worden geladen tijdens de wedstrijd</Text>
+        <Text style={styles.noStatsText}>Live stats loading during the match</Text>
       </View>
     );
   }
@@ -1056,9 +1078,10 @@ function StatsBars({ homeTeam, awayTeam, homeStats, awayStats }: { homeTeam: str
     const aVal = parseFloat(rawA.replace("%", "")) || 0;
     const total = hVal + aVal || 1;
     const hPct = (hVal / total) * 100;
+    const isPossession = key === "ball_possession" || key === "possession" || key === "pass_accuracy";
     return (
       <View key={key} style={styles.statRow}>
-        <Text style={styles.statVal}>{homeStats?.[key] ?? "0"}</Text>
+        <Text style={[styles.statVal, hVal > aVal && styles.statValWinner]}>{homeStats?.[key] ?? "0"}{isPossession && typeof homeStats?.[key] === "number" ? "%" : ""}</Text>
         <View style={styles.statBarContainer}>
           <Text style={styles.statName}>{STAT_LABELS[key]}</Text>
           <View style={styles.statBar}>
@@ -1066,22 +1089,34 @@ function StatsBars({ homeTeam, awayTeam, homeStats, awayStats }: { homeTeam: str
             <View style={[styles.statBarAway, { flex: 100 - hPct }]} />
           </View>
         </View>
-        <Text style={styles.statVal}>{awayStats?.[key] ?? "0"}</Text>
+        <Text style={[styles.statVal, styles.statValRight, aVal > hVal && styles.statValWinner]}>{awayStats?.[key] ?? "0"}{isPossession && typeof awayStats?.[key] === "number" ? "%" : ""}</Text>
       </View>
     );
   };
 
-  // Check if sections mode is possible
   const sectionedKeys = new Set(STAT_SECTIONS.flatMap(s => s.keys));
   const unsectionedStats = dedupedStats.filter(k => !sectionedKeys.has(k));
 
+  const homeShort = safeStr(homeTeam).split(" ").pop() || safeStr(homeTeam).slice(0, 12);
+  const awayShort = safeStr(awayTeam).split(" ").pop() || safeStr(awayTeam).slice(0, 12);
+
   return (
     <View style={{ gap: 10 }}>
-      <View style={styles.infoCard}>
+      <View style={[styles.infoCard, { paddingVertical: 12 }]}>
         <View style={styles.statsTeamHeader}>
-          <Text style={styles.statsTeamName} numberOfLines={1}>{homeTeam}</Text>
-          <View style={{ width: 80 }} />
-          <Text style={[styles.statsTeamName, { textAlign: "right" }]} numberOfLines={1}>{awayTeam}</Text>
+          <Text style={styles.statsTeamName} numberOfLines={1}>{safeStr(homeTeam)}</Text>
+          <Text style={styles.statsVsLabel}>STATS</Text>
+          <Text style={[styles.statsTeamName, { textAlign: "right" }]} numberOfLines={1}>{safeStr(awayTeam)}</Text>
+        </View>
+        <View style={styles.statsLegendRow}>
+          <View style={styles.statsLegendItem}>
+            <View style={[styles.statsLegendDot, { backgroundColor: COLORS.accent }]} />
+            <Text style={styles.statsLegendLabel}>{homeShort}</Text>
+          </View>
+          <View style={[styles.statsLegendItem, { justifyContent: "flex-end" }]}>
+            <View style={[styles.statsLegendDot, { backgroundColor: "#5B8DEF" }]} />
+            <Text style={styles.statsLegendLabel}>{awayShort}</Text>
+          </View>
         </View>
       </View>
       {STAT_SECTIONS.map(section => {
@@ -1089,14 +1124,20 @@ function StatsBars({ homeTeam, awayTeam, homeStats, awayStats }: { homeTeam: str
         if (sectionStats.length === 0) return null;
         return (
           <View key={section.label} style={styles.infoCard}>
-            <Text style={styles.infoCardTitle}>{section.label}</Text>
+            <View style={styles.statSectionHeader}>
+              <Text style={styles.statSectionIcon}>{section.icon}</Text>
+              <Text style={styles.infoCardTitle}>{section.label}</Text>
+            </View>
             {sectionStats.map(renderStatRow)}
           </View>
         );
       })}
       {unsectionedStats.length > 0 && (
         <View style={styles.infoCard}>
-          <Text style={styles.infoCardTitle}>OVERIG</Text>
+          <View style={styles.statSectionHeader}>
+            <Text style={styles.statSectionIcon}>📊</Text>
+            <Text style={styles.infoCardTitle}>OTHER</Text>
+          </View>
           {unsectionedStats.map(renderStatRow)}
         </View>
       )}
@@ -1649,15 +1690,14 @@ const styles = StyleSheet.create({
     borderColor: "rgba(255,255,255,0.1)",
   },
   scoreRow: { flexDirection: "row", alignItems: "center", width: "100%", paddingHorizontal: 4 },
-  teamSide: { flex: 1, flexDirection: "row", alignItems: "center", gap: 8 },
-  teamSideLeft: { justifyContent: "flex-start" },
-  teamSideRight: { justifyContent: "flex-end" },
-  teamNameWrap: { flex: 1 },
+  teamSide: { flex: 1, alignItems: "center", gap: 6 },
+  teamNameWrap: { alignItems: "center" },
   teamName: {
     fontFamily: "Inter_700Bold",
     fontSize: 13,
     color: COLORS.text,
     lineHeight: 17,
+    textAlign: "center",
   },
   tapHint: { fontFamily: "Inter_400Regular", fontSize: 10, color: COLORS.accentDim },
   scoreCenter: { minWidth: 100, alignItems: "center", gap: 5 },
@@ -1665,10 +1705,12 @@ const styles = StyleSheet.create({
     fontFamily: "Inter_800ExtraBold",
     fontSize: 48,
     color: COLORS.text,
+    flexDirection: "row",
     // @ts-ignore
     textShadowColor: "rgba(255,48,64,0.6)",
     textShadowOffset: { width: 0, height: 0 },
     textShadowRadius: 16,
+    textAlign: "center",
   },
   vsText: {
     fontFamily: "Inter_800ExtraBold",
@@ -1865,41 +1907,88 @@ const styles = StyleSheet.create({
   infoLabel: { fontFamily: "Inter_400Regular", fontSize: 14, color: COLORS.textMuted },
   infoValue: { fontFamily: "Inter_600SemiBold", fontSize: 14, color: COLORS.text },
   infoValueHighlight: { color: COLORS.live },
-  statsTeamHeader: { flexDirection: "row", justifyContent: "space-between", marginBottom: 16 },
+  statsTeamHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 8 },
   statsTeamName: {
     fontFamily: "Inter_700Bold",
     fontSize: 12,
-    color: COLORS.accent,
+    color: COLORS.text,
     flex: 1,
     textAlign: "center",
     textTransform: "uppercase",
     letterSpacing: 0.5,
   },
-  statRow: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 12 },
+  statsVsLabel: {
+    fontFamily: "Inter_800ExtraBold",
+    fontSize: 10,
+    color: COLORS.textMuted,
+    letterSpacing: 2,
+    textAlign: "center",
+    minWidth: 48,
+  },
+  statsLegendRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginTop: 4,
+  },
+  statsLegendItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    flex: 1,
+  },
+  statsLegendDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  statsLegendLabel: {
+    fontFamily: "Inter_500Medium",
+    fontSize: 10,
+    color: COLORS.textMuted,
+    letterSpacing: 0.3,
+  },
+  statSectionHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginBottom: 12,
+  },
+  statSectionIcon: {
+    fontSize: 13,
+  },
+  statRow: { flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 14 },
   statVal: {
     fontFamily: "Inter_700Bold",
-    fontSize: 14,
-    color: COLORS.text,
-    width: 36,
+    fontSize: 15,
+    color: COLORS.textSecondary,
+    width: 38,
     textAlign: "center",
   },
-  statBarContainer: { flex: 1, alignItems: "center", gap: 5 },
+  statValRight: {
+    textAlign: "center",
+  },
+  statValWinner: {
+    color: COLORS.text,
+    fontSize: 16,
+  },
+  statBarContainer: { flex: 1, alignItems: "center", gap: 4 },
   statName: {
     fontFamily: "Inter_500Medium",
     fontSize: 11,
     color: COLORS.textMuted,
     textAlign: "center",
+    letterSpacing: 0.2,
   },
   statBar: {
     flexDirection: "row",
-    height: 8,
-    borderRadius: 4,
+    height: 6,
+    borderRadius: 3,
     overflow: "hidden",
     width: "100%",
     backgroundColor: COLORS.cardElevated,
   },
-  statBarHome: { backgroundColor: COLORS.accent, borderRadius: 4 },
-  statBarAway: { backgroundColor: "#5D60E8", borderRadius: 4 },
+  statBarHome: { backgroundColor: COLORS.accent, borderRadius: 3 },
+  statBarAway: { backgroundColor: "#5B8DEF", borderRadius: 3 },
   noStatsText: {
     fontFamily: "Inter_400Regular",
     fontSize: 14,

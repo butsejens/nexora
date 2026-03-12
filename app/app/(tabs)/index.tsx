@@ -30,6 +30,20 @@ import {
   toEventHash,
 } from "@/lib/match-notifications";
 
+/** Safely convert any value to string — prevents [object Object] rendering */
+function safeStr(val: unknown): string {
+  if (val === null || val === undefined) return "";
+  if (typeof val === "string") return val;
+  if (typeof val === "number" || typeof val === "boolean") return String(val);
+  if (typeof val === "object") {
+    if (val instanceof Error) return val.message || "Error";
+    if ("message" in val && typeof (val as any).message === "string") return (val as any).message;
+    if ("name" in val && typeof (val as any).name === "string") return (val as any).name;
+    try { return JSON.stringify(val); } catch { return ""; }
+  }
+  return String(val);
+}
+
 // ── Sport design tokens ───────────────────────────────────────────────────────
 const SP_ACCENT      = COLORS.accent;
 const SP_ACCENT_GLOW = COLORS.accentGlow;
@@ -505,14 +519,14 @@ function LiveNowCard({ match, onPress }: { match: any; onPress: () => void }) {
         {/* Teams + score */}
         <View style={liveCardStyles.teamsRow}>
           <View style={liveCardStyles.teamBlock}>
+            <Text style={liveCardStyles.teamName} numberOfLines={1}>{match?.homeTeam || "Home"}</Text>
             <TeamLogo uri={match?.homeTeamLogo} teamName={match?.homeTeam || ""} size={44} />
-            <Text style={liveCardStyles.teamName} numberOfLines={1}>{match?.homeTeam || "Thuis"}</Text>
           </View>
           <View style={liveCardStyles.scoreBlock}>
             <Text style={liveCardStyles.score}>{homeScore} - {awayScore}</Text>
           </View>
           <View style={liveCardStyles.teamBlock}>
-            <Text style={liveCardStyles.teamName} numberOfLines={1}>{match?.awayTeam || "Uit"}</Text>
+            <Text style={liveCardStyles.teamName} numberOfLines={1}>{match?.awayTeam || "Away"}</Text>
             <TeamLogo uri={match?.awayTeamLogo} teamName={match?.awayTeam || ""} size={44} />
           </View>
         </View>
@@ -552,8 +566,8 @@ const liveCardStyles = StyleSheet.create({
   teamsRow: { flexDirection: "row", alignItems: "center", paddingLeft: 6 },
   teamBlock: { flex: 1, alignItems: "center", gap: 6 },
   teamName: { color: P.text, fontSize: 11, fontWeight: "600", textAlign: "center" },
-  scoreBlock: { paddingHorizontal: 10 },
-  score: { color: P.text, fontSize: 28, fontWeight: "800", letterSpacing: 1 },
+  scoreBlock: { paddingHorizontal: 10, flexDirection: "row", alignItems: "center" },
+  score: { color: P.text, fontSize: 28, fontWeight: "800", letterSpacing: 1, textAlign: "center" },
   stadium: { color: P.muted, fontSize: 10, marginTop: 10, paddingLeft: 6 },
 });
 
@@ -579,8 +593,8 @@ function TodayMatchCard({ match, onPress }: { match: any; onPress: () => void })
         {/* Teams */}
         <View style={todayCardStyles.teamsRow}>
           <View style={todayCardStyles.teamBlock}>
+            <Text style={todayCardStyles.teamName} numberOfLines={1}>{match?.homeTeam || "Home"}</Text>
             <TeamLogo uri={match?.homeTeamLogo} teamName={match?.homeTeam || ""} size={36} />
-            <Text style={todayCardStyles.teamName} numberOfLines={1}>{match?.homeTeam || "Thuis"}</Text>
           </View>
           <View style={todayCardStyles.center}>
             {isLive ? (
@@ -601,7 +615,7 @@ function TodayMatchCard({ match, onPress }: { match: any; onPress: () => void })
             )}
           </View>
           <View style={todayCardStyles.teamBlock}>
-            <Text style={todayCardStyles.teamName} numberOfLines={1}>{match?.awayTeam || "Uit"}</Text>
+            <Text style={todayCardStyles.teamName} numberOfLines={1}>{match?.awayTeam || "Away"}</Text>
             <TeamLogo uri={match?.awayTeamLogo} teamName={match?.awayTeam || ""} size={36} />
           </View>
         </View>
@@ -980,14 +994,14 @@ export default function SportsScreen() {
       return backendPredictions.length > 0
         ? backendPredictions.slice(0, 8).map((item: any) => ({
             key: `pred_${item.matchId}`,
-            title: `${item.homeTeam} vs ${item.awayTeam}`,
-            meta: `${item.homePct}% · ${item.drawPct}% · ${item.awayPct}% · ${item.confidence}% conf.`,
+            title: `${safeStr(item.homeTeam)} vs ${safeStr(item.awayTeam)}`,
+            meta: `${safeStr(item.homePct)}% · ${safeStr(item.drawPct)}% · ${safeStr(item.awayPct)}% · ${safeStr(item.confidence)}% conf.`,
             badges: buildHomeAwayBadges(item.homePct, item.awayPct, item.drawPct),
             item,
           }))
         : sportMenuPreview.slice(0, 6).map(({ match, split }) => ({
             key: `pred_${match.id}`,
-            title: `${match.homeTeam} vs ${match.awayTeam}`,
+            title: `${safeStr(match.homeTeam)} vs ${safeStr(match.awayTeam)}`,
             meta: `${split.home}% · ${split.draw}% · ${split.away}%`,
             badges: buildHomeAwayBadges(split.home, split.away, split.draw),
             match,
@@ -997,8 +1011,8 @@ export default function SportsScreen() {
       return backendAcca.length > 0
         ? backendAcca.slice(0, 8).map((item: any) => ({
             key: `acca_${item.matchId}`,
-            title: `${item.pickLabel} · ${item.homeTeam} - ${item.awayTeam}`,
-            meta: `${item.market} · Confidence ${item.confidence}%`,
+            title: `${safeStr(item.pickLabel)} · ${safeStr(item.homeTeam)} - ${safeStr(item.awayTeam)}`,
+            meta: `${safeStr(item.market)} · Confidence ${safeStr(item.confidence)}%`,
             badges: buildHomeAwayBadges(item.homePct, item.awayPct, item.drawPct),
             item,
           }))
@@ -1007,7 +1021,7 @@ export default function SportsScreen() {
             const confidence = Math.max(split.home, split.away);
             return {
               key: `acca_${match.id}`,
-              title: `${side} · ${match.homeTeam} - ${match.awayTeam}`,
+              title: `${side} · ${safeStr(match.homeTeam)} - ${safeStr(match.awayTeam)}`,
               meta: `Confidence ${confidence}%`,
               badges: buildHomeAwayBadges(split.home, split.away, split.draw),
               match,
@@ -1083,7 +1097,7 @@ export default function SportsScreen() {
       const next = { ...subscriptionsRef.current };
       delete next[id];
       await setSubscriptionsAndPersist(next);
-      await pushMatchNotification("Meldingen uitgeschakeld", `${match.homeTeam} - ${match.awayTeam}`, { matchId: id });
+      await pushMatchNotification("Meldingen uitgeschakeld", `${safeStr(match.homeTeam)} - ${safeStr(match.awayTeam)}`, { matchId: id });
       return;
     }
     const permission = await ensureMatchNotificationPermission();
@@ -1093,10 +1107,10 @@ export default function SportsScreen() {
     }
     const next = {
       ...subscriptionsRef.current,
-      [id]: { id, espnLeague: resolveEspnLeague(match), homeTeam: String(match?.homeTeam || "Thuis"), awayTeam: String(match?.awayTeam || "Uit") },
+      [id]: { id, espnLeague: resolveEspnLeague(match), homeTeam: safeStr(match?.homeTeam) || "Thuis", awayTeam: safeStr(match?.awayTeam) || "Uit" },
     };
     await setSubscriptionsAndPersist(next);
-    await pushMatchNotification("Meldingen ingeschakeld", `${match.homeTeam} - ${match.awayTeam} wordt gevolgd`, { matchId: id });
+    await pushMatchNotification("Meldingen ingeschakeld", `${safeStr(match.homeTeam)} - ${safeStr(match.awayTeam)} wordt gevolgd`, { matchId: id });
   }, [resolveEspnLeague, setSubscriptionsAndPersist]);
 
   useEffect(() => {
@@ -1135,27 +1149,27 @@ export default function SportsScreen() {
           const currentHomeScore = Number(detail?.homeScore ?? 0);
           const currentAwayScore = Number(detail?.awayScore ?? 0);
           const keyEvents = Array.isArray(detail?.keyEvents) ? detail.keyEvents : [];
-          const eventHashes = keyEvents.filter((event: any) => interestingEventRegex.test(`${event?.type || ""} ${event?.detail || ""}`)).map((event: any) => toEventHash(event));
+          const eventHashes = keyEvents.filter((event: any) => interestingEventRegex.test(`${safeStr(event?.type)} ${safeStr(event?.detail)}`)).map((event: any) => toEventHash(event));
           if (prev) {
             if (prev.status !== "live" && currentStatus === "live" && shouldNotify(`${sub.id}:start`, 20_000))
-              await pushMatchNotification("Wedstrijd gestart", `${sub.homeTeam} - ${sub.awayTeam} is begonnen`, { matchId: sub.id });
+              await pushMatchNotification("Wedstrijd gestart", `${safeStr(sub.homeTeam)} - ${safeStr(sub.awayTeam)} is begonnen`, { matchId: sub.id });
             if (prev.status !== "finished" && currentStatus === "finished" && shouldNotify(`${sub.id}:finished`, 20_000))
-              await pushMatchNotification("Wedstrijd afgelopen", `${sub.homeTeam} ${currentHomeScore}-${currentAwayScore} ${sub.awayTeam}`, { matchId: sub.id });
+              await pushMatchNotification("Wedstrijd afgelopen", `${safeStr(sub.homeTeam)} ${currentHomeScore}-${currentAwayScore} ${safeStr(sub.awayTeam)}`, { matchId: sub.id });
             if (currentStatus === "live" && (prev.homeScore !== currentHomeScore || prev.awayScore !== currentAwayScore) && shouldNotify(`${sub.id}:score`, 10_000))
-              await pushMatchNotification("Doelpunt update", `${sub.homeTeam} ${currentHomeScore}-${currentAwayScore} ${sub.awayTeam}`, { matchId: sub.id });
+              await pushMatchNotification("Doelpunt update", `${safeStr(sub.homeTeam)} ${currentHomeScore}-${currentAwayScore} ${safeStr(sub.awayTeam)}`, { matchId: sub.id });
             const seen = new Set(prev.eventHashes || []);
             const newInterestingEvents = keyEvents.filter((event: any) => {
               const hash = toEventHash(event);
               if (seen.has(hash)) return false;
-              return interestingEventRegex.test(`${event?.type || ""} ${event?.detail || ""}`);
+              return interestingEventRegex.test(`${safeStr(event?.type)} ${safeStr(event?.detail)}`);
             });
             if (newInterestingEvents.length > 0 && shouldNotify(`${sub.id}:events`, 10_000)) {
               const latest = newInterestingEvents[newInterestingEvents.length - 1];
               const evTime = latest?.time ? `${latest.time} • ` : "";
-              const evType = String(latest?.type || "Event");
-              const evDetail = String(latest?.detail || "").trim();
+              const evType = safeStr(latest?.type || "Event");
+              const evDetail = safeStr(latest?.detail).trim();
               const countPrefix = newInterestingEvents.length > 1 ? `+${newInterestingEvents.length} updates\n` : "";
-              const scoreLine = `${sub.homeTeam} ${currentHomeScore}-${currentAwayScore} ${sub.awayTeam}`;
+              const scoreLine = `${safeStr(sub.homeTeam)} ${currentHomeScore}-${currentAwayScore} ${safeStr(sub.awayTeam)}`;
               const body = `${countPrefix}${scoreLine}\n${evTime}${evType}${evDetail ? `: ${evDetail}` : ""}`;
               await pushMatchNotification("Match event", body, { matchId: sub.id });
             }
