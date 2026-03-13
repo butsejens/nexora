@@ -249,7 +249,7 @@ export default function DetailScreen() {
   }>();
 
   const insets = useSafeAreaInsets();
-  const { isFavorite, toggleFavorite, iptvChannels, isDownloaded } = useNexora();
+  const { isFavorite, toggleFavorite, iptvChannels, isDownloaded, hasPremium } = useNexora();
 
   const [showTrailer, setShowTrailer] = useState(false);
   const [showDownload, setShowDownload] = useState(false);
@@ -492,12 +492,21 @@ export default function DetailScreen() {
           </View>
 
           <View style={styles.actionButtons}>
-            <TouchableOpacity style={styles.playBtn} onPress={() => goToPlayer()} activeOpacity={0.85}>
-              <View style={styles.playBtnInner}>
-                <Ionicons name="play" size={22} color="#FFFFFF" />
-                <Text style={styles.playBtnText}>Afspelen</Text>
-              </View>
-            </TouchableOpacity>
+            {hasPremium(isMovie ? "movies" : "series") ? (
+              <TouchableOpacity style={styles.playBtn} onPress={() => goToPlayer()} activeOpacity={0.85}>
+                <View style={styles.playBtnInner}>
+                  <Ionicons name="play" size={22} color="#FFFFFF" />
+                  <Text style={styles.playBtnText}>Afspelen</Text>
+                </View>
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity style={styles.playBtn} onPress={() => router.push("/premium")} activeOpacity={0.85}>
+                <View style={styles.lockedBtnInner}>
+                  <Ionicons name="lock-closed" size={18} color="#FFFFFF" />
+                  <Text style={styles.playBtnText}>Ontgrendel met Premium</Text>
+                </View>
+              </TouchableOpacity>
+            )}
             <TouchableOpacity
               style={[styles.downloadBtnOutline, isDownloaded(id) && { borderColor: "#22c55e" }]}
               onPress={() => { SafeHaptics.impactLight(); setShowDownload(true); }}
@@ -567,7 +576,7 @@ export default function DetailScreen() {
                   <TouchableOpacity
                     key={season.id || idx}
                     style={styles.seasonRow}
-                    onPress={() => goToPlayer(season.seasonNumber || idx + 1, 1)}
+                    onPress={() => hasPremium("series") ? goToPlayer(season.seasonNumber || idx + 1, 1) : router.push("/premium")}
                   >
                     {season.poster ? (
                       <Image source={{ uri: season.poster }} style={styles.seasonPoster} />
@@ -581,19 +590,19 @@ export default function DetailScreen() {
                       <Text style={styles.seasonEpisodes}>{season.episodes} Afleveringen</Text>
                       {season.airDate && <Text style={styles.seasonDate}>{new Date(season.airDate).getFullYear()}</Text>}
                     </View>
-                    <Ionicons name="play-circle-outline" size={28} color={COLORS.accent} />
+                    <Ionicons name={hasPremium("series") ? "play-circle-outline" : "lock-closed"} size={hasPremium("series") ? 28 : 20} color={hasPremium("series") ? COLORS.accent : COLORS.textMuted} />
                   </TouchableOpacity>
                 ))
               ) : (
-                <TouchableOpacity style={styles.seasonRow} onPress={() => goToPlayer(1, 1)}>
+                <TouchableOpacity style={styles.seasonRow} onPress={() => hasPremium("series") ? goToPlayer(1, 1) : router.push("/premium")}>
                   <View style={[styles.seasonPoster, { backgroundColor: COLORS.card, alignItems: "center", justifyContent: "center" }]}>
-                    <Ionicons name="play" size={20} color={COLORS.accent} />
+                    <Ionicons name={hasPremium("series") ? "play" : "lock-closed"} size={20} color={hasPremium("series") ? COLORS.accent : COLORS.textMuted} />
                   </View>
                   <View style={styles.seasonInfo}>
                     <Text style={styles.seasonName}>Seizoen 1</Text>
-                    <Text style={styles.seasonEpisodes}>Afspelen</Text>
+                    <Text style={styles.seasonEpisodes}>{hasPremium("series") ? "Afspelen" : "Premium vereist"}</Text>
                   </View>
-                  <Ionicons name="play-circle-outline" size={28} color={COLORS.accent} />
+                  <Ionicons name={hasPremium("series") ? "play-circle-outline" : "lock-closed"} size={hasPremium("series") ? 28 : 20} color={hasPremium("series") ? COLORS.accent : COLORS.textMuted} />
                 </TouchableOpacity>
               )}
             </View>
@@ -717,6 +726,7 @@ const styles = StyleSheet.create({
   actionButtons: { flexDirection: "row", gap: 10, marginBottom: 20, alignItems: "center" },
   playBtn: { flex: 1, borderRadius: 12, overflow: "hidden" },
   playBtnInner: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, paddingVertical: 14, backgroundColor: COLORS.accent, borderRadius: 12 },
+  lockedBtnInner: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, paddingVertical: 14, backgroundColor: "rgba(229,9,20,0.35)", borderRadius: 12, borderWidth: 1, borderColor: "rgba(229,9,20,0.5)" },
   playBtnText: { fontFamily: "Inter_700Bold", fontSize: 16, color: "#FFFFFF" },
   downloadBtnOutline: { width: 48, height: 48, borderRadius: 12, borderWidth: 1.5, borderColor: "rgba(255,255,255,0.12)", alignItems: "center", justifyContent: "center", backgroundColor: "rgba(255,255,255,0.04)" },
   shareBtnOutline: { width: 48, height: 48, borderRadius: 12, borderWidth: 1.5, borderColor: "rgba(255,255,255,0.12)", alignItems: "center", justifyContent: "center", backgroundColor: "rgba(255,255,255,0.04)" },

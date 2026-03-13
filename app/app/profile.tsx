@@ -12,11 +12,13 @@ import {
   Platform,
   ActivityIndicator,
   Linking,
+  Image,
 } from "react-native";
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import * as DocumentPicker from "expo-document-picker";
+import * as ImagePicker from "expo-image-picker";
 import Constants from "expo-constants";
 import * as Application from "expo-application";
 import * as Updates from "expo-updates";
@@ -544,7 +546,7 @@ export default function SettingsScreen() {
     activeProfile, setActiveProfile,
     profiles, playlists, addPlaylist, removePlaylist, updatePlaylist,
     favorites, watchHistory, clearHistory, iptvChannels, setIptvChannelsForPlaylist,
-    isPremium, resetAll} = useNexora();
+    isPremium, resetAll, avatarUri, setAvatarUri} = useNexora();
 
   const [progressVisible, setProgressVisible] = useState(false);
   const [progressPct, setProgressPct] = useState(0);
@@ -1055,15 +1057,42 @@ const [showAddPlaylist, setShowAddPlaylist] = useState(false);
       />
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: bottomPad }}>
-        <Text style={styles.heroHeadline}>Your profile, playlists and streaming controls in one place</Text>
+        <Text style={styles.heroHeadline}>Jouw profiel, playlists en streaming instellingen</Text>
         <View style={styles.profileSection}>
-          <View style={styles.avatarContainer}>
+          <TouchableOpacity
+            style={styles.avatarContainer}
+            onPress={async () => {
+              SafeHaptics.impactLight();
+              const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+              if (status !== "granted") {
+                Alert.alert("Toestemming nodig", "Geef toegang tot je foto's om een profielfoto in te stellen.");
+                return;
+              }
+              const result = await ImagePicker.launchImageLibraryAsync({
+                mediaTypes: ["images"],
+                allowsEditing: true,
+                aspect: [1, 1],
+                quality: 0.8,
+              });
+              if (!result.canceled && result.assets[0]) {
+                await setAvatarUri(result.assets[0].uri);
+              }
+            }}
+            activeOpacity={0.8}
+          >
             <View style={styles.avatar}>
-              <Ionicons name="person" size={32} color={COLORS.accent} />
+              {avatarUri ? (
+                <Image source={{ uri: avatarUri }} style={styles.avatarImage} />
+              ) : (
+                <Ionicons name="person" size={32} color={COLORS.accent} />
+              )}
             </View>
             <View style={styles.glowRing} />
-          </View>
-          <Text style={styles.profileName}>{activeProfile} Profile</Text>
+            <View style={styles.avatarEditBadge}>
+              <Ionicons name="camera" size={12} color="#fff" />
+            </View>
+          </TouchableOpacity>
+          <Text style={styles.profileName}>Main Profile</Text>
           <TouchableOpacity
             style={[styles.premiumBadge, isPremium && styles.premiumBadgeActive]}
             onPress={() => router.push("/premium")}
@@ -1075,17 +1104,6 @@ const [showAddPlaylist, setShowAddPlaylist] = useState(false);
             </Text>
             {!isPremium && <Ionicons name="chevron-forward" size={13} color={COLORS.accent} />}
           </TouchableOpacity>
-          <View style={styles.profileTabs}>
-            {profiles.map((p) => (
-              <TouchableOpacity
-                key={p}
-                style={[styles.profileTab, activeProfile === p && styles.profileTabActive]}
-                onPress={() => { SafeHaptics.impactLight(); setActiveProfile(p); }}
-              >
-                <Text style={[styles.profileTabText, activeProfile === p && styles.profileTabTextActive]}>{p}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
         </View>
 
         <View style={styles.statsBar}>
@@ -1587,6 +1605,13 @@ const styles = StyleSheet.create({
   avatar: {
     width: 80, height: 80, borderRadius: 40, backgroundColor: COLORS.cardElevated,
     borderWidth: 2, borderColor: COLORS.accent, alignItems: "center", justifyContent: "center",
+    overflow: "hidden",
+  },
+  avatarImage: { width: 80, height: 80, borderRadius: 40 },
+  avatarEditBadge: {
+    position: "absolute", bottom: 0, right: 0, width: 26, height: 26, borderRadius: 13,
+    backgroundColor: COLORS.accent, alignItems: "center", justifyContent: "center",
+    borderWidth: 2, borderColor: COLORS.background,
   },
   glowRing: {
     position: "absolute", top: -4, left: -4, width: 88, height: 88,
@@ -1606,14 +1631,6 @@ const styles = StyleSheet.create({
   premiumBadgeText: { fontFamily: "Inter_600SemiBold", fontSize: 12, color: COLORS.textMuted },
   premiumBadgeTextActive: { color: "#FFD700" },
   profileSub: { fontFamily: "Inter_500Medium", fontSize: 13, color: COLORS.accent, marginBottom: 12 },
-  profileTabs: {
-    flexDirection: "row", backgroundColor: COLORS.cardElevated, borderRadius: 12,
-    padding: 4, borderWidth: 1, borderColor: COLORS.border, gap: 4,
-  },
-  profileTab: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 9 },
-  profileTabActive: { backgroundColor: COLORS.accentGlow, borderWidth: 1, borderColor: COLORS.accent },
-  profileTabText: { fontFamily: "Inter_500Medium", fontSize: 13, color: COLORS.textMuted },
-  profileTabTextActive: { color: COLORS.accent, fontFamily: "Inter_600SemiBold" },
   statsBar: {
     flexDirection: "row", marginHorizontal: 20, marginBottom: 24, backgroundColor: COLORS.overlayLight,
     borderRadius: 18, padding: 16, justifyContent: "space-around", borderWidth: 1, borderColor: COLORS.borderLight,

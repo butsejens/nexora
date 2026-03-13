@@ -563,9 +563,9 @@ const liveCardStyles = StyleSheet.create({
   liveDot: { width: 5, height: 5, borderRadius: 3, backgroundColor: P.live },
   liveText: { color: P.live, fontSize: 9, fontWeight: "700", letterSpacing: 0.8 },
   minute: { color: P.muted, fontSize: 11, fontWeight: "600", marginLeft: 4 },
-  teamsRow: { flexDirection: "row", alignItems: "center", paddingLeft: 6 },
+  teamsRow: { flexDirection: "row", alignItems: "center", paddingLeft: 6, flex: 1 },
   teamBlock: { flex: 1, alignItems: "center", gap: 6 },
-  teamName: { color: P.text, fontSize: 11, fontWeight: "600", textAlign: "center" },
+  teamName: { color: P.text, fontSize: 11, fontWeight: "600", textAlign: "center", maxWidth: 90 },
   scoreBlock: { paddingHorizontal: 10, flexDirection: "row", alignItems: "center" },
   score: { color: P.text, fontSize: 28, fontWeight: "800", letterSpacing: 1, textAlign: "center" },
   stadium: { color: P.muted, fontSize: 10, marginTop: 10, paddingLeft: 6 },
@@ -627,16 +627,16 @@ function TodayMatchCard({ match, onPress }: { match: any; onPress: () => void })
 const todayCardStyles = StyleSheet.create({
   wrap: { marginRight: 10 },
   card: {
-    width: 190, borderRadius: 14, backgroundColor: P.card, padding: 12,
+    width: 200, borderRadius: 14, backgroundColor: P.card, padding: 12,
     borderWidth: 1, borderColor: P.border,
     shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.3, shadowRadius: 6, elevation: 4,
   },
   leagueRow: { flexDirection: "row", alignItems: "center", gap: 5, marginBottom: 10 },
-  leagueIcon: { width: 14, height: 14 },
+  leagueIcon: { width: 16, height: 16 },
   leagueName: { color: P.muted, fontSize: 10, fontWeight: "500", flex: 1 },
   teamsRow: { flexDirection: "row", alignItems: "center" },
   teamBlock: { flex: 1, alignItems: "center", gap: 5 },
-  teamName: { color: P.text, fontSize: 10, fontWeight: "600", textAlign: "center" },
+  teamName: { color: P.text, fontSize: 10, fontWeight: "600", textAlign: "center", maxWidth: 70 },
   center: { paddingHorizontal: 8, alignItems: "center" },
   time: { color: P.text, fontSize: 14, fontWeight: "700" },
   vs: { color: P.muted, fontSize: 9, marginTop: 2 },
@@ -1363,6 +1363,7 @@ export default function SportsScreen() {
             {/* ── VANDAAG ── */}
             <SectionTitle
               title="Vandaag"
+              accent
               action={todayCombined.length > 5 ? "Alle matchen" : undefined}
               onAction={() => setSportsView("upcoming")}
             />
@@ -1404,7 +1405,7 @@ export default function SportsScreen() {
             </ScrollView>
 
             {/* ── LANDEN ── */}
-            <SectionTitle title="Landen" />
+            <SectionTitle title="Landen" accent />
             <View style={styles.countryGrid}>
               {COUNTRY_COMPETITIONS.map((country) => (
                 <CountryCard
@@ -1429,7 +1430,7 @@ export default function SportsScreen() {
             )}
 
             {/* ── ALLE COMPETITIES (selected country) ── */}
-            <SectionTitle title={`${flagFromIso2(selectedCountryCode)} ${selectedCountry?.countryName} · Competities`} />
+            <SectionTitle title={`${flagFromIso2(selectedCountryCode)} ${selectedCountry?.countryName} · Competities`} accent />
             <View style={styles.compListPanel}>
               {(selectedCountry?.competitions || []).map((comp) => (
                 <TouchableOpacity
@@ -1499,9 +1500,12 @@ export default function SportsScreen() {
           <View style={styles.section}>
             <DateSelector date={selectedDate} onDateChange={setSelectedDate} />
             <View style={styles.sectionHead}>
-              <Text style={styles.sectionTitle}>
-                {selectedDate === todayUTC() ? "Matchen vandaag" : formatDateDisplay(selectedDate)}
-              </Text>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                <View style={{ width: 3, height: 18, backgroundColor: P.accent, borderRadius: 2 }} />
+                <Text style={styles.sectionTitle}>
+                  {selectedDate === todayUTC() ? "Matchen vandaag" : formatDateDisplay(selectedDate)}
+                </Text>
+              </View>
             </View>
             {todayFirstLoad ? (
               [1, 2, 3].map(i => <View key={i} style={styles.matchCardSkeleton}><View style={styles.skeletonShimmer} /></View>)
@@ -1549,7 +1553,10 @@ export default function SportsScreen() {
         {showMenuSection && (
           <View style={styles.section}>
             <View style={styles.sectionHead}>
-              <Text style={styles.sectionTitle}>Analyse</Text>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                <View style={{ width: 3, height: 18, backgroundColor: P.accent, borderRadius: 2 }} />
+                <Text style={styles.sectionTitle}>Analyse</Text>
+              </View>
             </View>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.toolsRow}>
               {SPORT_TOOL_CARDS.map((card) => {
@@ -1725,7 +1732,7 @@ const styles = StyleSheet.create({
     flexDirection: "row", alignItems: "center", justifyContent: "space-between",
     paddingHorizontal: 16, paddingVertical: 10,
   },
-  sectionTitle: { color: P.text, fontSize: 18, fontWeight: "700" },
+  sectionTitle: { color: P.text, fontSize: 18, fontWeight: "700", letterSpacing: 0.3 },
   subHead: { color: P.muted, fontSize: 12, fontWeight: "600", paddingHorizontal: 16, paddingTop: 8, letterSpacing: 0.8, textTransform: "uppercase" },
 
   /* ── Live pill inline ── */
@@ -1754,14 +1761,15 @@ const styles = StyleSheet.create({
   skeletonShimmer: { height: "100%", width: "40%", backgroundColor: `${P.text}08` },
 
   /* ── Empty states ── */
-  emptyState: { alignItems: "center", paddingVertical: 32, gap: 8 },
+  emptyState: { alignItems: "center", paddingVertical: 32, gap: 10 },
   emptyCarousel: {
-    height: 88, alignItems: "center", justifyContent: "center",
-    flexDirection: "row", gap: 10, marginHorizontal: 16,
-    borderRadius: 14, backgroundColor: P.card,
+    height: 96, alignItems: "center", justifyContent: "center",
+    flexDirection: "row", gap: 12, marginHorizontal: 16,
+    borderRadius: 16, backgroundColor: P.card,
     borderWidth: 1, borderColor: P.border,
+    borderStyle: "dashed",
   },
-  emptyText: { color: P.muted, fontSize: 13, fontWeight: "500" },
+  emptyText: { color: P.muted, fontSize: 13, fontWeight: "500", letterSpacing: 0.2 },
 
   /* ── Analyse tool cards ── */
   toolsRow: { paddingHorizontal: 16, gap: 12, paddingVertical: 8 },

@@ -14,17 +14,6 @@ import { SafeHaptics } from "@/lib/safeHaptics";
 
 type BillingCycle = "monthly" | "yearly";
 
-const SPORT_SHOWCASE = [
-  { title: "Football Predictions", subtitle: "Powered by artificial intelligence.", icon: "brain" },
-  { title: "Daily Acca Picks", subtitle: "Generate high confidence picks via your custom home page.", icon: "ticket-percent-outline" },
-  { title: "Score Centre", subtitle: "Stay up-to-date with every match.", icon: "scoreboard-outline" },
-  { title: "Ready to Play?", subtitle: "Test your football knowledge against the rest of the world.", icon: "gamepad-variant-outline" },
-  { title: "Match Highlights", subtitle: "Never miss a goal.", icon: "movie-play-outline" },
-  { title: "Analyze Everything", subtitle: "Head-to-head analysis for every match.", icon: "chart-line" },
-  { title: "Bet Builder", subtitle: "Build smart bets with confidence.", icon: "shape-outline" },
-  { title: "Detailed Statistics", subtitle: "Get ahead with advanced match predictions.", icon: "chart-box-outline" },
-] as const;
-
 const CATEGORIES: {
   id: PremiumCategory;
   label: string;
@@ -33,6 +22,7 @@ const CATEGORIES: {
   priceMonthly: number;
   color: string;
   features: string[];
+  badge: string | null;
 }[] = [
   {
     id: "sport",
@@ -41,7 +31,8 @@ const CATEGORIES: {
     iconLib: "mci",
     priceMonthly: 7.99,
     color: "#00C4E8",
-    features: ["AI voorspellingen", "xG & kansen analyse", "Tactische analyse", "Vormlijn & H2H"],
+    features: ["AI voorspellingen & xG analyse", "Tactische matchanalyse", "H2H & vormvergelijking", "Dagelijkse kanskaarten"],
+    badge: null,
   },
   {
     id: "movies",
@@ -50,7 +41,8 @@ const CATEGORIES: {
     iconLib: "mci",
     priceMonthly: 5.99,
     color: "#FF6B6B",
-    features: ["Alle films in 4K", "Duizenden titels", "TMDB catalogus", "Nieuwe releases"],
+    features: ["4K filmcatalogus", "Nieuwe releases & trending", "Uitgebreide filminfo & ratings", "Premium speler zonder reclame"],
+    badge: "Populairst",
   },
   {
     id: "series",
@@ -59,7 +51,8 @@ const CATEGORIES: {
     iconLib: "mci",
     priceMonthly: 5.99,
     color: "#A855F7",
-    features: ["Alle series unlocked", "Seizoen overzicht", "Trending series", "Exclusieve titels"],
+    features: ["Alle series onbeperkt", "Seizoen & afleveringen overzicht", "Trending & exclusieve titels", "Verder kijken support"],
+    badge: null,
   },
   {
     id: "livetv",
@@ -68,7 +61,8 @@ const CATEGORIES: {
     iconLib: "mci",
     priceMonthly: 0.99,
     color: "#F59E0B",
-    features: ["Onbeperkte IPTV", "Live kanalen", "M3U/Xtream support", "HD & 4K streams"],
+    features: ["IPTV live kanalen", "HD & 4K streams", "M3U & Xtream support", "Onbeperkt zappen"],
+    badge: null,
   },
 ];
 
@@ -194,51 +188,6 @@ export default function PremiumScreen() {
           )}
         </LinearGradient>
 
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Sport UI Preview</Text>
-          </View>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.showcaseRow}
-          >
-            {SPORT_SHOWCASE.map((item) => (
-              <View key={item.title} style={styles.showcaseCard}>
-                <View style={styles.showcaseTopRow}>
-                  <View style={styles.showcaseIconWrap}>
-                    <MaterialCommunityIcons name={item.icon as any} size={15} color={COLORS.text} />
-                  </View>
-                </View>
-                <Text style={styles.showcaseTitle}>{item.title}</Text>
-                <Text style={styles.showcaseSubtitle}>{item.subtitle}</Text>
-
-                <View style={styles.mockPhoneFrame}>
-                  <View style={styles.mockPhoneHeader}>
-                    <Text style={styles.mockPhoneBrand}>NEXORA</Text>
-                    <Ionicons name="person" size={14} color={COLORS.textSecondary} />
-                  </View>
-                  <View style={styles.mockPhoneBody}>
-                    <View style={styles.mockDataRow}>
-                      <View style={[styles.mockDataBar, { width: "56%", backgroundColor: COLORS.green + "AA" }]} />
-                      <View style={[styles.mockDataBar, { width: "24%" }]} />
-                      <View style={[styles.mockDataBar, { width: "34%" }]} />
-                    </View>
-                    <View style={styles.mockDataRow}>
-                      <View style={[styles.mockDataBar, { width: "34%" }]} />
-                      <View style={[styles.mockDataBar, { width: "28%" }]} />
-                      <View style={[styles.mockDataBar, { width: "58%", backgroundColor: COLORS.accent + "CC" }]} />
-                    </View>
-                    <View style={styles.mockFooterBtn}>
-                      <Text style={styles.mockFooterBtnText}>Generate</Text>
-                    </View>
-                  </View>
-                </View>
-              </View>
-            ))}
-          </ScrollView>
-        </View>
-
         {/* Category tiles */}
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
@@ -268,7 +217,12 @@ export default function PremiumScreen() {
                       <Text style={styles.ownedBadgeText}>Actief</Text>
                     </View>
                   )}
-                  {isSelected && !isOwned && (
+                  {cat.badge && !isOwned && (
+                    <View style={[styles.popularBadge, { backgroundColor: cat.color }]}>
+                      <Text style={styles.popularBadgeText}>{cat.badge}</Text>
+                    </View>
+                  )}
+                  {isSelected && !isOwned && !cat.badge && (
                     <View style={styles.checkCircle}>
                       <Ionicons name="checkmark-circle" size={18} color={cat.color} />
                     </View>
@@ -287,9 +241,9 @@ export default function PremiumScreen() {
                     <Text style={styles.catPricePeriod}>/mnd</Text>
                   </Text>
 
-                  {cat.features.slice(0, 2).map((f, i) => (
+                  {cat.features.map((f, i) => (
                     <View key={i} style={styles.catFeatureRow}>
-                      <View style={[styles.catFeatureDot, { backgroundColor: cat.color }]} />
+                      <Ionicons name="checkmark" size={12} color={cat.color} />
                       <Text style={styles.catFeatureText} numberOfLines={1}>{f}</Text>
                     </View>
                   ))}
@@ -444,67 +398,6 @@ const styles = StyleSheet.create({
   section: { marginHorizontal: 16, marginBottom: 20, marginTop: 8 },
   sectionHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 14 },
   sectionTitle: { fontFamily: "Inter_700Bold", fontSize: 16, color: COLORS.text },
-  showcaseRow: { gap: 12, paddingRight: 16 },
-  showcaseCard: {
-    width: 286,
-    borderRadius: 24,
-    backgroundColor: COLORS.background,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    padding: 16,
-    gap: 10,
-  },
-  showcaseTopRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  showcaseIconWrap: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 1,
-    borderColor: COLORS.borderLight,
-    backgroundColor: COLORS.card,
-  },
-  showcaseTitle: { fontFamily: "Inter_800ExtraBold", fontSize: 28, color: COLORS.text, lineHeight: 32 },
-  showcaseSubtitle: { fontFamily: "Inter_700Bold", fontSize: 16, color: COLORS.textSecondary, lineHeight: 23 },
-  mockPhoneFrame: {
-    marginTop: 6,
-    borderRadius: 22,
-    borderWidth: 1,
-    borderColor: COLORS.borderLight,
-    padding: 10,
-    backgroundColor: COLORS.card,
-  },
-  mockPhoneHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: 8,
-  },
-  mockPhoneBrand: { fontFamily: "Inter_800ExtraBold", fontSize: 18, color: COLORS.text },
-  mockPhoneBody: {
-    borderRadius: 12,
-    backgroundColor: COLORS.surface,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    padding: 10,
-    gap: 9,
-  },
-  mockDataRow: { flexDirection: "row", alignItems: "center", gap: 6 },
-  mockDataBar: {
-    height: 22,
-    borderRadius: 6,
-    backgroundColor: COLORS.cardElevated,
-  },
-  mockFooterBtn: {
-    marginTop: 4,
-    borderRadius: 10,
-    backgroundColor: COLORS.accent,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: 8,
-  },
-  mockFooterBtnText: { fontFamily: "Inter_700Bold", fontSize: 14, color: COLORS.text },
   selectAllBtn: { paddingHorizontal: 10, paddingVertical: 5 },
   selectAllText: { fontFamily: "Inter_500Medium", fontSize: 12, color: COLORS.accent },
   catGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
@@ -517,14 +410,18 @@ const styles = StyleSheet.create({
     borderRadius: 6, paddingHorizontal: 7, paddingVertical: 3,
   },
   ownedBadgeText: { fontFamily: "Inter_700Bold", fontSize: 9, color: "#000" },
+  popularBadge: {
+    position: "absolute", top: 10, right: 10,
+    borderRadius: 6, paddingHorizontal: 7, paddingVertical: 3,
+  },
+  popularBadgeText: { fontFamily: "Inter_700Bold", fontSize: 9, color: "#fff" },
   checkCircle: { position: "absolute", top: 10, right: 10 },
   catIconBg: { width: 48, height: 48, borderRadius: 14, alignItems: "center", justifyContent: "center", marginBottom: 4 },
   catLabel: { fontFamily: "Inter_700Bold", fontSize: 14, color: COLORS.text },
   catPrice: { fontFamily: "Inter_800ExtraBold", fontSize: 17 },
   catPricePeriod: { fontFamily: "Inter_400Regular", fontSize: 11, color: COLORS.textMuted },
-  catFeatureRow: { flexDirection: "row", alignItems: "center", gap: 6 },
-  catFeatureDot: { width: 5, height: 5, borderRadius: 2.5 },
-  catFeatureText: { fontFamily: "Inter_400Regular", fontSize: 11, color: COLORS.textMuted, flex: 1 },
+  catFeatureRow: { flexDirection: "row", alignItems: "center", gap: 5, paddingVertical: 1 },
+  catFeatureText: { fontFamily: "Inter_400Regular", fontSize: 10.5, color: COLORS.textMuted, flex: 1 },
   cycleRow: { flexDirection: "row", gap: 10 },
   cycleBtn: {
     flex: 1, backgroundColor: COLORS.card, borderRadius: 14, padding: 14,

@@ -97,6 +97,8 @@ interface NexoraContextValue {
   activeProfile: string;
   setActiveProfile: (name: string) => void;
   profiles: string[];
+  avatarUri: string | null;
+  setAvatarUri: (uri: string | null) => Promise<void>;
   isPremium: boolean;
   premiumCategories: PremiumCategory[];
   hasPremium: (cat: PremiumCategory) => boolean;
@@ -114,7 +116,7 @@ const NexoraContext = createContext<NexoraContextValue | null>(null);
 
 // Constant outside component — never recreated
 const ALL_CATS: PremiumCategory[] = ["sport", "movies", "series", "livetv"];
-const profiles = ["Main", "Kids", "Guest"];
+const profiles = ["Main"];
 
 export function NexoraProvider({ children }: { children: ReactNode }) {
   const [favorites, setFavorites] = useState<string[]>([]);
@@ -134,6 +136,7 @@ export function NexoraProvider({ children }: { children: ReactNode }) {
   const [activeProfile, setActiveProfileState] = useState("Main");
   const [premiumCategories, setPremiumCategoriesState] = useState<PremiumCategory[]>([]);
   const [downloads, setDownloads] = useState<DownloadedItem[]>([]);
+  const [avatarUri, setAvatarUriState] = useState<string | null>(null);
 
   const isPremium = ALL_CATS.every(c => premiumCategories.includes(c));
   const hasPremium = (cat: PremiumCategory) => premiumCategories.includes(cat);
@@ -207,6 +210,9 @@ export function NexoraProvider({ children }: { children: ReactNode }) {
           setPremiumCategoriesState(ALL_CATS);
         }
         if (dlItems) setDownloads(JSON.parse(dlItems));
+
+        const savedAvatar = await AsyncStorage.getItem("nexora_avatar");
+        if (savedAvatar) setAvatarUriState(savedAvatar);
 
         if (iptv) {
           const stored = JSON.parse(iptv) as IPTVChannel[];
@@ -364,6 +370,12 @@ export function NexoraProvider({ children }: { children: ReactNode }) {
     await AsyncStorage.setItem("nexora_profile", name);
   };
 
+  const setAvatarUri = async (uri: string | null) => {
+    setAvatarUriState(uri);
+    if (uri) await AsyncStorage.setItem("nexora_avatar", uri);
+    else await AsyncStorage.removeItem("nexora_avatar");
+  };
+
   const saveCats = async (cats: PremiumCategory[]) => {
     setPremiumCategoriesState(cats);
     await AsyncStorage.setItem("nexora_premium_cats", JSON.stringify(cats));
@@ -436,6 +448,7 @@ export function NexoraProvider({ children }: { children: ReactNode }) {
     setActiveProfileState("Main");
     setPremiumCategoriesState([]);
     setDownloads([]);
+    setAvatarUriState(null);
     if (Platform.OS === "web" && typeof window !== "undefined") {
       setTimeout(() => window.location.reload(), 300);
     }
@@ -455,14 +468,14 @@ export function NexoraProvider({ children }: { children: ReactNode }) {
     downloadOverWifi, setDownloadOverWifi,
     notificationsEnabled, setNotificationsEnabled,
     parentalPin, setParentalPin,
-    activeProfile, setActiveProfile, profiles,
+    activeProfile, setActiveProfile, profiles, avatarUri, setAvatarUri,
     isPremium, premiumCategories, hasPremium,
     activatePremium, deactivatePremium, activatePremiumCategories,
     downloads, addDownload, removeDownload, isDownloaded, getDownload,
     resetAll,
   }), [favorites, watchHistory, playlists, iptvChannels, isLoadingPlaylist, hiddenChannels, hiddenGroups,
        selectedQuality, subtitlesEnabled, audioLanguage, autoplayEnabled, downloadOverWifi,
-       notificationsEnabled, parentalPin, activeProfile, premiumCategories, downloads]);
+       notificationsEnabled, parentalPin, activeProfile, premiumCategories, downloads, avatarUri]);
 
   return <NexoraContext.Provider value={value}>{children}</NexoraContext.Provider>;
 }

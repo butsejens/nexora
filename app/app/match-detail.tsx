@@ -1194,17 +1194,13 @@ function StatsBars({ homeTeam, awayTeam, homeStats, awayStats }: { homeTeam: str
     <View style={{ gap: 12 }}>
       <View style={styles.statsHeaderCard}>
         <View style={styles.statsTeamHeader}>
-          <Text style={styles.statsTeamName} numberOfLines={1}>{safeStr(homeTeam)}</Text>
-          <Text style={styles.statsVsLabel}>VS</Text>
-          <Text style={[styles.statsTeamName, { textAlign: "right" }]} numberOfLines={1}>{safeStr(awayTeam)}</Text>
-        </View>
-        <View style={styles.statsLegendRow}>
-          <View style={styles.statsLegendItem}>
+          <View style={styles.statsTeamSide}>
             <View style={[styles.statsLegendDot, { backgroundColor: COLORS.accent }]} />
-            <Text style={styles.statsLegendLabel}>{homeShort}</Text>
+            <Text style={[styles.statsTeamName, { textAlign: "left" }]} numberOfLines={1}>{safeStr(homeTeam)}</Text>
           </View>
-          <View style={[styles.statsLegendItem, { justifyContent: "flex-end" }]}>
-            <Text style={styles.statsLegendLabel}>{awayShort}</Text>
+          <Text style={styles.statsVsLabel}>VS</Text>
+          <View style={[styles.statsTeamSide, { justifyContent: "flex-end" }]}>
+            <Text style={[styles.statsTeamName, { textAlign: "right" }]} numberOfLines={1}>{safeStr(awayTeam)}</Text>
             <View style={[styles.statsLegendDot, { backgroundColor: "#5B8DEF" }]} />
           </View>
         </View>
@@ -2005,13 +2001,13 @@ const styles = StyleSheet.create({
   infoLabel: { fontFamily: "Inter_400Regular", fontSize: 13, color: COLORS.textMuted },
   infoValue: { fontFamily: "Inter_600SemiBold", fontSize: 13, color: COLORS.text, maxWidth: "55%", textAlign: "right" },
   infoValueHighlight: { color: COLORS.live },
-  statsTeamHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 10 },
+  statsTeamHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 2 },
+  statsTeamSide: { flexDirection: "row", alignItems: "center", gap: 8, flex: 1 },
   statsTeamName: {
     fontFamily: "Inter_700Bold",
     fontSize: 13,
     color: COLORS.text,
     flex: 1,
-    textAlign: "center",
     textTransform: "uppercase",
     letterSpacing: 0.5,
   },
@@ -2029,29 +2025,12 @@ const styles = StyleSheet.create({
     color: COLORS.textMuted,
     letterSpacing: 2,
     textAlign: "center",
-    minWidth: 40,
-  },
-  statsLegendRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginTop: 6,
-  },
-  statsLegendItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    flex: 1,
+    marginHorizontal: 10,
   },
   statsLegendDot: {
     width: 8,
     height: 8,
     borderRadius: 4,
-  },
-  statsLegendLabel: {
-    fontFamily: "Inter_500Medium",
-    fontSize: 11,
-    color: COLORS.textMuted,
-    letterSpacing: 0.3,
   },
   statSectionCard: {
     backgroundColor: COLORS.card,
@@ -2077,16 +2056,16 @@ const styles = StyleSheet.create({
   statSectionTitle: {
     fontFamily: "Inter_700Bold",
     fontSize: 11,
-    color: COLORS.textMuted,
+    color: COLORS.accent,
     letterSpacing: 1.5,
     textTransform: "uppercase",
   },
-  statRow: { flexDirection: "row", alignItems: "center", gap: 10, paddingBottom: 12 },
+  statRow: { flexDirection: "row", alignItems: "center", gap: 8, paddingBottom: 12 },
   statVal: {
     fontFamily: "Inter_700Bold",
     fontSize: 14,
     color: COLORS.textSecondary,
-    width: 40,
+    width: 44,
     textAlign: "center",
   },
   statValRight: {
