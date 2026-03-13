@@ -630,15 +630,15 @@ export default function MatchDetailScreen() {
                 </>
               )}
               <InfoBlock title="MATCH INFO">
-                <InfoRow label="Competition" value={safeStr(params.league)} />
-                {matchDetail.round ? <InfoRow label="Round" value={safeStr(matchDetail.round)} /> : null}
-                {matchDetail.season ? <InfoRow label="Season" value={safeStr(matchDetail.season)} /> : null}
-                {matchDetail.date ? <InfoRow label="Date / Kickoff" value={safeStr(matchDetail.date)} /> : null}
-                {matchDetail.venue ? <InfoRow label="Venue" value={safeStr(matchDetail.venue)} /> : null}
-                {matchDetail.city ? <InfoRow label="City" value={safeStr(matchDetail.city)} /> : null}
-                {matchDetail.attendance ? <InfoRow label="Attendance" value={Number(matchDetail.attendance).toLocaleString()} /> : null}
-                {matchDetail.referee ? <InfoRow label="Referee" value={safeStr(matchDetail.referee)} /> : null}
-                {matchDetail.country ? <InfoRow label="Country" value={safeStr(matchDetail.country)} /> : null}
+                <InfoRow icon="trophy-outline" label="Competition" value={safeStr(params.league)} />
+                {matchDetail.round ? <InfoRow icon="layers-outline" label="Round" value={safeStr(matchDetail.round)} /> : null}
+                {matchDetail.season ? <InfoRow icon="calendar-outline" label="Season" value={safeStr(matchDetail.season)} /> : null}
+                {matchDetail.date ? <InfoRow icon="time-outline" label="Date / Kickoff" value={safeStr(matchDetail.date)} /> : null}
+                {matchDetail.venue ? <InfoRow icon="location-outline" label="Venue" value={safeStr(matchDetail.venue)} /> : null}
+                {matchDetail.city ? <InfoRow icon="business-outline" label="City" value={safeStr(matchDetail.city)} /> : null}
+                {matchDetail.attendance ? <InfoRow icon="people-outline" label="Attendance" value={Number(matchDetail.attendance).toLocaleString()} /> : null}
+                {matchDetail.referee ? <InfoRow icon="person-outline" label="Referee" value={safeStr(matchDetail.referee)} /> : null}
+                {matchDetail.country ? <InfoRow icon="flag-outline" label="Country" value={safeStr(matchDetail.country)} /> : null}
               </InfoBlock>
             </>
           ) : (
@@ -878,10 +878,8 @@ function TeamSide({ name, logo, onPress, align = "left" }: { name: string; logo?
       onPress={onPress}
       activeOpacity={onPress ? 0.7 : 1}
     >
-      <View style={styles.teamNameWrap}>
-        <Text style={styles.teamName} numberOfLines={2}>{name}</Text>
-      </View>
-      <TeamLogo uri={logo} teamName={name} size={56} />
+      <TeamLogo uri={logo} teamName={name} size={52} />
+      <Text style={styles.teamName} numberOfLines={2}>{name}</Text>
     </TouchableOpacity>
   );
 }
@@ -990,85 +988,138 @@ function StatsBars({ homeTeam, awayTeam, homeStats, awayStats }: { homeTeam: str
     // Core / Possession
     ball_possession:       "Possession %",
     possession:            "Possession %",
+    possessionPct:         "Possession %",
     // Shots
     total_shots:           "Total Shots",
     shots:                 "Total Shots",
+    totalShots:            "Total Shots",
     shots_on_goal:         "Shots on Target",
     shots_on_target:       "Shots on Target",
+    shotsOnTarget:         "Shots on Target",
+    shotsOnGoal:           "Shots on Target",
     shots_off_goal:        "Shots off Target",
     shots_off_target:      "Shots off Target",
+    shotsOffTarget:        "Shots off Target",
     blocked_shots:         "Shots Blocked",
     shots_blocked:         "Shots Blocked",
+    blockedShots:          "Shots Blocked",
     shots_insidebox:       "Shots Inside Box",
+    shotsInsideBox:        "Shots Inside Box",
     shots_outsidebox:      "Shots Outside Box",
+    shotsOutsideBox:       "Shots Outside Box",
     big_chances:           "Big Chances",
+    bigChances:            "Big Chances",
+    big_chances_missed:    "Big Chances Missed",
+    bigChancesMissed:      "Big Chances Missed",
     expected_goals:        "Expected Goals (xG)",
     xg:                    "Expected Goals (xG)",
+    expectedGoals:         "Expected Goals (xG)",
     goals_prevented:       "Goals Prevented",
+    goalsPrevented:        "Goals Prevented",
+    hit_woodwork:          "Hit Woodwork",
+    hitWoodwork:           "Hit Woodwork",
     // Attacking
     corner_kicks:          "Corners",
     corners:               "Corners",
+    cornerKicks:           "Corners",
     crosses:               "Crosses",
+    crossesTotal:          "Crosses",
+    crosses_successful:    "Successful Crosses",
     successful_dribbles:   "Successful Dribbles",
     dribbles_completed:    "Successful Dribbles",
+    dribblesCompleted:     "Successful Dribbles",
+    dribbles_attempted:    "Dribbles Attempted",
     offsides:              "Offsides",
     // Passing
     total_passes:          "Total Passes",
+    totalPasses:           "Total Passes",
+    passes:                "Total Passes",
     accurate_passes:       "Accurate Passes",
+    accuratePasses:        "Accurate Passes",
     pass_accuracy:         "Pass Accuracy %",
+    passAccuracy:          "Pass Accuracy %",
     key_passes:            "Key Passes",
+    keyPasses:             "Key Passes",
     passes_final_third:    "Passes in Final Third",
+    passesFinalThird:      "Passes in Final Third",
     long_balls:            "Long Balls",
+    longBalls:             "Long Balls",
+    long_balls_accurate:   "Accurate Long Balls",
     // Defending
     total_tackles:         "Tackles",
     tackles:               "Tackles",
+    tacklesWon:            "Tackles",
     interceptions:         "Interceptions",
     clearances:            "Clearances",
     blocks:                "Blocks",
     aerial_won:            "Aerial Duels Won",
+    aerialWon:             "Aerial Duels Won",
     total_duels:           "Total Duels",
+    totalDuels:            "Total Duels",
     duels_won:             "Duels Won",
+    duelsWon:              "Duels Won",
+    ground_duels_won:      "Ground Duels Won",
     // Goalkeeping
     goalkeeper_saves:      "Saves",
     saves:                 "Saves",
+    goalkeeperSaves:       "Saves",
+    punches:               "Punches",
     // Discipline
     fouls:                 "Fouls Committed",
+    foulsCommitted:        "Fouls Committed",
     yellow_cards:          "Yellow Cards",
+    yellowCards:           "Yellow Cards",
     red_cards:             "Red Cards",
+    redCards:              "Red Cards",
+    // Other
+    throw_ins:             "Throw-ins",
+    throwIns:              "Throw-ins",
+    free_kicks:            "Free Kicks",
+    freeKicks:             "Free Kicks",
+    goal_kicks:            "Goal Kicks",
+    goalKicks:             "Goal Kicks",
   };
 
   const STAT_SECTIONS: { label: string; icon: string; keys: string[] }[] = [
     {
-      label: "ATTACK",
+      label: "CORE",
       icon: "⚽",
-      keys: ["ball_possession", "possession", "total_shots", "shots", "shots_on_goal", "shots_on_target",
-             "shots_off_goal", "shots_off_target", "blocked_shots", "shots_blocked",
-             "shots_insidebox", "shots_outsidebox", "big_chances", "expected_goals", "xg"],
+      keys: ["ball_possession", "possession", "possessionPct", "total_shots", "shots", "totalShots",
+             "shots_on_goal", "shots_on_target", "shotsOnTarget", "shotsOnGoal",
+             "shots_off_goal", "shots_off_target", "shotsOffTarget",
+             "blocked_shots", "shots_blocked", "blockedShots",
+             "shots_insidebox", "shotsInsideBox", "shots_outsidebox", "shotsOutsideBox",
+             "big_chances", "bigChances", "big_chances_missed", "bigChancesMissed",
+             "expected_goals", "xg", "expectedGoals", "hit_woodwork", "hitWoodwork"],
     },
     {
       label: "ATTACKING",
       icon: "🎯",
-      keys: ["corner_kicks", "corners", "crosses", "successful_dribbles", "dribbles_completed", "offsides"],
+      keys: ["corner_kicks", "corners", "cornerKicks", "crosses", "crossesTotal", "crosses_successful",
+             "successful_dribbles", "dribbles_completed", "dribblesCompleted", "dribbles_attempted", "offsides"],
     },
     {
       label: "PASSING",
       icon: "↗️",
-      keys: ["total_passes", "accurate_passes", "pass_accuracy", "key_passes", "passes_final_third", "long_balls"],
+      keys: ["total_passes", "totalPasses", "passes", "accurate_passes", "accuratePasses",
+             "pass_accuracy", "passAccuracy", "key_passes", "keyPasses",
+             "passes_final_third", "passesFinalThird", "long_balls", "longBalls", "long_balls_accurate"],
     },
     {
       label: "DEFENDING",
       icon: "🛡️",
-      keys: ["total_tackles", "tackles", "interceptions", "clearances", "blocks", "aerial_won", "total_duels", "duels_won"],
+      keys: ["total_tackles", "tackles", "tacklesWon", "interceptions", "clearances", "blocks",
+             "aerial_won", "aerialWon", "total_duels", "totalDuels", "duels_won", "duelsWon", "ground_duels_won"],
     },
     {
       label: "GOALKEEPING",
       icon: "🧤",
-      keys: ["goalkeeper_saves", "saves", "goals_prevented"],
+      keys: ["goalkeeper_saves", "saves", "goalkeeperSaves", "goals_prevented", "goalsPrevented", "punches"],
     },
     {
       label: "DISCIPLINE",
       icon: "🟨",
-      keys: ["fouls", "yellow_cards", "red_cards"],
+      keys: ["fouls", "foulsCommitted", "yellow_cards", "yellowCards", "red_cards", "redCards"],
     },
   ];
 
@@ -1086,7 +1137,10 @@ function StatsBars({ homeTeam, awayTeam, homeStats, awayStats }: { homeTeam: str
   if (dedupedStats.length === 0) {
     return (
       <View style={styles.infoCard}>
-        <Text style={styles.noStatsText}>Live stats loading during the match</Text>
+        <View style={{ alignItems: "center", gap: 8, paddingVertical: 12 }}>
+          <Ionicons name="stats-chart-outline" size={28} color={COLORS.textMuted} />
+          <Text style={styles.noStatsText}>Stats worden geladen tijdens de wedstrijd</Text>
+        </View>
       </View>
     );
   }
@@ -1669,10 +1723,13 @@ function InfoBlock({ title, children }: { title: string; children: React.ReactNo
   );
 }
 
-function InfoRow({ label, value, highlight }: { label: string; value: string; highlight?: boolean }) {
+function InfoRow({ label, value, highlight, icon }: { label: string; value: string; highlight?: boolean; icon?: string }) {
   return (
     <View style={styles.infoRow}>
-      <Text style={styles.infoLabel}>{label}</Text>
+      <View style={styles.infoLabelRow}>
+        {icon && <Ionicons name={icon as any} size={14} color={COLORS.textMuted} style={{ marginRight: 8 }} />}
+        <Text style={styles.infoLabel}>{label}</Text>
+      </View>
       <Text style={[styles.infoValue, highlight && styles.infoValueHighlight]}>{value}</Text>
     </View>
   );
@@ -1711,7 +1768,7 @@ const styles = StyleSheet.create({
     borderColor: "rgba(255,255,255,0.12)",
     alignSelf: "flex-start",
   },
-  matchHeader: { alignItems: "center", gap: 10 },
+  matchHeader: { alignItems: "center", gap: 14 },
   leagueName: {
     fontFamily: "Inter_700Bold",
     fontSize: 11,
@@ -1725,18 +1782,18 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.1)",
   },
-  scoreRow: { flexDirection: "row", alignItems: "center", width: "100%", paddingHorizontal: 4 },
-  teamSide: { flex: 1, alignItems: "center", gap: 6 },
-  teamNameWrap: { alignItems: "center" },
+  scoreRow: { flexDirection: "row", alignItems: "center", width: "100%", paddingHorizontal: 10, justifyContent: "center" },
+  teamSide: { flex: 1, alignItems: "center", gap: 8 },
   teamName: {
     fontFamily: "Inter_700Bold",
-    fontSize: 13,
+    fontSize: 12,
     color: COLORS.text,
-    lineHeight: 17,
+    lineHeight: 16,
     textAlign: "center",
+    maxWidth: 100,
   },
   tapHint: { fontFamily: "Inter_400Regular", fontSize: 10, color: COLORS.accentDim },
-  scoreCenter: { minWidth: 100, alignItems: "center", gap: 5 },
+  scoreCenter: { minWidth: 90, alignItems: "center", gap: 4 },
   score: {
     fontFamily: "Inter_800ExtraBold",
     fontSize: 48,
@@ -1773,8 +1830,8 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
     marginTop: 2,
   },
-  venueRow: { flexDirection: "row", alignItems: "center", gap: 4, marginTop: 2 },
-  venueText: { fontFamily: "Inter_400Regular", fontSize: 11, color: COLORS.textMuted },
+  venueRow: { flexDirection: "row", alignItems: "center", gap: 5, marginTop: 4, opacity: 0.7 },
+  venueText: { fontFamily: "Inter_400Regular", fontSize: 12, color: COLORS.textMuted },
   tabBarScroll: {
     flexGrow: 0,
     backgroundColor: COLORS.surface,
@@ -1904,12 +1961,12 @@ const styles = StyleSheet.create({
   tabContentInner: { padding: 16, gap: 0 },
   sectionLabel: {
     fontFamily: "Inter_700Bold",
-    fontSize: 10,
-    color: COLORS.textMuted,
+    fontSize: 11,
+    color: COLORS.accent,
     letterSpacing: 1.5,
     textTransform: "uppercase",
-    marginBottom: 12,
-    marginTop: 4,
+    marginBottom: 14,
+    marginTop: 6,
   },
   infoCard: {
     backgroundColor: COLORS.card,
@@ -1936,12 +1993,17 @@ const styles = StyleSheet.create({
   infoRow: {
     flexDirection: "row",
     justifyContent: "space-between",
-    paddingVertical: 10,
+    alignItems: "center",
+    paddingVertical: 11,
     borderBottomWidth: 1,
-    borderBottomColor: "rgba(255,255,255,0.06)",
+    borderBottomColor: "rgba(255,255,255,0.05)",
   },
-  infoLabel: { fontFamily: "Inter_400Regular", fontSize: 14, color: COLORS.textMuted },
-  infoValue: { fontFamily: "Inter_600SemiBold", fontSize: 14, color: COLORS.text },
+  infoLabelRow: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  infoLabel: { fontFamily: "Inter_400Regular", fontSize: 13, color: COLORS.textMuted },
+  infoValue: { fontFamily: "Inter_600SemiBold", fontSize: 13, color: COLORS.text, maxWidth: "55%", textAlign: "right" },
   infoValueHighlight: { color: COLORS.live },
   statsTeamHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 10 },
   statsTeamName: {

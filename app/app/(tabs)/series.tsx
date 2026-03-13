@@ -67,9 +67,18 @@ async function fetchSeriesDecades() {
   }
 }
 
+async function fetchGenreDiscover() {
+  try {
+    const res = await withTimeout(apiRequest("GET", "/api/series/discover-by-genre"), 15000);
+    return await res.json();
+  } catch {
+    return { rows: [] };
+  }
+}
+
 export default function SeriesScreen() {
   const insets = useSafeAreaInsets();
-  const { isFavorite, toggleFavorite, iptvChannels, isChannelVisible, isLoadingPlaylist } = useNexora();
+  const { isFavorite, toggleFavorite, iptvChannels, isChannelVisible, isLoadingPlaylist, watchHistory } = useNexora();
   const [groupFilter, setGroupFilter] = useState("Alles");
   const [search, setSearch] = useState("");
   const [refreshing, setRefreshing] = useState(false);
@@ -99,6 +108,13 @@ export default function SeriesScreen() {
     queryKey: ["series", "decades"],
     queryFn: fetchSeriesDecades,
     staleTime: 30 * 60 * 1000,
+    retry: 0,
+  });
+
+  const { data: genreDiscoverData, refetch: refetchGenreDiscover } = useQuery({
+    queryKey: ["series", "genre-discover"],
+    queryFn: fetchGenreDiscover,
+    staleTime: 15 * 60 * 1000,
     retry: 0,
   });
 
@@ -135,6 +151,28 @@ export default function SeriesScreen() {
   const airingToday = useMemo(() => data?.airingToday || [], [data]);
   const seriesGenres: any[] = useMemo(() => genresData?.genres || [], [genresData]);
   const seriesDecades: any[] = useMemo(() => decadesData?.decades || [], [decadesData]);
+  const genreDiscoverRows: any[] = useMemo(() => genreDiscoverData?.rows || [], [genreDiscoverData]);
+
+  // Continue Watching — series from watch history
+  const continueWatching = useMemo(() => {
+    return watchHistory
+      .filter(h => h.type === "series" && h.progress && h.progress > 0 && h.progress < 0.95)
+      .slice(0, 20)
+      .map(h => ({
+        id: h.id, title: h.title, poster: null, backdrop: null, synopsis: "",
+        year: undefined, imdb: undefined, genre: [], quality: "HD", isIptv: false, progress: h.progress,
+      }));
+  }, [watchHistory]);
+
+  const recentlyWatched = useMemo(() => {
+    return watchHistory
+      .filter(h => h.type === "series")
+      .slice(0, 15)
+      .map(h => ({
+        id: h.id, title: h.title, poster: null, backdrop: null, synopsis: "",
+        year: undefined, imdb: undefined, genre: [], quality: "HD", isIptv: false,
+      }));
+  }, [watchHistory]);
 
   const heroItems = useMemo(() => {
     const pool = iptvSeries.length > 0 ? filteredIptv : [...trending, ...newReleases, ...popular];
@@ -143,12 +181,12 @@ export default function SeriesScreen() {
 
   const featured = heroItems[heroIndex % Math.max(heroItems.length, 1)] || null;
 
-  // Auto-rotate hero banner every 10 seconds
+  // Auto-rotate hero banner every 8 seconds
   useEffect(() => {
     if (heroItems.length <= 1) return;
     const timer = setInterval(() => {
       setHeroIndex((i) => (i + 1) % heroItems.length);
-    }, 10_000);
+    }, 8_000);
     return () => clearInterval(timer);
   }, [heroItems.length]);
 
@@ -299,12 +337,13 @@ export default function SeriesScreen() {
     return results.filter((m: any) => { if (seen.has(m.id)) return false; seen.add(m.id); return true; });
   }, [search, trending, newReleases, topRated, popular, airingToday]);
 
-  const renderCard = useCallback((item: any) => (
+  const renderCard = useCallback((item: any, showProgress = false) => (
     <RealContentCard
       item={{ ...item, isIptv: item.isIptv ?? false }}
       onPress={() => goToDetail(item)}
       onFavorite={() => toggleFavorite(item.id)}
       isFavorite={isFavorite(item.id)}
+      showProgress={showProgress}
     />
   ), [goToDetail, toggleFavorite, isFavorite]);
 
@@ -317,8 +356,14 @@ export default function SeriesScreen() {
     const loading = extra?.loading;
     if (allItems.length === 0) return null;
     return (
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>{title}</Text>
+      <View style={styles.section} key={`main-${categoryKey}`}>
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>{title}</Text>
+          <TouchableOpacity onPress={() => loadMoreCategory(categoryKey)} style={styles.seeAllBtn}>
+            <Text style={styles.seeAllText}>Meer</Text>
+            <Ionicons name="chevron-forward" size={14} color={COLORS.accent} />
+          </TouchableOpacity>
+        </View>
         <FlatList
           horizontal
           data={allItems}
@@ -352,7 +397,13 @@ export default function SeriesScreen() {
     const allItems = extra ? [...genre.items, ...extra.items] : genre.items;
     return (
       <View key={String(genre.id)} style={styles.section}>
-        <Text style={styles.sectionTitle}>{genre.name}</Text>
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>{genre.name}</Text>
+          <TouchableOpacity onPress={() => loadMoreGenre(genre.id)} style={styles.seeAllBtn}>
+            <Text style={styles.seeAllText}>Meer</Text>
+            <Ionicons name="chevron-forward" size={14} color={COLORS.accent} />
+          </TouchableOpacity>
+        </View>
         <FlatList
           horizontal
           data={allItems}
@@ -379,6 +430,27 @@ export default function SeriesScreen() {
               }
             </TouchableOpacity>
           }
+        />
+      </View>
+    );
+  };
+
+  const renderSimpleRow = (title: string, items: any[], keyPrefix: string, showProgress = false) => {
+    if (items.length === 0) return null;
+    return (
+      <View style={styles.section} key={keyPrefix}>
+        <Text style={styles.sectionTitle}>{title}</Text>
+        <FlatList
+          horizontal
+          data={items}
+          keyExtractor={(item: any) => `${keyPrefix}-${item.id}`}
+          renderItem={({ item }: any) => renderCard(item, showProgress)}
+          contentContainerStyle={styles.carouselPadding}
+          showsHorizontalScrollIndicator={false}
+          initialNumToRender={4}
+          maxToRenderPerBatch={3}
+          windowSize={5}
+          scrollEventThrottle={16}
         />
       </View>
     );
@@ -429,7 +501,7 @@ export default function SeriesScreen() {
             setRefreshing(true);
             setGenreExtras({});
             setCategoryExtras({});
-            await Promise.all([refetch(), refetchGenres()]);
+            await Promise.all([refetch(), refetchGenres(), refetchGenreDiscover()]);
             setRefreshing(false);
           }} tintColor={COLORS.accent} />
         }
@@ -484,7 +556,20 @@ export default function SeriesScreen() {
                     onPlay={() => featured && goToPlayer(featured)}
                     onInfo={() => featured && goToDetail(featured)}
                   />
+                  {/* Hero pagination dots */}
+                  {heroItems.length > 1 && (
+                    <View style={styles.heroDots}>
+                      {heroItems.map((_, i) => (
+                        <View key={i} style={[styles.heroDot, i === heroIndex % heroItems.length && styles.heroDotActive]} />
+                      ))}
+                    </View>
+                  )}
                 </View>
+              </View>
+
+              {/* Continue Watching — always mounted */}
+              <View style={continueWatching.length > 0 ? undefined : { display: "none" }}>
+                {renderSimpleRow("Verder Kijken", continueWatching, "continue", true)}
               </View>
 
               {/* IPTV Playlist - always mounted */}
@@ -517,8 +602,32 @@ export default function SeriesScreen() {
               {renderMainRow("Best beoordeeld", dedupTopRated, "topRated")}
               {renderMainRow("Populair nu", dedupPopular, "popular")}
 
-              {/* Genre rows — 14 genres, each with load-more */}
+              {/* Genre discover rows — Action, Comedy, Crime, Drama, Mystery, Sci-Fi */}
+              {genreDiscoverRows.map((row: any) => row.items?.length > 0 && (
+                <View key={`gd-${row.genreId}`} style={styles.section}>
+                  <Text style={styles.sectionTitle}>{row.genreName} Series</Text>
+                  <FlatList
+                    horizontal
+                    data={row.items}
+                    keyExtractor={(item: any) => `gd-${row.genreId}-${item.id}`}
+                    renderItem={({ item }: any) => renderCard(item)}
+                    contentContainerStyle={styles.carouselPadding}
+                    showsHorizontalScrollIndicator={false}
+                    initialNumToRender={4}
+                    maxToRenderPerBatch={3}
+                    windowSize={5}
+                    scrollEventThrottle={16}
+                  />
+                </View>
+              ))}
+
+              {/* Genre rows — each with load-more */}
               {seriesGenres.map((genre: any) => genre.items?.length > 0 && renderGenreRow(genre))}
+
+              {/* Watch Again — always mounted */}
+              <View style={recentlyWatched.length > 0 ? undefined : { display: "none" }}>
+                {renderSimpleRow("Opnieuw Bekijken", recentlyWatched, "watch-again")}
+              </View>
 
               {/* Decade rows */}
               {seriesDecades.map((decade: any) => (
@@ -572,12 +681,28 @@ export default function SeriesScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
-  searchRow: { flexDirection: "row", alignItems: "center", backgroundColor: COLORS.overlayLight, borderRadius: 14, marginHorizontal: 16, marginTop: 10, marginBottom: 12, borderWidth: 1, borderColor: COLORS.border },
-  searchInput: { flex: 1, height: 40, paddingHorizontal: 10, fontFamily: "Inter_400Regular", fontSize: 14, color: COLORS.text },
+  searchRow: { flexDirection: "row", alignItems: "center", backgroundColor: "rgba(255,255,255,0.04)", borderRadius: 12, marginHorizontal: 16, marginTop: 10, marginBottom: 14, borderWidth: 0.5, borderColor: "rgba(255,255,255,0.06)" },
+  searchInput: { flex: 1, height: 42, paddingHorizontal: 10, fontFamily: "Inter_400Regular", fontSize: 14, color: COLORS.text },
   heroFrame: {
-    marginHorizontal: 12,
-    borderRadius: 28,
-    marginBottom: 14,
+    marginBottom: 8,
+  },
+  heroDots: {
+    flexDirection: "row",
+    justifyContent: "center",
+    gap: 6,
+    marginTop: -12,
+    marginBottom: 8,
+  },
+  heroDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: "rgba(255,255,255,0.2)",
+  },
+  heroDotActive: {
+    backgroundColor: COLORS.accent,
+    width: 18,
+    borderRadius: 3,
   },
   chipRow: { paddingHorizontal: 16, paddingBottom: 10, gap: 8, flexDirection: "row" },
   chip: { paddingHorizontal: 14, paddingVertical: 6, borderRadius: 20, backgroundColor: COLORS.card, borderWidth: 1, borderColor: COLORS.border },
@@ -600,12 +725,15 @@ const styles = StyleSheet.create({
   errorText: { fontFamily: "Inter_500Medium", fontSize: 12, color: COLORS.textSecondary, flex: 1 },
   errorCodeText: { fontFamily: "Inter_400Regular", fontSize: 10, color: COLORS.textMuted },
   section: { marginBottom: 28 },
-  sectionTitle: { fontFamily: "Inter_700Bold", fontSize: 20, color: COLORS.text, marginBottom: 14, paddingHorizontal: 20 },
+  sectionHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingHorizontal: 20, marginBottom: 14 },
+  sectionTitle: { fontFamily: "Inter_700Bold", fontSize: 18, color: COLORS.text, paddingHorizontal: 20, marginBottom: 14 },
+  seeAllBtn: { flexDirection: "row", alignItems: "center", gap: 2 },
+  seeAllText: { fontFamily: "Inter_500Medium", fontSize: 12, color: COLORS.accent },
   carouselPadding: { paddingHorizontal: 20, paddingRight: 8 },
   loadMoreBtn: {
     width: 64, alignItems: "center", justifyContent: "center", gap: 4,
-    backgroundColor: COLORS.cardElevated, borderRadius: 16,
-    borderWidth: 1, borderColor: COLORS.border,
+    backgroundColor: COLORS.cardElevated, borderRadius: 12,
+    borderWidth: 0.5, borderColor: "rgba(255,255,255,0.06)",
     marginLeft: 6, marginRight: 20, height: 203,
   },
   loadMoreText: { fontFamily: "Inter_600SemiBold", fontSize: 11, color: COLORS.accent },

@@ -1196,15 +1196,17 @@ export default function PlayerScreen() {
             activeOpacity={1}
           />
           {/* Top bar */}
-          <LinearGradient colors={["rgba(0,0,0,0.85)", "transparent"]} style={styles.topGrad}>
+          <LinearGradient colors={["rgba(0,0,0,0.88)", "rgba(0,0,0,0.4)", "transparent"]} locations={[0, 0.6, 1]} style={styles.topGrad}>
             <View style={[styles.topBar, { paddingTop: Platform.OS === "web" ? 67 : insets.top + 8 }]}>
               <TouchableOpacity style={styles.iconBtn} onPress={() => { SafeHaptics.impactLight(); router.back(); }}>
-                <Ionicons name="chevron-down" size={28} color="#fff" />
+                <View style={styles.iconBtnBg}>
+                  <Ionicons name="chevron-down" size={24} color="#fff" />
+                </View>
               </TouchableOpacity>
               <View style={styles.titleWrap}>
                 <Text style={styles.playerTitle} numberOfLines={1}>{title || "Nu Afspelen"}</Text>
                 {type === "series" && season && (
-                  <Text style={styles.playerSub}>Seizoen {season} · Aflevering {episode || "1"}</Text>
+                  <Text style={styles.playerSub}>S{season} · E{episode || "1"}</Text>
                 )}
               </View>
               <TouchableOpacity
@@ -1214,17 +1216,17 @@ export default function PlayerScreen() {
                 <Ionicons
                   name={isFavorite(contentId || String(title)) ? "heart" : "heart-outline"}
                   size={22}
-                  color={isFavorite(contentId || String(title)) ? COLORS.live : "#fff"}
+                  color={isFavorite(contentId || String(title)) ? COLORS.live : "rgba(255,255,255,0.85)"}
                 />
               </TouchableOpacity>
               {!!streamUrl && (
                 <TouchableOpacity style={styles.iconBtn} onPress={handleOpenInVlc}>
-                  <Ionicons name="open-outline" size={20} color="#fff" />
+                  <Ionicons name="open-outline" size={20} color="rgba(255,255,255,0.85)" />
                 </TouchableOpacity>
               )}
               {(!!streamUrl || !!embedUrl) && (
                 <TouchableOpacity style={styles.iconBtn} onPress={handleShare}>
-                  <Ionicons name="download-outline" size={20} color="#fff" />
+                  <Ionicons name="share-outline" size={20} color="rgba(255,255,255,0.85)" />
                 </TouchableOpacity>
               )}
             </View>
@@ -1233,29 +1235,34 @@ export default function PlayerScreen() {
           {/* HLS center controls: skip-back | play-pause | skip-forward */}
           {Platform.OS !== "web" && (
             <View style={styles.hlsCenterRow}>
-              <TouchableOpacity style={styles.hlsSkipBtn} onPress={() => hlsSeekRelative(-15)}>
-                <Ionicons name="play-back" size={26} color="#fff" />
-                <Text style={styles.hlsSkipLabel}>15</Text>
+              <TouchableOpacity style={styles.hlsSkipBtn} onPress={() => hlsSeekRelative(-15)} activeOpacity={0.7}>
+                <View style={styles.hlsSkipBtnInner}>
+                  <Ionicons name="play-back" size={22} color="#fff" />
+                </View>
+                <Text style={styles.hlsSkipLabel}>15s</Text>
               </TouchableOpacity>
 
-              <TouchableOpacity style={styles.hlsPlayBtn} onPress={hlsTogglePlay}>
-                <Ionicons name={hlsPaused ? "play" : "pause"} size={46} color="#fff" />
+              <TouchableOpacity style={styles.hlsPlayBtn} onPress={hlsTogglePlay} activeOpacity={0.8}>
+                <Ionicons name={hlsPaused ? "play" : "pause"} size={40} color="#fff" style={hlsPaused ? { marginLeft: 4 } : undefined} />
               </TouchableOpacity>
 
-              <TouchableOpacity style={styles.hlsSkipBtn} onPress={() => hlsSeekRelative(15)}>
-                <Ionicons name="play-forward" size={26} color="#fff" />
-                <Text style={styles.hlsSkipLabel}>15</Text>
+              <TouchableOpacity style={styles.hlsSkipBtn} onPress={() => hlsSeekRelative(15)} activeOpacity={0.7}>
+                <View style={styles.hlsSkipBtnInner}>
+                  <Ionicons name="play-forward" size={22} color="#fff" />
+                </View>
+                <Text style={styles.hlsSkipLabel}>15s</Text>
               </TouchableOpacity>
             </View>
           )}
 
           {/* HLS bottom: seek bar + time */}
           {Platform.OS !== "web" && (
-            <LinearGradient colors={["transparent", "rgba(0,0,0,0.8)"]} style={styles.bottomGrad}>
+            <LinearGradient colors={["transparent", "rgba(0,0,0,0.45)", "rgba(0,0,0,0.92)"]} locations={[0, 0.35, 1]} style={styles.bottomGrad}>
               <View style={[styles.hlsBottomBar, { paddingBottom: insets.bottom + 16 }]}>
                 {hlsIsLive ? (
                   <View style={styles.livePill}>
-                    <Text style={styles.livePillText}>● LIVE</Text>
+                    <View style={styles.liveDot} />
+                    <Text style={styles.livePillText}>LIVE</Text>
                   </View>
                 ) : (
                   <>
@@ -1276,7 +1283,7 @@ export default function PlayerScreen() {
                       <View style={[styles.hlsSeekThumb, { left: `${Math.round(seekProgress * 100)}%` as any }]} />
                     </TouchableOpacity>
 
-                    <Text style={styles.hlsTime}>{formatTime(hlsDuration)}</Text>
+                    <Text style={styles.hlsTimeDuration}>{formatTime(hlsDuration - hlsCurrentTime)}</Text>
                   </>
                 )}
               </View>
@@ -1286,22 +1293,28 @@ export default function PlayerScreen() {
       ) : (embedUrl && Platform.OS !== "web") ? (
         /* ─── Embed mode: static minimal overlay — no RN controls, embed player handles its own UI ─── */
         <View style={styles.embedMinimalOverlay} pointerEvents="box-none">
-          <View style={[styles.embedMinimalBar, { paddingTop: insets.top + 6 }]}>
+          <LinearGradient colors={["rgba(0,0,0,0.7)", "transparent"]} style={[styles.embedMinimalBar, { paddingTop: insets.top + 8 }]}>
             <TouchableOpacity
               style={styles.embedBackBtn}
               onPress={() => { SafeHaptics.impactLight(); router.back(); }}
             >
-              <Ionicons name="chevron-down" size={24} color="#fff" />
+              <Ionicons name="chevron-down" size={22} color="#fff" />
             </TouchableOpacity>
+            <View style={styles.embedTitleWrap}>
+              <Text style={styles.embedTitle} numberOfLines={1}>{title || ""}</Text>
+              {type === "series" && season && (
+                <Text style={styles.embedSub}>S{season} · E{episode || "1"}</Text>
+              )}
+            </View>
             {!allProvidersFailed && (
               <TouchableOpacity
                 style={styles.embedServerBtn}
                 onPress={() => { tryNextProvider(); SafeHaptics.impactLight(); }}
               >
-                <Ionicons name="refresh" size={18} color="#fff" />
+                <Ionicons name="refresh" size={16} color="#fff" />
               </TouchableOpacity>
             )}
-          </View>
+          </LinearGradient>
         </View>
       ) : null}
     </View>
@@ -1365,9 +1378,8 @@ const styles = StyleSheet.create({
   embedMinimalBar: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 12,
-    paddingBottom: 8,
+    paddingHorizontal: 14,
+    paddingBottom: 20,
   },
   embedBackBtn: {
     width: 38,
@@ -1392,57 +1404,79 @@ const styles = StyleSheet.create({
 
   // Controls overlay
   overlay:  { ...StyleSheet.absoluteFillObject, justifyContent: "space-between", zIndex: 10 },
-  topGrad:  { paddingBottom: 60 },
-  topBar:   { flexDirection: "row", alignItems: "center", paddingHorizontal: 12, gap: 10 },
+  topGrad:  { paddingBottom: 40 },
+  topBar:   { flexDirection: "row", alignItems: "center", paddingHorizontal: 14, gap: 6 },
   iconBtn:  { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
-  titleWrap: { flex: 1 },
-  playerTitle: { fontFamily: "Inter_700Bold", fontSize: 16, color: "#fff" },
-  playerSub:   { fontFamily: "Inter_400Regular", fontSize: 12, color: "rgba(255,255,255,0.6)", marginTop: 1 },
-  bottomGrad: { paddingTop: 60 },
-  bottomBar:  { paddingHorizontal: 14, alignItems: "flex-end" },
-  reloadBtn:  { width: 38, height: 38, alignItems: "center", justifyContent: "center" },
+  iconBtnBg: {
+    width: 36, height: 36, borderRadius: 18,
+    backgroundColor: "rgba(255,255,255,0.1)",
+    alignItems: "center", justifyContent: "center",
+  },
+  titleWrap: { flex: 1, marginLeft: 4 },
+  playerTitle: { fontFamily: "Inter_700Bold", fontSize: 15, color: "#fff", letterSpacing: 0.2 },
+  playerSub:   { fontFamily: "Inter_500Medium", fontSize: 11, color: "rgba(255,255,255,0.55)", marginTop: 2 },
+  bottomGrad: { paddingTop: 80 },
 
   // HLS custom controls
   hlsCenterRow: {
     flexDirection: "row", alignItems: "center", justifyContent: "center",
-    gap: 36, position: "absolute", left: 0, right: 0,
-    top: "50%", marginTop: -36,
+    gap: 48, position: "absolute", left: 0, right: 0,
+    top: "50%", marginTop: -32,
   },
   hlsPlayBtn: {
-    width: 72, height: 72, borderRadius: 36,
-    backgroundColor: "rgba(255,255,255,0.18)",
+    width: 76, height: 76, borderRadius: 38,
+    backgroundColor: "rgba(255,255,255,0.15)",
+    borderWidth: 2,
+    borderColor: "rgba(255,255,255,0.25)",
     alignItems: "center", justifyContent: "center",
   },
-  hlsSkipBtn:  { alignItems: "center", gap: 2 },
-  hlsSkipLabel: { fontFamily: "Inter_600SemiBold", fontSize: 10, color: "#fff" },
+  hlsSkipBtn:  { alignItems: "center", gap: 4 },
+  hlsSkipBtnInner: {
+    width: 48, height: 48, borderRadius: 24,
+    backgroundColor: "rgba(255,255,255,0.08)",
+    alignItems: "center", justifyContent: "center",
+  },
+  hlsSkipLabel: { fontFamily: "Inter_500Medium", fontSize: 10, color: "rgba(255,255,255,0.6)" },
 
   hlsBottomBar: {
     flexDirection: "row", alignItems: "center",
-    paddingHorizontal: 16, gap: 10,
+    paddingHorizontal: 20, gap: 12,
   },
-  hlsTime: { fontFamily: "Inter_500Medium", fontSize: 12, color: "rgba(255,255,255,0.8)", minWidth: 40, textAlign: "center" },
+  hlsTime: { fontFamily: "Inter_600SemiBold", fontSize: 12, color: "rgba(255,255,255,0.9)", minWidth: 42, textAlign: "left" },
+  hlsTimeDuration: { fontFamily: "Inter_500Medium", fontSize: 12, color: "rgba(255,255,255,0.5)", minWidth: 42, textAlign: "right" },
   hlsSeekOuter: {
-    flex: 1, height: 28, justifyContent: "center",
+    flex: 1, height: 32, justifyContent: "center",
     position: "relative",
   },
   hlsSeekTrack: {
-    height: 3, backgroundColor: "rgba(255,255,255,0.25)",
+    height: 3.5, backgroundColor: "rgba(255,255,255,0.2)",
     borderRadius: 2, overflow: "hidden",
     flexDirection: "row",
   },
   hlsSeekFill: { height: "100%", backgroundColor: COLORS.accent, borderRadius: 2 },
   hlsSeekThumb: {
-    position: "absolute", top: "50%", marginTop: -6,
-    marginLeft: -6,
-    width: 12, height: 12,
-    borderRadius: 6, backgroundColor: "#fff",
+    position: "absolute", top: "50%", marginTop: -7,
+    marginLeft: -7,
+    width: 14, height: 14,
+    borderRadius: 7, backgroundColor: COLORS.accent,
+    borderWidth: 2, borderColor: "#fff",
   },
 
   livePill: {
-    flex: 1, height: 24, borderRadius: 12,
+    flexDirection: "row", alignItems: "center", gap: 6,
+    height: 28, borderRadius: 14,
     backgroundColor: COLORS.live,
-    alignItems: "center", justifyContent: "center",
-    maxWidth: 80,
+    paddingHorizontal: 14,
+    alignSelf: "flex-start",
   },
-  livePillText: { fontFamily: "Inter_700Bold", fontSize: 11, color: "#fff" },
+  liveDot: {
+    width: 7, height: 7, borderRadius: 3.5,
+    backgroundColor: "#fff",
+  },
+  livePillText: { fontFamily: "Inter_700Bold", fontSize: 11, color: "#fff", letterSpacing: 0.5 },
+
+  // Embed minimal overlay — title + back + server switch
+  embedTitleWrap: { flex: 1, marginLeft: 8 },
+  embedTitle: { fontFamily: "Inter_600SemiBold", fontSize: 14, color: "#fff" },
+  embedSub:   { fontFamily: "Inter_400Regular", fontSize: 11, color: "rgba(255,255,255,0.5)", marginTop: 1 },
 });

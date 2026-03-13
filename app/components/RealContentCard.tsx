@@ -36,6 +36,7 @@ interface ContentItem {
   duration?: string;
   seasons?: number;
   isIptv?: boolean;
+  progress?: number; // 0-1, for continue watching
 }
 
 interface Props {
@@ -44,11 +45,13 @@ interface Props {
   onFavorite?: () => void;
   isFavorite?: boolean;
   width?: number;
+  showProgress?: boolean;
 }
 
-export const RealContentCard = React.memo(function RealContentCard({ item, onPress, onFavorite, isFavorite, width = 130 }: Props) {
+export const RealContentCard = React.memo(function RealContentCard({ item, onPress, onFavorite, isFavorite, width = 130, showProgress }: Props) {
   const [imageError, setImageError] = useState(false);
   const height = Math.round(width * 1.56);
+  const hasProgress = showProgress && item.progress != null && item.progress > 0;
 
   return (
     <View style={{ width, marginRight: 14 }}>
@@ -106,6 +109,15 @@ export const RealContentCard = React.memo(function RealContentCard({ item, onPre
             </View>
           </LinearGradient>
 
+          {/* Progress bar for continue watching */}
+          {hasProgress && (
+            <View style={styles.progressContainer}>
+              <View style={styles.progressTrack}>
+                <View style={[styles.progressFill, { width: `${Math.round((item.progress || 0) * 100)}%` as any }]} />
+              </View>
+            </View>
+          )}
+
           {item.isTrending && (
             <View style={styles.trendingBadge}>
               <Ionicons name="flame" size={10} color="#FF6B35" />
@@ -132,10 +144,14 @@ export const RealContentCard = React.memo(function RealContentCard({ item, onPre
         </View>
         <Text style={styles.title} numberOfLines={1}>{item.title}</Text>
         <View style={styles.meta}>
-          <Text style={styles.metaText}>{item.year}</Text>
-          <Text style={styles.dot}>·</Text>
-          <Text style={styles.metaText}>{item.imdb}</Text>
-          <Ionicons name="star" size={9} color={COLORS.gold} />
+          {item.year ? <Text style={styles.metaText}>{item.year}</Text> : null}
+          {item.year && item.imdb ? <Text style={styles.dot}>·</Text> : null}
+          {item.imdb ? (
+            <>
+              <Text style={styles.metaText}>{item.imdb}</Text>
+              <Ionicons name="star" size={9} color={COLORS.gold} />
+            </>
+          ) : null}
         </View>
       </TouchableOpacity>
     </View>
@@ -170,6 +186,14 @@ export const RealHeroBanner = React.memo(function RealHeroBanner({ item, onPlay,
             />
           )}
 
+          {/* Top vignette gradient */}
+          <LinearGradient
+            colors={["rgba(0,0,0,0.45)", "transparent"]}
+            style={styles.heroTopGradient}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 0, y: 1 }}
+          />
+
           <LinearGradient
             colors={["transparent", "rgba(0,0,0,0.68)", COLORS.background]}
             style={styles.heroBottomGradient}
@@ -191,30 +215,32 @@ export const RealHeroBanner = React.memo(function RealHeroBanner({ item, onPlay,
               ))}
             </View>
 
-            <Text style={styles.heroTitle}>{item.title}</Text>
+            <Text style={styles.heroTitle} numberOfLines={2}>{item.title}</Text>
             {item.synopsis ? (
               <Text style={styles.heroSynopsis} numberOfLines={2}>{item.synopsis}</Text>
             ) : null}
 
             <View style={styles.metaRow}>
-              <Text style={styles.heroMeta}>{item.year}</Text>
-              <View style={styles.ratingRow}>
-                <Ionicons name="star" size={12} color={COLORS.gold} />
-                <Text style={styles.heroMeta}>{item.imdb}</Text>
-              </View>
+              {item.year ? <Text style={styles.heroMeta}>{item.year}</Text> : null}
+              {item.imdb ? (
+                <View style={styles.ratingRow}>
+                  <Ionicons name="star" size={12} color={COLORS.gold} />
+                  <Text style={styles.heroMeta}>{item.imdb}</Text>
+                </View>
+              ) : null}
               {item.duration ? <Text style={styles.heroMeta}>{item.duration}</Text> : null}
               {item.seasons ? <Text style={styles.heroMeta}>{item.seasons}S</Text> : null}
             </View>
 
             <View style={styles.heroActions}>
               <TouchableOpacity style={styles.playButton} onPress={onPlay} activeOpacity={0.85}>
-                <Ionicons name="play" size={18} color={COLORS.background} />
-                <Text style={styles.playText}>Play</Text>
+                <Ionicons name="play" size={20} color="#FFFFFF" />
+                <Text style={styles.playText}>Afspelen</Text>
               </TouchableOpacity>
               {onInfo && (
                 <TouchableOpacity style={styles.infoButton} onPress={onInfo} activeOpacity={0.85}>
                   <Ionicons name="information-circle-outline" size={18} color={COLORS.text} />
-                  <Text style={styles.infoText}>More Info</Text>
+                  <Text style={styles.infoText}>Info</Text>
                 </TouchableOpacity>
               )}
             </View>
@@ -227,38 +253,43 @@ export const RealHeroBanner = React.memo(function RealHeroBanner({ item, onPlay,
 
 const styles = StyleSheet.create({
   poster: {
-    borderRadius: 16,
+    borderRadius: 12,
     overflow: "hidden",
     backgroundColor: COLORS.card,
-    borderWidth: 1,
-    borderColor: COLORS.border,
+    borderWidth: 0.5,
+    borderColor: "rgba(255,255,255,0.06)",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 6,
   },
   posterBottom: { padding: 9 },
   badges: { flexDirection: "row", gap: 4 },
   qualityBadge: {
     borderWidth: 1,
-    borderRadius: 6,
-    backgroundColor: COLORS.overlayLight,
+    borderRadius: 4,
+    backgroundColor: "rgba(0,0,0,0.55)",
     borderColor: COLORS.borderLight,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
+    paddingHorizontal: 5,
+    paddingVertical: 1.5,
   },
   qualityText: {
     fontFamily: "Inter_700Bold",
-    fontSize: 9,
-    letterSpacing: 0.3,
+    fontSize: 8,
+    letterSpacing: 0.5,
   },
   newBadge: {
     backgroundColor: COLORS.live,
-    borderRadius: 6,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
+    borderRadius: 4,
+    paddingHorizontal: 5,
+    paddingVertical: 1.5,
   },
   newText: {
     fontFamily: "Inter_700Bold",
-    fontSize: 9,
+    fontSize: 8,
     color: COLORS.text,
-    letterSpacing: 0.3,
+    letterSpacing: 0.5,
   },
   trendingBadge: {
     position: "absolute",
@@ -280,9 +311,9 @@ const styles = StyleSheet.create({
     width: 26,
     height: 26,
     borderRadius: 13,
-    backgroundColor: COLORS.overlayLight,
+    backgroundColor: "rgba(0,0,0,0.45)",
     borderWidth: 1,
-    borderColor: COLORS.borderLight,
+    borderColor: "rgba(255,255,255,0.1)",
     alignItems: "center",
     justifyContent: "center",
   },
@@ -290,7 +321,7 @@ const styles = StyleSheet.create({
     position: "absolute",
     bottom: 8,
     right: 8,
-    borderRadius: 5,
+    borderRadius: 4,
     paddingHorizontal: 5,
     paddingVertical: 2,
     borderWidth: 1,
@@ -305,8 +336,8 @@ const styles = StyleSheet.create({
   },
   sourceBadgeText: {
     fontFamily: "Inter_700Bold",
-    fontSize: 8,
-    letterSpacing: 0.4,
+    fontSize: 7,
+    letterSpacing: 0.5,
   },
   sourceBadgeTextIptv: { color: "#80C4FF" },
   sourceBadgeTextTmdb: { color: "#FFD060" },
@@ -325,15 +356,15 @@ const styles = StyleSheet.create({
   },
   title: {
     fontFamily: "Inter_600SemiBold",
-    fontSize: 13,
+    fontSize: 12,
     color: COLORS.text,
-    marginTop: 10,
+    marginTop: 8,
   },
   meta: {
     flexDirection: "row",
     alignItems: "center",
     gap: 3,
-    marginTop: 3,
+    marginTop: 2,
   },
   metaText: {
     fontFamily: "Inter_400Regular",
@@ -345,29 +376,56 @@ const styles = StyleSheet.create({
     fontSize: 10,
     color: COLORS.textMuted,
   },
+  // Progress bar for continue watching
+  progressContainer: {
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
+    paddingHorizontal: 6,
+    paddingBottom: 5,
+  },
+  progressTrack: {
+    height: 3,
+    backgroundColor: "rgba(255,255,255,0.15)",
+    borderRadius: 1.5,
+    overflow: "hidden",
+  },
+  progressFill: {
+    height: "100%",
+    backgroundColor: COLORS.accent,
+    borderRadius: 1.5,
+  },
   // Hero Banner
   heroBannerWrapper: { marginHorizontal: 16, marginBottom: 22 },
   heroBanner: {
-    height: 430,
-    borderRadius: 24,
+    height: 460,
+    borderRadius: 20,
     overflow: "hidden",
     backgroundColor: COLORS.card,
     justifyContent: "flex-end",
+  },
+  heroTopGradient: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 120,
   },
   heroBottomGradient: {
     position: "absolute",
     bottom: 0,
     left: 0,
     right: 0,
-    height: 250,
+    height: 280,
   },
-  heroContent: { padding: 18, gap: 8 },
+  heroContent: { padding: 20, gap: 8 },
   topBadges: { flexDirection: "row", gap: 6, alignItems: "center" },
   genrePill: {
-    backgroundColor: COLORS.overlayLight,
+    backgroundColor: "rgba(255,255,255,0.08)",
     borderWidth: 1,
-    borderColor: COLORS.borderLight,
-    borderRadius: 5,
+    borderColor: "rgba(255,255,255,0.12)",
+    borderRadius: 4,
     paddingHorizontal: 8,
     paddingVertical: 2,
   },
@@ -378,43 +436,40 @@ const styles = StyleSheet.create({
   },
   heroTitle: {
     fontFamily: "Inter_800ExtraBold",
-    fontSize: 38,
+    fontSize: 32,
     color: COLORS.text,
-    lineHeight: 42,
-    textTransform: "uppercase",
+    lineHeight: 36,
   },
   heroSynopsis: {
     fontFamily: "Inter_400Regular",
-    fontSize: 12,
-    color: COLORS.textSecondary,
-    lineHeight: 17,
+    fontSize: 13,
+    color: "rgba(255,255,255,0.7)",
+    lineHeight: 18,
   },
   metaRow: { flexDirection: "row", alignItems: "center", gap: 10 },
   heroMeta: { fontFamily: "Inter_500Medium", fontSize: 12, color: COLORS.textMuted },
   ratingRow: { flexDirection: "row", alignItems: "center", gap: 3 },
-  heroActions: { flexDirection: "row", gap: 10, marginTop: 4 },
+  heroActions: { flexDirection: "row", gap: 10, marginTop: 6 },
   playButton: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
-    backgroundColor: "rgba(29,43,71,0.9)",
-    borderRadius: 14,
-    paddingHorizontal: 22,
-    paddingVertical: 12,
-    borderWidth: 1,
-    borderColor: "rgba(176,206,247,0.35)",
+    gap: 8,
+    backgroundColor: COLORS.accent,
+    borderRadius: 10,
+    paddingHorizontal: 28,
+    paddingVertical: 13,
   },
-  playText: { fontFamily: "Inter_700Bold", fontSize: 18, color: COLORS.text },
+  playText: { fontFamily: "Inter_700Bold", fontSize: 16, color: "#FFFFFF" },
   infoButton: {
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
-    backgroundColor: COLORS.overlayLight,
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
+    backgroundColor: "rgba(255,255,255,0.08)",
+    borderRadius: 10,
+    paddingHorizontal: 18,
+    paddingVertical: 13,
     borderWidth: 1,
-    borderColor: COLORS.borderLight,
+    borderColor: "rgba(255,255,255,0.12)",
   },
   infoText: { fontFamily: "Inter_600SemiBold", fontSize: 14, color: COLORS.text },
 });

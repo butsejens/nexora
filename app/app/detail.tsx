@@ -419,12 +419,20 @@ export default function DetailScreen() {
         <View style={styles.hero}>
           {data.backdrop ? (
             <Image source={{ uri: data.backdrop }} style={styles.backdrop} resizeMode="cover" />
+          ) : data.poster ? (
+            <Image source={{ uri: data.poster }} style={styles.backdrop} resizeMode="cover" />
           ) : (
             <View style={[styles.backdrop, { backgroundColor: COLORS.card }]} />
           )}
+          {/* Top vignette */}
           <LinearGradient
-            colors={["transparent", "rgba(11,15,23,0.7)", COLORS.background]}
+            colors={["rgba(0,0,0,0.5)", "transparent"]}
+            style={styles.heroTopGradient}
+          />
+          <LinearGradient
+            colors={["transparent", "rgba(7,11,26,0.5)", "rgba(7,11,26,0.85)", COLORS.background]}
             style={styles.heroGradient}
+            locations={[0, 0.4, 0.7, 1]}
           />
           <TouchableOpacity
             style={[styles.backBtn, { top: Platform.OS === "web" ? 67 : insets.top + 8 }]}
@@ -441,9 +449,9 @@ export default function DetailScreen() {
           {data.trailerKey && (
             <TouchableOpacity style={styles.trailerPlayBtn} onPress={() => setShowTrailer(true)}>
               <View style={styles.trailerPlay}>
-                <Ionicons name="play" size={20} color={COLORS.text} />
+                <Ionicons name="play" size={18} color={COLORS.text} />
               </View>
-              <Text style={styles.trailerBtnText}>Trailer bekijken</Text>
+              <Text style={styles.trailerBtnText}>Trailer</Text>
             </TouchableOpacity>
           )}
           {isIptv === "true" && (
@@ -452,66 +460,55 @@ export default function DetailScreen() {
               <Text style={styles.iptvBadgeText}>IPTV</Text>
             </View>
           )}
+          {/* Title overlay on hero */}
+          <View style={styles.heroTitleOverlay}>
+            <Text style={styles.heroContentTitle} numberOfLines={2}>{data.title}</Text>
+            {data.tagline ? <Text style={styles.heroTagline} numberOfLines={1}>{data.tagline}</Text> : null}
+            <View style={styles.heroMetaRow}>
+              {data.year ? <Text style={styles.heroMetaText}>{data.year}</Text> : null}
+              {data.imdb ? (
+                <View style={styles.heroRatingPill}>
+                  <MaterialCommunityIcons name="star" size={12} color="#F5C518" />
+                  <Text style={styles.heroRatingText}>{data.imdb}</Text>
+                </View>
+              ) : null}
+              {data.duration ? <Text style={styles.heroMetaText}>{data.duration}</Text> : null}
+              {!isMovie && data.seasons?.length ? <Text style={styles.heroMetaText}>{data.seasons.length} Seizoen{data.seasons.length > 1 ? "en" : ""}</Text> : null}
+              <View style={styles.qualityBadge}>
+                <Text style={styles.qualityText}>{data.quality || "HD"}</Text>
+              </View>
+            </View>
+          </View>
         </View>
 
         <View style={styles.infoSection}>
-          <View style={styles.posterRow}>
-            {data.poster ? (
-              <Image source={{ uri: data.poster }} style={styles.poster} resizeMode="cover" />
-            ) : (
-              <View style={[styles.poster, { backgroundColor: COLORS.card, alignItems: "center", justifyContent: "center" }]}>
-                <Ionicons name="film-outline" size={32} color={COLORS.textMuted} />
+          {/* Genre pills */}
+          <View style={styles.genreRow}>
+            {(data.genre || []).slice(0, 4).map((g: string) => (
+              <View key={g} style={styles.genrePill}>
+                <Text style={styles.genrePillText}>{g}</Text>
               </View>
-            )}
-            <View style={styles.mainInfo}>
-              <Text style={styles.contentTitle}>{data.title}</Text>
-              {data.tagline ? <Text style={styles.tagline}>{data.tagline}</Text> : null}
-              <View style={styles.metaRow}>
-                {data.year ? <Text style={styles.metaText}>{data.year}</Text> : null}
-                {data.year && data.imdb ? <View style={styles.metaDot} /> : null}
-                {data.imdb ? <Text style={styles.metaText}>{data.imdb}</Text> : null}
-                {data.duration ? <><View style={styles.metaDot} /><Text style={styles.metaText}>{data.duration}</Text></> : null}
-                {!isMovie && data.seasons?.length ? <><View style={styles.metaDot} /><Text style={styles.metaText}>{data.seasons.length} Seizoen{data.seasons.length > 1 ? "en" : ""}</Text></> : null}
-              </View>
-              {data.imdb ? (
-                <View style={styles.imdbRow}>
-                  <MaterialCommunityIcons name="star" size={14} color="#F5C518" />
-                  <Text style={styles.imdbText}>{data.imdb}</Text>
-                  <Text style={styles.imdbMax}>/10</Text>
-                  <View style={styles.qualityBadge}>
-                    <Text style={styles.qualityText}>{data.quality || "HD"}</Text>
-                  </View>
-                </View>
-              ) : null}
-              <View style={styles.genreRow}>
-                {(data.genre || []).slice(0, 3).map((g: string) => (
-                  <View key={g} style={styles.genrePill}>
-                    <Text style={styles.genrePillText}>{g}</Text>
-                  </View>
-                ))}
-              </View>
-            </View>
+            ))}
           </View>
 
           <View style={styles.actionButtons}>
             <TouchableOpacity style={styles.playBtn} onPress={() => goToPlayer()} activeOpacity={0.85}>
-              <LinearGradient
-                colors={[COLORS.accent, "#0099BB"]}
-                style={styles.playBtnGradient}
-                start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
-              >
-                <Ionicons name="play" size={20} color={COLORS.background} />
+              <View style={styles.playBtnInner}>
+                <Ionicons name="play" size={22} color="#FFFFFF" />
                 <Text style={styles.playBtnText}>Afspelen</Text>
-              </LinearGradient>
+              </View>
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.downloadBtnOutline, isDownloaded(id) && { borderColor: "#22c55e" }]}
               onPress={() => { SafeHaptics.impactLight(); setShowDownload(true); }}
             >
-              <Ionicons name={isDownloaded(id) ? "checkmark-circle" : "download-outline"} size={20} color={isDownloaded(id) ? "#22c55e" : COLORS.accent} />
-              <Text style={[styles.downloadBtnOutlineText, isDownloaded(id) && { color: "#22c55e" }]}>
-                {isDownloaded(id) ? "Gedownload" : "Download"}
-              </Text>
+              <Ionicons name={isDownloaded(id) ? "checkmark-circle" : "download-outline"} size={20} color={isDownloaded(id) ? "#22c55e" : COLORS.text} />
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.shareBtnOutline}
+              onPress={() => { SafeHaptics.impactLight(); }}
+            >
+              <Ionicons name="share-outline" size={20} color={COLORS.text} />
             </TouchableOpacity>
           </View>
 
@@ -695,39 +692,36 @@ const styles = StyleSheet.create({
   backBtnLoading: { flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 16, paddingVertical: 10, borderRadius: 10, borderWidth: 1, borderColor: COLORS.border },
   backBtnLoadingText: { color: COLORS.textMuted, fontFamily: "Inter_500Medium", fontSize: 14 },
   errorRefText: { color: COLORS.textMuted, fontFamily: "Inter_400Regular", fontSize: 11, marginTop: 6 },
-  hero: { height: 280, position: "relative" },
+  hero: { height: 380, position: "relative" },
   backdrop: { width: "100%", height: "100%" },
+  heroTopGradient: { position: "absolute", top: 0, left: 0, right: 0, height: 100 },
   heroGradient: { ...StyleSheet.absoluteFillObject },
-  backBtn: { position: "absolute", left: 16, width: 38, height: 38, borderRadius: 19, backgroundColor: "rgba(0,0,0,0.5)", alignItems: "center", justifyContent: "center" },
-  favBtn: { position: "absolute", right: 16, width: 38, height: 38, borderRadius: 19, backgroundColor: "rgba(0,0,0,0.5)", alignItems: "center", justifyContent: "center" },
+  heroTitleOverlay: { position: "absolute", bottom: 0, left: 0, right: 0, paddingHorizontal: 20, paddingBottom: 4 },
+  heroContentTitle: { fontFamily: "Inter_800ExtraBold", fontSize: 28, color: COLORS.text, lineHeight: 32, marginBottom: 4 },
+  heroTagline: { fontFamily: "Inter_400Regular", fontSize: 13, color: "rgba(255,255,255,0.6)", fontStyle: "italic", marginBottom: 8 },
+  heroMetaRow: { flexDirection: "row", alignItems: "center", gap: 10, flexWrap: "wrap" },
+  heroMetaText: { fontFamily: "Inter_500Medium", fontSize: 13, color: COLORS.textSecondary },
+  heroRatingPill: { flexDirection: "row", alignItems: "center", gap: 3 },
+  heroRatingText: { fontFamily: "Inter_700Bold", fontSize: 13, color: "#F5C518" },
+  backBtn: { position: "absolute", left: 16, width: 38, height: 38, borderRadius: 19, backgroundColor: "rgba(0,0,0,0.4)", alignItems: "center", justifyContent: "center" },
+  favBtn: { position: "absolute", right: 16, width: 38, height: 38, borderRadius: 19, backgroundColor: "rgba(0,0,0,0.4)", alignItems: "center", justifyContent: "center" },
   iptvBadge: { position: "absolute", bottom: 16, left: 16, flexDirection: "row", alignItems: "center", gap: 5, backgroundColor: "rgba(0,212,255,0.15)", borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4, borderWidth: 1, borderColor: COLORS.accent },
   iptvBadgeText: { fontFamily: "Inter_600SemiBold", fontSize: 11, color: COLORS.accent },
-  trailerPlayBtn: { position: "absolute", bottom: 20, alignSelf: "center", flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: "rgba(0,0,0,0.6)", borderRadius: 24, borderWidth: 1, borderColor: "rgba(255,255,255,0.3)", paddingHorizontal: 20, paddingVertical: 10 },
-  trailerPlay: { width: 32, height: 32, borderRadius: 16, backgroundColor: COLORS.accent, alignItems: "center", justifyContent: "center" },
-  trailerBtnText: { fontFamily: "Inter_600SemiBold", fontSize: 14, color: COLORS.text },
-  infoSection: { paddingHorizontal: 16, paddingTop: 4 },
-  posterRow: { flexDirection: "row", gap: 14, marginBottom: 20 },
-  poster: { width: 100, height: 150, borderRadius: 12, backgroundColor: COLORS.card },
-  mainInfo: { flex: 1, justifyContent: "flex-end", paddingBottom: 4 },
-  contentTitle: { fontFamily: "Inter_700Bold", fontSize: 20, color: COLORS.text, marginBottom: 4 },
-  tagline: { fontFamily: "Inter_400Regular", fontSize: 12, color: COLORS.textMuted, marginBottom: 6, fontStyle: "italic" },
-  metaRow: { flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 6, flexWrap: "wrap" },
-  metaText: { fontFamily: "Inter_400Regular", fontSize: 13, color: COLORS.textSecondary },
-  metaDot: { width: 3, height: 3, borderRadius: 1.5, backgroundColor: COLORS.textMuted },
-  imdbRow: { flexDirection: "row", alignItems: "center", gap: 4, marginBottom: 8 },
-  imdbText: { fontFamily: "Inter_700Bold", fontSize: 14, color: "#F5C518" },
-  imdbMax: { fontFamily: "Inter_400Regular", fontSize: 11, color: COLORS.textMuted },
-  qualityBadge: { backgroundColor: COLORS.accentGlow, borderWidth: 1, borderColor: COLORS.accent, borderRadius: 4, paddingHorizontal: 6, paddingVertical: 2, marginLeft: 6 },
-  qualityText: { fontFamily: "Inter_700Bold", fontSize: 10, color: COLORS.accent },
-  genreRow: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
-  genrePill: { backgroundColor: COLORS.card, borderRadius: 8, paddingHorizontal: 8, paddingVertical: 4, borderWidth: 1, borderColor: COLORS.border },
+  trailerPlayBtn: { position: "absolute", bottom: 60, alignSelf: "center", flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: "rgba(0,0,0,0.5)", borderRadius: 20, borderWidth: 1, borderColor: "rgba(255,255,255,0.2)", paddingHorizontal: 16, paddingVertical: 8 },
+  trailerPlay: { width: 28, height: 28, borderRadius: 14, backgroundColor: COLORS.accent, alignItems: "center", justifyContent: "center" },
+  trailerBtnText: { fontFamily: "Inter_600SemiBold", fontSize: 13, color: COLORS.text },
+  infoSection: { paddingHorizontal: 16, paddingTop: 12 },
+  genreRow: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginBottom: 16 },
+  genrePill: { backgroundColor: "rgba(255,255,255,0.06)", borderRadius: 6, paddingHorizontal: 10, paddingVertical: 5, borderWidth: 0.5, borderColor: "rgba(255,255,255,0.08)" },
   genrePillText: { fontFamily: "Inter_500Medium", fontSize: 11, color: COLORS.textSecondary },
-  actionButtons: { flexDirection: "row", gap: 10, marginBottom: 24 },
-  playBtn: { flex: 2, borderRadius: 14, overflow: "hidden" },
-  playBtnGradient: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, paddingVertical: 14 },
-  playBtnText: { fontFamily: "Inter_700Bold", fontSize: 16, color: COLORS.background },
-  downloadBtnOutline: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, borderRadius: 14, borderWidth: 1.5, borderColor: COLORS.accent, paddingVertical: 14 },
-  downloadBtnOutlineText: { fontFamily: "Inter_600SemiBold", fontSize: 14, color: COLORS.accent },
+  actionButtons: { flexDirection: "row", gap: 10, marginBottom: 20, alignItems: "center" },
+  playBtn: { flex: 1, borderRadius: 12, overflow: "hidden" },
+  playBtnInner: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, paddingVertical: 14, backgroundColor: COLORS.accent, borderRadius: 12 },
+  playBtnText: { fontFamily: "Inter_700Bold", fontSize: 16, color: "#FFFFFF" },
+  downloadBtnOutline: { width: 48, height: 48, borderRadius: 12, borderWidth: 1.5, borderColor: "rgba(255,255,255,0.12)", alignItems: "center", justifyContent: "center", backgroundColor: "rgba(255,255,255,0.04)" },
+  shareBtnOutline: { width: 48, height: 48, borderRadius: 12, borderWidth: 1.5, borderColor: "rgba(255,255,255,0.12)", alignItems: "center", justifyContent: "center", backgroundColor: "rgba(255,255,255,0.04)" },
+  qualityBadge: { backgroundColor: "rgba(255,45,85,0.15)", borderWidth: 1, borderColor: COLORS.accent, borderRadius: 4, paddingHorizontal: 6, paddingVertical: 2 },
+  qualityText: { fontFamily: "Inter_700Bold", fontSize: 9, color: COLORS.accent, letterSpacing: 0.5 },
   tabBar: { flexDirection: "row", borderBottomWidth: 1, borderBottomColor: COLORS.border, marginBottom: 16 },
   tab: { flex: 1, paddingVertical: 12, alignItems: "center" },
   tabActive: { borderBottomWidth: 2, borderBottomColor: COLORS.accent },
@@ -744,12 +738,12 @@ const styles = StyleSheet.create({
   castPhotoPlaceholder: { alignItems: "center", justifyContent: "center" },
   castName: { fontFamily: "Inter_600SemiBold", fontSize: 11, color: COLORS.text, textAlign: "center" },
   castCharacter: { fontFamily: "Inter_400Regular", fontSize: 10, color: COLORS.textMuted, textAlign: "center" },
-  seasonRow: { flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: COLORS.border },
-  seasonPoster: { width: 60, height: 90, borderRadius: 8 },
-  seasonInfo: { flex: 1 },
-  seasonName: { fontFamily: "Inter_600SemiBold", fontSize: 14, color: COLORS.text, marginBottom: 4 },
+  seasonRow: { flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: "rgba(255,255,255,0.04)" },
+  seasonPoster: { width: 70, height: 100, borderRadius: 8, backgroundColor: COLORS.card },
+  seasonInfo: { flex: 1, gap: 3 },
+  seasonName: { fontFamily: "Inter_600SemiBold", fontSize: 15, color: COLORS.text },
   seasonEpisodes: { fontFamily: "Inter_400Regular", fontSize: 12, color: COLORS.textMuted },
-  seasonDate: { fontFamily: "Inter_400Regular", fontSize: 11, color: COLORS.textMuted, marginTop: 2 },
+  seasonDate: { fontFamily: "Inter_400Regular", fontSize: 11, color: COLORS.textMuted },
   trailerModal: { flex: 1, backgroundColor: "rgba(0,0,0,0.95)", paddingTop: Platform.OS === "web" ? 67 : 50, alignItems: "center" },
   trailerClose: { position: "absolute", top: Platform.OS === "web" ? 67 : 50, right: 16, padding: 8, zIndex: 10 },
   trailerTitle: { fontFamily: "Inter_600SemiBold", fontSize: 15, color: COLORS.text, marginBottom: 12, paddingHorizontal: 48, textAlign: "center" },

@@ -4873,6 +4873,59 @@ app.get("/api/series/trending", tmdbLimiter, async (req, res) => {
   }
 });
 
+// Discover movies by genre — provides genre-specific rows for richer browsing
+app.get("/api/movies/discover-by-genre", tmdbLimiter, async (req, res) => {
+  try {
+    if (!process.env.TMDB_API_KEY) return res.json({ rows: [] });
+    const genreMap = {
+      28: "Action", 12: "Adventure", 16: "Animation", 35: "Comedy", 80: "Crime",
+      99: "Documentary", 18: "Drama", 10751: "Family", 14: "Fantasy", 36: "History",
+      27: "Horror", 10402: "Music", 9648: "Mystery", 10749: "Romance",
+      878: "Sci-Fi", 53: "Thriller", 10752: "War", 37: "Western",
+    };
+    const genreIds = Object.keys(genreMap);
+    // Fetch 6 popular genres in parallel (Action, Comedy, Drama, Horror, Sci-Fi, Thriller)
+    const selected = [28, 35, 18, 27, 878, 53];
+    const promises = selected.map(gid =>
+      tmdb(`/discover/movie?with_genres=${gid}&sort_by=popularity.desc&page=1&vote_count.gte=100`)
+    );
+    const results = await Promise.all(promises);
+    const rows = selected.map((gid, i) => ({
+      genreId: gid,
+      genreName: genreMap[gid],
+      items: (results[i]?.results || []).slice(0, 20).map(it => mapTrendingItem(it, "movie")),
+    })).filter(r => r.items.length > 0);
+    res.json({ rows });
+  } catch (e) {
+    res.json({ rows: [], error: String(e?.message || e) });
+  }
+});
+
+// Discover series by genre
+app.get("/api/series/discover-by-genre", tmdbLimiter, async (req, res) => {
+  try {
+    if (!process.env.TMDB_API_KEY) return res.json({ rows: [] });
+    const genreMap = {
+      10759: "Action & Adventure", 35: "Comedy", 80: "Crime", 99: "Documentary",
+      18: "Drama", 10751: "Family", 10762: "Kids", 9648: "Mystery",
+      10764: "Reality", 10765: "Sci-Fi & Fantasy", 53: "Thriller",
+    };
+    const selected = [10759, 35, 80, 18, 9648, 10765];
+    const promises = selected.map(gid =>
+      tmdb(`/discover/tv?with_genres=${gid}&sort_by=popularity.desc&page=1&vote_count.gte=50`)
+    );
+    const results = await Promise.all(promises);
+    const rows = selected.map((gid, i) => ({
+      genreId: gid,
+      genreName: genreMap[gid],
+      items: (results[i]?.results || []).slice(0, 20).map(it => mapTrendingItem(it, "series")),
+    })).filter(r => r.items.length > 0);
+    res.json({ rows });
+  } catch (e) {
+    res.json({ rows: [], error: String(e?.message || e) });
+  }
+});
+
 // Search TMDB by title — used by IPTV items that have no tmdbId
 app.get("/api/tmdb/search", tmdbLimiter, async (req, res) => {
   try {
