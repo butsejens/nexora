@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import {
   View, Text, StyleSheet, TouchableOpacity, Platform,
-  ScrollView, Image, ActivityIndicator, Linking,
+  ScrollView, Image, ActivityIndicator,
 } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -150,7 +150,9 @@ export default function MatchDetailScreen() {
   const streamFinderTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isLive = params.status === "live";
   const isFinished = params.status === "finished" || params.status === "ft" || params.status === "done";
-  const hasScore = isLive || isFinished || (Number(params.homeScore ?? -1) >= 0 && Number(params.awayScore ?? -1) >= 0 && (Number(params.homeScore) > 0 || Number(params.awayScore) > 0));
+  const isHalfTime = params.status === "ht" || params.status === "halftime" || params.status === "half";
+  const isPostponed = params.status === "postponed" || params.status === "cancelled" || params.status === "abandoned";
+  const hasScore = isLive || isHalfTime || isFinished || (Number(params.homeScore ?? -1) >= 0 && Number(params.awayScore ?? -1) >= 0 && (Number(params.homeScore) > 0 || Number(params.awayScore) > 0));
   const {
     data: streamData,
     isLoading: streamLoading,
@@ -172,7 +174,17 @@ export default function MatchDetailScreen() {
     enabled: !!params.matchId && isLive,
     staleTime: 60_000,
   });
-  const streamUrl = streamData?.url || `https://embedme.top/embed/alpha/${params.matchId}/1`;
+  const _rawStreamUrl = streamData?.url || "";
+  const streamUrl = (() => {
+    if (!_rawStreamUrl) return `https://embedme.top/embed/alpha/${params.matchId}/1`;
+    const u = _rawStreamUrl.toLowerCase();
+    if (
+      u.includes("google.") || u.includes("bing.com") || u.includes("yahoo.com") ||
+      u.includes("search?q=") || u.includes("/search?") || u.includes("duckduckgo.")
+    ) return `https://embedme.top/embed/alpha/${params.matchId}/1`;
+    if (!u.startsWith("http://") && !u.startsWith("https://")) return `https://embedme.top/embed/alpha/${params.matchId}/1`;
+    return _rawStreamUrl;
+  })();
   const streamApiError = normalizeApiError(streamFetchError || streamData?.error || null);
   const streamPlayerError = normalizeApiError(streamWebError);
   const hasStreamApiIssue = Boolean(streamFetchError || streamData?.error);
@@ -350,30 +362,24 @@ export default function MatchDetailScreen() {
     setStreamKey(k => k + 1);
   };
 
-  const handleOpenWatchUrl = async (url: string) => {
-    const target = String(url || "").trim();
-    if (!target) return;
-    SafeHaptics.impactLight();
-    try {
-      const canOpen = await Linking.canOpenURL(target);
-      if (canOpen) await Linking.openURL(target);
-    } catch {}
-  };
-
   // Auto-fetch AI predictions
   const hasFetchedPrematchRef = useRef(false);
   const lastLivePredictionAtRef = useRef(0);
 
   // Auto-activate AI stream finder on first mount when live match opens on stream tab
   useEffect(() => {
+    let disposed = false;
     if (isLive && activeTab === "stream" && !streamFinderDone) {
       setStreamFinderActive(true);
       streamFinderTimerRef.current = setTimeout(() => {
-        setStreamFinderActive(false);
-        setStreamFinderDone(true);
+        if (!disposed) {
+          setStreamFinderActive(false);
+          setStreamFinderDone(true);
+        }
       }, 3000);
     }
     return () => {
+      disposed = true;
       if (streamFinderTimerRef.current) clearTimeout(streamFinderTimerRef.current);
     };
   // Only run once on mount
@@ -423,20 +429,29 @@ export default function MatchDetailScreen() {
               });
             }} />
             <View style={styles.scoreCenter}>
-              {isLive ? (
+              {(isLive || isHalfTime) ? (
                 <>
                   <Text style={styles.score} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>{liveHomeScore} - {liveAwayScore}</Text>
-                  <LiveBadge minute={liveMinute} small />
+                  {isHalfTime
+                    ? <Text style={[styles.finishedLabel, { color: "#FFD700" }]}>HT</Text>
+                    : <LiveBadge minute={liveMinute} small />}
                 </>
               ) : isFinished ? (
                 <>
                   <Text style={styles.score} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>{liveHomeScore} - {liveAwayScore}</Text>
                   <Text style={styles.finishedLabel}>FT</Text>
                 </>
+              ) : isPostponed ? (
+                <>
+                  <Text style={styles.vsText}>VS</Text>
+                  <Text style={[styles.finishedLabel, { color: COLORS.live }]}>AFGELAST</Text>
+                </>
               ) : (
                 <>
                   <Text style={styles.vsText}>VS</Text>
-                  <Text style={styles.upcomingTime}>Gepland</Text>
+                  <Text style={styles.upcomingTime}>
+                    {matchDetail?.date ? safeStr(matchDetail.date) : "Gepland"}
+                  </Text>
                 </>
               )}
             </View>
@@ -526,6 +541,7 @@ export default function MatchDetailScreen() {
                       javaScriptEnabled domStorageEnabled
                       setSupportMultipleWindows={false}
                       allowsInlineMediaPlayback
+                      injectedJavaScriptBeforeContentLoaded={BLOCK_POPUP_JS}
                       injectedJavaScript={BLOCK_POPUP_JS}
                       onShouldStartLoadWithRequest={(req) => {
                         const url = (req.url || "").toLowerCase();
@@ -613,13 +629,17 @@ export default function MatchDetailScreen() {
                   />
                 </>
               )}
-              {matchDetail.venue && (
-                <InfoBlock title="STADION INFO">
-                  <InfoRow label="Stadion" value={matchDetail.venue} />
-                  {matchDetail.attendance && <InfoRow label="Toeschouwers" value={matchDetail.attendance.toLocaleString()} />}
-                  {matchDetail.referee && <InfoRow label="Scheidsrechter" value={matchDetail.referee} />}
-                </InfoBlock>
-              )}
+              <InfoBlock title="MATCH INFO">
+                <InfoRow label="Competition" value={safeStr(params.league)} />
+                {matchDetail.round ? <InfoRow label="Round" value={safeStr(matchDetail.round)} /> : null}
+                {matchDetail.season ? <InfoRow label="Season" value={safeStr(matchDetail.season)} /> : null}
+                {matchDetail.date ? <InfoRow label="Date / Kickoff" value={safeStr(matchDetail.date)} /> : null}
+                {matchDetail.venue ? <InfoRow label="Venue" value={safeStr(matchDetail.venue)} /> : null}
+                {matchDetail.city ? <InfoRow label="City" value={safeStr(matchDetail.city)} /> : null}
+                {matchDetail.attendance ? <InfoRow label="Attendance" value={Number(matchDetail.attendance).toLocaleString()} /> : null}
+                {matchDetail.referee ? <InfoRow label="Referee" value={safeStr(matchDetail.referee)} /> : null}
+                {matchDetail.country ? <InfoRow label="Country" value={safeStr(matchDetail.country)} /> : null}
+              </InfoBlock>
             </>
           ) : (
             <EmptyState icon="stats-chart-outline" text="Statistieken niet beschikbaar voor deze wedstrijd" />
