@@ -15,6 +15,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import WebView from "react-native-webview";
+import { activateKeepAwakeAsync, deactivateKeepAwake } from "expo-keep-awake";
 import { COLORS } from "@/constants/colors";
 import { useNexora } from "@/context/NexoraContext";
 import { SafeHaptics } from "@/lib/safeHaptics";
@@ -754,7 +755,11 @@ export default function PlayerScreen() {
   }>();
 
   const insets = useSafeAreaInsets();
-  const { isFavorite, toggleFavorite, addToHistory } = useNexora();
+  const { isFavorite, toggleFavorite, addToHistory, hasPremium } = useNexora();
+
+  // ── Premium gate — block playback if user lacks entitlement ─────────────
+  const contentCategory = type === "movie" ? "movies" : type === "series" ? "series" : null;
+  const premiumBlocked = contentCategory && !hasPremium(contentCategory as any);
 
   // Embed provider state
   const [providerIndex, setProviderIndex]     = useState(0);
@@ -774,6 +779,7 @@ export default function PlayerScreen() {
   const embedWebviewRef = useRef<WebView | null>(null);
   const disposedRef = useRef(false);
   const autoplayTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const webviewCrashCountRef = useRef(0);
   const [hlsPaused, setHlsPaused]       = useState(false);
   const [hlsDuration, setHlsDuration]   = useState(0);
   const [hlsCurrentTime, setHlsCurrentTime] = useState(0);
@@ -782,6 +788,12 @@ export default function PlayerScreen() {
 
   const provider         = STREAM_PROVIDERS[providerIndex]?.id || STREAM_PROVIDERS[0].id;
   const allProvidersFailed = providerIndex >= STREAM_PROVIDERS.length;
+
+  // ── Wake lock — keep screen on during playback ──────────────────────────
+  useEffect(() => {
+    activateKeepAwakeAsync("player").catch(() => {});
+    return () => { deactivateKeepAwake("player"); };
+  }, []);
 
   const injectEmbedAutoplay = useCallback(() => {
     if (Platform.OS === "web") return;
@@ -887,6 +899,20 @@ export default function PlayerScreen() {
     setWebviewKey(k => k + 1);
     setStreamError(null);
     setStreamErrorRef("");
+    setIsLoading(true);
+  }, []);
+
+  // ── WebView crash recovery (Android + iOS) ─────────────────────────────
+  const handleWebViewCrash = useCallback(() => {
+    if (disposedRef.current) return;
+    webviewCrashCountRef.current++;
+    if (webviewCrashCountRef.current > 3) {
+      setStreamError("WebView crashed herhaaldelijk");
+      setStreamErrorRef(buildErrorReference("NX-PLY-CRASH"));
+      setIsLoading(false);
+      return;
+    }
+    setWebviewKey(k => k + 1);
     setIsLoading(true);
   }, []);
 
@@ -1071,6 +1097,8 @@ export default function PlayerScreen() {
               setStreamErrorRef(prev => prev || buildErrorReference("NX-PLY"));
             }
           }}
+          onRenderProcessGone={handleWebViewCrash}
+          onContentProcessDidTerminate={handleWebViewCrash}
         />
       );
     }
@@ -1110,7 +1138,8 @@ export default function PlayerScreen() {
           onShouldStartLoadWithRequest={makeNavGuard(embedUrl)}
           onNavigationStateChange={makeNavStateGuard(embedUrl)}
           scalesPageToFit={false}
-          onRenderProcessGone={() => { if (!disposedRef.current) setIsLoading(false); }}
+          onRenderProcessGone={handleWebViewCrash}
+          onContentProcessDidTerminate={handleWebViewCrash}
         />
       );
     }
@@ -1121,6 +1150,28 @@ export default function PlayerScreen() {
   const seekProgress = hlsDuration > 0 ? Math.min(hlsCurrentTime / hlsDuration, 1) : 0;
 
   // ─────────────────────────────────────────────────────────────────────────
+  if (premiumBlocked) {
+    return (
+      <View style={[styles.container, { alignItems: "center", justifyContent: "center", gap: 16 }]}>
+        <StatusBar hidden />
+        <Ionicons name="lock-closed" size={48} color={COLORS.accent} />
+        <Text style={{ color: COLORS.text, fontSize: 20, fontFamily: "Inter_700Bold", textAlign: "center" }}>Premium vereist</Text>
+        <Text style={{ color: COLORS.textMuted, fontSize: 14, textAlign: "center", paddingHorizontal: 40 }}>
+          Upgrade naar Premium om {contentCategory === "movies" ? "films" : "series"} af te spelen.
+        </Text>
+        <TouchableOpacity
+          style={{ backgroundColor: COLORS.accent, borderRadius: 12, paddingHorizontal: 28, paddingVertical: 14, marginTop: 8 }}
+          onPress={() => router.replace("/premium")}
+        >
+          <Text style={{ color: "#fff", fontSize: 16, fontWeight: "700" }}>Ontgrendel Premium</Text>
+        </TouchableOpacity>
+        <TouchableOpacity onPress={() => router.back()} style={{ marginTop: 8 }}>
+          <Text style={{ color: COLORS.textMuted, fontSize: 14 }}>Terug</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
   return (
     <View style={styles.container}>
       <StatusBar hidden />
@@ -1324,7 +1375,6 @@ export default function PlayerScreen() {
 const styles = StyleSheet.create({
   container:  { flex: 1, backgroundColor: "#000" },
   videoArea:  { flex: 1, backgroundColor: "#000" },
-  webFrame:   { width: "100%", height: "100%", borderWidth: 0, backgroundColor: "#000" },
   webview:    { flex: 1, backgroundColor: "#000" },
 
   loadingOverlay: {
@@ -1352,22 +1402,6 @@ const styles = StyleSheet.create({
 
   // Touch zones
   hlsTouchScreen: { ...StyleSheet.absoluteFillObject, zIndex: 5 },
-  embedMiniBack: {
-    position: "absolute",
-    top: 48,
-    left: 16,
-    zIndex: 10,
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: "rgba(0,0,0,0.6)",
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.2)",
-  },
-  tapStripTop:    { position: "absolute", top: 0,    left: 0, right: 0, height: 90, zIndex: 5 },
-  tapStripBottom: { position: "absolute", bottom: 0, left: 0, right: 0, height: 90, zIndex: 5 },
 
   // Embed mode minimal overlay (static, no animation)
   embedMinimalOverlay: {

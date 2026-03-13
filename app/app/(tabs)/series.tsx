@@ -43,7 +43,7 @@ async function fetchSeries() {
     return await res.json();
   } catch (error: any) {
     return {
-      trending: [], newReleases: [], topRated: [], popular: [], airingToday: [],
+      trending: [], newReleases: [], topRated: [], popular: [], airingToday: [], hiddenGems: [],
       error: String(error?.message || "Series request failed"),
     };
   }
@@ -149,6 +149,7 @@ export default function SeriesScreen() {
   const topRated = useMemo(() => data?.topRated || [], [data]);
   const popular = useMemo(() => data?.popular || [], [data]);
   const airingToday = useMemo(() => data?.airingToday || [], [data]);
+  const hiddenGems: any[] = useMemo(() => data?.hiddenGems || [], [data]);
   const seriesGenres: any[] = useMemo(() => genresData?.genres || [], [genresData]);
   const seriesDecades: any[] = useMemo(() => decadesData?.decades || [], [decadesData]);
   const genreDiscoverRows: any[] = useMemo(() => genreDiscoverData?.rows || [], [genreDiscoverData]);
@@ -301,17 +302,27 @@ export default function SeriesScreen() {
   // Deduplicate: build set of IDs already shown in all base rows
   const baseSeenIds = useMemo(() => {
     const seen = new Set<string>();
-    [trending, airingToday, newReleases, topRated, popular].forEach(arr =>
+    [trending, airingToday, newReleases, topRated, popular, hiddenGems].forEach(arr =>
       arr.forEach((m: any) => seen.add(m.id))
     );
     return seen;
-  }, [trending, airingToday, newReleases, topRated, popular]);
+  }, [trending, airingToday, newReleases, topRated, popular, hiddenGems]);
 
-  const [dedupTrending, dedupAiringToday, dedupNewReleases, dedupTopRated, dedupPopular] = useMemo(() => {
-    const seen = new Set<string>();
+  // Normalize title for dedup: lowercase, strip non-alphanumeric
+  const normalizeTitle = (title: string, year?: string | number) => {
+    const t = (title || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+    return year ? `${t}__${String(year).slice(0, 4)}` : t;
+  };
+
+  const [dedupTrending, dedupAiringToday, dedupNewReleases, dedupTopRated, dedupPopular, dedupHiddenGems] = useMemo(() => {
+    const seenIds = new Set<string>();
+    const seenTitles = new Set<string>();
     const dedup = (arr: any[]) => arr.filter((m: any) => {
-      if (seen.has(m.id)) return false;
-      seen.add(m.id);
+      if (seenIds.has(m.id)) return false;
+      const norm = normalizeTitle(m.title, m.year);
+      if (norm.length > 3 && seenTitles.has(norm)) return false;
+      seenIds.add(m.id);
+      if (norm.length > 3) seenTitles.add(norm);
       return true;
     });
     return [
@@ -320,8 +331,9 @@ export default function SeriesScreen() {
       dedup(newReleases),
       dedup(topRated),
       dedup(popular),
+      dedup(hiddenGems),
     ];
-  }, [trending, airingToday, newReleases, topRated, popular]);
+  }, [trending, airingToday, newReleases, topRated, popular, hiddenGems]);
 
   const filteredTmdb = useMemo(() => {
     if (!search.trim()) return null;
@@ -332,10 +344,11 @@ export default function SeriesScreen() {
       ...topRated.filter((m: any) => (m.title || "").toLowerCase().includes(q)),
       ...popular.filter((m: any) => (m.title || "").toLowerCase().includes(q)),
       ...airingToday.filter((m: any) => (m.title || "").toLowerCase().includes(q)),
+      ...hiddenGems.filter((m: any) => (m.title || "").toLowerCase().includes(q)),
     ];
     const seen = new Set<string>();
     return results.filter((m: any) => { if (seen.has(m.id)) return false; seen.add(m.id); return true; });
-  }, [search, trending, newReleases, topRated, popular, airingToday]);
+  }, [search, trending, newReleases, topRated, popular, airingToday, hiddenGems]);
 
   const renderCard = useCallback((item: any, showProgress = false) => (
     <RealContentCard
@@ -601,6 +614,7 @@ export default function SeriesScreen() {
               {renderMainRow("Nieuw & Lopend", dedupNewReleases, "newReleases")}
               {renderMainRow("Best beoordeeld", dedupTopRated, "topRated")}
               {renderMainRow("Populair nu", dedupPopular, "popular")}
+              {renderSimpleRow("Verborgen Parels", dedupHiddenGems, "hidden-gems")}
 
               {/* Genre discover rows — Action, Comedy, Crime, Drama, Mystery, Sci-Fi */}
               {genreDiscoverRows.map((row: any) => row.items?.length > 0 && (

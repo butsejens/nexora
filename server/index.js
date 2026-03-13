@@ -4827,49 +4827,64 @@ function mapFullDetail(detail, videos, credits, type) {
 
 app.get("/api/movies/trending", tmdbLimiter, async (req, res) => {
   try {
-    if (!process.env.TMDB_API_KEY) return res.json({ trending: [], newReleases: [], topRated: [], popular: [], upcoming: [], error: "TMDB_API_KEY niet geconfigureerd." });
+    if (!process.env.TMDB_API_KEY) return res.json({ trending: [], newReleases: [], topRated: [], popular: [], upcoming: [], hiddenGems: [], acclaimed: [], error: "TMDB_API_KEY niet geconfigureerd." });
 
-    const [trending, nowPlaying, topRated, popular, upcoming] = await Promise.all([
+    const [trending, nowPlaying, topRated, popular, upcoming, trendingP2, popularP2] = await Promise.all([
       tmdb("/trending/movie/week"),
       tmdb("/movie/now_playing"),
       tmdb("/movie/top_rated"),
       tmdb("/movie/popular"),
       tmdb("/movie/upcoming"),
+      tmdb("/trending/movie/week?page=2"),
+      tmdb("/movie/popular?page=2"),
     ]);
 
+    // Hidden gems: high rating, lower popularity
+    const hiddenGems = await tmdb("/discover/movie?sort_by=vote_average.desc&vote_count.gte=200&vote_average.gte=7.5&popularity.lte=40&page=1").catch(() => ({ results: [] }));
+    // Critically acclaimed: 8+ rating, 1000+ votes
+    const acclaimed = await tmdb("/discover/movie?sort_by=vote_average.desc&vote_count.gte=1000&vote_average.gte=8&page=1").catch(() => ({ results: [] }));
+
     res.json({
-      trending: (trending?.results || []).map((it) => mapTrendingItem(it, "movie")),
+      trending: [...(trending?.results || []), ...(trendingP2?.results || [])].map((it) => mapTrendingItem(it, "movie")),
       newReleases: (nowPlaying?.results || []).map((it) => mapTrendingItem(it, "movie")),
       topRated: (topRated?.results || []).map((it) => mapTrendingItem(it, "movie")),
-      popular: (popular?.results || []).map((it) => mapTrendingItem(it, "movie")),
+      popular: [...(popular?.results || []), ...(popularP2?.results || [])].map((it) => mapTrendingItem(it, "movie")),
       upcoming: (upcoming?.results || []).map((it) => mapTrendingItem(it, "movie")),
+      hiddenGems: (hiddenGems?.results || []).slice(0, 20).map((it) => mapTrendingItem(it, "movie")),
+      acclaimed: (acclaimed?.results || []).slice(0, 20).map((it) => mapTrendingItem(it, "movie")),
     });
   } catch (e) {
-    res.status(200).json({ trending: [], newReleases: [], topRated: [], popular: [], upcoming: [], error: String(e?.message || e) });
+    res.status(200).json({ trending: [], newReleases: [], topRated: [], popular: [], upcoming: [], hiddenGems: [], acclaimed: [], error: String(e?.message || e) });
   }
 });
 
 app.get("/api/series/trending", tmdbLimiter, async (req, res) => {
   try {
-    if (!process.env.TMDB_API_KEY) return res.json({ trending: [], newReleases: [], topRated: [], popular: [], airingToday: [], error: "TMDB_API_KEY niet geconfigureerd." });
+    if (!process.env.TMDB_API_KEY) return res.json({ trending: [], newReleases: [], topRated: [], popular: [], airingToday: [], hiddenGems: [], error: "TMDB_API_KEY niet geconfigureerd." });
 
-    const [trending, onTheAir, topRated, popular, airingToday] = await Promise.all([
+    const [trending, onTheAir, topRated, popular, airingToday, trendingP2, popularP2] = await Promise.all([
       tmdb("/trending/tv/week"),
       tmdb("/tv/on_the_air"),
       tmdb("/tv/top_rated"),
       tmdb("/tv/popular"),
       tmdb("/tv/airing_today"),
+      tmdb("/trending/tv/week?page=2"),
+      tmdb("/tv/popular?page=2"),
     ]);
 
+    // Hidden gems: high rating, lower popularity
+    const hiddenGems = await tmdb("/discover/tv?sort_by=vote_average.desc&vote_count.gte=200&vote_average.gte=7.5&popularity.lte=40&page=1").catch(() => ({ results: [] }));
+
     res.json({
-      trending: (trending?.results || []).map((it) => mapTrendingItem(it, "series")),
+      trending: [...(trending?.results || []), ...(trendingP2?.results || [])].map((it) => mapTrendingItem(it, "series")),
       newReleases: (onTheAir?.results || []).map((it) => mapTrendingItem(it, "series")),
       topRated: (topRated?.results || []).map((it) => mapTrendingItem(it, "series")),
-      popular: (popular?.results || []).map((it) => mapTrendingItem(it, "series")),
+      popular: [...(popular?.results || []), ...(popularP2?.results || [])].map((it) => mapTrendingItem(it, "series")),
       airingToday: (airingToday?.results || []).map((it) => mapTrendingItem(it, "series")),
+      hiddenGems: (hiddenGems?.results || []).slice(0, 20).map((it) => mapTrendingItem(it, "series")),
     });
   } catch (e) {
-    res.status(200).json({ trending: [], newReleases: [], topRated: [], popular: [], airingToday: [], error: String(e?.message || e) });
+    res.status(200).json({ trending: [], newReleases: [], topRated: [], popular: [], airingToday: [], hiddenGems: [], error: String(e?.message || e) });
   }
 });
 

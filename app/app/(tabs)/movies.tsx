@@ -43,7 +43,7 @@ async function fetchMovies() {
     return await res.json();
   } catch (error: any) {
     return {
-      trending: [], newReleases: [], topRated: [], popular: [], upcoming: [],
+      trending: [], newReleases: [], topRated: [], popular: [], upcoming: [], hiddenGems: [], acclaimed: [],
       error: String(error?.message || "Movies request failed"),
     };
   }
@@ -165,6 +165,8 @@ export default function MoviesScreen() {
   const topRated = useMemo(() => data?.topRated || [], [data]);
   const popular = useMemo(() => data?.popular || [], [data]);
   const upcoming = useMemo(() => data?.upcoming || [], [data]);
+  const hiddenGems: any[] = useMemo(() => data?.hiddenGems || [], [data]);
+  const acclaimed: any[] = useMemo(() => data?.acclaimed || [], [data]);
   const movieGenres: any[] = useMemo(() => genresData?.genres || [], [genresData]);
   const movieDecades: any[] = useMemo(() => decadesData?.decades || [], [decadesData]);
   const archiveMovies: any[] = useMemo(() => archiveData?.movies || [], [archiveData]);
@@ -336,18 +338,28 @@ export default function MoviesScreen() {
   // ── Deduplicate: build set of IDs already shown in all base rows ───────────
   const baseSeenIds = useMemo(() => {
     const seen = new Set<string>();
-    [trending, newReleases, topRated, popular, upcoming].forEach(arr =>
+    [trending, newReleases, topRated, popular, upcoming, hiddenGems, acclaimed].forEach(arr =>
       arr.forEach((m: any) => seen.add(m.id))
     );
     return seen;
-  }, [trending, newReleases, topRated, popular, upcoming]);
+  }, [trending, newReleases, topRated, popular, upcoming, hiddenGems, acclaimed]);
 
-  // Deduplicate each base list against earlier categories
-  const [dedupTrending, dedupNewReleases, dedupTopRated, dedupPopular, dedupUpcoming] = useMemo(() => {
-    const seen = new Set<string>();
+  // Normalize title for dedup: lowercase, strip non-alphanumeric
+  const normalizeTitle = (title: string, year?: string | number) => {
+    const t = (title || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+    return year ? `${t}__${String(year).slice(0, 4)}` : t;
+  };
+
+  // Deduplicate each base list against earlier categories (by ID + normalized title+year)
+  const [dedupTrending, dedupNewReleases, dedupTopRated, dedupPopular, dedupUpcoming, dedupHiddenGems, dedupAcclaimed] = useMemo(() => {
+    const seenIds = new Set<string>();
+    const seenTitles = new Set<string>();
     const dedup = (arr: any[]) => arr.filter((m: any) => {
-      if (seen.has(m.id)) return false;
-      seen.add(m.id);
+      if (seenIds.has(m.id)) return false;
+      const norm = normalizeTitle(m.title, m.year);
+      if (norm.length > 3 && seenTitles.has(norm)) return false;
+      seenIds.add(m.id);
+      if (norm.length > 3) seenTitles.add(norm);
       return true;
     });
     return [
@@ -356,8 +368,10 @@ export default function MoviesScreen() {
       dedup(topRated),
       dedup(popular),
       dedup(upcoming),
+      dedup(hiddenGems),
+      dedup(acclaimed),
     ];
-  }, [trending, newReleases, topRated, popular, upcoming]);
+  }, [trending, newReleases, topRated, popular, upcoming, hiddenGems, acclaimed]);
 
   const filteredTmdb = useMemo(() => {
     if (!search.trim()) return null;
@@ -368,10 +382,12 @@ export default function MoviesScreen() {
       ...topRated.filter((m: any) => (m.title || "").toLowerCase().includes(q)),
       ...popular.filter((m: any) => (m.title || "").toLowerCase().includes(q)),
       ...upcoming.filter((m: any) => (m.title || "").toLowerCase().includes(q)),
+      ...hiddenGems.filter((m: any) => (m.title || "").toLowerCase().includes(q)),
+      ...acclaimed.filter((m: any) => (m.title || "").toLowerCase().includes(q)),
     ];
     const seen = new Set<string>();
     return results.filter((m: any) => { if (seen.has(m.id)) return false; seen.add(m.id); return true; });
-  }, [search, trending, newReleases, topRated, popular, upcoming]);
+  }, [search, trending, newReleases, topRated, popular, upcoming, hiddenGems, acclaimed]);
 
   const filteredArchive = useMemo(() => {
     if (!search.trim() || !archiveMovies.length) return [];
@@ -649,6 +665,8 @@ export default function MoviesScreen() {
               {renderMainRow("Nieuw in bioscoop", dedupNewReleases, "newReleases")}
               {renderMainRow("Best beoordeeld", dedupTopRated, "topRated")}
               {renderMainRow("Populair nu", dedupPopular, "popular")}
+              {renderSimpleRow("Verborgen Parels", dedupHiddenGems, "hidden-gems")}
+              {renderSimpleRow("Kritisch Geprezen", dedupAcclaimed, "acclaimed")}
               {renderMainRow("Binnenkort", dedupUpcoming, "upcoming")}
 
               {/* Genre discover rows — Action, Comedy, Drama, Horror, Sci-Fi, Thriller */}
