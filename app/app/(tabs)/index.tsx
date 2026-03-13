@@ -9,7 +9,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { COLORS } from "@/constants/colors";
 import { SPACING, TYPOGRAPHY } from "@/constants/design-system";
 import { NexoraHeader } from "@/components/NexoraHeader";
-import { TeamLogo } from "@/components/MatchCard";
+import { TeamLogo } from "@/components/TeamLogo";
 import { LiveBadge } from "@/components/LiveBadge";
 import { HeroMatchCard, MatchRowCard } from "@/components/premium";
 import { apiRequest } from "@/lib/query-client";

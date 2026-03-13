@@ -4,6 +4,7 @@ import { Platform, StyleSheet, View } from "react-native";
 import React from "react";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { COLORS } from "@/constants/colors";
+import { isTV } from "@/lib/platform";
 
 const SP_ACCENT = COLORS.accent;
 
@@ -60,6 +61,91 @@ const tabIconStyles = StyleSheet.create({
 export default function TabLayout() {
   const isWeb = Platform.OS === "web";
   const isIOS = Platform.OS === "ios";
+
+  // TV: sidebar-style — left rail with labels, no blur, larger hit areas
+  if (isTV) {
+    return (
+      <Tabs
+        screenOptions={{
+          headerShown: false,
+          tabBarShowLabel: true,
+          tabBarPosition: "left",
+          tabBarActiveTintColor: COLORS.accent,
+          tabBarInactiveTintColor: COLORS.textMuted,
+          tabBarLabelStyle: { fontSize: 14, fontFamily: "Inter_600SemiBold" },
+          tabBarStyle: {
+            backgroundColor: "rgba(10,10,18,0.95)",
+            borderRightWidth: 1,
+            borderRightColor: "rgba(255,255,255,0.06)",
+            width: 200,
+            paddingTop: 40,
+          },
+          tabBarItemStyle: {
+            paddingVertical: 12,
+            paddingHorizontal: 16,
+          },
+        }}
+      >
+        {/* TV: Live TV first, then Movies, Series, Downloads — no Sports */}
+        <Tabs.Screen
+          name="livetv"
+          options={{
+            title: "Live TV",
+            tabBarIcon: ({ focused }) => (
+              <Ionicons
+                name={focused ? "tv" : "tv-outline"}
+                size={28}
+                color={focused ? COLORS.accent : COLORS.textMuted}
+              />
+            ),
+          }}
+        />
+        <Tabs.Screen
+          name="movies"
+          options={{
+            title: "Films",
+            tabBarIcon: ({ focused }) => (
+              <Ionicons
+                name={focused ? "film" : "film-outline"}
+                size={28}
+                color={focused ? COLORS.accent : COLORS.textMuted}
+              />
+            ),
+          }}
+        />
+        <Tabs.Screen
+          name="series"
+          options={{
+            title: "Series",
+            tabBarIcon: ({ focused }) => (
+              <Ionicons
+                name={focused ? "layers" : "layers-outline"}
+                size={28}
+                color={focused ? COLORS.accent : COLORS.textMuted}
+              />
+            ),
+          }}
+        />
+        <Tabs.Screen
+          name="downloads"
+          options={{
+            title: "Downloads",
+            tabBarIcon: ({ focused }) => (
+              <Ionicons
+                name={focused ? "arrow-down-circle" : "arrow-down-circle-outline"}
+                size={28}
+                color={focused ? COLORS.accent : COLORS.textMuted}
+              />
+            ),
+          }}
+        />
+        {/* Hide sports + settings + favorites on TV */}
+        <Tabs.Screen name="index" options={{ href: null }} />
+        <Tabs.Screen name="settings" options={{ href: null }} />
+        <Tabs.Screen name="favorites" options={{ href: null }} />
+      </Tabs>
+    );
+  }
 
   return (
     <Tabs

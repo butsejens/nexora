@@ -14,7 +14,7 @@ import { LiveBadge } from "@/components/LiveBadge";
 import { SafeHaptics } from "@/lib/safeHaptics";
 import { apiRequest } from "@/lib/query-client";
 import { openInVlc } from "@/lib/vlc";
-import { TeamLogo } from "@/components/MatchCard";
+import { TeamLogo } from "@/components/TeamLogo";
 import { buildErrorReference, normalizeApiError } from "@/lib/error-messages";
 import { SilentResetBoundary } from "@/components/SilentResetBoundary";
 

@@ -20,7 +20,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS }  from '@/constants/colors';
 import { SPACING } from '@/constants/design-system';
-import { TeamLogo } from '@/components/MatchCard';
+import { TeamLogo } from '@/components/TeamLogo';
 import { LiveBadge } from '@/components/LiveBadge';
 
 const { width: SCREEN_W } = Dimensions.get('window');

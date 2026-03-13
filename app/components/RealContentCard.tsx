@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useCallback } from "react";
 import {
   View,
   Text,
@@ -10,6 +10,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
 import { COLORS } from "@/constants/colors";
 import { SafeHaptics } from "@/lib/safeHaptics";
+import { isTV } from "@/lib/platform";
 
 
 
@@ -50,19 +51,26 @@ interface Props {
 
 export const RealContentCard = React.memo(function RealContentCard({ item, onPress, onFavorite, isFavorite, width = 130, showProgress }: Props) {
   const [imageError, setImageError] = useState(false);
-  const height = Math.round(width * 1.56);
+  const [focused, setFocused] = useState(false);
+  const cardWidth = isTV ? Math.max(width, 180) : width;
+  const height = Math.round(cardWidth * 1.56);
   const hasProgress = showProgress && item.progress != null && item.progress > 0;
 
+  const handleFocus = useCallback(() => setFocused(true), []);
+  const handleBlur = useCallback(() => setFocused(false), []);
+
   return (
-    <View style={{ width, marginRight: 14 }}>
+    <View style={{ width: cardWidth, marginRight: isTV ? 20 : 14 }}>
       <TouchableOpacity
         onPress={() => {
           SafeHaptics.impactLight();
           onPress();
         }}
         activeOpacity={0.78}
+        onFocus={handleFocus}
+        onBlur={handleBlur}
       >
-        <View style={[styles.poster, { width, height }]}>
+        <View style={[styles.poster, { width: cardWidth, height }, focused && styles.posterFocused]}>
           {item.poster && !imageError ? (
             <Image
               source={{ uri: item.poster }}
@@ -263,6 +271,15 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.3,
     shadowRadius: 8,
     elevation: 6,
+  },
+  posterFocused: {
+    borderWidth: 2.5,
+    borderColor: COLORS.accent,
+    transform: [{ scale: 1.06 }],
+    shadowColor: COLORS.accent,
+    shadowOpacity: 0.5,
+    shadowRadius: 16,
+    elevation: 12,
   },
   posterBottom: { padding: 9 },
   badges: { flexDirection: "row", gap: 4 },
