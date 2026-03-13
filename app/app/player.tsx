@@ -772,6 +772,8 @@ export default function PlayerScreen() {
   // HLS-specific state
   const hlsWebviewRef  = useRef<WebView | null>(null);
   const embedWebviewRef = useRef<WebView | null>(null);
+  const disposedRef = useRef(false);
+  const autoplayTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
   const [hlsPaused, setHlsPaused]       = useState(false);
   const [hlsDuration, setHlsDuration]   = useState(0);
   const [hlsCurrentTime, setHlsCurrentTime] = useState(0);
@@ -783,11 +785,17 @@ export default function PlayerScreen() {
 
   const injectEmbedAutoplay = useCallback(() => {
     if (Platform.OS === "web") return;
-    const run = () => embedWebviewRef.current?.injectJavaScript(`${FORCE_PLAY_JS};true;`);
+    const run = () => {
+      if (disposedRef.current) return;
+      embedWebviewRef.current?.injectJavaScript(`${FORCE_PLAY_JS};true;`);
+    };
     run();
-    setTimeout(run, 600);
-    setTimeout(run, 1700);
-    setTimeout(run, 3200);
+    // Store timer IDs so they can be cleared on unmount
+    autoplayTimersRef.current.push(
+      setTimeout(run, 600),
+      setTimeout(run, 1700),
+      setTimeout(run, 3200),
+    );
   }, []);
 
   // ── Controls visibility ───────────────────────────────────────────────────
@@ -807,6 +815,7 @@ export default function PlayerScreen() {
   }, [controlsOpacity, scheduleHide]);
 
   useEffect(() => {
+    disposedRef.current = false;
     addToHistory({
       id: contentId || `${type}_${Date.now()}`,
       type: (type as any) || "movie",
@@ -814,10 +823,24 @@ export default function PlayerScreen() {
       lastWatched: new Date().toISOString(),
     });
     scheduleHide();
-    return () => { if (hideTimer.current) clearTimeout(hideTimer.current); };
+    return () => {
+      // Mark as disposed — all async callbacks will bail out
+      disposedRef.current = true;
+      // Clear controls hide timer
+      if (hideTimer.current) clearTimeout(hideTimer.current);
+      // Clear all autoplay injection timers
+      for (const t of autoplayTimersRef.current) clearTimeout(t);
+      autoplayTimersRef.current = [];
+      // Null out WebView refs to prevent any post-unmount injections
+      hlsWebviewRef.current = null;
+      embedWebviewRef.current = null;
+    };
   }, [addToHistory, contentId, scheduleHide, title, type]);
 
   useEffect(() => {
+    // Clear lingering autoplay timers when provider/key changes
+    for (const t of autoplayTimersRef.current) clearTimeout(t);
+    autoplayTimersRef.current = [];
     setIsLoading(true);
     setStreamError(null);
     setStreamErrorRef("");
@@ -825,6 +848,7 @@ export default function PlayerScreen() {
 
   // ── HLS control commands ──────────────────────────────────────────────────
   const hlsInject = useCallback((js: string) => {
+    if (disposedRef.current) return;
     hlsWebviewRef.current?.injectJavaScript(`${js};true;`);
   }, []);
 
@@ -962,6 +986,7 @@ export default function PlayerScreen() {
   // Catches anything that slips past onShouldStartLoadWithRequest.
   const makeNavStateGuard = useCallback((currentEmbedUrl: string) => {
     return (navState: any) => {
+      if (disposedRef.current) return;
       const url: string = navState.url || "";
       if (!url || url.startsWith("about:") || url.startsWith("blob:") || url.startsWith("data:")) return;
       if (/play\.google\.com\/store|apps\.apple\.com|install\s*and\s*continue|vpn\s*recommended|casino|gambling|bet365|1xbet|stake\.com/i.test(url)) {
@@ -1027,8 +1052,9 @@ export default function PlayerScreen() {
           originWhitelist={["http://*", "https://*", "blob:*"]}
           userAgent="Mozilla/5.0 (Linux; Android 12; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
           onMessage={handleHlsMessage}
-          onLoad={() => { setIsLoading(false); setStreamError(null); }}
+          onLoad={() => { if (!disposedRef.current) { setIsLoading(false); setStreamError(null); } }}
           onError={(event) => {
+            if (disposedRef.current) return;
             const msg = String(event?.nativeEvent?.description || "");
             if (/removechild|notfounderror|not a child|hierarchyrequesterror/i.test(msg)) {
               setIsLoading(false);
@@ -1069,8 +1095,9 @@ export default function PlayerScreen() {
           originWhitelist={["http://*", "https://*", "about:*", "blob:*", "*"]}
           userAgent="Mozilla/5.0 (Linux; Android 12; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
           injectedJavaScriptBeforeContentLoaded={AD_BLOCK_JS}
-          onLoad={() => { setIsLoading(false); setStreamError(null); setStreamErrorRef(""); injectEmbedAutoplay(); }}
+          onLoad={() => { if (!disposedRef.current) { setIsLoading(false); setStreamError(null); setStreamErrorRef(""); injectEmbedAutoplay(); } }}
           onError={(event) => {
+            if (disposedRef.current) return;
             const msg = String(event?.nativeEvent?.description || "");
             if (/removechild|notfounderror|not a child|hierarchyrequesterror/i.test(msg)) {
               setIsLoading(false);
@@ -1083,7 +1110,7 @@ export default function PlayerScreen() {
           onShouldStartLoadWithRequest={makeNavGuard(embedUrl)}
           onNavigationStateChange={makeNavStateGuard(embedUrl)}
           scalesPageToFit={false}
-          onRenderProcessGone={() => { setIsLoading(false); }}
+          onRenderProcessGone={() => { if (!disposedRef.current) setIsLoading(false); }}
         />
       );
     }

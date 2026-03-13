@@ -1091,25 +1091,41 @@ function StatsBars({ homeTeam, awayTeam, homeStats, awayStats }: { homeTeam: str
     );
   }
 
-  const renderStatRow = (key: string) => {
+  const renderStatRow = (key: string, idx: number, arr: string[]) => {
     const rawH = String(homeStats?.[key] ?? "0");
     const rawA = String(awayStats?.[key] ?? "0");
     const hVal = parseFloat(rawH.replace("%", "")) || 0;
     const aVal = parseFloat(rawA.replace("%", "")) || 0;
     const total = hVal + aVal || 1;
     const hPct = (hVal / total) * 100;
+    const aPct = 100 - hPct;
     const isPossession = key === "ball_possession" || key === "possession" || key === "pass_accuracy";
+    const isLast = idx === arr.length - 1;
+    const hDisplay = `${homeStats?.[key] ?? "0"}${isPossession && typeof homeStats?.[key] === "number" ? "%" : ""}`;
+    const aDisplay = `${awayStats?.[key] ?? "0"}${isPossession && typeof awayStats?.[key] === "number" ? "%" : ""}`;
     return (
-      <View key={key} style={styles.statRow}>
-        <Text style={[styles.statVal, hVal > aVal && styles.statValWinner]}>{homeStats?.[key] ?? "0"}{isPossession && typeof homeStats?.[key] === "number" ? "%" : ""}</Text>
-        <View style={styles.statBarContainer}>
-          <Text style={styles.statName}>{STAT_LABELS[key]}</Text>
-          <View style={styles.statBar}>
-            <View style={[styles.statBarHome, { flex: hPct }]} />
-            <View style={[styles.statBarAway, { flex: 100 - hPct }]} />
+      <View key={key}>
+        <View style={styles.statRow}>
+          <Text style={[styles.statVal, hVal > aVal && styles.statValWinner]}>{hDisplay}</Text>
+          <View style={styles.statBarContainer}>
+            <Text style={styles.statName}>{STAT_LABELS[key]}</Text>
+            <View style={styles.statBarsWrapper}>
+              {/* Home bar — grows right-to-left from center */}
+              <View style={styles.statBarHalf}>
+                <View style={{ flex: Math.max(1, 100 - hPct) }} />
+                <View style={[styles.statBarHomeFill, { flex: Math.max(1, hPct) }]} />
+              </View>
+              <View style={styles.statBarCenterGap} />
+              {/* Away bar — grows left-to-right from center */}
+              <View style={styles.statBarHalf}>
+                <View style={[styles.statBarAwayFill, { flex: Math.max(1, aPct) }]} />
+                <View style={{ flex: Math.max(1, 100 - aPct) }} />
+              </View>
+            </View>
           </View>
+          <Text style={[styles.statVal, styles.statValRight, aVal > hVal && styles.statValWinner]}>{aDisplay}</Text>
         </View>
-        <Text style={[styles.statVal, styles.statValRight, aVal > hVal && styles.statValWinner]}>{awayStats?.[key] ?? "0"}{isPossession && typeof awayStats?.[key] === "number" ? "%" : ""}</Text>
+        {!isLast && <View style={styles.statDivider} />}
       </View>
     );
   };
@@ -1121,11 +1137,11 @@ function StatsBars({ homeTeam, awayTeam, homeStats, awayStats }: { homeTeam: str
   const awayShort = safeStr(awayTeam).split(" ").pop() || safeStr(awayTeam).slice(0, 12);
 
   return (
-    <View style={{ gap: 10 }}>
-      <View style={[styles.infoCard, { paddingVertical: 12 }]}>
+    <View style={{ gap: 12 }}>
+      <View style={styles.statsHeaderCard}>
         <View style={styles.statsTeamHeader}>
           <Text style={styles.statsTeamName} numberOfLines={1}>{safeStr(homeTeam)}</Text>
-          <Text style={styles.statsVsLabel}>STATS</Text>
+          <Text style={styles.statsVsLabel}>VS</Text>
           <Text style={[styles.statsTeamName, { textAlign: "right" }]} numberOfLines={1}>{safeStr(awayTeam)}</Text>
         </View>
         <View style={styles.statsLegendRow}>
@@ -1134,8 +1150,8 @@ function StatsBars({ homeTeam, awayTeam, homeStats, awayStats }: { homeTeam: str
             <Text style={styles.statsLegendLabel}>{homeShort}</Text>
           </View>
           <View style={[styles.statsLegendItem, { justifyContent: "flex-end" }]}>
-            <View style={[styles.statsLegendDot, { backgroundColor: "#5B8DEF" }]} />
             <Text style={styles.statsLegendLabel}>{awayShort}</Text>
+            <View style={[styles.statsLegendDot, { backgroundColor: "#5B8DEF" }]} />
           </View>
         </View>
       </View>
@@ -1143,22 +1159,22 @@ function StatsBars({ homeTeam, awayTeam, homeStats, awayStats }: { homeTeam: str
         const sectionStats = section.keys.filter(k => dedupedStats.includes(k));
         if (sectionStats.length === 0) return null;
         return (
-          <View key={section.label} style={styles.infoCard}>
+          <View key={section.label} style={styles.statSectionCard}>
             <View style={styles.statSectionHeader}>
-              <Text style={styles.statSectionIcon}>{section.icon}</Text>
-              <Text style={styles.infoCardTitle}>{section.label}</Text>
+              <View style={styles.statSectionAccent} />
+              <Text style={styles.statSectionTitle}>{section.label}</Text>
             </View>
-            {sectionStats.map(renderStatRow)}
+            {sectionStats.map((k, i, a) => renderStatRow(k, i, a))}
           </View>
         );
       })}
       {unsectionedStats.length > 0 && (
-        <View style={styles.infoCard}>
+        <View style={styles.statSectionCard}>
           <View style={styles.statSectionHeader}>
-            <Text style={styles.statSectionIcon}>📊</Text>
-            <Text style={styles.infoCardTitle}>OTHER</Text>
+            <View style={styles.statSectionAccent} />
+            <Text style={styles.statSectionTitle}>OTHER</Text>
           </View>
-          {unsectionedStats.map(renderStatRow)}
+          {unsectionedStats.map((k, i, a) => renderStatRow(k, i, a))}
         </View>
       )}
     </View>
@@ -1927,33 +1943,41 @@ const styles = StyleSheet.create({
   infoLabel: { fontFamily: "Inter_400Regular", fontSize: 14, color: COLORS.textMuted },
   infoValue: { fontFamily: "Inter_600SemiBold", fontSize: 14, color: COLORS.text },
   infoValueHighlight: { color: COLORS.live },
-  statsTeamHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 8 },
+  statsTeamHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 10 },
   statsTeamName: {
     fontFamily: "Inter_700Bold",
-    fontSize: 12,
+    fontSize: 13,
     color: COLORS.text,
     flex: 1,
     textAlign: "center",
     textTransform: "uppercase",
     letterSpacing: 0.5,
   },
+  statsHeaderCard: {
+    backgroundColor: COLORS.card,
+    borderRadius: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.07)",
+  },
   statsVsLabel: {
     fontFamily: "Inter_800ExtraBold",
-    fontSize: 10,
+    fontSize: 11,
     color: COLORS.textMuted,
     letterSpacing: 2,
     textAlign: "center",
-    minWidth: 48,
+    minWidth: 40,
   },
   statsLegendRow: {
     flexDirection: "row",
     justifyContent: "space-between",
-    marginTop: 4,
+    marginTop: 6,
   },
   statsLegendItem: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 5,
+    gap: 6,
     flex: 1,
   },
   statsLegendDot: {
@@ -1963,25 +1987,44 @@ const styles = StyleSheet.create({
   },
   statsLegendLabel: {
     fontFamily: "Inter_500Medium",
-    fontSize: 10,
+    fontSize: 11,
     color: COLORS.textMuted,
     letterSpacing: 0.3,
+  },
+  statSectionCard: {
+    backgroundColor: COLORS.card,
+    borderRadius: 16,
+    paddingHorizontal: 16,
+    paddingTop: 14,
+    paddingBottom: 6,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.07)",
   },
   statSectionHeader: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
-    marginBottom: 12,
+    gap: 8,
+    marginBottom: 14,
   },
-  statSectionIcon: {
-    fontSize: 13,
+  statSectionAccent: {
+    width: 3,
+    height: 14,
+    borderRadius: 1.5,
+    backgroundColor: COLORS.accent,
   },
-  statRow: { flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 14 },
+  statSectionTitle: {
+    fontFamily: "Inter_700Bold",
+    fontSize: 11,
+    color: COLORS.textMuted,
+    letterSpacing: 1.5,
+    textTransform: "uppercase",
+  },
+  statRow: { flexDirection: "row", alignItems: "center", gap: 10, paddingBottom: 12 },
   statVal: {
     fontFamily: "Inter_700Bold",
-    fontSize: 15,
+    fontSize: 14,
     color: COLORS.textSecondary,
-    width: 38,
+    width: 40,
     textAlign: "center",
   },
   statValRight: {
@@ -1989,26 +2032,49 @@ const styles = StyleSheet.create({
   },
   statValWinner: {
     color: COLORS.text,
-    fontSize: 16,
+    fontFamily: "Inter_800ExtraBold",
+    fontSize: 15,
   },
-  statBarContainer: { flex: 1, alignItems: "center", gap: 4 },
+  statBarContainer: { flex: 1, alignItems: "center", gap: 5 },
   statName: {
     fontFamily: "Inter_500Medium",
     fontSize: 11,
     color: COLORS.textMuted,
     textAlign: "center",
-    letterSpacing: 0.2,
+    letterSpacing: 0.3,
   },
-  statBar: {
+  statBarsWrapper: {
     flexDirection: "row",
-    height: 6,
-    borderRadius: 3,
-    overflow: "hidden",
+    alignItems: "center",
     width: "100%",
-    backgroundColor: COLORS.cardElevated,
+    height: 7,
   },
-  statBarHome: { backgroundColor: COLORS.accent, borderRadius: 3 },
-  statBarAway: { backgroundColor: "#5B8DEF", borderRadius: 3 },
+  statBarHalf: {
+    flex: 1,
+    flexDirection: "row",
+    height: 7,
+    borderRadius: 3.5,
+    overflow: "hidden",
+    backgroundColor: "rgba(255,255,255,0.06)",
+  },
+  statBarHomeFill: {
+    height: 7,
+    backgroundColor: COLORS.accent,
+    borderRadius: 3.5,
+  },
+  statBarCenterGap: {
+    width: 3,
+  },
+  statBarAwayFill: {
+    height: 7,
+    backgroundColor: "#5B8DEF",
+    borderRadius: 3.5,
+  },
+  statDivider: {
+    height: 1,
+    backgroundColor: "rgba(255,255,255,0.05)",
+    marginBottom: 12,
+  },
   noStatsText: {
     fontFamily: "Inter_400Regular",
     fontSize: 14,

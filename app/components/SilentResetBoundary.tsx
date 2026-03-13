@@ -15,8 +15,9 @@ export class SilentResetBoundary extends React.Component<{ children: React.React
 
   componentDidUpdate(_: unknown, prevState: State) {
     if (this.state.hasError && !prevState.hasError) {
-      // Reset after one frame so React can flush and re-mount cleanly
-      setTimeout(() => this.setState({ hasError: false }), 80);
+      // Use a longer delay to allow in-flight timers to fire and bail out
+      // before React re-mounts the children (prevents cascading crash loop)
+      setTimeout(() => this.setState({ hasError: false }), 500);
     }
   }
 
