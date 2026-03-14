@@ -15,6 +15,7 @@ import { buildErrorReference, normalizeApiError } from "@/lib/error-messages";
 import { RealContentCard, RealHeroBanner } from "@/components/RealContentCard";
 import { SafeHaptics } from "@/lib/safeHaptics";
 import { SilentResetBoundary } from "@/components/SilentResetBoundary";
+import { isTV } from "@/lib/platform";
 
 // Trailer fetch for auto-preview
 async function fetchTrailerKey(tmdbId: string | number, type = "movie"): Promise<string | null> {
@@ -478,6 +479,7 @@ export default function MoviesScreen() {
       onFavorite={() => toggleFavorite(item.id)}
       isFavorite={isFavorite(item.id)}
       showProgress={showProgress}
+      width={isTV ? 220 : 130}
     />
   ), [goToDetail, toggleFavorite, isFavorite]);
 
@@ -490,9 +492,9 @@ export default function MoviesScreen() {
     const isLoading = extra?.loading;
     if (allItems.length === 0) return null;
     return (
-      <View style={styles.section} key={`main-${categoryKey}`}>
+      <View style={[styles.section, isTV && styles.sectionTV]} key={`main-${categoryKey}`}>
         <View style={styles.sectionHeader}>
-          <Text style={styles.sectionHeaderTitle}>{title}</Text>
+          <Text style={[styles.sectionHeaderTitle, isTV && styles.sectionHeaderTitleTV]}>{title}</Text>
           <TouchableOpacity onPress={() => loadMoreCategory(categoryKey)} style={styles.seeAllBtn}>
             <Text style={styles.seeAllText}>More</Text>
             <Ionicons name="chevron-forward" size={14} color={COLORS.accent} />
@@ -503,15 +505,16 @@ export default function MoviesScreen() {
           data={allItems}
           keyExtractor={(item: any) => item.id}
           renderItem={({ item }: any) => renderCard(item)}
-          contentContainerStyle={styles.carouselPadding}
+          contentContainerStyle={isTV ? styles.carouselPaddingTV : styles.carouselPadding}
           showsHorizontalScrollIndicator={false}
-          initialNumToRender={4}
-          maxToRenderPerBatch={3}
-          windowSize={5}
+          initialNumToRender={isTV ? 6 : 4}
+          maxToRenderPerBatch={isTV ? 5 : 3}
+          windowSize={isTV ? 7 : 5}
           scrollEventThrottle={16}
+          removeClippedSubviews={isTV}
           ListFooterComponent={
             <TouchableOpacity
-              style={styles.loadMoreBtn}
+              style={[styles.loadMoreBtn, isTV && styles.loadMoreBtnTV]}
               onPress={() => loadMoreCategory(categoryKey)}
               disabled={!!isLoading}
             >
@@ -530,9 +533,9 @@ export default function MoviesScreen() {
     const extra = genreExtras[genre.id];
     const allItems = extra ? [...genre.items, ...extra.items] : genre.items;
     return (
-      <View key={String(genre.id)} style={styles.section}>
+      <View key={String(genre.id)} style={[styles.section, isTV && styles.sectionTV]}>
         <View style={styles.sectionHeader}>
-          <Text style={styles.sectionHeaderTitle}>{genre.name}</Text>
+          <Text style={[styles.sectionHeaderTitle, isTV && styles.sectionHeaderTitleTV]}>{genre.name}</Text>
           <TouchableOpacity onPress={() => loadMoreGenre(genre.id)} style={styles.seeAllBtn}>
             <Text style={styles.seeAllText}>More</Text>
             <Ionicons name="chevron-forward" size={14} color={COLORS.accent} />
@@ -543,15 +546,16 @@ export default function MoviesScreen() {
           data={allItems}
           keyExtractor={(item: any) => item.id}
           renderItem={({ item }: any) => renderCard(item)}
-          contentContainerStyle={styles.carouselPadding}
+          contentContainerStyle={isTV ? styles.carouselPaddingTV : styles.carouselPadding}
           showsHorizontalScrollIndicator={false}
-          initialNumToRender={4}
-          maxToRenderPerBatch={3}
-          windowSize={5}
+          initialNumToRender={isTV ? 6 : 4}
+          maxToRenderPerBatch={isTV ? 5 : 3}
+          windowSize={isTV ? 7 : 5}
           scrollEventThrottle={16}
+          removeClippedSubviews={isTV}
           ListFooterComponent={
             <TouchableOpacity
-              style={styles.loadMoreBtn}
+              style={[styles.loadMoreBtn, isTV && styles.loadMoreBtnTV]}
               onPress={() => loadMoreGenre(genre.id)}
               disabled={extra?.loading}
             >
@@ -572,19 +576,20 @@ export default function MoviesScreen() {
   const renderSimpleRow = (title: string, items: any[], keyPrefix: string, showProgress = false) => {
     if (items.length === 0) return null;
     return (
-      <View style={styles.section} key={keyPrefix}>
-        <Text style={styles.sectionTitle}>{title}</Text>
+      <View style={[styles.section, isTV && styles.sectionTV]} key={keyPrefix}>
+        <Text style={[styles.sectionTitle, isTV && styles.sectionTitleTV]}>{title}</Text>
         <FlatList
           horizontal
           data={items}
           keyExtractor={(item: any) => `${keyPrefix}-${item.id}`}
           renderItem={({ item }: any) => renderCard(item, showProgress)}
-          contentContainerStyle={styles.carouselPadding}
+          contentContainerStyle={isTV ? styles.carouselPaddingTV : styles.carouselPadding}
           showsHorizontalScrollIndicator={false}
-          initialNumToRender={4}
-          maxToRenderPerBatch={3}
-          windowSize={5}
+          initialNumToRender={isTV ? 6 : 4}
+          maxToRenderPerBatch={isTV ? 5 : 3}
+          windowSize={isTV ? 7 : 5}
           scrollEventThrottle={16}
+          removeClippedSubviews={isTV}
         />
       </View>
     );
@@ -881,18 +886,25 @@ const styles = StyleSheet.create({
   errorText: { fontFamily: "Inter_500Medium", fontSize: 12, color: COLORS.textSecondary, flex: 1 },
   errorCodeText: { fontFamily: "Inter_400Regular", fontSize: 10, color: COLORS.textMuted },
   section: { marginBottom: 28 },
-  section: { marginBottom: 28 },
+  sectionTV: { marginBottom: 40 },
   sectionHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingHorizontal: 20, marginBottom: 12 },
   sectionTitle: { fontFamily: "Inter_700Bold", fontSize: 18, color: COLORS.text, paddingHorizontal: 20, marginBottom: 12 },
+  sectionTitleTV: { fontSize: 24, marginBottom: 18, paddingHorizontal: 28 },
   sectionHeaderTitle: { fontFamily: "Inter_700Bold", fontSize: 18, color: COLORS.text },
+  sectionHeaderTitleTV: { fontSize: 24 },
   seeAllBtn: { flexDirection: "row", alignItems: "center", gap: 2 },
   seeAllText: { fontFamily: "Inter_500Medium", fontSize: 12, color: COLORS.accent },
   carouselPadding: { paddingHorizontal: 20, paddingRight: 8 },
+  carouselPaddingTV: { paddingHorizontal: 28, paddingRight: 16 },
   loadMoreBtn: {
     width: 64, alignItems: "center", justifyContent: "center", gap: 4,
     backgroundColor: COLORS.cardElevated, borderRadius: 12,
     borderWidth: 0.5, borderColor: "rgba(255,255,255,0.06)",
     marginLeft: 6, marginRight: 20, height: 203,
+  },
+  loadMoreBtnTV: {
+    width: 90, height: 340, borderRadius: 16,
+    marginLeft: 12, marginRight: 28,
   },
   loadMoreText: { fontFamily: "Inter_600SemiBold", fontSize: 11, color: COLORS.accent },
 });

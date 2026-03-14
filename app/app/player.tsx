@@ -9,6 +9,8 @@ import {
   Platform,
   ActivityIndicator,
   Share,
+  BackHandler,
+  Pressable,
 } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -22,6 +24,7 @@ import { SafeHaptics } from "@/lib/safeHaptics";
 import { openInVlc } from "@/lib/vlc";
 import { buildErrorReference } from "@/lib/error-messages";
 import { SilentResetBoundary } from "@/components/SilentResetBoundary";
+import { isTV } from "@/lib/platform";
 import {
   startSession, sendHeartbeat, stopSession,
   signStream,
@@ -901,7 +904,7 @@ export default function PlayerScreen() {
       Animated.timing(controlsOpacity, { toValue: 0, duration: 500, useNativeDriver: true }).start(
         () => setControlsVisible(false)
       );
-    }, 5000);
+    }, isTV ? 4000 : 5000);
   }, [controlsOpacity]);
 
   const showControls = useCallback(() => {
@@ -909,6 +912,64 @@ export default function PlayerScreen() {
     Animated.timing(controlsOpacity, { toValue: 1, duration: 200, useNativeDriver: true }).start();
     scheduleHide();
   }, [controlsOpacity, scheduleHide]);
+
+  // ── TV Remote event handler (Section 5 & 6) ────────────────────────────
+  // On TV: Back button shows controls first, second press exits
+  useEffect(() => {
+    if (!isTV) return;
+    const backHandler = BackHandler.addEventListener("hardwareBackPress", () => {
+      if (controlsVisible) {
+        router.back();
+        return true;
+      }
+      showControls();
+      return true;
+    });
+    return () => backHandler.remove();
+  }, [controlsVisible, showControls]);
+
+  // TV remote key handler — triggers on d-pad and select via Pressable wrapper
+  const handleTVKeyDown = useCallback((e: any) => {
+    if (!isTV || disposedRef.current) return;
+    const key = e?.nativeEvent?.key;
+    if (!key) {
+      // Any key press on TV should at minimum show controls
+      showControls();
+      return;
+    }
+    switch (key) {
+      case "Enter":
+      case "MediaPlayPause":
+      case "select":
+        if (controlsVisible) {
+          hlsTogglePlay();
+        } else {
+          showControls();
+        }
+        break;
+      case "ArrowLeft":
+        if (controlsVisible) {
+          hlsSeekRelative(-15);
+        } else {
+          showControls();
+        }
+        break;
+      case "ArrowRight":
+        if (controlsVisible) {
+          hlsSeekRelative(15);
+        } else {
+          showControls();
+        }
+        break;
+      case "ArrowUp":
+      case "ArrowDown":
+        showControls();
+        break;
+      default:
+        showControls();
+        break;
+    }
+  }, [controlsVisible, showControls, hlsTogglePlay, hlsSeekRelative]);
 
   useEffect(() => {
     disposedRef.current = false;
@@ -1279,7 +1340,11 @@ export default function PlayerScreen() {
   }
 
   return (
-    <View style={styles.container}>
+    <Pressable
+      style={styles.container}
+      onKeyDown={isTV ? handleTVKeyDown : undefined}
+      onPress={isTV ? showControls : undefined}
+    >
       <StatusBar hidden />
 
       {/* Video area */}
@@ -1502,7 +1567,7 @@ export default function PlayerScreen() {
           </LinearGradient>
         </View>
       ) : null}
-    </View>
+    </Pressable>
   );
 }
 

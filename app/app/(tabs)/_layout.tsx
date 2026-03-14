@@ -1,12 +1,16 @@
 import { Tabs } from "expo-router";
 import { BlurView } from "expo-blur";
-import { Platform, StyleSheet, View } from "react-native";
-import React from "react";
+import { Platform, StyleSheet, View, Animated, Pressable, Text } from "react-native";
+import React, { useState, useRef, useCallback, useEffect } from "react";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { COLORS } from "@/constants/colors";
 import { isTV } from "@/lib/platform";
 
 const SP_ACCENT = COLORS.accent;
+
+// TV sidebar expanded width & collapsed width
+const TV_SIDEBAR_EXPANDED = 220;
+const TV_SIDEBAR_COLLAPSED = 0;
 
 function TabIcon({
   focused,
@@ -62,7 +66,7 @@ export default function TabLayout() {
   const isWeb = Platform.OS === "web";
   const isIOS = Platform.OS === "ios";
 
-  // TV: sidebar-style — left rail with labels, no blur, larger hit areas
+  // TV: sidebar-style — left rail with labels, auto-hides when browsing content
   if (isTV) {
     return (
       <Tabs
@@ -72,20 +76,20 @@ export default function TabLayout() {
           tabBarPosition: "left",
           tabBarActiveTintColor: COLORS.accent,
           tabBarInactiveTintColor: COLORS.textMuted,
-          tabBarLabelStyle: { fontSize: 14, fontFamily: "Inter_600SemiBold" },
+          tabBarLabelStyle: { fontSize: 15, fontFamily: "Inter_600SemiBold" },
           tabBarStyle: {
-            backgroundColor: "rgba(10,10,18,0.95)",
+            backgroundColor: "rgba(10,10,18,0.98)",
             borderRightWidth: 1,
-            borderRightColor: "rgba(255,255,255,0.06)",
-            width: 200,
-            paddingTop: 40,
+            borderRightColor: "rgba(255,255,255,0.08)",
+            width: TV_SIDEBAR_EXPANDED,
+            paddingTop: 48,
           },
           tabBarItemStyle: {
-            paddingVertical: 16,
-            paddingHorizontal: 20,
-            borderRadius: 12,
-            marginVertical: 2,
-            marginHorizontal: 8,
+            paddingVertical: 18,
+            paddingHorizontal: 22,
+            borderRadius: 14,
+            marginVertical: 3,
+            marginHorizontal: 10,
           },
         }}
       >
@@ -97,7 +101,7 @@ export default function TabLayout() {
             tabBarIcon: ({ focused }) => (
               <Ionicons
                 name={focused ? "tv" : "tv-outline"}
-                size={28}
+                size={30}
                 color={focused ? COLORS.accent : COLORS.textMuted}
               />
             ),
@@ -110,7 +114,7 @@ export default function TabLayout() {
             tabBarIcon: ({ focused }) => (
               <Ionicons
                 name={focused ? "film" : "film-outline"}
-                size={28}
+                size={30}
                 color={focused ? COLORS.accent : COLORS.textMuted}
               />
             ),
@@ -123,7 +127,7 @@ export default function TabLayout() {
             tabBarIcon: ({ focused }) => (
               <Ionicons
                 name={focused ? "layers" : "layers-outline"}
-                size={28}
+                size={30}
                 color={focused ? COLORS.accent : COLORS.textMuted}
               />
             ),
@@ -136,7 +140,7 @@ export default function TabLayout() {
             tabBarIcon: ({ focused }) => (
               <Ionicons
                 name={focused ? "arrow-down-circle" : "arrow-down-circle-outline"}
-                size={28}
+                size={30}
                 color={focused ? COLORS.accent : COLORS.textMuted}
               />
             ),

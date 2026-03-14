@@ -352,6 +352,7 @@ export default function LiveTVScreen() {
           )}
           contentContainerStyle={[styles.list, { paddingBottom: bottomPad }]}
           showsVerticalScrollIndicator={false}
+          {...(isTV && { initialNumToRender: 8, maxToRenderPerBatch: 6, windowSize: 7, removeClippedSubviews: true })}
           ListEmptyComponent={
             <View style={styles.noResults}>
               <Ionicons name="search-outline" size={32} color={COLORS.textMuted} />
@@ -375,6 +376,7 @@ export default function LiveTVScreen() {
           )}
           contentContainerStyle={[styles.list, { paddingBottom: bottomPad }]}
           showsVerticalScrollIndicator={false}
+          {...(isTV && { initialNumToRender: 8, maxToRenderPerBatch: 6, windowSize: 7, removeClippedSubviews: true })}
           ListEmptyComponent={
             <View style={styles.noResults}>
               <Ionicons name="search-outline" size={32} color={COLORS.textMuted} />

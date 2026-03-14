@@ -5,6 +5,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { BlurView } from "expo-blur";
 import { COLORS } from "@/constants/colors";
+import { isTV as platformIsTV } from "@/lib/platform";
 
 interface Props {
   title?: string;
@@ -35,10 +36,27 @@ export function NexoraHeader({
 }: Props) {
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
-  const isTV = width >= 1200;
+  const isTV = platformIsTV || width >= 1200;
   const containerMax = isTV ? 1400 : 980;
   const isIOS = Platform.OS === "ios";
   const topPad = Platform.OS === "web" ? 0 : insets.top;
+
+  // On TV: render a compact header — no search/favorites/profile buttons (sidebar handles nav)
+  if (isTV) {
+    return (
+      <View style={[styles.container, { paddingTop: 16, paddingBottom: 10, maxWidth: containerMax, alignSelf: "center", width: "100%", borderBottomWidth: 0 }]}>
+        <View style={styles.contentRow}>
+          <View style={styles.logo}>
+            <Text style={[styles.logoText, { fontSize: 28 }]}>
+              <Text style={styles.logoN}>N</Text>
+              <Text style={styles.logoRest}>EXORA</Text>
+            </Text>
+            {title ? <Text style={[styles.sectionTitle, { fontSize: 13 }, titleColor ? { color: titleColor } : null]}>{title}</Text> : null}
+          </View>
+        </View>
+      </View>
+    );
+  }
 
   // Fallbacks: always navigate even if prop is not passed
   const handleFavorites = onFavorites ?? (() => router.push("/favorites"));

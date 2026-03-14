@@ -6,6 +6,8 @@ import {
   TouchableOpacity,
   Image,
   Animated,
+  TVEventHandler,
+  Platform,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
@@ -54,22 +56,37 @@ export const RealContentCard = React.memo(function RealContentCard({ item, onPre
   const [imageError, setImageError] = useState(false);
   const [focused, setFocused] = useState(false);
   const scaleAnim = useRef(new Animated.Value(1)).current;
-  const cardWidth = isTV ? Math.max(width, 180) : width;
+  const glowAnim = useRef(new Animated.Value(0)).current;
+  const cardWidth = isTV ? Math.max(width, 220) : width;
   const height = Math.round(cardWidth * 1.56);
   const hasProgress = showProgress && item.progress != null && item.progress > 0;
 
   const handleFocus = useCallback(() => {
     setFocused(true);
-    Animated.spring(scaleAnim, { toValue: 1.08, useNativeDriver: true, friction: 6, tension: 100 }).start();
-  }, [scaleAnim]);
+    Animated.parallel([
+      Animated.spring(scaleAnim, { toValue: isTV ? 1.12 : 1.08, useNativeDriver: true, friction: 5, tension: 120 }),
+      Animated.timing(glowAnim, { toValue: 1, duration: 200, useNativeDriver: false }),
+    ]).start();
+  }, [scaleAnim, glowAnim]);
 
   const handleBlur = useCallback(() => {
     setFocused(false);
-    Animated.spring(scaleAnim, { toValue: 1, useNativeDriver: true, friction: 6, tension: 100 }).start();
-  }, [scaleAnim]);
+    Animated.parallel([
+      Animated.spring(scaleAnim, { toValue: 1, useNativeDriver: true, friction: 5, tension: 120 }),
+      Animated.timing(glowAnim, { toValue: 0, duration: 200, useNativeDriver: false }),
+    ]).start();
+  }, [scaleAnim, glowAnim]);
+
+  const tvGlowBorder = isTV ? glowAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: ["rgba(255,45,85,0)", "rgba(255,45,85,0.65)"],
+  }) : undefined;
 
   return (
-    <Animated.View style={{ width: cardWidth, marginRight: isTV ? 20 : 14, transform: [{ scale: scaleAnim }] }}>
+    <Animated.View style={[
+      { width: cardWidth, marginRight: isTV ? 24 : 14, transform: [{ scale: scaleAnim }] },
+      isTV && focused && { shadowColor: COLORS.accent, shadowOpacity: 0.6, shadowRadius: 20, elevation: 16 },
+    ]}>
       <TouchableOpacity
         onPress={() => {
           SafeHaptics.impactLight();
@@ -78,8 +95,14 @@ export const RealContentCard = React.memo(function RealContentCard({ item, onPre
         activeOpacity={0.78}
         onFocus={handleFocus}
         onBlur={handleBlur}
+        hasTVPreferredFocus={false}
       >
-        <View style={[styles.poster, { width: cardWidth, height }, focused && styles.posterFocused]}>
+        <Animated.View style={[
+          styles.poster,
+          { width: cardWidth, height },
+          focused && styles.posterFocused,
+          isTV && focused && { borderColor: tvGlowBorder, borderWidth: 3 },
+        ]}>
           {item.poster && !imageError ? (
             <Image
               source={{ uri: item.poster }}
@@ -158,15 +181,15 @@ export const RealContentCard = React.memo(function RealContentCard({ item, onPre
               </Text>
             </View>
           )}
-        </View>
-        <Text style={styles.title} numberOfLines={1}>{item.title}</Text>
+        </Animated.View>
+        <Text style={[styles.title, isTV && styles.titleTV]} numberOfLines={1}>{item.title}</Text>
         <View style={styles.meta}>
-          {item.year ? <Text style={styles.metaText}>{item.year}</Text> : null}
-          {item.year && item.imdb ? <Text style={styles.dot}>·</Text> : null}
+          {item.year ? <Text style={[styles.metaText, isTV && styles.metaTextTV]}>{item.year}</Text> : null}
+          {item.year && item.imdb ? <Text style={[styles.dot, isTV && styles.metaTextTV]}>·</Text> : null}
           {item.imdb ? (
             <>
-              <Text style={styles.metaText}>{item.imdb}</Text>
-              <Ionicons name="star" size={9} color={COLORS.gold} />
+              <Text style={[styles.metaText, isTV && styles.metaTextTV]}>{item.imdb}</Text>
+              <Ionicons name="star" size={isTV ? 12 : 9} color={COLORS.gold} />
             </>
           ) : null}
         </View>
@@ -309,13 +332,12 @@ const styles = StyleSheet.create({
     elevation: 6,
   },
   posterFocused: {
-    borderWidth: 2.5,
+    borderWidth: 3,
     borderColor: COLORS.accent,
-    transform: [{ scale: 1.06 }],
     shadowColor: COLORS.accent,
-    shadowOpacity: 0.5,
-    shadowRadius: 16,
-    elevation: 12,
+    shadowOpacity: 0.7,
+    shadowRadius: 24,
+    elevation: 16,
   },
   posterBottom: { padding: 9 },
   badges: { flexDirection: "row", gap: 4 },
@@ -413,6 +435,10 @@ const styles = StyleSheet.create({
     color: COLORS.text,
     marginTop: 8,
   },
+  titleTV: {
+    fontSize: 16,
+    marginTop: 10,
+  },
   meta: {
     flexDirection: "row",
     alignItems: "center",
@@ -423,6 +449,9 @@ const styles = StyleSheet.create({
     fontFamily: "Inter_400Regular",
     fontSize: 10,
     color: COLORS.textMuted,
+  },
+  metaTextTV: {
+    fontSize: 13,
   },
   dot: {
     fontFamily: "Inter_400Regular",
