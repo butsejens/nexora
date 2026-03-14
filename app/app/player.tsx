@@ -18,6 +18,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import WebView from "react-native-webview";
 import { activateKeepAwakeAsync, deactivateKeepAwake } from "expo-keep-awake";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { COLORS } from "@/constants/colors";
 import { useNexora } from "@/context/NexoraContext";
 import { SafeHaptics } from "@/lib/safeHaptics";
@@ -57,7 +58,99 @@ const STREAM_PROVIDERS = [
   { id: "111movies",    label: "Server 19" },
   { id: "frembed",      label: "Server 20" },
   { id: "primewire",    label: "Server 21" },
+  { id: "flixhq",       label: "Server 22" },
+  { id: "moviee",       label: "Server 23" },
+  { id: "soapertv",     label: "Server 24" },
+  { id: "cinescrape",   label: "Server 25" },
+  { id: "gobilda",      label: "Server 26" },
+  { id: "vidsrcrip",    label: "Server 27" },
+  { id: "embedrise",    label: "Server 28" },
+  { id: "remotestream", label: "Server 29" },
+  { id: "warezcdn",     label: "Server 30" },
+  { id: "filmxy",       label: "Server 31" },
+  { id: "dbgo",         label: "Server 32" },
+  { id: "cineby",       label: "Server 33" },
+  { id: "hexa",         label: "Server 34" },
+  { id: "nova",         label: "Server 35" },
 ];
+
+// ─── AI Smart Server Ranking ──────────────────────────────────────────────────
+// Tracks provider performance (load time, errors, ad popups) and ranks them.
+// Best providers float to the top automatically over time.
+const PROVIDER_STATS_KEY = "@nexora_provider_stats";
+
+interface ProviderStats {
+  successes: number;
+  failures: number;
+  adPopups: number;
+  totalLoadTimeMs: number;
+  lastUsed: number;
+}
+
+type StatsMap = Record<string, ProviderStats>;
+
+let _cachedStats: StatsMap | null = null;
+
+async function loadProviderStats(): Promise<StatsMap> {
+  if (_cachedStats) return _cachedStats;
+  try {
+    const raw = await AsyncStorage.getItem(PROVIDER_STATS_KEY);
+    _cachedStats = raw ? JSON.parse(raw) : {};
+  } catch { _cachedStats = {}; }
+  return _cachedStats!;
+}
+
+async function saveProviderStats(stats: StatsMap): Promise<void> {
+  _cachedStats = stats;
+  try { await AsyncStorage.setItem(PROVIDER_STATS_KEY, JSON.stringify(stats)); } catch {}
+}
+
+async function recordProviderResult(
+  providerId: string,
+  outcome: "success" | "failure" | "adPopup",
+  loadTimeMs?: number,
+): Promise<void> {
+  const stats = await loadProviderStats();
+  if (!stats[providerId]) {
+    stats[providerId] = { successes: 0, failures: 0, adPopups: 0, totalLoadTimeMs: 0, lastUsed: 0 };
+  }
+  const s = stats[providerId];
+  s.lastUsed = Date.now();
+  if (outcome === "success") {
+    s.successes++;
+    if (loadTimeMs) s.totalLoadTimeMs += loadTimeMs;
+  } else if (outcome === "failure") {
+    s.failures++;
+  } else if (outcome === "adPopup") {
+    s.adPopups++;
+  }
+  await saveProviderStats(stats);
+}
+
+function rankProviders(providers: typeof STREAM_PROVIDERS): typeof STREAM_PROVIDERS {
+  if (!_cachedStats || Object.keys(_cachedStats).length === 0) return providers;
+  const stats = _cachedStats;
+
+  return [...providers].sort((a, b) => {
+    const sa = stats[a.id] || { successes: 0, failures: 0, adPopups: 0, totalLoadTimeMs: 0, lastUsed: 0 };
+    const sb = stats[b.id] || { successes: 0, failures: 0, adPopups: 0, totalLoadTimeMs: 0, lastUsed: 0 };
+
+    // Score = successes * 10 - failures * 5 - adPopups * 15 - avgLoadTime/1000
+    const totalA = sa.successes + sa.failures;
+    const totalB = sb.successes + sb.failures;
+    const avgLoadA = totalA > 0 ? sa.totalLoadTimeMs / Math.max(sa.successes, 1) : 5000;
+    const avgLoadB = totalB > 0 ? sb.totalLoadTimeMs / Math.max(sb.successes, 1) : 5000;
+
+    const scoreA = sa.successes * 10 - sa.failures * 5 - sa.adPopups * 15 - avgLoadA / 1000;
+    const scoreB = sb.successes * 10 - sb.failures * 5 - sb.adPopups * 15 - avgLoadB / 1000;
+
+    // Untested providers get a slight bonus (try them out)
+    const boostA = totalA === 0 ? 5 : 0;
+    const boostB = totalB === 0 ? 5 : 0;
+
+    return (scoreB + boostB) - (scoreA + boostA);
+  });
+}
 
 function withEmbedAutoplayParams(rawUrl: string): string {
   try {
@@ -168,6 +261,62 @@ function getEmbedUrl(provider: string, tmdbId: string, type: string, season: str
       return isMovie
         ? `https://frembed.xyz/api/movie.php?id=${tmdbId}`
         : `https://frembed.xyz/api/serie.php?id=${tmdbId}&sa=${s}&epi=${e}`;
+    case "flixhq":
+      return isMovie
+        ? `https://flixhq.to/embed/movie/${tmdbId}`
+        : `https://flixhq.to/embed/tv/${tmdbId}/${s}/${e}`;
+    case "moviee":
+      return isMovie
+        ? `https://moviee.tv/embed/movie/${tmdbId}`
+        : `https://moviee.tv/embed/tv/${tmdbId}/${s}/${e}`;
+    case "soapertv":
+      return isMovie
+        ? `https://soaper.live/embed/movie/${tmdbId}`
+        : `https://soaper.live/embed/tv/${tmdbId}/${s}/${e}`;
+    case "cinescrape":
+      return isMovie
+        ? `https://cinescrape.com/movie/${tmdbId}`
+        : `https://cinescrape.com/tv/${tmdbId}/${s}/${e}`;
+    case "gobilda":
+      return isMovie
+        ? `https://gobilda.co/embed/movie/${tmdbId}`
+        : `https://gobilda.co/embed/tv/${tmdbId}/${s}/${e}`;
+    case "vidsrcrip":
+      return isMovie
+        ? `https://vidsrc.rip/embed/movie/${tmdbId}`
+        : `https://vidsrc.rip/embed/tv/${tmdbId}/${s}/${e}`;
+    case "embedrise":
+      return isMovie
+        ? `https://embedrise.com/embed/movie/${tmdbId}`
+        : `https://embedrise.com/embed/tv/${tmdbId}/${s}/${e}`;
+    case "remotestream":
+      return isMovie
+        ? `https://remotestream.cc/embed/movie/${tmdbId}`
+        : `https://remotestream.cc/embed/tv/${tmdbId}/${s}/${e}`;
+    case "warezcdn":
+      return isMovie
+        ? `https://embed.warezcdn.com/filme/${tmdbId}`
+        : `https://embed.warezcdn.com/serie/${tmdbId}/${s}/${e}`;
+    case "filmxy":
+      return isMovie
+        ? `https://filmxy.vip/embed/${tmdbId}`
+        : `https://filmxy.vip/embed/${tmdbId}/${s}/${e}`;
+    case "dbgo":
+      return isMovie
+        ? `https://dbgo.fun/imdb.php?id=${tmdbId}`
+        : `https://dbgo.fun/imdb.php?id=${tmdbId}&s=${s}&e=${e}`;
+    case "cineby":
+      return isMovie
+        ? `https://cineby.ru/embed/movie/${tmdbId}`
+        : `https://cineby.ru/embed/tv/${tmdbId}/${s}/${e}`;
+    case "hexa":
+      return isMovie
+        ? `https://hexawatch.com/embed/movie/${tmdbId}`
+        : `https://hexawatch.com/embed/tv/${tmdbId}/${s}/${e}`;
+    case "nova":
+      return isMovie
+        ? `https://novastream.top/embed/movie/${tmdbId}`
+        : `https://novastream.top/embed/tv/${tmdbId}/${s}/${e}`;
     default:
       return isMovie
         ? `https://vidsrc.to/embed/movie/${tmdbId}`
@@ -888,13 +1037,16 @@ export default function PlayerScreen() {
   const contentCategory = type === "movie" ? "movies" : type === "series" ? "series" : null;
   const premiumBlocked = contentCategory && !hasPremium(contentCategory as any);
 
-  // Embed provider state
+  // Embed provider state — AI-ranked
+  const [rankedProviders, setRankedProviders] = useState(STREAM_PROVIDERS);
   const [providerIndex, setProviderIndex]     = useState(0);
   const [useFallbackEmbed, setUseFallbackEmbed] = useState(false);
   const [webviewKey, setWebviewKey]           = useState(0);
   const [isLoading, setIsLoading]             = useState(true);
   const [streamError, setStreamError]         = useState<Error | string | null>(null);
   const [streamErrorRef, setStreamErrorRef]   = useState("");
+  const providerLoadStartRef = useRef<number>(0);
+  const adPopupCountRef = useRef<number>(0);
 
   // Controls overlay
   const [controlsVisible, setControlsVisible] = useState(true);
@@ -939,8 +1091,24 @@ export default function PlayerScreen() {
     return () => { cancelled = true; };
   }, [tmdbId, type, season, episode]);
 
-  const provider         = STREAM_PROVIDERS[providerIndex]?.id || STREAM_PROVIDERS[0].id;
-  const allProvidersFailed = providerIndex >= STREAM_PROVIDERS.length;
+  const provider         = rankedProviders[providerIndex]?.id || rankedProviders[0].id;
+  const allProvidersFailed = providerIndex >= rankedProviders.length;
+
+  // ── AI Smart Ranking: load stats and rank providers on mount ────────────
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      await loadProviderStats();
+      if (!cancelled) setRankedProviders(rankProviders(STREAM_PROVIDERS));
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  // Track load start time whenever provider changes
+  useEffect(() => {
+    providerLoadStartRef.current = Date.now();
+    adPopupCountRef.current = 0;
+  }, [providerIndex, webviewKey]);
 
   // ── Wake lock — keep screen on during playback ──────────────────────────
   useEffect(() => {
@@ -1160,12 +1328,20 @@ export default function PlayerScreen() {
 
   // ── Provider switching ────────────────────────────────────────────────────
   const tryNextProvider = useCallback(() => {
+    // Record failure/adPopup for the current provider before moving on
+    const currentProv = rankedProviders[providerIndex]?.id;
+    if (currentProv) {
+      const result = adPopupCountRef.current > 0 ? "adPopup" : "failure";
+      recordProviderResult(currentProv, result).then(() => {
+        setRankedProviders(rankProviders(STREAM_PROVIDERS));
+      });
+    }
     setProviderIndex(i => i + 1);
     setWebviewKey(k => k + 1);
     setStreamError(null);
     setStreamErrorRef("");
     setIsLoading(true);
-  }, []);
+  }, [rankedProviders, providerIndex]);
 
   // ── WebView crash recovery (Android + iOS) ─────────────────────────────
   const handleWebViewCrash = useCallback(() => {
@@ -1251,10 +1427,10 @@ export default function PlayerScreen() {
         /survey|reward|prize|winner|congratulat/i,
         /dating|singles|meet.*local/i,
       ];
-      if (BLOCK_PATTERNS.some((pattern) => pattern.test(url))) return false;
+      if (BLOCK_PATTERNS.some((pattern) => pattern.test(url))) { adPopupCountRef.current++; return false; }
 
       // Block known ad/tracker domains
-      if (AD_DOMAINS.some(d => url.includes(d))) return false;
+      if (AD_DOMAINS.some(d => url.includes(d))) { adPopupCountRef.current++; return false; }
 
       // Block any URL with obvious ad query params
       try {
@@ -1273,11 +1449,14 @@ export default function PlayerScreen() {
           "rabbitstream", "vidcloud", "upcloud", "streamtape", "filemoon", "mixdrop", "dood",
           "googlevideo", "akamaized", "cdn", "vidbinge", "embedcc", "embedsu", "rive",
           "multiembed", "2embed", "primewire", "111movies",
+          "flixhq", "moviee", "soaper", "cinescrape", "gobilda", "embedrise", "remotestream",
+          "warezcdn", "filmxy", "dbgo", "cineby", "hexa", "nova",
         ];
         const isKnownVideoHost = ALLOWED_HOST_SNIPPETS.some((snippet) => reqHost.includes(snippet));
         if (!isSameDomain) {
           if (/\.(m3u8|mp4|ts|webm|mpd|mkv)(\?|$)/i.test(url)) return true;
           if (isKnownVideoHost) return true;
+          adPopupCountRef.current++;
           return false;
         }
       } catch {}
@@ -1312,6 +1491,8 @@ export default function PlayerScreen() {
           "rabbitstream", "vidcloud", "upcloud", "streamtape", "filemoon", "mixdrop", "dood",
           "googlevideo", "akamaized", "cdn", "vidbinge", "embedcc", "embedsu", "rive",
           "multiembed", "2embed", "primewire", "111movies",
+          "flixhq", "moviee", "soaper", "cinescrape", "gobilda", "embedrise", "remotestream",
+          "warezcdn", "filmxy", "dbgo", "cineby", "hexa", "nova",
         ].some((snippet) => reqHost.includes(snippet));
         if (!isSameDomain && !isKnownVideoHost && !/\.(m3u8|mp4|ts|webm|mpd|mkv)(\?|$)/i.test(url)) {
           embedWebviewRef.current?.stopLoading();
@@ -1402,7 +1583,15 @@ export default function PlayerScreen() {
           originWhitelist={["http://*", "https://*", "about:*", "blob:*", "*"]}
           userAgent="Mozilla/5.0 (Linux; Android 12; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
           injectedJavaScriptBeforeContentLoaded={AD_BLOCK_JS}
-          onLoad={() => { if (!disposedRef.current) { setIsLoading(false); setStreamError(null); setStreamErrorRef(""); injectEmbedAutoplay(); } }}
+          onLoad={() => {
+            if (!disposedRef.current) {
+              setIsLoading(false); setStreamError(null); setStreamErrorRef(""); injectEmbedAutoplay();
+              const loadTime = Date.now() - providerLoadStartRef.current;
+              recordProviderResult(provider, adPopupCountRef.current > 0 ? "adPopup" : "success", loadTime).then(() => {
+                setRankedProviders(rankProviders(STREAM_PROVIDERS));
+              });
+            }
+          }}
           onError={(event) => {
             if (disposedRef.current) return;
             const msg = String(event?.nativeEvent?.description || "");
@@ -1410,6 +1599,9 @@ export default function PlayerScreen() {
               setIsLoading(false);
               return;
             }
+            recordProviderResult(provider, "failure").then(() => {
+              setRankedProviders(rankProviders(STREAM_PROVIDERS));
+            });
             setIsLoading(false);
             setStreamError(msg || "Stream could not be loaded");
             setStreamErrorRef(prev => prev || buildErrorReference("NX-PLY"));
@@ -1483,7 +1675,7 @@ export default function PlayerScreen() {
             <ActivityIndicator size="large" color={COLORS.accent} />
             <Text style={styles.loadingText}>
               {(tmdbId && !effectiveStreamUrl) || (useFallbackEmbed && tmdbId)
-                ? `Verbinding zoeken... (${providerIndex + 1}/${STREAM_PROVIDERS.length})`
+                ? `Verbinding zoeken... (${providerIndex + 1}/${rankedProviders.length})`
                 : "Laden..."}
             </Text>
           </View>

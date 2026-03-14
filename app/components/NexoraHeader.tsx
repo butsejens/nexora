@@ -41,8 +41,10 @@ export function NexoraHeader({
   const isIOS = Platform.OS === "ios";
   const topPad = Platform.OS === "web" ? 0 : insets.top;
 
-  // On TV: render a compact header — no search/favorites/profile buttons (sidebar handles nav)
+  // On TV: compact header with icons adapted for TV (larger hit targets, focusable)
   if (isTV) {
+    const tvHandleFavorites = onFavorites ?? (() => router.push("/favorites"));
+    const tvHandleProfile = onProfile ?? (() => router.push("/profile"));
     return (
       <View style={[styles.container, { paddingTop: 16, paddingBottom: 10, maxWidth: containerMax, alignSelf: "center", width: "100%", borderBottomWidth: 0 }]}>
         <View style={styles.contentRow}>
@@ -52,6 +54,29 @@ export function NexoraHeader({
               <Text style={styles.logoRest}>EXORA</Text>
             </Text>
             {title ? <Text style={[styles.sectionTitle, { fontSize: 13 }, titleColor ? { color: titleColor } : null]}>{title}</Text> : null}
+          </View>
+          <View style={styles.actions}>
+            {rightElement}
+            {showSearch && (
+              <TouchableOpacity style={styles.tvIconBtn} onPress={onSearch} activeOpacity={0.7}>
+                <Ionicons name="search" size={24} color={COLORS.textSecondary} />
+              </TouchableOpacity>
+            )}
+            {showNotification && (
+              <TouchableOpacity style={styles.tvIconBtn} onPress={onNotification} activeOpacity={0.7}>
+                <Ionicons name="notifications-outline" size={24} color={COLORS.textSecondary} />
+              </TouchableOpacity>
+            )}
+            {showFavorites && (
+              <TouchableOpacity style={styles.tvIconBtn} onPress={tvHandleFavorites} activeOpacity={0.7}>
+                <Ionicons name="heart-outline" size={24} color={COLORS.textSecondary} />
+              </TouchableOpacity>
+            )}
+            {showProfile && (
+              <TouchableOpacity style={styles.tvProfileBtn} onPress={tvHandleProfile} activeOpacity={0.7}>
+                <Ionicons name="person" size={18} color={COLORS.accent} />
+              </TouchableOpacity>
+            )}
           </View>
         </View>
       </View>
@@ -178,6 +203,26 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
+    backgroundColor: COLORS.cardElevated,
+    borderWidth: 1,
+    borderColor: COLORS.accent,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  tvIconBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: COLORS.cardElevated,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  tvProfileBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     backgroundColor: COLORS.cardElevated,
     borderWidth: 1,
     borderColor: COLORS.accent,
