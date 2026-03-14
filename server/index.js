@@ -2814,7 +2814,7 @@ app.get("/api/app-version", (req, res) => {
   // Always expose the download through our own redirect endpoint so the app
   // never needs to open a raw GitHub URL (avoids browser-specific download issues).
   const apkUrl = storedApkUrl ? `${proto}://${host}/api/download/apk` : `${proto}://${host}/downloads/nexora.apk`;
-  res.json({ version, apkUrl });
+  res.json({ version, apkUrl, directApkUrl: storedApkUrl || null });
 });
 
 // ── APK download proxy ─────────────────────────────────────────────────────────

@@ -29,6 +29,7 @@ import { apiRequest, queryClient } from "@/lib/query-client";
 import { fetchM3UText } from "@/lib/fetchM3U";
 import { parseM3UContentAsync } from "@/lib/parseM3U";
 import { SafeHaptics } from "@/lib/safeHaptics";
+import * as FileSystem from "expo-file-system";
 
 const CHANGELOG: { version: string; date: string; changes: string[] }[] = [
   {
@@ -236,6 +237,8 @@ function UpdateModal({
   const [checking, setChecking] = useState(false);
   const [status, setStatus] = useState<"idle" | "uptodate" | "update" | "downloading" | "ready">("idle");
   const [apkUrl, setApkUrl] = useState("");
+  const [directApkUrl, setDirectApkUrl] = useState("");
+  const [downloadProgress, setDownloadProgress] = useState(0);
 
   const handleCheck = async () => {
     setChecking(true);
@@ -243,7 +246,7 @@ function UpdateModal({
     try {
       // Always check server for the latest APK version
       const res = await apiRequest("GET", "/api/app-version");
-      const data = await res.json() as { version: string; apkUrl: string };
+      const data = await res.json() as { version: string; apkUrl: string; directApkUrl?: string };
       const hasNewerApk = compareVersions(data.version, currentVersion) > 0;
 
       // Try OTA path first (works for both EAS and non-dev builds)
@@ -262,6 +265,7 @@ function UpdateModal({
       // No OTA update available — check server APK
       if (hasNewerApk) {
         setApkUrl(data.apkUrl);
+        setDirectApkUrl(data.directApkUrl || "");
         setStatus("update");
       } else {
         setStatus("uptodate");
@@ -278,14 +282,52 @@ function UpdateModal({
   };
 
   const handleDownload = async () => {
-    if (!apkUrl) return;
-    const normalized = apkUrl.replace(/^http:\/\//i, "https://");
+    const url = directApkUrl || apkUrl;
+    if (!url) return;
+    const normalized = url.replace(/^http:\/\//i, "https://");
+
+    // On Android: download APK to device and trigger install
+    if (Platform.OS === "android") {
+      try {
+        setStatus("downloading");
+        setDownloadProgress(0);
+        const dir = (FileSystem.cacheDirectory || FileSystem.documentDirectory || "") + "updates/";
+        await FileSystem.makeDirectoryAsync(dir, { intermediates: true }).catch(() => {});
+        const filename = `nexora-update-${Date.now()}.apk`;
+        const fileUri = dir + filename;
+
+        const dl = FileSystem.createDownloadResumable(
+          normalized,
+          fileUri,
+          { headers: { "Accept": "application/vnd.android.package-archive" } },
+          (p) => {
+            if (p.totalBytesExpectedToWrite > 0) {
+              setDownloadProgress(p.totalBytesWritten / p.totalBytesExpectedToWrite);
+            }
+          }
+        );
+        const result = await dl.downloadAsync();
+        if (!result?.uri) throw new Error("Download mislukt");
+        setDownloadProgress(1);
+
+        // Convert file:// to content:// URI for Android package installer
+        const contentUri = await FileSystem.getContentUriAsync(result.uri);
+        await Linking.openURL(contentUri);
+        setStatus("idle");
+      } catch (e: any) {
+        // Fallback: open URL in browser
+        setStatus("update");
+        try { await Linking.openURL(normalized); } catch {}
+        Alert.alert("Download mislukt", e?.message || "Probeer opnieuw.");
+      }
+      return;
+    }
+
+    // iOS / other: open in browser
     try {
-      const canOpen = await Linking.canOpenURL(normalized);
-      if (!canOpen) throw new Error("cannot-open");
       await Linking.openURL(normalized);
     } catch {
-      Alert.alert("Update openen mislukt", "Kon de downloadlink niet openen. Probeer opnieuw of open Updates in Profiel.");
+      Alert.alert("Update openen mislukt", "Kon de downloadlink niet openen.");
     }
   };
 
@@ -334,7 +376,12 @@ function UpdateModal({
               </Text>
             )}
             {status === "downloading" && (
-              <Text style={updateStyles.statusText}>Downloading update...</Text>
+              <>
+                <Text style={updateStyles.statusText}>Downloading update... {Math.round(downloadProgress * 100)}%</Text>
+                <View style={{ width: "100%", height: 6, borderRadius: 3, backgroundColor: "rgba(255,255,255,0.1)", marginTop: 8 }}>
+                  <View style={{ width: `${Math.round(downloadProgress * 100)}%`, height: 6, borderRadius: 3, backgroundColor: COLORS.accent }} />
+                </View>
+              </>
             )}
             {status === "ready" && (
               <Text style={[updateStyles.statusText, { color: "#22c55e" }]}>

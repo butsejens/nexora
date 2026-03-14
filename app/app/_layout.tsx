@@ -2,7 +2,8 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { Stack, router } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import React, { useEffect, useRef, useState } from "react";
-import { Alert, Linking } from "react-native";
+import { Alert, Linking, Platform } from "react-native";
+import * as FileSystem from "expo-file-system";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { queryClient, getApiBaseCandidates, apiRequest } from "@/lib/query-client";
@@ -226,7 +227,7 @@ export default function RootLayout() {
       try {
         if (__DEV__) return;
         const res = await apiRequest("GET", "/api/app-version");
-        const data = await res.json() as { version: string; apkUrl?: string };
+        const data = await res.json() as { version: string; apkUrl?: string; directApkUrl?: string };
         const appVer = resolveInstalledVersion();
         if (compareVersions(data.version, appVer) <= 0) return;
 
@@ -234,12 +235,31 @@ export default function RootLayout() {
         await new Promise(r => setTimeout(r, 1200));
 
         const doInstall = async () => {
-          // Server reports a newer runtimeVersion → OTA cannot bridge versions, go straight to APK
-          if (!data.apkUrl) { router.push("/profile"); return; }
-          const normalizedUrl = String(data.apkUrl).replace(/^http:\/\//i, "https://");
+          const url = data.directApkUrl || data.apkUrl;
+          if (!url) { router.push("/profile"); return; }
+          const normalizedUrl = String(url).replace(/^http:\/\//i, "https://");
+
+          // Android: download APK to cache and trigger package installer
+          if (Platform.OS === "android") {
+            try {
+              const dir = (FileSystem.cacheDirectory || "") + "updates/";
+              await FileSystem.makeDirectoryAsync(dir, { intermediates: true }).catch(() => {});
+              const fileUri = dir + `nexora-${data.version}.apk`;
+              const dl = FileSystem.createDownloadResumable(
+                normalizedUrl, fileUri,
+                { headers: { Accept: "application/vnd.android.package-archive" } }
+              );
+              const result = await dl.downloadAsync();
+              if (!result?.uri) throw new Error("dl-failed");
+              const contentUri = await FileSystem.getContentUriAsync(result.uri);
+              await Linking.openURL(contentUri);
+              return;
+            } catch {
+              // Fallback: open in browser
+            }
+          }
+
           try {
-            const canOpen = await Linking.canOpenURL(normalizedUrl);
-            if (!canOpen) throw new Error("cannot-open");
             await Linking.openURL(normalizedUrl);
           } catch {
             router.push("/profile");
