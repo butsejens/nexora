@@ -12,7 +12,7 @@ import { useNexora } from "@/context/NexoraContext";
 import type { PremiumCategory } from "@/context/NexoraContext";
 import { SafeHaptics } from "@/lib/safeHaptics";
 
-type BillingCycle = "monthly" | "yearly";
+type BillingCycle = "weekly" | "monthly" | "yearly";
 
 const CATEGORIES: {
   id: PremiumCategory;
@@ -86,6 +86,10 @@ function calcPrice(selected: PremiumCategory[], cycle: BillingCycle): { monthly:
   const fullMonthly = selected.reduce((acc, id) => acc + (CATEGORIES.find(c => c.id === id)?.priceMonthly || 0), 0);
   const discount = allFour ? Math.round((fullMonthly - 9.99) * 100) / 100 : 0;
 
+  if (cycle === "weekly") {
+    const weekly = Math.round(baseMonthly * 0.3 * 100) / 100;
+    return { monthly: weekly, total: weekly, discount, label: "/week" };
+  }
   if (cycle === "yearly") {
     const monthly = Math.round(baseMonthly * 0.833 * 100) / 100;
     const total = Math.round(monthly * 12 * 100) / 100;
@@ -258,7 +262,7 @@ export default function PremiumScreen() {
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Facturatieperiode</Text>
             <View style={styles.cycleRow}>
-              {(["monthly", "yearly"] as BillingCycle[]).map(c => (
+              {(["weekly", "monthly", "yearly"] as BillingCycle[]).map(c => (
                 <TouchableOpacity
                   key={c}
                   style={[styles.cycleBtn, cycle === c && styles.cycleBtnActive]}
@@ -271,10 +275,12 @@ export default function PremiumScreen() {
                     </View>
                   )}
                   <Text style={[styles.cycleBtnText, cycle === c && styles.cycleBtnTextActive]}>
-                    {c === "monthly" ? "Maandelijks" : "Jaarlijks"}
+                    {c === "weekly" ? "Wekelijks" : c === "monthly" ? "Maandelijks" : "Jaarlijks"}
                   </Text>
                   <Text style={[styles.cycleBtnSub, cycle === c && { color: COLORS.accent }]}>
-                    {c === "monthly"
+                    {c === "weekly"
+                      ? `€${calcPrice(selected, "weekly").monthly.toFixed(2)}/wk`
+                      : c === "monthly"
                       ? `€${calcPrice(selected, "monthly").monthly.toFixed(2)}/mnd`
                       : `€${calcPrice(selected, "yearly").monthly.toFixed(2)}/mnd`}
                   </Text>
@@ -303,7 +309,7 @@ export default function PremiumScreen() {
               <Text style={styles.priceTotalLabel}>Totaal</Text>
               <View style={styles.priceTotalRight}>
                 <Text style={styles.priceTotalAmount}>€{pricing.monthly.toFixed(2)}</Text>
-                <Text style={styles.priceTotalPeriod}>{cycle === "yearly" ? `/mnd · €${(pricing.monthly * 12).toFixed(2)}/jaar` : "/maand"}</Text>
+                <Text style={styles.priceTotalPeriod}>{cycle === "yearly" ? `/mnd · €${(pricing.monthly * 12).toFixed(2)}/jaar` : cycle === "weekly" ? "/week" : "/maand"}</Text>
               </View>
             </View>
           </View>
