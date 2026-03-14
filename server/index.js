@@ -2817,9 +2817,9 @@ app.get("/download", (req, res) => {
   res.redirect(301, "/api/download/apk");
 });
 
-// Numeric shortcode: type "1234567" in Downloader → downloads APK
+// Numeric shortcode: type "1234567" in Downloader → downloads TV APK
 app.get("/1234567", (req, res) => {
-  res.redirect(301, "/api/download/apk");
+  res.redirect(301, "/api/download/tv");
 });
 
 // ── App version / update check ────────────────────────────────────────────────
@@ -2869,6 +2869,31 @@ app.get("/api/download/apk", async (req, res) => {
     console.error("[apk-proxy] error:", err?.message);
   }
   res.status(404).json({ error: "APK niet beschikbaar" });
+});
+
+// ── TV APK download proxy ───────────────────────────────────────────────────
+app.get("/api/download/tv", async (req, res) => {
+  try {
+    const vf = join(__dirname, "app-version.json");
+    if (existsSync(vf)) {
+      const data = JSON.parse(readFileSync(vf, "utf8"));
+      if (data.tvApkUrl) {
+        const upstream = await fetch(data.tvApkUrl, { timeout: 60000 });
+        if (!upstream.ok) {
+          return res.status(502).json({ error: `TV APK niet beschikbaar (${upstream.status})` });
+        }
+        res.setHeader("Content-Type", "application/vnd.android.package-archive");
+        res.setHeader("Content-Disposition", 'attachment; filename="nexora-tv.apk"');
+        const contentLength = upstream.headers.get("content-length");
+        if (contentLength) res.setHeader("Content-Length", contentLength);
+        upstream.body.pipe(res);
+        return;
+      }
+    }
+  } catch (err) {
+    console.error("[tv-apk-proxy] error:", err?.message);
+  }
+  res.status(404).json({ error: "TV APK niet beschikbaar" });
 });
 
 // Image proxy – forwards images that require specific Referer headers (e.g. Transfermarkt CDN)
