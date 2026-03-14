@@ -831,6 +831,47 @@ const FORCE_PLAY_JS = `
 })();
 `;
 
+// ─── Mid-stream buffer stall detection ────────────────────────────────────────
+// Injected after embed loads. Monitors video elements for stalling/errors.
+// Posts message to React Native when playback dies mid-stream.
+const BUFFER_MONITOR_JS = `
+(function(){
+  if (window.__nexoraBufferMonitor) return;
+  window.__nexoraBufferMonitor = true;
+  var stallCount = 0;
+  var lastTime = -1;
+  var checkInterval = setInterval(function(){
+    var videos = document.querySelectorAll('video');
+    if (!videos.length) return;
+    var v = videos[0];
+    if (v.paused || v.ended || v.readyState === 0) return;
+    // Check if video time is progressing
+    if (v.currentTime === lastTime && v.currentTime > 0) {
+      stallCount++;
+      if (stallCount >= 6) {
+        // 6 checks x 3s = 18s stalled — stream is dead
+        clearInterval(checkInterval);
+        window.ReactNativeWebView && window.ReactNativeWebView.postMessage(JSON.stringify({
+          type: 'midstream_stall', currentTime: v.currentTime
+        }));
+      }
+    } else {
+      stallCount = 0;
+    }
+    lastTime = v.currentTime;
+    // Also catch error state
+    if (v.error) {
+      clearInterval(checkInterval);
+      window.ReactNativeWebView && window.ReactNativeWebView.postMessage(JSON.stringify({
+        type: 'midstream_error', code: v.error.code
+      }));
+    }
+  }, 3000);
+  // Clean up after 2 hours
+  setTimeout(function(){ clearInterval(checkInterval); }, 7200000);
+})();
+`;
+
 // ─── HLS inline player HTML ───────────────────────────────────────────────────
 // No native <video controls> — React Native overlay provides play/pause/seek.
 // postMessage bridge reports state; listens for commands via 'message' event.
@@ -1096,6 +1137,10 @@ export default function PlayerScreen() {
           setRankedSources(sources);
           setEngineReady(true);
         },
+        onMidStreamRecovery: (_fromProvider, _toProvider) => {
+          if (cancelled) return;
+          // Provider switch is handled by onSourceChanged
+        },
       },
     );
     streamManagerRef.current = mgr;
@@ -1269,6 +1314,8 @@ export default function PlayerScreen() {
         updateProgress(id, ct, dur);
       }
       if (progressSaveTimerRef.current) clearTimeout(progressSaveTimerRef.current);
+      // Record playtime for current stream source
+      streamManagerRef.current?.recordPlaytimeOnStop();
       // Mark as disposed — all async callbacks will bail out
       disposedRef.current = true;
       // Clear controls hide timer
@@ -1590,6 +1637,8 @@ export default function PlayerScreen() {
           onLoad={() => {
             if (!disposedRef.current) {
               setIsLoading(false); setStreamError(null); setStreamErrorRef(""); injectEmbedAutoplay();
+              // Inject buffer monitor for mid-stream recovery
+              embedWebviewRef.current?.injectJavaScript(`${BUFFER_MONITOR_JS};true;`);
               const loadTime = Date.now() - providerLoadStartRef.current;
               // Record success via Stream Manager
               const mgr = streamManagerRef.current;
@@ -1622,6 +1671,16 @@ export default function PlayerScreen() {
           }}
           onShouldStartLoadWithRequest={makeNavGuard(embedUrl)}
           onNavigationStateChange={makeNavStateGuard(embedUrl)}
+          onMessage={(event) => {
+            if (disposedRef.current) return;
+            try {
+              const data = JSON.parse(event.nativeEvent.data);
+              if (data.type === "midstream_stall" || data.type === "midstream_error") {
+                const mgr = streamManagerRef.current;
+                if (mgr) mgr.handleMidStreamFailure();
+              }
+            } catch {}
+          }}
           scalesPageToFit={false}
           onRenderProcessGone={handleWebViewCrash}
           onContentProcessDidTerminate={handleWebViewCrash}

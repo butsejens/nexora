@@ -62,8 +62,13 @@ export type ProbeCache = Record<string, { result: ProbeResult; ts: number }>;
 const STATS_KEY = "@nexora_stream_engine_stats_v2";
 const PROBE_CACHE_KEY = "@nexora_probe_cache";
 const PROBE_CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
+const RANKED_CACHE_TTL_MS = 15 * 60 * 1000; // 15 minutes
 const RECENT_RESULTS_MAX = 20;
 const PROBE_TIMEOUT_MS = 5000;
+
+// Auto-blacklist: providers with >80% failure over 5+ attempts are removed
+const BLACKLIST_MIN_ATTEMPTS = 5;
+const BLACKLIST_FAIL_THRESHOLD = 0.8;
 
 // Scoring weights
 const W_SUCCESS_RATE = 35;
@@ -76,6 +81,7 @@ const W_FRESHNESS = 5;
 
 let _stats: Record<string, ProviderStats> | null = null;
 let _probeCache: ProbeCache = {};
+let _rankedCache: { providers: RankedProvider[]; ts: number } | null = null;
 
 // ─── Stats persistence ─────────────────────────────────────────────────────────
 
@@ -145,8 +151,9 @@ function setCachedProbe(providerId: string, result: ProbeResult): void {
 // ─── Server probing ────────────────────────────────────────────────────────────
 
 /**
- * Probe a single provider endpoint with a HEAD request.
- * Measures latency and checks reachability.
+ * Probe a single provider endpoint.
+ * Uses GET with range header to validate actual page content.
+ * Checks for video elements, player scripts, or streaming indicators.
  */
 async function probeProvider(
   providerId: string,
@@ -161,12 +168,14 @@ async function probeProvider(
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), PROBE_TIMEOUT_MS);
 
+    // Use GET instead of HEAD for deeper validation
     const res = await fetch(embedUrl, {
-      method: "HEAD",
+      method: "GET",
       signal: controller.signal,
       headers: {
         "User-Agent":
           "Mozilla/5.0 (Linux; Android 12; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36",
+        "Range": "bytes=0-8192", // Only fetch first 8KB
       },
       redirect: "follow",
     });
@@ -176,12 +185,21 @@ async function probeProvider(
     const ct = res.headers.get("content-type") || "";
     const contentTypeOk = ct.includes("text/html") || ct.includes("application");
 
+    // Read partial body to check for video/player indicators
+    let hasVideoContent = false;
+    try {
+      const body = await res.text();
+      const lower = body.toLowerCase();
+      hasVideoContent = /(<video|<iframe|hls\.js|jwplayer|plyr|videojs|m3u8|player|embed)/i.test(lower)
+        && !/(404|not.?found|error|unavailable|offline|maintenance)/i.test(lower.slice(0, 500));
+    } catch {}
+
     const result: ProbeResult = {
       providerId,
-      reachable: res.status < 500,
+      reachable: res.status < 500 && res.status !== 404,
       latencyMs: latency,
       httpStatus: res.status,
-      contentTypeOk,
+      contentTypeOk: contentTypeOk && hasVideoContent,
     };
 
     setCachedProbe(providerId, result);
@@ -412,18 +430,29 @@ export function rankProviders(
   // Sort descending by score
   ranked.sort((a, b) => b.score - a.score);
 
-  // Filter: unreachable servers go to the bottom (not removed — fallback)
+  // Auto-blacklist: remove providers with >80% failure rate over 5+ attempts
+  const healthy = ranked.filter((r) => {
+    const s = stats[r.provider.id];
+    if (!s) return true;
+    const total = s.successes + s.failures;
+    if (total < BLACKLIST_MIN_ATTEMPTS) return true;
+    const failRate = s.failures / total;
+    return failRate < BLACKLIST_FAIL_THRESHOLD;
+  });
+  const blacklisted = ranked.filter((r) => !healthy.includes(r));
+
+  // Filter: unreachable servers go below healthy but above blacklisted
   if (probeResults) {
-    const reachable = ranked.filter(
+    const reachable = healthy.filter(
       (r) => probeResults.get(r.provider.id)?.reachable !== false,
     );
-    const unreachable = ranked.filter(
+    const unreachable = healthy.filter(
       (r) => probeResults.get(r.provider.id)?.reachable === false,
     );
-    return [...reachable, ...unreachable];
+    return [...reachable, ...unreachable, ...blacklisted];
   }
 
-  return ranked;
+  return [...healthy, ...blacklisted];
 }
 
 // ─── Engine initialization ─────────────────────────────────────────────────────
@@ -449,6 +478,11 @@ export async function selectBestProviders(
 ): Promise<RankedProvider[]> {
   await loadStats();
 
+  // Check ranked cache first (15-min TTL)
+  if (_rankedCache && Date.now() - _rankedCache.ts < RANKED_CACHE_TTL_MS) {
+    return _rankedCache.providers;
+  }
+
   let probeResults: Map<string, ProbeResult> | undefined;
 
   if (!quick) {
@@ -457,7 +491,9 @@ export async function selectBestProviders(
     persistProbeCache(); // fire-and-forget
   }
 
-  return rankProviders(providers, probeResults);
+  const result = rankProviders(providers, probeResults);
+  _rankedCache = { providers: result, ts: Date.now() };
+  return result;
 }
 
 /**
@@ -473,5 +509,21 @@ export function quickRank(providers: StreamProvider[]): RankedProvider[] {
 export async function resetEngine(): Promise<void> {
   _stats = {};
   _probeCache = {};
+  _rankedCache = null;
   await AsyncStorage.multiRemove([STATS_KEY, PROBE_CACHE_KEY]);
+}
+
+/** Check if a provider is auto-blacklisted (>80% fail over 5+ attempts) */
+export function isBlacklisted(providerId: string): boolean {
+  if (!_stats) return false;
+  const s = _stats[providerId];
+  if (!s) return false;
+  const total = s.successes + s.failures;
+  if (total < BLACKLIST_MIN_ATTEMPTS) return false;
+  return (s.failures / total) >= BLACKLIST_FAIL_THRESHOLD;
+}
+
+/** Invalidate ranked cache (force fresh probe on next init) */
+export function invalidateRankedCache(): void {
+  _rankedCache = null;
 }

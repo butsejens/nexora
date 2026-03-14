@@ -20,6 +20,8 @@ import {
   recordSuccess,
   recordFailure,
   recordAdPopup,
+  isBlacklisted,
+  invalidateRankedCache,
 } from "./ai-stream-engine";
 import type { StreamProvider } from "./ai-stream-engine";
 import {
@@ -27,7 +29,11 @@ import {
   trackStartupSuccess,
   trackStartupFailure,
   trackRefreshSuccess,
+  trackRefreshFailure,
+  trackMidStreamDrop,
+  trackPlaytime,
   getReliabilityScore,
+  isProviderBlacklisted,
   rememberSource,
   getRecentSource,
 } from "./stream-reliability";
@@ -58,6 +64,7 @@ export interface StreamManagerCallbacks {
   onSourceChanged: (source: StreamSource, index: number, total: number) => void;
   onAllFailed: () => void;
   onEngineReady: (sources: StreamSource[]) => void;
+  onMidStreamRecovery?: (fromProvider: string, toProvider: string) => void;
 }
 
 // ─── Stream Providers ──────────────────────────────────────────────────────────
@@ -231,6 +238,9 @@ export class StreamManager {
   private currentIndex = 0;
   private engineReady = false;
   private callbacks: StreamManagerCallbacks;
+  private retryCount = 0; // track retries before advancing
+  private playbackStartedAt = 0; // for mid-stream recovery tracking
+  private static MAX_RETRIES = 1; // retry current source once before advancing
 
   constructor(
     tmdbId: string,
@@ -262,9 +272,12 @@ export class StreamManager {
     const ranked = await selectBestProviders(STREAM_PROVIDERS, urlGetter);
 
     // Build stream sources with combined AI + reliability scores
-    this.sources = ranked.map(r => {
-      const reliabilityScore = getReliabilityScore(r.provider.id);
-      const embedUrl = urlGetter(r.provider.id)!;
+    // Filter out blacklisted providers
+    this.sources = ranked
+      .filter(r => !isBlacklisted(r.provider.id) && !isProviderBlacklisted(r.provider.id))
+      .map(r => {
+        const reliabilityScore = getReliabilityScore(r.provider.id);
+        const embedUrl = urlGetter(r.provider.id)!;
       return {
         providerId: r.provider.id,
         label: r.provider.label,
@@ -276,6 +289,24 @@ export class StreamManager {
         reachable: r.probeLatencyMs < 99000,
       };
     });
+
+    // If all providers are blacklisted, include them as last resort
+    if (this.sources.length === 0) {
+      this.sources = ranked.map(r => {
+        const reliabilityScore = getReliabilityScore(r.provider.id);
+        const embedUrl = urlGetter(r.provider.id)!;
+        return {
+          providerId: r.provider.id,
+          label: r.provider.label,
+          embedUrl,
+          score: r.score,
+          probeLatencyMs: r.probeLatencyMs,
+          reliabilityScore,
+          validated: true,
+          reachable: r.probeLatencyMs < 99000,
+        };
+      });
+    }
 
     // If we have a recent successful source, move it to the top
     if (recent) {
@@ -337,6 +368,7 @@ export class StreamManager {
       this.tmdbId, this.type, this.season, this.episode,
       source.providerId, loadTimeMs,
     );
+    this.playbackStartedAt = Date.now();
   }
 
   /** Record failed playback and auto-advance to next source */
@@ -356,6 +388,7 @@ export class StreamManager {
   async advanceToNext(adPopupsSeen = 0): Promise<boolean> {
     await this.recordPlaybackFailure(adPopupsSeen);
     this.currentIndex++;
+    this.retryCount = 0;
 
     if (this.currentIndex >= this.sources.length) {
       this.callbacks.onAllFailed();
@@ -370,28 +403,75 @@ export class StreamManager {
     return true;
   }
 
-  /** Safely refresh: retry current source first, then advance */
+  /** Safely refresh: retry current source once, then advance to next */
   async safeRefresh(): Promise<{ retried: boolean; advanced: boolean }> {
     const source = this.sources[this.currentIndex];
     if (!source) return { retried: false, advanced: false };
 
-    // Track refresh attempt
-    await trackRefreshSuccess(source.providerId);
+    if (this.retryCount < StreamManager.MAX_RETRIES) {
+      // Retry current source
+      this.retryCount++;
+      await trackRefreshSuccess(source.providerId);
+      this.callbacks.onSourceChanged(
+        source,
+        this.currentIndex,
+        this.sources.length,
+      );
+      return { retried: true, advanced: false };
+    }
 
-    // Re-notify with current source (triggers WebView remount in player)
-    this.callbacks.onSourceChanged(
-      source,
-      this.currentIndex,
-      this.sources.length,
-    );
+    // Already retried — advance to next
+    await trackRefreshFailure(source.providerId);
+    const advanced = await this.advanceToNext();
+    return { retried: false, advanced };
+  }
 
-    return { retried: true, advanced: false };
+  /**
+   * Handle mid-stream failure (playback died while user was watching).
+   * Records the drop, tracks playtime, and auto-advances to next server.
+   */
+  async handleMidStreamFailure(): Promise<boolean> {
+    const source = this.sources[this.currentIndex];
+    if (!source) return false;
+
+    // Record playtime and mid-stream drop
+    if (this.playbackStartedAt > 0) {
+      const playtime = Date.now() - this.playbackStartedAt;
+      await trackPlaytime(source.providerId, playtime);
+      this.playbackStartedAt = 0;
+    }
+    await trackMidStreamDrop(source.providerId);
+
+    const oldProvider = source.providerId;
+    this.currentIndex++;
+    this.retryCount = 0;
+
+    if (this.currentIndex >= this.sources.length) {
+      this.callbacks.onAllFailed();
+      return false;
+    }
+
+    const newSource = this.sources[this.currentIndex];
+    this.callbacks.onMidStreamRecovery?.(oldProvider, newSource.providerId);
+    this.callbacks.onSourceChanged(newSource, this.currentIndex, this.sources.length);
+    return true;
+  }
+
+  /** Record playtime when user voluntarily stops playback */
+  async recordPlaytimeOnStop(): Promise<void> {
+    const source = this.sources[this.currentIndex];
+    if (!source || this.playbackStartedAt === 0) return;
+    const playtime = Date.now() - this.playbackStartedAt;
+    await trackPlaytime(source.providerId, playtime);
+    this.playbackStartedAt = 0;
   }
 
   /** Restart from scratch (re-probe and re-rank) */
   async restart(): Promise<void> {
     this.currentIndex = 0;
+    this.retryCount = 0;
     this.engineReady = false;
+    invalidateRankedCache(); // Force fresh probing
     await this.init();
   }
 

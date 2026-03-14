@@ -26,6 +26,8 @@ export interface ProviderReliability {
   lastSuccess: number;        // timestamp
   lastFailure: number;        // timestamp
   recentOutcomes: ("ok" | "fail" | "buffer" | "slow")[];  // last 30
+  midStreamDrops: number;     // how many times playback died mid-stream
+  totalPlaytimeMs: number;    // total successful playback time
 }
 
 export interface ValidationCache {
@@ -52,7 +54,7 @@ export interface RecentSource {
 const RELIABILITY_KEY = "@nexora_stream_reliability_v1";
 const VALIDATION_CACHE_KEY = "@nexora_validation_cache_v1";
 const RECENT_SOURCES_KEY = "@nexora_recent_sources_v1";
-const VALIDATION_TTL_MS = 5 * 60 * 1000;         // 5 minutes
+const VALIDATION_TTL_MS = 10 * 60 * 1000;        // 10 minutes (was 5)
 const RECENT_SOURCES_TTL_MS = 60 * 60 * 1000;    // 1 hour
 const MAX_RECENT_OUTCOMES = 30;
 const MAX_RECENT_SOURCES = 50;
@@ -132,9 +134,15 @@ function ensure(providerId: string): ProviderReliability {
       lastSuccess: 0,
       lastFailure: 0,
       recentOutcomes: [],
+      midStreamDrops: 0,
+      totalPlaytimeMs: 0,
     };
   }
-  return _reliability[providerId];
+  // Migrate old entries missing new fields
+  const r = _reliability[providerId];
+  if (r.midStreamDrops == null) r.midStreamDrops = 0;
+  if (r.totalPlaytimeMs == null) r.totalPlaytimeMs = 0;
+  return r;
 }
 
 // ─── Public API ────────────────────────────────────────────────────────────────
@@ -199,6 +207,35 @@ export async function trackRefreshSuccess(providerId: string): Promise<void> {
   persistReliability();
 }
 
+/** Record a mid-stream drop (playback died during watching) */
+export async function trackMidStreamDrop(providerId: string): Promise<void> {
+  await load();
+  const r = ensure(providerId);
+  r.midStreamDrops++;
+  r.recentOutcomes.push("fail");
+  if (r.recentOutcomes.length > MAX_RECENT_OUTCOMES) {
+    r.recentOutcomes = r.recentOutcomes.slice(-MAX_RECENT_OUTCOMES);
+  }
+  persistReliability();
+}
+
+/** Record successful playtime (called on player close or periodic heartbeat) */
+export async function trackPlaytime(providerId: string, durationMs: number): Promise<void> {
+  await load();
+  const r = ensure(providerId);
+  r.totalPlaytimeMs += durationMs;
+  persistReliability();
+}
+
+/** Check if provider should be considered blacklisted (>80% fail over 5+ attempts) */
+export function isProviderBlacklisted(providerId: string): boolean {
+  const r = _reliability[providerId];
+  if (!r) return false;
+  const total = r.startupSuccesses + r.startupFailures;
+  if (total < 5) return false;
+  return (r.startupFailures / total) >= 0.8;
+}
+
 /** Record a failed refresh */
 export async function trackRefreshFailure(providerId: string): Promise<void> {
   await load();
@@ -228,6 +265,11 @@ export function getReliabilityScore(providerId: string): number {
   if (bufferRatio < 0.1) score += 15;
   else if (bufferRatio < 0.3) score += 10;
   else if (bufferRatio < 0.5) score += 5;
+
+  // Mid-stream stability bonus (0-10)
+  const dropRatio = r.startupSuccesses > 0 ? r.midStreamDrops / r.startupSuccesses : 0;
+  if (dropRatio < 0.05) score += 10;
+  else if (dropRatio < 0.15) score += 5;
 
   // Recent trend (0-15)
   const recent = r.recentOutcomes.slice(-10);
