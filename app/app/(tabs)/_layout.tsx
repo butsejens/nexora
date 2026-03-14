@@ -67,6 +67,18 @@ const tabIconStyles = StyleSheet.create({
 function TVTabLayout() {
   const { sidebarExpanded } = useSidebarState();
 
+  // BACK button re-opens sidebar when collapsed
+  useEffect(() => {
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (!sidebarExpanded) {
+        setSidebarExpanded(true);
+        return true;
+      }
+      return false;
+    });
+    return () => sub.remove();
+  }, [sidebarExpanded]);
+
   return (
     <Tabs
       screenOptions={{
@@ -95,6 +107,7 @@ function TVTabLayout() {
     >
       <Tabs.Screen
         name="livetv"
+        listeners={{ tabPress: () => setSidebarExpanded(false) }}
         options={{
           title: "Live TV",
           tabBarIcon: ({ focused }) => (
@@ -108,6 +121,7 @@ function TVTabLayout() {
       />
       <Tabs.Screen
         name="movies"
+        listeners={{ tabPress: () => setSidebarExpanded(false) }}
         options={{
           title: "Films",
           tabBarIcon: ({ focused }) => (
@@ -121,6 +135,7 @@ function TVTabLayout() {
       />
       <Tabs.Screen
         name="series"
+        listeners={{ tabPress: () => setSidebarExpanded(false) }}
         options={{
           title: "Series",
           tabBarIcon: ({ focused }) => (
@@ -134,6 +149,7 @@ function TVTabLayout() {
       />
       <Tabs.Screen
         name="downloads"
+        listeners={{ tabPress: () => setSidebarExpanded(false) }}
         options={{
           title: "Downloads",
           tabBarIcon: ({ focused }) => (

@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useCallback, useRef, useEffect } from "react";
 import {
-  View, Text, StyleSheet, FlatList, TouchableOpacity,
+  View, Text, StyleSheet, FlatList, TouchableOpacity, Pressable,
   Image, Platform, TextInput, ScrollView, ActivityIndicator, Animated,
 } from "react-native";
 import { router } from "expo-router";
@@ -26,23 +26,27 @@ const ChannelCard = React.memo(function ChannelCard({ channel, onPress, onLongPr
   channel: IPTVChannel; onPress: () => void; onLongPress: () => void; nowPlaying?: string | null;
 }) {
   const [imgError, setImgError] = useState(false);
+  const [focused, setFocused] = useState(false);
   const initials = getInitials(channel?.name || "TV", 2);
   const scaleAnim = useRef(new Animated.Value(1)).current;
 
-  const onFocus = useCallback(() => {
+  const onFocusHandler = useCallback(() => {
+    setFocused(true);
     if (isTV) setSidebarExpanded(false);
     Animated.spring(scaleAnim, { toValue: isTV ? 1.06 : 1.04, useNativeDriver: true, friction: 7, tension: 140 }).start();
   }, [scaleAnim]);
-  const onBlur = useCallback(() => {
+  const onBlurHandler = useCallback(() => {
+    setFocused(false);
     Animated.spring(scaleAnim, { toValue: 1, useNativeDriver: true, friction: 7, tension: 140 }).start();
   }, [scaleAnim]);
 
   return (
-    <Animated.View style={[{ transform: [{ scale: scaleAnim }] }, isTV && scaleAnim.__getValue?.() > 1 && { shadowColor: "#fff", shadowOpacity: 0.4, shadowRadius: 14, elevation: 16 }]}>
-    <TouchableOpacity
-      style={[styles.channelCard, isTV && styles.channelCardTV]}
-      onPress={onPress} onLongPress={onLongPress} activeOpacity={0.75}
-      onFocus={onFocus} onBlur={onBlur}
+    <Animated.View focusable={false} style={[{ transform: [{ scale: scaleAnim }] }, isTV && focused && { shadowColor: "#fff", shadowOpacity: 0.4, shadowRadius: 14, elevation: 16 }]}>
+    <Pressable
+      style={[styles.channelCard, isTV && styles.channelCardTV, isTV && focused && { borderColor: 'rgba(255,255,255,0.85)', borderWidth: 2 }]}
+      onPress={onPress} onLongPress={onLongPress}
+      focusable={true}
+      onFocus={onFocusHandler} onBlur={onBlurHandler}
     >
       <View style={[styles.channelLogo, isTV && styles.channelLogoTV]}>
         {channel.logo && !imgError ? (
@@ -64,7 +68,7 @@ const ChannelCard = React.memo(function ChannelCard({ channel, onPress, onLongPr
         <Text style={styles.liveText}>LIVE</Text>
       </View>
       <Ionicons name="play-circle-outline" size={isTV ? 32 : 26} color={COLORS.accent} />
-    </TouchableOpacity>
+    </Pressable>
     </Animated.View>
   );
 });
@@ -75,6 +79,7 @@ const VODCard = React.memo(function VODCard({ channel, onPress, type }: {
   channel: IPTVChannel; onPress: () => void; type: "movie" | "series";
 }) {
   const [imgError, setImgError] = useState(false);
+  const [focused, setFocused] = useState(false);
   const poster = channel.poster || channel.logo;
   const badgeLabel = type === "movie" ? "MOVIE" : "SERIES";
   const badgeBg = type === "movie" ? "rgba(229,9,20,0.25)" : "rgba(0,120,255,0.25)";
@@ -83,18 +88,21 @@ const VODCard = React.memo(function VODCard({ channel, onPress, type }: {
   const meta = type === "movie" && channel.year ? String(channel.year) : type === "series" && channel.seasons ? `${channel.seasons} Season${channel.seasons > 1 ? "s" : ""}` : null;
   const scaleAnim = useRef(new Animated.Value(1)).current;
 
-  const onFocus = useCallback(() => {
+  const onFocusHandler = useCallback(() => {
+    setFocused(true);
     if (isTV) setSidebarExpanded(false);
     Animated.spring(scaleAnim, { toValue: 1.08, useNativeDriver: true, friction: 7, tension: 140 }).start();
   }, [scaleAnim]);
-  const onBlur = useCallback(() => {
+  const onBlurHandler = useCallback(() => {
+    setFocused(false);
     Animated.spring(scaleAnim, { toValue: 1, useNativeDriver: true, friction: 7, tension: 140 }).start();
   }, [scaleAnim]);
 
   return (
-    <Animated.View style={[isTV ? styles.vodCardTV : styles.vodCard, { transform: [{ scale: scaleAnim }] }, isTV && scaleAnim.__getValue?.() > 1 && { shadowColor: "#fff", shadowOpacity: 0.4, shadowRadius: 14, elevation: 16 }]}>
-    <TouchableOpacity style={{ flex: 1 }} onPress={onPress} activeOpacity={0.78}
-      onFocus={onFocus} onBlur={onBlur}
+    <Animated.View focusable={false} style={[isTV ? styles.vodCardTV : styles.vodCard, { transform: [{ scale: scaleAnim }] }, isTV && focused && { shadowColor: "#fff", shadowOpacity: 0.4, shadowRadius: 14, elevation: 16 }]}>
+    <Pressable style={[{ flex: 1 }, isTV && focused && { borderColor: 'rgba(255,255,255,0.85)', borderWidth: 2, borderRadius: 14 }]} onPress={onPress}
+      focusable={true}
+      onFocus={onFocusHandler} onBlur={onBlurHandler}
     >
       <View style={styles.vodPoster}>
         {poster && !imgError ? (
@@ -117,7 +125,7 @@ const VODCard = React.memo(function VODCard({ channel, onPress, type }: {
       <Text style={styles.vodTitle} numberOfLines={1}>{channel.title || channel.name}</Text>
       {meta ? <Text style={styles.vodMeta} numberOfLines={1}>{meta}</Text> : null}
       {channel.group && !meta ? <Text style={styles.vodGroup} numberOfLines={1}>{channel.group}</Text> : null}
-    </TouchableOpacity>
+    </Pressable>
     </Animated.View>
   );
 });

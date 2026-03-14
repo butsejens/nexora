@@ -4,6 +4,7 @@ import {
   Text,
   StyleSheet,
   TouchableOpacity,
+  Pressable,
   Image,
   Animated,
   Platform,
@@ -89,24 +90,26 @@ export const RealContentCard = React.memo(function RealContentCard({ item, onPre
   }) : undefined;
 
   return (
-    <Animated.View style={[
-      { width: cardWidth, marginRight: isTV ? 20 : 14, transform: [{ scale: scaleAnim }] },
-      isTV && focused && {
-        shadowColor: "#fff",
-        shadowOpacity: 0.5,
-        shadowRadius: 18,
-        elevation: 20,
-      },
-    ]}>
-      <TouchableOpacity
+    <Animated.View
+      focusable={false}
+      style={[
+        { width: cardWidth, marginRight: isTV ? 20 : 14, transform: [{ scale: scaleAnim }] },
+        isTV && focused && {
+          shadowColor: "#fff",
+          shadowOpacity: 0.5,
+          shadowRadius: 18,
+          elevation: 20,
+        },
+      ]}>
+      <Pressable
         onPress={() => {
           SafeHaptics.impactLight();
           onPress();
         }}
-        activeOpacity={0.78}
+        focusable={true}
         onFocus={handleFocus}
         onBlur={handleBlur}
-        hasTVPreferredFocus={false}
+        style={({ pressed }) => ({ opacity: pressed && !isTV ? 0.78 : 1 })}
       >
         <Animated.View style={[
           styles.poster,
@@ -208,7 +211,7 @@ export const RealContentCard = React.memo(function RealContentCard({ item, onPre
             </>
           ) : null}
         </View>
-      </TouchableOpacity>
+      </Pressable>
     </Animated.View>
   );
 });
