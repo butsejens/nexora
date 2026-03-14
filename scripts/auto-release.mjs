@@ -70,7 +70,7 @@ function main() {
 
   const serverVersion = readJson(serverVersionPath);
   serverVersion.version = nextVersion;
-  serverVersion.apkUrl = `https://github.com/butsejens/nexora/releases/download/v${nextVersion}/app-release.apk`;
+  serverVersion.apkUrl = `https://github.com/butsejens/nexora/releases/download/v${nextVersion}/app-mobile-release.apk`;
   writeJson(serverVersionPath, serverVersion);
 
   const appPkg = readJson(appPkgPath);
