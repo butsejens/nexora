@@ -200,6 +200,22 @@ const AD_DOMAINS = [
   "mouseflow.com", "crazyegg.com", "luckyorange.com",
   "acscdn.com", "cloudfront.net/ad", "bongacams.com", "chaturbate.com",
   "livejasmin.com", "stripchat.com", "cam4.com", "camsoda.com",
+  // Additional popup/redirect domains
+  "pushance.com", "pushails.com", "pushnest.com", "dolohen.com",
+  "streamdefence.com", "streamdefense.com", "streamguard.cc",
+  "adserverplus.com", "tsyndicate.com", "effectivegatetocontent.com",
+  "geniusdexchange.com", "whoads.net", "a-ads.com", "coinzilla.com",
+  "cointraffic.io", "bitmedia.io", "ad.plus", "monetag.com",
+  "lootlinks.co", "linkbucks.com", "linkbux.com",
+  "disqus.com/embed/ads", "nativery.com", "teads.tv",
+  "marphezis.com", "wpadmngr.com", "raptive.com",
+  "notify-monad.com", "pusherism.com", "pushclub.net",
+  "go.adbloat.com", "cdn77.org/ad", "ablfrnd.com",
+  "fastclick.net", "specificclick.net", "valueclick.com",
+  "undertone.com", "adblade.com", "adcolony.com",
+  "twinrdsrv.com", "tsartech.com", "runative.com",
+  "ntv.io", "glimr.io", "liveintent.com", "kochava.com",
+  "d2cmedia.com", "nextmillennium.io", "a2z-media.com",
 ];
 
 // ─── JS injected in embed WebView ─────────────────────────────────────────────
@@ -243,6 +259,15 @@ const AD_BLOCK_JS = `
   window.alert = function(){};
   window.confirm = function(){ return true; };
   window.prompt = function(){ return ''; };
+  try{ Object.defineProperty(window, 'open', { value: function(){ return null; }, writable: false, configurable: false }); }catch(e){}
+  // Block showModalDialog if it exists
+  try{ window.showModalDialog = function(){}; }catch(e){}
+  // Block Notification API popups
+  try{ if(window.Notification){ window.Notification.requestPermission = function(cb){ if(cb) cb('denied'); return Promise.resolve('denied'); }; } }catch(e){}
+  // Block window.focus/blur tricks used by popup ads
+  try{ var _origFocus = window.focus; window.focus = function(){ try{ _origFocus.call(window); }catch(e){} }; }catch(e){}
+  // Block document.write after initial load (used to inject full-page ad takeovers)
+  setTimeout(function(){ try{ document.write = function(){}; document.writeln = function(){}; }catch(e){} }, 2000);
   var _swallowRemoveChildError = function(msg){
     var text = String(msg || '').toLowerCase();
     return text.includes('removechild') || text.includes('notfounderror') || text.includes('not a child') || text.includes('hierarchyrequesterror');
@@ -353,12 +378,35 @@ const AD_BLOCK_JS = `
   // ── 2b. Intercept dynamically added click listeners that open ads ─────
   var _origAddEvent = EventTarget.prototype.addEventListener;
   EventTarget.prototype.addEventListener = function(type, fn, opts){
-    if((type === 'touchstart' || type === 'mousedown' || type === 'pointerdown') &&
+    // Block body/document-level click/touch/pointer handlers (ad click hijackers)
+    if((type === 'touchstart' || type === 'mousedown' || type === 'pointerdown' ||
+        type === 'mouseup' || type === 'pointerup' || type === 'touchend') &&
+       (this === document.body || this === document.documentElement || this === document)){
+      return;
+    }
+    // Block 'click' on body/document after video is found (late-added ad click handlers)
+    if(type === 'click' && _videoFound &&
        (this === document.body || this === document.documentElement || this === document)){
       return;
     }
     return _origAddEvent.call(this, type, fn, opts);
   };
+
+  // ── 2c. Block form submissions (used by some ad redirects) ────────────
+  try{
+    HTMLFormElement.prototype.submit = function(){ return false; };
+  }catch(e){}
+
+  // ── 2d. Block popstate/hashchange ad redirects ────────────────────────
+  var _popstateBlocked = false;
+  _origAddEvent.call(window, 'popstate', function(e){
+    if(_videoFound && !_popstateBlocked){
+      _popstateBlocked = true;
+      setTimeout(function(){ _popstateBlocked = false; }, 100);
+      e.stopImmediatePropagation();
+      try{ history.forward(); }catch(ex){}
+    }
+  }, true);
 
   // ── 3. Block location navigation off-domain ──────────────────────────
   (function(){
@@ -394,12 +442,47 @@ const AD_BLOCK_JS = `
     };
     if(document.readyState !== 'loading'){ removeRefresh(); }
     else{ document.addEventListener('DOMContentLoaded', removeRefresh); }
+
+    // Check if an iframe src is an ad
+    function _isAdIframe(el){
+      if(!el || el.tagName !== 'IFRAME') return false;
+      var src = el.getAttribute('src') || '';
+      if(_isAdUrl(src)) return true;
+      // Zero-size or hidden iframes are almost always ads/trackers
+      try{
+        var w = parseInt(el.getAttribute('width') || el.style.width || '999');
+        var h = parseInt(el.getAttribute('height') || el.style.height || '999');
+        if((w <= 1 && h <= 1) || el.style.display === 'none' || el.style.visibility === 'hidden') return true;
+      }catch(e){}
+      // Iframes with no src or about:blank that appear AFTER video starts are suspicious
+      if(_videoFound && (!src || src === 'about:blank')){ return true; }
+      return false;
+    }
+
     new MutationObserver(function(muts){
       muts.forEach(function(mut){
         mut.addedNodes.forEach(function(n){
           try{ if(n.nodeType===1 && n.tagName==='META' && (n.getAttribute('http-equiv')||'').toLowerCase()==='refresh') n.remove(); }catch(e){}
-          try{ if(n.nodeType===1 && n.tagName==='IFRAME'){ var src=n.getAttribute('src')||''; if(_isAdUrl(src)) n.remove(); } }catch(e){}
+          try{ if(n.nodeType===1 && n.tagName==='IFRAME' && _isAdIframe(n)) n.remove(); }catch(e){}
           try{ if(n.nodeType===1 && n.tagName==='SCRIPT'){ var src=n.getAttribute('src')||''; if(_isAdUrl(src)) n.remove(); } }catch(e){}
+          // Remove newly added anchor tags that are full-page overlay ad links
+          try{
+            if(n.nodeType===1 && n.tagName==='A'){
+              var href = n.getAttribute('href')||'';
+              if(_isAdUrl(href)){ n.remove(); return; }
+              var s = window.getComputedStyle(n);
+              if((s.position==='fixed'||s.position==='absolute') && parseInt(s.zIndex||'0')>10){ n.remove(); }
+            }
+          }catch(e){}
+          // Remove dynamically added divs that cover the full page (popup overlays)
+          try{
+            if(n.nodeType===1 && (n.tagName==='DIV'||n.tagName==='SECTION')){
+              var s = window.getComputedStyle(n);
+              if(s.position==='fixed' && parseInt(s.zIndex||'0')>100){
+                if(!n.querySelector('video,canvas')){ n.remove(); }
+              }
+            }
+          }catch(e){}
         });
       });
     }).observe(document.documentElement||document.body||document, {childList:true, subtree:true});
@@ -508,8 +591,23 @@ const AD_BLOCK_JS = `
   var _cleanInterval = setInterval(function(){
     removeAds();
     _cleanCount++;
-    if(_cleanCount > 20 || _videoFound) clearInterval(_cleanInterval);
+    if(_cleanCount > 60) clearInterval(_cleanInterval);
   }, 1000);
+
+  // ── 5b. Nuke all iframes that aren't the video player after playback starts ──
+  setInterval(function(){
+    if(!_videoFound) return;
+    document.querySelectorAll('iframe').forEach(function(f){
+      var src = (f.getAttribute('src')||'').toLowerCase();
+      var id = (f.id||'').toLowerCase();
+      var cn = (typeof f.className === 'string' ? f.className : '').toLowerCase();
+      // Keep player-related iframes
+      if(id.match(/player|video|stream/) || cn.match(/player|video|stream/)) return;
+      if(src.match(/\.m3u8|\.mp4|\.ts|player|embed|stream|hls/)) return;
+      // Remove everything else
+      try{ f.remove(); }catch(e){}
+    });
+  }, 3000);
 
   // ── 6. Auto-play: click play button + start video ────────────────────
   function tryAutoPlay(){
@@ -1146,12 +1244,24 @@ export default function PlayerScreen() {
         /apps\.apple\.com/i,
         /install\s*and\s*continue/i,
         /vpn\s*recommended/i,
-        /casino|gambling|bet365|1xbet|stake\.com/i,
+        /casino|gambling|bet365|1xbet|stake\.com|betway|poker|slots/i,
+        /vpn|norton|mcafee|avast|cleanmaster|antivirus/i,
+        /download.*app|install.*app/i,
+        /subscribe.*premium|premium.*offer/i,
+        /survey|reward|prize|winner|congratulat/i,
+        /dating|singles|meet.*local/i,
       ];
       if (BLOCK_PATTERNS.some((pattern) => pattern.test(url))) return false;
 
       // Block known ad/tracker domains
       if (AD_DOMAINS.some(d => url.includes(d))) return false;
+
+      // Block any URL with obvious ad query params
+      try {
+        const parsed = new URL(url);
+        const suspiciousParams = ["clickid", "aff_id", "aff_sub", "campaign_id", "ad_id", "utm_medium"];
+        if (suspiciousParams.some(p => parsed.searchParams.has(p))) return false;
+      } catch {}
 
       try {
         const embedHost = new URL(currentEmbedUrl).hostname;
@@ -1161,7 +1271,8 @@ export default function PlayerScreen() {
           "vidsrc", "vidlink", "videasy", "autoembed", "moviesapi", "nontongo",
           "smashystream", "frembed", "jwplayer", "cloudflare", "m3u8", "hls", "stream",
           "rabbitstream", "vidcloud", "upcloud", "streamtape", "filemoon", "mixdrop", "dood",
-          "googlevideo", "akamaized", "cdn",
+          "googlevideo", "akamaized", "cdn", "vidbinge", "embedcc", "embedsu", "rive",
+          "multiembed", "2embed", "primewire", "111movies",
         ];
         const isKnownVideoHost = ALLOWED_HOST_SNIPPETS.some((snippet) => reqHost.includes(snippet));
         if (!isSameDomain) {
@@ -1182,7 +1293,7 @@ export default function PlayerScreen() {
       if (disposedRef.current) return;
       const url: string = navState.url || "";
       if (!url || url.startsWith("about:") || url.startsWith("blob:") || url.startsWith("data:")) return;
-      if (/play\.google\.com\/store|apps\.apple\.com|install\s*and\s*continue|vpn\s*recommended|casino|gambling|bet365|1xbet|stake\.com/i.test(url)) {
+      if (/play\.google\.com\/store|apps\.apple\.com|install\s*and\s*continue|vpn\s*recommended|casino|gambling|bet365|1xbet|stake\.com|betway|poker|slots|norton|mcafee|avast|cleanmaster|survey|reward|prize|winner|dating|singles/i.test(url)) {
         embedWebviewRef.current?.stopLoading();
         embedWebviewRef.current?.goBack();
         return;
@@ -1199,7 +1310,8 @@ export default function PlayerScreen() {
           "vidsrc", "vidlink", "videasy", "autoembed", "moviesapi", "nontongo",
           "smashystream", "frembed", "jwplayer", "cloudflare", "m3u8", "hls", "stream",
           "rabbitstream", "vidcloud", "upcloud", "streamtape", "filemoon", "mixdrop", "dood",
-          "googlevideo", "akamaized", "cdn",
+          "googlevideo", "akamaized", "cdn", "vidbinge", "embedcc", "embedsu", "rive",
+          "multiembed", "2embed", "primewire", "111movies",
         ].some((snippet) => reqHost.includes(snippet));
         if (!isSameDomain && !isKnownVideoHost && !/\.(m3u8|mp4|ts|webm|mpd|mkv)(\?|$)/i.test(url)) {
           embedWebviewRef.current?.stopLoading();
