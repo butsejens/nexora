@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
   View, Text, StyleSheet, TouchableOpacity, Platform,
   ScrollView, Image, ActivityIndicator,
@@ -33,9 +33,47 @@ function safeStr(val: unknown): string {
   return String(val);
 }
 
-const BLOCK_POPUP_JS = `
+// ─── Sport stream providers (AI ranked) ────────────────────────────────────────
+const SPORT_PROVIDERS = [
+  { id: "embedme-1", label: "Server 1", getUrl: (matchId: string) => `https://embedme.top/embed/alpha/${matchId}/1` },
+  { id: "embedme-2", label: "Server 2", getUrl: (matchId: string) => `https://embedme.top/embed/alpha/${matchId}/2` },
+  { id: "embedme-3", label: "Server 3", getUrl: (matchId: string) => `https://embedme.top/embed/alpha/${matchId}/3` },
+  { id: "embedme-4", label: "Server 4", getUrl: (matchId: string) => `https://embedme.top/embed/alpha/${matchId}/4` },
+  { id: "embedme-5", label: "Server 5", getUrl: (matchId: string) => `https://embedme.top/embed/alpha/${matchId}/5` },
+  { id: "embedme-6", label: "Server 6", getUrl: (matchId: string) => `https://embedme.top/embed/alpha/${matchId}/6` },
+  { id: "embedme-7", label: "Server 7", getUrl: (matchId: string) => `https://embedme.top/embed/alpha/${matchId}/7` },
+  { id: "embedme-8", label: "Server 8", getUrl: (matchId: string) => `https://embedme.top/embed/alpha/${matchId}/8` },
+];
+
+// ─── Sport ad domains (network-level blocking) ────────────────────────────────
+const SPORT_AD_DOMAINS = [
+  "googlesyndication.com", "doubleclick.net", "googleadservices.com",
+  "adnxs.com", "pubmatic.com", "openx.net", "rubiconproject.com",
+  "advertising.com", "adform.net", "criteo.com",
+  "exoclick.com", "juicyads.com", "popads.net", "popcash.net",
+  "trafficjunky.net", "adsterra.com", "hilltopads.net", "ero-advertising.com",
+  "adcash.com", "propellerads.com", "clickadu.com", "plugrush.com",
+  "trc.taboola.com", "cdn.taboola.com", "outbrain.com", "media.net",
+  "revcontent.com", "mgid.com", "bidvertiser.com", "adf.ly",
+  "shorte.st", "linkvertise.com", "ouo.io", "adskeeper.com",
+  "ad-maven.com", "admaven.com", "hpyrdr.com", "offerimage.com",
+  "popunder.net", "popmyads.com", "richpush.co", "megapush.com",
+  "onclkds.com", "revenuehits.com", "yllix.com", "monetag.com",
+  "bongacams.com", "chaturbate.com", "livejasmin.com", "stripchat.com",
+  "pushance.com", "pushails.com", "pushnest.com", "dolohen.com",
+  "streamdefence.com", "streamdefense.com", "streamguard.cc",
+  "coinzilla.com", "cointraffic.io", "bitmedia.io",
+  "google.com/recaptcha", "recaptcha.net", "hcaptcha.com",
+  "challenges.cloudflare.com", "captcha.website", "captcha-delivery.com",
+  "arkoselabs.com", "funcaptcha.com",
+  "bet365.com", "1xbet.com", "stake.com", "betway.com",
+  "casino.", "gambling.", "slots.",
+];
+
+// ─── Comprehensive sport stream ad blocker JS ─────────────────────────────────
+const SPORT_AD_BLOCK_JS = `
 (function(){
-  // Patch removeChild to never throw — prevents DOMException crashes
+  // Patch removeChild to never throw
   try{
     var _origRc = Node.prototype.removeChild;
     Node.prototype.removeChild = function(child){
@@ -43,7 +81,7 @@ const BLOCK_POPUP_JS = `
     };
   }catch(e){}
 
-  // Swallow removeChild / DOM hierarchy errors silently
+  // Swallow DOM errors silently
   var _isRcErr = function(msg){
     var s = String(msg||'').toLowerCase();
     return s.includes('removechild') || s.includes('notfounderror') || s.includes('not a child') || s.includes('hierarchyrequesterror');
@@ -60,19 +98,274 @@ const BLOCK_POPUP_JS = `
     }catch(e){}
   }, true);
 
-  // Block popups / navigation
+  // Block ALL popups and redirects
   window.open = function(){ return null; };
   window.alert = function(){};
   window.confirm = function(){ return true; };
   window.prompt = function(){ return ''; };
+  if(window.showModalDialog) window.showModalDialog = function(){ return null; };
+
+  // Block Notification API
+  try{
+    if(window.Notification) window.Notification = { requestPermission: function(cb){ if(cb) cb('denied'); return Promise.resolve('denied'); }, permission: 'denied' };
+  }catch(e){}
+
+  // Block document.write (used by many ad scripts)
+  try{ document.write = function(){}; document.writeln = function(){}; }catch(e){}
+
+  // Block form submissions (ad redirects)
+  try{
+    var _origSubmit = HTMLFormElement.prototype.submit;
+    HTMLFormElement.prototype.submit = function(){
+      var action = (this.action||'').toLowerCase();
+      if(action.includes('ad') || action.includes('track') || action.includes('click') || action.includes('redirect')) return;
+      return _origSubmit.call(this);
+    };
+  }catch(e){}
+
+  // CAPTCHA defeating
+  try{
+    window.grecaptcha = { ready:function(cb){if(cb)cb();}, execute:function(){return Promise.resolve('fake-token');},
+      render:function(){return 0;}, getResponse:function(){return 'fake-token';}, reset:function(){},
+      enterprise:{ready:function(cb){if(cb)cb();},execute:function(){return Promise.resolve('fake-token');},render:function(){return 0;}} };
+    window.hcaptcha = { render:function(){return 0;}, getResponse:function(){return 'fake-token';},
+      execute:function(){return Promise.resolve({response:'fake-token'});}, reset:function(){} };
+    window.turnstile = { render:function(el,opts){if(opts&&opts.callback)setTimeout(function(){opts.callback('fake-token');},100);return 'w0';},
+      getResponse:function(){return 'fake-token';}, reset:function(){}, remove:function(){} };
+  }catch(e){}
+
+  // Block CAPTCHA/ad script loading
+  try{
+    var _origCreate = document.createElement.bind(document);
+    document.createElement = function(tag){
+      var el = _origCreate(tag);
+      if(tag.toLowerCase() === 'script'){
+        var _origSet = el.__lookupSetter__('src') || Object.getOwnPropertyDescriptor(HTMLScriptElement.prototype,'src')?.set;
+        if(_origSet){
+          Object.defineProperty(el,'src',{
+            set:function(v){
+              var u = String(v||'').toLowerCase();
+              if(u.includes('recaptcha') || u.includes('hcaptcha') || u.includes('turnstile') ||
+                 u.includes('captcha') || u.includes('challenges.cloudflare') ||
+                 u.includes('googlesyndication') || u.includes('doubleclick') ||
+                 u.includes('popads') || u.includes('propellerads') || u.includes('adsterra') ||
+                 u.includes('exoclick') || u.includes('juicyads') || u.includes('trafficjunky') ||
+                 u.includes('popunder') || u.includes('clickadu') || u.includes('monetag') ||
+                 u.includes('adcash') || u.includes('hilltopads')) return;
+              _origSet.call(el, v);
+            },
+            get:function(){ return el.getAttribute('src')||''; },
+            configurable:true
+          });
+        }
+      }
+      return el;
+    };
+  }catch(e){}
+
+  // CSS: instantly hide ad/popup/captcha overlays
+  try{
+    var s = document.createElement('style');
+    s.textContent = [
+      '[class*="popup"],[class*="overlay"],[class*="modal"],[id*="popup"],[id*="overlay"],[id*="modal"]',
+      '[class*="banner"],[class*="advert"],[class*="ads-"],[id*="banner"],[id*="advert"],[id*="ads-"]',
+      '[class*="cookie"],[class*="consent"],[class*="gdpr"],[id*="cookie"],[id*="consent"],[id*="gdpr"]',
+      '[class*="vpn"],[class*="paywall"],[class*="subscribe"],[class*="interstitial"]',
+      '[class*="captcha"],[class*="recaptcha"],[class*="hcaptcha"],[class*="turnstile"],[class*="robot"]',
+      '[class*="verify"],[class*="verification"],[class*="challenge"],[class*="antibot"]',
+      '[id*="captcha"],[id*="recaptcha"],[id*="hcaptcha"],[id*="turnstile"],[id*="robot"]',
+      '[id*="verify"],[id*="verification"],[id*="challenge"],[id*="antibot"]',
+      '.g-recaptcha,div[data-sitekey]',
+      'iframe[src*="recaptcha"],iframe[src*="hcaptcha"],iframe[src*="turnstile"]',
+      '[class*="notification"],[class*="push-"],[id*="notification"],[id*="push-"]',
+      '[class*="casino"],[class*="betting"],[class*="gambl"],[id*="casino"],[id*="betting"]',
+    ].join(',') + '{display:none!important;visibility:hidden!important;opacity:0!important;pointer-events:none!important;position:absolute!important;width:0!important;height:0!important;overflow:hidden!important;}';
+    (document.head || document.documentElement).appendChild(s);
+  }catch(e){}
+
+  // Block target=_blank links
   document.addEventListener('click', function(e){
     var a = e.target && e.target.closest ? e.target.closest('a[target="_blank"]') : null;
     if(a){ e.preventDefault(); e.stopPropagation(); }
   }, true);
   window.addEventListener('beforeunload', function(e){ e.stopImmediatePropagation(); }, true);
+
+  // Block popstate/hashchange redirects
+  window.addEventListener('popstate', function(e){ e.stopImmediatePropagation(); }, true);
+  window.addEventListener('hashchange', function(e){ e.stopImmediatePropagation(); }, true);
+
+  // Overlay removal function
+  function removeAds(){
+    var AD_SELECTORS = [
+      '[class*="popup"]','[class*="overlay"]','[class*="modal"]','[class*="banner"]',
+      '[class*="advert"]','[class*="ads-"]','[class*="cookie"]','[class*="consent"]',
+      '[class*="gdpr"]','[class*="vpn"]','[class*="paywall"]','[class*="subscribe"]',
+      '[class*="captcha"]','[class*="recaptcha"]','[class*="hcaptcha"]','[class*="turnstile"]',
+      '[class*="robot"]','[class*="verify"]','[class*="verification"]','[class*="challenge"]',
+      '[class*="casino"]','[class*="betting"]','[class*="notification"]',
+    ];
+    var TEXT_PATTERNS = [
+      "i'm not a robot","are you human","verify","captcha","human verification",
+      "prove you're human","bot check","security check","please verify",
+      "click to verify","not a robot","vpn","download app","install","subscribe now",
+    ];
+    try{
+      AD_SELECTORS.forEach(function(sel){
+        document.querySelectorAll(sel).forEach(function(el){
+          // Don't remove the video player
+          if(el.querySelector && el.querySelector('video,canvas,iframe[src*="m3u8"],iframe[src*="stream"]')) return;
+          var id = (el.id||'').toLowerCase();
+          var cn = (el.className||'').toString().toLowerCase();
+          if(id.match(/player|video|stream|hls/) || cn.match(/player|video|stream|hls/)) return;
+          try{ el.remove(); }catch(e){}
+        });
+      });
+    }catch(e){}
+    // Remove high z-index fixed/absolute overlays (likely ad/captcha overlays)
+    try{
+      var all = document.querySelectorAll('div,section,aside');
+      for(var i=0;i<all.length;i++){
+        var el = all[i];
+        var cs = window.getComputedStyle(el);
+        if((cs.position === 'fixed' || cs.position === 'absolute') && parseInt(cs.zIndex||'0') > 999){
+          if(el.querySelector && el.querySelector('video,canvas')) continue;
+          var id = (el.id||'').toLowerCase();
+          var cn = (el.className||'').toString().toLowerCase();
+          if(id.match(/player|video|stream|hls/) || cn.match(/player|video|stream|hls/)) continue;
+          var txt = (el.textContent||'').toLowerCase().substring(0,500);
+          var isAd = TEXT_PATTERNS.some(function(p){ return txt.includes(p); });
+          if(isAd || el.offsetWidth > window.innerWidth * 0.5){
+            try{ el.remove(); }catch(e){}
+          }
+        }
+      }
+    }catch(e){}
+    // Remove ad iframes
+    try{
+      document.querySelectorAll('iframe').forEach(function(iframe){
+        var src = (iframe.src||'').toLowerCase();
+        if(src.match(/\\.m3u8|\\.mp4|\\.ts|player|embed|stream|hls/)) return;
+        if(src.includes('recaptcha') || src.includes('hcaptcha') || src.includes('turnstile') ||
+           src.includes('captcha') || src.includes('challenges.cloudflare') ||
+           src.includes('googlead') || src.includes('doubleclick') || src.includes('googlesyndication') ||
+           src.includes('adnxs') || src.includes('popads') || src.includes('exoclick')){
+          try{ iframe.remove(); }catch(e){}
+          return;
+        }
+        // Remove zero-size or offscreen iframes (hidden ad trackers)
+        if(iframe.offsetWidth < 5 || iframe.offsetHeight < 5){
+          try{ iframe.remove(); }catch(e){}
+        }
+      });
+    }catch(e){}
+  }
+
+  // Click likely play buttons
+  function clickPlay(){
+    try{
+      var btns = document.querySelectorAll('[class*="play"],[id*="play"],button,a');
+      for(var i=0;i<btns.length;i++){
+        var el = btns[i];
+        var txt = (el.textContent||'').toLowerCase().trim();
+        if(txt.match(/^play$|▶|start|watch|klik|bekijk/)){
+          el.click();
+          break;
+        }
+      }
+    }catch(e){}
+    try{
+      var vids = document.querySelectorAll('video');
+      vids.forEach(function(v){ v.play().catch(function(){}); });
+    }catch(e){}
+  }
+
+  // Run immediately and periodically
+  removeAds();
+  clickPlay();
+  setTimeout(function(){ removeAds(); clickPlay(); }, 500);
+  setTimeout(function(){ removeAds(); clickPlay(); }, 1500);
+  setTimeout(function(){ removeAds(); clickPlay(); }, 3000);
+  setInterval(removeAds, 2000);
+
+  // Auto-trigger data-callback for CAPTCHA
+  setTimeout(function(){
+    try{
+      document.querySelectorAll('[data-callback]').forEach(function(el){
+        var cbName = el.getAttribute('data-callback');
+        if(cbName && window[cbName]) window[cbName]('fake-token');
+      });
+    }catch(e){}
+  }, 1500);
+
+  // Report stream state to React Native
+  try{
+    var _checkVideo = setInterval(function(){
+      var v = document.querySelector('video');
+      if(v){
+        if(v.readyState >= 2 && !v.paused && v.currentTime > 0){
+          try{ window.ReactNativeWebView.postMessage(JSON.stringify({type:'sport-playing'})); }catch(e){}
+        }
+      }
+    }, 2000);
+  }catch(e){}
 })();
 true;
 `;
+
+// ─── Sport stream probing ─────────────────────────────────────────────────────
+async function probeSportUrl(url: string): Promise<{ reachable: boolean; latencyMs: number }> {
+  const start = Date.now();
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 6000);
+    const res = await fetch(url, {
+      method: "HEAD",
+      signal: controller.signal,
+      headers: { "User-Agent": "Mozilla/5.0 (Linux; Android 12) AppleWebKit/537.36" },
+    });
+    clearTimeout(timeout);
+    const latencyMs = Date.now() - start;
+    // Accept 200-399 (some embeds redirect)
+    return { reachable: res.status < 400, latencyMs };
+  } catch {
+    return { reachable: false, latencyMs: Date.now() - start };
+  }
+}
+
+async function probeAllSportProviders(
+  matchId: string,
+  apiStreamUrl: string | null,
+): Promise<Array<{ id: string; url: string; label: string; reachable: boolean; latencyMs: number }>> {
+  const candidates: Array<{ id: string; url: string; label: string }> = [];
+
+  // API stream URL gets priority if valid
+  if (apiStreamUrl) {
+    candidates.push({ id: "api", url: apiStreamUrl, label: "AI Server" });
+  }
+
+  // Add all sport providers
+  for (const provider of SPORT_PROVIDERS) {
+    candidates.push({ id: provider.id, url: provider.getUrl(matchId), label: provider.label });
+  }
+
+  // Probe all in parallel
+  const results = await Promise.allSettled(
+    candidates.map(async (c) => {
+      const probe = await probeSportUrl(c.url);
+      return { ...c, ...probe };
+    }),
+  );
+
+  return results
+    .map((r) => (r.status === "fulfilled" ? r.value : null))
+    .filter((r): r is NonNullable<typeof r> => r !== null)
+    .sort((a, b) => {
+      // Reachable first, then by latency
+      if (a.reachable && !b.reachable) return -1;
+      if (!a.reachable && b.reachable) return 1;
+      return a.latencyMs - b.latencyMs;
+    });
+}
 
 const TABS = [
   { id: "stream",   label: "Stream",      icon: "play-circle-outline" },
@@ -150,6 +443,15 @@ export default function MatchDetailScreen() {
   const [streamErrorRef, setStreamErrorRef] = useState<string>("");
   const [streamFinderActive, setStreamFinderActive] = useState(false);
   const [streamFinderDone, setStreamFinderDone] = useState(false);
+  const [sportProviderIndex, setSportProviderIndex] = useState(0);
+  const [sportRankedProviders, setSportRankedProviders] = useState<
+    Array<{ id: string; url: string; label: string; reachable: boolean; latencyMs: number }>
+  >([]);
+  const [sportProbing, setSportProbing] = useState(false);
+  const [sportStreamPlaying, setSportStreamPlaying] = useState(false);
+  const [sportNoStreams, setSportNoStreams] = useState(false);
+  const sportLoadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const sportAdCountRef = useRef(0);
   const streamFinderTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isLive = params.status === "live";
   const isFinished = params.status === "finished" || params.status === "ft" || params.status === "done";
@@ -177,20 +479,135 @@ export default function MatchDetailScreen() {
     staleTime: 60_000,
   });
   const _rawStreamUrl = streamData?.url || ""; void _streamLoading;
-  const streamUrl = (() => {
-    if (!_rawStreamUrl) return `https://embedme.top/embed/alpha/${params.matchId}/1`;
+  // Validate the API stream URL (reject search engines, bad protocols)
+  const apiStreamUrl: string | null = (() => {
+    if (!_rawStreamUrl) return null;
     const u = _rawStreamUrl.toLowerCase();
     if (
       u.includes("google.") || u.includes("bing.com") || u.includes("yahoo.com") ||
       u.includes("search?q=") || u.includes("/search?") || u.includes("duckduckgo.")
-    ) return `https://embedme.top/embed/alpha/${params.matchId}/1`;
-    if (!u.startsWith("http://") && !u.startsWith("https://")) return `https://embedme.top/embed/alpha/${params.matchId}/1`;
+    ) return null;
+    if (!u.startsWith("http://") && !u.startsWith("https://")) return null;
     return _rawStreamUrl;
   })();
+
+  // Current active stream URL from ranked providers
+  const activeStreamUrl = sportRankedProviders[sportProviderIndex]?.url || null;
+  const activeStreamLabel = sportRankedProviders[sportProviderIndex]?.label || "Server";
+  const allSportProvidersFailed = sportProviderIndex >= sportRankedProviders.length && sportRankedProviders.length > 0;
+
   const streamApiError = normalizeApiError(streamFetchError || streamData?.error || null);
   const streamPlayerError = normalizeApiError(streamWebError);
   const hasStreamApiIssue = Boolean(streamFetchError || streamData?.error);
   const hasStreamPlayerIssue = Boolean(streamWebError);
+
+  // ── AI Sport Stream Finder: probe all providers on mount ──────────────
+  useEffect(() => {
+    if (!isLive || !params.matchId) return;
+    let cancelled = false;
+
+    (async () => {
+      setSportProbing(true);
+      setStreamFinderActive(true);
+      setSportNoStreams(false);
+
+      const ranked = await probeAllSportProviders(params.matchId, apiStreamUrl);
+
+      if (cancelled) return;
+
+      const reachable = ranked.filter(r => r.reachable);
+      if (reachable.length === 0) {
+        // No working streams found — notify user
+        setSportNoStreams(true);
+        setSportRankedProviders(ranked); // keep all for retry
+      } else {
+        setSportRankedProviders(reachable);
+        setSportNoStreams(false);
+      }
+
+      setSportProbing(false);
+      setStreamFinderActive(false);
+      setStreamFinderDone(true);
+    })();
+
+    return () => { cancelled = true; };
+  }, [isLive, params.matchId, apiStreamUrl]);
+
+  // ── Try next sport provider ─────────────────────────────────────────────
+  const tryNextSportProvider = useCallback(() => {
+    setSportProviderIndex(i => {
+      const next = i + 1;
+      if (next >= sportRankedProviders.length) {
+        setSportNoStreams(true);
+        return i;
+      }
+      return next;
+    });
+    setStreamKey(k => k + 1);
+    setStreamWebError(null);
+    setStreamErrorRef("");
+    setSportStreamPlaying(false);
+    sportAdCountRef.current = 0;
+  }, [sportRankedProviders.length]);
+
+  // Auto-advance on error (sport stream)
+  useEffect(() => {
+    if (!streamWebError || !isLive || allSportProvidersFailed || sportNoStreams) return;
+    const t = setTimeout(() => tryNextSportProvider(), 1500);
+    return () => clearTimeout(t);
+  }, [streamWebError, isLive, allSportProvidersFailed, sportNoStreams, tryNextSportProvider]);
+
+  // Auto-advance on slow load (15s timeout)
+  useEffect(() => {
+    if (!isLive || !activeStreamUrl || sportStreamPlaying || sportNoStreams || allSportProvidersFailed) return;
+    sportLoadTimerRef.current = setTimeout(() => {
+      if (!sportStreamPlaying) tryNextSportProvider();
+    }, 15000);
+    return () => { if (sportLoadTimerRef.current) clearTimeout(sportLoadTimerRef.current); };
+  }, [isLive, activeStreamUrl, sportStreamPlaying, sportProviderIndex, sportNoStreams, allSportProvidersFailed, tryNextSportProvider]);
+
+  // ── Sport stream nav guard ──────────────────────────────────────────────
+  const sportNavGuard = useCallback((req: any) => {
+    const url: string = (req.url || "").toLowerCase();
+    if (!url || url.startsWith("about:") || url.startsWith("blob:") || url.startsWith("data:")) return true;
+    // Block ad/tracking domains
+    if (SPORT_AD_DOMAINS.some(d => url.includes(d))) { sportAdCountRef.current++; return false; }
+    // Block obvious ad patterns
+    if (/casino|gambling|bet365|1xbet|stake\.com|betway|poker|slots/i.test(url)) { sportAdCountRef.current++; return false; }
+    if (/vpn|norton|mcafee|avast|cleanmaster|antivirus/i.test(url)) return false;
+    if (/download.*app|install.*app|subscribe.*premium/i.test(url)) return false;
+    if (/captcha|recaptcha|hcaptcha|turnstile/i.test(url)) return false;
+    if (/challenges\.cloudflare/i.test(url)) return false;
+    if (/survey|reward|prize|winner|congratulat|dating|singles/i.test(url)) return false;
+    // Block suspicious params
+    try {
+      const parsed = new URL(url);
+      if (["clickid", "aff_id", "aff_sub", "campaign_id", "ad_id"].some(p => parsed.searchParams.has(p))) return false;
+    } catch {}
+    // Block Google/Bing/search redirects
+    if (url.includes("google.") || url.includes("bing.com") || url.includes("yahoo.com")) {
+      if (url.includes("/search") || url.includes("search?")) return false;
+    }
+    // Allow streaming content
+    if (/\.(m3u8|mp4|ts|webm|mpd|mkv)(\?|$)/i.test(url)) return true;
+    // Allow known streaming hosts
+    if (/embedme|stream|player|hls|cdn|akamaized|googlevideo|cloudflare/i.test(url)) return true;
+    return true;
+  }, []);
+
+  // ── Sport stream WebView message handler ────────────────────────────────
+  const handleSportMessage = useCallback((event: any) => {
+    try {
+      const data = JSON.parse(event.nativeEvent.data);
+      if (data.type === "sport-playing") {
+        setSportStreamPlaying(true);
+        if (sportLoadTimerRef.current) {
+          clearTimeout(sportLoadTimerRef.current);
+          sportLoadTimerRef.current = null;
+        }
+      }
+    } catch {}
+  }, []);
 
   const espnSport = "soccer";
   const espnLeague = (() => {
@@ -358,7 +775,30 @@ export default function MatchDetailScreen() {
     SafeHaptics.impactLight();
     setStreamWebError(null);
     setStreamErrorRef("");
+    setSportStreamPlaying(false);
+    setSportNoStreams(false);
+    sportAdCountRef.current = 0;
+
+    // Re-probe all providers from scratch
+    setSportProbing(true);
+    setStreamFinderActive(true);
+    setSportProviderIndex(0);
+
     await refetchStream();
+
+    const newApiUrl = apiStreamUrl;
+    const ranked = await probeAllSportProviders(params.matchId, newApiUrl);
+    const reachable = ranked.filter(r => r.reachable);
+    if (reachable.length === 0) {
+      setSportNoStreams(true);
+      setSportRankedProviders(ranked);
+    } else {
+      setSportRankedProviders(reachable);
+    }
+
+    setSportProbing(false);
+    setStreamFinderActive(false);
+    setStreamFinderDone(true);
     setStreamKey(k => k + 1);
   };
 
@@ -366,23 +806,12 @@ export default function MatchDetailScreen() {
   const hasFetchedPrematchRef = useRef(false);
   const lastLivePredictionAtRef = useRef(0);
 
-  // Auto-activate AI stream finder on first mount when live match opens on stream tab
+  // Auto-activate AI stream finder — handled by useEffect probe system above
   useEffect(() => {
-    let disposed = false;
-    if (isLive && activeTab === "stream" && !streamFinderDone) {
-      setStreamFinderActive(true);
-      streamFinderTimerRef.current = setTimeout(() => {
-        if (!disposed) {
-          setStreamFinderActive(false);
-          setStreamFinderDone(true);
-        }
-      }, 3000);
-    }
+    // The probing useEffect already handles activation for live matches
     return () => {
-      disposed = true;
       if (streamFinderTimerRef.current) clearTimeout(streamFinderTimerRef.current);
     };
-  // Only run once on mount
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -508,63 +937,95 @@ export default function MatchDetailScreen() {
       {/* Stream Tab — always mounted, hidden when not active */}
       <View style={[styles.streamContainer, activeTab !== "stream" ? { display: "none" } : null]}>
           {isLive ? (
-            streamFinderActive ? (
-              /* AI Stream Finder loading overlay */
+            streamFinderActive || sportProbing ? (
+              /* AI Stream Finder — probing all providers */
               <View style={styles.streamFinderContainer}>
                 <LinearGradient colors={["#0d0d1a", "#120a14", "#0a0a12"]} style={styles.streamFinderBg}>
                   <ActivityIndicator size="large" color={COLORS.accent} />
-                  <Text style={styles.streamFinderTitle}>AI zoekt de beste stream…</Text>
-                  <Text style={styles.streamFinderSub}>Even geduld, prioriteit: officiële uitzender → hoogste kwaliteit → laagste latency</Text>
+                  <Text style={styles.streamFinderTitle}>AI zoekt werkende sport streams…</Text>
+                  <Text style={styles.streamFinderSub}>Alle servers worden gecontroleerd op beschikbaarheid en kwaliteit</Text>
                   <View style={styles.streamFinderSteps}>
                     <View style={styles.streamFinderStep}>
                       <Ionicons name="checkmark-circle" size={14} color={COLORS.green} />
-                      <Text style={styles.streamFinderStepText}>Officiële broadcaster zoeken…</Text>
+                      <Text style={styles.streamFinderStepText}>Servers scannen… ({SPORT_PROVIDERS.length + (apiStreamUrl ? 1 : 0)} bronnen)</Text>
                     </View>
                     <View style={styles.streamFinderStep}>
                       <Ionicons name="radio-button-on" size={14} color={COLORS.accent} />
-                      <Text style={styles.streamFinderStepText}>Beste resolutie bepalen…</Text>
+                      <Text style={styles.streamFinderStepText}>Werkende links verifiëren…</Text>
                     </View>
                     <View style={styles.streamFinderStep}>
                       <Ionicons name="radio-button-off" size={14} color={COLORS.textMuted} />
-                      <Text style={[styles.streamFinderStepText, { color: COLORS.textMuted }]}>Stream initialiseren…</Text>
+                      <Text style={[styles.streamFinderStepText, { color: COLORS.textMuted }]}>Beste stream selecteren…</Text>
                     </View>
                   </View>
                 </LinearGradient>
               </View>
-            ) : (
+            ) : sportNoStreams || allSportProvidersFailed ? (
+              /* No working streams found — clear message to user */
+              <View style={styles.streamFinderContainer}>
+                <LinearGradient colors={["#0d0d1a", "#120a14", "#0a0a12"]} style={styles.streamFinderBg}>
+                  <Ionicons name="cloud-offline-outline" size={52} color={COLORS.textMuted} />
+                  <Text style={styles.streamFinderTitle}>Geen werkende stream gevonden</Text>
+                  <Text style={styles.streamFinderSub}>
+                    Alle {SPORT_PROVIDERS.length + (apiStreamUrl ? 1 : 0)} servers zijn gecontroleerd maar geen enkele heeft een werkende stream voor deze wedstrijd.
+                  </Text>
+                  <Text style={[styles.streamFinderSub, { marginTop: 4 }]}>
+                    Dit kan voorkomen als de wedstrijd nog niet gestart is of als de streams tijdelijk offline zijn.
+                  </Text>
+                  <TouchableOpacity style={styles.noStreamRetryBtn} onPress={handleRetryAutoStream}>
+                    <Ionicons name="refresh-outline" size={16} color="#fff" />
+                    <Text style={styles.noStreamRetryText}>Opnieuw zoeken</Text>
+                  </TouchableOpacity>
+                </LinearGradient>
+              </View>
+            ) : activeStreamUrl ? (
               <>
                 <View style={styles.videoBox}>
                   <SilentResetBoundary>
-                    <WebView key={streamKey} source={{ uri: streamUrl }}
+                    <WebView key={streamKey} source={{ uri: activeStreamUrl }}
                       style={{ flex: 1, backgroundColor: "#000" }}
                       allowsFullscreenVideo mediaPlaybackRequiresUserAction={false}
                       javaScriptEnabled domStorageEnabled
                       setSupportMultipleWindows={false}
+                      javaScriptCanOpenWindowsAutomatically={false}
                       allowsInlineMediaPlayback
-                      injectedJavaScriptBeforeContentLoaded={BLOCK_POPUP_JS}
-                      injectedJavaScript={BLOCK_POPUP_JS}
-                      onShouldStartLoadWithRequest={(req) => {
-                        const url = (req.url || "").toLowerCase();
-                        if (url.includes("google.") || url.includes("bing.com") || url.includes("yahoo.com")) return false;
-                        if (url.includes("doubleclick.") || url.includes("googleads.") || url.includes("googlesyndication.")) return false;
-                        if (!url.startsWith("http://") && !url.startsWith("https://")) return false;
-                        return true;
+                      mixedContentMode="always"
+                      userAgent="Mozilla/5.0 (Linux; Android 12; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
+                      injectedJavaScriptBeforeContentLoaded={SPORT_AD_BLOCK_JS}
+                      injectedJavaScript={SPORT_AD_BLOCK_JS}
+                      onShouldStartLoadWithRequest={sportNavGuard}
+                      onMessage={handleSportMessage}
+                      onLoad={() => {
+                        setSportStreamPlaying(true);
+                        if (sportLoadTimerRef.current) {
+                          clearTimeout(sportLoadTimerRef.current);
+                          sportLoadTimerRef.current = null;
+                        }
                       }}
                       onError={(event) => {
-                        const err = event?.nativeEvent?.description || "WebView stream fout";
-                        setStreamWebError(err);
+                        const msg = String(event?.nativeEvent?.description || "");
+                        if (/removechild|notfounderror|not a child|hierarchyrequesterror/i.test(msg)) return;
+                        setStreamWebError(msg || "WebView stream fout");
                         setStreamErrorRef((prev) => prev || buildErrorReference("NX-STR"));
                       }}
                     />
                   </SilentResetBoundary>
                 </View>
                 <View style={styles.serverSection}>
-                  {hasStreamApiIssue ? (
-                    <View style={styles.streamErrorCard}>
-                      <MaterialCommunityIcons name="wifi-alert" size={14} color={COLORS.live} />
-                      <Text style={styles.streamErrorText}>{streamApiError.userMessage}</Text>
-                    </View>
-                  ) : null}
+                  {/* Current server indicator */}
+                  <View style={styles.serverIndicator}>
+                    <Ionicons name="server-outline" size={12} color={COLORS.accent} />
+                    <Text style={styles.serverIndicatorText}>
+                      {activeStreamLabel} ({sportProviderIndex + 1}/{sportRankedProviders.length})
+                    </Text>
+                    {sportStreamPlaying && (
+                      <View style={styles.playingBadge}>
+                        <View style={styles.playingDot} />
+                        <Text style={styles.playingText}>Live</Text>
+                      </View>
+                    )}
+                  </View>
+
                   {hasStreamPlayerIssue ? (
                     <View style={styles.streamErrorCard}>
                       <MaterialCommunityIcons name="alert-octagon-outline" size={14} color={COLORS.live} />
@@ -574,28 +1035,37 @@ export default function MatchDetailScreen() {
                       </View>
                     </View>
                   ) : null}
-                  {hasStreamApiIssue && hasStreamPlayerIssue ? (
-                    <View style={styles.streamErrorCard}>
-                      <MaterialCommunityIcons name="alert-circle-outline" size={14} color={COLORS.textMuted} />
-                      <Text style={styles.streamErrorText}>Geen stream beschikbaar momenteel.</Text>
-                    </View>
-                  ) : null}
-                  <TouchableOpacity style={styles.serverBtn} onPress={handleRetryAutoStream}>
-                    <Ionicons name="refresh-outline" size={12} color={COLORS.accent} />
-                    <Text style={styles.serverBtnText}>Andere stream laden</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={styles.serverBtn}
-                    onPress={async () => {
-                      SafeHaptics.impactLight();
-                      await openInVlc(streamUrl, `${params.homeTeam || ""} - ${params.awayTeam || ""}`.trim() || "Live sport");
-                    }}
-                  >
-                    <Ionicons name="open-outline" size={12} color={COLORS.accent} />
-                    <Text style={styles.serverBtnText}>Open in VLC</Text>
-                  </TouchableOpacity>
+
+                  <View style={styles.serverBtnRow}>
+                    <TouchableOpacity style={styles.serverBtn} onPress={() => { SafeHaptics.impactLight(); tryNextSportProvider(); }}>
+                      <Ionicons name="swap-horizontal-outline" size={12} color={COLORS.accent} />
+                      <Text style={styles.serverBtnText}>Volgende server</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={styles.serverBtn} onPress={handleRetryAutoStream}>
+                      <Ionicons name="refresh-outline" size={12} color={COLORS.accent} />
+                      <Text style={styles.serverBtnText}>Opnieuw zoeken</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.serverBtn}
+                      onPress={async () => {
+                        SafeHaptics.impactLight();
+                        await openInVlc(activeStreamUrl, `${params.homeTeam || ""} - ${params.awayTeam || ""}`.trim() || "Live sport");
+                      }}
+                    >
+                      <Ionicons name="open-outline" size={12} color={COLORS.accent} />
+                      <Text style={styles.serverBtnText}>Open in VLC</Text>
+                    </TouchableOpacity>
+                  </View>
                 </View>
               </>
+            ) : (
+              /* Waiting for providers */
+              <View style={styles.streamFinderContainer}>
+                <LinearGradient colors={["#0d0d1a", "#120a14", "#0a0a12"]} style={styles.streamFinderBg}>
+                  <ActivityIndicator size="large" color={COLORS.accent} />
+                  <Text style={styles.streamFinderTitle}>Stream laden…</Text>
+                </LinearGradient>
+              </View>
             )
           ) : (
             <View style={styles.notLiveContainer}>
@@ -2082,6 +2552,61 @@ const styles = StyleSheet.create({
     fontFamily: "Inter_500Medium",
     fontSize: 13,
     color: COLORS.text,
+  },
+  noStreamRetryBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    paddingHorizontal: 24,
+    paddingVertical: 14,
+    borderRadius: 14,
+    backgroundColor: COLORS.accent,
+    marginTop: 12,
+  },
+  noStreamRetryText: {
+    fontFamily: "Inter_700Bold",
+    fontSize: 15,
+    color: "#fff",
+  },
+  serverIndicator: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingVertical: 4,
+  },
+  serverIndicatorText: {
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 12,
+    color: COLORS.textSecondary,
+  },
+  playingBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: "rgba(0,200,83,0.15)",
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    marginLeft: "auto",
+  },
+  playingDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: COLORS.green || "#00c853",
+  },
+  playingText: {
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 10,
+    color: COLORS.green || "#00c853",
+    textTransform: "uppercase",
+    letterSpacing: 0.8,
+  },
+  serverBtnRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
   },
   notLiveContainer: { flex: 1, alignItems: "center", justifyContent: "center", gap: 16, padding: 36 },
   notLiveTitle: {
