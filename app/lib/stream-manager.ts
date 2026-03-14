@@ -153,6 +153,11 @@ export const ALLOWED_VIDEO_HOSTS = [
   "smashystream", "jwplayer", "cloudflare", "m3u8", "hls", "stream",
   "rabbitstream", "vidcloud", "upcloud", "streamtape", "filemoon", "mixdrop", "dood",
   "googlevideo", "akamaized", "cdn", "embedrise", "111movies", "vidsrcvip",
+  "vidplay", "dokicloud", "megacloud", "rapid-cloud", "openstream", "voe.sx",
+  "mp4upload", "streamlare", "supervideo", "wishfast", "fembed", "mycloud",
+  "streamhub", "streamsb", "watchsb", "sbembed", "sbplay", "playhydrax", "hydrax",
+  "gdriveplayer", "database.gdriveplayer", "streamsss", "streamwish",
+  "closeload", "fastupload", "upstream",
 ];
 
 // ─── Stream Manager Class ──────────────────────────────────────────────────────

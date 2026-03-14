@@ -758,21 +758,25 @@ const AD_BLOCK_JS = `
     if(_cleanCount > 60) clearInterval(_cleanInterval);
   }, 1000);
 
-  // ── 5b. Nuke all iframes that aren't the video player — run from start ──
+  // ── 5b. Nuke only AD iframes — keep all player/content iframes ──
+  var _adDomainPatterns = /doubleclick|googlesyndication|googleadservices|adnxs|adsrvr|adform|popads|popcash|trafficjunky|exoclick|juicyads|propellerads|adsterra|hilltopads|clickadu|adf\.ly|shorte\.st|linkvertise|ouo\.io|bit\.ly\/ad|revive-|openx|criteo|taboola|outbrain|mgid|revcontent|zergnet|sharethrough|teads|amazon-adsystem|moatads|doubleverify|adsafeprotected|integral-ad|pixfuture|bidswitch|casalemedia|pubmatic|rubiconproject|indexexchange|spotxchange|smartadserver|smaato|inmobi|admob|mopub|unity3d.*ads|chartboost|ironsrc|applovin|vungle|fyber|tapjoy|adcolony/i;
   setInterval(function(){
     document.querySelectorAll('iframe').forEach(function(f){
       var src = (f.getAttribute('src')||'').toLowerCase();
       var id = (f.id||'').toLowerCase();
       var cn = (typeof f.className === 'string' ? f.className : '').toLowerCase();
-      // Keep player-related iframes
-      if(id.match(/player|video|stream/) || cn.match(/player|video|stream/)) return;
-      if(src.match(/\.m3u8|\.mp4|\.ts|player|embed|stream|hls/)) return;
-      // Keep same-domain iframes (likely part of the player)
-      try{ var fHost = new URL(src, window.location.href).hostname;
-        if(fHost === _host || fHost.endsWith('.'+_host)) return;
-      }catch(e){}
-      // Remove everything else (ads, trackers, captcha)
-      try{ f.remove(); }catch(e){}
+      // Never touch player-related iframes
+      if(id.match(/player|video|stream|embed/) || cn.match(/player|video|stream|embed/)) return;
+      if(src.match(/\.m3u8|\.mp4|\.ts|player|embed|stream|hls|vidplay|vidcloud|rabbitstream/)) return;
+      // Only remove iframes matching ad domains or ad patterns
+      var isAdFrame = _adDomainPatterns.test(src) || /^about:blank$/i.test(src.trim());
+      var idClsAd = /ad[_-]?banner|ad[_-]?frame|ad[_-]?slot|sponsor|adsense|advert/i.test(id + ' ' + cn);
+      // Remove tiny tracking-pixel iframes (0x0 or 1x1)
+      var rect; try{ rect = f.getBoundingClientRect(); }catch(e){ rect = {width:0,height:0}; }
+      var isTiny = rect.width <= 5 && rect.height <= 5;
+      if(isAdFrame || idClsAd || isTiny){
+        try{ f.remove(); }catch(e){}
+      }
     });
   }, 2000);
 
@@ -818,6 +822,30 @@ const AD_BLOCK_JS = `
   setTimeout(tryAutoPlay, 2000);
   setTimeout(tryAutoPlay, 3500);
   setTimeout(tryAutoPlay, 6000);
+
+  // ── 7. Video-found detection — notify React Native when a video starts ──
+  var _notifiedPlaying = false;
+  setInterval(function(){
+    if(_notifiedPlaying) return;
+    var videos = document.querySelectorAll('video');
+    for(var i=0; i<videos.length; i++){
+      var v = videos[i];
+      if(!v.paused && v.currentTime > 0 && !v.ended){
+        _notifiedPlaying = true;
+        if(window.ReactNativeWebView){
+          window.ReactNativeWebView.postMessage(JSON.stringify({type:'video_playing', currentTime: v.currentTime}));
+        }
+        return;
+      }
+    }
+    // Also check for iframes containing video (cross-origin can't be accessed but at least try)
+    if(!_notifiedPlaying && document.querySelectorAll('iframe').length > 0 && _videoFound){
+      _notifiedPlaying = true;
+      if(window.ReactNativeWebView){
+        window.ReactNativeWebView.postMessage(JSON.stringify({type:'video_playing', currentTime: 0}));
+      }
+    }
+  }, 2000);
 })();
 `;
 
@@ -1496,12 +1524,12 @@ export default function PlayerScreen() {
     return () => clearTimeout(t);
   }, [streamError, effectiveStreamUrl, useFallbackEmbed, tmdbId, allProvidersFailed, tryNextProvider]);
 
-  // Auto-advance on slow load (embed only) — give provider 20s to load
+  // Auto-advance on slow load (embed only) — give provider 12s to load
   useEffect(() => {
     if (!isLoading) return;
     if (effectiveStreamUrl && !useFallbackEmbed) return;
     if (!tmdbId || allProvidersFailed) return;
-    const t = setTimeout(() => tryNextProvider(), 20000);
+    const t = setTimeout(() => tryNextProvider(), 12000);
     return () => clearTimeout(t);
   }, [isLoading, webviewKey, effectiveStreamUrl, useFallbackEmbed, tmdbId, allProvidersFailed, tryNextProvider]);
 
@@ -1565,13 +1593,22 @@ export default function PlayerScreen() {
         const embedHost = new URL(currentEmbedUrl).hostname;
         const reqHost   = new URL(url).hostname;
         const isSameDomain = reqHost === embedHost || reqHost.endsWith("." + embedHost);
+        // Same domain — always allow
+        if (isSameDomain) return true;
+        // Streaming file extensions — always allow
+        if (/\.(m3u8|mp4|ts|webm|mpd|mkv)(\?|$)/i.test(url)) return true;
+        // Known video hosts — always allow
         const isKnownVideoHost = ALLOWED_VIDEO_HOSTS.some((snippet) => reqHost.includes(snippet));
-        if (!isSameDomain) {
-          if (/\.(m3u8|mp4|ts|webm|mpd|mkv)(\?|$)/i.test(url)) return true;
-          if (isKnownVideoHost) return true;
+        if (isKnownVideoHost) return true;
+        // For top-frame navigations (not sub-resources), block cross-domain
+        // Only block if it's a main-frame navigation (not an iframe/XHR)
+        if (req.isTopFrame === true || req.navigationType === "click") {
           adPopupCountRef.current++;
           return false;
         }
+        // Allow all sub-resource requests (CSS, JS, API calls, iframe embeds)
+        // The ad domain list + BLOCK_PATTERNS already caught known bad actors above
+        return true;
       } catch {}
       return true;
     };
@@ -1598,10 +1635,14 @@ export default function PlayerScreen() {
         const embedHost = new URL(currentEmbedUrl).hostname;
         const reqHost   = new URL(url).hostname;
         const isSameDomain = reqHost === embedHost || reqHost.endsWith("." + embedHost);
-        const isKnownVideoHost = ALLOWED_VIDEO_HOSTS.some((snippet) => reqHost.includes(snippet));
-        if (!isSameDomain && !isKnownVideoHost && !/\.(m3u8|mp4|ts|webm|mpd|mkv)(\?|$)/i.test(url)) {
-          embedWebviewRef.current?.stopLoading();
-          embedWebviewRef.current?.goBack();
+        // Only block top-frame navigations away from embed domain
+        // Don't block sub-resource loads (JS, CSS, iframes, API calls)
+        if (!isSameDomain && navState.loading && navState.navigationType === "click") {
+          const isKnownVideoHost = ALLOWED_VIDEO_HOSTS.some((snippet) => reqHost.includes(snippet));
+          if (!isKnownVideoHost && !/\.(m3u8|mp4|ts|webm|mpd|mkv)(\?|$)/i.test(url)) {
+            embedWebviewRef.current?.stopLoading();
+            embedWebviewRef.current?.goBack();
+          }
         }
       } catch {}
     };
@@ -1742,6 +1783,21 @@ export default function PlayerScreen() {
             if (disposedRef.current) return;
             try {
               const data = JSON.parse(event.nativeEvent.data);
+              if (data.type === "video_playing") {
+                // Video is confirmed playing — cancel loading state to prevent auto-advance
+                setIsLoading(false);
+                setStreamError(null);
+                setStreamErrorRef("");
+                // Record success
+                const loadTime = Date.now() - providerLoadStartRef.current;
+                const mgr = streamManagerRef.current;
+                if (mgr) {
+                  mgr.recordPlaybackSuccess(loadTime, adPopupCountRef.current).then(() => {
+                    mgr.rerank();
+                    setRankedSources([...mgr.getState().sources]);
+                  });
+                }
+              }
               if (data.type === "midstream_stall" || data.type === "midstream_error") {
                 const mgr = streamManagerRef.current;
                 if (mgr) mgr.handleMidStreamFailure();
