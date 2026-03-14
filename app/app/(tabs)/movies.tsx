@@ -76,15 +76,6 @@ async function fetchMovieDecades() {
   }
 }
 
-async function fetchArchiveMovies(page = 1) {
-  try {
-    const res = await withTimeout(apiRequest("GET", `/api/movies/archive?page=${page}`), 25000);
-    return await res.json();
-  } catch {
-    return { movies: [] };
-  }
-}
-
 async function fetchGenreDiscover() {
   try {
     const res = await withTimeout(apiRequest("GET", "/api/movies/discover-by-genre"), 15000);
@@ -147,13 +138,6 @@ export default function MoviesScreen() {
     queryKey: ["movies", "decades"],
     queryFn: fetchMovieDecades,
     staleTime: 30 * 60 * 1000,
-    retry: 0,
-  });
-
-  const { data: archiveData } = useQuery({
-    queryKey: ["movies", "archive"],
-    queryFn: () => fetchArchiveMovies(1),
-    staleTime: 60 * 60 * 1000,
     retry: 0,
   });
 
@@ -242,7 +226,6 @@ export default function MoviesScreen() {
   const acclaimed: any[] = useMemo(() => data?.acclaimed || [], [data]);
   const movieGenres: any[] = useMemo(() => genresData?.genres || [], [genresData]);
   const movieDecades: any[] = useMemo(() => decadesData?.decades || [], [decadesData]);
-  const archiveMovies: any[] = useMemo(() => archiveData?.movies || [], [archiveData]);
   const genreDiscoverRows: any[] = useMemo(() => genreDiscoverData?.rows || [], [genreDiscoverData]);
   const recommendedForYou: any[] = useMemo(() => recForYouData?.movies || [], [recForYouData]);
   const becauseYouWatched: any[] = useMemo(() => becauseYouWatchedData?.items || [], [becauseYouWatchedData]);
@@ -488,12 +471,6 @@ export default function MoviesScreen() {
     return [...exact, ...partial];
   }, [search, trending, newReleases, topRated, popular, upcoming, hiddenGems, acclaimed, serverResults]);
 
-  const filteredArchive = useMemo(() => {
-    if (!search.trim() || !archiveMovies.length) return [];
-    const q = search.toLowerCase();
-    return archiveMovies.filter((m: any) => (m.title || "").toLowerCase().includes(q));
-  }, [search, archiveMovies]);
-
   const renderCard = useCallback((item: any, showProgress = false) => (
     <RealContentCard
       item={{ ...item, isIptv: item.isIptv ?? false }}
@@ -694,12 +671,7 @@ export default function MoviesScreen() {
                     renderItem={({ item }: any) => renderCard(item)}
                     contentContainerStyle={styles.carouselPadding} showsHorizontalScrollIndicator={false} />
                 </View>
-                <View style={filteredArchive.length > 0 ? undefined : { display: "none" }}>
-                  <FlatList horizontal data={filteredArchive} keyExtractor={(item: any) => item.id}
-                    renderItem={({ item }: any) => renderCard(item)}
-                    contentContainerStyle={styles.carouselPadding} showsHorizontalScrollIndicator={false} />
-                </View>
-                <View style={filteredIptv.length === 0 && (filteredTmdb ?? []).length === 0 && filteredArchive.length === 0 ? undefined : { display: "none" }}>
+                <View style={filteredIptv.length === 0 && (filteredTmdb ?? []).length === 0 ? undefined : { display: "none" }}>
                   {searchLoading ? (
                     <View style={{ alignItems: "center", paddingTop: 40, gap: 10 }}>
                       <ActivityIndicator size="small" color={COLORS.accent} />
@@ -745,6 +717,11 @@ export default function MoviesScreen() {
               {/* Because You Watched [Title] */}
               <View style={becauseYouWatched.length > 0 && lastWatchedMovie ? undefined : { display: "none" }}>
                 {renderSimpleRow(`Because You Watched ${lastWatchedMovie?.title || ""}`, becauseYouWatched, "because-you-watched")}
+              </View>
+
+              {/* Watch Again — right after Because You Watched */}
+              <View style={recentlyWatched.length > 0 ? undefined : { display: "none" }}>
+                {renderSimpleRow("Watch Again", recentlyWatched, "watch-again")}
               </View>
 
               {/* Recommended For You */}
@@ -807,31 +784,6 @@ export default function MoviesScreen() {
 
               {/* Genre rows — skip genres already shown by discover-by-genre */}
               {movieGenres.filter((g: any) => !genreDiscoverRows.some((r: any) => r.genreId === g.id)).map((genre: any) => genre.items?.length > 0 && renderGenreRow(genre))}
-
-              {/* Watch Again — always mounted */}
-              <View style={recentlyWatched.length > 0 ? undefined : { display: "none" }}>
-                {renderSimpleRow("Watch Again", recentlyWatched, "watch-again")}
-              </View>
-
-              {/* Free public domain movies via Internet Archive - always mounted */}
-              <View style={archiveMovies.length > 0 ? undefined : { display: "none" }}>
-                <View style={styles.section}>
-                  <Text style={styles.sectionTitle}>Free Movies (Archive)</Text>
-                  <FlatList
-                    horizontal
-                    data={archiveMovies}
-                    keyExtractor={(item: any) => item.id}
-                    renderItem={({ item }: any) => renderCard(item)}
-                    contentContainerStyle={styles.carouselPadding}
-                    showsHorizontalScrollIndicator={false}
-                    removeClippedSubviews={false}
-                    initialNumToRender={4}
-                    maxToRenderPerBatch={3}
-                    windowSize={5}
-                    scrollEventThrottle={16}
-                  />
-                </View>
-              </View>
 
               {/* Decade rows */}
               {movieDecades.map((decade: any) => (

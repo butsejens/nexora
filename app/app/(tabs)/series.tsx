@@ -694,6 +694,11 @@ export default function SeriesScreen() {
                 {renderSimpleRow(`Because You Watched ${lastWatchedSeries?.title || ""}`, becauseYouWatched, "because-you-watched")}
               </View>
 
+              {/* Watch Again — right after Because You Watched */}
+              <View style={recentlyWatched.length > 0 ? undefined : { display: "none" }}>
+                {renderSimpleRow("Watch Again", recentlyWatched, "watch-again")}
+              </View>
+
               {/* Recommended For You */}
               <View style={recommendedForYou.length > 0 ? undefined : { display: "none" }}>
                 {renderSimpleRow("Recommended For You", recommendedForYou, "rec-for-you")}
@@ -751,11 +756,6 @@ export default function SeriesScreen() {
 
               {/* Genre rows — skip genres already shown by discover-by-genre */}
               {seriesGenres.filter((g: any) => !genreDiscoverRows.some((r: any) => r.genreId === g.id)).map((genre: any) => genre.items?.length > 0 && renderGenreRow(genre))}
-
-              {/* Watch Again — always mounted */}
-              <View style={recentlyWatched.length > 0 ? undefined : { display: "none" }}>
-                {renderSimpleRow("Watch Again", recentlyWatched, "watch-again")}
-              </View>
 
               {/* Decade rows */}
               {seriesDecades.map((decade: any) => (
