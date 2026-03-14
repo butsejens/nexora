@@ -2847,10 +2847,20 @@ app.get("/api/download/apk", async (req, res) => {
 app.get("/api/img", async (req, res) => {
   const url = String(req.query.url || "").trim();
   if (!url || !/^https?:\/\//i.test(url)) return res.status(400).send("Bad url");
-  const referer = url.includes("transfermarkt")
-    ? "https://www.transfermarkt.com/"
-    : String(new URL(url).origin + "/");
+  // Whitelist: only proxy images from known domains to prevent SSRF
+  const ALLOWED_HOSTS = [
+    "transfermarkt.technology", "img.a.transfermarkt", "img.b.transfermarkt",
+    "a.espncdn.com", "b.espncdn.com", "image.tmdb.org", "sofascore.com",
+    "api.sofascore.app", "crests.football-data.org",
+  ];
   try {
+    const parsed = new URL(url);
+    if (!ALLOWED_HOSTS.some(h => parsed.hostname === h || parsed.hostname.endsWith("." + h))) {
+      return res.status(403).send("Domain not allowed");
+    }
+    const referer = url.includes("transfermarkt")
+      ? "https://www.transfermarkt.com/"
+      : parsed.origin + "/";
     const imgResp = await fetch(url, {
       headers: { "Referer": referer, "User-Agent": "Mozilla/5.0", "Accept": "image/*" },
       signal: AbortSignal.timeout(8000),
@@ -2866,9 +2876,11 @@ app.get("/api/img", async (req, res) => {
   }
 });
 
-// Request logging middleware
+// Request logging middleware — only log non-health API calls
 app.use((req, _res, next) => {
-  console.log(`[${new Date().toISOString()}] ${req.method} ${req.path} ${JSON.stringify(req.query)}`);
+  if (req.path !== "/health" && req.path !== "/" && !req.path.startsWith("/api/img")) {
+    console.log(`[${new Date().toISOString()}] ${req.method} ${req.path}`);
+  }
   next();
 });
 
@@ -4963,6 +4975,24 @@ app.get("/api/tmdb/search", tmdbLimiter, async (req, res) => {
   }
 });
 
+// Multi-result search — returns grouped movies + series results
+app.get("/api/search/multi", tmdbLimiter, async (req, res) => {
+  try {
+    if (!process.env.TMDB_API_KEY) return res.json({ movies: [], series: [] });
+    const query = String(req.query.query || "").trim();
+    if (!query || query.length < 2) return res.json({ movies: [], series: [] });
+    const [movieData, tvData] = await Promise.all([
+      tmdb(`/search/movie?query=${encodeURIComponent(query)}&page=1`),
+      tmdb(`/search/tv?query=${encodeURIComponent(query)}&page=1`),
+    ]);
+    const movies = (movieData?.results || []).slice(0, 15).map(it => mapTrendingItem(it, "movie"));
+    const series = (tvData?.results || []).slice(0, 15).map(it => mapTrendingItem(it, "series"));
+    res.json({ movies, series });
+  } catch (e) {
+    res.json({ movies: [], series: [], error: String(e?.message || e) });
+  }
+});
+
 app.get("/api/movies/:id/full", tmdbLimiter, async (req, res) => {
   try {
     if (!process.env.TMDB_API_KEY) return res.json(null);
@@ -5001,38 +5031,38 @@ app.get("/api/series/:id/full", tmdbLimiter, async (req, res) => {
 // Supports ?page=N for infinite scroll — each TMDB genre has up to 500 pages.
 
 const MOVIE_GENRES = [
-  { id: 28,    name: "Actie" },
-  { id: 35,    name: "Komedie" },
+  { id: 28,    name: "Action" },
+  { id: 35,    name: "Comedy" },
   { id: 18,    name: "Drama" },
   { id: 27,    name: "Horror" },
   { id: 878,   name: "Science Fiction" },
   { id: 53,    name: "Thriller" },
-  { id: 10749, name: "Romantiek" },
-  { id: 16,    name: "Animatie" },
-  { id: 80,    name: "Misdaad" },
-  { id: 12,    name: "Avontuur" },
+  { id: 10749, name: "Romance" },
+  { id: 16,    name: "Animation" },
+  { id: 80,    name: "Crime" },
+  { id: 12,    name: "Adventure" },
   { id: 14,    name: "Fantasy" },
-  { id: 10402, name: "Muziek" },
-  { id: 9648,  name: "Mysterie" },
-  { id: 36,    name: "Geschiedenis" },
-  { id: 10752, name: "Oorlog" },
+  { id: 10402, name: "Music" },
+  { id: 9648,  name: "Mystery" },
+  { id: 36,    name: "History" },
+  { id: 10752, name: "War" },
 ];
 
 const SERIES_GENRES = [
-  { id: 10759, name: "Actie & Avontuur" },
-  { id: 35,    name: "Komedie" },
+  { id: 10759, name: "Action & Adventure" },
+  { id: 35,    name: "Comedy" },
   { id: 18,    name: "Drama" },
   { id: 10765, name: "Sci-Fi & Fantasy" },
   { id: 27,    name: "Horror" },
-  { id: 9648,  name: "Mysterie" },
-  { id: 80,    name: "Misdaad" },
-  { id: 16,    name: "Animatie" },
-  { id: 10762, name: "Voor Kinderen" },
-  { id: 10763, name: "Nieuws" },
+  { id: 9648,  name: "Mystery" },
+  { id: 80,    name: "Crime" },
+  { id: 16,    name: "Animation" },
+  { id: 10762, name: "Kids" },
+  { id: 10763, name: "News" },
   { id: 10764, name: "Reality" },
   { id: 10766, name: "Soap" },
-  { id: 10767, name: "Talkshow" },
-  { id: 10768, name: "Politiek" },
+  { id: 10767, name: "Talk Show" },
+  { id: 10768, name: "Politics" },
 ];
 
 app.get("/api/movies/genres-catalog", tmdbLimiter, async (req, res) => {

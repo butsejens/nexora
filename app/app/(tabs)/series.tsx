@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useCallback } from "react";
+import React, { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import {
   View, Text, StyleSheet, FlatList, Platform, RefreshControl,
   TouchableOpacity, TextInput, ActivityIndicator,
@@ -79,11 +79,32 @@ async function fetchGenreDiscover() {
 export default function SeriesScreen() {
   const insets = useSafeAreaInsets();
   const { isFavorite, toggleFavorite, iptvChannels, isChannelVisible, isLoadingPlaylist, watchHistory } = useNexora();
-  const [groupFilter, setGroupFilter] = useState("Alles");
+  const [groupFilter, setGroupFilter] = useState("All");
   const [search, setSearch] = useState("");
   const [refreshing, setRefreshing] = useState(false);
   const [loadingGuardReached, setLoadingGuardReached] = useState(false);
   const [heroIndex, setHeroIndex] = useState(0);
+
+  // Server-side search
+  const [serverResults, setServerResults] = useState<any[]>([]);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
+    const q = search.trim();
+    if (!q || q.length < 2) { setServerResults([]); setSearchLoading(false); return; }
+    setSearchLoading(true);
+    searchTimerRef.current = setTimeout(async () => {
+      try {
+        const res = await apiRequest("GET", `/api/search/multi?query=${encodeURIComponent(q)}`);
+        const data = await res.json();
+        setServerResults(data?.series || []);
+      } catch { setServerResults([]); }
+      setSearchLoading(false);
+    }, 400);
+    return () => { if (searchTimerRef.current) clearTimeout(searchTimerRef.current); };
+  }, [search]);
 
   // Per-genre extra pages state
   const [genreExtras, setGenreExtras] = useState<Record<number, { page: number; items: any[]; loading: boolean }>>({});
@@ -126,11 +147,11 @@ export default function SeriesScreen() {
   const iptvGroups = useMemo(() => {
     const groups = new Set<string>();
     iptvSeries.forEach(c => { if (c.group) groups.add(c.group); });
-    return ["Alles", ...Array.from(groups).sort()];
+    return ["All", ...Array.from(groups).sort()];
   }, [iptvSeries]);
 
   const filteredIptv = useMemo(() => {
-    let list = groupFilter === "Alles" ? iptvSeries : iptvSeries.filter(c => c.group === groupFilter);
+    let list = groupFilter === "All" ? iptvSeries : iptvSeries.filter(c => c.group === groupFilter);
     if (search.trim()) {
       const q = search.toLowerCase();
       list = list.filter(c => (c.title || c.name || "").toLowerCase().includes(q));
@@ -193,7 +214,7 @@ export default function SeriesScreen() {
 
   const rawCatalogError =
     (data as any)?.error ||
-    (isError ? "Series catalogus niet beschikbaar" : "");
+    (isError ? "Series catalog not available" : "");
   const normalizedCatalogError = rawCatalogError ? normalizeApiError(rawCatalogError) : null;
   const catalogErrorRef = useMemo(() => (rawCatalogError ? buildErrorReference("NX-SER") : ""), [rawCatalogError]);
 
@@ -338,7 +359,7 @@ export default function SeriesScreen() {
   const filteredTmdb = useMemo(() => {
     if (!search.trim()) return null;
     const q = search.toLowerCase();
-    const results = [
+    const local = [
       ...trending.filter((m: any) => (m.title || "").toLowerCase().includes(q)),
       ...newReleases.filter((m: any) => (m.title || "").toLowerCase().includes(q)),
       ...topRated.filter((m: any) => (m.title || "").toLowerCase().includes(q)),
@@ -346,9 +367,18 @@ export default function SeriesScreen() {
       ...airingToday.filter((m: any) => (m.title || "").toLowerCase().includes(q)),
       ...hiddenGems.filter((m: any) => (m.title || "").toLowerCase().includes(q)),
     ];
+    const merged = [...local, ...serverResults];
     const seen = new Set<string>();
-    return results.filter((m: any) => { if (seen.has(m.id)) return false; seen.add(m.id); return true; });
-  }, [search, trending, newReleases, topRated, popular, airingToday, hiddenGems]);
+    const exact: any[] = [];
+    const partial: any[] = [];
+    for (const m of merged) {
+      if (seen.has(m.id)) continue;
+      seen.add(m.id);
+      if ((m.title || "").toLowerCase() === q) exact.push(m);
+      else exact.length < 5 && (m.title || "").toLowerCase().startsWith(q) ? exact.push(m) : partial.push(m);
+    }
+    return [...exact, ...partial];
+  }, [search, trending, newReleases, topRated, popular, airingToday, hiddenGems, serverResults]);
 
   const renderCard = useCallback((item: any, showProgress = false) => (
     <RealContentCard
@@ -373,7 +403,7 @@ export default function SeriesScreen() {
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>{title}</Text>
           <TouchableOpacity onPress={() => loadMoreCategory(categoryKey)} style={styles.seeAllBtn}>
-            <Text style={styles.seeAllText}>Meer</Text>
+            <Text style={styles.seeAllText}>More</Text>
             <Ionicons name="chevron-forward" size={14} color={COLORS.accent} />
           </TouchableOpacity>
         </View>
@@ -396,7 +426,7 @@ export default function SeriesScreen() {
             >
               {loading
                 ? <ActivityIndicator size="small" color={COLORS.accent} />
-                : <><Ionicons name="add" size={22} color={COLORS.accent} /><Text style={styles.loadMoreText}>Meer</Text></>
+                : <><Ionicons name="add" size={22} color={COLORS.accent} /><Text style={styles.loadMoreText}>More</Text></>
               }
             </TouchableOpacity>
           }
@@ -413,7 +443,7 @@ export default function SeriesScreen() {
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>{genre.name}</Text>
           <TouchableOpacity onPress={() => loadMoreGenre(genre.id)} style={styles.seeAllBtn}>
-            <Text style={styles.seeAllText}>Meer</Text>
+            <Text style={styles.seeAllText}>More</Text>
             <Ionicons name="chevron-forward" size={14} color={COLORS.accent} />
           </TouchableOpacity>
         </View>
@@ -438,7 +468,7 @@ export default function SeriesScreen() {
                 ? <ActivityIndicator size="small" color={COLORS.accent} />
                 : <>
                     <Ionicons name="chevron-forward-circle-outline" size={18} color={COLORS.accent} />
-                    <Text style={styles.loadMoreText}>Meer</Text>
+                    <Text style={styles.loadMoreText}>More</Text>
                   </>
               }
             </TouchableOpacity>
@@ -481,7 +511,7 @@ export default function SeriesScreen() {
       {isLoadingPlaylist && (
         <View style={styles.loadingBanner}>
           <ActivityIndicator size="small" color={COLORS.accent} />
-          <Text style={styles.loadingText}>Playlist laden...</Text>
+          <Text style={styles.loadingText}>Loading playlist...</Text>
         </View>
       )}
 
@@ -489,7 +519,7 @@ export default function SeriesScreen() {
         <View style={styles.watchdogBanner}>
           <Ionicons name="time-outline" size={14} color={COLORS.accent} />
           <Text style={styles.watchdogText}>
-            Laden duurt langer dan verwacht. We tonen beschikbare resultaten zodra die binnenkomen.
+            Loading is taking longer than expected. Results will appear as they come in.
           </Text>
         </View>
       )}
@@ -499,7 +529,7 @@ export default function SeriesScreen() {
           <Ionicons name="warning-outline" size={14} color={COLORS.live} />
           <View style={{ flex: 1, gap: 2 }}>
             <Text style={styles.errorText}>{normalizedCatalogError.userMessage}</Text>
-            <Text style={styles.errorCodeText}>Foutcode: {catalogErrorRef || normalizedCatalogError.code}</Text>
+            <Text style={styles.errorCodeText}>Error: {catalogErrorRef || normalizedCatalogError.code}</Text>
           </View>
         </View>
       ) : null}
@@ -524,7 +554,7 @@ export default function SeriesScreen() {
               <Ionicons name="search" size={16} color={COLORS.textMuted} style={{ marginLeft: 12 }} />
               <TextInput
                 style={styles.searchInput}
-                placeholder="Zoek een serie..."
+                placeholder="Search series..."
                 placeholderTextColor={COLORS.textMuted}
                 value={search}
                 onChangeText={setSearch}
@@ -539,7 +569,7 @@ export default function SeriesScreen() {
             {/* Search results – always mounted, hidden when not searching to avoid removeChild crash */}
             <View style={search.trim() ? undefined : { display: "none" }}>
               <View style={styles.section}>
-                <Text style={styles.sectionTitle}>Zoekresultaten</Text>
+                <Text style={styles.sectionTitle}>Search Results</Text>
                 <View style={filteredIptv.length > 0 ? undefined : { display: "none" }}>
                   <FlatList horizontal data={filteredIptv} keyExtractor={(item: any) => item.id}
                     renderItem={({ item }: any) => renderCard(item)}
@@ -551,10 +581,17 @@ export default function SeriesScreen() {
                     contentContainerStyle={styles.carouselPadding} showsHorizontalScrollIndicator={false} />
                 </View>
                 <View style={filteredIptv.length === 0 && (filteredTmdb ?? []).length === 0 ? undefined : { display: "none" }}>
-                  <View style={{ alignItems: "center", paddingTop: 40, gap: 10 }}>
-                    <Ionicons name="tv-outline" size={40} color={COLORS.textMuted} />
-                    <Text style={{ fontFamily: "Inter_400Regular", color: COLORS.textMuted }}>Geen series gevonden voor &quot;{search}&quot;</Text>
-                  </View>
+                  {searchLoading ? (
+                    <View style={{ alignItems: "center", paddingTop: 40, gap: 10 }}>
+                      <ActivityIndicator size="small" color={COLORS.accent} />
+                      <Text style={{ fontFamily: "Inter_400Regular", color: COLORS.textMuted }}>Searching...</Text>
+                    </View>
+                  ) : (
+                    <View style={{ alignItems: "center", paddingTop: 40, gap: 10 }}>
+                      <Ionicons name="tv-outline" size={40} color={COLORS.textMuted} />
+                      <Text style={{ fontFamily: "Inter_400Regular", color: COLORS.textMuted }}>No series found for &quot;{search}&quot;</Text>
+                    </View>
+                  )}
                 </View>
               </View>
             </View>
@@ -582,13 +619,13 @@ export default function SeriesScreen() {
 
               {/* Continue Watching — always mounted */}
               <View style={continueWatching.length > 0 ? undefined : { display: "none" }}>
-                {renderSimpleRow("Verder Kijken", continueWatching, "continue", true)}
+                {renderSimpleRow("Continue Watching", continueWatching, "continue", true)}
               </View>
 
               {/* IPTV Playlist - always mounted */}
               <View style={iptvSeries.length > 0 ? undefined : { display: "none" }}>
                 <View style={styles.section}>
-                  <Text style={styles.sectionTitle}>Jouw Playlist</Text>
+                  <Text style={styles.sectionTitle}>Your Playlist</Text>
                   <View style={iptvGroups.length > 2 ? undefined : { display: "none" }}>
                     <FlatList
                       horizontal data={iptvGroups} keyExtractor={g => g}
@@ -609,17 +646,17 @@ export default function SeriesScreen() {
                 </View>
               </View>
 
-              {renderMainRow("Trending deze week", dedupTrending, "trending")}
-              {renderMainRow("Nu op TV", dedupAiringToday, "airingToday")}
-              {renderMainRow("Nieuw & Lopend", dedupNewReleases, "newReleases")}
-              {renderMainRow("Best beoordeeld", dedupTopRated, "topRated")}
-              {renderMainRow("Populair nu", dedupPopular, "popular")}
-              {renderSimpleRow("Verborgen Parels", dedupHiddenGems, "hidden-gems")}
+              {renderMainRow("Trending This Week", dedupTrending, "trending")}
+              {renderMainRow("On TV Now", dedupAiringToday, "airingToday")}
+              {renderMainRow("New & Ongoing", dedupNewReleases, "newReleases")}
+              {renderMainRow("Top Rated", dedupTopRated, "topRated")}
+              {renderMainRow("Popular Now", dedupPopular, "popular")}
+              {renderSimpleRow("Hidden Gems", dedupHiddenGems, "hidden-gems")}
 
               {/* Genre discover rows — Action, Comedy, Crime, Drama, Mystery, Sci-Fi */}
               {genreDiscoverRows.map((row: any) => row.items?.length > 0 && (
                 <View key={`gd-${row.genreId}`} style={styles.section}>
-                  <Text style={styles.sectionTitle}>{row.genreName} Series</Text>
+                  <Text style={styles.sectionTitle}>{row.genreName}</Text>
                   <FlatList
                     horizontal
                     data={row.items}
@@ -635,19 +672,19 @@ export default function SeriesScreen() {
                 </View>
               ))}
 
-              {/* Genre rows — each with load-more */}
-              {seriesGenres.map((genre: any) => genre.items?.length > 0 && renderGenreRow(genre))}
+              {/* Genre rows — skip genres already shown by discover-by-genre */}
+              {seriesGenres.filter((g: any) => !genreDiscoverRows.some((r: any) => r.genreId === g.id)).map((genre: any) => genre.items?.length > 0 && renderGenreRow(genre))}
 
               {/* Watch Again — always mounted */}
               <View style={recentlyWatched.length > 0 ? undefined : { display: "none" }}>
-                {renderSimpleRow("Opnieuw Bekijken", recentlyWatched, "watch-again")}
+                {renderSimpleRow("Watch Again", recentlyWatched, "watch-again")}
               </View>
 
               {/* Decade rows */}
               {seriesDecades.map((decade: any) => (
                 decade.items?.length > 0 && (
                   <View key={decade.decade} style={styles.section}>
-                    <Text style={styles.sectionTitle}>Beste van de {decade.name}</Text>
+                    <Text style={styles.sectionTitle}>Best of the {decade.name}</Text>
                     <FlatList
                       horizontal
                       data={decade.items}
@@ -668,7 +705,7 @@ export default function SeriesScreen() {
                 <View style={{ padding: 40, alignItems: "center" }}>
                   <ActivityIndicator color={COLORS.accent} />
                   <Text style={{ color: COLORS.textMuted, fontFamily: "Inter_400Regular", fontSize: 13, marginTop: 12 }}>
-                    Series laden...
+                    Loading series...
                   </Text>
                 </View>
               )}
@@ -676,7 +713,7 @@ export default function SeriesScreen() {
                 <View style={{ padding: 40, alignItems: "center", gap: 10 }}>
                   <Ionicons name="cloud-offline-outline" size={40} color={COLORS.textMuted} />
                   <Text style={{ fontFamily: "Inter_500Medium", color: COLORS.textMuted, textAlign: "center" }}>
-                    {normalizedCatalogError?.userMessage || "Kan series niet laden."}
+                    {normalizedCatalogError?.userMessage || "Unable to load series."}
                   </Text>
                 </View>
               )}

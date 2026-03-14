@@ -1097,20 +1097,20 @@ export default function SportsScreen() {
       const next = { ...subscriptionsRef.current };
       delete next[id];
       await setSubscriptionsAndPersist(next);
-      await pushMatchNotification("Meldingen uitgeschakeld", `${safeStr(match.homeTeam)} - ${safeStr(match.awayTeam)}`, { matchId: id });
+      await pushMatchNotification("Notifications disabled", `${safeStr(match.homeTeam)} - ${safeStr(match.awayTeam)}`, { matchId: id });
       return;
     }
     const permission = await ensureMatchNotificationPermission();
     if (!permission) {
-      Alert.alert("Meldingen geblokkeerd", "Geef notificatie-toestemming om match updates te ontvangen.");
+      Alert.alert("Notifications blocked", "Grant notification permission to receive match updates.");
       return;
     }
     const next = {
       ...subscriptionsRef.current,
-      [id]: { id, espnLeague: resolveEspnLeague(match), homeTeam: safeStr(match?.homeTeam) || "Thuis", awayTeam: safeStr(match?.awayTeam) || "Uit" },
+      [id]: { id, espnLeague: resolveEspnLeague(match), homeTeam: safeStr(match?.homeTeam) || "Home", awayTeam: safeStr(match?.awayTeam) || "Away" },
     };
     await setSubscriptionsAndPersist(next);
-    await pushMatchNotification("Meldingen ingeschakeld", `${safeStr(match.homeTeam)} - ${safeStr(match.awayTeam)} wordt gevolgd`, { matchId: id });
+    await pushMatchNotification("Notifications enabled", `${safeStr(match.homeTeam)} - ${safeStr(match.awayTeam)} is being followed`, { matchId: id });
   }, [resolveEspnLeague, setSubscriptionsAndPersist]);
 
   useEffect(() => {
@@ -1130,11 +1130,11 @@ export default function SportsScreen() {
             const currentAwayScore = Number(feedMatch?.awayScore ?? 0);
             if (prev) {
               if (prev.status !== "live" && currentStatus === "live" && shouldNotify(`${sub.id}:start`, 20_000))
-                await pushMatchNotification("Wedstrijd gestart", `${sub.homeTeam} - ${sub.awayTeam} is begonnen`, { matchId: sub.id });
+                await pushMatchNotification("Match started", `${sub.homeTeam} - ${sub.awayTeam} has kicked off`, { matchId: sub.id });
               if (prev.status !== "finished" && currentStatus === "finished" && shouldNotify(`${sub.id}:finished`, 20_000))
-                await pushMatchNotification("Wedstrijd afgelopen", `${sub.homeTeam} ${currentHomeScore}-${currentAwayScore} ${sub.awayTeam}`, { matchId: sub.id });
+                await pushMatchNotification("Match finished", `${sub.homeTeam} ${currentHomeScore}-${currentAwayScore} ${sub.awayTeam}`, { matchId: sub.id });
               if (currentStatus === "live" && (prev.homeScore !== currentHomeScore || prev.awayScore !== currentAwayScore) && shouldNotify(`${sub.id}:score`, 10_000))
-                await pushMatchNotification("Doelpunt update", `${sub.homeTeam} ${currentHomeScore}-${currentAwayScore} ${sub.awayTeam}`, { matchId: sub.id });
+                await pushMatchNotification("Goal update", `${sub.homeTeam} ${currentHomeScore}-${currentAwayScore} ${sub.awayTeam}`, { matchId: sub.id });
             }
             nextSnapshots[sub.id] = { status: currentStatus, homeScore: currentHomeScore, awayScore: currentAwayScore, eventHashes: prev?.eventHashes || [] };
             changed = true;
@@ -1152,11 +1152,11 @@ export default function SportsScreen() {
           const eventHashes = keyEvents.filter((event: any) => interestingEventRegex.test(`${safeStr(event?.type)} ${safeStr(event?.detail)}`)).map((event: any) => toEventHash(event));
           if (prev) {
             if (prev.status !== "live" && currentStatus === "live" && shouldNotify(`${sub.id}:start`, 20_000))
-              await pushMatchNotification("Wedstrijd gestart", `${safeStr(sub.homeTeam)} - ${safeStr(sub.awayTeam)} is begonnen`, { matchId: sub.id });
+              await pushMatchNotification("Match started", `${safeStr(sub.homeTeam)} - ${safeStr(sub.awayTeam)} has kicked off`, { matchId: sub.id });
             if (prev.status !== "finished" && currentStatus === "finished" && shouldNotify(`${sub.id}:finished`, 20_000))
-              await pushMatchNotification("Wedstrijd afgelopen", `${safeStr(sub.homeTeam)} ${currentHomeScore}-${currentAwayScore} ${safeStr(sub.awayTeam)}`, { matchId: sub.id });
+              await pushMatchNotification("Match finished", `${safeStr(sub.homeTeam)} ${currentHomeScore}-${currentAwayScore} ${safeStr(sub.awayTeam)}`, { matchId: sub.id });
             if (currentStatus === "live" && (prev.homeScore !== currentHomeScore || prev.awayScore !== currentAwayScore) && shouldNotify(`${sub.id}:score`, 10_000))
-              await pushMatchNotification("Doelpunt update", `${safeStr(sub.homeTeam)} ${currentHomeScore}-${currentAwayScore} ${safeStr(sub.awayTeam)}`, { matchId: sub.id });
+              await pushMatchNotification("Goal update", `${safeStr(sub.homeTeam)} ${currentHomeScore}-${currentAwayScore} ${safeStr(sub.awayTeam)}`, { matchId: sub.id });
             const seen = new Set(prev.eventHashes || []);
             const newInterestingEvents = keyEvents.filter((event: any) => {
               const hash = toEventHash(event);
@@ -1294,14 +1294,14 @@ export default function SportsScreen() {
             <Ionicons name="warning-outline" size={14} color="#ff6b6b" />
             <View style={{ flex: 1, gap: 2 }}>
               <Text style={[styles.bannerText, { color: "#ff6b6b" }]}>{normalizedApiError.userMessage}</Text>
-              <Text style={styles.bannerCode}>Foutcode: {apiErrorRef || normalizedApiError.code}</Text>
+              <Text style={styles.bannerCode}>Error: {apiErrorRef || normalizedApiError.code}</Text>
             </View>
           </View>
         )}
         {noRemoteData && (
           <View style={styles.banner}>
             <Ionicons name="cloud-offline-outline" size={14} color={P.accent} />
-            <Text style={styles.bannerText}>Geen live data ontvangen. Resultaten volgen zodra beschikbaar.</Text>
+            <Text style={styles.bannerText}>No live data received. Results will follow when available.</Text>
           </View>
         )}
 
@@ -1346,7 +1346,7 @@ export default function SportsScreen() {
             ) : sortedLive.length === 0 ? (
               <View style={styles.emptyCarousel}>
                 <Ionicons name="radio-button-off-outline" size={24} color={P.muted} />
-                <Text style={styles.emptyText}>Geen live wedstrijden op dit moment</Text>
+                <Text style={styles.emptyText}>No live matches right now</Text>
               </View>
             ) : (
               <ScrollView
@@ -1362,9 +1362,9 @@ export default function SportsScreen() {
 
             {/* ── VANDAAG ── */}
             <SectionTitle
-              title="Vandaag"
+              title="Today"
               accent
-              action={todayCombined.length > 5 ? "Alle matchen" : undefined}
+              action={todayCombined.length > 5 ? "All matches" : undefined}
               onAction={() => setSportsView("upcoming")}
             />
             {todayFirstLoad ? (
@@ -1374,7 +1374,7 @@ export default function SportsScreen() {
             ) : todayCombined.length === 0 ? (
               <View style={styles.emptyCarousel}>
                 <Ionicons name="calendar-outline" size={24} color={P.muted} />
-                <Text style={styles.emptyText}>Geen wedstrijden vandaag</Text>
+                <Text style={styles.emptyText}>No matches today</Text>
               </View>
             ) : (
               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.carouselContent}>
@@ -1384,8 +1384,8 @@ export default function SportsScreen() {
               </ScrollView>
             )}
 
-            {/* ── POPULAIRE COMPETITIES ── */}
-            <SectionTitle title="Populaire Competities" accent />
+            {/* ── POPULAR COMPETITIONS ── */}
+            <SectionTitle title="Popular Competitions" accent />
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
@@ -1478,7 +1478,7 @@ export default function SportsScreen() {
             ) : sortedLive.length === 0 ? (
               <View style={styles.emptyState}>
                 <Ionicons name="radio-button-off-outline" size={28} color={P.muted} />
-                <Text style={styles.emptyText}>Geen live wedstrijden</Text>
+                <Text style={styles.emptyText}>No live matches</Text>
               </View>
             ) : (
               sortedLive.slice(0, 60).map((match: any) => (
@@ -1503,7 +1503,7 @@ export default function SportsScreen() {
               <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
                 <View style={{ width: 3, height: 18, backgroundColor: P.accent, borderRadius: 2 }} />
                 <Text style={styles.sectionTitle}>
-                  {selectedDate === todayUTC() ? "Matchen vandaag" : formatDateDisplay(selectedDate)}
+                  {selectedDate === todayUTC() ? "Matches today" : formatDateDisplay(selectedDate)}
                 </Text>
               </View>
             </View>
@@ -1512,13 +1512,13 @@ export default function SportsScreen() {
             ) : sortedUpcoming.length === 0 && sortedFinished.length === 0 ? (
               <View style={styles.emptyState}>
                 <Ionicons name="calendar-outline" size={28} color={P.muted} />
-                <Text style={styles.emptyText}>Geen wedstrijden op {formatDateDisplay(selectedDate)}</Text>
+                <Text style={styles.emptyText}>No matches on {formatDateDisplay(selectedDate)}</Text>
               </View>
             ) : (
               <>
                 {sortedUpcoming.length > 0 && (
                   <>
-                    <Text style={styles.subHead}>Binnenkort</Text>
+                    <Text style={styles.subHead}>Upcoming</Text>
                     {sortedUpcoming.slice(0, 60).map((match: any) => (
                       <MatchRowCard
                         key={match.id}

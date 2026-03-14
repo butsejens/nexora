@@ -13,13 +13,17 @@ import { useNexora } from "@/context/NexoraContext";
 import type { IPTVChannel } from "@/context/NexoraContext";
 import { getInitials } from "@/lib/logo-manager";
 
-const ChannelRow = React.memo(function ChannelRow({ channel, onPress, onLongPress }: {
+type IPTVTab = "live" | "movies" | "series";
+
+// ── Channel Card (for Live TV grid) ─────────────────────────────────────────
+
+const ChannelCard = React.memo(function ChannelCard({ channel, onPress, onLongPress }: {
   channel: IPTVChannel; onPress: () => void; onLongPress: () => void;
 }) {
   const [imgError, setImgError] = useState(false);
   const initials = getInitials(channel?.name || "TV", 2);
   return (
-    <TouchableOpacity style={styles.channelRow} onPress={onPress} onLongPress={onLongPress} activeOpacity={0.75}>
+    <TouchableOpacity style={styles.channelCard} onPress={onPress} onLongPress={onLongPress} activeOpacity={0.75}>
       <View style={styles.channelLogo}>
         {channel.logo && !imgError ? (
           <Image source={{ uri: channel.logo }} style={styles.channelLogoImg} resizeMode="contain" onError={() => setImgError(true)} />
@@ -40,13 +44,50 @@ const ChannelRow = React.memo(function ChannelRow({ channel, onPress, onLongPres
   );
 });
 
+// ── VOD Card (for IPTV Movies / Series) ──────────────────────────────────────
+
+const VODCard = React.memo(function VODCard({ channel, onPress }: {
+  channel: IPTVChannel; onPress: () => void;
+}) {
+  const [imgError, setImgError] = useState(false);
+  const initials = getInitials(channel?.name || channel?.title || "?", 2);
+  const poster = channel.poster || channel.logo;
+
+  return (
+    <TouchableOpacity style={styles.vodCard} onPress={onPress} activeOpacity={0.78}>
+      <View style={styles.vodPoster}>
+        {poster && !imgError ? (
+          <Image source={{ uri: poster }} style={StyleSheet.absoluteFill} resizeMode="cover" onError={() => setImgError(true)} />
+        ) : (
+          <LinearGradient colors={[COLORS.card, COLORS.cardElevated, COLORS.background]} style={StyleSheet.absoluteFill} start={{ x: 0.2, y: 0 }} end={{ x: 0.8, y: 1 }}>
+            <View style={styles.vodPosterInitials}>
+              <Text style={styles.vodPosterInitialsText} numberOfLines={2}>{(channel.title || channel.name || "?").slice(0, 16).toUpperCase()}</Text>
+            </View>
+          </LinearGradient>
+        )}
+        <LinearGradient colors={["transparent", "rgba(0,0,0,0.7)"]} style={[StyleSheet.absoluteFill, { justifyContent: "flex-end" }]} start={{ x: 0, y: 0.5 }} end={{ x: 0, y: 1 }}>
+          <View style={styles.vodBadgeRow}>
+            <View style={styles.vodBadge}>
+              <Text style={styles.vodBadgeText}>IPTV</Text>
+            </View>
+          </View>
+        </LinearGradient>
+      </View>
+      <Text style={styles.vodTitle} numberOfLines={1}>{channel.title || channel.name}</Text>
+      {channel.group ? <Text style={styles.vodGroup} numberOfLines={1}>{channel.group}</Text> : null}
+    </TouchableOpacity>
+  );
+});
+
+// ── Empty State ──────────────────────────────────────────────────────────────
+
 function EmptyState() {
   return (
     <View style={styles.emptyContainer}>
       <LinearGradient colors={[COLORS.card, COLORS.background]} style={styles.emptyGradient}>
         <MaterialCommunityIcons name="playlist-plus" size={56} color={COLORS.textMuted} />
-        <Text style={styles.emptyTitle}>No Live Channels</Text>
-        <Text style={styles.emptyText}>Add an M3U playlist in Settings to load your IPTV channels.</Text>
+        <Text style={styles.emptyTitle}>No IPTV Content</Text>
+        <Text style={styles.emptyText}>Add an M3U playlist in Settings to load your IPTV channels, movies and series.</Text>
         <TouchableOpacity style={styles.emptyBtn} onPress={() => router.push("/profile")}>
           <Ionicons name="add-circle-outline" size={16} color={COLORS.background} />
           <Text style={styles.emptyBtnText}>Add Playlist</Text>
@@ -56,67 +97,100 @@ function EmptyState() {
   );
 }
 
+// ── Main Screen ──────────────────────────────────────────────────────────────
+
 export default function LiveTVScreen() {
   const insets = useSafeAreaInsets();
   const { iptvChannels, isLoadingPlaylist, isChannelVisible, toggleHideChannel, hasPremium } = useNexora();
   const isPremium = hasPremium("livetv");
 
+  const [activeTab, setActiveTab] = useState<IPTVTab>("live");
   const [selectedGroup, setSelectedGroup] = useState("All");
   const [search, setSearch] = useState("");
   const [showSearch, setShowSearch] = useState(false);
 
+  // Separate IPTV content by category
   const liveChannels = useMemo(
     () => iptvChannels.filter(c => c.category === "live" && isChannelVisible(c.id, c.group)),
     [iptvChannels, isChannelVisible]
   );
 
-  const groups = useMemo(() => {
-    const set = new Set(liveChannels.map(c => c.group));
-    return ["All", ...Array.from(set).sort()];
-  }, [liveChannels]);
+  const iptvMovies = useMemo(
+    () => iptvChannels.filter(c => c.category === "movie" && isChannelVisible(c.id, c.group)),
+    [iptvChannels, isChannelVisible]
+  );
 
+  const iptvSeries = useMemo(
+    () => iptvChannels.filter(c => c.category === "series" && isChannelVisible(c.id, c.group)),
+    [iptvChannels, isChannelVisible]
+  );
+
+  // Current tab data
+  const currentData = activeTab === "live" ? liveChannels : activeTab === "movies" ? iptvMovies : iptvSeries;
+
+  // Groups for current tab
+  const groups = useMemo(() => {
+    const set = new Set(currentData.map(c => c.group));
+    return ["All", ...Array.from(set).sort()];
+  }, [currentData]);
+
+  // Filtered by group + search
   const filtered = useMemo(() => {
-    let list = selectedGroup === "All" ? liveChannels : liveChannels.filter(c => c.group === selectedGroup);
+    let list = selectedGroup === "All" ? currentData : currentData.filter(c => c.group === selectedGroup);
     if (search.trim()) {
       const q = search.toLowerCase();
-      list = list.filter(c => c.name.toLowerCase().includes(q));
+      list = list.filter(c => (c.name || c.title || "").toLowerCase().includes(q));
     }
     return list;
-  }, [liveChannels, selectedGroup, search]);
+  }, [currentData, selectedGroup, search]);
 
   const bottomPad = Platform.OS === "web" ? 34 : insets.bottom + 90;
 
   const playChannel = useCallback((ch: IPTVChannel) => {
+    const type = activeTab === "live" ? "livetv" : activeTab === "movies" ? "movie" : "series";
     router.push({
       pathname: "/player",
-      params: { streamUrl: ch.url, title: ch.name, type: "livetv", contentId: ch.id },
+      params: { streamUrl: ch.url, title: ch.title || ch.name, type, contentId: ch.id },
     });
+  }, [activeTab]);
+
+  const goToDetail = useCallback((ch: IPTVChannel) => {
+    if (ch.tmdbId) {
+      const type = activeTab === "movies" ? "movie" : "series";
+      router.push({ pathname: "/detail", params: { id: String(ch.tmdbId), type, title: ch.title || ch.name } });
+    } else {
+      playChannel(ch);
+    }
+  }, [activeTab, playChannel]);
+
+  const totalCount = liveChannels.length + iptvMovies.length + iptvSeries.length;
+
+  // Tab switch resets group filter
+  const switchTab = useCallback((tab: IPTVTab) => {
+    setActiveTab(tab);
+    setSelectedGroup("All");
+    setSearch("");
+    setShowSearch(false);
   }, []);
 
   if (!isPremium) {
     return (
       <View style={styles.container}>
-        <NexoraHeader
-          title="Live TV"
-          showSearch={false}
-          showFavorites
-          showProfile
-          onFavorites={() => router.push("/favorites")}
-          onProfile={() => router.push("/profile")}
-      />
+        <NexoraHeader title="IPTV" showSearch={false} showFavorites showProfile
+          onFavorites={() => router.push("/favorites")} onProfile={() => router.push("/profile")} />
         <View style={{ flex: 1, alignItems: "center", justifyContent: "center", padding: 32, gap: 20 }}>
           <MaterialCommunityIcons name="crown" size={56} color="#FFD700" />
           <Text style={{ fontFamily: "Inter_800ExtraBold", fontSize: 26, color: "#FFD700", textAlign: "center" }}>
             Premium Content
           </Text>
           <Text style={{ fontFamily: "Inter_400Regular", fontSize: 15, color: COLORS.textMuted, textAlign: "center", lineHeight: 22 }}>
-            Live TV kanalen zijn exclusief voor Premium leden. Upgrade nu voor toegang tot alle IPTV kanalen.
+            IPTV channels, movies and series are exclusive to Premium members.
           </Text>
           <TouchableOpacity
             style={{ flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: "#FFD700", borderRadius: 24, paddingHorizontal: 28, paddingVertical: 14, marginTop: 8 }}
             onPress={() => router.push("/premium")} activeOpacity={0.85}>
             <MaterialCommunityIcons name="crown" size={18} color="#000" />
-            <Text style={{ fontFamily: "Inter_700Bold", fontSize: 15, color: "#000" }}>Upgrade naar Premium</Text>
+            <Text style={{ fontFamily: "Inter_700Bold", fontSize: 15, color: "#000" }}>Upgrade to Premium</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -125,25 +199,44 @@ export default function LiveTVScreen() {
 
   return (
     <View style={styles.container}>
-      <NexoraHeader
-        title="Live TV"
-        showSearch={false}
-        showFavorites
-        showProfile
-        onFavorites={() => router.push("/favorites")}
-        onProfile={() => router.push("/profile")}
-      />
+      <NexoraHeader title="IPTV" showSearch={false} showFavorites showProfile
+        onFavorites={() => router.push("/favorites")} onProfile={() => router.push("/profile")} />
 
+      {/* IPTV Tab Bar */}
+      <View style={styles.tabBar}>
+        {([
+          { key: "live" as IPTVTab, label: "Live TV", icon: "tv-outline", count: liveChannels.length },
+          { key: "movies" as IPTVTab, label: "Movies", icon: "film-outline", count: iptvMovies.length },
+          { key: "series" as IPTVTab, label: "Series", icon: "layers-outline", count: iptvSeries.length },
+        ]).map(tab => (
+          <TouchableOpacity
+            key={tab.key}
+            style={[styles.tabItem, activeTab === tab.key && styles.tabItemActive]}
+            onPress={() => switchTab(tab.key)}
+            activeOpacity={0.75}
+          >
+            <Ionicons name={tab.icon as any} size={20} color={activeTab === tab.key ? COLORS.accent : COLORS.textMuted} />
+            <Text style={[styles.tabLabel, activeTab === tab.key && styles.tabLabelActive]}>{tab.label}</Text>
+            {tab.count > 0 && (
+              <View style={[styles.tabCount, activeTab === tab.key && styles.tabCountActive]}>
+                <Text style={[styles.tabCountText, activeTab === tab.key && styles.tabCountTextActive]}>
+                  {tab.count > 999 ? "999+" : tab.count}
+                </Text>
+              </View>
+            )}
+          </TouchableOpacity>
+        ))}
+      </View>
+
+      {/* Search Bar */}
       {showSearch && (
         <View style={styles.searchBar}>
           <Ionicons name="search" size={16} color={COLORS.textMuted} />
           <TextInput
             style={styles.searchInput}
-            placeholder="Search channels..."
+            placeholder={`Search ${activeTab === "live" ? "channels" : activeTab === "movies" ? "movies" : "series"}...`}
             placeholderTextColor={COLORS.textMuted}
-            value={search}
-            onChangeText={setSearch}
-            autoFocus
+            value={search} onChangeText={setSearch} autoFocus
           />
           {search.length > 0 && (
             <TouchableOpacity onPress={() => setSearch("")}>
@@ -156,15 +249,13 @@ export default function LiveTVScreen() {
         </View>
       )}
 
-      {!showSearch && liveChannels.length > 0 && (
+      {/* Group Filter + Search Toggle */}
+      {!showSearch && currentData.length > 0 && (
         <View style={styles.topBar}>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.groupScroll}>
             {groups.map(g => (
-              <TouchableOpacity
-                key={g}
-                style={[styles.groupChip, selectedGroup === g && styles.groupChipActive]}
-                onPress={() => setSelectedGroup(g)}
-              >
+              <TouchableOpacity key={g} style={[styles.groupChip, selectedGroup === g && styles.groupChipActive]}
+                onPress={() => setSelectedGroup(g)}>
                 <Text style={[styles.groupChipText, selectedGroup === g && styles.groupChipTextActive]}>{g}</Text>
               </TouchableOpacity>
             ))}
@@ -175,29 +266,24 @@ export default function LiveTVScreen() {
         </View>
       )}
 
-      {liveChannels.length === 0 ? (
+      {/* Content */}
+      {totalCount === 0 ? (
         isLoadingPlaylist ? (
           <View style={{ flex: 1, alignItems: "center", justifyContent: "center", gap: 16 }}>
             <ActivityIndicator size="large" color={COLORS.accent} />
-            <Text style={{ fontFamily: "Inter_400Regular", fontSize: 14, color: COLORS.textMuted }}>
-              Kanalen laden...
-            </Text>
+            <Text style={{ fontFamily: "Inter_400Regular", fontSize: 14, color: COLORS.textMuted }}>Loading channels...</Text>
           </View>
         ) : <EmptyState />
-      ) : (
+      ) : activeTab === "live" ? (
+        /* Live TV — row layout */
         <FlatList
           data={filtered}
           keyExtractor={item => item.id}
           renderItem={({ item }) => (
-            <ChannelRow
-              channel={item}
-              onPress={() => playChannel(item)}
-              onLongPress={() => toggleHideChannel(item.id)}
-            />
+            <ChannelCard channel={item} onPress={() => playChannel(item)} onLongPress={() => toggleHideChannel(item.id)} />
           )}
           contentContainerStyle={[styles.list, { paddingBottom: bottomPad }]}
           showsVerticalScrollIndicator={false}
-          scrollEnabled={!!filtered.length}
           ListEmptyComponent={
             <View style={styles.noResults}>
               <Ionicons name="search-outline" size={32} color={COLORS.textMuted} />
@@ -205,14 +291,34 @@ export default function LiveTVScreen() {
             </View>
           }
           ListHeaderComponent={
-            filtered.length > 0 ? (
-              <Text style={styles.countLabel}>{filtered.length} channels{search ? ` for "${search}"` : ""}</Text>
-            ) : null
+            filtered.length > 0 ? <Text style={styles.countLabel}>{filtered.length} channels{search ? ` for "${search}"` : ""}</Text> : null
+          }
+        />
+      ) : (
+        /* Movies / Series — grid layout */
+        <FlatList
+          data={filtered}
+          keyExtractor={item => item.id}
+          numColumns={3}
+          columnWrapperStyle={styles.vodGrid}
+          renderItem={({ item }) => (
+            <VODCard channel={item} onPress={() => goToDetail(item)} />
+          )}
+          contentContainerStyle={[styles.list, { paddingBottom: bottomPad }]}
+          showsVerticalScrollIndicator={false}
+          ListEmptyComponent={
+            <View style={styles.noResults}>
+              <Ionicons name="search-outline" size={32} color={COLORS.textMuted} />
+              <Text style={styles.noResultsText}>No {activeTab === "movies" ? "movies" : "series"} found</Text>
+            </View>
+          }
+          ListHeaderComponent={
+            filtered.length > 0 ? <Text style={styles.countLabel}>{filtered.length} {activeTab === "movies" ? "movies" : "series"}{search ? ` for "${search}"` : ""}</Text> : null
           }
         />
       )}
 
-      {liveChannels.length > 0 && (
+      {totalCount > 0 && (
         <TouchableOpacity
           style={[styles.manageBtn, { bottom: bottomPad + 12 }]}
           onPress={() => router.push("/playlist-manage")}
@@ -227,7 +333,32 @@ export default function LiveTVScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
-  topBar: { flexDirection: "row", alignItems: "center", paddingRight: 12, backgroundColor: COLORS.overlayLight, borderTopWidth: 1, borderBottomWidth: 1, borderColor: COLORS.border },
+
+  // Tab Bar
+  tabBar: {
+    flexDirection: "row", paddingHorizontal: 12, paddingVertical: 8, gap: 8,
+    borderBottomWidth: 1, borderBottomColor: "rgba(255,255,255,0.06)",
+  },
+  tabItem: {
+    flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center",
+    gap: 6, paddingVertical: 10, borderRadius: 14,
+    backgroundColor: COLORS.cardElevated, borderWidth: 1, borderColor: COLORS.border,
+  },
+  tabItemActive: {
+    backgroundColor: COLORS.accentGlow, borderColor: COLORS.accent,
+  },
+  tabLabel: { fontFamily: "Inter_600SemiBold", fontSize: 12, color: COLORS.textMuted },
+  tabLabelActive: { color: COLORS.accent },
+  tabCount: {
+    backgroundColor: "rgba(255,255,255,0.08)", borderRadius: 8,
+    paddingHorizontal: 6, paddingVertical: 1, minWidth: 22, alignItems: "center",
+  },
+  tabCountActive: { backgroundColor: `${COLORS.accent}33` },
+  tabCountText: { fontFamily: "Inter_700Bold", fontSize: 9, color: COLORS.textMuted },
+  tabCountTextActive: { color: COLORS.accent },
+
+  // Top bar / groups
+  topBar: { flexDirection: "row", alignItems: "center", paddingRight: 12, backgroundColor: COLORS.overlayLight, borderBottomWidth: 1, borderColor: COLORS.border },
   groupScroll: { paddingHorizontal: 12, paddingVertical: 10 },
   groupChip: {
     paddingHorizontal: 14, paddingVertical: 7, borderRadius: 20, marginRight: 8,
@@ -237,6 +368,8 @@ const styles = StyleSheet.create({
   groupChipText: { fontFamily: "Inter_500Medium", fontSize: 12, color: COLORS.textSecondary },
   groupChipTextActive: { color: COLORS.accent, fontFamily: "Inter_600SemiBold" },
   searchIcon: { padding: 8 },
+
+  // Search
   searchBar: {
     flexDirection: "row", alignItems: "center", gap: 8, marginHorizontal: 12, marginVertical: 8,
     backgroundColor: COLORS.overlayLight, borderRadius: 14, paddingHorizontal: 12, paddingVertical: 10,
@@ -245,9 +378,13 @@ const styles = StyleSheet.create({
   searchInput: { flex: 1, fontFamily: "Inter_400Regular", fontSize: 14, color: COLORS.text },
   cancelSearch: { paddingLeft: 8 },
   cancelSearchText: { fontFamily: "Inter_500Medium", fontSize: 13, color: COLORS.accent },
+
+  // Content lists
   list: { paddingTop: 4 },
   countLabel: { fontFamily: "Inter_400Regular", fontSize: 12, color: COLORS.textMuted, paddingHorizontal: 16, paddingBottom: 8 },
-  channelRow: {
+
+  // Channel card (Live TV)
+  channelCard: {
     flexDirection: "row", alignItems: "center", paddingHorizontal: 14, paddingVertical: 12,
     marginHorizontal: 14, marginBottom: 8, gap: 12,
     borderWidth: 1, borderColor: COLORS.border, borderRadius: 16, backgroundColor: COLORS.cardElevated,
@@ -268,6 +405,26 @@ const styles = StyleSheet.create({
   },
   liveDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: COLORS.live },
   liveText: { fontFamily: "Inter_700Bold", fontSize: 9, color: COLORS.live, letterSpacing: 0.5 },
+
+  // VOD card (Movies/Series)
+  vodCard: { flex: 1, marginHorizontal: 5, marginBottom: 16, maxWidth: "33%" as any },
+  vodGrid: { paddingHorizontal: 9 },
+  vodPoster: {
+    aspectRatio: 2 / 3, borderRadius: 12, overflow: "hidden",
+    backgroundColor: COLORS.card, borderWidth: 0.5, borderColor: "rgba(255,255,255,0.06)",
+  },
+  vodPosterInitials: { ...StyleSheet.absoluteFillObject, alignItems: "center", justifyContent: "center", padding: 6 },
+  vodPosterInitialsText: { fontFamily: "Inter_800ExtraBold", fontSize: 11, color: "rgba(255,255,255,0.2)", textAlign: "center" },
+  vodBadgeRow: { padding: 6 },
+  vodBadge: {
+    alignSelf: "flex-start", backgroundColor: "rgba(0,120,255,0.25)", borderWidth: 1,
+    borderColor: "rgba(80,160,255,0.7)", borderRadius: 4, paddingHorizontal: 5, paddingVertical: 1,
+  },
+  vodBadgeText: { fontFamily: "Inter_700Bold", fontSize: 7, color: "#80C4FF", letterSpacing: 0.5 },
+  vodTitle: { fontFamily: "Inter_600SemiBold", fontSize: 11, color: COLORS.text, marginTop: 6 },
+  vodGroup: { fontFamily: "Inter_400Regular", fontSize: 9, color: COLORS.textMuted, marginTop: 1 },
+
+  // Empty / No results
   emptyContainer: { flex: 1, alignItems: "center", justifyContent: "center", padding: 32 },
   emptyGradient: { alignItems: "center", gap: 12, padding: 32, borderRadius: 24, width: "100%" },
   emptyTitle: { fontFamily: "Inter_700Bold", fontSize: 20, color: COLORS.text },
@@ -279,6 +436,8 @@ const styles = StyleSheet.create({
   emptyBtnText: { fontFamily: "Inter_700Bold", fontSize: 14, color: COLORS.background },
   noResults: { alignItems: "center", paddingTop: 60, gap: 12 },
   noResultsText: { fontFamily: "Inter_500Medium", fontSize: 15, color: COLORS.textMuted },
+
+  // Manage FAB
   manageBtn: {
     position: "absolute", right: 16, flexDirection: "row", alignItems: "center", gap: 6,
     backgroundColor: COLORS.accent, borderRadius: 22, paddingHorizontal: 16, paddingVertical: 10,
