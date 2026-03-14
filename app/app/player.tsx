@@ -88,6 +88,13 @@ const AD_DOMAINS = [
   "twinrdsrv.com", "tsartech.com", "runative.com",
   "ntv.io", "glimr.io", "liveintent.com", "kochava.com",
   "d2cmedia.com", "nextmillennium.io", "a2z-media.com",
+  // Popup / redirect networks
+  "adbull.com", "adtival.network", "clickaine.com", "evadav.com",
+  "galaksion.com", "mondiad.com", "roller-ads.com", "richads.com",
+  "zeydoo.com", "clickdealer.com", "cpmstar.com", "adsco.re",
+  "realsrv.com", "trk.smarter.com", "acint.net", "ad6media.fr",
+  "bidswitch.net", "adsrvr.org", "demdex.net", "krxd.net",
+  "bluekai.com", "addthis.com", "sharethis.com",
   // CAPTCHA / verification services
   "google.com/recaptcha", "www.google.com/recaptcha",
   "recaptcha.net", "www.recaptcha.net",
@@ -102,8 +109,8 @@ const AD_DOMAINS = [
 ];
 
 // ─── JS injected in embed WebView ─────────────────────────────────────────────
-// Strategy: allow exactly 1 user click (to start playback), then block everything.
-// Once a video element is detected playing, block all non-player interactions.
+// Strategy: block ALL clicks except on video/player elements from the start.
+// Blocks fetch/XHR to ad networks, strips popups/overlays, nukes ad iframes.
 const AD_BLOCK_JS = `
 (function(){
   // ── Patch removeChild to never throw (prevents DOMException crashes) ───────
@@ -162,6 +169,35 @@ const AD_BLOCK_JS = `
   try{ var _origFocus = window.focus; window.focus = function(){ try{ _origFocus.call(window); }catch(e){} }; }catch(e){}
   // Block document.write after initial load (used to inject full-page ad takeovers)
   setTimeout(function(){ try{ document.write = function(){}; document.writeln = function(){}; }catch(e){} }, 2000);
+  // Block Service Worker registration (used by push notification ads)
+  try{ if(navigator.serviceWorker){ navigator.serviceWorker.register = function(){ return Promise.reject('blocked'); }; } }catch(e){}
+  // Block window.open in all child frames too
+  try{ var _blockFrameOpen = function(w){ try{ w.open = function(){ return null; }; }catch(e){} };
+    if(window.frames){ for(var fi=0; fi<window.frames.length; fi++){ try{ _blockFrameOpen(window.frames[fi]); }catch(e){} } }
+  }catch(e){}
+
+  // ── 1b. Block fetch/XHR to ad domains ──────────────────────────────────
+  var _adNetworks = /doubleclick|googlesyndication|googleadservices|adnxs|exoclick|juicyads|popads|popcash|trafficjunky|adsterra|hilltopads|propellerads|clickadu|plugrush|adcash|admaven|popunder|revenuehits|onclkds|taboola|outbrain|mgid|moatads|monetag|pushance|pushails|dolohen|tsyndicate|coinzilla|bitmedia|marphezis|wpadmngr|pusherism|twinrdsrv|runative|bet365|1xbet|stake\.com|casino|gambling|poker/i;
+  try{
+    var _origFetch = window.fetch;
+    window.fetch = function(url, opts){
+      var u = typeof url === 'string' ? url : (url && url.url ? url.url : '');
+      if(_adNetworks.test(u)) return Promise.resolve(new Response('', {status: 204}));
+      return _origFetch.call(window, url, opts);
+    };
+  }catch(e){}
+  try{
+    var _origXhrOpen = XMLHttpRequest.prototype.open;
+    XMLHttpRequest.prototype.open = function(method, url){
+      if(_adNetworks.test(String(url||''))) { this._blocked = true; return; }
+      return _origXhrOpen.apply(this, arguments);
+    };
+    var _origXhrSend = XMLHttpRequest.prototype.send;
+    XMLHttpRequest.prototype.send = function(){
+      if(this._blocked) return;
+      return _origXhrSend.apply(this, arguments);
+    };
+  }catch(e){}
 
   // ── Block CAPTCHA / robot verification systems ─────────────────────────
   // Intercept recaptcha, hcaptcha, turnstile script loading
@@ -408,27 +444,23 @@ const AD_BLOCK_JS = `
       } break;
     } link=link.parentElement; }
 
-    // If video is already playing, block ALL non-player clicks
-    if(_videoFound || _isVideoPlaying()){
-      _videoFound = true;
-      e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation(); return false;
-    }
-
-    // Before playback starts: allow interaction so player can initialize.
-    // Off-domain popup redirects are still blocked by nav guards + ad URL checks.
-    return;
+    // Block ALL non-player clicks — no "first free click" that ads exploit
+    e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation(); return false;
   }, true);
 
-  // Also block touch events after first click (mobile ad popups use touchstart)
+  // Also block touch events (mobile ad popups use touchstart)
   document.addEventListener('touchstart', function(e){
     if(_isPlayerElement(e.target)) return;
-    if(_videoFound || _isVideoPlaying()){
-      _videoFound = true;
-      if(!_isPlayerElement(e.target)){
-        e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation();
-      }
-    }
-  }, true);
+    e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation();
+  }, {capture: true, passive: false});
+
+  // Strip target=_blank from all links (prevents popup windows)
+  setInterval(function(){
+    document.querySelectorAll('a[target]').forEach(function(a){
+      var t = a.getAttribute('target');
+      if(t === '_blank' || t === '_top' || t === '_parent') a.removeAttribute('target');
+    });
+  }, 2000);
 
   // ── 2b. Intercept dynamically added click listeners that open ads ─────
   var _origAddEvent = EventTarget.prototype.addEventListener;
@@ -695,9 +727,8 @@ const AD_BLOCK_JS = `
     if(_cleanCount > 60) clearInterval(_cleanInterval);
   }, 1000);
 
-  // ── 5b. Nuke all iframes that aren't the video player after playback starts ──
+  // ── 5b. Nuke all iframes that aren't the video player — run from start ──
   setInterval(function(){
-    if(!_videoFound) return;
     document.querySelectorAll('iframe').forEach(function(f){
       var src = (f.getAttribute('src')||'').toLowerCase();
       var id = (f.id||'').toLowerCase();
@@ -705,16 +736,14 @@ const AD_BLOCK_JS = `
       // Keep player-related iframes
       if(id.match(/player|video|stream/) || cn.match(/player|video|stream/)) return;
       if(src.match(/\.m3u8|\.mp4|\.ts|player|embed|stream|hls/)) return;
-      // Always remove CAPTCHA iframes
-      if(src.match(/recaptcha|hcaptcha|turnstile|captcha|challenges\.cloudflare|robot/) ||
-         id.match(/captcha|recaptcha|hcaptcha|turnstile|robot|verify/) ||
-         cn.match(/captcha|recaptcha|hcaptcha|turnstile|robot|verify/)){
-        try{ f.remove(); }catch(e){} return;
-      }
-      // Remove everything else
+      // Keep same-domain iframes (likely part of the player)
+      try{ var fHost = new URL(src, window.location.href).hostname;
+        if(fHost === _host || fHost.endsWith('.'+_host)) return;
+      }catch(e){}
+      // Remove everything else (ads, trackers, captcha)
       try{ f.remove(); }catch(e){}
     });
-  }, 3000);
+  }, 2000);
 
   // ── 6. Auto-play: click play button + start video ────────────────────
   function tryAutoPlay(){
