@@ -29,7 +29,7 @@ import { apiRequest, queryClient } from "@/lib/query-client";
 import { fetchM3UText } from "@/lib/fetchM3U";
 import { parseM3UContentAsync } from "@/lib/parseM3U";
 import { SafeHaptics } from "@/lib/safeHaptics";
-import * as FileSystem from "expo-file-system";
+import * as FileSystem from "expo-file-system/legacy";
 
 const CHANGELOG: { version: string; date: string; changes: string[] }[] = [
   {
