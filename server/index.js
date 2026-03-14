@@ -2812,6 +2812,11 @@ app.get("/health", (req, res) => {
   res.json({ ok: true, time: new Date().toISOString(), source: footballSource(), tz: TZ, aiReady, aiProviders, zilliz: _zillizReady, tmdb: Boolean(process.env.TMDB_API_KEY), apify: Boolean(process.env.APIFY_TOKEN) });
 });
 
+// ── Short download redirect (for Downloader app on TV) ──────────────────────
+app.get("/download", (req, res) => {
+  res.redirect(301, "/api/download/apk");
+});
+
 // ── App version / update check ────────────────────────────────────────────────
 // Update server/app-version.json when you build a new APK (apkUrl is written by auto-release).
 app.get("/api/app-version", (req, res) => {
