@@ -721,10 +721,14 @@ const AD_BLOCK_JS = `
     var videos = document.querySelectorAll('video');
     for(var i=0; i<videos.length; i++){
       var v = videos[i];
-      if(v.paused && v.readyState >= 2){
-        v.muted = false;
+      if(v.paused){
+        v.autoplay = true;
+        v.playsInline = true;
         var p = v.play();
-        if(p && p.catch) p.catch(function(){ v.muted = true; v.play().catch(function(){}); });
+        if(p && p.catch) p.catch(function(){
+          v.muted = true; v.play().catch(function(){});
+          setTimeout(function(){ try { v.muted = false; } catch(e){} }, 800);
+        });
         _videoFound = true;
         return;
       }
@@ -763,13 +767,20 @@ const FORCE_PLAY_JS = `
     var videos = document.querySelectorAll('video');
     for (var i = 0; i < videos.length; i++) {
       var v = videos[i];
-      try { v.muted = true; v.setAttribute('muted', ''); } catch(e){}
+      // Don't mute — try unmuted first for proper audio
       try {
-        var p = v.play();
-        if (p && p.catch) p.catch(function(){
-          try { v.muted = false; } catch(e){}
-          v.play && v.play().catch(function(){});
-        });
+        v.autoplay = true;
+        v.playsInline = true;
+        if (v.paused) {
+          var p = v.play();
+          if (p && p.catch) p.catch(function(){
+            // Only mute as last resort if autoplay policy blocks unmuted
+            v.muted = true;
+            v.play().catch(function(){});
+            // Try to unmute after a short delay
+            setTimeout(function(){ try { v.muted = false; } catch(e){} }, 800);
+          });
+        }
       } catch(e){}
     }
   }
@@ -813,8 +824,10 @@ const FORCE_PLAY_JS = `
   removeBlockingLayers();
   clickLikelyPlayButtons();
   tryPlayVideos();
-  setTimeout(function(){ removeBlockingLayers(); clickLikelyPlayButtons(); tryPlayVideos(); }, 700);
-  setTimeout(function(){ removeBlockingLayers(); clickLikelyPlayButtons(); tryPlayVideos(); }, 1700);
+  setTimeout(function(){ removeBlockingLayers(); clickLikelyPlayButtons(); tryPlayVideos(); }, 500);
+  setTimeout(function(){ removeBlockingLayers(); clickLikelyPlayButtons(); tryPlayVideos(); }, 1200);
+  setTimeout(function(){ clickLikelyPlayButtons(); tryPlayVideos(); }, 2500);
+  setTimeout(function(){ tryPlayVideos(); }, 4000);
 })();
 `;
 
@@ -1141,11 +1154,13 @@ export default function PlayerScreen() {
       embedWebviewRef.current?.injectJavaScript(`${FORCE_PLAY_JS};true;`);
     };
     run();
-    // Store timer IDs so they can be cleared on unmount
+    // More aggressive retry schedule to unfreeze stuck players
     autoplayTimersRef.current.push(
-      setTimeout(run, 600),
-      setTimeout(run, 1700),
-      setTimeout(run, 3200),
+      setTimeout(run, 400),
+      setTimeout(run, 1000),
+      setTimeout(run, 2000),
+      setTimeout(run, 3500),
+      setTimeout(run, 6000),
     );
   }, []);
 
@@ -1566,6 +1581,12 @@ export default function PlayerScreen() {
           originWhitelist={["http://*", "https://*", "about:*", "blob:*", "*"]}
           userAgent="Mozilla/5.0 (Linux; Android 12; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
           injectedJavaScriptBeforeContentLoaded={AD_BLOCK_JS}
+          onLoadProgress={({ nativeEvent }) => {
+            // Start autoplay attempts early, as soon as page is ~60% loaded
+            if (nativeEvent.progress > 0.6 && !disposedRef.current) {
+              embedWebviewRef.current?.injectJavaScript(`${FORCE_PLAY_JS};true;`);
+            }
+          }}
           onLoad={() => {
             if (!disposedRef.current) {
               setIsLoading(false); setStreamError(null); setStreamErrorRef(""); injectEmbedAutoplay();
