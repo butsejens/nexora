@@ -23,6 +23,14 @@ import { SafeHaptics } from "@/lib/safeHaptics";
 import { openInVlc } from "@/lib/vlc";
 import { buildErrorReference } from "@/lib/error-messages";
 import { SilentResetBoundary } from "@/components/SilentResetBoundary";
+import {
+  startSession, sendHeartbeat, stopSession,
+  signStream, detectStreamType,
+} from "@/lib/playback-engine";
+import {
+  fetchSubtitles, getBestTrack, SUPPORTED_LANGUAGES,
+} from "@/lib/subtitle-manager";
+import type { SubtitleTrack } from "@/lib/subtitle-manager";
 
 // ─── Stream providers ──────────────────────────────────────────────────────────
 const STREAM_PROVIDERS = [
@@ -789,6 +797,30 @@ export default function PlayerScreen() {
   const [hlsIsLive, setHlsIsLive]       = useState(false);
   const [seekBarWidth, setSeekBarWidth]  = useState(1);
 
+  // ── Subtitle state ─────────────────────────────────────────────────────
+  const [subtitleTracks, setSubtitleTracks] = useState<SubtitleTrack[]>([]);
+  const [activeSubtitle, setActiveSubtitle] = useState<SubtitleTrack | null>(null);
+  const [showSubtitlePicker, setShowSubtitlePicker] = useState(false);
+
+  // Load subtitles when tmdbId is available
+  useEffect(() => {
+    if (!tmdbId) return;
+    let cancelled = false;
+    fetchSubtitles(Number(tmdbId), {
+      type: type === "series" ? "series" : "movie",
+      season: season ? Number(season) : undefined,
+      episode: episode ? Number(episode) : undefined,
+    }).then(tracks => {
+      if (!cancelled && tracks.length > 0) {
+        setSubtitleTracks(tracks);
+        // Auto-select Dutch or English subtitle
+        const best = getBestTrack(tracks, "nl") || getBestTrack(tracks, "en");
+        if (best) setActiveSubtitle(best);
+      }
+    });
+    return () => { cancelled = true; };
+  }, [tmdbId, type, season, episode]);
+
   const provider         = STREAM_PROVIDERS[providerIndex]?.id || STREAM_PROVIDERS[0].id;
   const allProvidersFailed = providerIndex >= STREAM_PROVIDERS.length;
 
@@ -798,23 +830,37 @@ export default function PlayerScreen() {
     return () => { deactivateKeepAwake("player"); };
   }, []);
 
-  // ── Device session tracking ────────────────────────────────────────────────
+  // ── Device session tracking (via playback engine) ───────────────────────
+  const [sharingWarning, setSharingWarning] = useState<string | null>(null);
+
   useEffect(() => {
     const deviceId = `${Platform.OS}_${contentId || "unknown"}_${Date.now()}`;
-    const startSession = async () => {
-      try {
-        await apiRequest("POST", "/api/session/start", { deviceId, streamUrl: streamUrl || "" });
-      } catch {}
+    const init = async () => {
+      const result = await startSession(deviceId, streamUrl || undefined);
+      if (result.sharingWarning) setSharingWarning(result.sharingWarning);
     };
-    startSession();
-    const heartbeat = setInterval(async () => {
-      try { await apiRequest("POST", "/api/session/heartbeat", { deviceId }); } catch {}
-    }, 60000);
+    init();
+    const heartbeat = setInterval(() => sendHeartbeat(deviceId), 60000);
     return () => {
       clearInterval(heartbeat);
-      apiRequest("POST", "/api/session/stop", { deviceId }).catch(() => {});
+      stopSession(deviceId);
     };
   }, [contentId, streamUrl]);
+
+  // ── Stream signing for IPTV streams ─────────────────────────────────────
+  const [signedStreamUrl, setSignedStreamUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!streamUrl) { setSignedStreamUrl(null); return; }
+    let cancelled = false;
+    signStream(streamUrl, `${Platform.OS}_${contentId || "unknown"}`).then(result => {
+      if (!cancelled && result.signedUrl) setSignedStreamUrl(result.signedUrl);
+    });
+    return () => { cancelled = true; };
+  }, [streamUrl, contentId]);
+
+  // Use signed URL if available, otherwise original
+  const effectiveStreamUrl = signedStreamUrl || streamUrl;
 
   const injectEmbedAutoplay = useCallback(() => {
     if (Platform.OS === "web") return;
@@ -981,20 +1027,20 @@ export default function PlayerScreen() {
   // Auto-advance on error (embed only)
   useEffect(() => {
     if (!streamError) return;
-    if (streamUrl && !useFallbackEmbed) return;
+    if (effectiveStreamUrl && !useFallbackEmbed) return;
     if (!tmdbId || allProvidersFailed) return;
     const t = setTimeout(() => tryNextProvider(), 1200);
     return () => clearTimeout(t);
-  }, [streamError, streamUrl, useFallbackEmbed, tmdbId, allProvidersFailed, tryNextProvider]);
+  }, [streamError, effectiveStreamUrl, useFallbackEmbed, tmdbId, allProvidersFailed, tryNextProvider]);
 
   // Auto-advance on slow load (embed only)
   useEffect(() => {
     if (!isLoading) return;
-    if (streamUrl && !useFallbackEmbed) return;
+    if (effectiveStreamUrl && !useFallbackEmbed) return;
     if (!tmdbId || allProvidersFailed) return;
     const t = setTimeout(() => tryNextProvider(), 15000);
     return () => clearTimeout(t);
-  }, [isLoading, webviewKey, streamUrl, useFallbackEmbed, tmdbId, allProvidersFailed, tryNextProvider]);
+  }, [isLoading, webviewKey, effectiveStreamUrl, useFallbackEmbed, tmdbId, allProvidersFailed, tryNextProvider]);
 
   // ── What to render ────────────────────────────────────────────────────────
   const embedUrl: string | null = (() => {
@@ -1004,7 +1050,7 @@ export default function PlayerScreen() {
     return null;
   })();
 
-  const hlsHtml: string | null = (streamUrl && !useFallbackEmbed) ? buildHlsHtml(streamUrl) : null;
+  const hlsHtml: string | null = (effectiveStreamUrl && !useFallbackEmbed) ? buildHlsHtml(effectiveStreamUrl) : null;
   const embedUrlWithAutoplay: string | null = (!hlsHtml && embedUrl) ? withEmbedAutoplayParams(embedUrl) : null;
   const hasSource = !!(hlsHtml || embedUrlWithAutoplay);
 
@@ -1241,7 +1287,7 @@ export default function PlayerScreen() {
           <View style={styles.loadingOverlay} pointerEvents="none">
             <ActivityIndicator size="large" color={COLORS.accent} />
             <Text style={styles.loadingText}>
-              {(tmdbId && !streamUrl) || (useFallbackEmbed && tmdbId)
+              {(tmdbId && !effectiveStreamUrl) || (useFallbackEmbed && tmdbId)
                 ? `Verbinding zoeken... (${providerIndex + 1}/${STREAM_PROVIDERS.length})`
                 : "Laden..."}
             </Text>
@@ -1322,8 +1368,36 @@ export default function PlayerScreen() {
                   <Ionicons name="share-outline" size={20} color="rgba(255,255,255,0.85)" />
                 </TouchableOpacity>
               )}
+              {subtitleTracks.length > 0 && (
+                <TouchableOpacity style={styles.iconBtn} onPress={() => setShowSubtitlePicker(s => !s)}>
+                  <Ionicons name="text" size={20} color={activeSubtitle ? COLORS.accent : "rgba(255,255,255,0.85)"} />
+                </TouchableOpacity>
+              )}
             </View>
           </LinearGradient>
+
+          {/* Subtitle picker dropdown */}
+          {showSubtitlePicker && (
+            <View style={styles.subtitlePicker}>
+              <TouchableOpacity
+                style={[styles.subtitleOption, !activeSubtitle && styles.subtitleOptionActive]}
+                onPress={() => { setActiveSubtitle(null); setShowSubtitlePicker(false); }}
+              >
+                <Text style={[styles.subtitleOptionText, !activeSubtitle && styles.subtitleOptionTextActive]}>Off</Text>
+              </TouchableOpacity>
+              {subtitleTracks.slice(0, 8).map(track => (
+                <TouchableOpacity
+                  key={track.id}
+                  style={[styles.subtitleOption, activeSubtitle?.id === track.id && styles.subtitleOptionActive]}
+                  onPress={() => { setActiveSubtitle(track); setShowSubtitlePicker(false); }}
+                >
+                  <Text style={[styles.subtitleOptionText, activeSubtitle?.id === track.id && styles.subtitleOptionTextActive]}>
+                    {track.languageLabel}{track.hearingImpaired ? " (CC)" : ""}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
 
           {/* HLS center controls: skip-back | play-pause | skip-forward */}
           {Platform.OS !== "web" && (
@@ -1555,4 +1629,24 @@ const styles = StyleSheet.create({
   embedTitleWrap: { flex: 1, marginLeft: 8 },
   embedTitle: { fontFamily: "Inter_600SemiBold", fontSize: 14, color: "#fff" },
   embedSub:   { fontFamily: "Inter_400Regular", fontSize: 11, color: "rgba(255,255,255,0.5)", marginTop: 1 },
+
+  // Subtitle picker
+  subtitlePicker: {
+    position: "absolute", top: 80, right: 16,
+    backgroundColor: "rgba(0,0,0,0.92)", borderRadius: 12,
+    borderWidth: 1, borderColor: "rgba(255,255,255,0.15)",
+    paddingVertical: 4, minWidth: 160, zIndex: 20,
+  },
+  subtitleOption: {
+    paddingHorizontal: 16, paddingVertical: 10,
+  },
+  subtitleOptionActive: {
+    backgroundColor: "rgba(255,45,85,0.15)",
+  },
+  subtitleOptionText: {
+    fontFamily: "Inter_500Medium", fontSize: 13, color: "rgba(255,255,255,0.7)",
+  },
+  subtitleOptionTextActive: {
+    color: COLORS.accent, fontFamily: "Inter_600SemiBold",
+  },
 });

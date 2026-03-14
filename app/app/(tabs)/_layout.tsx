@@ -81,8 +81,11 @@ export default function TabLayout() {
             paddingTop: 40,
           },
           tabBarItemStyle: {
-            paddingVertical: 12,
-            paddingHorizontal: 16,
+            paddingVertical: 16,
+            paddingHorizontal: 20,
+            borderRadius: 12,
+            marginVertical: 2,
+            marginHorizontal: 8,
           },
         }}
       >

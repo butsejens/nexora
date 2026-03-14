@@ -65,6 +65,7 @@ export interface IPTVChannel {
   year?: number | null;
   rating?: number;
   seasons?: number;
+  epgId?: string;
 }
 
 interface NexoraContextValue {

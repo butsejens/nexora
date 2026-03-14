@@ -5490,8 +5490,348 @@ app.post("/api/stream/validate", playlistLimiter, async (req, res) => {
   }
 });
 
+// ─── EPG (Electronic Program Guide) ──────────────────────────────────────────
+// Fetches & caches XMLTV EPG data for live TV channels
+
+const epgCache = new Map(); // epgUrl -> { data, ts }
+const EPG_TTL = 4 * 60 * 60 * 1000; // 4 hours
+
+function parseXMLTV(xml) {
+  const programmes = [];
+  const channelNames = new Map();
+  // Parse channel display names
+  const chanRegex = /<channel\s+id="([^"]*)"[^>]*>([\s\S]*?)<\/channel>/gi;
+  let cm;
+  while ((cm = chanRegex.exec(xml)) !== null) {
+    const id = cm[1];
+    const nameMatch = cm[2].match(/<display-name[^>]*>([^<]+)<\/display-name>/i);
+    if (nameMatch) channelNames.set(id, nameMatch[1].trim());
+  }
+  // Parse programmes
+  const progRegex = /<programme\s+start="([^"]*)"[^]*?stop="([^"]*)"[^]*?channel="([^"]*)"[^>]*>([\s\S]*?)<\/programme>/gi;
+  let pm;
+  while ((pm = progRegex.exec(xml)) !== null) {
+    const start = pm[1];
+    const stop = pm[2];
+    const channel = pm[3];
+    const body = pm[4];
+    const titleMatch = body.match(/<title[^>]*>([^<]+)<\/title>/i);
+    const descMatch = body.match(/<desc[^>]*>([^<]+)<\/desc>/i);
+    const catMatch = body.match(/<category[^>]*>([^<]+)<\/category>/i);
+    const iconMatch = body.match(/<icon\s+src="([^"]+)"/i);
+    if (titleMatch) {
+      programmes.push({
+        channel,
+        channelName: channelNames.get(channel) || channel,
+        title: titleMatch[1].trim(),
+        description: descMatch ? descMatch[1].trim() : "",
+        category: catMatch ? catMatch[1].trim() : "",
+        icon: iconMatch ? iconMatch[1] : null,
+        start: parseXMLTVDate(start),
+        stop: parseXMLTVDate(stop),
+      });
+    }
+  }
+  return { channels: Object.fromEntries(channelNames), programmes };
+}
+
+function parseXMLTVDate(str) {
+  // Format: 20240101120000 +0100
+  const m = String(str || "").match(/^(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})/);
+  if (!m) return str;
+  return `${m[1]}-${m[2]}-${m[3]}T${m[4]}:${m[5]}:${m[6]}`;
+}
+
+app.get("/api/epg", async (req, res) => {
+  try {
+    const epgUrl = req.query.url;
+    if (!epgUrl) return res.status(400).json({ error: "Missing EPG URL" });
+    // SSRF protection
+    try {
+      const u = new URL(String(epgUrl));
+      if (!["http:", "https:"].includes(u.protocol)) return res.status(400).json({ error: "Invalid protocol" });
+      const hn = u.hostname.toLowerCase();
+      if (/^(localhost|127\.|10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.|0\.0\.0\.0|::1)/.test(hn) && process.env.NODE_ENV !== "development") {
+        return res.status(400).json({ error: "Private addresses not allowed" });
+      }
+    } catch { return res.status(400).json({ error: "Invalid URL" }); }
+
+    const cacheKey = `epg-${epgUrl}`;
+    const cached = epgCache.get(cacheKey);
+    if (cached && Date.now() - cached.ts < EPG_TTL) return res.json(cached.data);
+
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 30000);
+    const resp = await fetch(epgUrl, { signal: controller.signal, headers: IPTV_HEADERS });
+    clearTimeout(timer);
+    if (!resp.ok) return res.status(502).json({ error: `EPG fetch failed: ${resp.status}` });
+    const xml = await resp.text();
+    const parsed = parseXMLTV(xml);
+    epgCache.set(cacheKey, { data: parsed, ts: Date.now() });
+    res.json(parsed);
+  } catch (e) {
+    res.status(500).json({ error: String(e?.message || e) });
+  }
+});
+
+// Get current & next programme for a specific channel
+app.get("/api/epg/now/:channelId", (req, res) => {
+  try {
+    const { channelId } = req.params;
+    const epgUrl = req.query.url;
+    const cacheKey = `epg-${epgUrl}`;
+    const cached = epgCache.get(cacheKey);
+    if (!cached) return res.json({ now: null, next: null });
+    const now = new Date().toISOString();
+    const progs = (cached.data.programmes || [])
+      .filter(p => p.channel === channelId)
+      .sort((a, b) => a.start.localeCompare(b.start));
+    const current = progs.find(p => p.start <= now && p.stop > now);
+    const next = progs.find(p => p.start > now);
+    res.json({ now: current || null, next: next || null });
+  } catch (e) {
+    res.json({ now: null, next: null });
+  }
+});
+
+// ─── Trailer search endpoint ────────────────────────────────────────────────
+// Returns YouTube trailer key for auto-preview
+app.get("/api/trailer/:tmdbId", tmdbLimiter, async (req, res) => {
+  try {
+    if (!process.env.TMDB_API_KEY) return res.json({ key: null });
+    const { tmdbId } = req.params;
+    const type = req.query.type === "series" ? "tv" : "movie";
+    const cacheKey = `trailer-${type}-${tmdbId}`;
+    const cached = cacheGet(cacheKey);
+    if (cached !== null) return res.json(cached);
+
+    const videos = await tmdb(`/${type}/${encodeURIComponent(tmdbId)}/videos`);
+    const key = pickTrailerKey(videos);
+    const result = { key, type: "youtube" };
+    cacheSet(cacheKey, result, 24 * 60 * 60 * 1000); // 24h
+    res.json(result);
+  } catch (e) {
+    res.json({ key: null });
+  }
+});
+
+// ─── Netflix-style Homepage rows ─────────────────────────────────────────────
+// Single endpoint that returns all homepage sections for efficiency
+app.get("/api/homepage", tmdbLimiter, async (req, res) => {
+  try {
+    if (!process.env.TMDB_API_KEY) return res.json({ rows: [] });
+
+    const cacheKey = "homepage-v2";
+    const cached = cacheGet(cacheKey);
+    if (cached) return res.json(cached);
+
+    // Fetch all homepage data in parallel
+    const [
+      trendingMovies, trendingTv,
+      nowPlaying, airingToday,
+      topRatedMovies, topRatedTv,
+      popularMovies, popularTv,
+      upcomingMovies,
+      hiddenGemsMovies, hiddenGemsTv,
+    ] = await Promise.all([
+      tmdb("/trending/movie/week"),
+      tmdb("/trending/tv/week"),
+      tmdb("/movie/now_playing"),
+      tmdb("/tv/airing_today"),
+      tmdb("/movie/top_rated"),
+      tmdb("/tv/top_rated"),
+      tmdb("/movie/popular?page=2"),
+      tmdb("/tv/popular?page=2"),
+      tmdb("/movie/upcoming"),
+      tmdb("/discover/movie?sort_by=vote_average.desc&vote_count.gte=200&vote_average.gte=7.5&popularity.lte=40&page=1").catch(() => ({ results: [] })),
+      tmdb("/discover/tv?sort_by=vote_average.desc&vote_count.gte=200&vote_average.gte=7.5&popularity.lte=40&page=1").catch(() => ({ results: [] })),
+    ]);
+
+    const rows = [
+      { id: "trending-movies", title: "Trending Now", type: "movie", items: (trendingMovies?.results || []).slice(0, 20).map(it => mapTrendingItem(it, "movie")) },
+      { id: "trending-series", title: "Trending Series", type: "series", items: (trendingTv?.results || []).slice(0, 20).map(it => mapTrendingItem(it, "series")) },
+      { id: "new-releases", title: "New Releases", type: "movie", items: (nowPlaying?.results || []).slice(0, 20).map(it => mapTrendingItem(it, "movie")) },
+      { id: "airing-today", title: "Airing Today", type: "series", items: (airingToday?.results || []).slice(0, 20).map(it => mapTrendingItem(it, "series")) },
+      { id: "top-rated-movies", title: "Top Rated Movies", type: "movie", items: (topRatedMovies?.results || []).slice(0, 20).map(it => mapTrendingItem(it, "movie")) },
+      { id: "top-rated-series", title: "Top Rated Series", type: "series", items: (topRatedTv?.results || []).slice(0, 20).map(it => mapTrendingItem(it, "series")) },
+      { id: "popular-movies", title: "Popular This Week", type: "movie", items: (popularMovies?.results || []).slice(0, 20).map(it => mapTrendingItem(it, "movie")) },
+      { id: "popular-series", title: "Popular Series", type: "series", items: (popularTv?.results || []).slice(0, 20).map(it => mapTrendingItem(it, "series")) },
+      { id: "upcoming", title: "Coming Soon", type: "movie", items: (upcomingMovies?.results || []).slice(0, 20).map(it => mapTrendingItem(it, "movie")) },
+      { id: "hidden-gems-movies", title: "Hidden Gems", type: "movie", items: (hiddenGemsMovies?.results || []).slice(0, 20).map(it => mapTrendingItem(it, "movie")) },
+      { id: "hidden-gems-series", title: "Hidden Gem Series", type: "series", items: (hiddenGemsTv?.results || []).slice(0, 20).map(it => mapTrendingItem(it, "series")) },
+    ].filter(r => r.items.length > 0);
+
+    // Pick a hero (featured banner) from trending
+    const heroItems = [...(trendingMovies?.results || []).slice(0, 5), ...(trendingTv?.results || []).slice(0, 3)];
+    const hero = heroItems[0] ? {
+      ...mapTrendingItem(heroItems[0], heroItems[0].title ? "movie" : "series"),
+      trailerKey: null, // Client fetches trailer separately via /api/trailer/:id
+    } : null;
+
+    const result = { rows, hero, generatedAt: new Date().toISOString() };
+    cacheSet(cacheKey, result, 15 * 60 * 1000); // 15 min
+    res.json(result);
+  } catch (e) {
+    res.json({ rows: [], hero: null, error: String(e?.message || e) });
+  }
+});
+
+// ─── Personalized recommendations ────────────────────────────────────────────
+// Enhanced "Because You Watched" with batch support
+app.post("/api/recommendations/batch", tmdbLimiter, async (req, res) => {
+  try {
+    if (!process.env.TMDB_API_KEY) return res.json({ sections: [] });
+    const { watchedIds } = req.body || {};
+    if (!Array.isArray(watchedIds) || watchedIds.length === 0) return res.json({ sections: [] });
+
+    // Limit to 5 items for performance
+    const toProcess = watchedIds.slice(0, 5);
+    const sections = [];
+
+    for (const entry of toProcess) {
+      const { tmdbId, type, title } = entry;
+      if (!tmdbId) continue;
+      const mediaType = type === "series" ? "tv" : "movie";
+      const cacheKey = `batch-rec-${mediaType}-${tmdbId}`;
+      const cached = cacheGet(cacheKey);
+      if (cached) { sections.push(cached); continue; }
+
+      try {
+        const [similar, recs] = await Promise.all([
+          tmdb(`/${mediaType}/${encodeURIComponent(tmdbId)}/similar?page=1`),
+          tmdb(`/${mediaType}/${encodeURIComponent(tmdbId)}/recommendations?page=1`),
+        ]);
+        const seen = new Set();
+        const items = [];
+        for (const it of [...(recs?.results || []), ...(similar?.results || [])]) {
+          if (seen.has(String(it.id))) continue;
+          seen.add(String(it.id));
+          items.push(mapTrendingItem(it, type === "series" ? "series" : "movie"));
+          if (items.length >= 15) break;
+        }
+        if (items.length > 0) {
+          const section = { id: `because-${tmdbId}`, title: `Because You Watched ${title || ""}`.trim(), items, sourceId: tmdbId };
+          cacheSet(cacheKey, section, 60 * 60 * 1000); // 1h
+          sections.push(section);
+        }
+      } catch {}
+    }
+
+    res.json({ sections });
+  } catch (e) {
+    res.json({ sections: [], error: String(e?.message || e) });
+  }
+});
+
+// ─── Ultra Fast Search ───────────────────────────────────────────────────────
+// Unified search across movies, series, and IPTV with fuzzy matching
+
+function fuzzyMatch(query, text) {
+  if (!query || !text) return { match: false, score: 0 };
+  const q = query.toLowerCase();
+  const t = text.toLowerCase();
+  // Exact match
+  if (t === q) return { match: true, score: 100 };
+  // Contains
+  if (t.includes(q)) return { match: true, score: 80 };
+  // Starts with
+  if (t.startsWith(q)) return { match: true, score: 90 };
+  // Word start match
+  const words = t.split(/\s+/);
+  if (words.some(w => w.startsWith(q))) return { match: true, score: 70 };
+  // Typo tolerance (1 char difference for queries > 3 chars)
+  if (q.length > 3) {
+    for (let i = 0; i < q.length; i++) {
+      const variant = q.slice(0, i) + q.slice(i + 1);
+      if (t.includes(variant)) return { match: true, score: 50 };
+    }
+    // Transposition
+    for (let i = 0; i < q.length - 1; i++) {
+      const transposed = q.slice(0, i) + q[i + 1] + q[i] + q.slice(i + 2);
+      if (t.includes(transposed)) return { match: true, score: 45 };
+    }
+  }
+  // Partial match (at least 60% of query chars in sequence)
+  let qi = 0;
+  for (let ti = 0; ti < t.length && qi < q.length; ti++) {
+    if (t[ti] === q[qi]) qi++;
+  }
+  if (qi / q.length >= 0.6) return { match: true, score: 30 };
+  return { match: false, score: 0 };
+}
+
+// Search cache for <100ms responses
+const searchCache = new Map();
+const SEARCH_CACHE_TTL = 10 * 60 * 1000; // 10 min
+
+app.get("/api/search/unified", tmdbLimiter, async (req, res) => {
+  try {
+    const query = String(req.query.query || "").trim();
+    if (!query || query.length < 2) return res.json({ movies: [], series: [], iptv: [], totalResults: 0 });
+
+    const cacheKey = `search-unified-${query.toLowerCase()}`;
+    const cached = searchCache.get(cacheKey);
+    if (cached && Date.now() - cached.ts < SEARCH_CACHE_TTL) {
+      return res.json(cached.data);
+    }
+
+    const startTime = Date.now();
+
+    // Search TMDB movies + series in parallel
+    const tmdbResults = process.env.TMDB_API_KEY ? await Promise.all([
+      tmdb(`/search/movie?query=${encodeURIComponent(query)}&page=1`).catch(() => ({ results: [] })),
+      tmdb(`/search/tv?query=${encodeURIComponent(query)}&page=1`).catch(() => ({ results: [] })),
+    ]) : [{ results: [] }, { results: [] }];
+
+    const movies = (tmdbResults[0]?.results || []).slice(0, 15).map(it => ({
+      ...mapTrendingItem(it, "movie"),
+      relevance: fuzzyMatch(query, it.title || it.name || "").score,
+    }));
+
+    const series = (tmdbResults[1]?.results || []).slice(0, 15).map(it => ({
+      ...mapTrendingItem(it, "series"),
+      relevance: fuzzyMatch(query, it.name || it.title || "").score,
+    }));
+
+    // Sort by relevance
+    movies.sort((a, b) => b.relevance - a.relevance);
+    series.sort((a, b) => b.relevance - a.relevance);
+
+    const elapsed = Date.now() - startTime;
+    const result = { movies, series, iptv: [], totalResults: movies.length + series.length, queryTimeMs: elapsed };
+    searchCache.set(cacheKey, { data: result, ts: Date.now() });
+    res.json(result);
+  } catch (e) {
+    res.json({ movies: [], series: [], iptv: [], totalResults: 0, error: String(e?.message || e) });
+  }
+});
+
+// ─── CDN-aware streaming headers ─────────────────────────────────────────────
+app.get("/api/stream/proxy-headers", (req, res) => {
+  // Returns optimal headers for CDN edge caching
+  res.json({
+    "Cache-Control": "public, max-age=300, stale-while-revalidate=600",
+    "CDN-Cache-Control": "public, max-age=3600",
+    "Vary": "Accept-Encoding",
+    "X-Content-Type-Options": "nosniff",
+  });
+});
+
+// ─── Adaptive quality levels ─────────────────────────────────────────────────
+app.get("/api/stream/quality-levels", (req, res) => {
+  res.json({
+    levels: [
+      { id: "auto", label: "Auto", description: "Adaptive bitrate" },
+      { id: "4k", label: "4K Ultra HD", bitrate: 25000000, resolution: "3840x2160" },
+      { id: "fhd", label: "Full HD", bitrate: 8000000, resolution: "1920x1080" },
+      { id: "hd", label: "HD", bitrate: 5000000, resolution: "1280x720" },
+      { id: "sd", label: "SD", bitrate: 2500000, resolution: "854x480" },
+    ],
+  });
+});
+
 // -----------------------------
-// Anti-piracy — stream URL signing with HMAC
+// Anti-piracy — stream URL signing with HMAC + domain/IP restriction
 // -----------------------------
 const STREAM_SIGNING_SECRET = process.env.STREAM_SIGNING_SECRET || crypto.randomBytes(32).toString("hex");
 
@@ -5499,13 +5839,16 @@ app.get("/api/stream/sign", (req, res) => {
   try {
     const { url } = req.query;
     if (!url) return res.status(400).json({ error: "Missing URL" });
+    const ip = req.headers["x-forwarded-for"]?.split(",")[0]?.trim() || req.socket?.remoteAddress || "unknown";
+    const deviceId = req.query.deviceId || "unknown";
     const expires = Math.floor(Date.now() / 1000) + 7200; // 2 hours
-    const payload = `${url}|${expires}`;
+    const payload = `${url}|${expires}|${ip}|${deviceId}`;
     const signature = crypto.createHmac("sha256", STREAM_SIGNING_SECRET).update(payload).digest("hex");
     res.json({
       signedUrl: url,
       token: signature,
       expires,
+      ip,
     });
   } catch (e) {
     res.status(500).json({ error: String(e?.message || e) });
@@ -5518,7 +5861,9 @@ app.get("/api/stream/verify", (req, res) => {
     if (!url || !token || !expires) return res.json({ valid: false, error: "Missing parameters" });
     const now = Math.floor(Date.now() / 1000);
     if (now > Number(expires)) return res.json({ valid: false, error: "Token expired" });
-    const payload = `${url}|${expires}`;
+    const ip = req.headers["x-forwarded-for"]?.split(",")[0]?.trim() || req.socket?.remoteAddress || "unknown";
+    const deviceId = req.query.deviceId || "unknown";
+    const payload = `${url}|${expires}|${ip}|${deviceId}`;
     const expected = crypto.createHmac("sha256", STREAM_SIGNING_SECRET).update(payload).digest("hex");
     res.json({ valid: token === expected });
   } catch (e) {
@@ -5527,10 +5872,20 @@ app.get("/api/stream/verify", (req, res) => {
 });
 
 // -----------------------------
-// Device session tracking — concurrent stream limiting
+// Device session tracking — concurrent stream limiting + account sharing detection
 // -----------------------------
-const activeSessions = new Map(); // deviceId -> { ip, startedAt, lastSeen, streamUrl }
+const activeSessions = new Map(); // deviceId -> { ip, startedAt, lastSeen, streamUrl, userAgent }
+const ipHistory = new Map(); // ip -> Set<deviceId> — historical device tracking
 const MAX_CONCURRENT_STREAMS = 3;
+const MAX_DEVICES_PER_ACCOUNT = 5;
+const SUSPICIOUS_DEVICE_THRESHOLD = 8; // More than this many unique devices = suspicious
+
+function cleanSessions() {
+  const now = Date.now();
+  for (const [id, session] of activeSessions) {
+    if (now - session.lastSeen > 5 * 60 * 1000) activeSessions.delete(id);
+  }
+}
 
 app.post("/api/session/start", (req, res) => {
   try {
@@ -5538,17 +5893,27 @@ app.post("/api/session/start", (req, res) => {
     if (!deviceId) return res.status(400).json({ error: "Missing deviceId" });
 
     const ip = req.headers["x-forwarded-for"]?.split(",")[0]?.trim() || req.socket?.remoteAddress || "unknown";
+    const userAgent = req.headers["user-agent"] || "";
     const now = Date.now();
 
-    // Clean expired sessions (not seen for 5 min)
-    for (const [id, session] of activeSessions) {
-      if (now - session.lastSeen > 5 * 60 * 1000) activeSessions.delete(id);
-    }
+    cleanSessions();
+
+    // Track device history per IP (account sharing detection)
+    if (!ipHistory.has(ip)) ipHistory.set(ip, new Set());
+    ipHistory.get(ip).add(deviceId);
+    const uniqueDevices = ipHistory.get(ip).size;
 
     // Count active sessions for this IP
     let ipSessionCount = 0;
+    const activeDeviceIPs = new Set();
     for (const [, session] of activeSessions) {
-      if (session.ip === ip) ipSessionCount++;
+      if (session.ip === ip) { ipSessionCount++; activeDeviceIPs.add(session.ip); }
+    }
+
+    // Account sharing warning
+    let sharingWarning = null;
+    if (uniqueDevices > SUSPICIOUS_DEVICE_THRESHOLD) {
+      sharingWarning = `Unusual activity detected: ${uniqueDevices} devices from this location`;
     }
 
     if (ipSessionCount >= MAX_CONCURRENT_STREAMS && !activeSessions.has(deviceId)) {
@@ -5556,11 +5921,17 @@ app.post("/api/session/start", (req, res) => {
         error: "Too many concurrent streams",
         maxStreams: MAX_CONCURRENT_STREAMS,
         activeStreams: ipSessionCount,
+        sharingWarning,
       });
     }
 
-    activeSessions.set(deviceId, { ip, startedAt: now, lastSeen: now, streamUrl: streamUrl || null });
-    res.json({ ok: true, activeStreams: ipSessionCount + (activeSessions.has(deviceId) ? 0 : 1) });
+    activeSessions.set(deviceId, { ip, startedAt: now, lastSeen: now, streamUrl: streamUrl || null, userAgent });
+    res.json({
+      ok: true,
+      activeStreams: ipSessionCount + (activeSessions.has(deviceId) ? 0 : 1),
+      maxStreams: MAX_CONCURRENT_STREAMS,
+      sharingWarning,
+    });
   } catch (e) {
     res.json({ ok: true }); // don't block playback on errors
   }
@@ -5585,6 +5956,27 @@ app.post("/api/session/stop", (req, res) => {
     res.json({ ok: true });
   } catch {
     res.json({ ok: true });
+  }
+});
+
+// Account sharing detection status
+app.get("/api/session/status", (req, res) => {
+  try {
+    const ip = req.headers["x-forwarded-for"]?.split(",")[0]?.trim() || req.socket?.remoteAddress || "unknown";
+    cleanSessions();
+    let activeCount = 0;
+    for (const [, session] of activeSessions) {
+      if (session.ip === ip) activeCount++;
+    }
+    const uniqueDevices = ipHistory.get(ip)?.size || 0;
+    res.json({
+      activeStreams: activeCount,
+      maxStreams: MAX_CONCURRENT_STREAMS,
+      uniqueDevices,
+      suspicious: uniqueDevices > SUSPICIOUS_DEVICE_THRESHOLD,
+    });
+  } catch (e) {
+    res.json({ activeStreams: 0, maxStreams: MAX_CONCURRENT_STREAMS });
   }
 });
 

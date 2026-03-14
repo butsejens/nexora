@@ -16,6 +16,15 @@ import { RealContentCard, RealHeroBanner } from "@/components/RealContentCard";
 import { SafeHaptics } from "@/lib/safeHaptics";
 import { SilentResetBoundary } from "@/components/SilentResetBoundary";
 
+// Trailer fetch for auto-preview
+async function fetchTrailerKey(tmdbId: string | number, type = "series"): Promise<string | null> {
+  try {
+    const res = await apiRequest("GET", `/api/trailer/${tmdbId}?type=${type}`);
+    const data = await res.json();
+    return data?.key || null;
+  } catch { return null; }
+}
+
 const CATEGORY_SORT: Record<string, string> = {
   trending: "popularity.desc",
   airingToday: "first_air_date.desc",
@@ -247,6 +256,17 @@ export default function SeriesScreen() {
   }, [iptvSeries, filteredIptv, trending, newReleases, popular]);
 
   const featured = heroItems[heroIndex % Math.max(heroItems.length, 1)] || null;
+
+  // Auto-trailer preview: fetch trailer key for current featured item
+  const [heroTrailerKey, setHeroTrailerKey] = useState<string | null>(null);
+  useEffect(() => {
+    setHeroTrailerKey(null);
+    const tmdbId = featured?.tmdbId || (featured && !featured.isIptv ? featured.id : null);
+    if (!tmdbId) return;
+    let cancelled = false;
+    fetchTrailerKey(tmdbId, "series").then(key => { if (!cancelled) setHeroTrailerKey(key); });
+    return () => { cancelled = true; };
+  }, [featured?.id]);
 
   // Auto-rotate hero banner every 8 seconds
   useEffect(() => {
@@ -650,6 +670,7 @@ export default function SeriesScreen() {
                     item={featured ?? { id: "", title: "", poster: null, backdrop: null, synopsis: "", year: undefined, imdb: undefined, genre: [], quality: "", isIptv: false, streamUrl: undefined, tmdbId: undefined, color: "" }}
                     onPlay={() => featured && goToPlayer(featured)}
                     onInfo={() => featured && goToDetail(featured)}
+                    trailerKey={heroTrailerKey}
                   />
                   {/* Hero pagination dots */}
                   {heroItems.length > 1 && (

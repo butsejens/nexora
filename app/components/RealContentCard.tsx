@@ -1,10 +1,11 @@
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useEffect, useRef } from "react";
 import {
   View,
   Text,
   StyleSheet,
   TouchableOpacity,
   Image,
+  Animated,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
@@ -52,15 +53,23 @@ interface Props {
 export const RealContentCard = React.memo(function RealContentCard({ item, onPress, onFavorite, isFavorite, width = 130, showProgress }: Props) {
   const [imageError, setImageError] = useState(false);
   const [focused, setFocused] = useState(false);
+  const scaleAnim = useRef(new Animated.Value(1)).current;
   const cardWidth = isTV ? Math.max(width, 180) : width;
   const height = Math.round(cardWidth * 1.56);
   const hasProgress = showProgress && item.progress != null && item.progress > 0;
 
-  const handleFocus = useCallback(() => setFocused(true), []);
-  const handleBlur = useCallback(() => setFocused(false), []);
+  const handleFocus = useCallback(() => {
+    setFocused(true);
+    Animated.spring(scaleAnim, { toValue: 1.08, useNativeDriver: true, friction: 6, tension: 100 }).start();
+  }, [scaleAnim]);
+
+  const handleBlur = useCallback(() => {
+    setFocused(false);
+    Animated.spring(scaleAnim, { toValue: 1, useNativeDriver: true, friction: 6, tension: 100 }).start();
+  }, [scaleAnim]);
 
   return (
-    <View style={{ width: cardWidth, marginRight: isTV ? 20 : 14 }}>
+    <Animated.View style={{ width: cardWidth, marginRight: isTV ? 20 : 14, transform: [{ scale: scaleAnim }] }}>
       <TouchableOpacity
         onPress={() => {
           SafeHaptics.impactLight();
@@ -162,12 +171,25 @@ export const RealContentCard = React.memo(function RealContentCard({ item, onPre
           ) : null}
         </View>
       </TouchableOpacity>
-    </View>
+    </Animated.View>
   );
 });
 
-export const RealHeroBanner = React.memo(function RealHeroBanner({ item, onPlay, onInfo }: { item: ContentItem; onPlay: () => void; onInfo?: () => void }) {
+export const RealHeroBanner = React.memo(function RealHeroBanner({ item, onPlay, onInfo, trailerKey }: { item: ContentItem; onPlay: () => void; onInfo?: () => void; trailerKey?: string | null }) {
   const [imageError, setImageError] = useState(false);
+  const [showTrailer, setShowTrailer] = useState(false);
+  const trailerTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Auto-start trailer preview after 2 seconds (Netflix-style)
+  useEffect(() => {
+    if (trailerKey) {
+      trailerTimer.current = setTimeout(() => setShowTrailer(true), 2000);
+    }
+    return () => {
+      if (trailerTimer.current) clearTimeout(trailerTimer.current);
+      setShowTrailer(false);
+    };
+  }, [trailerKey, item.id]);
 
   const backdropUri = item.backdrop || item.poster;
 
@@ -192,6 +214,20 @@ export const RealHeroBanner = React.memo(function RealHeroBanner({ item, onPlay,
               start={{ x: 0.3, y: 0 }}
               end={{ x: 0.7, y: 1 }}
             />
+          )}
+
+          {/* Auto-play trailer preview (muted, Netflix-style) */}
+          {showTrailer && trailerKey && (
+            <View style={[StyleSheet.absoluteFill, { zIndex: 1 }]}>
+              <Image
+                source={{ uri: `https://img.youtube.com/vi/${trailerKey}/hqdefault.jpg` }}
+                style={StyleSheet.absoluteFill}
+                resizeMode="cover"
+              />
+              <View style={[StyleSheet.absoluteFill, { backgroundColor: "rgba(0,0,0,0.3)", alignItems: "center", justifyContent: "center" }]}>
+                <Ionicons name="play-circle" size={48} color="rgba(255,255,255,0.8)" />
+              </View>
+            </View>
           )}
 
           {/* Top vignette gradient */}

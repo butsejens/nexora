@@ -1,7 +1,7 @@
-import React, { useState, useMemo, useCallback } from "react";
+import React, { useState, useMemo, useCallback, useRef, useEffect } from "react";
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity,
-  Image, Platform, TextInput, ScrollView, ActivityIndicator,
+  Image, Platform, TextInput, ScrollView, ActivityIndicator, Animated,
 } from "react-native";
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -12,35 +12,58 @@ import { NexoraHeader } from "@/components/NexoraHeader";
 import { useNexora } from "@/context/NexoraContext";
 import type { IPTVChannel } from "@/context/NexoraContext";
 import { getInitials } from "@/lib/logo-manager";
+import { isTV } from "@/lib/platform";
+import { fetchEPG, getCurrentProgramme } from "@/lib/epg-manager";
+import type { EPGData } from "@/lib/epg-manager";
+import { searchIPTV } from "@/lib/search-engine";
 
 type IPTVTab = "live" | "movies" | "series";
 
 // ── Channel Card (for Live TV grid) ─────────────────────────────────────────
 
-const ChannelCard = React.memo(function ChannelCard({ channel, onPress, onLongPress }: {
-  channel: IPTVChannel; onPress: () => void; onLongPress: () => void;
+const ChannelCard = React.memo(function ChannelCard({ channel, onPress, onLongPress, nowPlaying }: {
+  channel: IPTVChannel; onPress: () => void; onLongPress: () => void; nowPlaying?: string | null;
 }) {
   const [imgError, setImgError] = useState(false);
   const initials = getInitials(channel?.name || "TV", 2);
+  const scaleAnim = useRef(new Animated.Value(1)).current;
+
+  const onFocus = useCallback(() => {
+    Animated.spring(scaleAnim, { toValue: 1.04, useNativeDriver: true, friction: 8 }).start();
+  }, [scaleAnim]);
+  const onBlur = useCallback(() => {
+    Animated.spring(scaleAnim, { toValue: 1, useNativeDriver: true, friction: 8 }).start();
+  }, [scaleAnim]);
+
   return (
-    <TouchableOpacity style={styles.channelCard} onPress={onPress} onLongPress={onLongPress} activeOpacity={0.75}>
-      <View style={styles.channelLogo}>
+    <Animated.View style={{ transform: [{ scale: scaleAnim }] }}>
+    <TouchableOpacity
+      style={[styles.channelCard, isTV && styles.channelCardTV]}
+      onPress={onPress} onLongPress={onLongPress} activeOpacity={0.75}
+      onFocus={onFocus} onBlur={onBlur}
+    >
+      <View style={[styles.channelLogo, isTV && styles.channelLogoTV]}>
         {channel.logo && !imgError ? (
-          <Image source={{ uri: channel.logo }} style={styles.channelLogoImg} resizeMode="contain" onError={() => setImgError(true)} />
+          <Image source={{ uri: channel.logo }} style={isTV ? styles.channelLogoImgTV : styles.channelLogoImg} resizeMode="contain" onError={() => setImgError(true)} />
         ) : (
-          <Text style={styles.channelLogoInitials}>{initials}</Text>
+          <Text style={[styles.channelLogoInitials, isTV && { fontSize: 20 }]}>{initials}</Text>
         )}
       </View>
       <View style={styles.channelInfo}>
-        <Text style={styles.channelName} numberOfLines={1}>{channel.name}</Text>
-        <Text style={styles.channelGroup} numberOfLines={1}>{channel.group}</Text>
+        <Text style={[styles.channelName, isTV && styles.channelNameTV]} numberOfLines={1}>{channel.name}</Text>
+        {nowPlaying ? (
+          <Text style={styles.channelEpg} numberOfLines={1}>{nowPlaying}</Text>
+        ) : (
+          <Text style={[styles.channelGroup, isTV && { fontSize: 13 }]} numberOfLines={1}>{channel.group}</Text>
+        )}
       </View>
       <View style={styles.liveBadge}>
         <View style={styles.liveDot} />
         <Text style={styles.liveText}>LIVE</Text>
       </View>
-      <Ionicons name="play-circle-outline" size={26} color={COLORS.accent} />
+      <Ionicons name="play-circle-outline" size={isTV ? 32 : 26} color={COLORS.accent} />
     </TouchableOpacity>
+    </Animated.View>
   );
 });
 
@@ -56,9 +79,20 @@ const VODCard = React.memo(function VODCard({ channel, onPress, type }: {
   const badgeBorder = type === "movie" ? "rgba(229,9,20,0.7)" : "rgba(80,160,255,0.7)";
   const badgeColor = type === "movie" ? COLORS.live : "#80C4FF";
   const meta = type === "movie" && channel.year ? String(channel.year) : type === "series" && channel.seasons ? `${channel.seasons} Season${channel.seasons > 1 ? "s" : ""}` : null;
+  const scaleAnim = useRef(new Animated.Value(1)).current;
+
+  const onFocus = useCallback(() => {
+    Animated.spring(scaleAnim, { toValue: 1.08, useNativeDriver: true, friction: 8 }).start();
+  }, [scaleAnim]);
+  const onBlur = useCallback(() => {
+    Animated.spring(scaleAnim, { toValue: 1, useNativeDriver: true, friction: 8 }).start();
+  }, [scaleAnim]);
 
   return (
-    <TouchableOpacity style={styles.vodCard} onPress={onPress} activeOpacity={0.78}>
+    <Animated.View style={[isTV ? styles.vodCardTV : styles.vodCard, { transform: [{ scale: scaleAnim }] }]}>
+    <TouchableOpacity style={{ flex: 1 }} onPress={onPress} activeOpacity={0.78}
+      onFocus={onFocus} onBlur={onBlur}
+    >
       <View style={styles.vodPoster}>
         {poster && !imgError ? (
           <Image source={{ uri: poster }} style={StyleSheet.absoluteFill} resizeMode="cover" onError={() => setImgError(true)} />
@@ -81,6 +115,7 @@ const VODCard = React.memo(function VODCard({ channel, onPress, type }: {
       {meta ? <Text style={styles.vodMeta} numberOfLines={1}>{meta}</Text> : null}
       {channel.group && !meta ? <Text style={styles.vodGroup} numberOfLines={1}>{channel.group}</Text> : null}
     </TouchableOpacity>
+    </Animated.View>
   );
 });
 
@@ -114,6 +149,32 @@ export default function LiveTVScreen() {
   const [search, setSearch] = useState("");
   const [showSearch, setShowSearch] = useState(false);
 
+  // ── EPG data ──────────────────────────────────────────────────────────────
+  const [epgData, setEpgData] = useState<EPGData | null>(null);
+
+  useEffect(() => {
+    const epgUrl = process.env.EXPO_PUBLIC_EPG_URL;
+    if (!epgUrl) return;
+    let cancelled = false;
+    fetchEPG(epgUrl).then(data => {
+      if (!cancelled && data) setEpgData(data);
+    });
+    // Refresh EPG every 30 min
+    const interval = setInterval(() => {
+      fetchEPG(epgUrl).then(data => {
+        if (!cancelled && data) setEpgData(data);
+      });
+    }, 30 * 60 * 1000);
+    return () => { cancelled = true; clearInterval(interval); };
+  }, []);
+
+  const getEpgForChannel = useCallback((channel: IPTVChannel): string | null => {
+    if (!epgData) return null;
+    const channelId = channel.epgId || channel.name;
+    const prog = getCurrentProgramme(epgData, channelId);
+    return prog.now?.title || null;
+  }, [epgData]);
+
   // Separate IPTV content by category
   const liveChannels = useMemo(
     () => iptvChannels.filter(c => c.category === "live" && isChannelVisible(c.id, c.group)),
@@ -139,12 +200,13 @@ export default function LiveTVScreen() {
     return ["All", ...Array.from(set).sort()];
   }, [currentData]);
 
-  // Filtered by group + search
+  // Filtered by group + search (uses fuzzy search engine when query present)
   const filtered = useMemo(() => {
     let list = selectedGroup === "All" ? currentData : currentData.filter(c => c.group === selectedGroup);
     if (search.trim()) {
-      const q = search.toLowerCase();
-      list = list.filter(c => (c.name || c.title || "").toLowerCase().includes(q));
+      const results = searchIPTV(search, list);
+      const matchedIds = new Set(results.map(r => r.id));
+      list = list.filter(c => matchedIds.has(c.id));
     }
     return list;
   }, [currentData, selectedGroup, search]);
@@ -285,7 +347,8 @@ export default function LiveTVScreen() {
           data={filtered}
           keyExtractor={item => item.id}
           renderItem={({ item }) => (
-            <ChannelCard channel={item} onPress={() => playChannel(item)} onLongPress={() => toggleHideChannel(item.id)} />
+            <ChannelCard channel={item} onPress={() => playChannel(item)} onLongPress={() => toggleHideChannel(item.id)}
+              nowPlaying={getEpgForChannel(item)} />
           )}
           contentContainerStyle={[styles.list, { paddingBottom: bottomPad }]}
           showsVerticalScrollIndicator={false}
@@ -304,7 +367,8 @@ export default function LiveTVScreen() {
         <FlatList
           data={filtered}
           keyExtractor={item => item.id}
-          numColumns={3}
+          numColumns={isTV ? 4 : 3}
+          key={isTV ? "tv-grid" : "mobile-grid"}
           columnWrapperStyle={styles.vodGrid}
           renderItem={({ item }) => (
             <VODCard channel={item} onPress={() => goToDetail(item)} type={activeTab === "movies" ? "movie" : "series"} />
@@ -394,16 +458,27 @@ const styles = StyleSheet.create({
     marginHorizontal: 14, marginBottom: 8, gap: 12,
     borderWidth: 1, borderColor: COLORS.border, borderRadius: 16, backgroundColor: COLORS.cardElevated,
   },
+  channelCardTV: {
+    flexDirection: "row", alignItems: "center", paddingHorizontal: 20, paddingVertical: 18,
+    marginHorizontal: 20, marginBottom: 12, gap: 16,
+    borderWidth: 2, borderColor: COLORS.border, borderRadius: 20, backgroundColor: COLORS.cardElevated,
+  },
   channelLogo: {
     width: 52, height: 52, borderRadius: 10, backgroundColor: COLORS.card,
     alignItems: "center", justifyContent: "center", overflow: "hidden",
     borderWidth: 1, borderColor: COLORS.border,
   },
+  channelLogoTV: {
+    width: 68, height: 68, borderRadius: 14,
+  },
   channelLogoImg: { width: 48, height: 48 },
+  channelLogoImgTV: { width: 64, height: 64 },
   channelLogoInitials: { fontFamily: "Inter_800ExtraBold", fontSize: 16, color: COLORS.accent },
   channelInfo: { flex: 1 },
   channelName: { fontFamily: "Inter_600SemiBold", fontSize: 14, color: COLORS.text, marginBottom: 3 },
+  channelNameTV: { fontSize: 18 },
   channelGroup: { fontFamily: "Inter_400Regular", fontSize: 11, color: COLORS.textMuted },
+  channelEpg: { fontFamily: "Inter_500Medium", fontSize: 11, color: COLORS.accent, marginTop: 1 },
   liveBadge: {
     flexDirection: "row", alignItems: "center", gap: 4, backgroundColor: COLORS.liveGlow,
     borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3, borderWidth: 1, borderColor: COLORS.live,
@@ -413,6 +488,7 @@ const styles = StyleSheet.create({
 
   // VOD card (Movies/Series)
   vodCard: { flex: 1, marginHorizontal: 5, marginBottom: 16, maxWidth: "33%" as any },
+  vodCardTV: { flex: 1, marginHorizontal: 8, marginBottom: 20, maxWidth: "25%" as any },
   vodGrid: { paddingHorizontal: 9 },
   vodPoster: {
     aspectRatio: 2 / 3, borderRadius: 12, overflow: "hidden",
