@@ -8,7 +8,7 @@ const serverVersionPath = path.join(repoRoot, "server", "app-version.json");
 const androidGradlePath = path.join(repoRoot, "app", "android", "app", "build.gradle");
 const appPkgPath = path.join(repoRoot, "app", "package.json");
 const serverPkgPath = path.join(repoRoot, "server", "package.json");
-const releaseApkPath = path.join(repoRoot, "app", "android", "app", "build", "outputs", "apk", "release", "app-release.apk");
+const releaseApkPath = path.join(repoRoot, "app", "android", "app", "build", "outputs", "apk", "mobile", "release", "app-mobile-release.apk");
 
 function run(command, cwd = repoRoot) {
   execSync(command, { cwd, stdio: "inherit", env: process.env });

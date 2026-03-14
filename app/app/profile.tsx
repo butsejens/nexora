@@ -247,10 +247,14 @@ function UpdateModal({
       // Always check server for the latest APK version
       const res = await apiRequest("GET", "/api/app-version");
       const data = await res.json() as { version: string; apkUrl: string; directApkUrl?: string };
+      const nativeVersion = String(Application.nativeApplicationVersion || "0.0.0");
       const hasNewerApk = compareVersions(data.version, currentVersion) > 0;
+      // Only try OTA if server version matches native version (same binary, JS-only patch).
+      // If server has a newer version than the installed native binary, the user
+      // needs a full APK install — OTA can't bridge runtimeVersion mismatches.
+      const serverMatchesNative = compareVersions(data.version, nativeVersion) === 0;
 
-      // Try OTA path first (works for both EAS and non-dev builds)
-      if (!__DEV__ && Updates.isEnabled) {
+      if (!__DEV__ && Updates.isEnabled && serverMatchesNative) {
         try {
           const update = await Updates.checkForUpdateAsync();
           if (update.isAvailable) {
@@ -262,7 +266,7 @@ function UpdateModal({
         } catch {}
       }
 
-      // No OTA update available — check server APK
+      // Server has a newer version → offer APK download
       if (hasNewerApk) {
         setApkUrl(data.apkUrl);
         setDirectApkUrl(data.directApkUrl || "");
