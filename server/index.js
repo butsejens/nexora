@@ -2817,6 +2817,11 @@ app.get("/download", (req, res) => {
   res.redirect(301, "/api/download/apk");
 });
 
+// Numeric shortcode: type "1234567" in Downloader → downloads APK
+app.get("/1234567", (req, res) => {
+  res.redirect(301, "/api/download/apk");
+});
+
 // ── App version / update check ────────────────────────────────────────────────
 // Update server/app-version.json when you build a new APK (apkUrl is written by auto-release).
 app.get("/api/app-version", (req, res) => {
