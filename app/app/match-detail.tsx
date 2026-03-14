@@ -82,6 +82,9 @@ const SPORT_AD_DOMAINS = [
   "arkoselabs.com", "funcaptcha.com",
   "bet365.com", "1xbet.com", "stake.com", "betway.com",
   "casino.", "gambling.", "slots.",
+  "youtube.com", "youtu.be", "youtube-nocookie.com",
+  "facebook.com", "twitter.com", "x.com", "instagram.com", "tiktok.com",
+  "t.me", "telegram.org",
 ];
 
 // ─── Comprehensive sport stream ad blocker JS ─────────────────────────────────
@@ -191,6 +194,8 @@ const SPORT_AD_BLOCK_JS = `
       '[id*="verify"],[id*="verification"],[id*="challenge"],[id*="antibot"]',
       '.g-recaptcha,div[data-sitekey]',
       'iframe[src*="recaptcha"],iframe[src*="hcaptcha"],iframe[src*="turnstile"]',
+      'iframe[src*="youtube.com"],iframe[src*="youtu.be"],iframe[src*="youtube-nocookie"]',
+      'iframe[src*="facebook.com"],iframe[src*="twitter.com"],iframe[src*="instagram.com"]',
       '[class*="notification"],[class*="push-"],[id*="notification"],[id*="push-"]',
       '[class*="casino"],[class*="betting"],[class*="gambl"],[id*="casino"],[id*="betting"]',
     ].join(',') + '{display:none!important;visibility:hidden!important;opacity:0!important;pointer-events:none!important;position:absolute!important;width:0!important;height:0!important;overflow:hidden!important;}';

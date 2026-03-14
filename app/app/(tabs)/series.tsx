@@ -319,6 +319,7 @@ export default function SeriesScreen() {
         params: {
           streamUrl: item.streamUrl, title: item.title,
           type: "series", contentId: item.id,
+          poster: item.poster || "",
           ...(tmdbId ? { tmdbId } : {}),
           season: "1", episode: "1",
         },
@@ -329,6 +330,7 @@ export default function SeriesScreen() {
         params: {
           tmdbId, title: item.title,
           type: "series", contentId: item.id,
+          poster: item.poster || "",
           season: "1", episode: "1",
         },
       });

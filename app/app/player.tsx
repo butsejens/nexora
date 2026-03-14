@@ -304,6 +304,10 @@ const AD_DOMAINS = [
   "challenges.cloudflare.com",
   "captcha.website", "captcha-delivery.com",
   "arkoselabs.com", "funcaptcha.com",
+  // YouTube / social redirect popups
+  "youtube.com", "youtu.be", "youtube-nocookie.com",
+  "facebook.com", "twitter.com", "x.com", "instagram.com", "tiktok.com",
+  "t.me", "telegram.org",
 ];
 
 // ─── JS injected in embed WebView ─────────────────────────────────────────────
@@ -346,6 +350,8 @@ const AD_BLOCK_JS = `
       '[class*="check-overlay"],[class*="cf-wrapper"],[id*="cf-wrapper"],' +
       '.g-recaptcha,div[data-sitekey],iframe[src*="recaptcha"],iframe[src*="hcaptcha"],' +
       'iframe[src*="turnstile"],iframe[src*="challenges.cloudflare"],' +
+      'iframe[src*="youtube.com"],iframe[src*="youtu.be"],iframe[src*="youtube-nocookie"],' +
+      'iframe[src*="facebook.com"],iframe[src*="twitter.com"],iframe[src*="instagram.com"],' +
       '[class*="are-you-human"],[id*="are-you-human"],[class*="not-robot"],[id*="not-robot"]' +
       '{ display:none!important; visibility:hidden!important; opacity:0!important; pointer-events:none!important; }';
     (document.head||document.documentElement).appendChild(s);
@@ -584,6 +590,11 @@ const AD_BLOCK_JS = `
     /vpn|norton|mcafee|avast|cleanmaster/i,
     /play\.google\.com\/store/i, /apps\.apple\.com/i,
     /install\s+and\s+continue\s+watching/i,
+    /youtube\\.com|youtu\\.be|youtube-nocookie\\.com/i,
+    /facebook\\.com|twitter\\.com|x\\.com|instagram\\.com|tiktok\\.com/i,
+    /t\\.me\\/|telegram\\.org/i,
+    /survey|reward|prize|winner|congratulat/i,
+    /dating|singles|meet.*local/i,
   ];
   function _isAdUrl(href){
     if(!href) return false;
@@ -701,11 +712,15 @@ const AD_BLOCK_JS = `
       if(!el || el.tagName !== 'IFRAME') return false;
       var src = el.getAttribute('src') || '';
       if(_isAdUrl(src)) return true;
-      // Block CAPTCHA iframes
+      // Block CAPTCHA iframes and social/YouTube iframes
       var srcLower = src.toLowerCase();
       if(srcLower.includes('recaptcha') || srcLower.includes('hcaptcha') ||
          srcLower.includes('turnstile') || srcLower.includes('challenges.cloudflare') ||
-         srcLower.includes('captcha') || srcLower.includes('robot')) return true;
+         srcLower.includes('captcha') || srcLower.includes('robot') ||
+         srcLower.includes('youtube.com') || srcLower.includes('youtu.be') ||
+         srcLower.includes('youtube-nocookie') ||
+         srcLower.includes('facebook.com') || srcLower.includes('twitter.com') ||
+         srcLower.includes('instagram.com') || srcLower.includes('tiktok.com')) return true;
       // Zero-size or hidden iframes are almost always ads/trackers
       try{
         var w = parseInt(el.getAttribute('width') || el.style.width || '999');
@@ -791,6 +806,10 @@ const AD_BLOCK_JS = `
     '[class*="not-robot"]', '[id*="not-robot"]',
     '[class*="bot-check"]', '[id*="bot-check"]',
     '[class*="antibot"]', '[id*="antibot"]',
+    // YouTube / social popup iframes
+    'iframe[src*="youtube.com"]', 'iframe[src*="youtu.be"]', 'iframe[src*="youtube-nocookie"]',
+    'iframe[src*="facebook.com"]', 'iframe[src*="twitter.com"]', 'iframe[src*="instagram.com"]',
+    'iframe[src*="tiktok.com"]',
   ];
 
   function removeAds(){
@@ -1605,6 +1624,9 @@ export default function PlayerScreen() {
         /captcha|recaptcha|hcaptcha|turnstile/i,
         /challenges\.cloudflare/i,
         /i.m.not.a.robot|are.you.human|verify.*human/i,
+        /youtube\.com|youtu\.be|youtube-nocookie\.com/i,
+        /facebook\.com|twitter\.com\/|x\.com\/|instagram\.com|tiktok\.com/i,
+        /t\.me\/|telegram\.org/i,
       ];
       if (BLOCK_PATTERNS.some((pattern) => pattern.test(url))) { adPopupCountRef.current++; return false; }
 
@@ -1651,7 +1673,7 @@ export default function PlayerScreen() {
       if (disposedRef.current) return;
       const url: string = navState.url || "";
       if (!url || url.startsWith("about:") || url.startsWith("blob:") || url.startsWith("data:")) return;
-      if (/play\.google\.com\/store|apps\.apple\.com|install\s*and\s*continue|vpn\s*recommended|casino|gambling|bet365|1xbet|stake\.com|betway|poker|slots|norton|mcafee|avast|cleanmaster|survey|reward|prize|winner|dating|singles/i.test(url)) {
+      if (/play\.google\.com\/store|apps\.apple\.com|install\s*and\s*continue|vpn\s*recommended|casino|gambling|bet365|1xbet|stake\.com|betway|poker|slots|norton|mcafee|avast|cleanmaster|survey|reward|prize|winner|dating|singles|youtube\.com|youtu\.be|youtube-nocookie|facebook\.com|twitter\.com|x\.com\/|instagram\.com|tiktok\.com|t\.me\/|telegram\.org/i.test(url)) {
         embedWebviewRef.current?.stopLoading();
         embedWebviewRef.current?.goBack();
         return;

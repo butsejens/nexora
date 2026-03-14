@@ -119,6 +119,7 @@ export default function FavoritesScreen() {
                         title: ch.title || ch.name,
                         type: ch.category,
                         contentId: ch.id,
+                        poster: ch.poster || ch.logo || "",
                         ...(ch.tmdbId ? { tmdbId: String(ch.tmdbId) } : {}),
                       },
                     });

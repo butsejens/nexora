@@ -89,6 +89,7 @@ export default function DownloadsScreen() {
         title: item.title,
         type: item.type === "channel" ? "movie" : item.type,
         contentId: item.contentId,
+        poster: item.poster || "",
         season: "1", episode: "1",
       },
     });

@@ -228,7 +228,7 @@ export default function LiveTVScreen() {
     const type = activeTab === "live" ? "livetv" : activeTab === "movies" ? "movie" : "series";
     router.push({
       pathname: "/player",
-      params: { streamUrl: ch.url, title: ch.title || ch.name, type, contentId: ch.id },
+      params: { streamUrl: ch.url, title: ch.title || ch.name, type, contentId: ch.id, poster: ch.poster || ch.logo || "" },
     });
   }, [activeTab]);
 
