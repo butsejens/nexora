@@ -297,6 +297,13 @@ const AD_DOMAINS = [
   "twinrdsrv.com", "tsartech.com", "runative.com",
   "ntv.io", "glimr.io", "liveintent.com", "kochava.com",
   "d2cmedia.com", "nextmillennium.io", "a2z-media.com",
+  // CAPTCHA / verification services
+  "google.com/recaptcha", "www.google.com/recaptcha",
+  "recaptcha.net", "www.recaptcha.net",
+  "hcaptcha.com", "www.hcaptcha.com",
+  "challenges.cloudflare.com",
+  "captcha.website", "captcha-delivery.com",
+  "arkoselabs.com", "funcaptcha.com",
 ];
 
 // ─── JS injected in embed WebView ─────────────────────────────────────────────
@@ -330,7 +337,16 @@ const AD_BLOCK_JS = `
       'a[href*="utm_"]:not([class*="play"]):not([class*="video"]),' +
       '[class*="ad-container"],[class*="ad_container"],[id*="ad-container"],[id*="ad_container"],' +
       '[class*="adunit"],[class*="ad-unit"],[class*="ad_unit"],' +
-      '[class*="sponsor"],[id*="sponsor"]' +
+      '[class*="sponsor"],[id*="sponsor"],' +
+      '[class*="captcha"],[id*="captcha"],[class*="recaptcha"],[id*="recaptcha"],' +
+      '[class*="hcaptcha"],[id*="hcaptcha"],[class*="turnstile"],[id*="turnstile"],' +
+      '[class*="cf-challenge"],[id*="cf-challenge"],[class*="challenge"],' +
+      '[class*="robot"],[id*="robot"],[class*="human"],[id*="human"],' +
+      '[class*="verify"],[id*="verify"],[class*="verification"],[id*="verification"],' +
+      '[class*="check-overlay"],[class*="cf-wrapper"],[id*="cf-wrapper"],' +
+      '.g-recaptcha,div[data-sitekey],iframe[src*="recaptcha"],iframe[src*="hcaptcha"],' +
+      'iframe[src*="turnstile"],iframe[src*="challenges.cloudflare"],' +
+      '[class*="are-you-human"],[id*="are-you-human"],[class*="not-robot"],[id*="not-robot"]' +
       '{ display:none!important; visibility:hidden!important; opacity:0!important; pointer-events:none!important; }';
     (document.head||document.documentElement).appendChild(s);
   })();
@@ -349,6 +365,103 @@ const AD_BLOCK_JS = `
   try{ var _origFocus = window.focus; window.focus = function(){ try{ _origFocus.call(window); }catch(e){} }; }catch(e){}
   // Block document.write after initial load (used to inject full-page ad takeovers)
   setTimeout(function(){ try{ document.write = function(){}; document.writeln = function(){}; }catch(e){} }, 2000);
+
+  // ── Block CAPTCHA / robot verification systems ─────────────────────────
+  // Intercept recaptcha, hcaptcha, turnstile script loading
+  var _origCreateElement = document.createElement.bind(document);
+  document.createElement = function(tag){
+    var el = _origCreateElement(tag);
+    if(tag.toLowerCase() === 'script'){
+      var _origSetSrc = Object.getOwnPropertyDescriptor(HTMLScriptElement.prototype, 'src');
+      if(_origSetSrc && _origSetSrc.set){
+        Object.defineProperty(el, 'src', {
+          set: function(v){
+            var s = String(v||'').toLowerCase();
+            if(s.includes('recaptcha') || s.includes('hcaptcha') || s.includes('turnstile') ||
+               s.includes('captcha') || s.includes('challenges.cloudflare')){
+              return;
+            }
+            _origSetSrc.set.call(el, v);
+          },
+          get: function(){ return _origSetSrc.get.call(el); },
+          configurable: true
+        });
+      }
+    }
+    return el;
+  };
+  // Auto-solve any grecaptcha challenge by faking the callback
+  try{
+    Object.defineProperty(window, 'grecaptcha', {
+      get: function(){
+        return {
+          ready: function(cb){ if(cb) cb(); },
+          execute: function(){ return Promise.resolve('fake-token'); },
+          render: function(){ return 0; },
+          getResponse: function(){ return 'fake-token'; },
+          reset: function(){},
+          enterprise: {
+            ready: function(cb){ if(cb) cb(); },
+            execute: function(){ return Promise.resolve('fake-token'); },
+            render: function(){ return 0; },
+          }
+        };
+      },
+      set: function(){},
+      configurable: true
+    });
+  }catch(e){}
+  // Fake hcaptcha
+  try{
+    Object.defineProperty(window, 'hcaptcha', {
+      get: function(){
+        return {
+          render: function(){ return 'fake'; },
+          getResponse: function(){ return 'fake-token'; },
+          execute: function(){ return Promise.resolve({ response: 'fake-token' }); },
+          reset: function(){},
+        };
+      },
+      set: function(){},
+      configurable: true
+    });
+  }catch(e){}
+  // Fake turnstile
+  try{
+    Object.defineProperty(window, 'turnstile', {
+      get: function(){
+        return {
+          render: function(el, opts){ if(opts && opts.callback) opts.callback('fake-token'); return 'fake'; },
+          getResponse: function(){ return 'fake-token'; },
+          reset: function(){},
+          remove: function(){},
+        };
+      },
+      set: function(){},
+      configurable: true
+    });
+  }catch(e){}
+  // Auto-trigger any captcha callback on the page
+  setTimeout(function(){
+    try{
+      document.querySelectorAll('[data-callback]').forEach(function(el){
+        var cbName = el.getAttribute('data-callback');
+        if(cbName && typeof window[cbName] === 'function'){
+          window[cbName]('fake-token');
+        }
+      });
+    }catch(e){}
+  }, 1500);
+  setTimeout(function(){
+    try{
+      document.querySelectorAll('[data-callback]').forEach(function(el){
+        var cbName = el.getAttribute('data-callback');
+        if(cbName && typeof window[cbName] === 'function'){
+          window[cbName]('fake-token');
+        }
+      });
+    }catch(e){}
+  }, 4000);
   var _swallowRemoveChildError = function(msg){
     var text = String(msg || '').toLowerCase();
     return text.includes('removechild') || text.includes('notfounderror') || text.includes('not a child') || text.includes('hierarchyrequesterror');
@@ -529,6 +642,11 @@ const AD_BLOCK_JS = `
       if(!el || el.tagName !== 'IFRAME') return false;
       var src = el.getAttribute('src') || '';
       if(_isAdUrl(src)) return true;
+      // Block CAPTCHA iframes
+      var srcLower = src.toLowerCase();
+      if(srcLower.includes('recaptcha') || srcLower.includes('hcaptcha') ||
+         srcLower.includes('turnstile') || srcLower.includes('challenges.cloudflare') ||
+         srcLower.includes('captcha') || srcLower.includes('robot')) return true;
       // Zero-size or hidden iframes are almost always ads/trackers
       try{
         var w = parseInt(el.getAttribute('width') || el.style.width || '999');
@@ -595,6 +713,25 @@ const AD_BLOCK_JS = `
     '[class*="banner"][class*="ad"]', '[id*="banner"][id*="ad"]',
     'a[href*="bet365"]', 'a[href*="1xbet"]', 'a[href*="casino"]',
     'a[href*="stake.com"]', 'a[href*="gambling"]',
+    // CAPTCHA / robot verification overlays
+    '[class*="captcha"]', '[id*="captcha"]',
+    '[class*="recaptcha"]', '[id*="recaptcha"]', '.g-recaptcha',
+    '[class*="hcaptcha"]', '[id*="hcaptcha"]',
+    '[class*="turnstile"]', '[id*="turnstile"]',
+    '[class*="cf-challenge"]', '[id*="cf-challenge"]',
+    '[class*="challenge-platform"]', '[id*="challenge-platform"]',
+    '[class*="robot"]', '[id*="robot"]',
+    '[class*="human-check"]', '[id*="human-check"]',
+    '[class*="verify"]', '[id*="verify"]',
+    '[class*="verification"]', '[id*="verification"]',
+    'div[data-sitekey]', 'div[data-callback]',
+    'iframe[src*="recaptcha"]', 'iframe[src*="hcaptcha"]',
+    'iframe[src*="turnstile"]', 'iframe[src*="challenges.cloudflare"]',
+    'iframe[src*="google.com/recaptcha"]',
+    '[class*="are-you-human"]', '[id*="are-you-human"]',
+    '[class*="not-robot"]', '[id*="not-robot"]',
+    '[class*="bot-check"]', '[id*="bot-check"]',
+    '[class*="antibot"]', '[id*="antibot"]',
   ];
 
   function removeAds(){
@@ -637,6 +774,20 @@ const AD_BLOCK_JS = `
       /install\s+and\s+continue/i,
       /continue\s+watching/i,
       /app\s*store/i,
+      /i.*m\s+(not\s+a\s+)?robot/i,
+      /are\s+you\s+(a\s+)?human/i,
+      /verify\s+(you\s+are|that\s+you)/i,
+      /captcha/i,
+      /human\s+verification/i,
+      /prove\s+you.*human/i,
+      /bot\s+check/i,
+      /complete\s+the\s+captcha/i,
+      /security\s+check/i,
+      /please\s+verify/i,
+      /click\s+to\s+verify/i,
+      /not\s+a\s+robot/i,
+      /recaptcha/i,
+      /cloudflare/i,
     ];
     document.querySelectorAll('div,section,aside,a,button').forEach(function(el){
       try{
@@ -685,6 +836,12 @@ const AD_BLOCK_JS = `
       // Keep player-related iframes
       if(id.match(/player|video|stream/) || cn.match(/player|video|stream/)) return;
       if(src.match(/\.m3u8|\.mp4|\.ts|player|embed|stream|hls/)) return;
+      // Always remove CAPTCHA iframes
+      if(src.match(/recaptcha|hcaptcha|turnstile|captcha|challenges\.cloudflare|robot/) ||
+         id.match(/captcha|recaptcha|hcaptcha|turnstile|robot|verify/) ||
+         cn.match(/captcha|recaptcha|hcaptcha|turnstile|robot|verify/)){
+        try{ f.remove(); }catch(e){} return;
+      }
       // Remove everything else
       try{ f.remove(); }catch(e){}
     });
@@ -773,7 +930,7 @@ const FORCE_PLAY_JS = `
   }
 
   function removeBlockingLayers(){
-    var patterns = /vpn|consent|cookie|gdpr|promo|interstitial|popup|subscribe|paywall|ad|banner/i;
+    var patterns = /vpn|consent|cookie|gdpr|promo|interstitial|popup|subscribe|paywall|ad|banner|captcha|recaptcha|hcaptcha|turnstile|robot|verify|verification|challenge|human-check|bot-check|antibot/i;
     var nodes = document.querySelectorAll('div,section,aside,iframe');
     for (var i = 0; i < nodes.length; i++) {
       var el = nodes[i];
@@ -1374,6 +1531,9 @@ export default function PlayerScreen() {
         /subscribe.*premium|premium.*offer/i,
         /survey|reward|prize|winner|congratulat/i,
         /dating|singles|meet.*local/i,
+        /captcha|recaptcha|hcaptcha|turnstile/i,
+        /challenges\.cloudflare/i,
+        /i.m.not.a.robot|are.you.human|verify.*human/i,
       ];
       if (BLOCK_PATTERNS.some((pattern) => pattern.test(url))) { adPopupCountRef.current++; return false; }
 
