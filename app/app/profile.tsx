@@ -30,6 +30,7 @@ import { fetchM3UText } from "@/lib/fetchM3U";
 import { parseM3UContentAsync } from "@/lib/parseM3U";
 import { SafeHaptics } from "@/lib/safeHaptics";
 import * as FileSystem from "expo-file-system/legacy";
+import * as IntentLauncher from "expo-intent-launcher";
 
 const CHANGELOG: { version: string; date: string; changes: string[] }[] = [
   {
@@ -314,9 +315,13 @@ function UpdateModal({
         if (!result?.uri) throw new Error("Download mislukt");
         setDownloadProgress(1);
 
-        // Convert file:// to content:// URI for Android package installer
+        // Convert file:// to content:// URI and launch package installer
         const contentUri = await FileSystem.getContentUriAsync(result.uri);
-        await Linking.openURL(contentUri);
+        await IntentLauncher.startActivityAsync("android.intent.action.VIEW", {
+          data: contentUri,
+          type: "application/vnd.android.package-archive",
+          flags: 1, // FLAG_GRANT_READ_URI_PERMISSION
+        });
         setStatus("idle");
       } catch (e: any) {
         // Fallback: open URL in browser

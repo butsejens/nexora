@@ -4,6 +4,7 @@ import * as SplashScreen from "expo-splash-screen";
 import React, { useEffect, useRef, useState } from "react";
 import { Alert, Linking, Platform } from "react-native";
 import * as FileSystem from "expo-file-system/legacy";
+import * as IntentLauncher from "expo-intent-launcher";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { queryClient, getApiBaseCandidates, apiRequest } from "@/lib/query-client";
@@ -261,7 +262,11 @@ export default function RootLayout() {
               const result = await dl.downloadAsync();
               if (!result?.uri) throw new Error("dl-failed");
               const contentUri = await FileSystem.getContentUriAsync(result.uri);
-              await Linking.openURL(contentUri);
+              await IntentLauncher.startActivityAsync("android.intent.action.VIEW", {
+                data: contentUri,
+                type: "application/vnd.android.package-archive",
+                flags: 1, // FLAG_GRANT_READ_URI_PERMISSION
+              });
               return;
             } catch {
               // Fallback: open in browser
