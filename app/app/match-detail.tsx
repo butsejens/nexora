@@ -1667,6 +1667,134 @@ function AIPredictionView({ prediction, homeTeam, awayTeam }: any) {
         </View>
       )}
 
+      {/* Match Insight */}
+      {prediction.matchInsight && (
+        <View style={styles.infoCard}>
+          <Text style={styles.infoCardTitle}>MATCH INSIGHT</Text>
+          <Text style={styles.aiSummary}>{prediction.matchInsight}</Text>
+        </View>
+      )}
+
+      {/* Form Guide — detailed descriptions */}
+      {prediction.formGuide && (prediction.formGuide.homeForm || prediction.formGuide.awayForm) && (
+        <View style={styles.infoCard}>
+          <Text style={styles.infoCardTitle}>FORM GUIDE</Text>
+          {prediction.formGuide.homeForm && (
+            <View style={{ marginBottom: 10 }}>
+              <Text style={[styles.factorText, { color: COLORS.accent, fontFamily: "Inter_600SemiBold", marginBottom: 4 }]}>{homeShortName}</Text>
+              <Text style={styles.aiSummary}>{prediction.formGuide.homeForm}</Text>
+            </View>
+          )}
+          {prediction.formGuide.awayForm && (
+            <View>
+              <Text style={[styles.factorText, { color: COLORS.live, fontFamily: "Inter_600SemiBold", marginBottom: 4 }]}>{awayShortName}</Text>
+              <Text style={styles.aiSummary}>{prediction.formGuide.awayForm}</Text>
+            </View>
+          )}
+        </View>
+      )}
+
+      {/* Tactical Edge — strengths vs weaknesses */}
+      {prediction.tacticalEdge && (
+        <View style={styles.infoCard}>
+          <Text style={styles.infoCardTitle}>TACTICAL EDGE</Text>
+          <View style={{ flexDirection: "row", gap: 10 }}>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.factorText, { color: COLORS.accent, fontFamily: "Inter_600SemiBold", marginBottom: 6, textAlign: "center" }]}>{homeShortName}</Text>
+              {(prediction.tacticalEdge.homeStrengths || []).map((s: string, i: number) => (
+                <View key={`hs-${i}`} style={{ flexDirection: "row", alignItems: "center", gap: 4, marginBottom: 4 }}>
+                  <MaterialCommunityIcons name="arrow-up-bold" size={11} color="#4CAF50" />
+                  <Text style={[styles.factorText, { fontSize: 12 }]}>{s}</Text>
+                </View>
+              ))}
+              {(prediction.tacticalEdge.homeWeaknesses || []).map((w: string, i: number) => (
+                <View key={`hw-${i}`} style={{ flexDirection: "row", alignItems: "center", gap: 4, marginBottom: 4 }}>
+                  <MaterialCommunityIcons name="arrow-down-bold" size={11} color={COLORS.live} />
+                  <Text style={[styles.factorText, { fontSize: 12 }]}>{w}</Text>
+                </View>
+              ))}
+            </View>
+            <View style={{ width: 1, backgroundColor: "rgba(255,255,255,0.08)" }} />
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.factorText, { color: COLORS.live, fontFamily: "Inter_600SemiBold", marginBottom: 6, textAlign: "center" }]}>{awayShortName}</Text>
+              {(prediction.tacticalEdge.awayStrengths || []).map((s: string, i: number) => (
+                <View key={`as-${i}`} style={{ flexDirection: "row", alignItems: "center", gap: 4, marginBottom: 4 }}>
+                  <MaterialCommunityIcons name="arrow-up-bold" size={11} color="#4CAF50" />
+                  <Text style={[styles.factorText, { fontSize: 12 }]}>{s}</Text>
+                </View>
+              ))}
+              {(prediction.tacticalEdge.awayWeaknesses || []).map((w: string, i: number) => (
+                <View key={`aw-${i}`} style={{ flexDirection: "row", alignItems: "center", gap: 4, marginBottom: 4 }}>
+                  <MaterialCommunityIcons name="arrow-down-bold" size={11} color={COLORS.live} />
+                  <Text style={[styles.factorText, { fontSize: 12 }]}>{w}</Text>
+                </View>
+              ))}
+            </View>
+          </View>
+        </View>
+      )}
+
+      {/* Attacking & Defensive Strength Bars */}
+      {prediction.attackingStrength && prediction.defensiveStrength && (
+        <View style={styles.infoCard}>
+          <Text style={styles.infoCardTitle}>KRACHT VERGELIJKING</Text>
+          <View style={{ gap: 12 }}>
+            <View>
+              <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 4 }}>
+                <Text style={[styles.factorText, { fontSize: 12 }]}>Aanvalskracht</Text>
+                <Text style={[styles.factorText, { fontSize: 12 }]}>{homeShortName} {prediction.attackingStrength.home} — {prediction.attackingStrength.away} {awayShortName}</Text>
+              </View>
+              <View style={{ flexDirection: "row", gap: 4, height: 8 }}>
+                <View style={{ flex: prediction.attackingStrength.home, backgroundColor: COLORS.accent, borderRadius: 4 }} />
+                <View style={{ flex: prediction.attackingStrength.away, backgroundColor: COLORS.live, borderRadius: 4 }} />
+              </View>
+            </View>
+            <View>
+              <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 4 }}>
+                <Text style={[styles.factorText, { fontSize: 12 }]}>Defensieve sterkte</Text>
+                <Text style={[styles.factorText, { fontSize: 12 }]}>{homeShortName} {prediction.defensiveStrength.home} — {prediction.defensiveStrength.away} {awayShortName}</Text>
+              </View>
+              <View style={{ flexDirection: "row", gap: 4, height: 8 }}>
+                <View style={{ flex: prediction.defensiveStrength.home, backgroundColor: COLORS.accent, borderRadius: 4 }} />
+                <View style={{ flex: prediction.defensiveStrength.away, backgroundColor: COLORS.live, borderRadius: 4 }} />
+              </View>
+            </View>
+          </View>
+        </View>
+      )}
+
+      {/* Player Impact */}
+      {prediction.playerImpact && prediction.playerImpact.length > 0 && (
+        <View style={styles.infoCard}>
+          <Text style={styles.infoCardTitle}>SPELER IMPACT</Text>
+          {prediction.playerImpact.map((p: any, i: number) => (
+            <View key={`pi-${i}`} style={[styles.factorRow, { marginBottom: 6 }]}>
+              <MaterialCommunityIcons name="account-star" size={13} color={p.team === "home" ? COLORS.accent : COLORS.live} />
+              <Text style={[styles.factorText, { marginLeft: 4 }]}>
+                <Text style={{ fontFamily: "Inter_600SemiBold", color: p.team === "home" ? COLORS.accent : COLORS.live }}>{p.name}</Text>
+                {" — "}{p.impact}
+              </Text>
+            </View>
+          ))}
+        </View>
+      )}
+
+      {/* Match Pattern */}
+      {prediction.matchPattern && (
+        <View style={styles.tipCard}>
+          <MaterialCommunityIcons name="chart-timeline-variant" size={15} color={COLORS.accent} />
+          <Text style={styles.tipText}>{prediction.matchPattern}</Text>
+        </View>
+      )}
+
+      {/* AI Prediction Explanation */}
+      {prediction.predictionExplanation && (
+        <View style={styles.infoCard}>
+          <Text style={styles.infoCardTitle}>AI VOORSPELLING ONDERBOUWING</Text>
+          <Text style={styles.aiSummary}>{prediction.predictionExplanation}</Text>
+        </View>
+      )}
+
       {/* Tip */}
       {prediction.tip && (
         <View style={[styles.tipCard, { borderColor: "rgba(255,215,0,0.3)", backgroundColor: "rgba(255,215,0,0.06)" }]}>

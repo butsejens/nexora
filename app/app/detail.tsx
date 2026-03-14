@@ -509,6 +509,15 @@ export default function DetailScreen() {
                 </View>
               </TouchableOpacity>
             )}
+            {data.trailerKey ? (
+              <TouchableOpacity
+                style={styles.trailerBtnOutline}
+                onPress={() => { SafeHaptics.impactLight(); setShowTrailer(true); }}
+              >
+                <Ionicons name="videocam-outline" size={20} color={COLORS.accent} />
+                <Text style={styles.trailerBtnOutlineText}>Trailer</Text>
+              </TouchableOpacity>
+            ) : null}
             <TouchableOpacity
               style={[styles.downloadBtnOutline, isDownloaded(id) && { borderColor: "#22c55e" }]}
               onPress={() => { SafeHaptics.impactLight(); setShowDownload(true); }}
@@ -732,6 +741,8 @@ const styles = StyleSheet.create({
   playBtnText: { fontFamily: "Inter_700Bold", fontSize: 16, color: "#FFFFFF" },
   downloadBtnOutline: { width: 48, height: 48, borderRadius: 12, borderWidth: 1.5, borderColor: "rgba(255,255,255,0.12)", alignItems: "center", justifyContent: "center", backgroundColor: "rgba(255,255,255,0.04)" },
   shareBtnOutline: { width: 48, height: 48, borderRadius: 12, borderWidth: 1.5, borderColor: "rgba(255,255,255,0.12)", alignItems: "center", justifyContent: "center", backgroundColor: "rgba(255,255,255,0.04)" },
+  trailerBtnOutline: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, height: 48, paddingHorizontal: 16, borderRadius: 12, borderWidth: 1.5, borderColor: COLORS.accent + "44", backgroundColor: COLORS.accent + "12" },
+  trailerBtnOutlineText: { fontFamily: "Inter_600SemiBold", fontSize: 13, color: COLORS.accent },
   qualityBadge: { backgroundColor: "rgba(255,45,85,0.15)", borderWidth: 1, borderColor: COLORS.accent, borderRadius: 4, paddingHorizontal: 6, paddingVertical: 2 },
   qualityText: { fontFamily: "Inter_700Bold", fontSize: 9, color: COLORS.accent, letterSpacing: 0.5 },
   tabBar: { flexDirection: "row", borderBottomWidth: 1, borderBottomColor: COLORS.border, marginBottom: 16 },

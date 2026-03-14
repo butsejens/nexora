@@ -287,8 +287,8 @@ export default function MoviesScreen() {
   }, [watchHistory]);
 
   const heroItems = useMemo(() => {
-    const pool = iptvMovies.length > 0 ? filteredIptv : [...trending, ...newReleases, ...popular];
-    return pool.filter(Boolean).slice(0, 10);
+    const pool = [...trending, ...newReleases, ...popular].filter(Boolean);
+    return pool.slice(0, 10);
   }, [iptvMovies, filteredIptv, trending, newReleases, popular]);
 
   const featured = heroItems[heroIndex % Math.max(heroItems.length, 1)] || null;
@@ -515,7 +515,7 @@ export default function MoviesScreen() {
     return (
       <View style={styles.section} key={`main-${categoryKey}`}>
         <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>{title}</Text>
+          <Text style={styles.sectionHeaderTitle}>{title}</Text>
           <TouchableOpacity onPress={() => loadMoreCategory(categoryKey)} style={styles.seeAllBtn}>
             <Text style={styles.seeAllText}>More</Text>
             <Ionicons name="chevron-forward" size={14} color={COLORS.accent} />
@@ -555,7 +555,7 @@ export default function MoviesScreen() {
     return (
       <View key={String(genre.id)} style={styles.section}>
         <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>{genre.name}</Text>
+          <Text style={styles.sectionHeaderTitle}>{genre.name}</Text>
           <TouchableOpacity onPress={() => loadMoreGenre(genre.id)} style={styles.seeAllBtn}>
             <Text style={styles.seeAllText}>More</Text>
             <Ionicons name="chevron-forward" size={14} color={COLORS.accent} />
@@ -929,8 +929,10 @@ const styles = StyleSheet.create({
   errorText: { fontFamily: "Inter_500Medium", fontSize: 12, color: COLORS.textSecondary, flex: 1 },
   errorCodeText: { fontFamily: "Inter_400Regular", fontSize: 10, color: COLORS.textMuted },
   section: { marginBottom: 28 },
-  sectionHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingHorizontal: 20, marginBottom: 14 },
-  sectionTitle: { fontFamily: "Inter_700Bold", fontSize: 18, color: COLORS.text, paddingHorizontal: 20, marginBottom: 14 },
+  section: { marginBottom: 28 },
+  sectionHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingHorizontal: 20, marginBottom: 12 },
+  sectionTitle: { fontFamily: "Inter_700Bold", fontSize: 18, color: COLORS.text, paddingHorizontal: 20, marginBottom: 12 },
+  sectionHeaderTitle: { fontFamily: "Inter_700Bold", fontSize: 18, color: COLORS.text },
   seeAllBtn: { flexDirection: "row", alignItems: "center", gap: 2 },
   seeAllText: { fontFamily: "Inter_500Medium", fontSize: 12, color: COLORS.accent },
   carouselPadding: { paddingHorizontal: 20, paddingRight: 8 },

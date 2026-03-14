@@ -702,9 +702,21 @@ video{width:100%;height:100%;object-fit:contain;display:block;background:#000}
   });
 
   function showError(){
+    document.getElementById('err').textContent = 'Stream tijdelijk niet beschikbaar.\\nProbeer een ander kanaal of probeer later opnieuw.';
     document.getElementById('err').style.display = 'block';
     rn({type:'error'});
   }
+
+  function showLoading(){
+    document.getElementById('err').textContent = 'Bufferen...';
+    document.getElementById('err').style.display = 'block';
+    document.getElementById('err').style.color = '#888';
+  }
+  function hideLoading(){ document.getElementById('err').style.display = 'none'; }
+
+  v.addEventListener('waiting', showLoading);
+  v.addEventListener('playing', hideLoading);
+  v.addEventListener('canplay', hideLoading);
 
   function tryDirect(url){
     v.src = url;
@@ -712,18 +724,23 @@ video{width:100%;height:100%;object-fit:contain;display:block;background:#000}
     v.onerror = function(){ if(fallback && tried < 1){ tried++; tryDirect(fallback); } else { showError(); } };
   }
 
+  var hlsRetryCount = 0;
+  var MAX_HLS_RETRY = 3;
   function loadWithHls(url, onFail){
-    // lowLatencyMode:false is better for standard IPTV streams (non-LL-HLS)
-    var h = new Hls({enableWorker:false,lowLatencyMode:false,backBufferLength:0,maxBufferLength:20,
-      manifestLoadingMaxRetry:2,levelLoadingMaxRetry:2,fragLoadingMaxRetry:2});
+    var h = new Hls({enableWorker:false,lowLatencyMode:false,backBufferLength:0,maxBufferLength:30,
+      manifestLoadingMaxRetry:3,levelLoadingMaxRetry:3,fragLoadingMaxRetry:3,
+      manifestLoadingRetryDelay:1000,levelLoadingRetryDelay:1000,fragLoadingRetryDelay:1000});
     h.loadSource(url); h.attachMedia(v);
-    h.on(Hls.Events.MANIFEST_PARSED, function(){ tryPlay(); });
+    h.on(Hls.Events.MANIFEST_PARSED, function(){ hideLoading(); tryPlay(); });
     h.on(Hls.Events.LEVEL_LOADED,    function(e,d){ isLive = !!(d&&d.details&&d.details.live); sendState(); });
     h.on(Hls.Events.ERROR, function(e,d){
       if(!d.fatal) return;
       if(d.type === Hls.ErrorTypes.MEDIA_ERROR){
-        // Try to recover media errors before giving up
         h.recoverMediaError();
+      } else if(d.type === Hls.ErrorTypes.NETWORK_ERROR && hlsRetryCount < MAX_HLS_RETRY){
+        hlsRetryCount++;
+        h.destroy();
+        setTimeout(function(){ loadWithHls(url, onFail); }, 2000 * hlsRetryCount);
       } else {
         h.destroy(); onFail();
       }
@@ -734,6 +751,7 @@ video{width:100%;height:100%;object-fit:contain;display:block;background:#000}
     loadWithHls(primary, function(){ tryDirect(fallback || primary); });
   } else if(v.canPlayType('application/vnd.apple.mpegurl')){
     v.src = primary; tryPlay();
+    v.addEventListener('error', function(){ if(fallback && tried < 1){ tried++; v.src = fallback; tryPlay(); } else { showError(); }});
   } else {
     tryDirect(primary);
   }
