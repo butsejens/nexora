@@ -6,7 +6,6 @@ import {
   TouchableOpacity,
   Image,
   Animated,
-  TVEventHandler,
   Platform,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
@@ -14,6 +13,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { COLORS } from "@/constants/colors";
 import { SafeHaptics } from "@/lib/safeHaptics";
 import { isTV } from "@/lib/platform";
+import { setSidebarExpanded } from "@/lib/tv-focus-engine";
 
 
 
@@ -63,29 +63,40 @@ export const RealContentCard = React.memo(function RealContentCard({ item, onPre
 
   const handleFocus = useCallback(() => {
     setFocused(true);
+    if (isTV) setSidebarExpanded(false);
     Animated.parallel([
-      Animated.spring(scaleAnim, { toValue: isTV ? 1.12 : 1.08, useNativeDriver: true, friction: 5, tension: 120 }),
-      Animated.timing(glowAnim, { toValue: 1, duration: 200, useNativeDriver: false }),
+      Animated.spring(scaleAnim, { toValue: isTV ? 1.08 : 1.05, useNativeDriver: true, friction: 6, tension: 140 }),
+      Animated.timing(glowAnim, { toValue: 1, duration: 180, useNativeDriver: false }),
     ]).start();
   }, [scaleAnim, glowAnim]);
 
   const handleBlur = useCallback(() => {
     setFocused(false);
     Animated.parallel([
-      Animated.spring(scaleAnim, { toValue: 1, useNativeDriver: true, friction: 5, tension: 120 }),
-      Animated.timing(glowAnim, { toValue: 0, duration: 200, useNativeDriver: false }),
+      Animated.spring(scaleAnim, { toValue: 1, useNativeDriver: true, friction: 6, tension: 140 }),
+      Animated.timing(glowAnim, { toValue: 0, duration: 180, useNativeDriver: false }),
     ]).start();
   }, [scaleAnim, glowAnim]);
 
   const tvGlowBorder = isTV ? glowAnim.interpolate({
     inputRange: [0, 1],
-    outputRange: ["rgba(255,45,85,0)", "rgba(255,45,85,0.65)"],
+    outputRange: ["rgba(255,255,255,0)", "rgba(255,255,255,0.85)"],
+  }) : undefined;
+
+  const tvBrightness = isTV ? glowAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [1, 1.12],
   }) : undefined;
 
   return (
     <Animated.View style={[
-      { width: cardWidth, marginRight: isTV ? 24 : 14, transform: [{ scale: scaleAnim }] },
-      isTV && focused && { shadowColor: COLORS.accent, shadowOpacity: 0.6, shadowRadius: 20, elevation: 16 },
+      { width: cardWidth, marginRight: isTV ? 20 : 14, transform: [{ scale: scaleAnim }] },
+      isTV && focused && {
+        shadowColor: "#fff",
+        shadowOpacity: 0.5,
+        shadowRadius: 18,
+        elevation: 20,
+      },
     ]}>
       <TouchableOpacity
         onPress={() => {
@@ -101,7 +112,11 @@ export const RealContentCard = React.memo(function RealContentCard({ item, onPre
           styles.poster,
           { width: cardWidth, height },
           focused && styles.posterFocused,
-          isTV && focused && { borderColor: tvGlowBorder, borderWidth: 3 },
+          isTV && focused && {
+            borderColor: tvGlowBorder,
+            borderWidth: 3,
+            borderRadius: 14,
+          },
         ]}>
           {item.poster && !imageError ? (
             <Image
@@ -333,11 +348,11 @@ const styles = StyleSheet.create({
   },
   posterFocused: {
     borderWidth: 3,
-    borderColor: COLORS.accent,
-    shadowColor: COLORS.accent,
-    shadowOpacity: 0.7,
-    shadowRadius: 24,
-    elevation: 16,
+    borderColor: "#FFFFFF",
+    shadowColor: "#FFFFFF",
+    shadowOpacity: 0.8,
+    shadowRadius: 20,
+    elevation: 20,
   },
   posterBottom: { padding: 9 },
   badges: { flexDirection: "row", gap: 4 },

@@ -13,6 +13,7 @@ import { useNexora } from "@/context/NexoraContext";
 import type { IPTVChannel } from "@/context/NexoraContext";
 import { getInitials } from "@/lib/logo-manager";
 import { isTV } from "@/lib/platform";
+import { setSidebarExpanded } from "@/lib/tv-focus-engine";
 import { fetchEPG, getCurrentProgramme } from "@/lib/epg-manager";
 import type { EPGData } from "@/lib/epg-manager";
 import { searchIPTV } from "@/lib/search-engine";
@@ -29,14 +30,15 @@ const ChannelCard = React.memo(function ChannelCard({ channel, onPress, onLongPr
   const scaleAnim = useRef(new Animated.Value(1)).current;
 
   const onFocus = useCallback(() => {
-    Animated.spring(scaleAnim, { toValue: 1.04, useNativeDriver: true, friction: 8 }).start();
+    if (isTV) setSidebarExpanded(false);
+    Animated.spring(scaleAnim, { toValue: isTV ? 1.06 : 1.04, useNativeDriver: true, friction: 7, tension: 140 }).start();
   }, [scaleAnim]);
   const onBlur = useCallback(() => {
-    Animated.spring(scaleAnim, { toValue: 1, useNativeDriver: true, friction: 8 }).start();
+    Animated.spring(scaleAnim, { toValue: 1, useNativeDriver: true, friction: 7, tension: 140 }).start();
   }, [scaleAnim]);
 
   return (
-    <Animated.View style={{ transform: [{ scale: scaleAnim }] }}>
+    <Animated.View style={[{ transform: [{ scale: scaleAnim }] }, isTV && scaleAnim.__getValue?.() > 1 && { shadowColor: "#fff", shadowOpacity: 0.4, shadowRadius: 14, elevation: 16 }]}>
     <TouchableOpacity
       style={[styles.channelCard, isTV && styles.channelCardTV]}
       onPress={onPress} onLongPress={onLongPress} activeOpacity={0.75}
@@ -82,14 +84,15 @@ const VODCard = React.memo(function VODCard({ channel, onPress, type }: {
   const scaleAnim = useRef(new Animated.Value(1)).current;
 
   const onFocus = useCallback(() => {
-    Animated.spring(scaleAnim, { toValue: 1.08, useNativeDriver: true, friction: 8 }).start();
+    if (isTV) setSidebarExpanded(false);
+    Animated.spring(scaleAnim, { toValue: 1.08, useNativeDriver: true, friction: 7, tension: 140 }).start();
   }, [scaleAnim]);
   const onBlur = useCallback(() => {
-    Animated.spring(scaleAnim, { toValue: 1, useNativeDriver: true, friction: 8 }).start();
+    Animated.spring(scaleAnim, { toValue: 1, useNativeDriver: true, friction: 7, tension: 140 }).start();
   }, [scaleAnim]);
 
   return (
-    <Animated.View style={[isTV ? styles.vodCardTV : styles.vodCard, { transform: [{ scale: scaleAnim }] }]}>
+    <Animated.View style={[isTV ? styles.vodCardTV : styles.vodCard, { transform: [{ scale: scaleAnim }] }, isTV && scaleAnim.__getValue?.() > 1 && { shadowColor: "#fff", shadowOpacity: 0.4, shadowRadius: 14, elevation: 16 }]}>
     <TouchableOpacity style={{ flex: 1 }} onPress={onPress} activeOpacity={0.78}
       onFocus={onFocus} onBlur={onBlur}
     >

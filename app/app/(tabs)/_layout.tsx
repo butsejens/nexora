@@ -1,10 +1,11 @@
 import { Tabs } from "expo-router";
 import { BlurView } from "expo-blur";
-import { Platform, StyleSheet, View, Animated, Pressable, Text } from "react-native";
+import { Platform, StyleSheet, View, Animated, Pressable, Text, BackHandler } from "react-native";
 import React, { useState, useRef, useCallback, useEffect } from "react";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { COLORS } from "@/constants/colors";
 import { isTV } from "@/lib/platform";
+import { useSidebarState, setSidebarExpanded } from "@/lib/tv-focus-engine";
 
 const SP_ACCENT = COLORS.accent;
 
@@ -62,96 +63,102 @@ const tabIconStyles = StyleSheet.create({
   },
 });
 
+// ── TV Tab Layout with animated sidebar ─────────────────────────────────────
+function TVTabLayout() {
+  const { sidebarExpanded } = useSidebarState();
+
+  return (
+    <Tabs
+      screenOptions={{
+        headerShown: false,
+        tabBarShowLabel: true,
+        tabBarPosition: "left",
+        tabBarActiveTintColor: COLORS.accent,
+        tabBarInactiveTintColor: COLORS.textMuted,
+        tabBarLabelStyle: { fontSize: 15, fontFamily: "Inter_600SemiBold" },
+        tabBarStyle: {
+          backgroundColor: "rgba(10,10,18,0.98)",
+          borderRightWidth: 1,
+          borderRightColor: "rgba(255,255,255,0.08)",
+          width: sidebarExpanded ? TV_SIDEBAR_EXPANDED : TV_SIDEBAR_COLLAPSED,
+          paddingTop: 48,
+          overflow: "hidden",
+        },
+        tabBarItemStyle: {
+          paddingVertical: 18,
+          paddingHorizontal: 22,
+          borderRadius: 14,
+          marginVertical: 3,
+          marginHorizontal: 10,
+        },
+      }}
+    >
+      <Tabs.Screen
+        name="livetv"
+        options={{
+          title: "Live TV",
+          tabBarIcon: ({ focused }) => (
+            <Ionicons
+              name={focused ? "tv" : "tv-outline"}
+              size={30}
+              color={focused ? COLORS.accent : COLORS.textMuted}
+            />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="movies"
+        options={{
+          title: "Films",
+          tabBarIcon: ({ focused }) => (
+            <Ionicons
+              name={focused ? "film" : "film-outline"}
+              size={30}
+              color={focused ? COLORS.accent : COLORS.textMuted}
+            />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="series"
+        options={{
+          title: "Series",
+          tabBarIcon: ({ focused }) => (
+            <Ionicons
+              name={focused ? "layers" : "layers-outline"}
+              size={30}
+              color={focused ? COLORS.accent : COLORS.textMuted}
+            />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="downloads"
+        options={{
+          title: "Downloads",
+          tabBarIcon: ({ focused }) => (
+            <Ionicons
+              name={focused ? "arrow-down-circle" : "arrow-down-circle-outline"}
+              size={30}
+              color={focused ? COLORS.accent : COLORS.textMuted}
+            />
+          ),
+        }}
+      />
+      <Tabs.Screen name="index" options={{ href: null }} />
+      <Tabs.Screen name="settings" options={{ href: null }} />
+      <Tabs.Screen name="favorites" options={{ href: null }} />
+    </Tabs>
+  );
+}
+
 export default function TabLayout() {
   const isWeb = Platform.OS === "web";
   const isIOS = Platform.OS === "ios";
 
   // TV: sidebar-style — left rail with labels, auto-hides when browsing content
   if (isTV) {
-    return (
-      <Tabs
-        screenOptions={{
-          headerShown: false,
-          tabBarShowLabel: true,
-          tabBarPosition: "left",
-          tabBarActiveTintColor: COLORS.accent,
-          tabBarInactiveTintColor: COLORS.textMuted,
-          tabBarLabelStyle: { fontSize: 15, fontFamily: "Inter_600SemiBold" },
-          tabBarStyle: {
-            backgroundColor: "rgba(10,10,18,0.98)",
-            borderRightWidth: 1,
-            borderRightColor: "rgba(255,255,255,0.08)",
-            width: TV_SIDEBAR_EXPANDED,
-            paddingTop: 48,
-          },
-          tabBarItemStyle: {
-            paddingVertical: 18,
-            paddingHorizontal: 22,
-            borderRadius: 14,
-            marginVertical: 3,
-            marginHorizontal: 10,
-          },
-        }}
-      >
-        {/* TV: Live TV first, then Movies, Series, Downloads — no Sports */}
-        <Tabs.Screen
-          name="livetv"
-          options={{
-            title: "Live TV",
-            tabBarIcon: ({ focused }) => (
-              <Ionicons
-                name={focused ? "tv" : "tv-outline"}
-                size={30}
-                color={focused ? COLORS.accent : COLORS.textMuted}
-              />
-            ),
-          }}
-        />
-        <Tabs.Screen
-          name="movies"
-          options={{
-            title: "Films",
-            tabBarIcon: ({ focused }) => (
-              <Ionicons
-                name={focused ? "film" : "film-outline"}
-                size={30}
-                color={focused ? COLORS.accent : COLORS.textMuted}
-              />
-            ),
-          }}
-        />
-        <Tabs.Screen
-          name="series"
-          options={{
-            title: "Series",
-            tabBarIcon: ({ focused }) => (
-              <Ionicons
-                name={focused ? "layers" : "layers-outline"}
-                size={30}
-                color={focused ? COLORS.accent : COLORS.textMuted}
-              />
-            ),
-          }}
-        />
-        <Tabs.Screen
-          name="downloads"
-          options={{
-            title: "Downloads",
-            tabBarIcon: ({ focused }) => (
-              <Ionicons
-                name={focused ? "arrow-down-circle" : "arrow-down-circle-outline"}
-                size={30}
-                color={focused ? COLORS.accent : COLORS.textMuted}
-              />
-            ),
-          }}
-        />
-        {/* Hide sports + settings + favorites on TV */}
-        <Tabs.Screen name="index" options={{ href: null }} />
-        <Tabs.Screen name="settings" options={{ href: null }} />
-        <Tabs.Screen name="favorites" options={{ href: null }} />
-      </Tabs>
-    );
+    return <TVTabLayout />;
   }
 
   return (

@@ -1441,12 +1441,12 @@ export default function PlayerScreen() {
                   color={isFavorite(contentId || String(title)) ? COLORS.live : "rgba(255,255,255,0.85)"}
                 />
               </TouchableOpacity>
-              {!!streamUrl && (
+              {!isTV && !!streamUrl && (
                 <TouchableOpacity style={styles.iconBtn} onPress={handleOpenInVlc}>
                   <Ionicons name="open-outline" size={20} color="rgba(255,255,255,0.85)" />
                 </TouchableOpacity>
               )}
-              {(!!streamUrl || !!embedUrl) && (
+              {!isTV && (!!streamUrl || !!embedUrl) && (
                 <TouchableOpacity style={styles.iconBtn} onPress={handleShare}>
                   <Ionicons name="share-outline" size={20} color="rgba(255,255,255,0.85)" />
                 </TouchableOpacity>
@@ -1485,22 +1485,22 @@ export default function PlayerScreen() {
           {/* HLS center controls: skip-back | play-pause | skip-forward */}
           {Platform.OS !== "web" && (
             <View style={styles.hlsCenterRow}>
-              <TouchableOpacity style={styles.hlsSkipBtn} onPress={() => hlsSeekRelative(-15)} activeOpacity={0.7}>
-                <View style={styles.hlsSkipBtnInner}>
-                  <Ionicons name="play-back" size={22} color="#fff" />
+              <TouchableOpacity style={[styles.hlsSkipBtn, isTV && styles.hlsSkipBtnTV]} onPress={() => hlsSeekRelative(-15)} activeOpacity={0.7}>
+                <View style={[styles.hlsSkipBtnInner, isTV && styles.hlsSkipBtnInnerTV]}>
+                  <Ionicons name="play-back" size={isTV ? 28 : 22} color="#fff" />
                 </View>
-                <Text style={styles.hlsSkipLabel}>15s</Text>
+                <Text style={[styles.hlsSkipLabel, isTV && { fontSize: 13 }]}>15s</Text>
               </TouchableOpacity>
 
-              <TouchableOpacity style={styles.hlsPlayBtn} onPress={hlsTogglePlay} activeOpacity={0.8}>
-                <Ionicons name={hlsPaused ? "play" : "pause"} size={40} color="#fff" style={hlsPaused ? { marginLeft: 4 } : undefined} />
+              <TouchableOpacity style={[styles.hlsPlayBtn, isTV && styles.hlsPlayBtnTV]} onPress={hlsTogglePlay} activeOpacity={0.8}>
+                <Ionicons name={hlsPaused ? "play" : "pause"} size={isTV ? 52 : 40} color="#fff" style={hlsPaused ? { marginLeft: isTV ? 6 : 4 } : undefined} />
               </TouchableOpacity>
 
-              <TouchableOpacity style={styles.hlsSkipBtn} onPress={() => hlsSeekRelative(15)} activeOpacity={0.7}>
-                <View style={styles.hlsSkipBtnInner}>
-                  <Ionicons name="play-forward" size={22} color="#fff" />
+              <TouchableOpacity style={[styles.hlsSkipBtn, isTV && styles.hlsSkipBtnTV]} onPress={() => hlsSeekRelative(15)} activeOpacity={0.7}>
+                <View style={[styles.hlsSkipBtnInner, isTV && styles.hlsSkipBtnInnerTV]}>
+                  <Ionicons name="play-forward" size={isTV ? 28 : 22} color="#fff" />
                 </View>
-                <Text style={styles.hlsSkipLabel}>15s</Text>
+                <Text style={[styles.hlsSkipLabel, isTV && { fontSize: 13 }]}>15s</Text>
               </TouchableOpacity>
             </View>
           )}
@@ -1646,8 +1646,8 @@ const styles = StyleSheet.create({
     alignItems: "center", justifyContent: "center",
   },
   titleWrap: { flex: 1, marginLeft: 4 },
-  playerTitle: { fontFamily: "Inter_700Bold", fontSize: 15, color: "#fff", letterSpacing: 0.2 },
-  playerSub:   { fontFamily: "Inter_500Medium", fontSize: 11, color: "rgba(255,255,255,0.55)", marginTop: 2 },
+  playerTitle: { fontFamily: "Inter_700Bold", fontSize: isTV ? 22 : 15, color: "#fff", letterSpacing: 0.2 },
+  playerSub:   { fontFamily: "Inter_500Medium", fontSize: isTV ? 15 : 11, color: "rgba(255,255,255,0.55)", marginTop: 2 },
   bottomGrad: { paddingTop: 80 },
 
   // HLS custom controls
@@ -1663,11 +1663,22 @@ const styles = StyleSheet.create({
     borderColor: "rgba(255,255,255,0.25)",
     alignItems: "center", justifyContent: "center",
   },
+  hlsPlayBtnTV: {
+    width: 96, height: 96, borderRadius: 48,
+    backgroundColor: "rgba(255,255,255,0.18)",
+    borderWidth: 3,
+    borderColor: "rgba(255,255,255,0.35)",
+  },
   hlsSkipBtn:  { alignItems: "center", gap: 4 },
+  hlsSkipBtnTV: { gap: 6 },
   hlsSkipBtnInner: {
     width: 48, height: 48, borderRadius: 24,
     backgroundColor: "rgba(255,255,255,0.08)",
     alignItems: "center", justifyContent: "center",
+  },
+  hlsSkipBtnInnerTV: {
+    width: 62, height: 62, borderRadius: 31,
+    backgroundColor: "rgba(255,255,255,0.12)",
   },
   hlsSkipLabel: { fontFamily: "Inter_500Medium", fontSize: 10, color: "rgba(255,255,255,0.6)" },
 
@@ -1675,23 +1686,23 @@ const styles = StyleSheet.create({
     flexDirection: "row", alignItems: "center",
     paddingHorizontal: 20, gap: 12,
   },
-  hlsTime: { fontFamily: "Inter_600SemiBold", fontSize: 12, color: "rgba(255,255,255,0.9)", minWidth: 42, textAlign: "left" },
-  hlsTimeDuration: { fontFamily: "Inter_500Medium", fontSize: 12, color: "rgba(255,255,255,0.5)", minWidth: 42, textAlign: "right" },
+  hlsTime: { fontFamily: "Inter_600SemiBold", fontSize: isTV ? 16 : 12, color: "rgba(255,255,255,0.9)", minWidth: isTV ? 56 : 42, textAlign: "left" },
+  hlsTimeDuration: { fontFamily: "Inter_500Medium", fontSize: isTV ? 16 : 12, color: "rgba(255,255,255,0.5)", minWidth: isTV ? 56 : 42, textAlign: "right" },
   hlsSeekOuter: {
     flex: 1, height: 32, justifyContent: "center",
     position: "relative",
   },
   hlsSeekTrack: {
-    height: 3.5, backgroundColor: "rgba(255,255,255,0.2)",
-    borderRadius: 2, overflow: "hidden",
+    height: isTV ? 6 : 3.5, backgroundColor: "rgba(255,255,255,0.2)",
+    borderRadius: 3, overflow: "hidden",
     flexDirection: "row",
   },
-  hlsSeekFill: { height: "100%", backgroundColor: COLORS.accent, borderRadius: 2 },
+  hlsSeekFill: { height: "100%", backgroundColor: COLORS.accent, borderRadius: 3 },
   hlsSeekThumb: {
-    position: "absolute", top: "50%", marginTop: -7,
-    marginLeft: -7,
-    width: 14, height: 14,
-    borderRadius: 7, backgroundColor: COLORS.accent,
+    position: "absolute", top: "50%", marginTop: isTV ? -9 : -7,
+    marginLeft: isTV ? -9 : -7,
+    width: isTV ? 18 : 14, height: isTV ? 18 : 14,
+    borderRadius: isTV ? 9 : 7, backgroundColor: COLORS.accent,
     borderWidth: 2, borderColor: "#fff",
   },
 
