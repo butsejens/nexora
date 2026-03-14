@@ -1323,9 +1323,13 @@ export default function PlayerScreen() {
   }, []);
 
   // ── Controls visibility ───────────────────────────────────────────────────
+  const subtitlePickerRef = useRef(false);
+  useEffect(() => { subtitlePickerRef.current = showSubtitlePicker; }, [showSubtitlePicker]);
+
   const scheduleHide = useCallback(() => {
     if (hideTimer.current) clearTimeout(hideTimer.current);
     hideTimer.current = setTimeout(() => {
+      if (subtitlePickerRef.current) return; // Don't hide while subtitle picker is open
       Animated.timing(controlsOpacity, { toValue: 0, duration: 500, useNativeDriver: true }).start(
         () => setControlsVisible(false)
       );
@@ -1337,6 +1341,14 @@ export default function PlayerScreen() {
     Animated.timing(controlsOpacity, { toValue: 1, duration: 200, useNativeDriver: true }).start();
     scheduleHide();
   }, [controlsOpacity, scheduleHide]);
+
+  // Start auto-hide timer on mount and when subtitle picker closes
+  useEffect(() => {
+    scheduleHide();
+  }, [scheduleHide]);
+  useEffect(() => {
+    if (!showSubtitlePicker) scheduleHide();
+  }, [showSubtitlePicker, scheduleHide]);
 
   // ── TV Remote event handler (Section 5 & 6) ────────────────────────────
   // On TV: Back button shows controls first, second press exits
@@ -1869,8 +1881,8 @@ export default function PlayerScreen() {
         )}
       </View>
 
-      {/* ─── Full-screen interceptor — HLS only ─────────────────────────── */}
-      {hlsHtml && Platform.OS !== "web" && !controlsVisible && (
+      {/* ─── Full-screen interceptor — show controls on tap ─────────────── */}
+      {(hlsHtml || embedUrlWithAutoplay) && Platform.OS !== "web" && !controlsVisible && (
         <TouchableOpacity
           style={styles.hlsTouchScreen}
           onPress={showControls}
@@ -1887,7 +1899,7 @@ export default function PlayerScreen() {
           {/* Background tap area — dismisses overlay on empty-space tap */}
           <TouchableOpacity
             style={StyleSheet.absoluteFillObject}
-            onPress={() => setControlsVisible(false)}
+            onPress={() => { setShowSubtitlePicker(false); setControlsVisible(false); }}
             activeOpacity={1}
           />
           {/* Top bar */}
@@ -1925,7 +1937,7 @@ export default function PlayerScreen() {
                 </TouchableOpacity>
               )}
               {subtitleTracks.length > 0 && (
-                <TouchableOpacity style={styles.iconBtn} onPress={() => setShowSubtitlePicker(s => !s)}>
+                <TouchableOpacity style={styles.iconBtn} onPress={() => { setShowSubtitlePicker(s => !s); scheduleHide(); }}>
                   <Ionicons name="text" size={20} color={activeSubtitle ? COLORS.accent : "rgba(255,255,255,0.85)"} />
                 </TouchableOpacity>
               )}
@@ -1958,18 +1970,18 @@ export default function PlayerScreen() {
           {/* HLS center controls: skip-back | play-pause | skip-forward */}
           {Platform.OS !== "web" && (
             <View style={styles.hlsCenterRow}>
-              <TouchableOpacity style={[styles.hlsSkipBtn, isTV && styles.hlsSkipBtnTV]} onPress={() => hlsSeekRelative(-15)} activeOpacity={0.7}>
+              <TouchableOpacity style={[styles.hlsSkipBtn, isTV && styles.hlsSkipBtnTV]} onPress={() => { hlsSeekRelative(-15); scheduleHide(); }} activeOpacity={0.7}>
                 <View style={[styles.hlsSkipBtnInner, isTV && styles.hlsSkipBtnInnerTV]}>
                   <Ionicons name="play-back" size={isTV ? 28 : 22} color="#fff" />
                 </View>
                 <Text style={[styles.hlsSkipLabel, isTV && { fontSize: 13 }]}>15s</Text>
               </TouchableOpacity>
 
-              <TouchableOpacity style={[styles.hlsPlayBtn, isTV && styles.hlsPlayBtnTV]} onPress={hlsTogglePlay} activeOpacity={0.8}>
+              <TouchableOpacity style={[styles.hlsPlayBtn, isTV && styles.hlsPlayBtnTV]} onPress={() => { hlsTogglePlay(); scheduleHide(); }} activeOpacity={0.8}>
                 <Ionicons name={hlsPaused ? "play" : "pause"} size={isTV ? 52 : 40} color="#fff" style={hlsPaused ? { marginLeft: isTV ? 6 : 4 } : undefined} />
               </TouchableOpacity>
 
-              <TouchableOpacity style={[styles.hlsSkipBtn, isTV && styles.hlsSkipBtnTV]} onPress={() => hlsSeekRelative(15)} activeOpacity={0.7}>
+              <TouchableOpacity style={[styles.hlsSkipBtn, isTV && styles.hlsSkipBtnTV]} onPress={() => { hlsSeekRelative(15); scheduleHide(); }} activeOpacity={0.7}>
                 <View style={[styles.hlsSkipBtnInner, isTV && styles.hlsSkipBtnInnerTV]}>
                   <Ionicons name="play-forward" size={isTV ? 28 : 22} color="#fff" />
                 </View>
@@ -2014,8 +2026,8 @@ export default function PlayerScreen() {
           )}
         </Animated.View>
       ) : (embedUrl && Platform.OS !== "web") ? (
-        /* ─── Embed mode: static minimal overlay — no RN controls, embed player handles its own UI ─── */
-        <View style={styles.embedMinimalOverlay} pointerEvents="box-none">
+        /* ─── Embed mode: auto-hiding overlay — back + server switch ─── */
+        <Animated.View style={[styles.embedMinimalOverlay, { opacity: controlsOpacity }]} pointerEvents={controlsVisible ? "box-none" : "none"}>
           <LinearGradient colors={["rgba(0,0,0,0.7)", "transparent"]} style={[styles.embedMinimalBar, { paddingTop: insets.top + 8 }]}>
             <TouchableOpacity
               style={styles.embedBackBtn}
@@ -2038,7 +2050,7 @@ export default function PlayerScreen() {
               </TouchableOpacity>
             )}
           </LinearGradient>
-        </View>
+        </Animated.View>
       ) : null}
     </Pressable>
   );
