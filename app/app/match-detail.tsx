@@ -17,6 +17,7 @@ import { openInVlc } from "@/lib/vlc";
 import { TeamLogo } from "@/components/TeamLogo";
 import { buildErrorReference, normalizeApiError } from "@/lib/error-messages";
 import { SilentResetBoundary } from "@/components/SilentResetBoundary";
+import { useNexora } from "@/context/NexoraContext";
 
 /** Safely convert any value to string — prevents [object Object] rendering */
 function safeStr(val: unknown): string {
@@ -140,6 +141,8 @@ export default function MatchDetailScreen() {
   }>();
 
   const insets = useSafeAreaInsets();
+  const { hasPremium } = useNexora();
+  const sportPremium = hasPremium("sport");
   const [activeTab, setActiveTab] = useState<TabId>("stream");
   const [lineupView, setLineupView] = useState<"pitch" | "list">("pitch");
   const [streamKey, setStreamKey] = useState(0);
@@ -746,6 +749,33 @@ export default function MatchDetailScreen() {
 
       {/* AI Analysis Tab — always mounted, hidden when not active */}
       <ScrollView style={[styles.tabContent, activeTab !== "ai" ? { display: "none" } : null]} contentContainerStyle={styles.tabContentInner} showsVerticalScrollIndicator={false}>
+        {!sportPremium ? (
+          <View style={{ gap: 16, alignItems: "center" }}>
+            <LinearGradient colors={["rgba(229,9,20,0.14)", "rgba(229,9,20,0.04)"]} style={{ borderRadius: 16, padding: 24, alignItems: "center", gap: 12 }}>
+              <Ionicons name="lock-closed" size={36} color={COLORS.accent} />
+              <Text style={{ fontFamily: "Inter_700Bold", fontSize: 18, color: COLORS.text, textAlign: "center" }}>Premium AI Analyse</Text>
+              <Text style={{ fontFamily: "Inter_400Regular", fontSize: 13, color: COLORS.textSecondary, textAlign: "center", lineHeight: 19 }}>Krijg toegang tot geavanceerde AI match analyse, voorspellingen, tactische inzichten en live analyse met Nexora Premium.</Text>
+              <TouchableOpacity onPress={() => router.push("/premium")} style={{ backgroundColor: COLORS.accent, borderRadius: 12, paddingHorizontal: 28, paddingVertical: 12, marginTop: 4 }}>
+                <Text style={{ fontFamily: "Inter_600SemiBold", fontSize: 14, color: "#fff" }}>Premium activeren</Text>
+              </TouchableOpacity>
+            </LinearGradient>
+            {/* Blurred preview of what they'd get */}
+            <View style={{ opacity: 0.3, pointerEvents: "none" }}>
+              <View style={styles.aiMainCard}>
+                <View style={styles.aiHeader}>
+                  <MaterialCommunityIcons name="robot" size={20} color={COLORS.accent} />
+                  <Text style={styles.aiTitle}>AI Match Intelligence</Text>
+                </View>
+                <View style={{ flexDirection: "row", justifyContent: "space-around", paddingVertical: 16 }}>
+                  <View style={{ alignItems: "center" }}><Text style={{ fontFamily: "Inter_700Bold", fontSize: 24, color: COLORS.accent }}>45%</Text><Text style={{ fontFamily: "Inter_400Regular", fontSize: 11, color: COLORS.textMuted }}>Home</Text></View>
+                  <View style={{ alignItems: "center" }}><Text style={{ fontFamily: "Inter_700Bold", fontSize: 24, color: "#FFD700" }}>25%</Text><Text style={{ fontFamily: "Inter_400Regular", fontSize: 11, color: COLORS.textMuted }}>Draw</Text></View>
+                  <View style={{ alignItems: "center" }}><Text style={{ fontFamily: "Inter_700Bold", fontSize: 24, color: COLORS.live }}>30%</Text><Text style={{ fontFamily: "Inter_400Regular", fontSize: 11, color: COLORS.textMuted }}>Away</Text></View>
+                </View>
+              </View>
+            </View>
+          </View>
+        ) : (
+          <>
           {preMatchLoading && !preMatchPrediction ? (
             <View style={styles.aiLoading}>
               <ActivityIndicator size="large" color={COLORS.accent} />
@@ -819,6 +849,8 @@ export default function MatchDetailScreen() {
               <Text style={styles.tipText}>Live analyse start automatisch zodra de wedstrijd live is.</Text>
             </View>
           )}
+          </>
+        )}
         </ScrollView>
 
     </View>
