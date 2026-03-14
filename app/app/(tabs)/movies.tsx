@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import {
   View, Text, StyleSheet, FlatList, Platform, RefreshControl,
-  TouchableOpacity, TextInput, ActivityIndicator, ScrollView,
+  TouchableOpacity, TextInput, ActivityIndicator,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
@@ -302,6 +302,7 @@ export default function MoviesScreen() {
     let cancelled = false;
     fetchTrailerKey(tmdbId, "movie").then(key => { if (!cancelled) setHeroTrailerKey(key); });
     return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [featured?.id]);
 
   // Auto-rotate hero banner every 8 seconds
@@ -482,7 +483,7 @@ export default function MoviesScreen() {
       if (seen.has(m.id)) continue;
       seen.add(m.id);
       if ((m.title || "").toLowerCase() === q) exact.push(m);
-      else exact.length < 5 && (m.title || "").toLowerCase().startsWith(q) ? exact.push(m) : partial.push(m);
+      else if (exact.length < 5 && (m.title || "").toLowerCase().startsWith(q)) exact.push(m); else partial.push(m);
     }
     return [...exact, ...partial];
   }, [search, trending, newReleases, topRated, popular, upcoming, hiddenGems, acclaimed, serverResults]);

@@ -152,10 +152,9 @@ export default function MatchDetailScreen() {
   const isFinished = params.status === "finished" || params.status === "ft" || params.status === "done";
   const isHalfTime = params.status === "ht" || params.status === "halftime" || params.status === "half";
   const isPostponed = params.status === "postponed" || params.status === "cancelled" || params.status === "abandoned";
-  const hasScore = isLive || isHalfTime || isFinished || (Number(params.homeScore ?? -1) >= 0 && Number(params.awayScore ?? -1) >= 0 && (Number(params.homeScore) > 0 || Number(params.awayScore) > 0));
   const {
     data: streamData,
-    isLoading: streamLoading,
+    isLoading: _streamLoading,
     error: streamFetchError,
     refetch: refetchStream,
   } = useQuery({
@@ -174,7 +173,7 @@ export default function MatchDetailScreen() {
     enabled: !!params.matchId && isLive,
     staleTime: 60_000,
   });
-  const _rawStreamUrl = streamData?.url || "";
+  const _rawStreamUrl = streamData?.url || ""; void _streamLoading;
   const streamUrl = (() => {
     if (!_rawStreamUrl) return `https://embedme.top/embed/alpha/${params.matchId}/1`;
     const u = _rawStreamUrl.toLowerCase();
@@ -217,8 +216,6 @@ export default function MatchDetailScreen() {
   const liveHomeScore = matchDetail?.homeScore ?? Number(params.homeScore ?? 0);
   const liveAwayScore = matchDetail?.awayScore ?? Number(params.awayScore ?? 0);
   const liveMinute = matchDetail?.minute ?? (params.minute ? parseInt(params.minute) : undefined);
-  const watchOptions = Array.isArray(matchDetail?.watchOptions) ? matchDetail.watchOptions : [];
-
   // AI Prediction
   const requestPrediction = async (mode: "prematch" | "live") => {
       const normalizeTeam = (value: unknown) => String(value || "")
@@ -884,15 +881,6 @@ function TeamSide({ name, logo, onPress, align = "left" }: { name: string; logo?
   );
 }
 
-function eventIconByType(typeRaw: string) {
-  const t = String(typeRaw || "").toLowerCase();
-  if (t.includes("goal")) return "football-outline" as const;
-  if (t.includes("yellow") || t.includes("red") || t.includes("card")) return "card-outline" as const;
-  if (t.includes("sub") || t.includes("wissel")) return "swap-horizontal-outline" as const;
-  if (t.includes("pen")) return "radio-button-on-outline" as const;
-  return "information-circle-outline" as const;
-}
-
 function MatchTimeline({ events, homeTeam, awayTeam }: { events: any[]; homeTeam: string; awayTeam: string }) {
   if (!events?.length) {
     return <EmptyState icon="timer-outline" text="No timeline events available" />;
@@ -1186,9 +1174,6 @@ function StatsBars({ homeTeam, awayTeam, homeStats, awayStats }: { homeTeam: str
 
   const sectionedKeys = new Set(STAT_SECTIONS.flatMap(s => s.keys));
   const unsectionedStats = dedupedStats.filter(k => !sectionedKeys.has(k));
-
-  const homeShort = safeStr(homeTeam).split(" ").pop() || safeStr(homeTeam).slice(0, 12);
-  const awayShort = safeStr(awayTeam).split(" ").pop() || safeStr(awayTeam).slice(0, 12);
 
   return (
     <View style={{ gap: 12 }}>

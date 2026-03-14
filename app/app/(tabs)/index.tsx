@@ -7,11 +7,11 @@ import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { COLORS } from "@/constants/colors";
-import { SPACING, TYPOGRAPHY } from "@/constants/design-system";
+import "@/constants/design-system";
 import { NexoraHeader } from "@/components/NexoraHeader";
 import { TeamLogo } from "@/components/TeamLogo";
 import { LiveBadge } from "@/components/LiveBadge";
-import { HeroMatchCard, MatchRowCard } from "@/components/premium";
+import { MatchRowCard } from "@/components/premium";
 import { apiRequest } from "@/lib/query-client";
 import { buildErrorReference, normalizeApiError } from "@/lib/error-messages";
 import { Ionicons } from "@expo/vector-icons";
@@ -45,11 +45,6 @@ function safeStr(val: unknown): string {
 }
 
 // ── Sport design tokens ───────────────────────────────────────────────────────
-const SP_ACCENT      = COLORS.accent;
-const SP_ACCENT_GLOW = COLORS.accentGlow;
-const SP_BG          = COLORS.background;
-const SP_CARD        = COLORS.card;
-const SP_ELEVATED    = COLORS.cardElevated;
 const SP_BORDER      = COLORS.border;
 
 // ── Premium palette ───────────────────────────────────────────────────────────
@@ -765,13 +760,12 @@ export default function SportsScreen() {
   const qc = useQueryClient();
 
   const [refreshing, setRefreshing] = useState(false);
-  const [statusFilter, setStatusFilter] = useState<"all" | "live" | "upcoming">("all");
+  const [statusFilter] = useState<"all" | "live" | "upcoming">("all");
   const [sportCategory, setSportCategory] = useState<SportCategoryId>("all");
   const [selectedCountryCode, setSelectedCountryCode] = useState<string>(COUNTRY_COMPETITIONS[0]?.countryCode || "BE");
   const [selectedDate, setSelectedDate] = useState<string>(todayUTC());
   const [sportsView, setSportsView] = useState<"competitions" | "live" | "upcoming" | "menu">("competitions");
   const [activeSportTool, setActiveSportTool] = useState<SportToolId>("football-predictions");
-  const [loadingGuardReached, setLoadingGuardReached] = useState(false);
   const [matchSubscriptions, setMatchSubscriptions] = useState<Record<string, MatchSubscription>>({});
   const subscriptionsRef = useRef<Record<string, MatchSubscription>>({});
   const matchSnapshotsRef = useRef<Record<string, MatchSnapshot>>({});

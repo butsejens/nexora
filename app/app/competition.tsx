@@ -26,13 +26,7 @@ function formatSeasonLabel(season?: number) {
   return `${season}/${String(next).padStart(2, "0")}`;
 }
 
-function formatMatchDate(dateStr?: string | null): string {
-  if (!dateStr) return "";
-  try {
-    const d = new Date(dateStr);
-    return d.toLocaleDateString("nl-BE", { weekday: "short", day: "numeric", month: "short" });
-  } catch { return ""; }
-}
+
 
 function formatMatchTime(dateStr?: string | null): string {
   if (!dateStr) return "";
@@ -361,101 +355,6 @@ function StandingsRow({ team, rank, league, espnLeague }: { team: any; rank: num
         {(team.goalDiff || 0) > 0 ? "+" : ""}{team.goalDiff || 0}
       </Text>
       <Text style={[styles.standingsCell, styles.standingsPts]}>{team.points || 0}</Text>
-    </TouchableOpacity>
-  );
-}
-
-function CompMatchRow({ match, league, espnLeague }: { match: any; league: string; espnLeague: string }) {
-  const [homeLogo, setHomeLogo] = useState<boolean>(true);
-  const [awayLogo, setAwayLogo] = useState<boolean>(true);
-  const homeLogoUri = homeLogo ? resolveTeamLogoUri(match.homeTeam, match.homeTeamLogo) : null;
-  const awayLogoUri = awayLogo ? resolveTeamLogoUri(match.awayTeam, match.awayTeamLogo) : null;
-
-  const isLive = match.status === "live";
-  const isFinished = match.status === "finished";
-
-  const handlePress = () => {
-    router.push({
-      pathname: "/match-detail",
-      params: {
-        matchId: match.id,
-        homeTeam: match.homeTeam,
-        awayTeam: match.awayTeam,
-        sport: "soccer",
-        league,
-        espnLeague: espnLeague || match.espnLeague || "",
-      },
-    });
-  };
-
-  return (
-    <TouchableOpacity style={styles.matchRow} onPress={handlePress} activeOpacity={0.75}>
-      {/* Status badge */}
-      <View style={styles.matchStatusCol}>
-        {isLive ? (
-          <View style={styles.liveBadge}>
-            <Text style={styles.liveBadgeText}>{match.minute ? `${match.minute}'` : "LIVE"}</Text>
-          </View>
-        ) : isFinished ? (
-          <Text style={styles.finishedLabel}>Afgelopen</Text>
-        ) : (
-          <View style={styles.upcomingTimeCol}>
-            <Text style={styles.matchDate}>{formatMatchDate(match.startDate)}</Text>
-            <Text style={styles.matchTime}>{formatMatchTime(match.startDate)}</Text>
-          </View>
-        )}
-      </View>
-
-      {/* Teams + score */}
-      <View style={styles.matchTeams}>
-        <View style={styles.matchTeamRow}>
-          {homeLogoUri ? (
-            <Image
-              source={typeof homeLogoUri === "number" ? homeLogoUri : { uri: homeLogoUri as string }}
-              style={styles.matchTeamLogo}
-              onError={() => setHomeLogo(false)}
-            />
-          ) : (
-            <View style={[styles.matchTeamLogo, styles.logoPlaceholder]}>
-              <Ionicons name="shield" size={10} color={COLORS.textMuted} />
-            </View>
-          )}
-          <Text style={[styles.matchTeamName, isFinished && match.homeScore > match.awayScore && styles.winnerName]} numberOfLines={1}>
-            {match.homeTeam}
-          </Text>
-        </View>
-        <View style={[styles.matchTeamRow, { flexDirection: "row-reverse" }]}>
-          {awayLogoUri ? (
-            <Image
-              source={typeof awayLogoUri === "number" ? awayLogoUri : { uri: awayLogoUri as string }}
-              style={styles.matchTeamLogo}
-              onError={() => setAwayLogo(false)}
-            />
-          ) : (
-            <View style={[styles.matchTeamLogo, styles.logoPlaceholder]}>
-              <Ionicons name="shield" size={10} color={COLORS.textMuted} />
-            </View>
-          )}
-          <Text style={[styles.matchTeamName, { textAlign: "right" }, isFinished && match.awayScore > match.homeScore && styles.winnerName]} numberOfLines={1}>
-            {match.awayTeam}
-          </Text>
-        </View>
-      </View>
-
-      {/* Score or vs */}
-      <View style={styles.matchScoreCol}>
-        {(isLive || isFinished) ? (
-          <>
-            <Text style={[styles.matchScore, isLive && styles.liveScore]}>{match.homeScore}</Text>
-            <Text style={styles.matchScoreDivider}>–</Text>
-            <Text style={[styles.matchScore, isLive && styles.liveScore]}>{match.awayScore}</Text>
-          </>
-        ) : (
-          <Text style={styles.matchVs}>vs</Text>
-        )}
-      </View>
-
-      <Ionicons name="chevron-forward" size={14} color={COLORS.textMuted} style={{ marginLeft: 4 }} />
     </TouchableOpacity>
   );
 }

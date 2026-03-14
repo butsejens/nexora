@@ -590,8 +590,7 @@ export default function SettingsScreen() {
     downloadOverWifi, setDownloadOverWifi,
     notificationsEnabled, setNotificationsEnabled,
     parentalPin, setParentalPin,
-    activeProfile, setActiveProfile,
-    profiles, playlists, addPlaylist, removePlaylist, updatePlaylist,
+    playlists, addPlaylist, removePlaylist, updatePlaylist,
     favorites, watchHistory, clearHistory, iptvChannels, setIptvChannelsForPlaylist,
     isPremium, resetAll, avatarUri, setAvatarUri} = useNexora();
 

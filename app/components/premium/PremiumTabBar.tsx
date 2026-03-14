@@ -5,7 +5,7 @@
  * Positioned above safe area with premium styling.
  */
 
-import React, { useMemo } from 'react';
+import React from 'react';
 import {
   View,
   Text,
@@ -17,7 +17,7 @@ import {
 import { BlurView } from 'expo-blur';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import { COLORS } from '@/constants/colors';
-import { SPACING, DESIGN_COLORS, SIZES, LAYOUT } from '@/constants/design-system';
+import { SPACING, DESIGN_COLORS, LAYOUT } from '@/constants/design-system';
 
 export interface TabItem {
   name: string;

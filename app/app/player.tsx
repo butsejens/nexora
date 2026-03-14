@@ -18,17 +18,16 @@ import WebView from "react-native-webview";
 import { activateKeepAwakeAsync, deactivateKeepAwake } from "expo-keep-awake";
 import { COLORS } from "@/constants/colors";
 import { useNexora } from "@/context/NexoraContext";
-import { apiRequest } from "@/lib/query-client";
 import { SafeHaptics } from "@/lib/safeHaptics";
 import { openInVlc } from "@/lib/vlc";
 import { buildErrorReference } from "@/lib/error-messages";
 import { SilentResetBoundary } from "@/components/SilentResetBoundary";
 import {
   startSession, sendHeartbeat, stopSession,
-  signStream, detectStreamType,
+  signStream,
 } from "@/lib/playback-engine";
 import {
-  fetchSubtitles, getBestTrack, SUPPORTED_LANGUAGES,
+  fetchSubtitles, getBestTrack,
 } from "@/lib/subtitle-manager";
 import type { SubtitleTrack } from "@/lib/subtitle-manager";
 
@@ -831,7 +830,7 @@ export default function PlayerScreen() {
   }, []);
 
   // ── Device session tracking (via playback engine) ───────────────────────
-  const [sharingWarning, setSharingWarning] = useState<string | null>(null);
+  const [, setSharingWarning] = useState<string | null>(null);
 
   useEffect(() => {
     const deviceId = `${Platform.OS}_${contentId || "unknown"}_${Date.now()}`;
@@ -923,6 +922,7 @@ export default function PlayerScreen() {
       hlsWebviewRef.current = null;
       embedWebviewRef.current = null;
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [addToHistory, contentId, scheduleHide, title, type]);
 
   useEffect(() => {

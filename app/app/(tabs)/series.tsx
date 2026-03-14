@@ -266,6 +266,7 @@ export default function SeriesScreen() {
     let cancelled = false;
     fetchTrailerKey(tmdbId, "series").then(key => { if (!cancelled) setHeroTrailerKey(key); });
     return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [featured?.id]);
 
   // Auto-rotate hero banner every 8 seconds
@@ -440,7 +441,7 @@ export default function SeriesScreen() {
       if (seen.has(m.id)) continue;
       seen.add(m.id);
       if ((m.title || "").toLowerCase() === q) exact.push(m);
-      else exact.length < 5 && (m.title || "").toLowerCase().startsWith(q) ? exact.push(m) : partial.push(m);
+      else if (exact.length < 5 && (m.title || "").toLowerCase().startsWith(q)) exact.push(m); else partial.push(m);
     }
     return [...exact, ...partial];
   }, [search, trending, newReleases, topRated, popular, airingToday, hiddenGems, serverResults]);
