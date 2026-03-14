@@ -5,6 +5,7 @@ import fetch from "node-fetch";
 import { fileURLToPath } from "url";
 import { dirname, join } from "path";
 import { existsSync, readFileSync } from "fs";
+import crypto from "crypto";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -5492,7 +5493,6 @@ app.post("/api/stream/validate", playlistLimiter, async (req, res) => {
 // -----------------------------
 // Anti-piracy — stream URL signing with HMAC
 // -----------------------------
-const crypto = require("crypto");
 const STREAM_SIGNING_SECRET = process.env.STREAM_SIGNING_SECRET || crypto.randomBytes(32).toString("hex");
 
 app.get("/api/stream/sign", (req, res) => {
