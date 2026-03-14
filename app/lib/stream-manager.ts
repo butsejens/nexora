@@ -70,16 +70,18 @@ export interface StreamManagerCallbacks {
 // ─── Stream Providers ──────────────────────────────────────────────────────────
 
 const STREAM_PROVIDERS: StreamProvider[] = [
-  { id: "autoembed",    label: "Server 1"  },
-  { id: "smashystream", label: "Server 2"  },
-  { id: "videasy",      label: "Server 3"  },
-  { id: "embedrise",    label: "Server 4"  },
-  { id: "vidsrcto",     label: "Server 5"  },
+  { id: "videasy",      label: "Server 1"  },
+  { id: "autoembed",    label: "Server 2"  },
+  { id: "smashystream", label: "Server 3"  },
+  { id: "vidsrccc",     label: "Server 4"  },
+  { id: "embedrise",    label: "Server 5"  },
   { id: "vidsrcme",     label: "Server 6"  },
-  { id: "111movies",    label: "Server 7"  },
-  { id: "vidlink",      label: "Server 8"  },
-  { id: "moviesapi",    label: "Server 9"  },
-  { id: "nontongo",     label: "Server 10" },
+  { id: "vidsrcxyz",    label: "Server 7"  },
+  { id: "111movies",    label: "Server 8"  },
+  { id: "vidlink",      label: "Server 9"  },
+  { id: "moviesapi",    label: "Server 10" },
+  { id: "nontongo",     label: "Server 11" },
+  { id: "vidsrcvip",    label: "Server 12" },
 ];
 
 export { STREAM_PROVIDERS };
@@ -105,8 +107,12 @@ export function getEmbedUrl(
       return isMovie ? `https://player.videasy.net/movie/${tmdbId}` : `https://player.videasy.net/tv/${tmdbId}/${s}/${e}`;
     case "embedrise":
       return isMovie ? `https://embedrise.com/embed/movie/${tmdbId}` : `https://embedrise.com/embed/tv/${tmdbId}/${s}/${e}`;
-    case "vidsrcto":
-      return isMovie ? `https://vidsrc.to/embed/movie/${tmdbId}` : `https://vidsrc.to/embed/tv/${tmdbId}/${s}/${e}`;
+    case "vidsrccc":
+      return isMovie ? `https://vidsrc.cc/v2/embed/movie/${tmdbId}` : `https://vidsrc.cc/v2/embed/tv/${tmdbId}/${s}/${e}`;
+    case "vidsrcxyz":
+      return isMovie ? `https://vidsrc.xyz/embed/movie/${tmdbId}` : `https://vidsrc.xyz/embed/tv/${tmdbId}/${s}/${e}`;
+    case "vidsrcvip":
+      return isMovie ? `https://vidsrc.vip/embed/movie/${tmdbId}` : `https://vidsrc.vip/embed/tv/${tmdbId}/${s}/${e}`;
     case "vidsrcme":
       return isMovie ? `https://vidsrc.me/embed/movie?tmdb=${tmdbId}` : `https://vidsrc.me/embed/tv?tmdb=${tmdbId}&season=${s}&episode=${e}`;
     case "111movies":
@@ -146,7 +152,7 @@ export const ALLOWED_VIDEO_HOSTS = [
   "vidsrc", "vidlink", "videasy", "autoembed", "moviesapi", "nontongo",
   "smashystream", "jwplayer", "cloudflare", "m3u8", "hls", "stream",
   "rabbitstream", "vidcloud", "upcloud", "streamtape", "filemoon", "mixdrop", "dood",
-  "googlevideo", "akamaized", "cdn", "embedrise", "111movies",
+  "googlevideo", "akamaized", "cdn", "embedrise", "111movies", "vidsrcvip",
 ];
 
 // ─── Stream Manager Class ──────────────────────────────────────────────────────

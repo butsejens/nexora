@@ -384,25 +384,13 @@ const AD_BLOCK_JS = `
   // ── Helper: check if element is part of the video player ───────────────
   function _isPlayerElement(el){
     if(!el) return false;
-    // Direct video/canvas/audio elements are always player elements
-    if(el.tagName === 'VIDEO' || el.tagName === 'CANVAS' || el.tagName === 'AUDIO') return true;
-    // Check if the element is INSIDE a video or player container
     for(var i=0; i<12; i++){
       if(!el) break;
       if(el.tagName === 'VIDEO' || el.tagName === 'CANVAS' || el.tagName === 'AUDIO') return true;
       var id = (el.id||'').toLowerCase();
       var cn = (typeof el.className === 'string' ? el.className : '').toLowerCase();
-      var tag = el.tagName;
-      // Match actual player containers but NOT ad elements that contain "play" in their class
-      if(id.match(/^(player|video|stream|hls|plyr|jwplayer|vjs)/) ||
-         cn.match(/(^|\s)(player|plyr|jwplayer|vjs|video-js|html5-video|jw-|vjs-|plyr--)/) ||
-         cn.match(/play-btn|play_btn|play-button|pause-btn|pause-button/) ||
-         (tag === 'BUTTON' && cn.match(/controls|play|pause|volume|mute|fullscreen/))){
-        // Extra check: reject if element or parent also has ad-related markers
-        var adCheck = id + ' ' + cn;
-        if(adCheck.match(/ad-|ads-|advert|sponsor|banner|popup|overlay|promo/)) return false;
-        return true;
-      }
+      if(id.match(/player|video|stream|hls|plyr|jwplayer|vjs|controls/) ||
+         cn.match(/player|video|stream|hls|plyr|jwplayer|vjs|controls|play|pause|volume|mute|fullscreen|seekbar|progress|slider/)) return true;
       el = el.parentElement;
     }
     return false;
@@ -444,10 +432,10 @@ const AD_BLOCK_JS = `
   document.addEventListener('click', function(e){
     var el = e.target;
 
-    // Always allow clicks on video/player elements (play/pause, controls, etc.)
+    // Always allow clicks on video/player elements
     if(_isPlayerElement(el)) return;
 
-    // Always block ad URLs
+    // Block ad URL clicks and popup links
     var link = el; for(var i=0;i<8;i++){ if(!link)break; if(link.tagName==='A'){
       var href = link.getAttribute('href')||'';
       var target = link.getAttribute('target')||'';
@@ -456,36 +444,30 @@ const AD_BLOCK_JS = `
       } break;
     } link=link.parentElement; }
 
-    // Block ALL non-player clicks — no "first free click" that ads exploit
-    e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation(); return false;
+    // After video is playing, block non-player clicks (ad overlays that appear late)
+    if(_videoFound || _isVideoPlaying()){
+      _videoFound = true;
+      // Check if it's an overlay/popup element covering the player
+      try{
+        var s = window.getComputedStyle(el);
+        if(s.position === 'fixed' || (s.position === 'absolute' && parseInt(s.zIndex||'0') > 50)){
+          e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation(); return false;
+        }
+      }catch(ex){}
+    }
   }, true);
 
-  // Also block touch events (mobile ad popups use touchstart)
+  // Block touch events on ad overlays (but allow normal player touches)
   document.addEventListener('touchstart', function(e){
     if(_isPlayerElement(e.target)) return;
-    e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation();
+    // Only block touches on fixed/absolute positioned overlays
+    try{
+      var s = window.getComputedStyle(e.target);
+      if(s.position === 'fixed' || (s.position === 'absolute' && parseInt(s.zIndex||'0') > 50)){
+        e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation();
+      }
+    }catch(ex){}
   }, {capture: true, passive: false});
-
-  // Block pointer events on non-player elements (another popup vector)
-  document.addEventListener('pointerdown', function(e){
-    if(_isPlayerElement(e.target)) return;
-    e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation();
-  }, true);
-  document.addEventListener('pointerup', function(e){
-    if(_isPlayerElement(e.target)) return;
-    e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation();
-  }, true);
-  document.addEventListener('mousedown', function(e){
-    if(_isPlayerElement(e.target)) return;
-    e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation();
-  }, true);
-  document.addEventListener('mouseup', function(e){
-    if(_isPlayerElement(e.target)) return;
-    e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation();
-  }, true);
-
-  // Block beforeunload/unload (some popup ads navigate the page away)
-  window.addEventListener('beforeunload', function(e){ e.preventDefault(); e.returnValue = ''; }, true);
 
   // Strip target=_blank from all links (prevents popup windows)
   setInterval(function(){
@@ -493,17 +475,17 @@ const AD_BLOCK_JS = `
       var t = a.getAttribute('target');
       if(t === '_blank' || t === '_top' || t === '_parent') a.removeAttribute('target');
     });
-    // Also remove all onclick attributes on anchors (ad click hijacking)
+    // Remove onclick attributes on non-player anchors (ad click hijacking)
     document.querySelectorAll('a[onclick]').forEach(function(a){
       if(!_isPlayerElement(a)) a.removeAttribute('onclick');
     });
-    // Hide elements with pointer-events that cover the page (invisible ad overlay layers)
+    // Hide invisible full-page overlay layers (transparent ad click catchers)
     document.querySelectorAll('div,a,span').forEach(function(el){
       try{
         if(el.querySelector('video,canvas')) return;
         var s = window.getComputedStyle(el);
         var r = el.getBoundingClientRect();
-        if(s.position === 'fixed' && s.opacity < 0.05 && r.width > window.innerWidth * 0.5 && r.height > window.innerHeight * 0.5){
+        if(s.position === 'fixed' && parseFloat(s.opacity) < 0.05 && r.width > window.innerWidth * 0.5 && r.height > window.innerHeight * 0.5){
           el.style.pointerEvents = 'none';
           el.style.display = 'none';
         }
