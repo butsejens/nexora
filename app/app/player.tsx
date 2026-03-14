@@ -384,13 +384,25 @@ const AD_BLOCK_JS = `
   // ── Helper: check if element is part of the video player ───────────────
   function _isPlayerElement(el){
     if(!el) return false;
+    // Direct video/canvas/audio elements are always player elements
+    if(el.tagName === 'VIDEO' || el.tagName === 'CANVAS' || el.tagName === 'AUDIO') return true;
+    // Check if the element is INSIDE a video or player container
     for(var i=0; i<12; i++){
       if(!el) break;
-      if(el.tagName === 'VIDEO' || el.tagName === 'CANVAS') return true;
+      if(el.tagName === 'VIDEO' || el.tagName === 'CANVAS' || el.tagName === 'AUDIO') return true;
       var id = (el.id||'').toLowerCase();
       var cn = (typeof el.className === 'string' ? el.className : '').toLowerCase();
-      if(id.match(/player|video|stream|hls|plyr|jwplayer|vjs|controls/) ||
-         cn.match(/player|video|stream|hls|plyr|jwplayer|vjs|controls|play-btn|play_btn/)) return true;
+      var tag = el.tagName;
+      // Match actual player containers but NOT ad elements that contain "play" in their class
+      if(id.match(/^(player|video|stream|hls|plyr|jwplayer|vjs)/) ||
+         cn.match(/(^|\s)(player|plyr|jwplayer|vjs|video-js|html5-video|jw-|vjs-|plyr--)/) ||
+         cn.match(/play-btn|play_btn|play-button|pause-btn|pause-button/) ||
+         (tag === 'BUTTON' && cn.match(/controls|play|pause|volume|mute|fullscreen/))){
+        // Extra check: reject if element or parent also has ad-related markers
+        var adCheck = id + ' ' + cn;
+        if(adCheck.match(/ad-|ads-|advert|sponsor|banner|popup|overlay|promo/)) return false;
+        return true;
+      }
       el = el.parentElement;
     }
     return false;
@@ -454,11 +466,48 @@ const AD_BLOCK_JS = `
     e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation();
   }, {capture: true, passive: false});
 
+  // Block pointer events on non-player elements (another popup vector)
+  document.addEventListener('pointerdown', function(e){
+    if(_isPlayerElement(e.target)) return;
+    e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation();
+  }, true);
+  document.addEventListener('pointerup', function(e){
+    if(_isPlayerElement(e.target)) return;
+    e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation();
+  }, true);
+  document.addEventListener('mousedown', function(e){
+    if(_isPlayerElement(e.target)) return;
+    e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation();
+  }, true);
+  document.addEventListener('mouseup', function(e){
+    if(_isPlayerElement(e.target)) return;
+    e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation();
+  }, true);
+
+  // Block beforeunload/unload (some popup ads navigate the page away)
+  window.addEventListener('beforeunload', function(e){ e.preventDefault(); e.returnValue = ''; }, true);
+
   // Strip target=_blank from all links (prevents popup windows)
   setInterval(function(){
     document.querySelectorAll('a[target]').forEach(function(a){
       var t = a.getAttribute('target');
       if(t === '_blank' || t === '_top' || t === '_parent') a.removeAttribute('target');
+    });
+    // Also remove all onclick attributes on anchors (ad click hijacking)
+    document.querySelectorAll('a[onclick]').forEach(function(a){
+      if(!_isPlayerElement(a)) a.removeAttribute('onclick');
+    });
+    // Hide elements with pointer-events that cover the page (invisible ad overlay layers)
+    document.querySelectorAll('div,a,span').forEach(function(el){
+      try{
+        if(el.querySelector('video,canvas')) return;
+        var s = window.getComputedStyle(el);
+        var r = el.getBoundingClientRect();
+        if(s.position === 'fixed' && s.opacity < 0.05 && r.width > window.innerWidth * 0.5 && r.height > window.innerHeight * 0.5){
+          el.style.pointerEvents = 'none';
+          el.style.display = 'none';
+        }
+      }catch(e){}
     });
   }, 2000);
 
@@ -1686,17 +1735,24 @@ export default function PlayerScreen() {
               setIsLoading(false);
               return;
             }
-            // Record failure via Stream Manager
+            // Auto-advance to next server on error
             const mgr = streamManagerRef.current;
             if (mgr) {
-              mgr.recordPlaybackFailure(adPopupCountRef.current).then(() => {
-                mgr.rerank();
-                setRankedSources([...mgr.getState().sources]);
-              });
+              mgr.advanceToNext(adPopupCountRef.current);
+            } else {
+              setIsLoading(false);
+              setStreamError(msg || "Stream could not be loaded");
+              setStreamErrorRef(prev => prev || buildErrorReference("NX-PLY"));
             }
-            setIsLoading(false);
-            setStreamError(msg || "Stream could not be loaded");
-            setStreamErrorRef(prev => prev || buildErrorReference("NX-PLY"));
+          }}
+          onHttpError={(event) => {
+            if (disposedRef.current) return;
+            const status = event?.nativeEvent?.statusCode || 0;
+            // Auto-advance on 4xx/5xx HTTP errors (server down, not found, etc.)
+            if (status >= 400) {
+              const mgr = streamManagerRef.current;
+              if (mgr) mgr.advanceToNext(adPopupCountRef.current);
+            }
           }}
           onShouldStartLoadWithRequest={makeNavGuard(embedUrl)}
           onNavigationStateChange={makeNavStateGuard(embedUrl)}
@@ -1991,11 +2047,16 @@ export default function PlayerScreen() {
                 style={styles.embedServerBtn}
                 onPress={() => {
                   SafeHaptics.impactLight();
-                  // Safe refresh: reload current WebView without external navigation
-                  setWebviewKey(k => k + 1);
                   setIsLoading(true);
                   setStreamError(null);
                   setStreamErrorRef("");
+                  // Advance to next server instead of reloading same one
+                  const mgr = streamManagerRef.current;
+                  if (mgr) {
+                    mgr.advanceToNext(adPopupCountRef.current);
+                  } else {
+                    setWebviewKey(k => k + 1);
+                  }
                   scheduleHide();
                 }}
               >
