@@ -851,13 +851,6 @@ export default function SportsScreen() {
 
   const liveFirstLoad = liveQuery.isLoading && !liveQuery.data;
   const todayFirstLoad = todayQuery.isLoading && !todayQuery.data;
-  const isSportsLoading = liveFirstLoad || todayFirstLoad;
-
-  useEffect(() => {
-    if (!isSportsLoading) { setLoadingGuardReached(false); return; }
-    const timer = setTimeout(() => setLoadingGuardReached(true), 12_000);
-    return () => clearTimeout(timer);
-  }, [isSportsLoading]);
 
   const remoteLive: any[] = useMemo(
     () => liveQuery.data?.live || todayQuery.data?.live || [],
