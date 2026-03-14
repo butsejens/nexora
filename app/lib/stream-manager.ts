@@ -70,41 +70,16 @@ export interface StreamManagerCallbacks {
 // ─── Stream Providers ──────────────────────────────────────────────────────────
 
 const STREAM_PROVIDERS: StreamProvider[] = [
-  { id: "videasy",      label: "Server 1"  },
-  { id: "vidlink",      label: "Server 2"  },
-  { id: "vidsrcpro",    label: "Server 3"  },
-  { id: "vidsrcto",     label: "Server 4"  },
-  { id: "embedsu",      label: "Server 5"  },
-  { id: "autoembed",    label: "Server 6"  },
-  { id: "superembed",   label: "Server 7"  },
-  { id: "vidbinge",     label: "Server 8"  },
-  { id: "vidsrcme",     label: "Server 9"  },
-  { id: "2embed",       label: "Server 10" },
-  { id: "moviesapi",    label: "Server 11" },
-  { id: "vidsrcxyz",    label: "Server 12" },
-  { id: "multiembed",   label: "Server 13" },
-  { id: "vidsrcicu",    label: "Server 14" },
-  { id: "smashystream", label: "Server 15" },
-  { id: "embedcc",      label: "Server 16" },
-  { id: "rive",         label: "Server 17" },
-  { id: "nontongo",     label: "Server 18" },
-  { id: "111movies",    label: "Server 19" },
-  { id: "frembed",      label: "Server 20" },
-  { id: "primewire",    label: "Server 21" },
-  { id: "flixhq",       label: "Server 22" },
-  { id: "moviee",       label: "Server 23" },
-  { id: "soapertv",     label: "Server 24" },
-  { id: "cinescrape",   label: "Server 25" },
-  { id: "gobilda",      label: "Server 26" },
-  { id: "vidsrcrip",    label: "Server 27" },
-  { id: "embedrise",    label: "Server 28" },
-  { id: "remotestream", label: "Server 29" },
-  { id: "warezcdn",     label: "Server 30" },
-  { id: "filmxy",       label: "Server 31" },
-  { id: "dbgo",         label: "Server 32" },
-  { id: "cineby",       label: "Server 33" },
-  { id: "hexa",         label: "Server 34" },
-  { id: "nova",         label: "Server 35" },
+  { id: "autoembed",    label: "Server 1"  },
+  { id: "smashystream", label: "Server 2"  },
+  { id: "videasy",      label: "Server 3"  },
+  { id: "embedrise",    label: "Server 4"  },
+  { id: "vidsrcto",     label: "Server 5"  },
+  { id: "vidsrcme",     label: "Server 6"  },
+  { id: "111movies",    label: "Server 7"  },
+  { id: "vidlink",      label: "Server 8"  },
+  { id: "moviesapi",    label: "Server 9"  },
+  { id: "nontongo",     label: "Server 10" },
 ];
 
 export { STREAM_PROVIDERS };
@@ -122,78 +97,28 @@ export function getEmbedUrl(
   const e = episode || "1";
   const isMovie = type !== "series";
   switch (provider) {
-    case "vidsrcto":
-      return isMovie ? `https://vidsrc.to/embed/movie/${tmdbId}` : `https://vidsrc.to/embed/tv/${tmdbId}/${s}/${e}`;
-    case "embedsu":
-      return isMovie ? `https://embed.su/embed/movie/${tmdbId}` : `https://embed.su/embed/tv/${tmdbId}/${s}/${e}`;
     case "autoembed":
       return isMovie ? `https://autoembed.co/movie/tmdb/${tmdbId}` : `https://autoembed.co/tv/tmdb/${tmdbId}-${s}-${e}`;
-    case "vidsrcpro":
-      return isMovie ? `https://vidsrc.pro/embed/movie/${tmdbId}` : `https://vidsrc.pro/embed/tv/${tmdbId}?s=${s}&e=${e}`;
-    case "2embed":
-      return isMovie ? `https://www.2embed.cc/embed/${tmdbId}` : `https://www.2embed.cc/embedtv/${tmdbId}&s=${s}&e=${e}`;
-    case "moviesapi":
-      return isMovie ? `https://moviesapi.club/movie/${tmdbId}` : `https://moviesapi.club/tv/${tmdbId}-${s}-${e}`;
-    case "vidsrcme":
-      return isMovie ? `https://vidsrc.me/embed/movie?tmdb=${tmdbId}` : `https://vidsrc.me/embed/tv?tmdb=${tmdbId}&season=${s}&episode=${e}`;
-    case "vidsrcxyz":
-      return isMovie ? `https://vidsrc.xyz/embed/movie?tmdb=${tmdbId}` : `https://vidsrc.xyz/embed/tv?tmdb=${tmdbId}&season=${s}&episode=${e}`;
-    case "vidlink":
-      return isMovie ? `https://vidlink.pro/movie/${tmdbId}` : `https://vidlink.pro/tv/${tmdbId}/${s}/${e}`;
-    case "multiembed":
-      return isMovie ? `https://multiembed.mov/?video_id=${tmdbId}&tmdb=1` : `https://multiembed.mov/?video_id=${tmdbId}&tmdb=1&s=${s}&e=${e}`;
-    case "vidsrcicu":
-      return isMovie ? `https://vidsrc.icu/embed/movie/${tmdbId}` : `https://vidsrc.icu/embed/tv/${tmdbId}/${s}/${e}`;
-    case "videasy":
-      return isMovie ? `https://player.videasy.net/movie/${tmdbId}` : `https://player.videasy.net/tv/${tmdbId}/${s}/${e}`;
-    case "nontongo":
-      return isMovie ? `https://www.nontongo.win/embed/movie/${tmdbId}` : `https://www.nontongo.win/embed/tv/${tmdbId}/${s}/${e}`;
-    case "111movies":
-      return isMovie ? `https://111movies.com/movie/${tmdbId}` : `https://111movies.com/tv/${tmdbId}/${s}/${e}`;
     case "smashystream":
       return isMovie ? `https://player.smashystream.com/movie/${tmdbId}` : `https://player.smashystream.com/tv/${tmdbId}/${s}/${e}`;
-    case "embedcc":
-      return isMovie ? `https://www.embedcc.com/embed/movie/${tmdbId}` : `https://www.embedcc.com/embed/tv/${tmdbId}/${s}/${e}`;
-    case "rive":
-      return isMovie ? `https://rivestream.live/embed?type=movie&id=${tmdbId}` : `https://rivestream.live/embed?type=tv&id=${tmdbId}&season=${s}&episode=${e}`;
-    case "primewire":
-      return isMovie ? `https://www.primewire.tf/embed/movie?tmdb=${tmdbId}` : `https://www.primewire.tf/embed/tv?tmdb=${tmdbId}&season=${s}&episode=${e}`;
-    case "superembed":
-      return isMovie ? `https://multiembed.mov/?video_id=${tmdbId}&tmdb=1` : `https://multiembed.mov/?video_id=${tmdbId}&tmdb=1&s=${s}&e=${e}`;
-    case "vidbinge":
-      return isMovie ? `https://vidbinge.dev/embed/movie/${tmdbId}` : `https://vidbinge.dev/embed/tv/${tmdbId}/${s}/${e}`;
-    case "frembed":
-      return isMovie ? `https://frembed.xyz/api/movie.php?id=${tmdbId}` : `https://frembed.xyz/api/serie.php?id=${tmdbId}&sa=${s}&epi=${e}`;
-    case "flixhq":
-      return isMovie ? `https://flixhq.to/embed/movie/${tmdbId}` : `https://flixhq.to/embed/tv/${tmdbId}/${s}/${e}`;
-    case "moviee":
-      return isMovie ? `https://moviee.tv/embed/movie/${tmdbId}` : `https://moviee.tv/embed/tv/${tmdbId}/${s}/${e}`;
-    case "soapertv":
-      return isMovie ? `https://soaper.live/embed/movie/${tmdbId}` : `https://soaper.live/embed/tv/${tmdbId}/${s}/${e}`;
-    case "cinescrape":
-      return isMovie ? `https://cinescrape.com/movie/${tmdbId}` : `https://cinescrape.com/tv/${tmdbId}/${s}/${e}`;
-    case "gobilda":
-      return isMovie ? `https://gobilda.co/embed/movie/${tmdbId}` : `https://gobilda.co/embed/tv/${tmdbId}/${s}/${e}`;
-    case "vidsrcrip":
-      return isMovie ? `https://vidsrc.rip/embed/movie/${tmdbId}` : `https://vidsrc.rip/embed/tv/${tmdbId}/${s}/${e}`;
+    case "videasy":
+      return isMovie ? `https://player.videasy.net/movie/${tmdbId}` : `https://player.videasy.net/tv/${tmdbId}/${s}/${e}`;
     case "embedrise":
       return isMovie ? `https://embedrise.com/embed/movie/${tmdbId}` : `https://embedrise.com/embed/tv/${tmdbId}/${s}/${e}`;
-    case "remotestream":
-      return isMovie ? `https://remotestream.cc/embed/movie/${tmdbId}` : `https://remotestream.cc/embed/tv/${tmdbId}/${s}/${e}`;
-    case "warezcdn":
-      return isMovie ? `https://embed.warezcdn.com/filme/${tmdbId}` : `https://embed.warezcdn.com/serie/${tmdbId}/${s}/${e}`;
-    case "filmxy":
-      return isMovie ? `https://filmxy.vip/embed/${tmdbId}` : `https://filmxy.vip/embed/${tmdbId}/${s}/${e}`;
-    case "dbgo":
-      return isMovie ? `https://dbgo.fun/imdb.php?id=${tmdbId}` : `https://dbgo.fun/imdb.php?id=${tmdbId}&s=${s}&e=${e}`;
-    case "cineby":
-      return isMovie ? `https://cineby.ru/embed/movie/${tmdbId}` : `https://cineby.ru/embed/tv/${tmdbId}/${s}/${e}`;
-    case "hexa":
-      return isMovie ? `https://hexawatch.com/embed/movie/${tmdbId}` : `https://hexawatch.com/embed/tv/${tmdbId}/${s}/${e}`;
-    case "nova":
-      return isMovie ? `https://novastream.top/embed/movie/${tmdbId}` : `https://novastream.top/embed/tv/${tmdbId}/${s}/${e}`;
-    default:
+    case "vidsrcto":
       return isMovie ? `https://vidsrc.to/embed/movie/${tmdbId}` : `https://vidsrc.to/embed/tv/${tmdbId}/${s}/${e}`;
+    case "vidsrcme":
+      return isMovie ? `https://vidsrc.me/embed/movie?tmdb=${tmdbId}` : `https://vidsrc.me/embed/tv?tmdb=${tmdbId}&season=${s}&episode=${e}`;
+    case "111movies":
+      return isMovie ? `https://111movies.com/movie/${tmdbId}` : `https://111movies.com/tv/${tmdbId}/${s}/${e}`;
+    case "vidlink":
+      return isMovie ? `https://vidlink.pro/movie/${tmdbId}` : `https://vidlink.pro/tv/${tmdbId}/${s}/${e}`;
+    case "moviesapi":
+      return isMovie ? `https://moviesapi.club/movie/${tmdbId}` : `https://moviesapi.club/tv/${tmdbId}-${s}-${e}`;
+    case "nontongo":
+      return isMovie ? `https://www.nontongo.win/embed/movie/${tmdbId}` : `https://www.nontongo.win/embed/tv/${tmdbId}/${s}/${e}`;
+    default:
+      return isMovie ? `https://autoembed.co/movie/tmdb/${tmdbId}` : `https://autoembed.co/tv/tmdb/${tmdbId}-${s}-${e}`;
   }
 }
 
@@ -219,12 +144,9 @@ export function withAutoplayParams(rawUrl: string): string {
 
 export const ALLOWED_VIDEO_HOSTS = [
   "vidsrc", "vidlink", "videasy", "autoembed", "moviesapi", "nontongo",
-  "smashystream", "frembed", "jwplayer", "cloudflare", "m3u8", "hls", "stream",
+  "smashystream", "jwplayer", "cloudflare", "m3u8", "hls", "stream",
   "rabbitstream", "vidcloud", "upcloud", "streamtape", "filemoon", "mixdrop", "dood",
-  "googlevideo", "akamaized", "cdn", "vidbinge", "embedcc", "embedsu", "rive",
-  "multiembed", "2embed", "primewire", "111movies",
-  "flixhq", "moviee", "soaper", "cinescrape", "gobilda", "embedrise", "remotestream",
-  "warezcdn", "filmxy", "dbgo", "cineby", "hexa", "nova",
+  "googlevideo", "akamaized", "cdn", "embedrise", "111movies",
 ];
 
 // ─── Stream Manager Class ──────────────────────────────────────────────────────
