@@ -41,16 +41,7 @@ import {
   ALLOWED_VIDEO_HOSTS,
 } from "@/lib/stream-manager";
 import type { StreamSource } from "@/lib/stream-manager";
-import {
-  quickRank,
-  recordSuccess,
-  recordFailure,
-} from "@/lib/ai-stream-engine";
-import {
-  trackStartupSuccess,
-  trackStartupFailure,
-  trackBuffering,
-} from "@/lib/stream-reliability";
+
 
 // ─── Stream Manager handles discovery, validation, ranking, and fallback ──────
 
@@ -1374,21 +1365,21 @@ export default function PlayerScreen() {
     } catch {}
   };
 
-  // Auto-advance on error (embed only)
+  // Auto-advance on error (embed only) — wait 6s before advancing so user sees what happened
   useEffect(() => {
     if (!streamError) return;
     if (effectiveStreamUrl && !useFallbackEmbed) return;
     if (!tmdbId || allProvidersFailed) return;
-    const t = setTimeout(() => tryNextProvider(), 1200);
+    const t = setTimeout(() => tryNextProvider(), 6000);
     return () => clearTimeout(t);
   }, [streamError, effectiveStreamUrl, useFallbackEmbed, tmdbId, allProvidersFailed, tryNextProvider]);
 
-  // Auto-advance on slow load (embed only)
+  // Auto-advance on slow load (embed only) — give provider 20s to load
   useEffect(() => {
     if (!isLoading) return;
     if (effectiveStreamUrl && !useFallbackEmbed) return;
     if (!tmdbId || allProvidersFailed) return;
-    const t = setTimeout(() => tryNextProvider(), 15000);
+    const t = setTimeout(() => tryNextProvider(), 20000);
     return () => clearTimeout(t);
   }, [isLoading, webviewKey, effectiveStreamUrl, useFallbackEmbed, tmdbId, allProvidersFailed, tryNextProvider]);
 
@@ -1407,6 +1398,8 @@ export default function PlayerScreen() {
   const hlsHtml: string | null = (effectiveStreamUrl && !useFallbackEmbed) ? buildHlsHtml(effectiveStreamUrl) : null;
   const embedUrlWithAutoplay: string | null = (!hlsHtml && embedUrl) ? withAutoplayParams(embedUrl) : null;
   const hasSource = !!(hlsHtml || embedUrlWithAutoplay);
+  // While waiting for StreamManager to resolve, treat as loading (not "no content")
+  const stillDiscovering = !!tmdbId && !hasSource && !allProvidersFailed;
 
   // ── onShouldStartLoadWithRequest ─────────────────────────────────────────
   // Block: ad domains, AND any top-frame navigation away from the embed domain.
@@ -1656,6 +1649,12 @@ export default function PlayerScreen() {
         <SilentResetBoundary>
         {hasSource ? (
           Platform.OS === "web" ? renderWebPlayer() : renderNativePlayer()
+        ) : stillDiscovering ? (
+          <View style={styles.noContent}>
+            <LinearGradient colors={[COLORS.card, "#000"]} style={StyleSheet.absoluteFill} />
+            <ActivityIndicator size="large" color={COLORS.accent} />
+            <Text style={styles.noTitle}>Beste server zoeken...</Text>
+          </View>
         ) : (
           <View style={styles.noContent}>
             <LinearGradient colors={[COLORS.card, "#000"]} style={StyleSheet.absoluteFill} />
@@ -1705,8 +1704,8 @@ export default function PlayerScreen() {
         )}
       </View>
 
-      {/* ─── Full-screen interceptor — show controls on tap ─────────────── */}
-      {(hlsHtml || embedUrlWithAutoplay) && Platform.OS !== "web" && !controlsVisible && (
+      {/* ─── Full-screen interceptor — show controls on tap (HLS only, embed needs WebView touches) ─── */}
+      {hlsHtml && Platform.OS !== "web" && !controlsVisible && (
         <TouchableOpacity
           style={styles.hlsTouchScreen}
           onPress={showControls}
