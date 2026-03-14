@@ -155,6 +155,49 @@ export default function MoviesScreen() {
     retry: 0,
   });
 
+  // AI Recommendations — "Recommended For You" based on watch history genres
+  const topGenreIds = useMemo(() => {
+    const freq: Record<number, number> = {};
+    for (const h of watchHistory) {
+      if (h.type === "movie" && h.genre_ids) {
+        for (const gid of h.genre_ids) freq[gid] = (freq[gid] || 0) + 1;
+      }
+    }
+    return Object.entries(freq)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 3)
+      .map(([id]) => id);
+  }, [watchHistory]);
+
+  const { data: recForYouData } = useQuery({
+    queryKey: ["movies", "rec-for-you", topGenreIds.join(",")],
+    queryFn: async () => {
+      if (!topGenreIds.length) return { movies: [] };
+      const res = await withTimeout(apiRequest("GET", `/api/recommendations/for-you?genres=${topGenreIds.join(",")}`), 10000);
+      return await res.json();
+    },
+    staleTime: 30 * 60 * 1000,
+    retry: 0,
+    enabled: topGenreIds.length > 0,
+  });
+
+  // "Because You Watched" — similar to last watched movie
+  const lastWatchedMovie = useMemo(() => {
+    return watchHistory.find(h => h.type === "movie" && h.tmdbId);
+  }, [watchHistory]);
+
+  const { data: becauseYouWatchedData } = useQuery({
+    queryKey: ["movies", "because-you-watched", lastWatchedMovie?.tmdbId],
+    queryFn: async () => {
+      if (!lastWatchedMovie?.tmdbId) return { items: [] };
+      const res = await withTimeout(apiRequest("GET", `/api/recommendations/similar/${lastWatchedMovie.tmdbId}?type=movie`), 10000);
+      return await res.json();
+    },
+    staleTime: 30 * 60 * 1000,
+    retry: 0,
+    enabled: !!lastWatchedMovie?.tmdbId,
+  });
+
   const iptvMovies = useMemo(
     () => iptvChannels.filter(c => c.category === "movie" && isChannelVisible(c.id, c.group)),
     [iptvChannels, isChannelVisible]
@@ -192,6 +235,8 @@ export default function MoviesScreen() {
   const movieDecades: any[] = useMemo(() => decadesData?.decades || [], [decadesData]);
   const archiveMovies: any[] = useMemo(() => archiveData?.movies || [], [archiveData]);
   const genreDiscoverRows: any[] = useMemo(() => genreDiscoverData?.rows || [], [genreDiscoverData]);
+  const recommendedForYou: any[] = useMemo(() => recForYouData?.movies || [], [recForYouData]);
+  const becauseYouWatched: any[] = useMemo(() => becauseYouWatchedData?.items || [], [becauseYouWatchedData]);
 
   // Continue Watching — movies from watch history
   const continueWatching = useMemo(() => {
@@ -673,6 +718,16 @@ export default function MoviesScreen() {
               {/* Continue Watching — always mounted */}
               <View style={continueWatching.length > 0 ? undefined : { display: "none" }}>
                 {renderSimpleRow("Continue Watching", continueWatching, "continue", true)}
+              </View>
+
+              {/* Because You Watched [Title] */}
+              <View style={becauseYouWatched.length > 0 && lastWatchedMovie ? undefined : { display: "none" }}>
+                {renderSimpleRow(`Because You Watched ${lastWatchedMovie?.title || ""}`, becauseYouWatched, "because-you-watched")}
+              </View>
+
+              {/* Recommended For You */}
+              <View style={recommendedForYou.length > 0 ? undefined : { display: "none" }}>
+                {renderSimpleRow("Recommended For You", recommendedForYou, "rec-for-you")}
               </View>
 
               {/* IPTV Playlist - always mounted */}

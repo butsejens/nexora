@@ -40,7 +40,7 @@ function makeRateLimiter(maxPerWindow, windowMs) {
     }
     entry.count++;
     if (entry.count > maxPerWindow) {
-      return res.status(429).json({ error: "Te veel verzoeken. Probeer het later opnieuw." });
+      return res.status(429).json({ error: "Too many requests. Please try again later." });
     }
     next();
   };
@@ -4993,6 +4993,66 @@ app.get("/api/search/multi", tmdbLimiter, async (req, res) => {
   }
 });
 
+// ─── AI Recommendations ───────────────────────────────────────────────────────
+
+// "Recommended For You" — TMDB discover based on user's genre preferences
+app.get("/api/recommendations/for-you", tmdbLimiter, async (req, res) => {
+  try {
+    if (!process.env.TMDB_API_KEY) return res.json({ movies: [], series: [] });
+    const genreIds = String(req.query.genres || "").split(",").filter(Boolean).slice(0, 5);
+    const genreStr = genreIds.join(",");
+    if (!genreStr) return res.json({ movies: [], series: [] });
+
+    const cacheKey = `rec-for-you-${genreStr}`;
+    const cached = cacheGet(cacheKey);
+    if (cached) return res.json(cached);
+
+    const [movieData, tvData] = await Promise.all([
+      tmdb(`/discover/movie?with_genres=${genreStr}&sort_by=vote_average.desc&vote_count.gte=100&page=1`),
+      tmdb(`/discover/tv?with_genres=${genreStr}&sort_by=vote_average.desc&vote_count.gte=50&page=1`),
+    ]);
+    const movies = (movieData?.results || []).slice(0, 20).map(it => mapTrendingItem(it, "movie"));
+    const series = (tvData?.results || []).slice(0, 20).map(it => mapTrendingItem(it, "series"));
+    const result = { movies, series };
+    cacheSet(cacheKey, result, 30 * 60 * 1000); // 30 min
+    res.json(result);
+  } catch (e) {
+    res.json({ movies: [], series: [], error: String(e?.message || e) });
+  }
+});
+
+// "Because You Watched [Title]" — TMDB similar + recommendations for a movie/series
+app.get("/api/recommendations/similar/:id", tmdbLimiter, async (req, res) => {
+  try {
+    if (!process.env.TMDB_API_KEY) return res.json({ items: [] });
+    const { id } = req.params;
+    const type = req.query.type === "series" ? "tv" : "movie";
+
+    const cacheKey = `rec-similar-${type}-${id}`;
+    const cached = cacheGet(cacheKey);
+    if (cached) return res.json(cached);
+
+    const [similar, recs] = await Promise.all([
+      tmdb(`/${type}/${encodeURIComponent(id)}/similar?page=1`),
+      tmdb(`/${type}/${encodeURIComponent(id)}/recommendations?page=1`),
+    ]);
+    const mediaType = type === "tv" ? "series" : "movie";
+    const seen = new Set();
+    const items = [];
+    for (const it of [...(recs?.results || []), ...(similar?.results || [])]) {
+      if (seen.has(String(it.id))) continue;
+      seen.add(String(it.id));
+      items.push(mapTrendingItem(it, mediaType));
+      if (items.length >= 20) break;
+    }
+    const result = { items };
+    cacheSet(cacheKey, result, 30 * 60 * 1000); // 30 min
+    res.json(result);
+  } catch (e) {
+    res.json({ items: [], error: String(e?.message || e) });
+  }
+});
+
 app.get("/api/movies/:id/full", tmdbLimiter, async (req, res) => {
   try {
     if (!process.env.TMDB_API_KEY) return res.json(null);
@@ -5297,6 +5357,234 @@ app.get("/api/movies/archive", async (req, res) => {
     res.json({ movies: archiveMovieCache[cacheKey].data });
   } catch (e) {
     res.status(200).json({ movies: [], error: String(e?.message || e) });
+  }
+});
+
+// -----------------------------
+// Subtitle proxy — fetches subtitles from OpenSubtitles (when API key available)
+// or from TMDB-linked subtitle sources
+// -----------------------------
+app.get("/api/subtitles/:tmdbId", tmdbLimiter, async (req, res) => {
+  try {
+    const { tmdbId } = req.params;
+    const lang = String(req.query.lang || "en").slice(0, 5);
+    const type = req.query.type === "series" ? "tv" : "movie";
+    const season = req.query.season || "1";
+    const episode = req.query.episode || "1";
+
+    const cacheKey = `subs-${type}-${tmdbId}-${lang}-s${season}e${episode}`;
+    const cached = cacheGet(cacheKey);
+    if (cached) return res.json(cached);
+
+    // Try OpenSubtitles API if key is available
+    const osApiKey = process.env.OPENSUBTITLES_API_KEY;
+    if (osApiKey) {
+      const params = new URLSearchParams({
+        tmdb_id: String(tmdbId),
+        languages: lang,
+        type: type === "tv" ? "episode" : "movie",
+      });
+      if (type === "tv") {
+        params.set("season_number", String(season));
+        params.set("episode_number", String(episode));
+      }
+      const osRes = await fetch(`https://api.opensubtitles.com/api/v1/subtitles?${params}`, {
+        headers: { "Api-Key": osApiKey, "Content-Type": "application/json", "User-Agent": "Nexora v1.0" },
+        signal: AbortSignal.timeout(8000),
+      });
+      if (osRes.ok) {
+        const osData = await osRes.json();
+        const subs = (osData?.data || []).slice(0, 10).map(s => ({
+          id: s.id,
+          language: s.attributes?.language || lang,
+          format: s.attributes?.format || "srt",
+          downloadUrl: s.attributes?.files?.[0]?.file_id ? `/api/subtitles/download/${s.attributes.files[0].file_id}` : null,
+          rating: s.attributes?.ratings || 0,
+          hearing_impaired: s.attributes?.hearing_impaired || false,
+        })).filter(s => s.downloadUrl);
+        const result = { subtitles: subs };
+        cacheSet(cacheKey, result, 60 * 60 * 1000); // 1 hour
+        return res.json(result);
+      }
+    }
+
+    // Fallback: return empty (no subtitles available without API key)
+    const result = { subtitles: [] };
+    cacheSet(cacheKey, result, 5 * 60 * 1000); // negative cache: 5 min
+    res.json(result);
+  } catch (e) {
+    res.json({ subtitles: [], error: String(e?.message || e) });
+  }
+});
+
+// Download subtitle file (proxy through server to inject CORS headers)
+app.get("/api/subtitles/download/:fileId", async (req, res) => {
+  try {
+    const osApiKey = process.env.OPENSUBTITLES_API_KEY;
+    if (!osApiKey) return res.status(503).json({ error: "Subtitle service not configured" });
+    const { fileId } = req.params;
+    const dlRes = await fetch("https://api.opensubtitles.com/api/v1/download", {
+      method: "POST",
+      headers: { "Api-Key": osApiKey, "Content-Type": "application/json", "User-Agent": "Nexora v1.0" },
+      body: JSON.stringify({ file_id: Number(fileId) }),
+      signal: AbortSignal.timeout(10000),
+    });
+    if (!dlRes.ok) return res.status(dlRes.status).json({ error: "Download failed" });
+    const dlData = await dlRes.json();
+    if (dlData?.link) {
+      const subRes = await fetch(dlData.link, { signal: AbortSignal.timeout(10000) });
+      res.set("Content-Type", "text/vtt; charset=utf-8");
+      res.set("Cache-Control", "public, max-age=86400");
+      const text = await subRes.text();
+      // Convert SRT to VTT if needed
+      if (text.trim().startsWith("1\n") || text.trim().startsWith("1\r\n")) {
+        res.send("WEBVTT\n\n" + text.replace(/(\d{2}:\d{2}:\d{2}),(\d{3})/g, "$1.$2"));
+      } else {
+        res.send(text);
+      }
+    } else {
+      res.status(404).json({ error: "No download link" });
+    }
+  } catch (e) {
+    res.status(500).json({ error: String(e?.message || e) });
+  }
+});
+
+// -----------------------------
+// Stream validation — probe a URL before playback
+// -----------------------------
+app.post("/api/stream/validate", playlistLimiter, async (req, res) => {
+  try {
+    const { url } = req.body || {};
+    if (!url || typeof url !== "string") return res.status(400).json({ valid: false, error: "Missing URL" });
+    // Block private IPs
+    const parsed = new URL(url);
+    if (/^(localhost|127\.|10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.)/.test(parsed.hostname)) {
+      return res.json({ valid: false, error: "Private address blocked" });
+    }
+    // HEAD request to check URL accessibility
+    const probe = await fetch(url, {
+      method: "HEAD",
+      signal: AbortSignal.timeout(6000),
+      redirect: "follow",
+      headers: { "User-Agent": "Nexora/2.4 Stream Validator" },
+    });
+    const contentType = probe.headers.get("content-type") || "";
+    const isValid = probe.ok && (
+      contentType.includes("video") ||
+      contentType.includes("mpegurl") ||
+      contentType.includes("octet-stream") ||
+      contentType.includes("mp2t") ||
+      url.match(/\.(m3u8|ts|mp4|mkv|webm|mpd)(\?|$)/i)
+    );
+    res.json({
+      valid: isValid,
+      status: probe.status,
+      contentType,
+      redirected: probe.redirected,
+      finalUrl: probe.url,
+    });
+  } catch (e) {
+    res.json({ valid: false, error: String(e?.message || e) });
+  }
+});
+
+// -----------------------------
+// Anti-piracy — stream URL signing with HMAC
+// -----------------------------
+const crypto = require("crypto");
+const STREAM_SIGNING_SECRET = process.env.STREAM_SIGNING_SECRET || crypto.randomBytes(32).toString("hex");
+
+app.get("/api/stream/sign", (req, res) => {
+  try {
+    const { url } = req.query;
+    if (!url) return res.status(400).json({ error: "Missing URL" });
+    const expires = Math.floor(Date.now() / 1000) + 7200; // 2 hours
+    const payload = `${url}|${expires}`;
+    const signature = crypto.createHmac("sha256", STREAM_SIGNING_SECRET).update(payload).digest("hex");
+    res.json({
+      signedUrl: url,
+      token: signature,
+      expires,
+    });
+  } catch (e) {
+    res.status(500).json({ error: String(e?.message || e) });
+  }
+});
+
+app.get("/api/stream/verify", (req, res) => {
+  try {
+    const { url, token, expires } = req.query;
+    if (!url || !token || !expires) return res.json({ valid: false, error: "Missing parameters" });
+    const now = Math.floor(Date.now() / 1000);
+    if (now > Number(expires)) return res.json({ valid: false, error: "Token expired" });
+    const payload = `${url}|${expires}`;
+    const expected = crypto.createHmac("sha256", STREAM_SIGNING_SECRET).update(payload).digest("hex");
+    res.json({ valid: token === expected });
+  } catch (e) {
+    res.json({ valid: false, error: String(e?.message || e) });
+  }
+});
+
+// -----------------------------
+// Device session tracking — concurrent stream limiting
+// -----------------------------
+const activeSessions = new Map(); // deviceId -> { ip, startedAt, lastSeen, streamUrl }
+const MAX_CONCURRENT_STREAMS = 3;
+
+app.post("/api/session/start", (req, res) => {
+  try {
+    const { deviceId, streamUrl } = req.body || {};
+    if (!deviceId) return res.status(400).json({ error: "Missing deviceId" });
+
+    const ip = req.headers["x-forwarded-for"]?.split(",")[0]?.trim() || req.socket?.remoteAddress || "unknown";
+    const now = Date.now();
+
+    // Clean expired sessions (not seen for 5 min)
+    for (const [id, session] of activeSessions) {
+      if (now - session.lastSeen > 5 * 60 * 1000) activeSessions.delete(id);
+    }
+
+    // Count active sessions for this IP
+    let ipSessionCount = 0;
+    for (const [, session] of activeSessions) {
+      if (session.ip === ip) ipSessionCount++;
+    }
+
+    if (ipSessionCount >= MAX_CONCURRENT_STREAMS && !activeSessions.has(deviceId)) {
+      return res.status(429).json({
+        error: "Too many concurrent streams",
+        maxStreams: MAX_CONCURRENT_STREAMS,
+        activeStreams: ipSessionCount,
+      });
+    }
+
+    activeSessions.set(deviceId, { ip, startedAt: now, lastSeen: now, streamUrl: streamUrl || null });
+    res.json({ ok: true, activeStreams: ipSessionCount + (activeSessions.has(deviceId) ? 0 : 1) });
+  } catch (e) {
+    res.json({ ok: true }); // don't block playback on errors
+  }
+});
+
+app.post("/api/session/heartbeat", (req, res) => {
+  try {
+    const { deviceId } = req.body || {};
+    if (deviceId && activeSessions.has(deviceId)) {
+      activeSessions.get(deviceId).lastSeen = Date.now();
+    }
+    res.json({ ok: true });
+  } catch {
+    res.json({ ok: true });
+  }
+});
+
+app.post("/api/session/stop", (req, res) => {
+  try {
+    const { deviceId } = req.body || {};
+    if (deviceId) activeSessions.delete(deviceId);
+    res.json({ ok: true });
+  } catch {
+    res.json({ ok: true });
   }
 });
 

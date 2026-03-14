@@ -26,6 +26,13 @@ export interface WatchedItem {
   title: string;
   progress?: number;
   lastWatched: string;
+  poster?: string | null;
+  backdrop?: string | null;
+  genre_ids?: number[];
+  tmdbId?: number;
+  year?: number | null;
+  duration?: number;
+  currentTime?: number;
 }
 
 export interface IPTVPlaylist {
@@ -67,6 +74,7 @@ interface NexoraContextValue {
   isFavorite: (id: string) => boolean;
   watchHistory: WatchedItem[];
   addToHistory: (item: WatchedItem) => void;
+  updateProgress: (id: string, currentTime: number, duration: number) => void;
   clearHistory: () => Promise<void>;
   playlists: IPTVPlaylist[];
   addPlaylist: (playlist: Omit<IPTVPlaylist, "id" | "addedAt">) => Promise<IPTVPlaylist>;
@@ -253,6 +261,17 @@ export function NexoraProvider({ children }: { children: ReactNode }) {
 
   const addToHistory = async (item: WatchedItem) => {
     const next = [item, ...watchHistory.filter(h => h.id !== item.id)].slice(0, 50);
+    setWatchHistory(next);
+    await AsyncStorage.setItem("nexora_history", JSON.stringify(next));
+  };
+
+  const updateProgress = async (id: string, currentTime: number, duration: number) => {
+    if (!id || !duration || duration <= 0) return;
+    const progress = Math.min(1, Math.max(0, currentTime / duration));
+    const idx = watchHistory.findIndex(h => h.id === id);
+    if (idx < 0) return;
+    const updated = { ...watchHistory[idx], progress, currentTime, duration, lastWatched: new Date().toISOString() };
+    const next = [updated, ...watchHistory.filter(h => h.id !== id)].slice(0, 50);
     setWatchHistory(next);
     await AsyncStorage.setItem("nexora_history", JSON.stringify(next));
   };
@@ -456,7 +475,7 @@ export function NexoraProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo(() => ({
     favorites, toggleFavorite, isFavorite,
-    watchHistory, addToHistory, clearHistory,
+    watchHistory, addToHistory, updateProgress, clearHistory,
     playlists, addPlaylist, removePlaylist, updatePlaylist,
     iptvChannels, isLoadingPlaylist, setIptvChannelsForPlaylist,
     hiddenChannels, toggleHideChannel,

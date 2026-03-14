@@ -18,6 +18,7 @@ import WebView from "react-native-webview";
 import { activateKeepAwakeAsync, deactivateKeepAwake } from "expo-keep-awake";
 import { COLORS } from "@/constants/colors";
 import { useNexora } from "@/context/NexoraContext";
+import { apiRequest } from "@/lib/query-client";
 import { SafeHaptics } from "@/lib/safeHaptics";
 import { openInVlc } from "@/lib/vlc";
 import { buildErrorReference } from "@/lib/error-messages";
@@ -748,14 +749,14 @@ function formatTime(secs: number): string {
 // ─── Main component ───────────────────────────────────────────────────────────
 export default function PlayerScreen() {
   const {
-    trailerKey, title, type, contentId, streamUrl, tmdbId, season, episode,
+    trailerKey, title, type, contentId, streamUrl, tmdbId, season, episode, poster,
   } = useLocalSearchParams<{
     trailerKey?: string; title?: string; type?: string; contentId?: string;
-    streamUrl?: string; tmdbId?: string; season?: string; episode?: string;
+    streamUrl?: string; tmdbId?: string; season?: string; episode?: string; poster?: string;
   }>();
 
   const insets = useSafeAreaInsets();
-  const { isFavorite, toggleFavorite, addToHistory, hasPremium } = useNexora();
+  const { isFavorite, toggleFavorite, addToHistory, updateProgress, hasPremium } = useNexora();
 
   // ── Premium gate — block playback if user lacks entitlement ─────────────
   const contentCategory = type === "movie" ? "movies" : type === "series" ? "series" : null;
@@ -780,6 +781,8 @@ export default function PlayerScreen() {
   const disposedRef = useRef(false);
   const autoplayTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
   const webviewCrashCountRef = useRef(0);
+  const progressSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastProgressRef = useRef({ currentTime: 0, duration: 0 });
   const [hlsPaused, setHlsPaused]       = useState(false);
   const [hlsDuration, setHlsDuration]   = useState(0);
   const [hlsCurrentTime, setHlsCurrentTime] = useState(0);
@@ -794,6 +797,24 @@ export default function PlayerScreen() {
     activateKeepAwakeAsync("player").catch(() => {});
     return () => { deactivateKeepAwake("player"); };
   }, []);
+
+  // ── Device session tracking ────────────────────────────────────────────────
+  useEffect(() => {
+    const deviceId = `${Platform.OS}_${contentId || "unknown"}_${Date.now()}`;
+    const startSession = async () => {
+      try {
+        await apiRequest("POST", "/api/session/start", { deviceId, streamUrl: streamUrl || "" });
+      } catch {}
+    };
+    startSession();
+    const heartbeat = setInterval(async () => {
+      try { await apiRequest("POST", "/api/session/heartbeat", { deviceId }); } catch {}
+    }, 60000);
+    return () => {
+      clearInterval(heartbeat);
+      apiRequest("POST", "/api/session/stop", { deviceId }).catch(() => {});
+    };
+  }, [contentId, streamUrl]);
 
   const injectEmbedAutoplay = useCallback(() => {
     if (Platform.OS === "web") return;
@@ -832,10 +853,19 @@ export default function PlayerScreen() {
       id: contentId || `${type}_${Date.now()}`,
       type: (type as any) || "movie",
       title: String(title || ""),
+      poster: poster || null,
+      tmdbId: tmdbId ? Number(tmdbId) : undefined,
       lastWatched: new Date().toISOString(),
     });
     scheduleHide();
     return () => {
+      // Save final progress before unmount
+      const { currentTime: ct, duration: dur } = lastProgressRef.current;
+      if (ct > 0 && dur > 0) {
+        const id = contentId || `${type}_${Date.now()}`;
+        updateProgress(id, ct, dur);
+      }
+      if (progressSaveTimerRef.current) clearTimeout(progressSaveTimerRef.current);
       // Mark as disposed — all async callbacks will bail out
       disposedRef.current = true;
       // Clear controls hide timer
@@ -889,9 +919,21 @@ export default function PlayerScreen() {
         setHlsCurrentTime(data.currentTime || 0);
         setHlsDuration(data.duration || 0);
         setHlsIsLive(data.isLive || false);
+        // Track progress for Continue Watching
+        lastProgressRef.current = { currentTime: data.currentTime || 0, duration: data.duration || 0 };
+        if (!progressSaveTimerRef.current && data.duration > 0) {
+          progressSaveTimerRef.current = setTimeout(() => {
+            progressSaveTimerRef.current = null;
+            const { currentTime: ct, duration: dur } = lastProgressRef.current;
+            if (ct > 0 && dur > 0) {
+              const id = contentId || `${type}_${Date.now()}`;
+              updateProgress(id, ct, dur);
+            }
+          }, 10000);
+        }
       }
     } catch {}
-  }, []);
+  }, [contentId, type, updateProgress]);
 
   // ── Provider switching ────────────────────────────────────────────────────
   const tryNextProvider = useCallback(() => {

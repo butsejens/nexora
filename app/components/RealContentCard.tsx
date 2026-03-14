@@ -243,7 +243,7 @@ export const RealHeroBanner = React.memo(function RealHeroBanner({ item, onPlay,
             <View style={styles.heroActions}>
               <TouchableOpacity style={styles.playButton} onPress={onPlay} activeOpacity={0.85}>
                 <Ionicons name="play" size={20} color="#FFFFFF" />
-                <Text style={styles.playText}>Afspelen</Text>
+                <Text style={styles.playText}>Play</Text>
               </TouchableOpacity>
               {onInfo && (
                 <TouchableOpacity style={styles.infoButton} onPress={onInfo} activeOpacity={0.85}>
