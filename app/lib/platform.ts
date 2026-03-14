@@ -1,11 +1,13 @@
-import { Platform } from "react-native";
+import { Platform, NativeModules } from "react-native";
 
 /**
  * Detect Android TV / Fire TV at runtime.
- * Uses the RN built-in `isTV` flag (set by Expo prebuild when
- * the manifest declares leanback support).
+ * Primary: RN built-in `isTV` flag (checks UiModeManager).
+ * Fallback: BuildConfig.IS_TV via native module (set by Gradle TV flavor).
  */
-export const isTV: boolean = Platform.isTV === true;
+export const isTV: boolean =
+  Platform.isTV === true ||
+  (Platform.OS === "android" && NativeModules.TVConfig?.IS_TV === true);
 export const isAndroid: boolean = Platform.OS === "android";
 export const isIOS: boolean = Platform.OS === "ios";
 export const isWeb: boolean = Platform.OS === "web";
