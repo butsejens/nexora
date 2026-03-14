@@ -92,8 +92,8 @@ android {
         applicationId 'com.nexora.sportsstream'
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 61
-        versionName "2.5.76"
+        versionCode 62
+        versionName "2.5.77"
 
         buildConfigField "String", "REACT_NATIVE_RELEASE_LEVEL", "\"${findProperty('reactNativeReleaseLevel') ?: 'stable'}\""
         buildConfigField "boolean", "IS_TV", "false"
