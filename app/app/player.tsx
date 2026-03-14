@@ -34,227 +34,27 @@ import {
 } from "@/lib/subtitle-manager";
 import type { SubtitleTrack } from "@/lib/subtitle-manager";
 import {
-  initEngine,
-  selectBestProviders,
+  StreamManager,
+  getEmbedUrl,
+  withAutoplayParams,
+  STREAM_PROVIDERS,
+  ALLOWED_VIDEO_HOSTS,
+} from "@/lib/stream-manager";
+import type { StreamSource } from "@/lib/stream-manager";
+import {
   quickRank,
   recordSuccess,
   recordFailure,
-  recordAdPopup,
 } from "@/lib/ai-stream-engine";
-import type { RankedProvider, StreamProvider } from "@/lib/ai-stream-engine";
+import {
+  trackStartupSuccess,
+  trackStartupFailure,
+  trackBuffering,
+} from "@/lib/stream-reliability";
 
-// ─── Stream providers ──────────────────────────────────────────────────────────
-const STREAM_PROVIDERS = [
-  { id: "videasy",      label: "Server 1"  },
-  { id: "vidlink",      label: "Server 2"  },
-  { id: "vidsrcpro",    label: "Server 3"  },
-  { id: "vidsrcto",     label: "Server 4"  },
-  { id: "embedsu",      label: "Server 5"  },
-  { id: "autoembed",    label: "Server 6"  },
-  { id: "superembed",   label: "Server 7"  },
-  { id: "vidbinge",     label: "Server 8"  },
-  { id: "vidsrcme",     label: "Server 9"  },
-  { id: "2embed",       label: "Server 10" },
-  { id: "moviesapi",    label: "Server 11" },
-  { id: "vidsrcxyz",    label: "Server 12" },
-  { id: "multiembed",   label: "Server 13" },
-  { id: "vidsrcicu",    label: "Server 14" },
-  { id: "smashystream", label: "Server 15" },
-  { id: "embedcc",      label: "Server 16" },
-  { id: "rive",         label: "Server 17" },
-  { id: "nontongo",     label: "Server 18" },
-  { id: "111movies",    label: "Server 19" },
-  { id: "frembed",      label: "Server 20" },
-  { id: "primewire",    label: "Server 21" },
-  { id: "flixhq",       label: "Server 22" },
-  { id: "moviee",       label: "Server 23" },
-  { id: "soapertv",     label: "Server 24" },
-  { id: "cinescrape",   label: "Server 25" },
-  { id: "gobilda",      label: "Server 26" },
-  { id: "vidsrcrip",    label: "Server 27" },
-  { id: "embedrise",    label: "Server 28" },
-  { id: "remotestream", label: "Server 29" },
-  { id: "warezcdn",     label: "Server 30" },
-  { id: "filmxy",       label: "Server 31" },
-  { id: "dbgo",         label: "Server 32" },
-  { id: "cineby",       label: "Server 33" },
-  { id: "hexa",         label: "Server 34" },
-  { id: "nova",         label: "Server 35" },
-];
+// ─── Stream Manager handles discovery, validation, ranking, and fallback ──────
 
-// ─── AI Stream Engine handles ranking (see lib/ai-stream-engine.ts) ───────────
-
-function withEmbedAutoplayParams(rawUrl: string): string {
-  try {
-    const parsed = new URL(rawUrl);
-    const params = [
-      ["autoplay", "1"],
-      ["autoPlay", "1"],
-      ["autostart", "true"],
-      ["muted", "0"],
-      ["mute", "0"],
-      ["playsinline", "1"],
-    ];
-    for (const [key, value] of params) {
-      if (!parsed.searchParams.has(key)) parsed.searchParams.set(key, value);
-    }
-    return parsed.toString();
-  } catch {
-    return rawUrl;
-  }
-}
-
-function getEmbedUrl(provider: string, tmdbId: string, type: string, season: string, episode: string): string {
-  const s = season || "1";
-  const e = episode || "1";
-  const isMovie = type !== "series";
-  switch (provider) {
-    case "vidsrcto":
-      return isMovie
-        ? `https://vidsrc.to/embed/movie/${tmdbId}`
-        : `https://vidsrc.to/embed/tv/${tmdbId}/${s}/${e}`;
-    case "embedsu":
-      return isMovie
-        ? `https://embed.su/embed/movie/${tmdbId}`
-        : `https://embed.su/embed/tv/${tmdbId}/${s}/${e}`;
-    case "autoembed":
-      return isMovie
-        ? `https://autoembed.co/movie/tmdb/${tmdbId}`
-        : `https://autoembed.co/tv/tmdb/${tmdbId}-${s}-${e}`;
-    case "vidsrcpro":
-      return isMovie
-        ? `https://vidsrc.pro/embed/movie/${tmdbId}`
-        : `https://vidsrc.pro/embed/tv/${tmdbId}?s=${s}&e=${e}`;
-    case "2embed":
-      return isMovie
-        ? `https://www.2embed.cc/embed/${tmdbId}`
-        : `https://www.2embed.cc/embedtv/${tmdbId}&s=${s}&e=${e}`;
-    case "moviesapi":
-      return isMovie
-        ? `https://moviesapi.club/movie/${tmdbId}`
-        : `https://moviesapi.club/tv/${tmdbId}-${s}-${e}`;
-    case "vidsrcme":
-      return isMovie
-        ? `https://vidsrc.me/embed/movie?tmdb=${tmdbId}`
-        : `https://vidsrc.me/embed/tv?tmdb=${tmdbId}&season=${s}&episode=${e}`;
-    case "vidsrcxyz":
-      return isMovie
-        ? `https://vidsrc.xyz/embed/movie?tmdb=${tmdbId}`
-        : `https://vidsrc.xyz/embed/tv?tmdb=${tmdbId}&season=${s}&episode=${e}`;
-    case "vidlink":
-      return isMovie
-        ? `https://vidlink.pro/movie/${tmdbId}`
-        : `https://vidlink.pro/tv/${tmdbId}/${s}/${e}`;
-    case "multiembed":
-      return isMovie
-        ? `https://multiembed.mov/?video_id=${tmdbId}&tmdb=1`
-        : `https://multiembed.mov/?video_id=${tmdbId}&tmdb=1&s=${s}&e=${e}`;
-    case "vidsrcicu":
-      return isMovie
-        ? `https://vidsrc.icu/embed/movie/${tmdbId}`
-        : `https://vidsrc.icu/embed/tv/${tmdbId}/${s}/${e}`;
-    case "videasy":
-      return isMovie
-        ? `https://player.videasy.net/movie/${tmdbId}`
-        : `https://player.videasy.net/tv/${tmdbId}/${s}/${e}`;
-    case "nontongo":
-      return isMovie
-        ? `https://www.nontongo.win/embed/movie/${tmdbId}`
-        : `https://www.nontongo.win/embed/tv/${tmdbId}/${s}/${e}`;
-    case "111movies":
-      return isMovie
-        ? `https://111movies.com/movie/${tmdbId}`
-        : `https://111movies.com/tv/${tmdbId}/${s}/${e}`;
-    case "smashystream":
-      return isMovie
-        ? `https://player.smashystream.com/movie/${tmdbId}`
-        : `https://player.smashystream.com/tv/${tmdbId}/${s}/${e}`;
-    case "embedcc":
-      return isMovie
-        ? `https://www.embedcc.com/embed/movie/${tmdbId}`
-        : `https://www.embedcc.com/embed/tv/${tmdbId}/${s}/${e}`;
-    case "rive":
-      return isMovie
-        ? `https://rivestream.live/embed?type=movie&id=${tmdbId}`
-        : `https://rivestream.live/embed?type=tv&id=${tmdbId}&season=${s}&episode=${e}`;
-    case "primewire":
-      return isMovie
-        ? `https://www.primewire.tf/embed/movie?tmdb=${tmdbId}`
-        : `https://www.primewire.tf/embed/tv?tmdb=${tmdbId}&season=${s}&episode=${e}`;
-    case "superembed":
-      return isMovie
-        ? `https://multiembed.mov/?video_id=${tmdbId}&tmdb=1`
-        : `https://multiembed.mov/?video_id=${tmdbId}&tmdb=1&s=${s}&e=${e}`;
-    case "vidbinge":
-      return isMovie
-        ? `https://vidbinge.dev/embed/movie/${tmdbId}`
-        : `https://vidbinge.dev/embed/tv/${tmdbId}/${s}/${e}`;
-    case "frembed":
-      return isMovie
-        ? `https://frembed.xyz/api/movie.php?id=${tmdbId}`
-        : `https://frembed.xyz/api/serie.php?id=${tmdbId}&sa=${s}&epi=${e}`;
-    case "flixhq":
-      return isMovie
-        ? `https://flixhq.to/embed/movie/${tmdbId}`
-        : `https://flixhq.to/embed/tv/${tmdbId}/${s}/${e}`;
-    case "moviee":
-      return isMovie
-        ? `https://moviee.tv/embed/movie/${tmdbId}`
-        : `https://moviee.tv/embed/tv/${tmdbId}/${s}/${e}`;
-    case "soapertv":
-      return isMovie
-        ? `https://soaper.live/embed/movie/${tmdbId}`
-        : `https://soaper.live/embed/tv/${tmdbId}/${s}/${e}`;
-    case "cinescrape":
-      return isMovie
-        ? `https://cinescrape.com/movie/${tmdbId}`
-        : `https://cinescrape.com/tv/${tmdbId}/${s}/${e}`;
-    case "gobilda":
-      return isMovie
-        ? `https://gobilda.co/embed/movie/${tmdbId}`
-        : `https://gobilda.co/embed/tv/${tmdbId}/${s}/${e}`;
-    case "vidsrcrip":
-      return isMovie
-        ? `https://vidsrc.rip/embed/movie/${tmdbId}`
-        : `https://vidsrc.rip/embed/tv/${tmdbId}/${s}/${e}`;
-    case "embedrise":
-      return isMovie
-        ? `https://embedrise.com/embed/movie/${tmdbId}`
-        : `https://embedrise.com/embed/tv/${tmdbId}/${s}/${e}`;
-    case "remotestream":
-      return isMovie
-        ? `https://remotestream.cc/embed/movie/${tmdbId}`
-        : `https://remotestream.cc/embed/tv/${tmdbId}/${s}/${e}`;
-    case "warezcdn":
-      return isMovie
-        ? `https://embed.warezcdn.com/filme/${tmdbId}`
-        : `https://embed.warezcdn.com/serie/${tmdbId}/${s}/${e}`;
-    case "filmxy":
-      return isMovie
-        ? `https://filmxy.vip/embed/${tmdbId}`
-        : `https://filmxy.vip/embed/${tmdbId}/${s}/${e}`;
-    case "dbgo":
-      return isMovie
-        ? `https://dbgo.fun/imdb.php?id=${tmdbId}`
-        : `https://dbgo.fun/imdb.php?id=${tmdbId}&s=${s}&e=${e}`;
-    case "cineby":
-      return isMovie
-        ? `https://cineby.ru/embed/movie/${tmdbId}`
-        : `https://cineby.ru/embed/tv/${tmdbId}/${s}/${e}`;
-    case "hexa":
-      return isMovie
-        ? `https://hexawatch.com/embed/movie/${tmdbId}`
-        : `https://hexawatch.com/embed/tv/${tmdbId}/${s}/${e}`;
-    case "nova":
-      return isMovie
-        ? `https://novastream.top/embed/movie/${tmdbId}`
-        : `https://novastream.top/embed/tv/${tmdbId}/${s}/${e}`;
-    default:
-      return isMovie
-        ? `https://vidsrc.to/embed/movie/${tmdbId}`
-        : `https://vidsrc.to/embed/tv/${tmdbId}/${s}/${e}`;
-  }
-}
+// getEmbedUrl and withAutoplayParams imported from stream-manager.ts
 
 // ─── Ad domains (network-level blocking) ───────────────────────────────────────
 const AD_DOMAINS = [
@@ -1204,10 +1004,9 @@ export default function PlayerScreen() {
   const contentCategory = type === "movie" ? "movies" : type === "series" ? "series" : null;
   const premiumBlocked = contentCategory && !hasPremium(contentCategory as any);
 
-  // Embed provider state — AI Stream Engine
-  const [rankedProviders, setRankedProviders] = useState<RankedProvider[]>(
-    STREAM_PROVIDERS.map(p => ({ provider: p, score: 50, probeLatencyMs: 0, avgLoadTimeMs: 0, successRate: 0.5 })),
-  );
+  // Embed provider state — Stream Manager (unified discovery + validation + ranking)
+  const streamManagerRef = useRef<StreamManager | null>(null);
+  const [rankedSources, setRankedSources] = useState<StreamSource[]>([]);
   const [engineReady, setEngineReady]         = useState(false);
   const [providerIndex, setProviderIndex]     = useState(0);
   const [useFallbackEmbed, setUseFallbackEmbed] = useState(false);
@@ -1261,24 +1060,42 @@ export default function PlayerScreen() {
     return () => { cancelled = true; };
   }, [tmdbId, type, season, episode]);
 
-  const provider         = rankedProviders[providerIndex]?.provider?.id || rankedProviders[0]?.provider?.id || STREAM_PROVIDERS[0].id;
-  const allProvidersFailed = providerIndex >= rankedProviders.length;
+  const provider         = rankedSources[providerIndex]?.providerId || STREAM_PROVIDERS[0].id;
+  const allProvidersFailed = providerIndex >= rankedSources.length && rankedSources.length > 0;
 
-  // ── AI Stream Engine: init, probe, rank on mount ───────────────────────
+  // ── Stream Manager: init, discover, validate, rank on mount ────────────
   useEffect(() => {
+    if (!tmdbId) return;
     let cancelled = false;
-    (async () => {
-      await initEngine();
-      // Build embed URL getter for probing
-      const urlGetter = (id: string) =>
-        tmdbId ? getEmbedUrl(id, tmdbId, type || "movie", season || "1", episode || "1") : null;
-      // Full probe + rank (runs in parallel, ~5s max)
-      const ranked = await selectBestProviders(STREAM_PROVIDERS, urlGetter);
-      if (!cancelled) {
-        setRankedProviders(ranked);
-        setEngineReady(true);
-      }
-    })();
+    const mgr = new StreamManager(
+      tmdbId,
+      type || "movie",
+      season || "1",
+      episode || "1",
+      {
+        onSourceChanged: (source, index, total) => {
+          if (cancelled) return;
+          setProviderIndex(index);
+          setWebviewKey(k => k + 1);
+          setIsLoading(true);
+          setStreamError(null);
+          setStreamErrorRef("");
+        },
+        onAllFailed: () => {
+          if (cancelled) return;
+          setStreamError("Alle servers zijn geprobeerd");
+          setStreamErrorRef(buildErrorReference("NX-PLY-ALL"));
+          setIsLoading(false);
+        },
+        onEngineReady: (sources) => {
+          if (cancelled) return;
+          setRankedSources(sources);
+          setEngineReady(true);
+        },
+      },
+    );
+    streamManagerRef.current = mgr;
+    mgr.init();
     return () => { cancelled = true; };
   }, [tmdbId, type, season, episode]);
 
@@ -1516,27 +1333,12 @@ export default function PlayerScreen() {
     } catch {}
   }, [contentId, type, updateProgress]);
 
-  // ── Provider switching ────────────────────────────────────────────────────
+  // ── Provider switching (via Stream Manager) ────────────────────────────
   const tryNextProvider = useCallback(() => {
-    // Record failure/adPopup for the current provider
-    const currentProv = rankedProviders[providerIndex]?.provider?.id;
-    if (currentProv) {
-      if (adPopupCountRef.current > 2) {
-        recordAdPopup(currentProv).then(() =>
-          setRankedProviders(quickRank(STREAM_PROVIDERS)),
-        );
-      } else {
-        recordFailure(currentProv).then(() =>
-          setRankedProviders(quickRank(STREAM_PROVIDERS)),
-        );
-      }
-    }
-    setProviderIndex(i => i + 1);
-    setWebviewKey(k => k + 1);
-    setStreamError(null);
-    setStreamErrorRef("");
-    setIsLoading(true);
-  }, [rankedProviders, providerIndex]);
+    const mgr = streamManagerRef.current;
+    if (!mgr) return;
+    mgr.advanceToNext(adPopupCountRef.current);
+  }, []);
 
   // ── WebView crash recovery (Android + iOS) ─────────────────────────────
   const handleWebViewCrash = useCallback(() => {
@@ -1593,13 +1395,17 @@ export default function PlayerScreen() {
   // ── What to render ────────────────────────────────────────────────────────
   const embedUrl: string | null = (() => {
     if (allProvidersFailed) return null;
-    if (tmdbId) return getEmbedUrl(provider, tmdbId, type || "movie", season || "1", episode || "1");
+    if (tmdbId) {
+      const mgr = streamManagerRef.current;
+      if (mgr) return mgr.getCurrentRawEmbedUrl();
+      return getEmbedUrl(provider, tmdbId, type || "movie", season || "1", episode || "1");
+    }
     if (trailerKey) return `https://www.youtube.com/embed/${trailerKey}?autoplay=1&rel=0&modestbranding=1&playsinline=1`;
     return null;
   })();
 
   const hlsHtml: string | null = (effectiveStreamUrl && !useFallbackEmbed) ? buildHlsHtml(effectiveStreamUrl) : null;
-  const embedUrlWithAutoplay: string | null = (!hlsHtml && embedUrl) ? withEmbedAutoplayParams(embedUrl) : null;
+  const embedUrlWithAutoplay: string | null = (!hlsHtml && embedUrl) ? withAutoplayParams(embedUrl) : null;
   const hasSource = !!(hlsHtml || embedUrlWithAutoplay);
 
   // ── onShouldStartLoadWithRequest ─────────────────────────────────────────
@@ -1644,16 +1450,7 @@ export default function PlayerScreen() {
         const embedHost = new URL(currentEmbedUrl).hostname;
         const reqHost   = new URL(url).hostname;
         const isSameDomain = reqHost === embedHost || reqHost.endsWith("." + embedHost);
-        const ALLOWED_HOST_SNIPPETS = [
-          "vidsrc", "vidlink", "videasy", "autoembed", "moviesapi", "nontongo",
-          "smashystream", "frembed", "jwplayer", "cloudflare", "m3u8", "hls", "stream",
-          "rabbitstream", "vidcloud", "upcloud", "streamtape", "filemoon", "mixdrop", "dood",
-          "googlevideo", "akamaized", "cdn", "vidbinge", "embedcc", "embedsu", "rive",
-          "multiembed", "2embed", "primewire", "111movies",
-          "flixhq", "moviee", "soaper", "cinescrape", "gobilda", "embedrise", "remotestream",
-          "warezcdn", "filmxy", "dbgo", "cineby", "hexa", "nova",
-        ];
-        const isKnownVideoHost = ALLOWED_HOST_SNIPPETS.some((snippet) => reqHost.includes(snippet));
+        const isKnownVideoHost = ALLOWED_VIDEO_HOSTS.some((snippet) => reqHost.includes(snippet));
         if (!isSameDomain) {
           if (/\.(m3u8|mp4|ts|webm|mpd|mkv)(\?|$)/i.test(url)) return true;
           if (isKnownVideoHost) return true;
@@ -1686,15 +1483,7 @@ export default function PlayerScreen() {
         const embedHost = new URL(currentEmbedUrl).hostname;
         const reqHost   = new URL(url).hostname;
         const isSameDomain = reqHost === embedHost || reqHost.endsWith("." + embedHost);
-        const isKnownVideoHost = [
-          "vidsrc", "vidlink", "videasy", "autoembed", "moviesapi", "nontongo",
-          "smashystream", "frembed", "jwplayer", "cloudflare", "m3u8", "hls", "stream",
-          "rabbitstream", "vidcloud", "upcloud", "streamtape", "filemoon", "mixdrop", "dood",
-          "googlevideo", "akamaized", "cdn", "vidbinge", "embedcc", "embedsu", "rive",
-          "multiembed", "2embed", "primewire", "111movies",
-          "flixhq", "moviee", "soaper", "cinescrape", "gobilda", "embedrise", "remotestream",
-          "warezcdn", "filmxy", "dbgo", "cineby", "hexa", "nova",
-        ].some((snippet) => reqHost.includes(snippet));
+        const isKnownVideoHost = ALLOWED_VIDEO_HOSTS.some((snippet) => reqHost.includes(snippet));
         if (!isSameDomain && !isKnownVideoHost && !/\.(m3u8|mp4|ts|webm|mpd|mkv)(\?|$)/i.test(url)) {
           embedWebviewRef.current?.stopLoading();
           embedWebviewRef.current?.goBack();
@@ -1788,9 +1577,14 @@ export default function PlayerScreen() {
             if (!disposedRef.current) {
               setIsLoading(false); setStreamError(null); setStreamErrorRef(""); injectEmbedAutoplay();
               const loadTime = Date.now() - providerLoadStartRef.current;
-              recordSuccess(provider, loadTime, adPopupCountRef.current).then(() => {
-                setRankedProviders(quickRank(STREAM_PROVIDERS));
-              });
+              // Record success via Stream Manager
+              const mgr = streamManagerRef.current;
+              if (mgr) {
+                mgr.recordPlaybackSuccess(loadTime, adPopupCountRef.current).then(() => {
+                  mgr.rerank();
+                  setRankedSources([...mgr.getState().sources]);
+                });
+              }
             }
           }}
           onError={(event) => {
@@ -1800,9 +1594,14 @@ export default function PlayerScreen() {
               setIsLoading(false);
               return;
             }
-            recordFailure(provider).then(() => {
-              setRankedProviders(quickRank(STREAM_PROVIDERS));
-            });
+            // Record failure via Stream Manager
+            const mgr = streamManagerRef.current;
+            if (mgr) {
+              mgr.recordPlaybackFailure(adPopupCountRef.current).then(() => {
+                mgr.rerank();
+                setRankedSources([...mgr.getState().sources]);
+              });
+            }
             setIsLoading(false);
             setStreamError(msg || "Stream could not be loaded");
             setStreamErrorRef(prev => prev || buildErrorReference("NX-PLY"));
@@ -1878,7 +1677,7 @@ export default function PlayerScreen() {
               {(tmdbId && !effectiveStreamUrl) || (useFallbackEmbed && tmdbId)
                 ? !engineReady
                   ? "AI Stream Engine analyseren..."
-                  : `Beste server selecteren... (${providerIndex + 1}/${rankedProviders.length})`
+                  : `Beste server selecteren... (${providerIndex + 1}/${rankedSources.length})`
                 : "Laden..."}
             </Text>
           </View>
@@ -1895,6 +1694,9 @@ export default function PlayerScreen() {
               onPress={() => {
                 setStreamError(null); setStreamErrorRef("");
                 setIsLoading(true); setProviderIndex(0); setWebviewKey(k => k + 1);
+                // Restart Stream Manager for fresh probe + re-rank
+                const mgr = streamManagerRef.current;
+                if (mgr) mgr.restart();
               }}
             >
               <Text style={styles.streamRetryText}>Opnieuw proberen</Text>
@@ -2048,8 +1850,14 @@ export default function PlayerScreen() {
           )}
         </Animated.View>
       ) : (embedUrl && Platform.OS !== "web") ? (
-        /* ─── Embed mode: auto-hiding overlay — back + server switch ─── */
+        /* ─── Embed mode: clean overlay — back + safe refresh + subtitle + server switch ─── */
         <Animated.View style={[styles.embedMinimalOverlay, { opacity: controlsOpacity }]} pointerEvents={controlsVisible ? "box-none" : "none"}>
+          {/* Background tap to dismiss */}
+          <TouchableOpacity
+            style={StyleSheet.absoluteFillObject}
+            onPress={() => { setShowSubtitlePicker(false); setControlsVisible(false); }}
+            activeOpacity={1}
+          />
           <LinearGradient colors={["rgba(0,0,0,0.7)", "transparent"]} style={[styles.embedMinimalBar, { paddingTop: insets.top + 8 }]}>
             <TouchableOpacity
               style={styles.embedBackBtn}
@@ -2063,15 +1871,62 @@ export default function PlayerScreen() {
                 <Text style={styles.embedSub}>S{season} · E{episode || "1"}</Text>
               )}
             </View>
+            {/* Subtitle button (embed mode) */}
+            {subtitleTracks.length > 0 && (
+              <TouchableOpacity style={styles.embedServerBtn} onPress={() => { setShowSubtitlePicker(s => !s); scheduleHide(); }}>
+                <Ionicons name="text" size={16} color={activeSubtitle ? COLORS.accent : "#fff"} />
+              </TouchableOpacity>
+            )}
+            {/* Safe refresh: retry current stream in-app, then advance to next */}
             {!allProvidersFailed && (
               <TouchableOpacity
                 style={styles.embedServerBtn}
-                onPress={() => { tryNextProvider(); SafeHaptics.impactLight(); }}
+                onPress={() => {
+                  SafeHaptics.impactLight();
+                  // Safe refresh: reload current WebView without external navigation
+                  setWebviewKey(k => k + 1);
+                  setIsLoading(true);
+                  setStreamError(null);
+                  setStreamErrorRef("");
+                  scheduleHide();
+                }}
               >
                 <Ionicons name="refresh" size={16} color="#fff" />
               </TouchableOpacity>
             )}
+            {/* Switch to next server */}
+            {!allProvidersFailed && (
+              <TouchableOpacity
+                style={styles.embedServerBtn}
+                onPress={() => { tryNextProvider(); SafeHaptics.impactLight(); scheduleHide(); }}
+              >
+                <Ionicons name="swap-horizontal" size={16} color="#fff" />
+              </TouchableOpacity>
+            )}
           </LinearGradient>
+
+          {/* Subtitle picker dropdown (embed mode) */}
+          {showSubtitlePicker && (
+            <View style={styles.subtitlePicker}>
+              <TouchableOpacity
+                style={[styles.subtitleOption, !activeSubtitle && styles.subtitleOptionActive]}
+                onPress={() => { setActiveSubtitle(null); setShowSubtitlePicker(false); }}
+              >
+                <Text style={[styles.subtitleOptionText, !activeSubtitle && styles.subtitleOptionTextActive]}>Off</Text>
+              </TouchableOpacity>
+              {subtitleTracks.slice(0, 8).map(track => (
+                <TouchableOpacity
+                  key={track.id}
+                  style={[styles.subtitleOption, activeSubtitle?.id === track.id && styles.subtitleOptionActive]}
+                  onPress={() => { setActiveSubtitle(track); setShowSubtitlePicker(false); }}
+                >
+                  <Text style={[styles.subtitleOptionText, activeSubtitle?.id === track.id && styles.subtitleOptionTextActive]}>
+                    {track.languageLabel}{track.hearingImpaired ? " (CC)" : ""}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
         </Animated.View>
       ) : null}
     </Pressable>
