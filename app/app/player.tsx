@@ -18,7 +18,6 @@ import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import WebView from "react-native-webview";
 import { activateKeepAwakeAsync, deactivateKeepAwake } from "expo-keep-awake";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { COLORS } from "@/constants/colors";
 import { useNexora } from "@/context/NexoraContext";
 import { SafeHaptics } from "@/lib/safeHaptics";
@@ -34,6 +33,15 @@ import {
   fetchSubtitles, getBestTrack,
 } from "@/lib/subtitle-manager";
 import type { SubtitleTrack } from "@/lib/subtitle-manager";
+import {
+  initEngine,
+  selectBestProviders,
+  quickRank,
+  recordSuccess,
+  recordFailure,
+  recordAdPopup,
+} from "@/lib/ai-stream-engine";
+import type { RankedProvider, StreamProvider } from "@/lib/ai-stream-engine";
 
 // ─── Stream providers ──────────────────────────────────────────────────────────
 const STREAM_PROVIDERS = [
@@ -74,83 +82,7 @@ const STREAM_PROVIDERS = [
   { id: "nova",         label: "Server 35" },
 ];
 
-// ─── AI Smart Server Ranking ──────────────────────────────────────────────────
-// Tracks provider performance (load time, errors, ad popups) and ranks them.
-// Best providers float to the top automatically over time.
-const PROVIDER_STATS_KEY = "@nexora_provider_stats";
-
-interface ProviderStats {
-  successes: number;
-  failures: number;
-  adPopups: number;
-  totalLoadTimeMs: number;
-  lastUsed: number;
-}
-
-type StatsMap = Record<string, ProviderStats>;
-
-let _cachedStats: StatsMap | null = null;
-
-async function loadProviderStats(): Promise<StatsMap> {
-  if (_cachedStats) return _cachedStats;
-  try {
-    const raw = await AsyncStorage.getItem(PROVIDER_STATS_KEY);
-    _cachedStats = raw ? JSON.parse(raw) : {};
-  } catch { _cachedStats = {}; }
-  return _cachedStats!;
-}
-
-async function saveProviderStats(stats: StatsMap): Promise<void> {
-  _cachedStats = stats;
-  try { await AsyncStorage.setItem(PROVIDER_STATS_KEY, JSON.stringify(stats)); } catch {}
-}
-
-async function recordProviderResult(
-  providerId: string,
-  outcome: "success" | "failure" | "adPopup",
-  loadTimeMs?: number,
-): Promise<void> {
-  const stats = await loadProviderStats();
-  if (!stats[providerId]) {
-    stats[providerId] = { successes: 0, failures: 0, adPopups: 0, totalLoadTimeMs: 0, lastUsed: 0 };
-  }
-  const s = stats[providerId];
-  s.lastUsed = Date.now();
-  if (outcome === "success") {
-    s.successes++;
-    if (loadTimeMs) s.totalLoadTimeMs += loadTimeMs;
-  } else if (outcome === "failure") {
-    s.failures++;
-  } else if (outcome === "adPopup") {
-    s.adPopups++;
-  }
-  await saveProviderStats(stats);
-}
-
-function rankProviders(providers: typeof STREAM_PROVIDERS): typeof STREAM_PROVIDERS {
-  if (!_cachedStats || Object.keys(_cachedStats).length === 0) return providers;
-  const stats = _cachedStats;
-
-  return [...providers].sort((a, b) => {
-    const sa = stats[a.id] || { successes: 0, failures: 0, adPopups: 0, totalLoadTimeMs: 0, lastUsed: 0 };
-    const sb = stats[b.id] || { successes: 0, failures: 0, adPopups: 0, totalLoadTimeMs: 0, lastUsed: 0 };
-
-    // Score = successes * 10 - failures * 5 - adPopups * 15 - avgLoadTime/1000
-    const totalA = sa.successes + sa.failures;
-    const totalB = sb.successes + sb.failures;
-    const avgLoadA = totalA > 0 ? sa.totalLoadTimeMs / Math.max(sa.successes, 1) : 5000;
-    const avgLoadB = totalB > 0 ? sb.totalLoadTimeMs / Math.max(sb.successes, 1) : 5000;
-
-    const scoreA = sa.successes * 10 - sa.failures * 5 - sa.adPopups * 15 - avgLoadA / 1000;
-    const scoreB = sb.successes * 10 - sb.failures * 5 - sb.adPopups * 15 - avgLoadB / 1000;
-
-    // Untested providers get a slight bonus (try them out)
-    const boostA = totalA === 0 ? 5 : 0;
-    const boostB = totalB === 0 ? 5 : 0;
-
-    return (scoreB + boostB) - (scoreA + boostA);
-  });
-}
+// ─── AI Stream Engine handles ranking (see lib/ai-stream-engine.ts) ───────────
 
 function withEmbedAutoplayParams(rawUrl: string): string {
   try {
@@ -1037,8 +969,11 @@ export default function PlayerScreen() {
   const contentCategory = type === "movie" ? "movies" : type === "series" ? "series" : null;
   const premiumBlocked = contentCategory && !hasPremium(contentCategory as any);
 
-  // Embed provider state — AI-ranked
-  const [rankedProviders, setRankedProviders] = useState(STREAM_PROVIDERS);
+  // Embed provider state — AI Stream Engine
+  const [rankedProviders, setRankedProviders] = useState<RankedProvider[]>(
+    STREAM_PROVIDERS.map(p => ({ provider: p, score: 50, probeLatencyMs: 0, avgLoadTimeMs: 0, successRate: 0.5 })),
+  );
+  const [engineReady, setEngineReady]         = useState(false);
   const [providerIndex, setProviderIndex]     = useState(0);
   const [useFallbackEmbed, setUseFallbackEmbed] = useState(false);
   const [webviewKey, setWebviewKey]           = useState(0);
@@ -1091,18 +1026,26 @@ export default function PlayerScreen() {
     return () => { cancelled = true; };
   }, [tmdbId, type, season, episode]);
 
-  const provider         = rankedProviders[providerIndex]?.id || rankedProviders[0].id;
+  const provider         = rankedProviders[providerIndex]?.provider?.id || rankedProviders[0]?.provider?.id || STREAM_PROVIDERS[0].id;
   const allProvidersFailed = providerIndex >= rankedProviders.length;
 
-  // ── AI Smart Ranking: load stats and rank providers on mount ────────────
+  // ── AI Stream Engine: init, probe, rank on mount ───────────────────────
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      await loadProviderStats();
-      if (!cancelled) setRankedProviders(rankProviders(STREAM_PROVIDERS));
+      await initEngine();
+      // Build embed URL getter for probing
+      const urlGetter = (id: string) =>
+        tmdbId ? getEmbedUrl(id, tmdbId, type || "movie", season || "1", episode || "1") : null;
+      // Full probe + rank (runs in parallel, ~5s max)
+      const ranked = await selectBestProviders(STREAM_PROVIDERS, urlGetter);
+      if (!cancelled) {
+        setRankedProviders(ranked);
+        setEngineReady(true);
+      }
     })();
     return () => { cancelled = true; };
-  }, []);
+  }, [tmdbId, type, season, episode]);
 
   // Track load start time whenever provider changes
   useEffect(() => {
@@ -1328,13 +1271,18 @@ export default function PlayerScreen() {
 
   // ── Provider switching ────────────────────────────────────────────────────
   const tryNextProvider = useCallback(() => {
-    // Record failure/adPopup for the current provider before moving on
-    const currentProv = rankedProviders[providerIndex]?.id;
+    // Record failure/adPopup for the current provider
+    const currentProv = rankedProviders[providerIndex]?.provider?.id;
     if (currentProv) {
-      const result = adPopupCountRef.current > 0 ? "adPopup" : "failure";
-      recordProviderResult(currentProv, result).then(() => {
-        setRankedProviders(rankProviders(STREAM_PROVIDERS));
-      });
+      if (adPopupCountRef.current > 2) {
+        recordAdPopup(currentProv).then(() =>
+          setRankedProviders(quickRank(STREAM_PROVIDERS)),
+        );
+      } else {
+        recordFailure(currentProv).then(() =>
+          setRankedProviders(quickRank(STREAM_PROVIDERS)),
+        );
+      }
     }
     setProviderIndex(i => i + 1);
     setWebviewKey(k => k + 1);
@@ -1587,8 +1535,8 @@ export default function PlayerScreen() {
             if (!disposedRef.current) {
               setIsLoading(false); setStreamError(null); setStreamErrorRef(""); injectEmbedAutoplay();
               const loadTime = Date.now() - providerLoadStartRef.current;
-              recordProviderResult(provider, adPopupCountRef.current > 0 ? "adPopup" : "success", loadTime).then(() => {
-                setRankedProviders(rankProviders(STREAM_PROVIDERS));
+              recordSuccess(provider, loadTime, adPopupCountRef.current).then(() => {
+                setRankedProviders(quickRank(STREAM_PROVIDERS));
               });
             }
           }}
@@ -1599,8 +1547,8 @@ export default function PlayerScreen() {
               setIsLoading(false);
               return;
             }
-            recordProviderResult(provider, "failure").then(() => {
-              setRankedProviders(rankProviders(STREAM_PROVIDERS));
+            recordFailure(provider).then(() => {
+              setRankedProviders(quickRank(STREAM_PROVIDERS));
             });
             setIsLoading(false);
             setStreamError(msg || "Stream could not be loaded");
@@ -1675,7 +1623,9 @@ export default function PlayerScreen() {
             <ActivityIndicator size="large" color={COLORS.accent} />
             <Text style={styles.loadingText}>
               {(tmdbId && !effectiveStreamUrl) || (useFallbackEmbed && tmdbId)
-                ? `Verbinding zoeken... (${providerIndex + 1}/${rankedProviders.length})`
+                ? !engineReady
+                  ? "AI Stream Engine analyseren..."
+                  : `Beste server selecteren... (${providerIndex + 1}/${rankedProviders.length})`
                 : "Laden..."}
             </Text>
           </View>
@@ -1685,7 +1635,7 @@ export default function PlayerScreen() {
         {(allProvidersFailed || (!isLoading && streamError && !tmdbId)) && Platform.OS !== "web" && (
           <View style={styles.streamErrorOverlay}>
             <Ionicons name="warning-outline" size={18} color={COLORS.live} />
-            <Text style={styles.streamErrorText}>Geen enkele server werkt momenteel.</Text>
+            <Text style={styles.streamErrorText}>Stream momenteel niet beschikbaar.</Text>
             <Text style={styles.streamErrorRef}>Foutcode: {streamErrorRef || "NX-PLY"}</Text>
             <TouchableOpacity
               style={styles.streamRetryBtn}
