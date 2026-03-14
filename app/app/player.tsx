@@ -489,6 +489,65 @@ const AD_BLOCK_JS = `
   window.onbeforeunload = null;
   try{ Object.defineProperty(window, 'onbeforeunload', { get:function(){return null;}, set:function(){}, configurable:true }); }catch(e){}
 
+  // ── Fullscreen API protection ──────────────────────────────────────────
+  // Prevent sites from hijacking fullscreen requests to show CAPTCHA/robot popups.
+  (function(){
+    // Run removeAds instantly on any fullscreen change
+    var _fsEvents = ['fullscreenchange','webkitfullscreenchange','mozfullscreenchange','MSFullscreenChange'];
+    _fsEvents.forEach(function(ev){
+      _origAddEvent.call(document, ev, function(){
+        setTimeout(removeAds, 0);
+        setTimeout(removeAds, 150);
+        setTimeout(removeAds, 500);
+        setTimeout(removeAds, 1500);
+      }, true);
+    });
+
+    // Wrap requestFullscreen on Element.prototype to clean overlays after requesting
+    var _wrapFS = function(proto, method){
+      var orig = proto[method];
+      if(!orig) return;
+      proto[method] = function(){
+        var result;
+        try{ result = orig.apply(this, arguments); }catch(e){}
+        // Clean up any overlays/captcha that appear when fullscreen is triggered
+        setTimeout(removeAds, 0);
+        setTimeout(removeAds, 200);
+        setTimeout(removeAds, 600);
+        setTimeout(removeAds, 1500);
+        if(result && result.then){
+          result.then(function(){ setTimeout(removeAds, 100); }).catch(function(){});
+        }
+        return result;
+      };
+    };
+    try{ _wrapFS(Element.prototype, 'requestFullscreen'); }catch(e){}
+    try{ _wrapFS(Element.prototype, 'webkitRequestFullscreen'); }catch(e){}
+    try{ _wrapFS(Element.prototype, 'webkitRequestFullScreen'); }catch(e){}
+    try{ _wrapFS(Element.prototype, 'mozRequestFullScreen'); }catch(e){}
+    try{ _wrapFS(Element.prototype, 'msRequestFullscreen'); }catch(e){}
+    // Wrap HTMLVideoElement.webkitEnterFullScreen (iOS/Safari)
+    try{ if(HTMLVideoElement.prototype.webkitEnterFullScreen) _wrapFS(HTMLVideoElement.prototype, 'webkitEnterFullScreen'); }catch(e){}
+    try{ if(HTMLVideoElement.prototype.webkitEnterFullscreen) _wrapFS(HTMLVideoElement.prototype, 'webkitEnterFullscreen'); }catch(e){}
+
+    // Block sites from listening to fullscreen events to inject captcha
+    var _origDocAdd = _origAddEvent;
+    document.addEventListener = function(type, fn, opts){
+      // Block non-player fullscreenchange handlers that sites use to inject CAPTCHA
+      if(typeof type === 'string' && type.toLowerCase().includes('fullscreen')){
+        // Let our own handlers run but block the site's
+        var fnStr = '';
+        try{ fnStr = fn.toString().toLowerCase(); }catch(e){}
+        if(fnStr.includes('captcha') || fnStr.includes('robot') || fnStr.includes('verify') ||
+           fnStr.includes('overlay') || fnStr.includes('modal') || fnStr.includes('popup') ||
+           fnStr.includes('challenge') || fnStr.includes('human')){
+          return;
+        }
+      }
+      return _origDocAdd.call(document, type, fn, opts);
+    };
+  })();
+
   // ── Helper: check if element is part of the video player ───────────────
   function _isPlayerElement(el){
     if(!el) return false;

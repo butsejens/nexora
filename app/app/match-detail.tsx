@@ -43,6 +43,20 @@ const SPORT_PROVIDERS = [
   { id: "embedme-6", label: "Server 6", getUrl: (matchId: string) => `https://embedme.top/embed/alpha/${matchId}/6` },
   { id: "embedme-7", label: "Server 7", getUrl: (matchId: string) => `https://embedme.top/embed/alpha/${matchId}/7` },
   { id: "embedme-8", label: "Server 8", getUrl: (matchId: string) => `https://embedme.top/embed/alpha/${matchId}/8` },
+  { id: "embedme-9", label: "Server 9", getUrl: (matchId: string) => `https://embedme.top/embed/alpha/${matchId}/9` },
+  { id: "embedme-10", label: "Server 10", getUrl: (matchId: string) => `https://embedme.top/embed/alpha/${matchId}/10` },
+  { id: "embedme-b1", label: "Server B1", getUrl: (matchId: string) => `https://embedme.top/embed/bravo/${matchId}/1` },
+  { id: "embedme-b2", label: "Server B2", getUrl: (matchId: string) => `https://embedme.top/embed/bravo/${matchId}/2` },
+  { id: "embedme-b3", label: "Server B3", getUrl: (matchId: string) => `https://embedme.top/embed/bravo/${matchId}/3` },
+  { id: "embedme-b4", label: "Server B4", getUrl: (matchId: string) => `https://embedme.top/embed/bravo/${matchId}/4` },
+  { id: "embedme-c1", label: "Server C1", getUrl: (matchId: string) => `https://embedme.top/embed/charlie/${matchId}/1` },
+  { id: "embedme-c2", label: "Server C2", getUrl: (matchId: string) => `https://embedme.top/embed/charlie/${matchId}/2` },
+  { id: "embedme-c3", label: "Server C3", getUrl: (matchId: string) => `https://embedme.top/embed/charlie/${matchId}/3` },
+  { id: "embedme-c4", label: "Server C4", getUrl: (matchId: string) => `https://embedme.top/embed/charlie/${matchId}/4` },
+  { id: "embedme-d1", label: "Server D1", getUrl: (matchId: string) => `https://embedme.top/embed/delta/${matchId}/1` },
+  { id: "embedme-d2", label: "Server D2", getUrl: (matchId: string) => `https://embedme.top/embed/delta/${matchId}/2` },
+  { id: "embedme-d3", label: "Server D3", getUrl: (matchId: string) => `https://embedme.top/embed/delta/${matchId}/3` },
+  { id: "embedme-d4", label: "Server D4", getUrl: (matchId: string) => `https://embedme.top/embed/delta/${matchId}/4` },
 ];
 
 // ─── Sport ad domains (network-level blocking) ────────────────────────────────
@@ -193,6 +207,58 @@ const SPORT_AD_BLOCK_JS = `
   // Block popstate/hashchange redirects
   window.addEventListener('popstate', function(e){ e.stopImmediatePropagation(); }, true);
   window.addEventListener('hashchange', function(e){ e.stopImmediatePropagation(); }, true);
+
+  // ── Fullscreen API protection ──────────────────────────────────────────
+  // Prevent sites from hijacking fullscreen to show CAPTCHA/robot popups
+  (function(){
+    var _origAEL = EventTarget.prototype.addEventListener;
+    var _fsEvents = ['fullscreenchange','webkitfullscreenchange','mozfullscreenchange','MSFullscreenChange'];
+    _fsEvents.forEach(function(ev){
+      _origAEL.call(document, ev, function(){
+        setTimeout(removeAds, 0);
+        setTimeout(removeAds, 150);
+        setTimeout(removeAds, 500);
+        setTimeout(removeAds, 1500);
+      }, true);
+    });
+    var _wrapFS = function(proto, method){
+      var orig = proto[method];
+      if(!orig) return;
+      proto[method] = function(){
+        var result;
+        try{ result = orig.apply(this, arguments); }catch(e){}
+        setTimeout(removeAds, 0);
+        setTimeout(removeAds, 200);
+        setTimeout(removeAds, 600);
+        setTimeout(removeAds, 1500);
+        if(result && result.then){
+          result.then(function(){ setTimeout(removeAds, 100); }).catch(function(){});
+        }
+        return result;
+      };
+    };
+    try{ _wrapFS(Element.prototype, 'requestFullscreen'); }catch(e){}
+    try{ _wrapFS(Element.prototype, 'webkitRequestFullscreen'); }catch(e){}
+    try{ _wrapFS(Element.prototype, 'webkitRequestFullScreen'); }catch(e){}
+    try{ _wrapFS(Element.prototype, 'mozRequestFullScreen'); }catch(e){}
+    try{ _wrapFS(Element.prototype, 'msRequestFullscreen'); }catch(e){}
+    try{ if(HTMLVideoElement.prototype.webkitEnterFullScreen) _wrapFS(HTMLVideoElement.prototype, 'webkitEnterFullScreen'); }catch(e){}
+    try{ if(HTMLVideoElement.prototype.webkitEnterFullscreen) _wrapFS(HTMLVideoElement.prototype, 'webkitEnterFullscreen'); }catch(e){}
+    // Block site fullscreen event listeners that inject captcha
+    var _origDocAdd = _origAEL;
+    document.addEventListener = function(type, fn, opts){
+      if(typeof type === 'string' && type.toLowerCase().includes('fullscreen')){
+        var fnStr = '';
+        try{ fnStr = fn.toString().toLowerCase(); }catch(e){}
+        if(fnStr.includes('captcha') || fnStr.includes('robot') || fnStr.includes('verify') ||
+           fnStr.includes('overlay') || fnStr.includes('modal') || fnStr.includes('popup') ||
+           fnStr.includes('challenge') || fnStr.includes('human')){
+          return;
+        }
+      }
+      return _origDocAdd.call(document, type, fn, opts);
+    };
+  })();
 
   // Overlay removal function
   function removeAds(){
