@@ -139,9 +139,9 @@ function DownloadModal({
 
   const handleRemove = () => {
     if (existingDl) {
-      Alert.alert("Verwijder download", "Wil je deze download verwijderen?", [
-        { text: "Annuleer", style: "cancel" },
-        { text: "Verwijder", style: "destructive", onPress: async () => {
+      Alert.alert("Remove download", "Do you want to remove this download?", [
+        { text: "Cancel", style: "cancel" },
+        { text: "Remove", style: "destructive", onPress: async () => {
           await removeDownload(existingDl.id);
           resetState();
           onClose();
@@ -231,7 +231,7 @@ function DownloadModal({
           )}
 
           <TouchableOpacity style={styles.closeBtnSmall} onPress={step === "downloading" ? handleCancel : () => { resetState(); onClose(); }}>
-            <Text style={styles.closeBtnText}>{step === "done" || step === "error" ? "Sluiten" : step === "downloading" ? "Annuleer" : "Sluiten"}</Text>
+            <Text style={styles.closeBtnText}>{step === "done" || step === "error" ? "Close" : step === "downloading" ? "Cancel" : "Close"}</Text>
           </TouchableOpacity>
         </View>
       </View>

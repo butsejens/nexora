@@ -31,18 +31,18 @@ export default function PlaylistEditScreen() {
   }
 
   const onSave = () => {
-    if (!name.trim()) return Alert.alert("Fout", "Naam is verplicht");
-    if (!url.trim()) return Alert.alert("Fout", "URL is verplicht");
+    if (!name.trim()) return Alert.alert("Error", "Name is required");
+    if (!url.trim()) return Alert.alert("Error", "URL is required");
     updatePlaylist(pl.id, { name: name.trim(), url: url.trim() });
     SafeHaptics.success();
     Alert.alert("Opgeslagen", "Playlist bijgewerkt.");
   };
 
   const onDelete = () => {
-    Alert.alert("Verwijderen", `Playlist '${pl.name}' verwijderen?`, [
-      { text: "Annuleer", style: "cancel" },
+    Alert.alert("Remove", `Remove playlist '${pl.name}'?`, [
+      { text: "Cancel", style: "cancel" },
       {
-        text: "Verwijder",
+        text: "Remove",
         style: "destructive",
         onPress: () => {
           removePlaylist(pl.id);

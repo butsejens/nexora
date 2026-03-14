@@ -14,11 +14,17 @@ export type ParsedChannel = {
   rating: number;
   tmdbId: number | null;
   seasons?: number;
+  epgId?: string;
 };
 
 const MAX_LIVE = 5000;
 const MAX_MOVIES = 5000;
 const MAX_SERIES = 3000;
+
+/** Normalize playlist text: strip BOM, normalize line endings, trim whitespace */
+function normalizePlaylistText(text: string): string {
+  return text.replace(/^\uFEFF/, "").replace(/\r\n?/g, "\n").trim();
+}
 
 function classify(group: string, url = "", name = ""): "live" | "movie" | "series" {
   // 1. Xtream Codes URL path patterns (most reliable)
@@ -71,6 +77,12 @@ function cleanName(name: string): string {
     .trim();
 }
 
+/** Extract year from title like "Movie Name (2023)" or "Movie Name 2023" */
+function extractYear(name: string): number | null {
+  const m = name.match(/\(?((?:19|20)\d{2})\)?/);
+  return m ? parseInt(m[1], 10) : null;
+}
+
 function makeId(url: string): string {
   const tail = url.replace(/[^a-zA-Z0-9]/g, "").slice(-18);
   return `iptv_${tail || Math.random().toString(36).slice(2, 12)}`;
@@ -89,8 +101,10 @@ export async function parseM3UContentAsync(
   const movies: ParsedChannel[] = [];
   const series: ParsedChannel[] = [];
   let capped = false;
+  const seen = new Set<string>();
 
-  const lines = content.split(/\r?\n/);
+  const normalized = normalizePlaylistText(content);
+  const lines = normalized.split("\n");
   const total = lines.length;
   const CHUNK = 4000; // lines per batch before yielding
 
@@ -112,6 +126,8 @@ export async function parseM3UContentAsync(
     const nameMatch = line.match(/,(.+)$/);
     const logoMatch = line.match(/tvg-logo="([^"]*)"/);
     const groupMatch = line.match(/group-title="([^"]*)"/);
+    const epgIdMatch = line.match(/tvg-id="([^"]*)"/);
+    const tvgNameMatch = line.match(/tvg-name="([^"]*)"/);
 
     let streamUrl = "";
     for (let j = i + 1; j < Math.min(i + 5, total); j++) {
@@ -120,7 +136,12 @@ export async function parseM3UContentAsync(
     }
     if (!streamUrl) continue;
 
-    const rawName = (nameMatch?.[1] || "").trim();
+    // Skip obviously invalid URLs
+    if (!/^https?:\/\//i.test(streamUrl) && !/^rtmp:\/\//i.test(streamUrl) && !/^rtsp:\/\//i.test(streamUrl)) continue;
+
+    const rawName = (nameMatch?.[1] || tvgNameMatch?.[1] || "").trim();
+    if (!rawName) continue;
+
     const group = groupMatch?.[1] || "General";
     const logo = logoMatch?.[1] || "";
     const cat = classify(group, streamUrl, rawName);
@@ -129,9 +150,15 @@ export async function parseM3UContentAsync(
     if (cat === "movie" && movies.length >= MAX_MOVIES) continue;
     if (cat === "series" && series.length >= MAX_SERIES) continue;
 
+    const id = makeId(streamUrl);
+    // Dedup by stream URL hash
+    if (seen.has(id)) continue;
+    seen.add(id);
+
     const clean = cleanName(rawName);
+    const year = cat === "movie" ? extractYear(rawName) : null;
     const base: ParsedChannel = {
-      id: makeId(streamUrl),
+      id,
       playlistId: "",
       name: rawName,
       title: clean || rawName,
@@ -142,9 +169,10 @@ export async function parseM3UContentAsync(
       poster: logo || null,
       backdrop: null,
       synopsis: "",
-      year: null,
+      year,
       rating: 0,
       tmdbId: null,
+      epgId: epgIdMatch?.[1] || undefined,
     };
 
     if (cat === "live") live.push(base);
@@ -164,7 +192,9 @@ export function parseM3UContent(content: string): {
   const movies: ParsedChannel[] = [];
   const series: ParsedChannel[] = [];
   let capped = false;
-  const lines = content.split(/\r?\n/);
+  const seen = new Set<string>();
+  const normalized = normalizePlaylistText(content);
+  const lines = normalized.split("\n");
   for (let i = 0; i < lines.length; i++) {
     if (live.length >= MAX_LIVE && movies.length >= MAX_MOVIES && series.length >= MAX_SERIES) {
       capped = true; break;
@@ -174,24 +204,33 @@ export function parseM3UContent(content: string): {
     const nameMatch = line.match(/,(.+)$/);
     const logoMatch = line.match(/tvg-logo="([^"]*)"/);
     const groupMatch = line.match(/group-title="([^"]*)"/);
+    const epgIdMatch = line.match(/tvg-id="([^"]*)"/);
+    const tvgNameMatch = line.match(/tvg-name="([^"]*)"/);
     let streamUrl = "";
     for (let j = i + 1; j < Math.min(i + 5, lines.length); j++) {
       const nl = lines[j].trim();
       if (nl && !nl.startsWith("#")) { streamUrl = nl; break; }
     }
     if (!streamUrl) continue;
-    const rawName = (nameMatch?.[1] || "").trim();
+    if (!/^https?:\/\//i.test(streamUrl) && !/^rtmp:\/\//i.test(streamUrl) && !/^rtsp:\/\//i.test(streamUrl)) continue;
+    const rawName = (nameMatch?.[1] || tvgNameMatch?.[1] || "").trim();
+    if (!rawName) continue;
     const group = groupMatch?.[1] || "General";
     const logo = logoMatch?.[1] || "";
     const cat = classify(group, streamUrl, rawName);
     if (cat === "live" && live.length >= MAX_LIVE) continue;
     if (cat === "movie" && movies.length >= MAX_MOVIES) continue;
     if (cat === "series" && series.length >= MAX_SERIES) continue;
+    const id = makeId(streamUrl);
+    if (seen.has(id)) continue;
+    seen.add(id);
     const clean = cleanName(rawName);
+    const year = cat === "movie" ? extractYear(rawName) : null;
     const base: ParsedChannel = {
-      id: makeId(streamUrl), playlistId: "", name: rawName, title: clean || rawName,
+      id, playlistId: "", name: rawName, title: clean || rawName,
       logo, group, url: streamUrl, category: cat,
-      poster: logo || null, backdrop: null, synopsis: "", year: null, rating: 0, tmdbId: null,
+      poster: logo || null, backdrop: null, synopsis: "", year, rating: 0, tmdbId: null,
+      epgId: epgIdMatch?.[1] || undefined,
     };
     if (cat === "live") live.push(base);
     else if (cat === "movie") movies.push(base);

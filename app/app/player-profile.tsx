@@ -9,7 +9,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { COLORS } from "@/constants/colors";
 import { apiRequest } from "@/lib/query-client";
 
-const UNKNOWN = "Onbekend";
+const UNKNOWN = "Unknown";
 
 function normalizeText(value: unknown, fallback = UNKNOWN): string {
   const text = String(value ?? "").trim();
@@ -220,7 +220,7 @@ export default function PlayerProfileScreen() {
               ((data?.formerClubs ?? []) as any[]).map((club, idx) => (
                 <View key={`${club?.name || "club"}_${idx}`} style={styles.clubRow}>
                   <MaterialCommunityIcons name={club?.role === "to" ? "arrow-right-bold-circle-outline" : "arrow-left-bold-circle-outline"} size={15} color={COLORS.accent} />
-                  <Text style={styles.clubName}>{club?.name || "Onbekend"}</Text>
+                  <Text style={styles.clubName}>{club?.name || "Unknown"}</Text>
                   <Text style={styles.clubDate}>{club?.date || ""}</Text>
                 </View>
               ))

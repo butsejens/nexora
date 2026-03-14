@@ -19,7 +19,7 @@ export function fetchM3UText(url: string, timeoutMs = 90000): Promise<string> {
 
     const timer = setTimeout(() => {
       xhr.abort();
-      done(new Error("Timeout: server reageert niet na 90 seconden"));
+      done(new Error("Timeout: server not responding after 90 seconds"));
     }, timeoutMs);
 
     xhr.onreadystatechange = () => {
@@ -29,12 +29,12 @@ export function fetchM3UText(url: string, timeoutMs = 90000): Promise<string> {
         const text = xhr.responseText || "";
         done(undefined, text);
       } else {
-        done(new Error(`Server gaf HTTP-status ${status || "onbekend"} terug`));
+        done(new Error(`Server returned HTTP status ${status || "unknown"}`));
       }
     };
 
-    xhr.onerror = () => done(new Error("Netwerkfout: URL niet bereikbaar"));
-    xhr.onabort = () => done(new Error("Verzoek geannuleerd"));
+    xhr.onerror = () => done(new Error("Network error: URL not reachable"));
+    xhr.onabort = () => done(new Error("Request cancelled"));
 
     xhr.open("GET", url, true);
     xhr.send();

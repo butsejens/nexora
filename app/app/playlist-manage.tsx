@@ -133,9 +133,9 @@ export default function PlaylistManageScreen() {
                 </TouchableOpacity>
                 <TouchableOpacity
                   onPress={() =>
-                    Alert.alert("Playlist Verwijderen", `"${pl.name}" en alle kanalen verwijderen?`, [
-                      { text: "Annuleer", style: "cancel" },
-                      { text: "Verwijder", style: "destructive", onPress: () => removePlaylist(pl.id) },
+                    Alert.alert("Remove Playlist", `Remove "${pl.name}" and all its channels?`, [
+                      { text: "Cancel", style: "cancel" },
+                      { text: "Remove", style: "destructive", onPress: () => removePlaylist(pl.id) },
                     ])
                   }
                   style={[styles.iconPill, { backgroundColor: COLORS.liveGlow, borderColor: COLORS.live }]}

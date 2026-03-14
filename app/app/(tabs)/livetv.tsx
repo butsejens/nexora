@@ -46,12 +46,16 @@ const ChannelCard = React.memo(function ChannelCard({ channel, onPress, onLongPr
 
 // ── VOD Card (for IPTV Movies / Series) ──────────────────────────────────────
 
-const VODCard = React.memo(function VODCard({ channel, onPress }: {
-  channel: IPTVChannel; onPress: () => void;
+const VODCard = React.memo(function VODCard({ channel, onPress, type }: {
+  channel: IPTVChannel; onPress: () => void; type: "movie" | "series";
 }) {
   const [imgError, setImgError] = useState(false);
-  const initials = getInitials(channel?.name || channel?.title || "?", 2);
   const poster = channel.poster || channel.logo;
+  const badgeLabel = type === "movie" ? "MOVIE" : "SERIES";
+  const badgeBg = type === "movie" ? "rgba(229,9,20,0.25)" : "rgba(0,120,255,0.25)";
+  const badgeBorder = type === "movie" ? "rgba(229,9,20,0.7)" : "rgba(80,160,255,0.7)";
+  const badgeColor = type === "movie" ? COLORS.live : "#80C4FF";
+  const meta = type === "movie" && channel.year ? String(channel.year) : type === "series" && channel.seasons ? `${channel.seasons} Season${channel.seasons > 1 ? "s" : ""}` : null;
 
   return (
     <TouchableOpacity style={styles.vodCard} onPress={onPress} activeOpacity={0.78}>
@@ -67,14 +71,15 @@ const VODCard = React.memo(function VODCard({ channel, onPress }: {
         )}
         <LinearGradient colors={["transparent", "rgba(0,0,0,0.7)"]} style={[StyleSheet.absoluteFill, { justifyContent: "flex-end" }]} start={{ x: 0, y: 0.5 }} end={{ x: 0, y: 1 }}>
           <View style={styles.vodBadgeRow}>
-            <View style={styles.vodBadge}>
-              <Text style={styles.vodBadgeText}>IPTV</Text>
+            <View style={[styles.vodBadge, { backgroundColor: badgeBg, borderColor: badgeBorder }]}>
+              <Text style={[styles.vodBadgeText, { color: badgeColor }]}>{badgeLabel}</Text>
             </View>
           </View>
         </LinearGradient>
       </View>
       <Text style={styles.vodTitle} numberOfLines={1}>{channel.title || channel.name}</Text>
-      {channel.group ? <Text style={styles.vodGroup} numberOfLines={1}>{channel.group}</Text> : null}
+      {meta ? <Text style={styles.vodMeta} numberOfLines={1}>{meta}</Text> : null}
+      {channel.group && !meta ? <Text style={styles.vodGroup} numberOfLines={1}>{channel.group}</Text> : null}
     </TouchableOpacity>
   );
 });
@@ -302,7 +307,7 @@ export default function LiveTVScreen() {
           numColumns={3}
           columnWrapperStyle={styles.vodGrid}
           renderItem={({ item }) => (
-            <VODCard channel={item} onPress={() => goToDetail(item)} />
+            <VODCard channel={item} onPress={() => goToDetail(item)} type={activeTab === "movies" ? "movie" : "series"} />
           )}
           contentContainerStyle={[styles.list, { paddingBottom: bottomPad }]}
           showsVerticalScrollIndicator={false}
@@ -417,11 +422,12 @@ const styles = StyleSheet.create({
   vodPosterInitialsText: { fontFamily: "Inter_800ExtraBold", fontSize: 11, color: "rgba(255,255,255,0.2)", textAlign: "center" },
   vodBadgeRow: { padding: 6 },
   vodBadge: {
-    alignSelf: "flex-start", backgroundColor: "rgba(0,120,255,0.25)", borderWidth: 1,
-    borderColor: "rgba(80,160,255,0.7)", borderRadius: 4, paddingHorizontal: 5, paddingVertical: 1,
+    alignSelf: "flex-start", borderWidth: 1,
+    borderRadius: 4, paddingHorizontal: 5, paddingVertical: 1,
   },
-  vodBadgeText: { fontFamily: "Inter_700Bold", fontSize: 7, color: "#80C4FF", letterSpacing: 0.5 },
+  vodBadgeText: { fontFamily: "Inter_700Bold", fontSize: 7, letterSpacing: 0.5 },
   vodTitle: { fontFamily: "Inter_600SemiBold", fontSize: 11, color: COLORS.text, marginTop: 6 },
+  vodMeta: { fontFamily: "Inter_500Medium", fontSize: 9, color: COLORS.accent, marginTop: 1 },
   vodGroup: { fontFamily: "Inter_400Regular", fontSize: 9, color: COLORS.textMuted, marginTop: 1 },
 
   // Empty / No results

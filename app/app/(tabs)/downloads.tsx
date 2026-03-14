@@ -97,12 +97,12 @@ export default function DownloadsScreen() {
   const handleDelete = (item: DownloadedItem) => {
     SafeHaptics.impactLight();
     Alert.alert(
-      "Download verwijderen",
-      `Wil je "${item.title}" van je toestel verwijderen?`,
+      "Remove download",
+      `Do you want to remove "${item.title}" from your device?`,
       [
-        { text: "Annuleer", style: "cancel" },
+        { text: "Cancel", style: "cancel" },
         {
-          text: "Verwijder",
+          text: "Remove",
           style: "destructive",
           onPress: async () => {
             setDeleting(item.id);

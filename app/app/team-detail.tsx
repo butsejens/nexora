@@ -45,7 +45,7 @@ const POSITION_LABELS: Record<string, string> = {
 function positionLabel(pos: string, positionName?: string): string {
   if (positionName && positionName.length > 2 && !/^[A-Z]{1,3}$/.test(positionName)) return positionName;
   const key = String(pos || "").toUpperCase().trim();
-  return POSITION_LABELS[key] || key || "Onbekend";
+  return POSITION_LABELS[key] || key || "Unknown";
 }
 
 export default function TeamDetailScreen() {
@@ -354,14 +354,14 @@ function PlayerCard({ player }: { player: any }) {
   const photoUri = photoCandidates[photoIndex];
   const posColor = POSITION_COLORS[player.position] || COLORS.accent;
   const rawName = String(player?.name || "").trim();
-  const safeName = rawName || "Onbekend";
+  const safeName = rawName || "Unknown";
   const initials = safeName.split(/\s+/).filter(Boolean).slice(0, 2).map((p: string) => p[0]).join("").toUpperCase() || "?";
 
   return (
     <View style={styles.playerCard}>
       <View style={styles.playerTopRow}>
         <View style={[styles.jerseyBadge, { borderColor: posColor }]}> 
-          <Text style={[styles.jerseyNum, { color: posColor }]}>{player.jersey || "Onbekend"}</Text>
+          <Text style={[styles.jerseyNum, { color: posColor }]}>{player.jersey || "Unknown"}</Text>
         </View>
 
         {photoUri ? (
@@ -400,9 +400,9 @@ function PlayerCard({ player }: { player: any }) {
       </View>
 
       <View style={styles.playerStats}>
-        <StatPill label="Leeftijd" value={player.age ? String(player.age) : "Onbekend"} />
-        <StatPill label="Lengte" value={player.height || "Onbekend"} />
-        <StatPill label="Gewicht" value={player.weight || "Onbekend"} />
+        <StatPill label="Age" value={player.age ? String(player.age) : "Unknown"} />
+        <StatPill label="Height" value={player.height || "Unknown"} />
+        <StatPill label="Weight" value={player.weight || "Unknown"} />
       </View>
     </View>
   );

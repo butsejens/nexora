@@ -326,31 +326,31 @@ function UpdateModal({
 
           <View style={updateStyles.footer}>
             {status === "uptodate" && (
-              <Text style={updateStyles.statusText}>Je hebt de nieuwste versie.</Text>
+              <Text style={updateStyles.statusText}>You have the latest version.</Text>
             )}
             {status === "update" && (
               <Text style={[updateStyles.statusText, { color: COLORS.accent }]}>
-                Nieuwe versie beschikbaar!
+                New version available!
               </Text>
             )}
             {status === "downloading" && (
-              <Text style={updateStyles.statusText}>Update downloaden...</Text>
+              <Text style={updateStyles.statusText}>Downloading update...</Text>
             )}
             {status === "ready" && (
               <Text style={[updateStyles.statusText, { color: "#22c55e" }]}>
-                Update klaar — tap om te herstarten.
+                Update ready — tap to restart.
               </Text>
             )}
 
             {status === "ready" ? (
               <TouchableOpacity style={updateStyles.checkBtn} onPress={handleReload}>
                 <Ionicons name="refresh" size={16} color={COLORS.background} />
-                <Text style={updateStyles.checkBtnText}>Herstart en installeer</Text>
+                <Text style={updateStyles.checkBtnText}>Restart and install</Text>
               </TouchableOpacity>
             ) : status === "update" ? (
               <TouchableOpacity style={updateStyles.checkBtn} onPress={handleDownload}>
                 <Ionicons name="download-outline" size={16} color={COLORS.background} />
-                <Text style={updateStyles.checkBtnText}>Download & installeer</Text>
+                <Text style={updateStyles.checkBtnText}>Download & install</Text>
               </TouchableOpacity>
             ) : (
               <TouchableOpacity
@@ -364,7 +364,7 @@ function UpdateModal({
                   <Ionicons name="cloud-download-outline" size={16} color={COLORS.background} />
                 )}
                 <Text style={updateStyles.checkBtnText}>
-                  {checking ? "Controleren..." : "Controleer op updates"}
+                  {checking ? "Checking..." : "Check for updates"}
                 </Text>
               </TouchableOpacity>
             )}
@@ -639,8 +639,8 @@ const [showAddPlaylist, setShowAddPlaylist] = useState(false);
     });
     SafeHaptics.success();
     Alert.alert(
-      "Playlist Geladen",
-      `${allChannels.length} kanalen:\n• ${(activatedData.live || []).length} Live\n• ${(activatedData.movies || []).length} Films\n• ${(activatedData.series || []).length} Series`
+      "Playlist Loaded",
+      `${allChannels.length} channels:\n• ${(activatedData.live || []).length} Live\n• ${(activatedData.movies || []).length} Movies\n• ${(activatedData.series || []).length} Series`
     );
   };
 
@@ -686,7 +686,7 @@ const [showAddPlaylist, setShowAddPlaylist] = useState(false);
           return;
         }
         const errData = await res.json().catch(() => ({}));
-        throw new Error(errData.error || `Server fout ${res.status}`);
+        throw new Error(errData.error || `Server error ${res.status}`);
       } catch (serverErr: any) {
         console.log("Server-side Xtream failed, trying direct URL:", serverErr.message);
       }
@@ -695,8 +695,8 @@ const [showAddPlaylist, setShowAddPlaylist] = useState(false);
       await loadPlaylist(playlistId, fallbackUrl);
     } catch (err: any) {
       setProgressVisible(false);
-      updatePlaylist(playlistId, { status: "error", error: err.message || "Laden mislukt" });
-      Alert.alert("Xtream fout", err.message || "Onbekende fout");
+      updatePlaylist(playlistId, { status: "error", error: err.message || "Loading failed" });
+      Alert.alert("Xtream error", err.message || "Unknown error");
       setLoadingPlaylistId(null);
     }
   };
@@ -715,7 +715,7 @@ const [showAddPlaylist, setShowAddPlaylist] = useState(false);
         // Server returns 502 when it can't reach the URL → fall through to client-side
         if (res.status === 502 || res.status === 422) {
           const errData = await res.json();
-          throw new Error(errData.error || `Server fout ${res.status}`);
+          throw new Error(errData.error || `Server error ${res.status}`);
         }
         if (!res.ok) throw new Error(`Server fout ${res.status}`);
         setProgressPct(60);
@@ -740,7 +740,7 @@ const [showAddPlaylist, setShowAddPlaylist] = useState(false);
       } catch (_fetchErr: any) { void _fetchErr; // ignore unused error
 
         throw new Error(
-          `Kan URL niet laden via server of direct.\n\nProbeer:\n• Kopieer de URL en plak ze als bestand\n• Check of de URL correct is\n• Sommige IPTV servers blokkeren externe toegang`
+          `Cannot load URL via server or direct connection.\n\nTry:\n• Copy the URL and paste as a file\n• Check if the URL is correct\n• Some IPTV servers block external access`
         );
       }
 
@@ -755,7 +755,7 @@ const [showAddPlaylist, setShowAddPlaylist] = useState(false);
       }
 
       if (!text.includes("#EXTM3U") && !text.includes("#EXTINF")) {
-        throw new Error("Geen geldig M3U bestand. Controleer de URL.");
+        throw new Error("Not a valid M3U file. Please check the URL.");
       }
 
       setProgressStage("parse");
@@ -768,7 +768,7 @@ const [showAddPlaylist, setShowAddPlaylist] = useState(false);
 
       const allChannels = [...data.live, ...data.movies, ...data.series];
       if (allChannels.length === 0) {
-        throw new Error("Geen kanalen gevonden in het M3U bestand.");
+        throw new Error("No channels found in the M3U file.");
       }
 
       await setIptvChannelsForPlaylist(playlistId, allChannels as any);
@@ -784,13 +784,13 @@ const [showAddPlaylist, setShowAddPlaylist] = useState(false);
       SafeHaptics.success();
       setTimeout(() => setProgressVisible(false), 600);
       Alert.alert(
-        "Playlist Geladen ✓",
-        `${allChannels.length} kanalen:\n• ${data.live.length} Live\n• ${data.movies.length} Films\n• ${data.series.length} Series`
+        "Playlist Loaded",
+        `${allChannels.length} channels:\n• ${data.live.length} Live\n• ${data.movies.length} Movies\n• ${data.series.length} Series`
       );
     } catch (err: any) {
       setProgressVisible(false);
-      updatePlaylist(playlistId, { status: "error", error: err.message || "Laden mislukt" });
-      Alert.alert("Fout bij laden", err.message || "Onbekende fout");
+      updatePlaylist(playlistId, { status: "error", error: err.message || "Loading failed" });
+      Alert.alert("Loading error", err.message || "Unknown error");
     } finally {
       setLoadingPlaylistId(null);
     }
@@ -810,7 +810,7 @@ const [showAddPlaylist, setShowAddPlaylist] = useState(false);
       });
       const allChannels = [...data.live, ...data.movies, ...data.series];
       if (allChannels.length === 0) {
-        throw new Error("Geen kanalen gevonden in het M3U bestand. Controleer de inhoud.");
+        throw new Error("No channels found in the M3U file. Please check the content.");
       }
       await setIptvChannelsForPlaylist(playlistId, allChannels as any);
       updatePlaylist(playlistId, {
@@ -823,14 +823,14 @@ const [showAddPlaylist, setShowAddPlaylist] = useState(false);
       setProgressPct(100);
       setProgressStage("done");
       SafeHaptics.success();
-      const cappedNote = data.capped ? "\n\nPlaylist was erg groot — eerste 13.000 kanalen geladen." : "";
+      const cappedNote = data.capped ? "\n\nPlaylist was very large — first 13,000 channels loaded." : "";
       Alert.alert(
-        "Playlist Geladen",
-        `${allChannels.length} kanalen geladen:\n• ${data.live.length} Live\n• ${data.movies.length} Films\n• ${data.series.length} Series${cappedNote}`
+        "Playlist Loaded",
+        `${allChannels.length} channels loaded:\n• ${data.live.length} Live\n• ${data.movies.length} Movies\n• ${data.series.length} Series${cappedNote}`
       );
     } catch (err: any) {
-      updatePlaylist(playlistId, { status: "error", error: err.message || "Laden mislukt" });
-      Alert.alert("Fout", `Playlist laden mislukt: ${err.message || "Onbekende fout"}`);
+      updatePlaylist(playlistId, { status: "error", error: err.message || "Loading failed" });
+      Alert.alert("Error", `Playlist loading failed: ${err.message || "Unknown error"}`);
     } finally {
       setLoadingPlaylistId(null);
       setFilePhase(null);
@@ -891,7 +891,7 @@ const [showAddPlaylist, setShowAddPlaylist] = useState(false);
       setSelectedFileName(asset.name || "playlist.m3u");
       setSelectedFileContent(text);
     } catch (err: any) {
-      Alert.alert("Fout", "Bestand kon niet worden geladen: " + (err.message || ""));
+      Alert.alert("Error", "File could not be loaded: " + (err.message || ""));
     } finally {
       setFileLoading(false);
       setFilePhase(null);
@@ -906,13 +906,13 @@ const [showAddPlaylist, setShowAddPlaylist] = useState(false);
     try {
       const text = await file.text();
       if (!text.includes("#EXTM3U") && !text.includes("#EXTINF")) {
-        Alert.alert("Ongeldig bestand", "Dit is geen geldig M3U bestand.");
+        Alert.alert("Invalid file", "This is not a valid M3U file.");
         return;
       }
       setSelectedFileName(file.name);
       setSelectedFileContent(text);
     } catch {
-      Alert.alert("Fout", "Bestand kon niet worden gelezen.");
+      Alert.alert("Error", "File could not be read.");
     } finally {
       setFileLoading(false);
     }
@@ -920,12 +920,12 @@ const [showAddPlaylist, setShowAddPlaylist] = useState(false);
 
   const handleAddPlaylist = async () => {
     if (!playlistName.trim()) {
-      Alert.alert("Fout", "Vul een naam in voor de playlist");
+      Alert.alert("Error", "Enter a name for the playlist");
       return;
     }
     if (addMode === "url") {
       if (!playlistUrl.trim()) {
-        Alert.alert("Fout", "Vul een URL in");
+        Alert.alert("Error", "Enter a URL");
         return;
       }
       const name = playlistName.trim();
@@ -936,7 +936,7 @@ const [showAddPlaylist, setShowAddPlaylist] = useState(false);
       loadPlaylist(newPl.id, url);
     } else if (addMode === "xtream") {
       if (!xtreamHost.trim() || !xtreamUser.trim() || !xtreamPass.trim()) {
-        Alert.alert("Fout", "Vul host, username en password in");
+        Alert.alert("Error", "Enter host, username and password");
         return;
       }
       let host = xtreamHost.trim().replace(/\/$/, "");
@@ -953,18 +953,18 @@ const [showAddPlaylist, setShowAddPlaylist] = useState(false);
       loadXtreamPlaylist(newPl.id, host, uname, upass, url);
     } else if (addMode === "file") {
       if (!selectedFileContent) {
-        Alert.alert("Fout", "Selecteer eerst een M3U bestand");
+        Alert.alert("Error", "Select an M3U file first");
         return;
       }
       const name = playlistName.trim();
       const content = selectedFileContent;
       setPlaylistName(""); setSelectedFileName(null); setSelectedFileContent(null);
       setShowAddPlaylist(false); setAddMode("url");
-      const newPl = await addPlaylist({ name, url: selectedFileName || "bestand.m3u", type: "m3u", status: "loading" });
+      const newPl = await addPlaylist({ name, url: selectedFileName || "file.m3u", type: "m3u", status: "loading" });
       loadPlaylistFromContent(newPl.id, content);
     } else {
       if (!playlistUrl.trim()) {
-        Alert.alert("Fout", "Vul een M3U8 stream URL in");
+        Alert.alert("Error", "Enter an M3U8 stream URL");
         return;
       }
       const name = playlistName.trim() || "M3U8 Stream";
@@ -1028,9 +1028,9 @@ const [showAddPlaylist, setShowAddPlaylist] = useState(false);
   const handleResetAppData = () => {
     Alert.alert(
       "Reset App Data",
-      "Dit wist playlists, favorieten, geschiedenis en cache. Je moet playlists opnieuw toevoegen.",
+      "This will clear playlists, favorites, history and cache. You will need to re-add playlists.",
       [
-        { text: "Annuleer", style: "cancel" },
+        { text: "Cancel", style: "cancel" },
         {
           text: "Reset",
           style: "destructive",
@@ -1043,7 +1043,7 @@ const [showAddPlaylist, setShowAddPlaylist] = useState(false);
             } catch (e: any) {
       setProgressVisible(false);
 
-              Alert.alert("Fout", e?.message || "Kon app data niet resetten");
+              Alert.alert("Error", e?.message || "Could not reset app data");
             }
           },
         },
@@ -1100,7 +1100,7 @@ const [showAddPlaylist, setShowAddPlaylist] = useState(false);
           >
             <MaterialCommunityIcons name="crown" size={13} color={isPremium ? "#FFD700" : COLORS.textMuted} />
             <Text style={[styles.premiumBadgeText, isPremium && styles.premiumBadgeTextActive]}>
-              {isPremium ? "NEXORA Premium" : "Upgrade naar Premium"}
+              {isPremium ? "NEXORA Premium" : "Upgrade to Premium"}
             </Text>
             {!isPremium && <Ionicons name="chevron-forward" size={13} color={COLORS.accent} />}
           </TouchableOpacity>
@@ -1211,8 +1211,8 @@ const [showAddPlaylist, setShowAddPlaylist] = useState(false);
               ref={(el) => { webFileInputRef.current = el as any; }}
               type="file"
               accept=".m3u,.m3u8,text/plain,application/x-mpegurl"
-              title="Selecteer M3U bestand"
-              aria-label="Selecteer M3U bestand"
+              title="Select M3U file"
+              aria-label="Select M3U file"
               hidden
               onChange={handleWebFileChange}
             />
@@ -1241,12 +1241,12 @@ const [showAddPlaylist, setShowAddPlaylist] = useState(false);
                   onPress={() => setAddMode("file")}
                 >
                   <Ionicons name="document-outline" size={14} color={addMode === "file" ? COLORS.accent : COLORS.textMuted} />
-                  <Text style={[styles.modeTabText, addMode === "file" && styles.modeTabTextActive]}>Bestand</Text>
+                  <Text style={[styles.modeTabText, addMode === "file" && styles.modeTabTextActive]}>File</Text>
                 </TouchableOpacity>
               </View>
 
               <TextInput
-                style={styles.input} placeholder="Playlist naam" placeholderTextColor={COLORS.textMuted}
+                style={styles.input} placeholder="Playlist name" placeholderTextColor={COLORS.textMuted}
                 value={playlistName} onChangeText={setPlaylistName}
               />
 
@@ -1260,14 +1260,14 @@ const [showAddPlaylist, setShowAddPlaylist] = useState(false);
                     autoCapitalize="none" keyboardType="url"
                   />
                   <Text style={styles.urlHint}>
-                    Ondersteund: M3U, M3U8, M3U+ en Xtream Codes (get.php) URLs. Alle soorten playlist-links worden hier uitgelezen.
+                    Supported: M3U, M3U8, M3U+ and Xtream Codes (get.php) URLs. All playlist link types are parsed automatically.
                   </Text>
                 </>
               ) : addMode === "xtream" ? (
                 <>
                   <TextInput
                     style={styles.input}
-                    placeholder="Xtream host (bv. http://example.com:8080)"
+                    placeholder="Xtream host (e.g. http://example.com:8080)"
                     placeholderTextColor={COLORS.textMuted}
                     value={xtreamHost}
                     onChangeText={setXtreamHost}
@@ -1292,7 +1292,7 @@ const [showAddPlaylist, setShowAddPlaylist] = useState(false);
                     secureTextEntry
                   />
                   <Text style={styles.urlHint}>
-                    We bouwen automatisch je M3U+ link via get.php (output=ts). Dit is compatibel met de bestaande parser.
+                    We automatically build your M3U+ link via get.php (output=ts). Compatible with the existing parser.
                   </Text>
                 </>
               ) : (
@@ -1307,7 +1307,7 @@ const [showAddPlaylist, setShowAddPlaylist] = useState(false);
                   ) : (
                     <>
                       <Ionicons name="cloud-upload-outline" size={18} color={COLORS.accent} />
-                      <Text style={styles.filePickBtnText}>Selecteer M3U bestand (.m3u / .m3u8)</Text>
+                      <Text style={styles.filePickBtnText}>Select M3U file (.m3u / .m3u8)</Text>
                     </>
                   )}
                 </TouchableOpacity>
@@ -1318,17 +1318,17 @@ const [showAddPlaylist, setShowAddPlaylist] = useState(false);
                   setShowAddPlaylist(false);
                   setAddMode("url"); setSelectedFileName(null); setSelectedFileContent(null);
                 }}>
-                  <Text style={styles.cancelBtnText}>Annuleer</Text>
+                  <Text style={styles.cancelBtnText}>Cancel</Text>
                 </TouchableOpacity>
                 <TouchableOpacity style={styles.addBtn} onPress={handleAddPlaylist}>
-                  <Text style={styles.addBtnText}>Toevoegen</Text>
+                  <Text style={styles.addBtnText}>Add</Text>
                 </TouchableOpacity>
               </View>
             </View>
           ) : (
             <TouchableOpacity style={styles.addPlaylistBtn} onPress={() => setShowAddPlaylist(true)}>
               <Ionicons name="add-circle-outline" size={18} color={COLORS.accent} />
-              <Text style={styles.addPlaylistText}>M3U Playlist Toevoegen</Text>
+              <Text style={styles.addPlaylistText}>Add M3U Playlist</Text>
             </TouchableOpacity>
           )}
         </Section>
@@ -1403,8 +1403,8 @@ const [showAddPlaylist, setShowAddPlaylist] = useState(false);
           <SettingRow
             icon="folder-outline"
             label="Offline downloads"
-            value="Niet beschikbaar"
-            onPress={() => Alert.alert("Downloads", "Offline downloads zijn nog niet beschikbaar in deze versie. Content streamt direct via je IPTV playlist.")}
+            value="Not available"
+            onPress={() => Alert.alert("Downloads", "Offline downloads are not yet available in this version. Content streams directly from your IPTV playlist.")}
           />
         </Section>
 
@@ -1440,7 +1440,7 @@ const [showAddPlaylist, setShowAddPlaylist] = useState(false);
           <Divider />
           <SettingRow
             icon="time-outline"
-            label="Kijkgeschiedenis wissen"
+            label="Clear watch history"
             value={watchHistory.length > 0 ? `${watchHistory.length} items` : "Leeg"}
             onPress={handleClearHistory}
           />

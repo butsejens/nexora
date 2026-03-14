@@ -624,7 +624,7 @@ video{width:100%;height:100%;object-fit:contain;display:block;background:#000}
 </head>
 <body>
 <video id="v" autoplay playsinline webkit-playsinline x5-playsinline muted></video>
-<div id="err">Stream kon niet laden.<br>Probeer opnieuw of kies een ander kanaal.</div>
+<div id="err">Stream could not be loaded.<br>Try again or choose another channel.</div>
 <script src="https://cdn.jsdelivr.net/npm/hls.js@1.4.14/dist/hls.min.js"></script>
 <script>
 (function(){
@@ -907,7 +907,7 @@ export default function PlayerScreen() {
     if (disposedRef.current) return;
     webviewCrashCountRef.current++;
     if (webviewCrashCountRef.current > 3) {
-      setStreamError("WebView crashed herhaaldelijk");
+      setStreamError("WebView crashed repeatedly");
       setStreamErrorRef(buildErrorReference("NX-PLY-CRASH"));
       setIsLoading(false);
       return;
@@ -1092,7 +1092,7 @@ export default function PlayerScreen() {
               setStreamError(null);
             } else {
               setIsLoading(false);
-              const msg = event?.nativeEvent?.description || "Stream kon niet laden";
+              const msg = event?.nativeEvent?.description || "Stream could not be loaded";
               setStreamError(msg);
               setStreamErrorRef(prev => prev || buildErrorReference("NX-PLY"));
             }
@@ -1132,7 +1132,7 @@ export default function PlayerScreen() {
               return;
             }
             setIsLoading(false);
-            setStreamError(msg || "Stream kon niet laden");
+            setStreamError(msg || "Stream could not be loaded");
             setStreamErrorRef(prev => prev || buildErrorReference("NX-PLY"));
           }}
           onShouldStartLoadWithRequest={makeNavGuard(embedUrl)}
