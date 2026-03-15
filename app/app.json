@@ -2,8 +2,8 @@
   "expo": {
     "name": "NEXORA",
     "slug": "nexora-sports-stream",
-    "version": "2.5.88",
-    "runtimeVersion": "2.5.88",
+    "version": "2.5.89",
+    "runtimeVersion": "2.5.89",
     "updates": {
       "enabled": true,
       "checkAutomatically": "ON_LOAD",
