@@ -260,7 +260,7 @@ async function probeProvider(
       const lower = body.toLowerCase();
 
       // Detect actual player frameworks (strong signal)
-      hasPlayerFramework = /hls\.js|jwplayer|plyr[\.\s]|video\.js|videojs|clappr|shaka-player|dash\.js|fluidplayer|mediaelement|artplayer|dplayer/i.test(body);
+      hasPlayerFramework = /hls\.js|jwplayer|plyr[\.\s]|video\.js|videojs|clappr|shaka-player|dash\.js|fluidplayer|mediaelement|artplayer|dplayer|vidstack/i.test(body);
 
       // Detect video elements or embed iframes (moderate signal)
       hasVideoContent = /<video[\s>]|<source[^>]+type=["']video|<iframe[^>]+src=["'][^"']*(?:player|embed|stream)/i.test(body)
