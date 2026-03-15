@@ -922,12 +922,35 @@ const FORCE_PLAY_JS = `
 // ─── Mid-stream buffer stall detection ────────────────────────────────────────
 // Injected after embed loads. Monitors video elements for stalling/errors.
 // Posts message to React Native when playback dies mid-stream.
+// Also detects when NO video element exists (error/redirect page).
 const BUFFER_MONITOR_JS = `
 (function(){
   if (window.__nexoraBufferMonitor) return;
   window.__nexoraBufferMonitor = true;
   var stallCount = 0;
   var lastTime = -1;
+  var noVideoCheckCount = 0;
+
+  // Early detection: check if video element or iframe exists
+  // If nothing found after 6s, this is likely an error/redirect page
+  var earlyCheck = setInterval(function(){
+    noVideoCheckCount++;
+    var videos = document.querySelectorAll('video');
+    var iframes = document.querySelectorAll('iframe');
+    var hasMedia = videos.length > 0 || iframes.length > 0;
+    if (hasMedia) {
+      clearInterval(earlyCheck);
+      return;
+    }
+    // 3 checks x 2s = 6s with no video/iframe = dead page
+    if (noVideoCheckCount >= 3) {
+      clearInterval(earlyCheck);
+      window.ReactNativeWebView && window.ReactNativeWebView.postMessage(JSON.stringify({
+        type: 'no_video_element', message: 'No video or iframe found after 6s'
+      }));
+    }
+  }, 2000);
+
   var checkInterval = setInterval(function(){
     var videos = document.querySelectorAll('video');
     if (!videos.length) return;
@@ -936,8 +959,8 @@ const BUFFER_MONITOR_JS = `
     // Check if video time is progressing
     if (v.currentTime === lastTime && v.currentTime > 0) {
       stallCount++;
-      if (stallCount >= 6) {
-        // 6 checks x 3s = 18s stalled — stream is dead
+      if (stallCount >= 4) {
+        // 4 checks x 3s = 12s stalled — stream is dead
         clearInterval(checkInterval);
         window.ReactNativeWebView && window.ReactNativeWebView.postMessage(JSON.stringify({
           type: 'midstream_stall', currentTime: v.currentTime
@@ -1515,21 +1538,21 @@ export default function PlayerScreen() {
     } catch {}
   };
 
-  // Auto-advance on error (embed only) — wait 6s before advancing so user sees what happened
+  // Auto-advance on error (embed only) — wait 4s before advancing so user sees what happened
   useEffect(() => {
     if (!streamError) return;
     if (effectiveStreamUrl && !useFallbackEmbed) return;
     if (!tmdbId || allProvidersFailed) return;
-    const t = setTimeout(() => tryNextProvider(), 6000);
+    const t = setTimeout(() => tryNextProvider(), 4000);
     return () => clearTimeout(t);
   }, [streamError, effectiveStreamUrl, useFallbackEmbed, tmdbId, allProvidersFailed, tryNextProvider]);
 
-  // Auto-advance on slow load (embed only) — give provider 12s to load
+  // Auto-advance on slow load (embed only) — give provider 10s to load
   useEffect(() => {
     if (!isLoading) return;
     if (effectiveStreamUrl && !useFallbackEmbed) return;
     if (!tmdbId || allProvidersFailed) return;
-    const t = setTimeout(() => tryNextProvider(), 12000);
+    const t = setTimeout(() => tryNextProvider(), 10000);
     return () => clearTimeout(t);
   }, [isLoading, webviewKey, effectiveStreamUrl, useFallbackEmbed, tmdbId, allProvidersFailed, tryNextProvider]);
 
@@ -1801,6 +1824,12 @@ export default function PlayerScreen() {
               if (data.type === "midstream_stall" || data.type === "midstream_error") {
                 const mgr = streamManagerRef.current;
                 if (mgr) mgr.handleMidStreamFailure();
+              }
+              if (data.type === "no_video_element") {
+                // Page loaded but no video element found — likely error/redirect page
+                // Auto-advance to next server immediately
+                const mgr = streamManagerRef.current;
+                if (mgr) mgr.advanceToNext(adPopupCountRef.current);
               }
             } catch {}
           }}

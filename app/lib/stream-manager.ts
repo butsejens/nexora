@@ -205,9 +205,13 @@ export class StreamManager {
     const ranked = await selectBestProviders(STREAM_PROVIDERS, urlGetter);
 
     // Build stream sources with combined AI + reliability scores
-    // Filter out blacklisted providers
+    // Filter: blacklisted, unreachable (score=0), and error-page providers
     this.sources = ranked
-      .filter(r => !isBlacklisted(r.provider.id) && !isProviderBlacklisted(r.provider.id))
+      .filter(r => {
+        if (isBlacklisted(r.provider.id) || isProviderBlacklisted(r.provider.id)) return false;
+        if (r.score === 0) return false; // probe detected error/unreachable/dead server
+        return true;
+      })
       .map(r => {
         const reliabilityScore = getReliabilityScore(r.provider.id);
         const embedUrl = urlGetter(r.provider.id)!;
@@ -223,9 +227,11 @@ export class StreamManager {
       };
     });
 
-    // If all providers are blacklisted, include them as last resort
+    // If all providers are filtered out, include reachable ones as last resort
     if (this.sources.length === 0) {
-      this.sources = ranked.map(r => {
+      this.sources = ranked
+        .filter(r => r.score > 0) // still skip truly dead servers
+        .map(r => {
         const reliabilityScore = getReliabilityScore(r.provider.id);
         const embedUrl = urlGetter(r.provider.id)!;
         return {

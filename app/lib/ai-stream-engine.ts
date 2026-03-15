@@ -35,6 +35,7 @@ export interface ProviderStats {
   lastProbeLatencyMs: number;
   lastProbeStatus: number;
   recentResults: ("success" | "failure" | "adPopup")[]; // last 20
+  consecutiveFailures: number; // track consecutive failures for fast blacklisting
 }
 
 /** Result of a real-time probe against a provider endpoint. */
@@ -44,6 +45,9 @@ export interface ProbeResult {
   latencyMs: number;
   httpStatus: number;
   contentTypeOk: boolean;
+  hasPlayerFramework: boolean;  // detected actual player (jwplayer, hls.js, video.js, etc.)
+  isErrorPage: boolean;         // detected 404/error/maintenance page
+  redirectCount: number;        // number of redirects followed
 }
 
 /** The final ranked entry handed back to the player. */
@@ -64,11 +68,13 @@ const PROBE_CACHE_KEY = "@nexora_probe_cache";
 const PROBE_CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
 const RANKED_CACHE_TTL_MS = 15 * 60 * 1000; // 15 minutes
 const RECENT_RESULTS_MAX = 20;
-const PROBE_TIMEOUT_MS = 5000;
+const PROBE_TIMEOUT_MS = 6000;
 
-// Auto-blacklist: providers with >80% failure over 5+ attempts are removed
-const BLACKLIST_MIN_ATTEMPTS = 5;
-const BLACKLIST_FAIL_THRESHOLD = 0.8;
+// Auto-blacklist: providers with >70% failure over 3+ attempts are removed
+const BLACKLIST_MIN_ATTEMPTS = 3;
+const BLACKLIST_FAIL_THRESHOLD = 0.7;
+// Instant blacklist: 3+ consecutive failures
+const CONSECUTIVE_FAIL_BLACKLIST = 3;
 
 // Scoring weights
 const W_SUCCESS_RATE = 35;
@@ -117,6 +123,7 @@ function ensureStats(providerId: string): ProviderStats {
       lastProbeLatencyMs: 0,
       lastProbeStatus: 0,
       recentResults: [],
+      consecutiveFailures: 0,
     };
   }
   return _stats[providerId];
@@ -152,8 +159,9 @@ function setCachedProbe(providerId: string, result: ProbeResult): void {
 
 /**
  * Probe a single provider endpoint.
- * Uses GET with range header to validate actual page content.
- * Checks for video elements, player scripts, or streaming indicators.
+ * Uses GET to validate actual page content.
+ * Checks for video elements, player frameworks, error pages, and redirect chains.
+ * Only allows sources that serve actual video player pages.
  */
 async function probeProvider(
   providerId: string,
@@ -168,14 +176,16 @@ async function probeProvider(
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), PROBE_TIMEOUT_MS);
 
-    // Use GET instead of HEAD for deeper validation
+    // Track redirects manually
+    let redirectCount = 0;
+
     const res = await fetch(embedUrl, {
       method: "GET",
       signal: controller.signal,
       headers: {
         "User-Agent":
           "Mozilla/5.0 (Linux; Android 12; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36",
-        "Range": "bytes=0-8192", // Only fetch first 8KB
+        "Range": "bytes=0-16384", // Fetch first 16KB for deeper analysis
       },
       redirect: "follow",
     });
@@ -183,23 +193,76 @@ async function probeProvider(
     clearTimeout(timer);
     const latency = Date.now() - start;
     const ct = res.headers.get("content-type") || "";
+    const finalUrl = res.url || embedUrl;
+
+    // Detect redirects by comparing final URL domain to original
+    try {
+      const origHost = new URL(embedUrl).hostname;
+      const finalHost = new URL(finalUrl).hostname;
+      if (origHost !== finalHost) redirectCount++;
+    } catch {}
+
+    // Check if response is a direct video stream (best case)
+    const isDirectVideo = /video\/|application\/x-mpegurl|application\/vnd\.apple\.mpegurl|application\/dash\+xml/i.test(ct);
+    if (isDirectVideo) {
+      const result: ProbeResult = {
+        providerId,
+        reachable: true,
+        latencyMs: latency,
+        httpStatus: res.status,
+        contentTypeOk: true,
+        hasPlayerFramework: true,
+        isErrorPage: false,
+        redirectCount,
+      };
+      setCachedProbe(providerId, result);
+      return result;
+    }
+
     const contentTypeOk = ct.includes("text/html") || ct.includes("application");
 
-    // Read partial body to check for video/player indicators
+    // Read response body for deep content analysis
+    let hasPlayerFramework = false;
+    let isErrorPage = false;
     let hasVideoContent = false;
     try {
       const body = await res.text();
       const lower = body.toLowerCase();
-      hasVideoContent = /(<video|<iframe|hls\.js|jwplayer|plyr|videojs|m3u8|player|embed)/i.test(lower)
-        && !/(404|not.?found|error|unavailable|offline|maintenance)/i.test(lower.slice(0, 500));
+
+      // Detect actual player frameworks (strong signal)
+      hasPlayerFramework = /hls\.js|jwplayer|plyr[\.\s]|video\.js|videojs|clappr|shaka-player|dash\.js|fluidplayer|mediaelement|artplayer|dplayer/i.test(body);
+
+      // Detect video elements or embed iframes (moderate signal)
+      hasVideoContent = /<video[\s>]|<source[^>]+type=["']video|<iframe[^>]+src=["'][^"']*(?:player|embed|stream)/i.test(body)
+        || /\.m3u8["'\s?]|\.mp4["'\s?]|\.mpd["'\s?]/i.test(body);
+
+      // Detect error/maintenance/unavailable pages
+      const titleMatch = body.match(/<title[^>]*>([^<]{0,200})<\/title>/i);
+      const titleText = titleMatch ? titleMatch[1].toLowerCase() : "";
+      const headContent = lower.slice(0, 2000);
+
+      isErrorPage = /404|not\s*found|error|unavailable|offline|maintenance|coming\s*soon|under\s*construction|access\s*denied|forbidden|suspended|domain.*(?:sale|expired|parked)/i.test(titleText)
+        || (/404|not\s*found/i.test(headContent) && !hasVideoContent && !hasPlayerFramework)
+        || (res.status === 403 || res.status === 404 || res.status === 410 || res.status === 503);
+
+      // Detect pure redirect/ad pages (no video content, lots of links/ads)
+      if (!hasVideoContent && !hasPlayerFramework) {
+        const linkCount = (body.match(/<a\s/gi) || []).length;
+        const scriptCount = (body.match(/<script/gi) || []).length;
+        // Pages with many links but no video elements are likely landing/ad pages
+        if (linkCount > 15 && scriptCount < 5) isErrorPage = true;
+      }
     } catch {}
 
     const result: ProbeResult = {
       providerId,
-      reachable: res.status < 500 && res.status !== 404,
+      reachable: res.status < 500 && res.status !== 404 && !isErrorPage,
       latencyMs: latency,
       httpStatus: res.status,
-      contentTypeOk: contentTypeOk && hasVideoContent,
+      contentTypeOk: contentTypeOk && (hasVideoContent || hasPlayerFramework) && !isErrorPage,
+      hasPlayerFramework,
+      isErrorPage,
+      redirectCount,
     };
 
     setCachedProbe(providerId, result);
@@ -212,6 +275,9 @@ async function probeProvider(
       latencyMs: latency,
       httpStatus: 0,
       contentTypeOk: false,
+      hasPlayerFramework: false,
+      isErrorPage: true,
+      redirectCount: 0,
     };
     setCachedProbe(providerId, result);
     return result;
@@ -237,6 +303,9 @@ export async function probeAllProviders(
         latencyMs: 99999,
         httpStatus: 0,
         contentTypeOk: false,
+        hasPlayerFramework: false,
+        isErrorPage: true,
+        redirectCount: 0,
       });
       return;
     }
@@ -257,9 +326,9 @@ export async function recordSuccess(
 ): Promise<void> {
   const s = ensureStats(providerId);
   s.lastUsed = Date.now();
+  s.consecutiveFailures = 0; // Reset consecutive failures on success
 
   if (adPopupsSeen > 2) {
-    // Treat heavy-ad providers as adPopup result even if stream loaded
     s.adPopups++;
     s.recentResults.push("adPopup");
   } else {
@@ -280,6 +349,7 @@ export async function recordFailure(providerId: string): Promise<void> {
   const s = ensureStats(providerId);
   s.lastUsed = Date.now();
   s.failures++;
+  s.consecutiveFailures = (s.consecutiveFailures || 0) + 1;
   s.recentResults.push("failure");
   if (s.recentResults.length > RECENT_RESULTS_MAX) {
     s.recentResults = s.recentResults.slice(-RECENT_RESULTS_MAX);
@@ -312,6 +382,12 @@ function computeScore(
 ): number {
   const total = stats.successes + stats.failures;
 
+  // INSTANT REJECT: unreachable or error page
+  if (probe && (!probe.reachable || probe.isErrorPage)) return 0;
+
+  // INSTANT REJECT: consecutive failures
+  if ((stats.consecutiveFailures || 0) >= CONSECUTIVE_FAIL_BLACKLIST) return 0;
+
   // 1. Success rate (0–100) — weighted by W_SUCCESS_RATE
   let successRate = 0.5; // default for untested
   if (total > 0) {
@@ -320,7 +396,6 @@ function computeScore(
   const successScore = successRate * W_SUCCESS_RATE;
 
   // 2. Load time score (0–100) — weighted by W_LOAD_TIME
-  //    < 2s = 100, 2-5s = 80, 5-10s = 50, 10-15s = 20, >15s = 0
   let loadScore = 50; // default for untested
   if (stats.avgLoadTimeMs > 0) {
     if (stats.avgLoadTimeMs < 2000) loadScore = 100;
@@ -347,11 +422,14 @@ function computeScore(
     } else {
       probeScore = 10;
     }
+    // Bonus for having a detected player framework
+    if (probe.hasPlayerFramework) probeScore = Math.min(100, probeScore + 10);
+    // Penalty for content-type issues
+    if (!probe.contentTypeOk) probeScore = Math.max(0, probeScore - 20);
   }
   const latencyScore = (probeScore / 100) * W_PROBE_LATENCY;
 
   // 4. Ad penalty — weighted by W_AD_PENALTY
-  //    adRatio = adPopups / total attempts (lower is better)
   let adPenalty = 0;
   if (total > 0) {
     const adRatio = stats.adPopups / total;
@@ -361,7 +439,7 @@ function computeScore(
   // 5. Freshness bonus — untested providers get a small boost
   let freshnessBonus = 0;
   if (total === 0) {
-    freshnessBonus = W_FRESHNESS; // give untested providers a chance
+    freshnessBonus = W_FRESHNESS;
   } else if (total < 3) {
     freshnessBonus = W_FRESHNESS * 0.5;
   }
@@ -370,9 +448,9 @@ function computeScore(
   const recent5 = stats.recentResults.slice(-5);
   let trendPenalty = 0;
   if (recent5.length >= 5 && recent5.every((r) => r === "failure")) {
-    trendPenalty = 15;
+    trendPenalty = 20; // increased from 15
   } else if (recent5.length >= 3 && recent5.every((r) => r !== "success")) {
-    trendPenalty = 8;
+    trendPenalty = 12; // increased from 8
   }
 
   // 7. Buffer penalty
@@ -382,6 +460,12 @@ function computeScore(
     bufferPenalty = Math.min(bufferRatio * 10, 10);
   }
 
+  // 8. Redirect penalty (new) — excessive redirects indicate ad/landing pages
+  let redirectPenalty = 0;
+  if (probe && probe.redirectCount > 0) {
+    redirectPenalty = Math.min(probe.redirectCount * 5, 15);
+  }
+
   const finalScore =
     successScore +
     loadTimeScore +
@@ -389,7 +473,8 @@ function computeScore(
     freshnessBonus -
     adPenalty -
     trendPenalty -
-    bufferPenalty;
+    bufferPenalty -
+    redirectPenalty;
 
   return Math.max(0, Math.min(100, finalScore));
 }
@@ -513,11 +598,14 @@ export async function resetEngine(): Promise<void> {
   await AsyncStorage.multiRemove([STATS_KEY, PROBE_CACHE_KEY]);
 }
 
-/** Check if a provider is auto-blacklisted (>80% fail over 5+ attempts) */
+/** Check if a provider is auto-blacklisted (>70% fail over 3+ attempts OR 3+ consecutive failures) */
 export function isBlacklisted(providerId: string): boolean {
   if (!_stats) return false;
   const s = _stats[providerId];
   if (!s) return false;
+  // Consecutive failure blacklist
+  if ((s.consecutiveFailures || 0) >= CONSECUTIVE_FAIL_BLACKLIST) return true;
+  // Rate-based blacklist
   const total = s.successes + s.failures;
   if (total < BLACKLIST_MIN_ATTEMPTS) return false;
   return (s.failures / total) >= BLACKLIST_FAIL_THRESHOLD;
