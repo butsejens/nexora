@@ -202,6 +202,36 @@ async function probeProvider(
       if (origHost !== finalHost) redirectCount++;
     } catch {}
 
+    // BLOCKED HOST CHECK: if final URL landed on YouTube/Google/social/external, instant reject
+    const BLOCKED_PROBE_HOSTS = [
+      "youtube.com", "youtu.be", "youtube-nocookie.com",
+      "google.com", "google.nl", "google.de", "google.co.uk", "google.co",
+      "bing.com", "yahoo.com", "duckduckgo.com",
+      "facebook.com", "twitter.com", "x.com", "instagram.com", "tiktok.com",
+      "reddit.com", "pinterest.com", "tumblr.com", "quora.com",
+      "wikipedia.org", "imdb.com", "rottentomatoes.com",
+      "netflix.com", "disneyplus.com", "hbomax.com", "hulu.com", "primevideo.com",
+      "t.me", "telegram.org",
+    ];
+    try {
+      const finalHost = new URL(finalUrl).hostname.toLowerCase();
+      const isBlocked = BLOCKED_PROBE_HOSTS.some(h => finalHost === h || finalHost.endsWith("." + h));
+      if (isBlocked) {
+        const result: ProbeResult = {
+          providerId,
+          reachable: false,
+          latencyMs: latency,
+          httpStatus: res.status,
+          contentTypeOk: false,
+          hasPlayerFramework: false,
+          isErrorPage: true,
+          redirectCount,
+        };
+        setCachedProbe(providerId, result);
+        return result;
+      }
+    } catch {}
+
     // Check if response is a direct video stream (best case)
     const isDirectVideo = /video\/|application\/x-mpegurl|application\/vnd\.apple\.mpegurl|application\/dash\+xml/i.test(ct);
     if (isDirectVideo) {
@@ -251,6 +281,14 @@ async function probeProvider(
         const scriptCount = (body.match(/<script/gi) || []).length;
         // Pages with many links but no video elements are likely landing/ad pages
         if (linkCount > 15 && scriptCount < 5) isErrorPage = true;
+      }
+
+      // Detect YouTube/external embeds in page body (provider wrapping YouTube player)
+      if (!hasPlayerFramework) {
+        const hasYouTubeEmbed = /youtube\.com\/embed|youtu\.be\/|youtube-nocookie\.com\/embed/i.test(body);
+        if (hasYouTubeEmbed && !hasVideoContent) {
+          isErrorPage = true;
+        }
       }
     } catch {}
 

@@ -124,6 +124,14 @@ const AD_BLOCK_JS = `
   var _host = window.location.hostname;
   var _videoFound = false;
 
+  // ── Instant blocked host detection: if embed landed on YouTube/Google/external, signal immediately ──
+  var _blockedList = ['youtube.com','youtu.be','youtube-nocookie.com','google.com','google.nl','google.de','google.co.uk','bing.com','yahoo.com','duckduckgo.com','facebook.com','twitter.com','x.com','instagram.com','tiktok.com','reddit.com','wikipedia.org','imdb.com','netflix.com','disneyplus.com','hbomax.com','hulu.com','primevideo.com'];
+  for(var _bi=0;_bi<_blockedList.length;_bi++){
+    if(_host===_blockedList[_bi]||_host.endsWith('.'+_blockedList[_bi])){
+      try{ window.ReactNativeWebView && window.ReactNativeWebView.postMessage(JSON.stringify({type:'no_video_element',message:'Blocked host: '+_host})); }catch(e){}
+    }
+  }
+
   // ── 0. CSS injection: hide ad/overlay patterns immediately ───────────────
   (function(){
     var s = document.createElement('style');
@@ -931,8 +939,22 @@ const BUFFER_MONITOR_JS = `
   var lastTime = -1;
   var noVideoCheckCount = 0;
 
+  // Instant detection: if the page itself is YouTube/Google/external, signal immediately
+  try {
+    var host = window.location.hostname.toLowerCase();
+    var blockedHosts = ['youtube.com','youtu.be','google.com','google.nl','bing.com','yahoo.com','facebook.com','twitter.com','x.com','instagram.com','tiktok.com','reddit.com','wikipedia.org','imdb.com','netflix.com'];
+    for (var b = 0; b < blockedHosts.length; b++) {
+      if (host === blockedHosts[b] || host.endsWith('.' + blockedHosts[b])) {
+        window.ReactNativeWebView && window.ReactNativeWebView.postMessage(JSON.stringify({
+          type: 'no_video_element', message: 'Landed on external page: ' + host
+        }));
+        return; // stop monitoring entirely
+      }
+    }
+  } catch(e){}
+
   // Early detection: check if video element or iframe exists
-  // If nothing found after 6s, this is likely an error/redirect page
+  // If nothing found after 4s, this is likely an error/redirect page
   var earlyCheck = setInterval(function(){
     noVideoCheckCount++;
     var videos = document.querySelectorAll('video');
@@ -942,11 +964,11 @@ const BUFFER_MONITOR_JS = `
       clearInterval(earlyCheck);
       return;
     }
-    // 3 checks x 2s = 6s with no video/iframe = dead page
-    if (noVideoCheckCount >= 3) {
+    // 2 checks x 2s = 4s with no video/iframe = dead page
+    if (noVideoCheckCount >= 2) {
       clearInterval(earlyCheck);
       window.ReactNativeWebView && window.ReactNativeWebView.postMessage(JSON.stringify({
-        type: 'no_video_element', message: 'No video or iframe found after 6s'
+        type: 'no_video_element', message: 'No video or iframe found after 4s'
       }));
     }
   }, 2000);
@@ -1557,15 +1579,45 @@ export default function PlayerScreen() {
   }, [isLoading, webviewKey, effectiveStreamUrl, useFallbackEmbed, tmdbId, allProvidersFailed, tryNextProvider]);
 
   // ── What to render ────────────────────────────────────────────────────────
-  const embedUrl: string | null = (() => {
+  // Block URLs that are clearly not video embed pages (YouTube, Google, social, etc.)
+  const isBlockedEmbedUrl = (url: string): boolean => {
+    try {
+      const host = new URL(url).hostname.toLowerCase();
+      const BLOCKED_HOSTS = [
+        "youtube.com", "www.youtube.com", "youtu.be", "youtube-nocookie.com",
+        "google.com", "www.google.com", "google.nl", "google.de", "google.co.uk",
+        "bing.com", "www.bing.com", "yahoo.com", "duckduckgo.com",
+        "facebook.com", "www.facebook.com", "twitter.com", "x.com", "instagram.com", "tiktok.com",
+        "reddit.com", "www.reddit.com", "pinterest.com", "tumblr.com", "quora.com",
+        "wikipedia.org", "en.wikipedia.org",
+        "imdb.com", "www.imdb.com", "rottentomatoes.com", "metacritic.com", "letterboxd.com",
+        "netflix.com", "disneyplus.com", "hbomax.com", "hulu.com", "primevideo.com",
+        "t.me", "telegram.org",
+      ];
+      return BLOCKED_HOSTS.some(h => host === h || host.endsWith("." + h));
+    } catch { return false; }
+  };
+
+  const rawEmbedUrl: string | null = (() => {
     if (allProvidersFailed) return null;
     if (tmdbId) {
       const mgr = streamManagerRef.current;
       if (mgr) return mgr.getCurrentRawEmbedUrl();
       return getEmbedUrl(provider, tmdbId, type || "movie", season || "1", episode || "1");
     }
-    if (trailerKey) return `https://www.youtube.com/embed/${trailerKey}?autoplay=1&rel=0&modestbranding=1&playsinline=1`;
+    // trailerKey YouTube path removed — trailers play in detail.tsx modal only
     return null;
+  })();
+
+  // Validate: skip blocked URLs and auto-advance to next provider
+  const embedUrl: string | null = (() => {
+    if (!rawEmbedUrl) return null;
+    if (isBlockedEmbedUrl(rawEmbedUrl)) {
+      // This embed URL points to YouTube/Google/external → skip immediately
+      setTimeout(() => tryNextProvider(), 0);
+      return null;
+    }
+    return rawEmbedUrl;
   })();
 
   const hlsHtml: string | null = (effectiveStreamUrl && !useFallbackEmbed) ? buildHlsHtml(effectiveStreamUrl) : null;
@@ -1598,6 +1650,16 @@ export default function PlayerScreen() {
         /i.m.not.a.robot|are.you.human|verify.*human/i,
         /youtube\.com|youtu\.be|youtube-nocookie\.com/i,
         /facebook\.com|twitter\.com\/|x\.com\/|instagram\.com|tiktok\.com/i,
+        /google\.com(?!syndication|adservices|tag|analytics)/i,
+        /google\.nl|google\.co\.|google\.de|google\.fr|google\.es/i,
+        /bing\.com|yahoo\.com|duckduckgo\.com|search\./i,
+        /imdb\.com|rottentomatoes\.com|metacritic\.com|letterboxd\.com/i,
+        /wikipedia\.org|wikimedia\.org|wikidata\.org/i,
+        /reddit\.com|quora\.com|pinterest\.com|tumblr\.com/i,
+        /amazon\.\w+(?!.*cloudfront|.*akamai)/i,
+        /netflix\.com|disneyplus\.com|hbomax\.com|hulu\.com|primevideo\.com/i,
+        /apple\.com\/tv|peacock\.com|paramountplus\.com|crunchyroll\.com/i,
+        /login|signin|signup|register|account|oauth|auth\//i,
         /t\.me\/|telegram\.org/i,
       ];
       if (BLOCK_PATTERNS.some((pattern) => pattern.test(url))) { adPopupCountRef.current++; return false; }
@@ -1645,7 +1707,7 @@ export default function PlayerScreen() {
       if (disposedRef.current) return;
       const url: string = navState.url || "";
       if (!url || url.startsWith("about:") || url.startsWith("blob:") || url.startsWith("data:")) return;
-      if (/play\.google\.com\/store|apps\.apple\.com|install\s*and\s*continue|vpn\s*recommended|casino|gambling|bet365|1xbet|stake\.com|betway|poker|slots|norton|mcafee|avast|cleanmaster|survey|reward|prize|winner|dating|singles|youtube\.com|youtu\.be|youtube-nocookie|facebook\.com|twitter\.com|x\.com\/|instagram\.com|tiktok\.com|t\.me\/|telegram\.org/i.test(url)) {
+      if (/play\.google\.com\/store|apps\.apple\.com|install\s*and\s*continue|vpn\s*recommended|casino|gambling|bet365|1xbet|stake\.com|betway|poker|slots|norton|mcafee|avast|cleanmaster|survey|reward|prize|winner|dating|singles|youtube\.com|youtu\.be|youtube-nocookie|facebook\.com|twitter\.com|x\.com\/|instagram\.com|tiktok\.com|t\.me\/|telegram\.org|google\.com\/(?!syndication)|google\.nl|google\.co\.|bing\.com|yahoo\.com|duckduckgo\.com|imdb\.com|rottentomatoes\.com|wikipedia\.org|reddit\.com|netflix\.com|disneyplus\.com|hbomax\.com|hulu\.com|primevideo\.com|login|signin|signup|register|oauth|auth\//i.test(url)) {
         embedWebviewRef.current?.stopLoading();
         embedWebviewRef.current?.goBack();
         return;
