@@ -160,6 +160,26 @@ export const ALLOWED_VIDEO_HOSTS = [
   "closeload", "fastupload", "upstream",
 ];
 
+// ─── Blocked embed host check ──────────────────────────────────────────────────
+// Reject any embed URL pointing to YouTube, Google, social media, or other non-video hosts.
+const BLOCKED_EMBED_HOSTS = [
+  "youtube.com", "youtu.be", "youtube-nocookie.com",
+  "google.com", "google.nl", "google.de", "google.co.uk", "google.co",
+  "bing.com", "yahoo.com", "duckduckgo.com",
+  "facebook.com", "twitter.com", "x.com", "instagram.com", "tiktok.com",
+  "reddit.com", "pinterest.com", "tumblr.com", "quora.com",
+  "wikipedia.org", "imdb.com", "rottentomatoes.com", "metacritic.com",
+  "netflix.com", "disneyplus.com", "hbomax.com", "hulu.com", "primevideo.com",
+  "t.me", "telegram.org",
+];
+
+function isBlockedEmbedHost(url: string): boolean {
+  try {
+    const host = new URL(url).hostname.toLowerCase();
+    return BLOCKED_EMBED_HOSTS.some(h => host === h || host.endsWith("." + h));
+  } catch { return false; }
+}
+
 // ─── Stream Manager Class ──────────────────────────────────────────────────────
 
 export class StreamManager {
@@ -205,11 +225,14 @@ export class StreamManager {
     const ranked = await selectBestProviders(STREAM_PROVIDERS, urlGetter);
 
     // Build stream sources with combined AI + reliability scores
-    // Filter: blacklisted, unreachable (score=0), and error-page providers
+    // Filter: blacklisted, unreachable (score=0), error-page providers, and blocked hosts
     this.sources = ranked
       .filter(r => {
         if (isBlacklisted(r.provider.id) || isProviderBlacklisted(r.provider.id)) return false;
         if (r.score === 0) return false; // probe detected error/unreachable/dead server
+        // Reject providers whose embed URL points to a blocked host (YouTube, Google, etc.)
+        const url = urlGetter(r.provider.id);
+        if (url && isBlockedEmbedHost(url)) return false;
         return true;
       })
       .map(r => {
@@ -230,7 +253,12 @@ export class StreamManager {
     // If all providers are filtered out, include reachable ones as last resort
     if (this.sources.length === 0) {
       this.sources = ranked
-        .filter(r => r.score > 0) // still skip truly dead servers
+        .filter(r => {
+          if (r.score <= 0) return false;
+          const url = urlGetter(r.provider.id);
+          if (url && isBlockedEmbedHost(url)) return false;
+          return true;
+        })
         .map(r => {
         const reliabilityScore = getReliabilityScore(r.provider.id);
         const embedUrl = urlGetter(r.provider.id)!;
@@ -417,7 +445,12 @@ export class StreamManager {
   /** Re-rank sources without re-probing (after recording outcomes) */
   rerank(): void {
     const newRanked = quickRank(STREAM_PROVIDERS);
-    const newSources = newRanked.map(r => {
+    const newSources = newRanked
+      .filter(r => {
+        const url = getEmbedUrl(r.provider.id, this.tmdbId, this.type, this.season, this.episode);
+        return !url || !isBlockedEmbedHost(url);
+      })
+      .map(r => {
       const reliabilityScore = getReliabilityScore(r.provider.id);
       const embedUrl = getEmbedUrl(r.provider.id, this.tmdbId, this.type, this.season, this.episode);
       return {

@@ -1008,6 +1008,7 @@ const BUFFER_MONITOR_JS = `
 // ─── HLS inline player HTML ───────────────────────────────────────────────────
 // No native <video controls> — React Native overlay provides play/pause/seek.
 // postMessage bridge reports state; listens for commands via 'message' event.
+// Pre-validates stream URL: rejects text/html responses before attempting playback.
 function buildHlsHtml(src: string): string {
   const isXtreamTs = /\/(live|movie|series)\/[^/]+\/[^/]+\/[^/]+\.ts(\?|$)/i.test(src);
   const primarySrc = isXtreamTs ? src.replace(/\.ts(\?|$)/, '.m3u8$1') : src;
@@ -1142,13 +1143,38 @@ video{width:100%;height:100%;object-fit:contain;display:block;background:#000}
     });
   }
 
+  // Pre-flight: validate the stream URL returns video content, not HTML
+  function preFlightCheck(url, onOk, onFail) {
+    fetch(url, {method:'HEAD',mode:'cors',cache:'no-store'}).then(function(res){
+      var ct = (res.headers.get('content-type')||'').toLowerCase();
+      // Reject text/html responses — this is a webpage, not a stream
+      if(ct.indexOf('text/html') !== -1) { onFail(); return; }
+      // Accept: video/*, application/x-mpegurl, application/vnd.apple.mpegurl, application/dash+xml, application/octet-stream, or unknown
+      onOk();
+    }).catch(function(){
+      // Network error on HEAD — try anyway (some servers block HEAD)
+      onOk();
+    });
+  }
+
   if(typeof Hls !== 'undefined' && Hls.isSupported()){
-    loadWithHls(primary, function(){ tryDirect(fallback || primary); });
+    preFlightCheck(primary, function(){
+      loadWithHls(primary, function(){ tryDirect(fallback || primary); });
+    }, function(){
+      // Primary is HTML — try fallback or show error
+      if(fallback){
+        preFlightCheck(fallback, function(){ tryDirect(fallback); }, showError);
+      } else { showError(); }
+    });
   } else if(v.canPlayType('application/vnd.apple.mpegurl')){
-    v.src = primary; tryPlay();
-    v.addEventListener('error', function(){ if(fallback && tried < 1){ tried++; v.src = fallback; tryPlay(); } else { showError(); }});
+    preFlightCheck(primary, function(){
+      v.src = primary; tryPlay();
+      v.addEventListener('error', function(){ if(fallback && tried < 1){ tried++; v.src = fallback; tryPlay(); } else { showError(); }});
+    }, function(){
+      if(fallback){ v.src = fallback; tryPlay(); v.onerror = showError; } else { showError(); }
+    });
   } else {
-    tryDirect(primary);
+    preFlightCheck(primary, function(){ tryDirect(primary); }, showError);
   }
 })();
 </script>
@@ -1194,6 +1220,8 @@ export default function PlayerScreen() {
   const [streamErrorRef, setStreamErrorRef]   = useState("");
   const providerLoadStartRef = useRef<number>(0);
   const adPopupCountRef = useRef<number>(0);
+  const videoConfirmedRef = useRef(false);
+  const [blockedEmbedUrl, setBlockedEmbedUrl] = useState(false);
 
   // Controls overlay
   const [controlsVisible, setControlsVisible] = useState(true);
@@ -1258,6 +1286,7 @@ export default function PlayerScreen() {
           setIsLoading(true);
           setStreamError(null);
           setStreamErrorRef("");
+          videoConfirmedRef.current = false;
         },
         onAllFailed: () => {
           if (cancelled) return;
@@ -1323,7 +1352,14 @@ export default function PlayerScreen() {
   }, [streamUrl, contentId]);
 
   // Use signed URL if available, otherwise original
-  const effectiveStreamUrl = signedStreamUrl || streamUrl;
+  // Validate: reject stream URLs that point to known non-video hosts
+  const effectiveStreamUrl = (() => {
+    const url = signedStreamUrl || streamUrl;
+    if (!url) return undefined;
+    // Block known webpage hosts from being used as stream URLs
+    if (isBlockedEmbedUrl(url)) return undefined;
+    return url;
+  })();
 
   const injectEmbedAutoplay = useCallback(() => {
     if (Platform.OS === "web") return;
@@ -1609,16 +1645,20 @@ export default function PlayerScreen() {
     return null;
   })();
 
-  // Validate: skip blocked URLs and auto-advance to next provider
+  // Validate: skip blocked URLs and flag for auto-advance via useEffect
   const embedUrl: string | null = (() => {
     if (!rawEmbedUrl) return null;
-    if (isBlockedEmbedUrl(rawEmbedUrl)) {
-      // This embed URL points to YouTube/Google/external → skip immediately
-      setTimeout(() => tryNextProvider(), 0);
-      return null;
-    }
+    if (isBlockedEmbedUrl(rawEmbedUrl)) return null;
     return rawEmbedUrl;
   })();
+
+  // Auto-advance when embed URL is blocked (via useEffect, not during render)
+  useEffect(() => {
+    if (!rawEmbedUrl || !tmdbId || allProvidersFailed) return;
+    if (!isBlockedEmbedUrl(rawEmbedUrl)) return;
+    const t = setTimeout(() => tryNextProvider(), 50);
+    return () => clearTimeout(t);
+  }, [rawEmbedUrl, tmdbId, allProvidersFailed, tryNextProvider]);
 
   const hlsHtml: string | null = (effectiveStreamUrl && !useFallbackEmbed) ? buildHlsHtml(effectiveStreamUrl) : null;
   const embedUrlWithAutoplay: string | null = (!hlsHtml && embedUrl) ? withAutoplayParams(embedUrl) : null;
@@ -1811,7 +1851,7 @@ export default function PlayerScreen() {
           sharedCookiesEnabled
           allowsInlineMediaPlayback
           mixedContentMode="always"
-          originWhitelist={["http://*", "https://*", "about:*", "blob:*", "*"]}
+          originWhitelist={["http://*", "https://*", "about:*", "blob:*"]}
           userAgent="Mozilla/5.0 (Linux; Android 12; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
           injectedJavaScriptBeforeContentLoaded={AD_BLOCK_JS}
           onLoadProgress={({ nativeEvent }) => {
@@ -1825,15 +1865,9 @@ export default function PlayerScreen() {
               setIsLoading(false); setStreamError(null); setStreamErrorRef(""); injectEmbedAutoplay();
               // Inject buffer monitor for mid-stream recovery
               embedWebviewRef.current?.injectJavaScript(`${BUFFER_MONITOR_JS};true;`);
-              const loadTime = Date.now() - providerLoadStartRef.current;
-              // Record success via Stream Manager
-              const mgr = streamManagerRef.current;
-              if (mgr) {
-                mgr.recordPlaybackSuccess(loadTime, adPopupCountRef.current).then(() => {
-                  mgr.rerank();
-                  setRankedSources([...mgr.getState().sources]);
-                });
-              }
+              // NOTE: Do NOT record success here — page load ≠ video playing.
+              // Success is recorded only when video_playing message is received.
+              videoConfirmedRef.current = false;
             }
           }}
           onError={(event) => {
@@ -1873,14 +1907,17 @@ export default function PlayerScreen() {
                 setIsLoading(false);
                 setStreamError(null);
                 setStreamErrorRef("");
-                // Record success
-                const loadTime = Date.now() - providerLoadStartRef.current;
-                const mgr = streamManagerRef.current;
-                if (mgr) {
-                  mgr.recordPlaybackSuccess(loadTime, adPopupCountRef.current).then(() => {
-                    mgr.rerank();
-                    setRankedSources([...mgr.getState().sources]);
-                  });
+                // Record success only once per provider load
+                if (!videoConfirmedRef.current) {
+                  videoConfirmedRef.current = true;
+                  const loadTime = Date.now() - providerLoadStartRef.current;
+                  const mgr = streamManagerRef.current;
+                  if (mgr) {
+                    mgr.recordPlaybackSuccess(loadTime, adPopupCountRef.current).then(() => {
+                      mgr.rerank();
+                      setRankedSources([...mgr.getState().sources]);
+                    });
+                  }
                 }
               }
               if (data.type === "midstream_stall" || data.type === "midstream_error") {

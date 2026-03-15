@@ -284,11 +284,27 @@ async function probeProvider(
       }
 
       // Detect YouTube/external embeds in page body (provider wrapping YouTube player)
-      if (!hasPlayerFramework) {
-        const hasYouTubeEmbed = /youtube\.com\/embed|youtu\.be\/|youtube-nocookie\.com\/embed/i.test(body);
-        if (hasYouTubeEmbed && !hasVideoContent) {
-          isErrorPage = true;
-        }
+      const hasYouTubeEmbed = /youtube\.com\/embed|youtu\.be\/|youtube-nocookie\.com\/embed/i.test(body);
+      if (hasYouTubeEmbed) {
+        // YouTube embed in the page body = reject even if player framework detected
+        isErrorPage = true;
+        hasPlayerFramework = false;
+      }
+
+      // Detect meta-refresh redirects to external pages
+      const metaRefreshMatch = body.match(/<meta[^>]*http-equiv=["']refresh["'][^>]*content=["'][^"']*url=([^"'\s>]+)/i);
+      if (metaRefreshMatch) {
+        const refreshUrl = metaRefreshMatch[1].toLowerCase();
+        const isExternalRefresh = BLOCKED_PROBE_HOSTS.some(h => refreshUrl.includes(h));
+        if (isExternalRefresh) isErrorPage = true;
+      }
+
+      // Detect window.location / location.href redirects to external pages
+      const jsRedirectMatch = body.match(/(?:window\.)?location(?:\.href)?\s*=\s*["']([^"']+)/i);
+      if (jsRedirectMatch && !hasVideoContent && !hasPlayerFramework) {
+        const redirectUrl = jsRedirectMatch[1].toLowerCase();
+        const isExternalRedirect = BLOCKED_PROBE_HOSTS.some(h => redirectUrl.includes(h));
+        if (isExternalRedirect) isErrorPage = true;
       }
     } catch {}
 
