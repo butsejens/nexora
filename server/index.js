@@ -242,32 +242,61 @@ const FOOTBALL_LOGOS_BASE = "https://raw.githubusercontent.com/luukhopman/footba
 const LEAGUE_TO_LOGO_FOLDER = {
   "Premier League":           "England - Premier League",
   "Championship":             "England - Premier League",
+  "EFL Championship":         "England - Premier League",
+  "FA Cup":                   "England - Premier League",
+  "EFL Cup":                  "England - Premier League",
+  "League Cup":               "England - Premier League",
   "La Liga":                  "Spain - LaLiga",
+  "LaLiga":                   "Spain - LaLiga",
+  "Copa del Rey":             "Spain - LaLiga",
   "Bundesliga":               "Germany - Bundesliga",
+  "DFB-Pokal":                "Germany - Bundesliga",
   "Serie A":                  "Italy - Serie A",
+  "Coppa Italia":             "Italy - Serie A",
   "Ligue 1":                  "France - Ligue 1",
+  "Coupe de France":          "France - Ligue 1",
   "Jupiler Pro League":       "Belgium - Jupiler Pro League",
   "Belgian Pro League":       "Belgium - Jupiler Pro League",
+  "Belgian First Division A": "Belgium - Jupiler Pro League",
   "Eredivisie":               "Netherlands - Eredivisie",
+  "KNVB Beker":               "Netherlands - Eredivisie",
   "Primeira Liga":            "Portugal - Liga Portugal",
   "Liga Portugal":            "Portugal - Liga Portugal",
+  "Taça de Portugal":         "Portugal - Liga Portugal",
   "Scottish Premiership":     "Scotland - Scottish Premiership",
   "Premiership":              "Scotland - Scottish Premiership",
   "Super League":             "Switzerland - Super League",
   "Superliga":                "Denmark - Superliga",
+  "Danish Superliga":         "Denmark - Superliga",
   "Eliteserien":              "Norway - Eliteserien",
   "Allsvenskan":              "Sweden - Allsvenskan",
   "Süper Lig":                "Türkiye - Süper Lig",
   "Super Lig":                "Türkiye - Süper Lig",
+  "Turkish Super Lig":        "Türkiye - Süper Lig",
   "Ekstraklasa":              "Poland - PKO BP Ekstraklasa",
+  "PKO BP Ekstraklasa":       "Poland - PKO BP Ekstraklasa",
   "efbet Liga":               "Bulgaria - efbet Liga",
   "SuperSport HNL":           "Croatia - SuperSport HNL",
+  "HNL":                      "Croatia - SuperSport HNL",
   "Chance Liga":              "Czech Republic - Chance Liga",
+  "Czech First League":       "Czech Republic - Chance Liga",
   "Super League 1":           "Greece - Super League 1",
+  "Greek Super League":       "Greece - Super League 1",
   "Ligat ha'Al":              "Israel - Ligat ha'Al",
+  "Israeli Premier League":   "Israel - Ligat ha'Al",
   "Premier Liga":             "Ukraine - Premier Liga",
+  "Ukrainian Premier League": "Ukraine - Premier Liga",
   "SuperLiga":                "Romania - SuperLiga",
+  "Romanian Liga 1":          "Romania - SuperLiga",
   "Super liga Srbije":        "Serbia - Super liga Srbije",
+  "Serbian SuperLiga":        "Serbia - Super liga Srbije",
+  // UEFA competitions map to the relevant national folders (teams appear in their domestic league folder)
+  "UEFA Champions League":    null,
+  "Champions League":         null,
+  "UEFA Europa League":       null,
+  "Europa League":            null,
+  "UEFA Conference League":   null,
+  "Conference League":        null,
 };
 
 // Team name aliases: ESPN display name → football-logos filename (without .png)
@@ -404,6 +433,149 @@ const TEAM_LOGO_ALIASES = {
   "porto": "FC Porto", "fc porto": "FC Porto",
   "sporting cp": "Sporting CP", "sporting lisbon": "Sporting CP", "sporting": "Sporting CP",
   "sporting braga": "SC Braga", "sc braga": "SC Braga", "braga": "SC Braga",
+  "vitoria guimaraes": "Vitória SC", "vitoria sc": "Vitória SC",
+  "boavista": "Boavista FC", "boavista fc": "Boavista FC",
+  "gil vicente": "Gil Vicente FC", "gil vicente fc": "Gil Vicente FC",
+  "casa pia": "Casa Pia AC", "casa pia ac": "Casa Pia AC",
+  "famalicao": "FC Famalicão", "fc famalicao": "FC Famalicão",
+  "rio ave": "Rio Ave FC", "rio ave fc": "Rio Ave FC",
+  "estrela amadora": "CF Estrela da Amadora", "cf estrela da amadora": "CF Estrela da Amadora",
+  "arouca": "FC Arouca", "fc arouca": "FC Arouca",
+  "moreirense": "Moreirense FC", "moreirense fc": "Moreirense FC",
+  // Scotland
+  "celtic": "Celtic FC", "celtic fc": "Celtic FC",
+  "rangers": "Rangers FC", "rangers fc": "Rangers FC",
+  "hearts": "Heart of Midlothian", "heart of midlothian": "Heart of Midlothian",
+  "aberdeen": "Aberdeen FC", "aberdeen fc": "Aberdeen FC",
+  "hibernian": "Hibernian FC", "hibernian fc": "Hibernian FC",
+  "dundee united": "Dundee United",
+  "st mirren": "St Mirren",
+  "kilmarnock": "Kilmarnock FC", "kilmarnock fc": "Kilmarnock FC",
+  "motherwell": "Motherwell FC", "motherwell fc": "Motherwell FC",
+  "ross county": "Ross County FC",
+  "livingston": "Livingston FC",
+  "st johnstone": "St Johnstone",
+  // Netherlands (expanded)
+  "sc heerenveen": "sc Heerenveen", "heerenveen": "sc Heerenveen",
+  "vitesse": "Vitesse",
+  "nec nijmegen": "NEC", "nec": "NEC",
+  "fortuna sittard": "Fortuna Sittard",
+  "go ahead eagles": "Go Ahead Eagles",
+  "rkc waalwijk": "RKC Waalwijk", "rkc": "RKC Waalwijk",
+  "sparta rotterdam": "Sparta Rotterdam", "sparta": "Sparta Rotterdam",
+  "heracles almelo": "Heracles Almelo", "heracles": "Heracles Almelo",
+  "pec zwolle": "PEC Zwolle",
+  "willem ii": "Willem II",
+  "excelsior": "Excelsior Rotterdam", "excelsior rotterdam": "Excelsior Rotterdam",
+  "fc volendam": "FC Volendam", "volendam": "FC Volendam",
+  "almere city": "Almere City FC", "almere city fc": "Almere City FC",
+  // England (expanded)
+  "leicester city": "Leicester City", "leicester": "Leicester City",
+  "ipswich town": "Ipswich Town", "ipswich": "Ipswich Town",
+  "southampton": "Southampton FC", "southampton fc": "Southampton FC",
+  "sheffield united": "Sheffield United", "sheffield utd": "Sheffield United",
+  "luton town": "Luton Town", "luton": "Luton Town",
+  "watford": "Watford FC", "watford fc": "Watford FC",
+  "norwich city": "Norwich City", "norwich": "Norwich City",
+  "west bromwich albion": "West Bromwich Albion", "west brom": "West Bromwich Albion",
+  "middlesbrough": "Middlesbrough FC", "middlesbrough fc": "Middlesbrough FC",
+  "coventry city": "Coventry City", "coventry": "Coventry City",
+  "stoke city": "Stoke City",
+  "hull city": "Hull City",
+  "blackburn rovers": "Blackburn Rovers",
+  "swansea city": "Swansea City", "swansea": "Swansea City",
+  "queens park rangers": "Queens Park Rangers", "qpr": "Queens Park Rangers",
+  // Turkey
+  "galatasaray": "Galatasaray SK", "galatasaray sk": "Galatasaray SK",
+  "fenerbahce": "Fenerbahçe SK", "fenerbahce sk": "Fenerbahçe SK",
+  "besiktas": "Beşiktaş JK", "besiktas jk": "Beşiktaş JK",
+  "trabzonspor": "Trabzonspor",
+  "istanbul basaksehir": "İstanbul Başakşehir FK", "basaksehir": "İstanbul Başakşehir FK",
+  // Denmark
+  "fc copenhagen": "FC København", "fc kobenhavn": "FC København", "copenhagen": "FC København",
+  "fc midtjylland": "FC Midtjylland", "midtjylland": "FC Midtjylland",
+  "brondby": "Brøndby IF", "brondby if": "Brøndby IF",
+  "fc nordsjaelland": "FC Nordsjælland", "nordsjaelland": "FC Nordsjælland",
+  "aarhus gf": "Aarhus GF", "agf": "Aarhus GF",
+  // Switzerland
+  "bsc young boys": "BSC Young Boys", "young boys": "BSC Young Boys",
+  "fc basel": "FC Basel 1893", "basel": "FC Basel 1893",
+  "fc zurich": "FC Zürich", "zurich": "FC Zürich",
+  "servette": "Servette FC", "servette fc": "Servette FC",
+  "fc lugano": "FC Lugano", "lugano": "FC Lugano",
+  // Belgium (expanded)
+  "kv kortrijk": "KV Kortrijk", "kortrijk": "KV Kortrijk",
+  "rwdm": "RWDM", "rwd molenbeek": "RWDM",
+  "beerschot va": "Beerschot VA", "beerschot": "Beerschot VA",
+  // France (expanded)
+  "rc strasbourg alsace": "RC Strasbourg Alsace",
+  "angers": "Angers SCO", "angers sco": "Angers SCO",
+  "auxerre": "AJ Auxerre", "aj auxerre": "AJ Auxerre",
+  "saint-etienne": "AS Saint-Étienne", "as saint-etienne": "AS Saint-Étienne",
+  // Spain (expanded)
+  "las palmas": "UD Las Palmas", "ud las palmas": "UD Las Palmas",
+  "real valladolid": "Real Valladolid CF", "valladolid": "Real Valladolid CF",
+  "leganes": "CD Leganés", "cd leganes": "CD Leganés",
+  "cadiz": "Cádiz CF", "cadiz cf": "Cádiz CF",
+  "almeria": "UD Almería", "ud almeria": "UD Almería",
+  "granada": "Granada CF", "granada cf": "Granada CF",
+  // Germany (expanded)
+  "mainz 05": "1. FSV Mainz 05", "mainz": "1. FSV Mainz 05", "1  fsv mainz 05": "1. FSV Mainz 05",
+  "fc schalke 04": "FC Schalke 04", "schalke": "FC Schalke 04",
+  "hertha bsc": "Hertha BSC", "hertha berlin": "Hertha BSC",
+  "1. fc nurnberg": "1. FC Nürnberg", "nurnberg": "1. FC Nürnberg",
+  "fortuna dusseldorf": "Fortuna Düsseldorf", "dusseldorf": "Fortuna Düsseldorf",
+  "hamburger sv": "Hamburger SV", "hamburg": "Hamburger SV", "hsv": "Hamburger SV",
+  "hannover 96": "Hannover 96", "hannover": "Hannover 96",
+  "vfl bochum": "VfL Bochum", "bochum": "VfL Bochum",
+  // Italy (expanded)
+  "ac milan": "AC Milan",
+  "spezia": "Spezia Calcio", "spezia calcio": "Spezia Calcio",
+  "sampdoria": "UC Sampdoria", "uc sampdoria": "UC Sampdoria",
+  "cremonese": "US Cremonese",
+  // Norway
+  "bodo glimt": "FK Bodø/Glimt", "bodo/glimt": "FK Bodø/Glimt", "fk bodo glimt": "FK Bodø/Glimt",
+  "rosenborg": "Rosenborg BK", "rosenborg bk": "Rosenborg BK",
+  "molde": "Molde FK", "molde fk": "Molde FK",
+  "viking": "Viking FK", "viking fk": "Viking FK",
+  "brann": "SK Brann", "sk brann": "SK Brann",
+  // Sweden
+  "malmo ff": "Malmö FF", "malmo": "Malmö FF",
+  "djurgarden": "Djurgårdens IF", "djurgardens if": "Djurgårdens IF",
+  "hammarby": "Hammarby IF", "hammarby if": "Hammarby IF",
+  "aik": "AIK",
+  // Poland
+  "legia warsaw": "Legia Warszawa", "legia warszawa": "Legia Warszawa",
+  "lech poznan": "Lech Poznań", "lech poznan": "Lech Poznań",
+  "rakow czestochowa": "Raków Częstochowa", "rakow": "Raków Częstochowa",
+  // Croatia
+  "dinamo zagreb": "GNK Dinamo Zagreb", "gnk dinamo zagreb": "GNK Dinamo Zagreb",
+  "hajduk split": "HNK Hajduk Split", "hnk hajduk split": "HNK Hajduk Split",
+  // Greece
+  "olympiacos": "Olympiacos FC", "olympiacos fc": "Olympiacos FC", "olympiakos": "Olympiacos FC",
+  "panathinaikos": "Panathinaikos FC", "panathinaikos fc": "Panathinaikos FC",
+  "aek athens": "AEK Athens FC", "aek athens fc": "AEK Athens FC",
+  "paok": "PAOK FC", "paok fc": "PAOK FC",
+  // Czech Republic
+  "sparta prague": "AC Sparta Praha", "ac sparta praha": "AC Sparta Praha", "sparta praha": "AC Sparta Praha",
+  "slavia prague": "SK Slavia Praha", "sk slavia praha": "SK Slavia Praha", "slavia praha": "SK Slavia Praha",
+  // Serbia
+  "red star belgrade": "FK Crvena zvezda", "crvena zvezda": "FK Crvena zvezda", "fk crvena zvezda": "FK Crvena zvezda",
+  "partizan belgrade": "FK Partizan", "fk partizan": "FK Partizan", "partizan": "FK Partizan",
+  // Romania
+  "fcsb": "FCSB", "steaua bucharest": "FCSB",
+  "cfr cluj": "CFR Cluj",
+  // Ukraine
+  "shakhtar donetsk": "FC Shakhtar Donetsk", "shakhtar": "FC Shakhtar Donetsk",
+  "dynamo kyiv": "FC Dynamo Kyiv", "dynamo kiev": "FC Dynamo Kyiv",
+  // Israel
+  "maccabi tel aviv": "Maccabi Tel Aviv FC", "maccabi tel-aviv": "Maccabi Tel Aviv FC",
+  "maccabi haifa": "Maccabi Haifa FC",
+  "hapoel beer sheva": "Hapoel Beer Sheva FC",
+  // Bulgaria
+  "ludogorets": "PFC Ludogorets Razgrad", "ludogorets razgrad": "PFC Ludogorets Razgrad",
+  "cska sofia": "PFC CSKA Sofia",
+  "levski sofia": "PFC Levski Sofia",
 };
 
 // In-memory cache of verified GitHub logo URLs (24h)
@@ -429,12 +601,39 @@ function resolveFootballLogosUrl(teamName, leagueName) {
   const cached = _footballLogosCache.get(cKey);
   if (cached && Date.now() - cached.ts < FOOTBALL_LOGOS_CACHE_TTL) return cached.url;
 
-  // Find the team file name from alias only (raw names are unreliable)
-  const fileName = TEAM_LOGO_ALIASES[normalized] || null;
+  // Find the team file name from alias (exact match first)
+  let fileName = TEAM_LOGO_ALIASES[normalized] || null;
+
+  // Fuzzy alias matching: strip common prefixes/suffixes and retry
+  if (!fileName) {
+    const stripped = normalized
+      .replace(/\b(fc|afc|sc|ac|cf|fk|sv|vfl|vfb|tsg|bsc|rsc|krc|kvc|kaa|kv|us|ss|acf|ssc|rc|ogc|losc|1\s*fc|bv)\b/g, "")
+      .replace(/\s+/g, " ")
+      .trim();
+    if (stripped && stripped !== normalized) {
+      fileName = TEAM_LOGO_ALIASES[stripped] || null;
+    }
+  }
+
+  // Try partial key match: find alias keys that contain the normalized name or vice versa
+  if (!fileName && normalized.length >= 4) {
+    const aliasKeys = Object.keys(TEAM_LOGO_ALIASES);
+    // Exact substring match — only if unambiguous
+    const candidates = aliasKeys.filter((k) => k === normalized || k.includes(normalized) || normalized.includes(k));
+    if (candidates.length === 1) {
+      fileName = TEAM_LOGO_ALIASES[candidates[0]];
+    } else if (candidates.length > 1) {
+      // Pick the closest length match
+      candidates.sort((a, b) => Math.abs(a.length - normalized.length) - Math.abs(b.length - normalized.length));
+      fileName = TEAM_LOGO_ALIASES[candidates[0]];
+    }
+  }
+
   if (!fileName) return null;
 
-  // Find the league folder
-  const folder = LEAGUE_TO_LOGO_FOLDER[leagueName] || LEAGUE_TO_LOGO_FOLDER[normalizeLeagueName(leagueName)] || null;
+  // Find the league folder  
+  const rawFolder = LEAGUE_TO_LOGO_FOLDER[leagueName] ?? LEAGUE_TO_LOGO_FOLDER[normalizeLeagueName(leagueName)] ?? undefined;
+  const folder = rawFolder === null ? undefined : rawFolder; // null = UEFA comp, skip direct folder match
 
   if (folder) {
     const url = `${FOOTBALL_LOGOS_BASE}/${encodeURIComponent(folder)}/${encodeURIComponent(fileName)}.png`;
@@ -442,10 +641,11 @@ function resolveFootballLogosUrl(teamName, leagueName) {
     return url;
   }
 
-  // No league folder — search only unique folders for this alias
-  const allFolders = [...new Set(Object.values(LEAGUE_TO_LOGO_FOLDER))];
-  for (const folderName of allFolders) {
-    const url = `${FOOTBALL_LOGOS_BASE}/${encodeURIComponent(folderName)}/${encodeURIComponent(fileName)}.png`;
+  // No league folder or UEFA competition — search all unique folders for this alias
+  const allFolders = [...new Set(Object.values(LEAGUE_TO_LOGO_FOLDER).filter(Boolean))];
+  if (allFolders.length > 0) {
+    // Pick the first folder (best-effort: logos are unique filenames across the repo)
+    const url = `${FOOTBALL_LOGOS_BASE}/${encodeURIComponent(allFolders[0])}/${encodeURIComponent(fileName)}.png`;
     _footballLogosCache.set(cKey, { url, ts: Date.now() });
     return url;
   }
@@ -1264,19 +1464,31 @@ async function fetchSofaIncidents(sofaEventId) {
     const data = await resp.json().catch(() => ({}));
     const incidents = Array.isArray(data?.incidents) ? data.incidents : [];
     const mapped = incidents
-      .filter((inc) => inc?.incidentType && inc.incidentType !== "period")
       .map((inc) => {
         const type = String(inc?.incidentType || "").toLowerCase();
         const detail = String(inc?.incidentClass || inc?.reason || "").toLowerCase();
         let eventType = type;
-        if (type === "card" && detail.includes("yellow")) eventType = "Yellow Card";
+
+        // Period events → halftime/fulltime markers
+        if (type === "period") {
+          if (inc?.text === "HT" || detail.includes("half")) eventType = "Half Time";
+          else if (inc?.text === "FT" || detail.includes("full")) eventType = "Full Time";
+          else return null; // skip other period markers
+        }
+        else if (type === "card" && (detail.includes("secondyellow") || detail.includes("second yellow"))) eventType = "Second Yellow";
+        else if (type === "card" && detail.includes("yellow")) eventType = "Yellow Card";
         else if (type === "card" && detail.includes("red")) eventType = "Red Card";
         else if (type === "goal" && detail.includes("own")) eventType = "Own Goal";
-        else if (type === "goal" && detail.includes("penal")) eventType = "Penalty - Loss";
+        else if (type === "goal" && (detail.includes("penal") || detail.includes("penalty"))) eventType = "Penalty Goal";
         else if (type === "goal") eventType = "Goal";
         else if (type === "substitution") eventType = "Substitution";
-        else if (type === "varDecision" || type === "var") eventType = "VAR";
-        else eventType = type;
+        else if (type === "vardecision" || type === "var") eventType = "VAR";
+        else if (type === "injurytime") eventType = "Injury Time";
+        else if (type === "inGamepenalty") {
+          if (detail.includes("miss") || detail.includes("saved")) eventType = "Missed Penalty";
+          else eventType = "Penalty";
+        }
+        else if (!type || type === "unknown") return null;
 
         return {
           time: inc?.time || null,
@@ -1289,7 +1501,8 @@ async function fetchSofaIncidents(sofaEventId) {
           assist: String(inc?.assist1?.name || inc?.assist1?.shortName || ""),
           name: String(inc?.player?.name || ""),
         };
-      });
+      })
+      .filter(Boolean);
     cacheSet(cacheKey, mapped, 5 * 60_000);
     return mapped;
   } catch {
@@ -1669,6 +1882,34 @@ async function enrichRosterPhotos(players, teamName) {
       if (dbp.name === normName) { best = dbp; break; }
     }
     if (best) return { ...player, photo: best.photo };
+    return player;
+  });
+
+  // Step 2: TheSportsDB fuzzy matching – last name match when only one candidate
+  enriched = enriched.map((player) => {
+    if (!player || player.photo) return player;
+    const normName = normalizePersonName(player.name || "");
+    if (!normName) return player;
+    const lastNameParts = normName.split(" ");
+    const lastName = lastNameParts[lastNameParts.length - 1];
+    if (!lastName || lastName.length < 3) return player;
+    const candidates = dbPlayers.filter((dbp) => {
+      const dbParts = (dbp.name || "").split(" ");
+      return dbParts[dbParts.length - 1] === lastName;
+    });
+    if (candidates.length === 1 && candidates[0].photo) {
+      return { ...player, photo: candidates[0].photo };
+    }
+    return player;
+  });
+
+  // Step 3: ESPN CDN headshot fallback for players with ESPN IDs
+  enriched = enriched.map((player) => {
+    if (!player || player.photo) return player;
+    const espnId = String(player.id || "").trim();
+    if (espnId && /^\d+$/.test(espnId)) {
+      return { ...player, photo: `https://a.espncdn.com/i/headshots/soccer/players/full/${espnId}.png` };
+    }
     return player;
   });
 
@@ -2868,6 +3109,71 @@ function deterministicPrediction(payload) {
     tip: prediction === "Draw"
       ? "Gelijkspel blijft plausibel; overweeg een voorzichtige live-benadering met focus op late fases."
       : `${prediction === "Home Win" ? "Thuisploeg" : "Uitploeg"} heeft statistisch voordeel; monitor kaarten en omschakelmomenten.`,
+    // Enhanced analysis fields (computed from stats)
+    matchInsight: hasMatchSignal
+      ? `${homeTag || "Thuisploeg"} ontvangt ${awayTag || "Uitploeg"} in een ${confidence >= 65 ? "duidelijk" : "spannende"} confrontatie. ${
+          homeRank > 0 && awayRank > 0
+            ? `Op klassement staan ze #${homeRank} vs #${awayRank}.`
+            : "Klassementgegevens zijn momenteel niet beschikbaar."
+        }`
+      : null,
+    formGuide: hasContextInputs
+      ? {
+          homeForm: `${homeTag || "Thuisploeg"} staat ${homeRank > 0 ? `op positie ${homeRank}` : "in de middenmoot"} met ${homePoints || 0} punten en een doelsaldo van ${homeGoalDiff >= 0 ? "+" : ""}${homeGoalDiff || 0}.`,
+          awayForm: `${awayTag || "Uitploeg"} staat ${awayRank > 0 ? `op positie ${awayRank}` : "in de middenmoot"} met ${awayPoints || 0} punten en een doelsaldo van ${awayGoalDiff >= 0 ? "+" : ""}${awayGoalDiff || 0}.`,
+        }
+      : null,
+    tacticalEdge: hasXgInputs
+      ? {
+          homeStrengths: [
+            homeSot > awaySot ? `Scherpere afronding (${homeSot} schoten op doel)` : null,
+            homePoss > awayPoss + 5 ? `Balbezit-dominantie (${homePoss}%)` : null,
+            homeCorners > awayCorners + 2 ? `Druk via hoekschoppen (${homeCorners})` : null,
+          ].filter(Boolean).slice(0, 3),
+          homeWeaknesses: [
+            awaySot > homeSot ? `Kwetsbaar voor schoten op doel (${awaySot} tegen)` : null,
+            awayPoss > homePoss + 5 ? `Verliest controle in balbezit` : null,
+            homeRed > 0 ? `Numeriek nadeel door ${homeRed} rode kaart${homeRed > 1 ? "en" : ""}` : null,
+          ].filter(Boolean).slice(0, 3),
+          awayStrengths: [
+            awaySot > homeSot ? `Scherpere afronding (${awaySot} schoten op doel)` : null,
+            awayPoss > homePoss + 5 ? `Balbezit-dominantie (${awayPoss}%)` : null,
+            awayCorners > homeCorners + 2 ? `Druk via hoekschoppen (${awayCorners})` : null,
+          ].filter(Boolean).slice(0, 3),
+          awayWeaknesses: [
+            homeSot > awaySot ? `Kwetsbaar voor schoten op doel (${homeSot} tegen)` : null,
+            homePoss > awayPoss + 5 ? `Verliest controle in balbezit` : null,
+            awayRed > 0 ? `Numeriek nadeel door ${awayRed} rode kaart${awayRed > 1 ? "en" : ""}` : null,
+          ].filter(Boolean).slice(0, 3),
+        }
+      : null,
+    attackingStrength: hasXgInputs
+      ? {
+          home: clamp(Math.round(40 + homeShots * 1.5 + homeSot * 3 + homeCorners * 0.8), 10, 95),
+          away: clamp(Math.round(40 + awayShots * 1.5 + awaySot * 3 + awayCorners * 0.8), 10, 95),
+        }
+      : null,
+    defensiveStrength: hasXgInputs
+      ? {
+          home: clamp(Math.round(60 - awaySot * 3 + homeBlocked * 1.5 + homeGkSaves * 2), 10, 95),
+          away: clamp(Math.round(60 - homeSot * 3 + awayBlocked * 1.5 + awayGkSaves * 2), 10, 95),
+        }
+      : null,
+    playerImpact: null,
+    matchPattern: hasXgInputs
+      ? (homePoss > awayPoss + 8
+          ? `${homeTag || "Thuisploeg"} controleert met balbezit, ${awayTag || "Uitploeg"} zoekt de counter.`
+          : awayPoss > homePoss + 8
+            ? `${awayTag || "Uitploeg"} houdt de bal, ${homeTag || "Thuisploeg"} speelt op de omschakeling.`
+            : `Open en evenwichtige wedstrijd met kansen aan beide kanten.`)
+      : null,
+    predictionExplanation: hasMatchSignal
+      ? `${prediction === "Draw" ? "Analyse wijst op een gelijk opgaande strijd" : prediction === "Home Win" ? "Thuisploeg heeft een statistisch voordeel" : "Uitploeg heeft een statistisch voordeel"} op basis van ${hasXgInputs ? "schotkwaliteit en balbezit" : "score en wedstrijdverloop"}. ${
+          homeRed > 0 || awayRed > 0 ? "Rode kaarten spelen een cruciale rol. " : ""
+        }Confidence is ${confidence >= 65 ? "relatief hoog" : "gematigd"} gezien de beschikbare data.`
+      : null,
+    formation: null,
+    pressureIndex: hasXgInputs ? clamp(Math.round(homePoss * 0.6 + homeCorners * 2 + homeShots * 1.2), 0, 100) : null,
     source: "fallback-stats",
     updatedAt: new Date().toISOString(),
     insufficientData: !hasMatchSignal,
@@ -3370,7 +3676,7 @@ function mapEspnSummaryStats(summary, homeTeamId, awayTeamId) {
 
 function mapEspnSummaryDetails(summary) {
   const details = Array.isArray(summary?.details) ? summary.details : [];
-  return details.map((d) => {
+  const mapped = details.map((d) => {
     const time = d?.clock?.displayValue || d?.clock?.value || null;
     const type = String(d?.type?.text || d?.type || "");
     const detail = String(d?.text || d?.description || "");
@@ -3391,6 +3697,54 @@ function mapEspnSummaryDetails(summary) {
       assist,
     };
   });
+
+  // Also extract from ESPN keyEvents if details are sparse
+  const keyEvents = Array.isArray(summary?.keyEvents) ? summary.keyEvents : [];
+  if (keyEvents.length > mapped.length) {
+    const seenTimes = new Set(mapped.map((m) => `${m.time}_${m.type}`));
+    for (const ev of keyEvents) {
+      const time = ev?.clock?.displayValue || ev?.clock?.value || ev?.period?.clock?.displayValue || null;
+      const type = String(ev?.type?.text || ev?.type || ev?.shortText || "");
+      const key = `${time}_${type}`;
+      if (seenTimes.has(key)) continue;
+      seenTimes.add(key);
+      const player = String(ev?.athletesInvolved?.[0]?.displayName || ev?.participants?.[0]?.athlete?.displayName || "");
+      const assist = String(ev?.athletesInvolved?.[1]?.displayName || ev?.participants?.[1]?.athlete?.displayName || "");
+      mapped.push({
+        time,
+        extra: null,
+        team: ev?.team?.displayName || ev?.participants?.[0]?.athlete?.team?.displayName || "",
+        teamLogo: ev?.team?.logo || null,
+        type,
+        detail: String(ev?.text || ev?.shortText || type || ""),
+        text: String(ev?.text || ev?.shortText || type || "Event"),
+        player,
+        assist,
+      });
+    }
+  }
+
+  // Also extract scoring plays if available
+  const scoringPlays = Array.isArray(summary?.scoringPlays) ? summary.scoringPlays : [];
+  if (scoringPlays.length > 0 && !mapped.some((m) => /goal/i.test(m.type))) {
+    for (const sp of scoringPlays) {
+      const time = sp?.clock?.displayValue || sp?.clock?.value || null;
+      const player = String(sp?.athletesInvolved?.[0]?.displayName || sp?.scoringAthlete?.displayName || "");
+      mapped.push({
+        time,
+        extra: null,
+        team: sp?.team?.displayName || "",
+        teamLogo: sp?.team?.logo || null,
+        type: "Goal",
+        detail: "Goal",
+        text: player ? `Goal - ${player}` : "Goal",
+        player,
+        assist: String(sp?.athletesInvolved?.[1]?.displayName || sp?.assistAthlete?.displayName || ""),
+      });
+    }
+  }
+
+  return mapped;
 }
 
 const MATCH_STAT_ALIASES = {
@@ -3582,7 +3936,26 @@ function buildNormalizedTimeline(events, homeTeam, awayTeam, status, minute, hom
     });
   }
 
-  if (String(status || "").toLowerCase() === "finished" && !normalized.some((event) => event.kind === "fulltime")) {
+  // Synthetic halftime marker when missing and match is at half or finished
+  const statusLower = String(status || "").toLowerCase();
+  if ((statusLower === "finished" || (statusLower === "live" && toNum(currentMinute) >= 45)) && !normalized.some((e) => e.kind === "halftime")) {
+    normalized.push({
+      id: "halftime_synth",
+      kind: "halftime",
+      title: "Half Time",
+      icon: "pause",
+      importance: 22,
+      side: "center",
+      minute: "45'",
+      minuteValue: 45,
+      team: "",
+      description: "Rust",
+      secondary: null,
+      rawType: "synthetic",
+    });
+  }
+
+  if (statusLower === "finished" && !normalized.some((event) => event.kind === "fulltime")) {
     normalized.push({
       id: "fulltime_synth",
       kind: "fulltime",
@@ -3597,6 +3970,54 @@ function buildNormalizedTimeline(events, homeTeam, awayTeam, status, minute, hom
       secondary: null,
       rawType: "synthetic",
     });
+  }
+
+  // Synthesize goal events from score when timeline has no goal events but score > 0
+  const goalKinds = new Set(["goal", "penalty_goal", "own_goal"]);
+  const hasGoalEvents = normalized.some((e) => goalKinds.has(e.kind));
+  const totalGoals = (toNum(homeScore) || 0) + (toNum(awayScore) || 0);
+  if (!hasGoalEvents && totalGoals > 0 && (statusLower === "finished" || statusLower === "live")) {
+    const hGoals = toNum(homeScore) || 0;
+    const aGoals = toNum(awayScore) || 0;
+    // Spread synthetic goals roughly across the match
+    const totalSlots = hGoals + aGoals;
+    let slot = 0;
+    for (let g = 0; g < hGoals; g++) {
+      slot++;
+      const min = Math.min(89, Math.round((slot / (totalSlots + 1)) * 90));
+      normalized.push({
+        id: `goal_synth_h${g}`,
+        kind: "goal",
+        title: "Goal",
+        icon: "football",
+        importance: 30,
+        side: "home",
+        minute: `${min}'`,
+        minuteValue: min,
+        team: homeTeam,
+        description: homeTeam,
+        secondary: null,
+        rawType: "synthetic",
+      });
+    }
+    for (let g = 0; g < aGoals; g++) {
+      slot++;
+      const min = Math.min(89, Math.round((slot / (totalSlots + 1)) * 90));
+      normalized.push({
+        id: `goal_synth_a${g}`,
+        kind: "goal",
+        title: "Goal",
+        icon: "football",
+        importance: 30,
+        side: "away",
+        minute: `${min}'`,
+        minuteValue: min,
+        team: awayTeam,
+        description: awayTeam,
+        secondary: null,
+        rawType: "synthetic",
+      });
+    }
   }
 
   return normalized.sort((a, b) => {
@@ -3677,28 +4098,65 @@ function buildMatchHighlights(timeline, match) {
   const highlightable = events.filter((event) => !["kickoff", "halftime", "fulltime", "info"].includes(event.kind));
   const topMoments = [...highlightable]
     .sort((a, b) => (b.importance - a.importance) || (a.minuteValue - b.minuteValue))
-    .slice(0, 6)
+    .slice(0, 8)
     .sort((a, b) => a.minuteValue - b.minuteValue);
 
   const recap = [];
   const goals = highlightable.filter((event) => ["goal", "penalty_goal", "own_goal"].includes(event.kind));
   const cards = highlightable.filter((event) => ["yellow_card", "red_card", "second_yellow"].includes(event.kind));
   const vars = highlightable.filter((event) => event.kind === "var");
+  const subs = highlightable.filter((event) => event.kind === "substitution");
 
   if (goals.length > 0) {
     recap.push(`${goals.length} beslissende doelmoment${goals.length === 1 ? "" : "en"} bepaalden het scoreverloop.`);
   }
   if (cards.length > 0) {
+    const reds = cards.filter((c) => ["red_card", "second_yellow"].includes(c.kind));
+    if (reds.length > 0) {
+      recap.push(`${reds.length} rode kaart${reds.length === 1 ? "" : "en"} beïnvloedde${reds.length === 1 ? "" : "n"} het wedstrijdverloop.`);
+    }
     recap.push(`Discipline speelde mee met ${cards.length} kaartmoment${cards.length === 1 ? "" : "en"}.`);
   }
   if (vars.length > 0) {
     recap.push(`VAR greep ${vars.length} keer in tijdens cruciale fases van de match.`);
   }
-  if (highlightable.length === 0) {
+
+  // Stat-based insights when available
+  const hs = match?.homeStats || {};
+  const as = match?.awayStats || {};
+  const readStat = (stats, key) => {
+    // Support both flat stats (advancedStats output) and raw stats
+    if (stats[key] != null) return toNum(stats[key]);
+    const aliases = MATCH_STAT_ALIASES?.[key];
+    if (aliases) return toNum(firstStatValue(stats, aliases));
+    return 0;
+  };
+  const hPoss = readStat(hs, "possession");
+  const aPoss = readStat(as, "possession");
+  const hShots = readStat(hs, "total_shots");
+  const aShots = readStat(as, "total_shots");
+  const hSot = readStat(hs, "shots_on_target");
+  const aSot = readStat(as, "shots_on_target");
+
+  if (hPoss > 0 && aPoss > 0 && Math.abs(hPoss - aPoss) >= 10) {
+    const dom = hPoss > aPoss ? (match?.homeTeam || "Thuis") : (match?.awayTeam || "Uit");
+    recap.push(`${dom} domineerde het balbezit met ${Math.max(hPoss, aPoss)}%.`);
+  }
+  if (hShots > 0 && aShots > 0 && Math.abs(hShots - aShots) >= 4) {
+    const dom = hShots > aShots ? (match?.homeTeam || "Thuis") : (match?.awayTeam || "Uit");
+    recap.push(`${dom} was gevaarlijker met ${Math.max(hShots, aShots)} schoten (${Math.max(hSot || 0, aSot || 0)} op doel).`);
+  }
+  if (subs.length > 0) {
+    recap.push(`${subs.length} wissel${subs.length === 1 ? "" : "s"} brachten vers bloed in de wedstrijd.`);
+  }
+
+  if (highlightable.length === 0 && recap.length === 0) {
     recap.push("Nog geen grote incidenten; de wedstrijd wordt voorlopig vooral tactisch uitgevochten.");
   }
 
-  const summary = `${match?.homeTeam || "Thuis"} ${match?.homeScore ?? 0} - ${match?.awayScore ?? 0} ${match?.awayTeam || "Uit"}`;
+  const hScore = match?.homeScore ?? 0;
+  const aScore = match?.awayScore ?? 0;
+  const summary = `${match?.homeTeam || "Thuis"} ${hScore} - ${aScore} ${match?.awayTeam || "Uit"}`;
   return {
     summary,
     recap,
@@ -3718,7 +4176,7 @@ function finalizeMatchPayload(match) {
     base?.awayScore || 0,
   );
   const advancedStats = buildAdvancedStats(base?.homeStats || {}, base?.awayStats || {}, timeline);
-  const highlights = buildMatchHighlights(timeline, base);
+  const highlights = buildMatchHighlights(timeline, { ...base, homeStats: advancedStats.homeStats, awayStats: advancedStats.awayStats });
 
   return {
     ...base,
@@ -3729,7 +4187,6 @@ function finalizeMatchPayload(match) {
   };
 }
 
-// Live (poll every 10s)
 // Live (poll every 10s)
 app.get("/api/sports/live", async (req, res) => {
   const date = getDateParam(req);

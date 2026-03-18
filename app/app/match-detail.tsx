@@ -1345,14 +1345,14 @@ function StatsBarsInner({ homeTeam, awayTeam, homeStats, awayStats }: { homeTeam
             <View style={styles.statBarsWrapper}>
               {/* Home bar — grows right-to-left from center */}
               <View style={styles.statBarHalf}>
-                <View style={{ flex: 100 - hPct || 1 }} />
-                <View style={[styles.statBarHomeFill, { flex: hPct || 0 }]} />
+                {hPct < 100 ? <View style={{ flex: 100 - hPct }} /> : null}
+                {hPct > 0 ? <View style={[styles.statBarHomeFill, { flex: hPct }]} /> : null}
               </View>
               <View style={styles.statBarCenterGap} />
               {/* Away bar — grows left-to-right from center */}
               <View style={styles.statBarHalf}>
-                <View style={[styles.statBarAwayFill, { flex: aPct || 0 }]} />
-                <View style={{ flex: 100 - aPct || 1 }} />
+                {aPct > 0 ? <View style={[styles.statBarAwayFill, { flex: aPct }]} /> : null}
+                {aPct < 100 ? <View style={{ flex: 100 - aPct }} /> : null}
               </View>
             </View>
           </View>
@@ -1513,19 +1513,38 @@ function shortPlayerName(name: string): string {
 }
 
 function PitchDot({ player, color }: { player: any; color: string }) {
+  const photoCandidates = React.useMemo(() => {
+    const candidates: string[] = [];
+    if (player?.photo) candidates.push(player.photo);
+    if (player?.headshot && player.headshot !== player?.photo) candidates.push(player.headshot);
+    const eid = String(player?.id || "");
+    if (/^\d+$/.test(eid)) {
+      candidates.push(`https://a.espncdn.com/i/headshots/soccer/players/full/${eid}.png`);
+    }
+    return candidates;
+  }, [player?.photo, player?.headshot, player?.id]);
+
+  const [photoIdx, setPhotoIdx] = React.useState(0);
   const [photoOk, setPhotoOk] = React.useState(false);
-  const [photoFailed, setPhotoFailed] = React.useState(false);
-  const photoUri = player?.photo || player?.headshot || null;
-  const showPhoto = photoUri && !photoFailed;
+  const currentPhoto = photoCandidates[photoIdx] || null;
+  const showPhoto = Boolean(currentPhoto);
+
   return (
     <View style={styles.pitchDotWrap}>
       <View style={[styles.pitchDotCircle, { borderColor: color }]}>
         {showPhoto ? (
           <Image
-            source={{ uri: photoUri }}
+            source={{ uri: currentPhoto! }}
             style={[styles.pitchDotPhoto, !photoOk && { opacity: 0 }]}
             onLoad={() => setPhotoOk(true)}
-            onError={() => { setPhotoOk(false); setPhotoFailed(true); }}
+            onError={() => {
+              setPhotoOk(false);
+              if (photoIdx + 1 < photoCandidates.length) {
+                setPhotoIdx((i) => i + 1);
+              } else {
+                setPhotoIdx(-1); // exhausted all candidates
+              }
+            }}
           />
         ) : null}
         {!showPhoto || !photoOk ? (
@@ -3005,17 +3024,20 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.15)",
     paddingVertical: 14,
-    paddingHorizontal: 6,
-    gap: 4,
+    paddingHorizontal: 8,
+    gap: 2,
     overflow: "hidden",
     position: "relative",
+    alignItems: "center",
   },
   combinedPitchRow: {
     flexDirection: "row",
     justifyContent: "space-evenly",
     alignItems: "center",
+    alignSelf: "stretch",
     zIndex: 2,
-    paddingHorizontal: 4,
+    paddingHorizontal: 2,
+    minHeight: 52,
   },
   pitchDivider: {
     height: 1,
@@ -3138,9 +3160,11 @@ const styles = StyleSheet.create({
   },
   pitchDotWrap: {
     alignItems: "center",
-    gap: 3,
-    width: 58,
-    paddingVertical: 2,
+    gap: 2,
+    minWidth: 48,
+    maxWidth: 68,
+    flex: 1,
+    paddingVertical: 1,
   },
   pitchDotCircle: {
     width: 34,
