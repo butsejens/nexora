@@ -1,0 +1,17 @@
+# Alles wat EAS niet nodig heeft voor de app-build
+
+# Backend server (alleen nodig op Render, niet voor APK)
+server/
+
+# Oude release APKs (grote LFS files)
+releases/
+
+# Build/deploy scripts
+scripts/
+
+# Git hooks
+.githooks/
+
+# Placeholder native projecten (EAS genereert zelf via expo prebuild)
+app/android/
+app/ios/

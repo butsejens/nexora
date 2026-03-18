@@ -1,0 +1,16 @@
+node_modules
+.expo
+dist
+dist-android
+web-build
+ios
+android
+*.orig.*
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+*.log
+*.apk
+expo-env.d.ts
