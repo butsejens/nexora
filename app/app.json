@@ -3,7 +3,7 @@
     "name": "NEXORA",
     "slug": "nexora-sports-stream",
     "version": "2.5.21",
-    "runtimeVersion": "2.5.2",
+    "runtimeVersion": "2.5.21",
     "updates": {
       "enabled": true,
       "checkAutomatically": "ON_LOAD",
