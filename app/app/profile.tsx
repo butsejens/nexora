@@ -34,6 +34,18 @@ import * as IntentLauncher from "expo-intent-launcher";
 
 const CHANGELOG: { version: string; date: string; changes: string[] }[] = [
   {
+    version: "2.5.21",
+    date: "2026-03-18",
+    changes: [
+      "Visuele upgrade: actieve tab glow-effect en score-glow op live kaarten",
+      "Momentum Dominance Bar in wedstrijdstatistieken",
+      "Mijn Teams sectie: volg je favoriete teams en zie hun wedstrijden direct",
+      "Sport zoekfunctie: zoek wedstrijden en teams via de zoekbalk",
+      "Multi-sport kleuren en iconen per sport in wedstrijdkaarten",
+      "Prestatie-optimalisaties: React.memo, useCallback en useMemo doorheen de app",
+    ],
+  },
+  {
     version: "2.0.39",
     date: "2026-03-09",
     changes: [
