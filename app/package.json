@@ -1,7 +1,7 @@
 {
   "name": "expo-app",
   "main": "expo-router/entry",
-  "version": "2.5.21",
+  "version": "2.5.23",
   "scripts": {
     "postinstall": "patch-package || true",
     "expo:start:static:build": "npx expo start --no-dev --minify --localhost",
@@ -13,7 +13,7 @@
     "lint:fix": "npx expo lint --fix",
     "ota:production": "node ../scripts/require-macbook.mjs && node ../scripts/enforce-env-policy.mjs release && npx eas-cli update --branch production --message \"nexora-ota-production\"",
     "ota:preview": "node ../scripts/require-macbook.mjs && node ../scripts/enforce-env-policy.mjs release && npx eas-cli update --branch preview --message \"nexora-ota-preview\"",
-    "release:apk": "node ../scripts/require-macbook.mjs && node ../scripts/enforce-env-policy.mjs release && cd android && ./gradlew assembleRelease -x externalNativeBuildDebug && node ../scripts/cleanup-old-apks.mjs",
+    "release:apk": "node ../scripts/require-macbook.mjs && node ../scripts/enforce-env-policy.mjs release && cd android && ./gradlew assembleRelease -x externalNativeBuildDebug && cd .. && node ../scripts/cleanup-old-apks.mjs",
     "android": "expo run:android",
     "ios": "expo run:ios"
   },

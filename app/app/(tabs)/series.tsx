@@ -1,12 +1,12 @@
 import React, { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import {
   View, Text, StyleSheet, FlatList, Platform, RefreshControl,
-  TouchableOpacity, TextInput, ActivityIndicator,
+  TouchableOpacity, TextInput, ActivityIndicator, Image,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { COLORS } from "@/constants/colors";
 import { NexoraHeader } from "@/components/NexoraHeader";
 import { useNexora } from "@/context/NexoraContext";
@@ -87,6 +87,7 @@ async function fetchGenreDiscover() {
 
 export default function SeriesScreen() {
   const insets = useSafeAreaInsets();
+  const queryClient = useQueryClient();
   const { isFavorite, toggleFavorite, iptvChannels, isChannelVisible, isLoadingPlaylist, watchHistory } = useNexora();
   const [groupFilter, setGroupFilter] = useState("All");
   const [search, setSearch] = useState("");
@@ -293,21 +294,47 @@ export default function SeriesScreen() {
     return () => clearTimeout(timer);
   }, [isTabLoading]);
 
+  const warmDetailPayload = useCallback((item: any) => {
+    const tmdbId = item?.tmdbId ? String(item.tmdbId) : (!item?.isIptv ? String(item?.id || "") : "");
+    if (item?.poster) Image.prefetch(String(item.poster)).catch(() => undefined);
+    if (item?.backdrop) Image.prefetch(String(item.backdrop)).catch(() => undefined);
+    if (!tmdbId) return;
+    queryClient.prefetchQuery({
+      queryKey: ["detail", "series", tmdbId],
+      queryFn: async () => {
+        const res = await apiRequest("GET", `/api/series/${tmdbId}/full`);
+        return res.json();
+      },
+      staleTime: 10 * 60 * 1000,
+    }).catch(() => undefined);
+  }, [queryClient]);
+
   // ── Navigation helpers ─────────────────────────────────────────────────────
   const goToDetail = useCallback((item: any) => {
+    warmDetailPayload(item);
+    const tmdbId = item.tmdbId ? String(item.tmdbId) : (!item.isIptv ? String(item.id) : undefined);
+    const baseParams = {
+      id: item.id,
+      type: "series",
+      title: item.title,
+      ...(tmdbId ? { tmdbId } : {}),
+      ...(item.poster ? { poster: String(item.poster) } : {}),
+      ...(item.backdrop ? { backdrop: String(item.backdrop) } : {}),
+      ...(item.year ? { year: String(item.year) } : {}),
+      ...(item.overview ? { overview: String(item.overview) } : {}),
+    };
     if (item.isIptv) {
       router.push({
         pathname: "/detail",
         params: {
-          id: item.id, type: "series", title: item.title,
+          ...baseParams,
           isIptv: "true", streamUrl: item.streamUrl,
-          ...(item.tmdbId ? { tmdbId: String(item.tmdbId) } : {}),
         },
       });
     } else {
-      router.push({ pathname: "/detail", params: { id: item.id, type: "series", title: item.title } });
+      router.push({ pathname: "/detail", params: baseParams });
     }
-  }, []);
+  }, [warmDetailPayload]);
 
   const goToPlayer = useCallback((item: any) => {
     SafeHaptics.impactLight();

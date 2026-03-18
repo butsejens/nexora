@@ -4,6 +4,7 @@ import { QueryClient, QueryFunction } from "@tanstack/react-query";
 import Constants from "expo-constants";
 
 let lastWorkingApiBase = "";
+const DEFAULT_CLOUD_API_BASE = "https://nexora-api-8xxb.onrender.com";
 
 function normalizeBase(base: string): string {
   return String(base || "").trim().replace(/\/$/, "");
@@ -64,6 +65,19 @@ export function getApiBaseCandidates(): string[] {
   if (Platform.OS !== "web") {
     const iosSim = "http://localhost:8080";
     const androidEmu = "http://10.0.2.2:8080";
+
+    // Standalone/test APKs have no Metro host to infer and no business
+    // defaulting to localhost. Prefer the production API unless the build
+    // explicitly configured something else.
+    if (!__DEV__) {
+      return unique([
+        lastWorkingApiBase,
+        ...explicitList,
+        explicit,
+        DEFAULT_CLOUD_API_BASE,
+        inferredNative,
+      ]);
+    }
 
     // If explicit points to localhost on a physical device, inferred host should win.
     if (explicit && isLoopbackHost(explicit) && inferredNative) {

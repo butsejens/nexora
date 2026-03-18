@@ -130,6 +130,19 @@ function MatchRowCardInner({
           {/* Top accent line */}
           <View style={[s.topBar, { backgroundColor: barColor }]} />
 
+          <View style={s.metaRow}>
+            <View style={[s.metaBadge, { borderColor: `${sportAccent}55`, backgroundColor: `${sportAccent}16` }]}>
+              <Text style={[s.metaBadgeText, { color: sportAccent }]} numberOfLines={1}>
+                {sportIcon ? `${sportIcon} ` : ''}{match.league || 'Match'}
+              </Text>
+            </View>
+            <View style={[s.metaBadge, live ? s.metaBadgeLive : null]}>
+              <Text style={[s.metaBadgeText, live ? s.metaBadgeTextLive : null]}>
+                {live ? 'LIVE' : finished ? 'FT' : 'UPCOMING'}
+              </Text>
+            </View>
+          </View>
+
           {/* ── Main row ── */}
           <View style={s.row}>
 
@@ -263,19 +276,54 @@ const s = StyleSheet.create({
   topBar: {
     height: 2,
   },
+  metaRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingTop: 10,
+    paddingBottom: 2,
+    gap: 8,
+  },
+  metaBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    maxWidth: '72%',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 999,
+    borderWidth: 1,
+    backgroundColor: COLORS.cardElevated,
+    borderColor: COLORS.border,
+  },
+  metaBadgeLive: {
+    backgroundColor: 'rgba(255, 59, 92, 0.12)',
+    borderColor: 'rgba(255, 59, 92, 0.34)',
+  },
+  metaBadgeText: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: COLORS.textMuted,
+    letterSpacing: 0.4,
+    textTransform: 'uppercase',
+  },
+  metaBadgeTextLive: {
+    color: COLORS.live,
+  },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 12,
-    paddingVertical: 12,
-    minHeight: 90,
+    paddingTop: 10,
+    paddingBottom: 11,
+    minHeight: 84,
   },
 
   // Teams ─────────────────────────────────────────────────────────────────────
   teamCol: {
     flex: 5,
     alignItems: 'center',
-    gap: 4,
+    gap: 3,
     minWidth: 0,
   },
   teamName: {
@@ -306,10 +354,10 @@ const s = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 4,
-    minWidth: 72,
+    minWidth: 78,
   },
   score: {
-    fontSize: 22,
+    fontSize: 24,
     fontWeight: '800',
     color: COLORS.text,
     letterSpacing: 0.5,
@@ -336,7 +384,7 @@ const s = StyleSheet.create({
     fontWeight: '600',
     color: COLORS.textMuted,
     letterSpacing: 0.8,
-    marginTop: 3,
+    marginTop: 2,
     textTransform: 'uppercase',
   },
   livePill: {
@@ -356,7 +404,7 @@ const s = StyleSheet.create({
     fontSize: 8,
     fontWeight: '500',
     color: COLORS.textFaint,
-    marginTop: 3,
+    marginTop: 2,
     letterSpacing: 0.3,
     textAlign: 'center',
   },
@@ -388,8 +436,8 @@ const s = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 12,
-    paddingBottom: 8,
-    gap: 8,
+    paddingBottom: 7,
+    gap: 7,
   },
   possBar: {
     flex: 1,
@@ -416,16 +464,16 @@ const s = StyleSheet.create({
   // Actions ─────────────────────────────────────────────────────────────────────
   actions: {
     paddingHorizontal: 12,
-    paddingBottom: 10,
+    paddingBottom: 9,
   },
   actionsDivider: {
     height: 1,
     backgroundColor: COLORS.border,
-    marginBottom: 8,
+    marginBottom: 7,
   },
   actionsRow: {
     flexDirection: 'row',
-    gap: 6,
+    gap: 5,
   },
   actionBtn: {
     flex: 1,
@@ -433,7 +481,7 @@ const s = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 3,
-    paddingVertical: 7,
+    paddingVertical: 6,
     borderRadius: 8,
     backgroundColor: COLORS.cardElevated,
     borderWidth: 1,
@@ -444,7 +492,7 @@ const s = StyleSheet.create({
     borderColor: COLORS.accent,
   },
   actionBtnText: {
-    fontSize: 10,
+    fontSize: 9,
     fontWeight: '600',
     color: COLORS.textSecondary,
     letterSpacing: 0.2,

@@ -7,7 +7,7 @@ import { router, useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import WebView from "react-native-webview";
 import * as FileSystem from "expo-file-system/legacy";
 import { COLORS } from "@/constants/colors";
@@ -242,13 +242,17 @@ function DownloadModal({
 export default function DetailScreen() {
   const {
     id, type, title: paramTitle,
-    streamUrl, isIptv,
+    streamUrl, isIptv, tmdbId: paramTmdbId,
+    poster: routePoster, backdrop: routeBackdrop,
+    year: routeYear, overview: routeOverview,
   } = useLocalSearchParams<{
     id: string; type: string; title: string;
-    streamUrl?: string; isIptv?: string;
+    streamUrl?: string; isIptv?: string; tmdbId?: string;
+    poster?: string; backdrop?: string; year?: string; overview?: string;
   }>();
 
   const insets = useSafeAreaInsets();
+  const queryClient = useQueryClient();
   const { isFavorite, toggleFavorite, iptvChannels, isDownloaded, hasPremium } = useNexora();
 
   const [showTrailer, setShowTrailer] = useState(false);
@@ -268,13 +272,37 @@ export default function DetailScreen() {
   // Otherwise, search by title.
   const tmdbId = iptvChannel?.tmdbId
     ? String(iptvChannel.tmdbId)
-    : (isIptv !== "true" ? id : null);
+    : (paramTmdbId ? String(paramTmdbId) : (isIptv !== "true" ? id : null));
+
+  const routeSeedData = useMemo(() => {
+    if (!paramTitle && !routePoster && !routeBackdrop && !routeOverview) return null;
+    return {
+      id: tmdbId || id,
+      tmdbId: tmdbId || id,
+      title: paramTitle,
+      synopsis: routeOverview || "",
+      poster: routePoster || null,
+      backdrop: routeBackdrop || null,
+      year: routeYear ? Number(routeYear) : null,
+      imdb: null,
+      quality: null,
+      genre: [],
+      cast: [],
+      trailerKey: null,
+      seasons: null,
+    };
+  }, [id, paramTitle, routeBackdrop, routeOverview, routePoster, routeYear, tmdbId]);
+
+  const cachedDetail = tmdbId
+    ? queryClient.getQueryData(["detail", type, tmdbId]) as any
+    : null;
 
   const { data: tmdbData, isLoading: tmdbLoading, error: tmdbError, refetch } = useQuery({
     queryKey: ["detail", type, tmdbId],
     queryFn: () => fetchDetails(tmdbId!, type),
     enabled: !!tmdbId,
     staleTime: 10 * 60 * 1000,
+    initialData: cachedDetail || routeSeedData || undefined,
     retry: 1,
   });
 

@@ -34,6 +34,24 @@ import * as IntentLauncher from "expo-intent-launcher";
 
 const CHANGELOG: { version: string; date: string; changes: string[] }[] = [
   {
+    version: "2.5.23",
+    date: "2026-03-18",
+    changes: [
+      "Wedstrijddetail toont nu rijkere statistieken, echte timeline-events en automatische hoogtepunten",
+      "Sport-home is compacter en premiumer met snellere scanbare matchcards",
+      "Films en series openen sneller door detail-prefetch en directe cache-first rendering",
+    ],
+  },
+  {
+    version: "2.5.22",
+    date: "2026-03-18",
+    changes: [
+      "Standalone APK gebruikt nu standaard de productie-server in plaats van localhost",
+      "Release build kan daardoor weer correct verbinden met de backend",
+      "OTA kanaalconfiguratie blijft actief voor verdere snelle tests",
+    ],
+  },
+  {
     version: "2.5.21",
     date: "2026-03-18",
     changes: [

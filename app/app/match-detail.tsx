@@ -133,6 +133,14 @@ export default function MatchDetailScreen() {
   const { hasPremium } = useNexora();
   const sportPremium = hasPremium("sport");
   const [activeTab, setActiveTab] = useState<TabId>("stream");
+  const [visitedTabs, setVisitedTabs] = useState<Record<TabId, boolean>>({
+    stream: true,
+    stats: false,
+    lineups: false,
+    timeline: false,
+    highlights: false,
+    ai: false,
+  });
   const [lineupView, setLineupView] = useState<"pitch" | "list">("pitch");
   const [streamKey, setStreamKey] = useState(0);
   const [streamWebError, setStreamWebError] = useState<unknown>(null);
@@ -328,6 +336,7 @@ export default function MatchDetailScreen() {
 
   const handleTabChange = (tab: TabId) => {
     setActiveTab(tab);
+    setVisitedTabs((current) => (current[tab] ? current : { ...current, [tab]: true }));
     if (tab === "stream" && isLive && !streamFinderDone) {
       setStreamFinderActive(true);
       if (streamFinderTimerRef.current) clearTimeout(streamFinderTimerRef.current);
@@ -392,6 +401,10 @@ export default function MatchDetailScreen() {
   }, [isLive, detailLoading, liveMinute, liveHomeScore, liveAwayScore, fetchLivePrediction]);
 
   const topPad = Platform.OS === "web" ? 67 : insets.top;
+  const timelineEvents = Array.isArray(matchDetail?.timeline) ? matchDetail.timeline : [];
+  const highlightSummary = matchDetail?.highlights || null;
+  const highlightMoments = Array.isArray(highlightSummary?.topMoments) ? highlightSummary.topMoments : [];
+  const highlightRecap = Array.isArray(highlightSummary?.recap) ? highlightSummary.recap : [];
 
   return (
     <View style={styles.container}>
@@ -595,7 +608,8 @@ export default function MatchDetailScreen() {
           )}
         </View>
 
-      {/* Stats Tab — always mounted, hidden when not active */}
+      {/* Stats Tab */}
+      {visitedTabs.stats ? (
       <ScrollView style={[styles.tabContent, activeTab !== "stats" ? { display: "none" } : null]} contentContainerStyle={styles.tabContentInner} showsVerticalScrollIndicator={false}>
           {detailLoading ? (
             <LoadingState />
@@ -625,8 +639,10 @@ export default function MatchDetailScreen() {
             <EmptyState icon="stats-chart-outline" text="Statistieken niet beschikbaar voor deze wedstrijd" />
           )}
         </ScrollView>
+      ) : null}
 
-      {/* Lineups/Matchen Tab — always mounted, hidden when not active */}
+      {/* Lineups/Matchen Tab */}
+      {visitedTabs.lineups ? (
       <ScrollView style={[styles.tabContent, activeTab !== "lineups" ? { display: "none" } : null]} contentContainerStyle={styles.tabContentInner} showsVerticalScrollIndicator={false}>
           <View style={styles.lineupViewToggleRow}>
             <TouchableOpacity
@@ -726,16 +742,18 @@ export default function MatchDetailScreen() {
             <EmptyState icon="people-outline" text="Opstelling nog niet beschikbaar" />
           )}
         </ScrollView>
+      ) : null}
 
-      {/* Timeline Tab — always mounted, hidden when not active */}
+      {/* Timeline Tab */}
+      {visitedTabs.timeline ? (
       <ScrollView style={[styles.tabContent, activeTab !== "timeline" ? { display: "none" } : null]} contentContainerStyle={styles.tabContentInner} showsVerticalScrollIndicator={false}>
         {detailLoading ? (
           <LoadingState />
-        ) : matchDetail?.keyEvents?.length > 0 ? (
+        ) : timelineEvents.length > 0 ? (
           <>
             <Text style={styles.sectionLabel}>MATCH TIMELINE</Text>
             <MatchTimeline
-              events={matchDetail.keyEvents}
+              events={timelineEvents}
               homeTeam={params.homeTeam}
               awayTeam={params.awayTeam}
             />
@@ -744,52 +762,55 @@ export default function MatchDetailScreen() {
           <EmptyState icon="git-branch-outline" text="Timeline nog niet beschikbaar" />
         )}
       </ScrollView>
+      ) : null}
 
-      {/* Highlights Tab — always mounted, hidden when not active */}
+      {/* Highlights Tab */}
+      {visitedTabs.highlights ? (
       <ScrollView style={[styles.tabContent, activeTab !== "highlights" ? { display: "none" } : null]} contentContainerStyle={styles.tabContentInner} showsVerticalScrollIndicator={false}>
         {detailLoading ? (
           <LoadingState />
         ) : (() => {
-          const goals = (matchDetail?.keyEvents || []).filter((e: any) => {
-            const t = safeStr(e?.type || e?.eventType || "").toLowerCase();
-            return t.includes("goal") || t.includes("score");
-          });
-          const cards = (matchDetail?.keyEvents || []).filter((e: any) => {
-            const t = safeStr(e?.type || e?.eventType || "").toLowerCase();
-            return t.includes("card") || t.includes("red") || t.includes("yellow");
-          });
-          const subs = (matchDetail?.keyEvents || []).filter((e: any) => {
-            const t = safeStr(e?.type || e?.eventType || "").toLowerCase();
-            return t.includes("sub");
-          });
-          const hasHighlights = goals.length > 0 || cards.length > 0;
+          const fallbackMoments = timelineEvents.filter((event: any) => !["kickoff", "halftime", "fulltime", "info"].includes(String(event?.kind || "")));
+          const usableMoments = highlightMoments.length > 0 ? highlightMoments : fallbackMoments;
+          const hasHighlights = usableMoments.length > 0 || highlightRecap.length > 0 || highlightSummary?.summary;
           if (!hasHighlights) return <EmptyState icon="star-outline" text="Hoogtepunten nog niet beschikbaar" />;
           return (
             <>
-              {goals.length > 0 && (
+              {highlightSummary?.summary ? (
+                <View style={styles.highlightsHeroCard}>
+                  <View style={styles.highlightsHeroHeader}>
+                    <Ionicons name="sparkles-outline" size={15} color={COLORS.accent} />
+                    <Text style={styles.highlightsHeroTitle}>Match Recap</Text>
+                  </View>
+                  <Text style={styles.highlightsHeroText}>{highlightSummary.summary}</Text>
+                </View>
+              ) : null}
+
+              {highlightRecap.length > 0 ? (
+                <View style={styles.highlightRecapGrid}>
+                  {highlightRecap.map((line: string, index: number) => (
+                    <View key={`${line}-${index}`} style={styles.highlightRecapCard}>
+                      <Text style={styles.highlightRecapIndex}>{String(index + 1).padStart(2, "0")}</Text>
+                      <Text style={styles.highlightRecapText}>{line}</Text>
+                    </View>
+                  ))}
+                </View>
+              ) : null}
+
+              {usableMoments.length > 0 ? (
                 <>
-                  <Text style={styles.sectionLabel}>DOELPUNTEN</Text>
-                  <MatchTimeline events={goals} homeTeam={params.homeTeam} awayTeam={params.awayTeam} />
+                  <Text style={styles.sectionLabel}>TOP MOMENTS</Text>
+                  <MatchTimeline events={usableMoments} homeTeam={params.homeTeam} awayTeam={params.awayTeam} />
                 </>
-              )}
-              {cards.length > 0 && (
-                <>
-                  <Text style={[styles.sectionLabel, { marginTop: 16 }]}>CARDS</Text>
-                  <MatchTimeline events={cards} homeTeam={params.homeTeam} awayTeam={params.awayTeam} />
-                </>
-              )}
-              {subs.length > 0 && (
-                <>
-                  <Text style={[styles.sectionLabel, { marginTop: 16 }]}>WISSELS</Text>
-                  <MatchTimeline events={subs} homeTeam={params.homeTeam} awayTeam={params.awayTeam} />
-                </>
-              )}
+              ) : null}
             </>
           );
         })()}
       </ScrollView>
+      ) : null}
 
-      {/* AI Analysis Tab — always mounted, hidden when not active */}
+      {/* AI Analysis Tab */}
+      {visitedTabs.ai ? (
       <ScrollView style={[styles.tabContent, activeTab !== "ai" ? { display: "none" } : null]} contentContainerStyle={styles.tabContentInner} showsVerticalScrollIndicator={false}>
         {!sportPremium ? (
           <View style={{ gap: 16, alignItems: "center" }}>
@@ -894,6 +915,7 @@ export default function MatchDetailScreen() {
           </>
         )}
         </ScrollView>
+      ) : null}
 
     </View>
   );
@@ -960,13 +982,28 @@ function MatchTimeline({ events, homeTeam, awayTeam }: { events: any[]; homeTeam
     return <EmptyState icon="timer-outline" text="No timeline events available" />;
   }
 
-  const getEventConfig = (typeRaw: string) => {
-    const t = String(typeRaw || "").toLowerCase();
-    if (t.includes("goal") && (t.includes("own") || t.includes("eigen"))) {
+  const getEventConfig = (event: any) => {
+    const t = String(event?.kind || event?.type || "").toLowerCase();
+    if (t.includes("kickoff")) {
+      return { icon: "play-outline" as const, color: COLORS.accent, label: "Kick-off", dot: COLORS.accent };
+    }
+    if (t.includes("halftime")) {
+      return { icon: "pause-outline" as const, color: "#FFD166", label: "Half-time", dot: "#FFD166" };
+    }
+    if (t.includes("fulltime")) {
+      return { icon: "stop-outline" as const, color: COLORS.textMuted, label: "Full Time", dot: COLORS.textMuted };
+    }
+    if (t.includes("own") || t.includes("eigen")) {
       return { icon: "football-outline" as const, color: "#FF6B35", label: "Own Goal", dot: "#FF6B35" };
     }
-    if (t.includes("goal") || (t.includes("penalty") && t.includes("scored"))) {
+    if (t.includes("goal")) {
       return { icon: "football-outline" as const, color: "#00E676", label: "Goal", dot: "#00E676" };
+    }
+    if (t.includes("missed_penalty")) {
+      return { icon: "close-circle-outline" as const, color: "#FF9F1C", label: "Missed Penalty", dot: "#FF9F1C" };
+    }
+    if (t.includes("chance")) {
+      return { icon: "flash-outline" as const, color: "#7BDFF2", label: "Big Chance", dot: "#7BDFF2" };
     }
     if (t.includes("red")) {
       return { icon: "card-outline" as const, color: "#FF3040", label: "Red Card", dot: "#FF3040" };
@@ -993,6 +1030,8 @@ function MatchTimeline({ events, homeTeam, awayTeam }: { events: any[]; homeTeam
   };
 
   const isHomeEvent = (ev: any): boolean => {
+    if (ev?.side === "home") return true;
+    if (ev?.side === "away" || ev?.side === "center") return false;
     const evTeam = safeStr(ev?.team || ev?.teamName || "").toLowerCase();
     const home = homeTeam.toLowerCase();
     if (!evTeam) return true; // default to home if unknown
@@ -1002,18 +1041,47 @@ function MatchTimeline({ events, homeTeam, awayTeam }: { events: any[]; homeTeam
   return (
     <View style={styles.timelineWrapper}>
       {events.map((ev: any, i: number) => {
-        const cfg = getEventConfig(String(ev?.type || ""));
+        const cfg = getEventConfig(ev);
         const onHome = isHomeEvent(ev);
-        const minute = ev?.time ? `${String(ev.time)}'` : "";
-        const description = safeStr(ev?.player || ev?.name || ev?.text || ev?.detail || "");
+        const minute = safeStr(ev?.minute || (ev?.time ? `${String(ev.time)}'` : ""));
+        const title = safeStr(ev?.title || cfg.label);
+        const description = safeStr(ev?.description || ev?.player || ev?.name || ev?.text || ev?.detail || "");
+        const secondary = safeStr(ev?.secondary || ev?.assist || "");
+        const isCenterEvent = ev?.side === "center" || ["kickoff", "halftime", "fulltime"].includes(String(ev?.kind || ""));
 
         return (
           <View key={i} style={styles.timelineRow}>
+            {isCenterEvent ? (
+              <>
+                <View style={styles.timelineSide} />
+                <View style={styles.timelineCenterCardWrap}>
+                  <View style={styles.timelineCenter}>
+                    <View style={[styles.timelineDot, { backgroundColor: cfg.dot, borderColor: `${cfg.dot}88` }]} />
+                    {minute ? <Text style={styles.timelineMinute}>{minute}</Text> : null}
+                  </View>
+                  <View style={styles.timelineCenterCard}>
+                    <View style={[styles.timelineEventBadge, { backgroundColor: `${cfg.dot}22`, borderColor: `${cfg.dot}55` }]}>
+                      <Ionicons name={cfg.icon} size={12} color={cfg.color} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.timelineTitle}>{title}</Text>
+                      {description ? <Text style={styles.timelineDescription}>{description}</Text> : null}
+                    </View>
+                  </View>
+                </View>
+                <View style={styles.timelineSide} />
+              </>
+            ) : (
+              <>
             {/* Home side */}
             <View style={styles.timelineSide}>
               {onHome ? (
                 <View style={styles.timelineEventHome}>
-                  <Text style={styles.timelinePlayer} numberOfLines={1}>{description}</Text>
+                  <View style={styles.timelineTextBlockHome}>
+                    <Text style={styles.timelineTitleHome} numberOfLines={1}>{title}</Text>
+                    <Text style={styles.timelinePlayer} numberOfLines={2}>{description}</Text>
+                    {secondary ? <Text style={styles.timelineSecondaryHome} numberOfLines={1}>{secondary}</Text> : null}
+                  </View>
                   <View style={[styles.timelineEventBadge, { backgroundColor: `${cfg.dot}22`, borderColor: `${cfg.dot}55` }]}>
                     <Ionicons name={cfg.icon} size={12} color={cfg.color} />
                   </View>
@@ -1034,10 +1102,16 @@ function MatchTimeline({ events, homeTeam, awayTeam }: { events: any[]; homeTeam
                   <View style={[styles.timelineEventBadge, { backgroundColor: `${cfg.dot}22`, borderColor: `${cfg.dot}55` }]}>
                     <Ionicons name={cfg.icon} size={12} color={cfg.color} />
                   </View>
-                  <Text style={[styles.timelinePlayer, { textAlign: "left" }]} numberOfLines={1}>{description}</Text>
+                  <View style={styles.timelineTextBlockAway}>
+                    <Text style={styles.timelineTitle} numberOfLines={1}>{title}</Text>
+                    <Text style={[styles.timelinePlayer, { textAlign: "left" }]} numberOfLines={2}>{description}</Text>
+                    {secondary ? <Text style={styles.timelineSecondary} numberOfLines={1}>{secondary}</Text> : null}
+                  </View>
                 </View>
               ) : null}
             </View>
+              </>
+            )}
           </View>
         );
       })}
@@ -1104,6 +1178,12 @@ function StatsBars({ homeTeam, awayTeam, homeStats, awayStats }: { homeTeam: str
     keyPasses:             "Key Passes",
     passes_final_third:    "Passes in Final Third",
     passesFinalThird:      "Passes in Final Third",
+    touches_in_box:        "Touches In Box",
+    touchesInBox:          "Touches In Box",
+    progressive_passes:    "Progressive Passes",
+    progressivePasses:     "Progressive Passes",
+    through_balls:         "Through Balls",
+    throughBalls:          "Through Balls",
     long_balls:            "Long Balls",
     longBalls:             "Long Balls",
     long_balls_accurate:   "Accurate Long Balls",
@@ -2063,16 +2143,16 @@ const styles = StyleSheet.create({
   },
   tabBar: {
     flexDirection: "row",
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
     gap: 6,
   },
   tab: {
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
+    paddingHorizontal: 13,
+    paddingVertical: 7,
     borderRadius: 20,
   },
   tabActive: {
@@ -2186,23 +2266,24 @@ const styles = StyleSheet.create({
     maxWidth: 280,
   },
   tabContent: { flex: 1 },
-  tabContentInner: { padding: 16, gap: 0 },
+  tabContentInner: { paddingHorizontal: 14, paddingTop: 12, paddingBottom: 18, gap: 0 },
   sectionLabel: {
     fontFamily: "Inter_700Bold",
     fontSize: 11,
     color: COLORS.accent,
     letterSpacing: 1.5,
     textTransform: "uppercase",
-    marginBottom: 14,
-    marginTop: 6,
+    marginBottom: 10,
+    marginTop: 2,
   },
   infoCard: {
     backgroundColor: COLORS.card,
     borderRadius: 18,
-    padding: 16,
+    paddingHorizontal: 15,
+    paddingVertical: 14,
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.07)",
-    marginBottom: 10,
+    marginBottom: 8,
     // @ts-ignore
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 4 },
@@ -2216,13 +2297,13 @@ const styles = StyleSheet.create({
     color: COLORS.textMuted,
     letterSpacing: 1.5,
     textTransform: "uppercase",
-    marginBottom: 14,
+    marginBottom: 10,
   },
   infoRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    paddingVertical: 11,
+    paddingVertical: 9,
     borderBottomWidth: 1,
     borderBottomColor: "rgba(255,255,255,0.05)",
   },
@@ -2246,13 +2327,13 @@ const styles = StyleSheet.create({
   statsHeaderCard: {
     backgroundColor: COLORS.card,
     borderRadius: 16,
-    paddingHorizontal: 16,
-    paddingTop: 14,
-    paddingBottom: 16,
+    paddingHorizontal: 14,
+    paddingTop: 12,
+    paddingBottom: 14,
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.07)",
   },
-  momentumContainer: { marginTop: 16, gap: 6 },
+  momentumContainer: { marginTop: 12, gap: 5 },
   momentumLabel: {
     fontFamily: "Inter_600SemiBold",
     fontSize: 9,
@@ -2290,8 +2371,8 @@ const styles = StyleSheet.create({
   statSectionCard: {
     backgroundColor: COLORS.card,
     borderRadius: 16,
-    paddingHorizontal: 16,
-    paddingTop: 14,
+    paddingHorizontal: 14,
+    paddingTop: 12,
     paddingBottom: 6,
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.07)",
@@ -2318,7 +2399,7 @@ const styles = StyleSheet.create({
   statSectionIcon: {
     fontSize: 13,
   },
-  statRow: { flexDirection: "row", alignItems: "center", gap: 8, paddingBottom: 12 },
+  statRow: { flexDirection: "row", alignItems: "center", gap: 8, paddingBottom: 10 },
   statVal: {
     fontFamily: "Inter_700Bold",
     fontSize: 14,
@@ -2404,31 +2485,32 @@ const styles = StyleSheet.create({
   timelineWrapper: {
     backgroundColor: COLORS.card,
     borderRadius: 18,
-    padding: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.07)",
-    marginBottom: 10,
+    marginBottom: 8,
     gap: 0,
   },
   timelineRow: {
     flexDirection: "row",
     alignItems: "center",
-    minHeight: 40,
+    minHeight: 36,
     borderBottomWidth: 1,
     borderBottomColor: "rgba(255,255,255,0.04)",
   },
   timelineSide: {
     flex: 1,
-    paddingVertical: 6,
+    paddingVertical: 5,
     paddingHorizontal: 4,
   },
   timelineSideAway: {
     alignItems: "flex-start",
   },
   timelineCenter: {
-    width: 56,
+    width: 54,
     alignItems: "center",
-    gap: 3,
+    gap: 2,
   },
   timelineDot: {
     width: 10,
@@ -2438,9 +2520,27 @@ const styles = StyleSheet.create({
   },
   timelineMinute: {
     fontFamily: "Inter_700Bold",
-    fontSize: 10,
+    fontSize: 9,
     color: COLORS.textMuted,
     textAlign: "center",
+  },
+  timelineCenterCardWrap: {
+    width: 180,
+    alignItems: "center",
+    gap: 6,
+    paddingVertical: 6,
+  },
+  timelineCenterCard: {
+    width: "100%",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 9,
+    borderRadius: 12,
+    backgroundColor: "rgba(255,255,255,0.045)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.08)",
   },
   timelineEventHome: {
     flexDirection: "row",
@@ -2462,12 +2562,106 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     flexShrink: 0,
   },
+  timelineTextBlockHome: {
+    flex: 1,
+    alignItems: "flex-end",
+    gap: 1,
+  },
+  timelineTextBlockAway: {
+    flex: 1,
+    alignItems: "flex-start",
+    gap: 1,
+  },
+  timelineTitleHome: {
+    fontFamily: "Inter_700Bold",
+    fontSize: 11,
+    color: COLORS.text,
+    textAlign: "right",
+  },
+  timelineTitle: {
+    fontFamily: "Inter_700Bold",
+    fontSize: 11,
+    color: COLORS.text,
+  },
   timelinePlayer: {
     fontFamily: "Inter_500Medium",
-    fontSize: 12,
+    fontSize: 11,
     color: COLORS.text,
     flex: 1,
     textAlign: "right",
+  },
+  timelineDescription: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 11,
+    color: COLORS.textSecondary,
+    lineHeight: 16,
+  },
+  timelineSecondaryHome: {
+    fontFamily: "Inter_500Medium",
+    fontSize: 10,
+    color: COLORS.accentDim,
+    textAlign: "right",
+  },
+  timelineSecondary: {
+    fontFamily: "Inter_500Medium",
+    fontSize: 10,
+    color: COLORS.accentDim,
+  },
+  highlightsHeroCard: {
+    borderRadius: 18,
+    paddingHorizontal: 15,
+    paddingVertical: 14,
+    borderWidth: 1,
+    borderColor: `${COLORS.accent}33`,
+    backgroundColor: "rgba(229,9,20,0.1)",
+    marginBottom: 10,
+    gap: 8,
+  },
+  highlightsHeroHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  highlightsHeroTitle: {
+    fontFamily: "Inter_700Bold",
+    fontSize: 11,
+    color: COLORS.accent,
+    textTransform: "uppercase",
+    letterSpacing: 1.1,
+  },
+  highlightsHeroText: {
+    fontFamily: "Inter_500Medium",
+    fontSize: 13,
+    color: COLORS.text,
+    lineHeight: 19,
+  },
+  highlightRecapGrid: {
+    gap: 8,
+    marginBottom: 10,
+  },
+  highlightRecapCard: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 10,
+    borderRadius: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 11,
+    backgroundColor: COLORS.card,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.07)",
+  },
+  highlightRecapIndex: {
+    fontFamily: "Inter_800ExtraBold",
+    fontSize: 11,
+    color: COLORS.accent,
+    minWidth: 20,
+  },
+  highlightRecapText: {
+    flex: 1,
+    fontFamily: "Inter_400Regular",
+    fontSize: 12,
+    color: COLORS.textSecondary,
+    lineHeight: 18,
   },
   lineupTeamHeader: {
     flexDirection: "row",

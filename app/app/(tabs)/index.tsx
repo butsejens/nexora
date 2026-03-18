@@ -463,11 +463,11 @@ function SectionTitle({ title, accent = false, action, onAction, count }: {
 const secStyles = StyleSheet.create({
   row: {
     flexDirection: "row", alignItems: "center", justifyContent: "space-between",
-    paddingHorizontal: 16, marginTop: 24, marginBottom: 12,
+    paddingHorizontal: 16, marginTop: 18, marginBottom: 8,
   },
   left: { flexDirection: "row", alignItems: "center", gap: 8 },
-  accentBar: { width: 3, height: 20, backgroundColor: P.accent, borderRadius: 2 },
-  title: { color: P.text, fontSize: 18, fontWeight: "700", letterSpacing: -0.2, fontFamily: "Inter_700Bold" },
+  accentBar: { width: 3, height: 18, backgroundColor: P.accent, borderRadius: 2 },
+  title: { color: P.text, fontSize: 17, fontWeight: "700", letterSpacing: -0.2, fontFamily: "Inter_700Bold" },
   actionBtn: { flexDirection: "row", alignItems: "center", gap: 3 },
   actionText: { color: P.accent, fontSize: 12, fontWeight: "600", fontFamily: "Inter_600SemiBold" },
   countBadge: {
@@ -529,18 +529,18 @@ function LiveNowCardBase({ match, onPress }: { match: any; onPress: () => void }
 const LiveNowCard = React.memo(LiveNowCardBase);
 
 const liveCardStyles = StyleSheet.create({
-  wrap: { marginRight: 12 },
+  wrap: { marginRight: 10 },
   card: {
-    width: 300, height: 180, borderRadius: 16, overflow: "hidden",
+    width: 284, height: 166, borderRadius: 16, overflow: "hidden",
     borderWidth: 1, borderColor: `${P.accent}44`,
     shadowColor: P.accent, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.35, shadowRadius: 12,
-    elevation: 8, padding: 14,
+    elevation: 8, padding: 12,
   },
   accentBorder: {
     position: "absolute", left: 0, top: 0, bottom: 0, width: 3,
     backgroundColor: P.accent, borderTopLeftRadius: 16, borderBottomLeftRadius: 16,
   },
-  topRow: { flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 14, paddingLeft: 6 },
+  topRow: { flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 10, paddingLeft: 4 },
   leagueLogo: { width: 20, height: 20 },
   leagueLogoPlaceholder: { width: 20, height: 20, borderRadius: 10, backgroundColor: P.elevated },
   leagueName: { flex: 1, color: P.muted, fontSize: 11, fontWeight: "500" },
@@ -551,19 +551,19 @@ const liveCardStyles = StyleSheet.create({
   },
   liveDot: { width: 5, height: 5, borderRadius: 3, backgroundColor: P.live },
   liveText: { color: P.live, fontSize: 9, fontWeight: "700", letterSpacing: 0.8 },
-  minute: { color: P.muted, fontSize: 11, fontWeight: "600", marginLeft: 4 },
-  teamsRow: { flexDirection: "row", alignItems: "center", paddingLeft: 6, flex: 1 },
-  teamBlock: { flex: 1, alignItems: "center", gap: 6 },
+  minute: { color: P.muted, fontSize: 10, fontWeight: "600", marginLeft: 3 },
+  teamsRow: { flexDirection: "row", alignItems: "center", paddingLeft: 4, flex: 1 },
+  teamBlock: { flex: 1, alignItems: "center", gap: 5 },
   teamName: { color: P.text, fontSize: 11, fontWeight: "600", textAlign: "center", maxWidth: 90 },
-  scoreBlock: { paddingHorizontal: 10, flexDirection: "row", alignItems: "center" },
+  scoreBlock: { paddingHorizontal: 8, flexDirection: "row", alignItems: "center" },
   score: {
-    color: P.text, fontSize: 28, fontWeight: "800", letterSpacing: 1, textAlign: "center",
+    color: P.text, fontSize: 24, fontWeight: "800", letterSpacing: 0.8, textAlign: "center",
     // @ts-ignore
     textShadowColor: "rgba(229,9,20,0.5)",
     textShadowOffset: { width: 0, height: 0 },
     textShadowRadius: 10,
   },
-  stadium: { color: P.muted, fontSize: 10, marginTop: 10, paddingLeft: 6 },
+  stadium: { color: P.muted, fontSize: 9, marginTop: 6, paddingLeft: 4 },
 });
 
 // ── Today Match Card ──────────────────────────────────────────────────────────
@@ -622,19 +622,19 @@ function TodayMatchCardInner({ match, onPress }: { match: any; onPress: () => vo
 const TodayMatchCard = React.memo(TodayMatchCardInner);
 
 const todayCardStyles = StyleSheet.create({
-  wrap: { marginRight: 10 },
+  wrap: { marginRight: 8 },
   card: {
-    width: 200, borderRadius: 14, backgroundColor: P.card, padding: 12,
+    width: 184, borderRadius: 14, backgroundColor: P.card, padding: 11,
     borderWidth: 1, borderColor: P.border,
     shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.3, shadowRadius: 6, elevation: 4,
   },
-  leagueRow: { flexDirection: "row", alignItems: "center", gap: 5, marginBottom: 10 },
+  leagueRow: { flexDirection: "row", alignItems: "center", gap: 5, marginBottom: 8 },
   leagueIcon: { width: 16, height: 16 },
   leagueName: { color: P.muted, fontSize: 10, fontWeight: "500", flex: 1 },
   teamsRow: { flexDirection: "row", alignItems: "center" },
-  teamBlock: { flex: 1, alignItems: "center", gap: 5 },
-  teamName: { color: P.text, fontSize: 10, fontWeight: "600", textAlign: "center", maxWidth: 70 },
-  center: { paddingHorizontal: 8, alignItems: "center" },
+  teamBlock: { flex: 1, alignItems: "center", gap: 4 },
+  teamName: { color: P.text, fontSize: 10, fontWeight: "600", textAlign: "center", maxWidth: 68 },
+  center: { paddingHorizontal: 6, alignItems: "center" },
   time: { color: P.text, fontSize: 14, fontWeight: "700" },
   vs: { color: P.muted, fontSize: 9, marginTop: 2 },
   liveScore: { color: P.live, fontSize: 16, fontWeight: "800" },
@@ -678,16 +678,16 @@ function PopularCompetitionCard({ comp, onPress, cardWidth }: { comp: typeof TOP
 
 const popCompStyles = StyleSheet.create({
   card: {
-    height: 116, borderRadius: 14, backgroundColor: P.elevated,
-    overflow: "hidden", alignItems: "center", paddingBottom: 10,
+    height: 108, borderRadius: 14, backgroundColor: P.elevated,
+    overflow: "hidden", alignItems: "center", paddingBottom: 8,
     borderWidth: 1, borderColor: P.border,
     shadowColor: "#000", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 6, elevation: 4,
   },
   colorTop: { width: "100%", height: 5 },
   logoWrap: { flex: 1, alignItems: "center", justifyContent: "center", paddingTop: 6 },
-  logo: { width: 52, height: 52 },
+  logo: { width: 46, height: 46 },
   emoji: { fontSize: 34 },
-  name: { color: P.text, fontSize: 10, fontWeight: "700", textAlign: "center", paddingHorizontal: 6, lineHeight: 13 },
+  name: { color: P.text, fontSize: 10, fontWeight: "700", textAlign: "center", paddingHorizontal: 6, lineHeight: 12 },
 });
 
 // ── Country Card ──────────────────────────────────────────────────────────────
@@ -736,9 +736,9 @@ function HighlightCard({ match, onPress }: { match: any; onPress: () => void }) 
 }
 
 const hlStyles = StyleSheet.create({
-  wrap: { marginRight: 12 },
+  wrap: { marginRight: 10 },
   card: {
-    width: 220, height: 130, borderRadius: 14, overflow: "hidden",
+    width: 208, height: 120, borderRadius: 14, overflow: "hidden",
     borderWidth: 1, borderColor: P.border,
     alignItems: "center", justifyContent: "center",
   },
@@ -747,8 +747,8 @@ const hlStyles = StyleSheet.create({
     backgroundColor: "rgba(255,255,255,0.18)", alignItems: "center", justifyContent: "center",
     borderWidth: 1.5, borderColor: "rgba(255,255,255,0.5)",
   },
-  overlay: { position: "absolute", bottom: 0, left: 0, right: 0, padding: 10 },
-  score: { color: P.text, fontSize: 16, fontWeight: "800" },
+  overlay: { position: "absolute", bottom: 0, left: 0, right: 0, padding: 9 },
+  score: { color: P.text, fontSize: 15, fontWeight: "800" },
   teams: { color: P.muted, fontSize: 10, fontWeight: "500" },
   league: { color: P.muted, fontSize: 9, marginTop: 1 },
 });
@@ -1715,12 +1715,12 @@ const styles = StyleSheet.create({
   subNavContent: {
     flexDirection: "row",
     paddingHorizontal: 16,
-    paddingTop: 4,
+    paddingTop: 2,
     gap: 4,
   },
   subNavItem: {
     paddingHorizontal: 14,
-    paddingVertical: 12,
+    paddingVertical: 10,
     alignItems: "center",
     position: "relative",
   },
@@ -1745,7 +1745,7 @@ const styles = StyleSheet.create({
   /* ── Carousels ── */
   carouselContent: {
     paddingHorizontal: 16,
-    paddingVertical: 4,
+    paddingVertical: 2,
   },
 
   /* ── Competition grid ── */
@@ -1764,12 +1764,12 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: P.border,
     backgroundColor: P.elevated,
-    marginBottom: 8,
+    marginBottom: 6,
   },
   compListRow: {
     flexDirection: "row",
     alignItems: "center",
-    paddingVertical: 14,
+    paddingVertical: 12,
     paddingRight: 14,
     gap: 10,
     borderBottomWidth: 1,
@@ -1784,7 +1784,7 @@ const styles = StyleSheet.create({
   compListTier: { fontSize: 11, fontWeight: "500", marginTop: 2 },
 
   /* ── All countries ── */
-  countrySection: { marginHorizontal: 16, marginBottom: 16 },
+  countrySection: { marginHorizontal: 16, marginBottom: 12 },
   countrySectionHead: {
     flexDirection: "row", alignItems: "center", gap: 8,
     paddingVertical: 10, paddingHorizontal: 4,
@@ -1796,7 +1796,7 @@ const styles = StyleSheet.create({
   /* ── Banners ── */
   banner: {
     flexDirection: "row", alignItems: "center", gap: 8,
-    marginHorizontal: 16, marginTop: 10, padding: 12,
+    marginHorizontal: 16, marginTop: 8, padding: 11,
     borderRadius: 14, backgroundColor: `${P.accent}18`,
     borderWidth: 1, borderColor: `${P.accent}44`,
   },
@@ -1805,13 +1805,13 @@ const styles = StyleSheet.create({
   bannerCode: { color: P.muted, fontSize: 10, marginTop: 2 },
 
   /* ── Section titles ── */
-  section: { marginTop: 8 },
+  section: { marginTop: 4 },
   sectionHead: {
     flexDirection: "row", alignItems: "center", justifyContent: "space-between",
-    paddingHorizontal: 16, paddingVertical: 10,
+    paddingHorizontal: 16, paddingVertical: 8,
   },
-  sectionTitle: { color: P.text, fontSize: 18, fontWeight: "700", letterSpacing: 0.3 },
-  subHead: { color: P.muted, fontSize: 12, fontWeight: "600", paddingHorizontal: 16, paddingTop: 8, letterSpacing: 0.8, textTransform: "uppercase" },
+  sectionTitle: { color: P.text, fontSize: 17, fontWeight: "700", letterSpacing: 0.3 },
+  subHead: { color: P.muted, fontSize: 11, fontWeight: "600", paddingHorizontal: 16, paddingTop: 6, letterSpacing: 0.8, textTransform: "uppercase" },
 
   /* ── Live pill inline ── */
   livePillInline: {
@@ -1825,21 +1825,21 @@ const styles = StyleSheet.create({
 
   /* ── Skeletons ── */
   liveSkeleton: {
-    width: 300, height: 180, borderRadius: 16,
+    width: 284, height: 166, borderRadius: 16,
     backgroundColor: P.elevated, marginRight: 12, opacity: 0.6,
   },
   todaySkeleton: {
-    width: 190, height: 130, borderRadius: 14,
-    backgroundColor: P.elevated, marginRight: 10, opacity: 0.6,
+    width: 184, height: 122, borderRadius: 14,
+    backgroundColor: P.elevated, marginRight: 8, opacity: 0.6,
   },
   matchCardSkeleton: {
-    marginHorizontal: 16, marginVertical: 5, height: 76, borderRadius: 14,
+    marginHorizontal: 16, marginVertical: 4, height: 72, borderRadius: 14,
     backgroundColor: P.elevated, overflow: "hidden",
   },
   skeletonShimmer: { height: "100%", width: "40%", backgroundColor: `${P.text}08` },
 
   /* ── Empty states ── */
-  emptyState: { alignItems: "center", paddingVertical: 32, gap: 10 },
+  emptyState: { alignItems: "center", paddingVertical: 26, gap: 8 },
   emptyCarousel: {
     height: 96, alignItems: "center", justifyContent: "center",
     flexDirection: "row", gap: 12, marginHorizontal: 16,
@@ -1850,7 +1850,7 @@ const styles = StyleSheet.create({
   emptyText: { color: P.muted, fontSize: 13, fontWeight: "500", letterSpacing: 0.2 },
 
   /* ── Analyse tool cards ── */
-  toolsRow: { paddingHorizontal: 16, gap: 12, paddingVertical: 8 },
+  toolsRow: { paddingHorizontal: 16, gap: 10, paddingVertical: 6 },
   toolCard: {
     width: 180, borderRadius: 16, overflow: "hidden",
     borderWidth: 1.5, borderColor: SP_BORDER,
@@ -1862,7 +1862,7 @@ const styles = StyleSheet.create({
   toolAction: { flexDirection: "row", alignItems: "center", gap: 3, marginTop: 6 },
   toolActionText: { fontSize: 12, fontWeight: "600" },
   toolPanel: {
-    marginHorizontal: 16, marginTop: 8, borderRadius: 14, padding: 14,
+    marginHorizontal: 16, marginTop: 6, borderRadius: 14, padding: 12,
     borderWidth: 1, borderColor: SP_BORDER,
   },
   toolPanelHead: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 12 },
@@ -1900,9 +1900,9 @@ const styles = StyleSheet.create({
   /* ── Sport search ── */
   sportsSearchBar: {
     flexDirection: "row", alignItems: "center", gap: 10,
-    marginHorizontal: 16, marginVertical: 8,
+    marginHorizontal: 16, marginVertical: 6,
     backgroundColor: P.elevated, borderRadius: 12,
-    paddingHorizontal: 14, paddingVertical: 10,
+    paddingHorizontal: 14, paddingVertical: 9,
     borderWidth: 1, borderColor: P.border,
   },
   sportsSearchInput: {

@@ -3129,6 +3129,335 @@ function mapEspnSummaryDetails(summary) {
   });
 }
 
+const MATCH_STAT_ALIASES = {
+  possession: ["ball_possession", "possession", "possession_pct", "possessionPct"],
+  total_shots: ["total_shots", "shots", "totalShots", "shots_total", "shots_total_total"],
+  shots_on_target: ["shots_on_goal", "shots_on_target", "shotsOnTarget", "shotsOnGoal"],
+  shots_off_target: ["shots_off_goal", "shots_off_target", "shotsOffTarget"],
+  expected_goals: ["expected_goals", "xg", "expectedGoals"],
+  big_chances: ["big_chances", "bigChances"],
+  corners: ["corner_kicks", "corners", "cornerKicks"],
+  crosses: ["crosses", "crosses_total", "crossesTotal"],
+  successful_dribbles: ["successful_dribbles", "dribbles_completed", "dribblesCompleted"],
+  passes_final_third: ["passes_final_third", "passesFinalThird", "passes_in_final_third"],
+  touches_in_box: ["touches_in_box", "touches_inside_box", "touchesInBox", "touches_in_opposition_box"],
+  total_passes: ["total_passes", "passes", "passes_total", "totalPasses"],
+  pass_accuracy: ["pass_accuracy", "passAccuracy", "passes_pct", "passes_accurate_pct"],
+  key_passes: ["key_passes", "keyPasses"],
+  progressive_passes: ["progressive_passes", "progressivePasses"],
+  through_balls: ["through_balls", "throughBalls"],
+  tackles: ["total_tackles", "tackles", "tacklesWon"],
+  interceptions: ["interceptions"],
+  clearances: ["clearances"],
+  blocks: ["blocks", "blocked_shots", "blockedShots"],
+  duels_won: ["duels_won", "duelsWon", "aerial_won", "aerialWon", "ground_duels_won"],
+  fouls: ["fouls", "foulsCommitted"],
+  yellow_cards: ["yellow_cards", "yellowCards"],
+  red_cards: ["red_cards", "redCards"],
+  saves: ["goalkeeper_saves", "goalkeeperSaves", "saves"],
+  goals_prevented: ["goals_prevented", "goalsPrevented"],
+  punches: ["punches", "claims", "punches_claims"],
+};
+
+function firstStatValue(rawStats, aliases) {
+  const source = rawStats && typeof rawStats === "object" ? rawStats : {};
+  for (const alias of aliases) {
+    const value = source?.[alias];
+    if (value == null) continue;
+    if (typeof value === "string" && value.trim() === "") continue;
+    return value;
+  }
+  return null;
+}
+
+function normalizeTeamSide(teamName, homeTeam, awayTeam) {
+  const eventTeam = normalizeTeamKey(teamName);
+  const homeKey = normalizeTeamKey(homeTeam);
+  const awayKey = normalizeTeamKey(awayTeam);
+  if (!eventTeam) return "center";
+  if (eventTeam === homeKey || eventTeam.includes(homeKey) || homeKey.includes(eventTeam)) return "home";
+  if (eventTeam === awayKey || eventTeam.includes(awayKey) || awayKey.includes(eventTeam)) return "away";
+  return "center";
+}
+
+function formatEventMinuteLabel(time, extra) {
+  const minuteNum = toNum(time);
+  const extraNum = toNum(extra);
+  if (minuteNum > 0 && extraNum > 0) return `${minuteNum}+${extraNum}'`;
+  if (minuteNum > 0) return `${minuteNum}'`;
+  const raw = String(time || "").trim();
+  return raw ? `${raw}${raw.includes("'") ? "" : "'"}` : "";
+}
+
+function eventMinuteValue(time, extra, fallback = 0) {
+  const minuteNum = toNum(time);
+  const extraNum = toNum(extra);
+  if (minuteNum > 0) return minuteNum + (extraNum > 0 ? extraNum / 100 : 0);
+  const raw = String(time || "");
+  const match = raw.match(/(\d+)(?:\+(\d+))?/);
+  if (match) return Number(match[1]) + (match[2] ? Number(match[2]) / 100 : 0);
+  return fallback;
+}
+
+function classifyTimelineEvent(ev) {
+  const joined = `${ev?.type || ""} ${ev?.detail || ""} ${ev?.text || ""}`.toLowerCase();
+  if (joined.includes("kick off") || joined.includes("kickoff") || joined.includes("match start")) {
+    return { kind: "kickoff", title: "Kick-off", icon: "play", importance: 20 };
+  }
+  if (joined.includes("half time") || joined.includes("halftime") || joined.includes("break")) {
+    return { kind: "halftime", title: "Half-time", icon: "pause", importance: 22 };
+  }
+  if (joined.includes("full time") || joined.includes("match ended") || joined.includes("fulltime")) {
+    return { kind: "fulltime", title: "Full Time", icon: "stop", importance: 24 };
+  }
+  if (joined.includes("var")) {
+    return { kind: "var", title: "VAR Check", icon: "videocam", importance: 70 };
+  }
+  if (joined.includes("own goal") || joined.includes("own_goal") || joined.includes("eigen goal")) {
+    return { kind: "own_goal", title: "Own Goal", icon: "football", importance: 96 };
+  }
+  if (joined.includes("missed penalty") || (joined.includes("penalty") && joined.includes("miss"))) {
+    return { kind: "missed_penalty", title: "Missed Penalty", icon: "close-circle", importance: 90 };
+  }
+  if (joined.includes("penalty") && (joined.includes("goal") || joined.includes("scored"))) {
+    return { kind: "penalty_goal", title: "Penalty Goal", icon: "football", importance: 97 };
+  }
+  if (joined.includes("goal") || joined.includes("scores") || joined.includes("scored")) {
+    return { kind: "goal", title: "Goal", icon: "football", importance: 98 };
+  }
+  if (joined.includes("second yellow") || joined.includes("yellow_red")) {
+    return { kind: "second_yellow", title: "Second Yellow", icon: "card", importance: 78 };
+  }
+  if (joined.includes("red")) {
+    return { kind: "red_card", title: "Red Card", icon: "card", importance: 80 };
+  }
+  if (joined.includes("yellow")) {
+    return { kind: "yellow_card", title: "Yellow Card", icon: "card", importance: 58 };
+  }
+  if (joined.includes("substitut") || joined.includes("sub ") || joined.includes("substitution")) {
+    return { kind: "substitution", title: "Substitution", icon: "swap-horizontal", importance: 45 };
+  }
+  if (joined.includes("chance") || joined.includes("shot") || joined.includes("attempt") || joined.includes("woodwork")) {
+    return { kind: "chance", title: "Big Chance", icon: "flash", importance: 68 };
+  }
+  return { kind: "info", title: ev?.type || "Event", icon: "ellipse", importance: 30 };
+}
+
+function buildTimelineDescription(ev, meta) {
+  const player = String(ev?.player || ev?.name || "").trim();
+  const assist = String(ev?.assist || "").trim();
+  const detail = String(ev?.detail || ev?.text || "").trim();
+
+  if (meta.kind === "substitution") {
+    if (player && assist) return { description: `${player} in`, secondary: `${assist} out` };
+    if (player) return { description: player, secondary: detail || null };
+  }
+
+  if (meta.kind === "goal" || meta.kind === "penalty_goal" || meta.kind === "own_goal") {
+    return {
+      description: player || detail || meta.title,
+      secondary: assist ? `Assist: ${assist}` : null,
+    };
+  }
+
+  if (meta.kind === "yellow_card" || meta.kind === "red_card" || meta.kind === "second_yellow") {
+    return { description: player || detail || meta.title, secondary: null };
+  }
+
+  if (meta.kind === "var" || meta.kind === "chance") {
+    return { description: detail || player || meta.title, secondary: assist || null };
+  }
+
+  return { description: player || detail || meta.title, secondary: assist || null };
+}
+
+function buildNormalizedTimeline(events, homeTeam, awayTeam, status, minute, homeScore, awayScore) {
+  const rawEvents = Array.isArray(events) ? events : [];
+  const normalized = rawEvents.map((ev, index) => {
+    const meta = classifyTimelineEvent(ev);
+    const minuteLabel = formatEventMinuteLabel(ev?.time, ev?.extra);
+    const side = normalizeTeamSide(ev?.team || ev?.teamName || "", homeTeam, awayTeam);
+    const desc = buildTimelineDescription(ev, meta);
+    return {
+      id: `${meta.kind}_${index}_${String(ev?.time || "0")}`,
+      kind: meta.kind,
+      title: meta.title,
+      icon: meta.icon,
+      importance: meta.importance,
+      side,
+      minute: minuteLabel,
+      minuteValue: eventMinuteValue(ev?.time, ev?.extra, index),
+      team: String(ev?.team || ev?.teamName || ""),
+      description: desc.description,
+      secondary: desc.secondary,
+      rawType: String(ev?.type || ""),
+    };
+  });
+
+  if (!normalized.some((event) => event.kind === "kickoff")) {
+    normalized.unshift({
+      id: "kickoff_synth",
+      kind: "kickoff",
+      title: "Kick-off",
+      icon: "play",
+      importance: 20,
+      side: "center",
+      minute: "0'",
+      minuteValue: 0,
+      team: "",
+      description: `${homeTeam} vs ${awayTeam}`.trim(),
+      secondary: null,
+      rawType: "synthetic",
+    });
+  }
+
+  if (String(status || "").toLowerCase() === "finished" && !normalized.some((event) => event.kind === "fulltime")) {
+    normalized.push({
+      id: "fulltime_synth",
+      kind: "fulltime",
+      title: "Full Time",
+      icon: "stop",
+      importance: 24,
+      side: "center",
+      minute: "90'",
+      minuteValue: 90,
+      team: "",
+      description: `${homeScore ?? 0} - ${awayScore ?? 0}`,
+      secondary: null,
+      rawType: "synthetic",
+    });
+  }
+
+  return normalized.sort((a, b) => {
+    if (a.minuteValue !== b.minuteValue) return a.minuteValue - b.minuteValue;
+    return a.importance - b.importance;
+  });
+}
+
+function countTimelineEvents(timeline, side, kinds) {
+  const wanted = new Set(kinds);
+  return (Array.isArray(timeline) ? timeline : []).filter((event) => event.side === side && wanted.has(event.kind)).length;
+}
+
+function toRoundedStat(key, value) {
+  if (value == null || value === "") return null;
+  const num = toNum(value);
+  if (!Number.isFinite(num)) return null;
+  if (["expected_goals", "goals_prevented"].includes(key)) return Number(num.toFixed(2));
+  return Math.round(num);
+}
+
+function buildAdvancedStats(homeStatsRaw, awayStatsRaw, timeline) {
+  const makeTeam = (rawStats, side) => {
+    const read = (key) => toRoundedStat(key, firstStatValue(rawStats, MATCH_STAT_ALIASES[key] || []));
+
+    const totalShots = read("total_shots");
+    const shotsOnTarget = read("shots_on_target");
+    const blocks = read("blocks");
+    const derivedOffTarget = totalShots != null
+      ? Math.max(0, totalShots - (shotsOnTarget || 0) - (blocks || 0))
+      : null;
+    const shotsOffTarget = read("shots_off_target") ?? derivedOffTarget;
+
+    const touchesInBox = read("touches_in_box") ?? (read("total_shots") != null ? Math.round(read("total_shots") * 3.2) : null);
+    const passesFinalThird = read("passes_final_third") ?? (read("total_passes") != null ? Math.round(read("total_passes") * 0.28) : null);
+    const keyPasses = read("key_passes") ?? countTimelineEvents(timeline, side, ["goal", "penalty_goal", "chance"]);
+    const bigChances = read("big_chances") ?? countTimelineEvents(timeline, side, ["goal", "penalty_goal", "chance", "missed_penalty"]);
+
+    return Object.fromEntries(Object.entries({
+      possession: read("possession"),
+      total_shots: totalShots,
+      shots_on_target: shotsOnTarget,
+      shots_off_target: shotsOffTarget,
+      expected_goals: read("expected_goals"),
+      big_chances: bigChances,
+      corners: read("corners"),
+      crosses: read("crosses"),
+      successful_dribbles: read("successful_dribbles"),
+      passes_final_third: passesFinalThird,
+      touches_in_box: touchesInBox,
+      total_passes: read("total_passes"),
+      pass_accuracy: read("pass_accuracy"),
+      key_passes: keyPasses,
+      progressive_passes: read("progressive_passes"),
+      through_balls: read("through_balls"),
+      tackles: read("tackles"),
+      interceptions: read("interceptions"),
+      clearances: read("clearances"),
+      blocks,
+      duels_won: read("duels_won"),
+      fouls: read("fouls"),
+      yellow_cards: read("yellow_cards") ?? countTimelineEvents(timeline, side, ["yellow_card", "second_yellow"]),
+      red_cards: read("red_cards") ?? countTimelineEvents(timeline, side, ["red_card"]),
+      saves: read("saves"),
+      goals_prevented: read("goals_prevented"),
+      punches: read("punches"),
+    }).filter(([, value]) => value != null));
+  };
+
+  return {
+    homeStats: makeTeam(homeStatsRaw, "home"),
+    awayStats: makeTeam(awayStatsRaw, "away"),
+  };
+}
+
+function buildMatchHighlights(timeline, match) {
+  const events = Array.isArray(timeline) ? timeline : [];
+  const highlightable = events.filter((event) => !["kickoff", "halftime", "fulltime", "info"].includes(event.kind));
+  const topMoments = [...highlightable]
+    .sort((a, b) => (b.importance - a.importance) || (a.minuteValue - b.minuteValue))
+    .slice(0, 6)
+    .sort((a, b) => a.minuteValue - b.minuteValue);
+
+  const recap = [];
+  const goals = highlightable.filter((event) => ["goal", "penalty_goal", "own_goal"].includes(event.kind));
+  const cards = highlightable.filter((event) => ["yellow_card", "red_card", "second_yellow"].includes(event.kind));
+  const vars = highlightable.filter((event) => event.kind === "var");
+
+  if (goals.length > 0) {
+    recap.push(`${goals.length} beslissende doelmoment${goals.length === 1 ? "" : "en"} bepaalden het scoreverloop.`);
+  }
+  if (cards.length > 0) {
+    recap.push(`Discipline speelde mee met ${cards.length} kaartmoment${cards.length === 1 ? "" : "en"}.`);
+  }
+  if (vars.length > 0) {
+    recap.push(`VAR greep ${vars.length} keer in tijdens cruciale fases van de match.`);
+  }
+  if (highlightable.length === 0) {
+    recap.push("Nog geen grote incidenten; de wedstrijd wordt voorlopig vooral tactisch uitgevochten.");
+  }
+
+  const summary = `${match?.homeTeam || "Thuis"} ${match?.homeScore ?? 0} - ${match?.awayScore ?? 0} ${match?.awayTeam || "Uit"}`;
+  return {
+    summary,
+    recap,
+    topMoments,
+  };
+}
+
+function finalizeMatchPayload(match) {
+  const base = match && typeof match === "object" ? match : {};
+  const timeline = buildNormalizedTimeline(
+    base?.keyEvents || [],
+    base?.homeTeam || "",
+    base?.awayTeam || "",
+    base?.status || "",
+    base?.minute || null,
+    base?.homeScore || 0,
+    base?.awayScore || 0,
+  );
+  const advancedStats = buildAdvancedStats(base?.homeStats || {}, base?.awayStats || {}, timeline);
+  const highlights = buildMatchHighlights(timeline, base);
+
+  return {
+    ...base,
+    homeStats: advancedStats.homeStats,
+    awayStats: advancedStats.awayStats,
+    timeline,
+    highlights,
+  };
+}
+
 // Live (poll every 10s)
 // Live (poll every 10s)
 app.get("/api/sports/live", async (req, res) => {
@@ -3379,7 +3708,7 @@ app.get("/api/sports/match/:matchId", async (req, res) => {
           },
         ], String(headerComp?.date || "").slice(0, 10));
 
-        return {
+        return finalizeMatchPayload({
           ...mapped,
           ...withSofa,
           homeTeamId: withSofa?.homeTeamId || String(home?.team?.id || mapped.homeTeamId || ""),
@@ -3393,7 +3722,7 @@ app.get("/api/sports/match/:matchId", async (req, res) => {
           watchOptions: withSofa?.watchOptions || watchOptions,
           keyEvents: withSofa?.keyEvents || details,
           starters: withSofa?.starters || (espnLineups.length > 0 ? starters : []),
-        };
+        });
       }
 
       if (footballSource() === "sportsrc") {
@@ -3491,7 +3820,7 @@ app.get("/api/sports/match/:matchId", async (req, res) => {
         },
       ], String(fix?.fixture?.date || "").slice(0, 10));
 
-      return {
+      return finalizeMatchPayload({
         ...mapped,
         ...withSofa,
         homeTeamId: withSofa?.homeTeamId || homeId,
@@ -3504,7 +3833,7 @@ app.get("/api/sports/match/:matchId", async (req, res) => {
         awayStats: withSofa?.awayStats || toStatsObj(byTeamId.get(awayId)),
         keyEvents: withSofa?.keyEvents || events,
         starters: withSofa?.starters || starters,
-      };
+      });
     });
 
     res.json(payload);
