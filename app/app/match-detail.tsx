@@ -774,32 +774,57 @@ export default function MatchDetailScreen() {
           const usableMoments = highlightMoments.length > 0 ? highlightMoments : fallbackMoments;
           const hasHighlights = usableMoments.length > 0 || highlightRecap.length > 0 || highlightSummary?.summary;
           if (!hasHighlights) return <EmptyState icon="star-outline" text="Hoogtepunten nog niet beschikbaar" />;
+          // Compute match excitement rating (1-5 stars)
+          const goalEvents = usableMoments.filter((e: any) => /goal/i.test(String(e?.kind || e?.type || "")));
+          const cardEvents = usableMoments.filter((e: any) => /red|yellow_red/i.test(String(e?.kind || e?.type || "")));
+          const excitementScore = Math.min(5, Math.max(1, Math.round(
+            1.5 + goalEvents.length * 0.7 + cardEvents.length * 0.4 + (usableMoments.length > 8 ? 0.5 : 0)
+          )));
           return (
             <>
+              {/* Match Rating */}
+              <View style={styles.highlightRatingCard}>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                  <MaterialCommunityIcons name="fire" size={16} color="#FF9800" />
+                  <Text style={styles.highlightRatingTitle}>Wedstrijdrating</Text>
+                </View>
+                <View style={{ flexDirection: "row", gap: 3 }}>
+                  {[1,2,3,4,5].map(s => (
+                    <Ionicons key={s} name={s <= excitementScore ? "star" : "star-outline"} size={16} color={s <= excitementScore ? "#FFD700" : "rgba(255,255,255,0.2)"} />
+                  ))}
+                </View>
+                <Text style={styles.highlightRatingSub}>
+                  {goalEvents.length} doelpunt{goalEvents.length !== 1 ? "en" : ""} · {usableMoments.length} momenten
+                </Text>
+              </View>
+
               {highlightSummary?.summary ? (
-                <View style={styles.highlightsHeroCard}>
+                <LinearGradient colors={["rgba(229,9,20,0.12)", "rgba(229,9,20,0.04)"]} style={styles.highlightsHeroCard}>
                   <View style={styles.highlightsHeroHeader}>
                     <Ionicons name="sparkles-outline" size={15} color={COLORS.accent} />
                     <Text style={styles.highlightsHeroTitle}>Match Recap</Text>
                   </View>
                   <Text style={styles.highlightsHeroText}>{highlightSummary.summary}</Text>
-                </View>
+                </LinearGradient>
               ) : null}
 
               {highlightRecap.length > 0 ? (
-                <View style={styles.highlightRecapGrid}>
-                  {highlightRecap.map((line: string, index: number) => (
-                    <View key={`${line}-${index}`} style={styles.highlightRecapCard}>
-                      <Text style={styles.highlightRecapIndex}>{String(index + 1).padStart(2, "0")}</Text>
-                      <Text style={styles.highlightRecapText}>{line}</Text>
-                    </View>
-                  ))}
-                </View>
+                <>
+                  <Text style={styles.sectionLabel}>KEY MOMENTS</Text>
+                  <View style={styles.highlightRecapGrid}>
+                    {highlightRecap.map((line: string, index: number) => (
+                      <View key={`${line}-${index}`} style={styles.highlightRecapCard}>
+                        <Text style={styles.highlightRecapIndex}>{String(index + 1).padStart(2, "0")}</Text>
+                        <Text style={styles.highlightRecapText}>{line}</Text>
+                      </View>
+                    ))}
+                  </View>
+                </>
               ) : null}
 
               {usableMoments.length > 0 ? (
                 <>
-                  <Text style={styles.sectionLabel}>TOP MOMENTS</Text>
+                  <Text style={styles.sectionLabel}>TIJDLIJN</Text>
                   <MatchTimeline events={usableMoments} homeTeam={params.homeTeam} awayTeam={params.awayTeam} />
                 </>
               ) : null}
@@ -977,7 +1002,7 @@ function TeamSide({ name, logo, onPress, align = "left" }: { name: string; logo?
   );
 }
 
-function MatchTimeline({ events, homeTeam, awayTeam }: { events: any[]; homeTeam: string; awayTeam: string }) {
+function MatchTimelineInner({ events, homeTeam, awayTeam }: { events: any[]; homeTeam: string; awayTeam: string }) {
   if (!events?.length) {
     return <EmptyState icon="timer-outline" text="No timeline events available" />;
   }
@@ -1040,6 +1065,7 @@ function MatchTimeline({ events, homeTeam, awayTeam }: { events: any[]; homeTeam
 
   return (
     <View style={styles.timelineWrapper}>
+      <View style={[styles.timelineConnector, { left: "50%", marginLeft: 16 }]} />
       {events.map((ev: any, i: number) => {
         const cfg = getEventConfig(ev);
         const onHome = isHomeEvent(ev);
@@ -1119,7 +1145,9 @@ function MatchTimeline({ events, homeTeam, awayTeam }: { events: any[]; homeTeam
   );
 }
 
-function StatsBars({ homeTeam, awayTeam, homeStats, awayStats }: { homeTeam: string; awayTeam: string; homeStats: any; awayStats: any }) {
+const MatchTimeline = React.memo(MatchTimelineInner);
+
+function StatsBarsInner({ homeTeam, awayTeam, homeStats, awayStats }: { homeTeam: string; awayTeam: string; homeStats: any; awayStats: any }) {
   const STAT_LABELS: Record<string, string> = {
     // Core / Possession
     ball_possession:       "Possession %",
@@ -1395,6 +1423,8 @@ function StatsBars({ homeTeam, awayTeam, homeStats, awayStats }: { homeTeam: str
   );
 }
 
+const StatsBars = React.memo(StatsBarsInner);
+
 function PlayerRow({ player, sport, compact = false, teamName = "" }: { player: any; sport: string; compact?: boolean; teamName?: string }) {
   const photoCandidates = [
     player?.photo,
@@ -1474,26 +1504,42 @@ function shortPlayerName(name: string): string {
 }
 
 function PitchDot({ player, color }: { player: any; color: string }) {
+  const [photoOk, setPhotoOk] = React.useState(false);
+  const photoUri = player?.photo || player?.headshot || null;
   return (
     <View style={styles.pitchDotWrap}>
       <View style={[styles.pitchDotCircle, { borderColor: color }]}>
-        <Text style={[styles.pitchDotNum, { color }]}>{player.jersey || "—"}</Text>
+        {photoUri ? (
+          <Image
+            source={{ uri: photoUri }}
+            style={styles.pitchDotPhoto}
+            onLoad={() => setPhotoOk(true)}
+            onError={() => setPhotoOk(false)}
+          />
+        ) : null}
+        {!photoUri || !photoOk ? (
+          <Text style={[styles.pitchDotNum, { color }]}>{player.jersey || "—"}</Text>
+        ) : null}
       </View>
       <Text style={styles.pitchDotName} numberOfLines={1}>{shortPlayerName(player.name)}</Text>
     </View>
   );
 }
 
-function CombinedPitchView({ homeTeamData, awayTeamData }: { homeTeamData: any; awayTeamData: any }) {
+function CombinedPitchViewInner({ homeTeamData, awayTeamData }: { homeTeamData: any; awayTeamData: any }) {
   const homeRows = buildFormationRows(homeTeamData?.players || [], homeTeamData?.formation);
   const awayRows = [...buildFormationRows(awayTeamData?.players || [], awayTeamData?.formation)].reverse();
 
   return (
-    <LinearGradient colors={["#0d2e18", "#183c20", "#0d2e18"]} style={styles.combinedPitch}>
+    <LinearGradient colors={["#0d2e18", "#1a4428", "#1a4428", "#0d2e18"]} style={styles.combinedPitch}>
       {/* Field markings */}
+      <View style={styles.pitchPenaltyBoxTop} />
+      <View style={styles.pitchGoalBoxTop} />
       <View style={styles.pitchTopArc} />
       <View style={styles.pitchCenterLine} />
       <View style={styles.pitchCenterCircleNew} />
+      <View style={styles.pitchPenaltyBoxBottom} />
+      <View style={styles.pitchGoalBoxBottom} />
       <View style={styles.pitchBottomArc} />
 
       {/* Away team label */}
@@ -1532,7 +1578,9 @@ function CombinedPitchView({ homeTeamData, awayTeamData }: { homeTeamData: any; 
   );
 }
 
-function AIPredictionView({ prediction, homeTeam, awayTeam }: any) {
+const CombinedPitchView = React.memo(CombinedPitchViewInner);
+
+function AIPredictionViewInner({ prediction, homeTeam, awayTeam }: any) {
   const normPcts = (() => {
     let homePct = Number(prediction?.homePct || 0);
     let drawPct = Number(prediction?.drawPct || 0);
@@ -2004,6 +2052,8 @@ function AIPredictionView({ prediction, homeTeam, awayTeam }: any) {
   );
 }
 
+const AIPredictionView = React.memo(AIPredictionViewInner);
+
 function FormBubbles({ form }: { form: string }) {
   return (
     <View style={styles.formBubbles}>
@@ -2095,7 +2145,6 @@ const styles = StyleSheet.create({
     textAlign: "center",
     maxWidth: 100,
   },
-  tapHint: { fontFamily: "Inter_400Regular", fontSize: 10, color: COLORS.accentDim },
   scoreCenter: { minWidth: 90, alignItems: "center", gap: 4 },
   score: {
     fontFamily: "Inter_800ExtraBold",
@@ -2175,14 +2224,6 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: "rgba(255,255,255,0.07)",
   },
-  serverLabel: {
-    fontFamily: "Inter_700Bold",
-    fontSize: 10,
-    color: COLORS.textMuted,
-    letterSpacing: 1.5,
-    textTransform: "uppercase",
-  },
-  serverSubLabel: { fontFamily: "Inter_400Regular", fontSize: 12, color: COLORS.textSecondary, lineHeight: 18 },
   streamErrorCard: {
     flexDirection: "row",
     alignItems: "center",
@@ -2209,8 +2250,6 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.accentGlow,
   },
   serverBtnText: { fontFamily: "Inter_600SemiBold", fontSize: 13, color: COLORS.accent },
-  watchSection: { marginTop: 8, gap: 10 },
-  watchSectionUpcoming: { marginTop: 10, width: "100%", gap: 10 },
   streamFinderContainer: { flex: 1 },
   streamFinderBg: {
     flex: 1,
@@ -2462,42 +2501,34 @@ const styles = StyleSheet.create({
     textAlign: "center",
     lineHeight: 22,
   },
-  eventRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    paddingVertical: 11,
-    borderBottomWidth: 1,
-    borderBottomColor: "rgba(255,255,255,0.05)",
-  },
-  eventBadge: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: "rgba(229,9,20,0.14)",
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 1,
-    borderColor: "rgba(229,9,20,0.3)",
-  },
-  eventText: { fontFamily: "Inter_500Medium", fontSize: 13, color: COLORS.text, flex: 1, lineHeight: 19 },
   // Timeline
   timelineWrapper: {
     backgroundColor: COLORS.card,
     borderRadius: 18,
     paddingHorizontal: 10,
-    paddingVertical: 8,
+    paddingVertical: 10,
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.07)",
     marginBottom: 8,
     gap: 0,
+    position: "relative",
+    overflow: "hidden",
+  },
+  timelineConnector: {
+    position: "absolute",
+    width: 2,
+    backgroundColor: "rgba(255,255,255,0.06)",
+    top: 16,
+    bottom: 16,
+    zIndex: 0,
   },
   timelineRow: {
     flexDirection: "row",
     alignItems: "center",
-    minHeight: 36,
+    minHeight: 40,
     borderBottomWidth: 1,
     borderBottomColor: "rgba(255,255,255,0.04)",
+    zIndex: 1,
   },
   timelineSide: {
     flex: 1,
@@ -2513,9 +2544,9 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   timelineDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
+    width: 11,
+    height: 11,
+    borderRadius: 6,
     borderWidth: 2,
   },
   timelineMinute: {
@@ -2662,6 +2693,29 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: COLORS.textSecondary,
     lineHeight: 18,
+  },
+  highlightRatingCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    backgroundColor: COLORS.card,
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderWidth: 1,
+    borderColor: "rgba(255,152,0,0.2)",
+    marginBottom: 10,
+  },
+  highlightRatingTitle: {
+    fontFamily: "Inter_700Bold",
+    fontSize: 12,
+    color: COLORS.text,
+    flex: 1,
+  },
+  highlightRatingSub: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 11,
+    color: COLORS.textMuted,
   },
   lineupTeamHeader: {
     flexDirection: "row",
@@ -2884,12 +2938,6 @@ const styles = StyleSheet.create({
   aiWarnText: { fontFamily: "Inter_400Regular", fontSize: 12, color: COLORS.textSecondary, flex: 1 },
   aiPrediction: { fontFamily: "Inter_800ExtraBold", fontSize: 22, textAlign: "center", marginVertical: 4 },
   aiScore: { fontFamily: "Inter_500Medium", fontSize: 14, color: COLORS.textMuted, textAlign: "center" },
-  predBars: { gap: 8, marginTop: 8 },
-  predBarItem: { flexDirection: "row", alignItems: "center", gap: 8 },
-  predBarLabel: { fontFamily: "Inter_500Medium", fontSize: 12, color: COLORS.textMuted, width: 70 },
-  predBarTrack: { flex: 1, height: 8, backgroundColor: COLORS.border, borderRadius: 4, overflow: "hidden" },
-  predBarFill: { height: "100%", borderRadius: 4 },
-  predBarPct: { fontFamily: "Inter_700Bold", fontSize: 12, width: 38, textAlign: "right" },
   aiSummary: { fontFamily: "Inter_400Regular", fontSize: 14, color: COLORS.textSecondary, lineHeight: 22 },
   marketGrid: {
     flexDirection: "row",
@@ -2935,7 +2983,6 @@ const styles = StyleSheet.create({
   tipCard: { flexDirection: "row", alignItems: "flex-start", gap: 10, backgroundColor: "rgba(255,215,0,0.08)", borderRadius: 14, padding: 14, borderWidth: 1, borderColor: "rgba(255,215,0,0.25)" },
   tipText: { fontFamily: "Inter_400Regular", fontSize: 13, color: COLORS.textSecondary, flex: 1, lineHeight: 20 },
   aiDisclaimer: { fontFamily: "Inter_400Regular", fontSize: 11, color: COLORS.textMuted, textAlign: "center", marginTop: 4, paddingBottom: 20 },
-  aiSourceText: { fontFamily: "Inter_500Medium", fontSize: 11, color: COLORS.accentDim, textAlign: "center", marginTop: -10, paddingBottom: 20 },
   metaBadge: {
     backgroundColor: COLORS.card, borderRadius: 12, padding: 10, borderWidth: 1,
     borderColor: COLORS.border, alignItems: "center", gap: 4,
@@ -2946,25 +2993,24 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.15)",
-    paddingVertical: 12,
-    paddingHorizontal: 4,
-    gap: 6,
+    paddingVertical: 14,
+    paddingHorizontal: 6,
+    gap: 4,
     overflow: "hidden",
     position: "relative",
   },
   combinedPitchRow: {
     flexDirection: "row",
-    justifyContent: "center",
+    justifyContent: "space-evenly",
     alignItems: "center",
     zIndex: 2,
-    gap: 6,
-    paddingHorizontal: 8,
+    paddingHorizontal: 4,
   },
   pitchDivider: {
     height: 1,
     backgroundColor: "rgba(255,255,255,0.3)",
     marginHorizontal: 16,
-    marginVertical: 4,
+    marginVertical: 6,
     zIndex: 2,
   },
   pitchTeamLabelRow: {
@@ -3035,28 +3081,80 @@ const styles = StyleSheet.create({
     marginTop: -30,
     zIndex: 1,
   },
+  pitchPenaltyBoxTop: {
+    position: "absolute",
+    width: "52%",
+    height: 50,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.14)",
+    borderTopWidth: 0,
+    top: 0,
+    left: "24%",
+    zIndex: 1,
+  },
+  pitchGoalBoxTop: {
+    position: "absolute",
+    width: "26%",
+    height: 24,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.14)",
+    borderTopWidth: 0,
+    top: 0,
+    left: "37%",
+    zIndex: 1,
+  },
+  pitchPenaltyBoxBottom: {
+    position: "absolute",
+    width: "52%",
+    height: 50,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.14)",
+    borderBottomWidth: 0,
+    bottom: 0,
+    left: "24%",
+    zIndex: 1,
+  },
+  pitchGoalBoxBottom: {
+    position: "absolute",
+    width: "26%",
+    height: 24,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.14)",
+    borderBottomWidth: 0,
+    bottom: 0,
+    left: "37%",
+    zIndex: 1,
+  },
   pitchDotWrap: {
     alignItems: "center",
-    gap: 2,
-    width: 52,
+    gap: 3,
+    width: 58,
+    paddingVertical: 2,
   },
   pitchDotCircle: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    borderWidth: 2,
+    backgroundColor: "rgba(0,0,0,0.6)",
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
+  },
+  pitchDotPhoto: {
     width: 30,
     height: 30,
     borderRadius: 15,
-    borderWidth: 2,
-    backgroundColor: "rgba(0,0,0,0.55)",
-    alignItems: "center",
-    justifyContent: "center",
+    position: "absolute",
   },
   pitchDotNum: {
     fontFamily: "Inter_800ExtraBold",
-    fontSize: 11,
+    fontSize: 12,
   },
   pitchDotName: {
-    fontFamily: "Inter_400Regular",
+    fontFamily: "Inter_500Medium",
     fontSize: 8,
-    color: "rgba(255,255,255,0.75)",
+    color: "rgba(255,255,255,0.85)",
     textAlign: "center",
   },
   // AI redesign styles

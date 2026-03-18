@@ -232,25 +232,235 @@ function normalizeStatusFromEspn(comp) {
   return { status: "upcoming", minute };
 }
 
-// Club Brugge ESPN CDN logo (Jupiler Pro League team ID: 6718)
-const CLUB_BRUGGE_NEW_LOGO = "https://a.espncdn.com/i/teamlogos/soccer/500/6718.png";
+// =============================================================
+// FOOTBALL-LOGOS INTEGRATION (github.com/luukhopman/football-logos)
+// High-quality 139×181 PNG club crests for 25 European leagues
+// =============================================================
+const FOOTBALL_LOGOS_BASE = "https://raw.githubusercontent.com/luukhopman/football-logos/main/logos";
 
-function normalizeTeamLogo(teamName, logoUrl, ...fallbackCandidates) {
-  const name = String(teamName || "")
+// ESPN/Nexora league name → football-logos folder name
+const LEAGUE_TO_LOGO_FOLDER = {
+  "Premier League":           "England - Premier League",
+  "Championship":             "England - Premier League",
+  "La Liga":                  "Spain - LaLiga",
+  "Bundesliga":               "Germany - Bundesliga",
+  "Serie A":                  "Italy - Serie A",
+  "Ligue 1":                  "France - Ligue 1",
+  "Jupiler Pro League":       "Belgium - Jupiler Pro League",
+  "Belgian Pro League":       "Belgium - Jupiler Pro League",
+  "Eredivisie":               "Netherlands - Eredivisie",
+  "Primeira Liga":            "Portugal - Liga Portugal",
+  "Liga Portugal":            "Portugal - Liga Portugal",
+  "Scottish Premiership":     "Scotland - Scottish Premiership",
+  "Premiership":              "Scotland - Scottish Premiership",
+  "Super League":             "Switzerland - Super League",
+  "Superliga":                "Denmark - Superliga",
+  "Eliteserien":              "Norway - Eliteserien",
+  "Allsvenskan":              "Sweden - Allsvenskan",
+  "Süper Lig":                "Türkiye - Süper Lig",
+  "Super Lig":                "Türkiye - Süper Lig",
+  "Ekstraklasa":              "Poland - PKO BP Ekstraklasa",
+  "efbet Liga":               "Bulgaria - efbet Liga",
+  "SuperSport HNL":           "Croatia - SuperSport HNL",
+  "Chance Liga":              "Czech Republic - Chance Liga",
+  "Super League 1":           "Greece - Super League 1",
+  "Ligat ha'Al":              "Israel - Ligat ha'Al",
+  "Premier Liga":             "Ukraine - Premier Liga",
+  "SuperLiga":                "Romania - SuperLiga",
+  "Super liga Srbije":        "Serbia - Super liga Srbije",
+};
+
+// Team name aliases: ESPN display name → football-logos filename (without .png)
+const TEAM_LOGO_ALIASES = {
+  // Belgium
+  "club brugge kv": "Club Brugge KV", "club brugge": "Club Brugge KV",
+  "krc genk": "KRC Genk", "genk": "KRC Genk",
+  "royal antwerp": "Royal Antwerp FC", "antwerp": "Royal Antwerp FC",
+  "kaa gent": "KAA Gent", "gent": "KAA Gent",
+  "rsc anderlecht": "RSC Anderlecht", "anderlecht": "RSC Anderlecht",
+  "standard liege": "Standard Liège", "standard de liege": "Standard Liège",
+  "union saint-gilloise": "Union Saint-Gilloise", "union sg": "Union Saint-Gilloise", "union st. gilloise": "Union Saint-Gilloise",
+  "cercle brugge": "Cercle Brugge", "oh leuven": "Oud-Heverlee Leuven", "oud-heverlee leuven": "Oud-Heverlee Leuven",
+  "kv mechelen": "KV Mechelen", "mechelen": "KV Mechelen",
+  "sint-truidense vv": "Sint-Truidense VV", "sint-truiden": "Sint-Truidense VV", "stvv": "Sint-Truidense VV",
+  "kvc westerlo": "KVC Westerlo", "westerlo": "KVC Westerlo",
+  "fcv dender eh": "FCV Dender EH", "dender": "FCV Dender EH",
+  "zulte waregem": "Zulte Waregem",
+  "raal la louviere": "RAAL La Louvière", "raal": "RAAL La Louvière",
+  "royal charleroi sc": "Royal Charleroi SC", "charleroi": "Royal Charleroi SC",
+  // England
+  "arsenal": "Arsenal FC", "arsenal fc": "Arsenal FC",
+  "aston villa": "Aston Villa",
+  "bournemouth": "AFC Bournemouth", "afc bournemouth": "AFC Bournemouth",
+  "brentford": "Brentford FC", "brentford fc": "Brentford FC",
+  "brighton & hove albion": "Brighton & Hove Albion", "brighton": "Brighton & Hove Albion",
+  "burnley": "Burnley FC", "burnley fc": "Burnley FC",
+  "chelsea": "Chelsea FC", "chelsea fc": "Chelsea FC",
+  "crystal palace": "Crystal Palace",
+  "everton": "Everton FC", "everton fc": "Everton FC",
+  "fulham": "Fulham FC", "fulham fc": "Fulham FC",
+  "leeds united": "Leeds United",
+  "liverpool": "Liverpool FC", "liverpool fc": "Liverpool FC",
+  "manchester city": "Manchester City", "man city": "Manchester City",
+  "manchester united": "Manchester United", "man united": "Manchester United", "man utd": "Manchester United",
+  "newcastle united": "Newcastle United", "newcastle": "Newcastle United",
+  "nottingham forest": "Nottingham Forest", "nott'm forest": "Nottingham Forest",
+  "sunderland": "Sunderland AFC", "sunderland afc": "Sunderland AFC",
+  "tottenham hotspur": "Tottenham Hotspur", "tottenham": "Tottenham Hotspur", "spurs": "Tottenham Hotspur",
+  "west ham united": "West Ham United", "west ham": "West Ham United",
+  "wolverhampton wanderers": "Wolverhampton Wanderers", "wolves": "Wolverhampton Wanderers",
+  // Spain
+  "real madrid": "Real Madrid", "real madrid cf": "Real Madrid",
+  "barcelona": "FC Barcelona", "fc barcelona": "FC Barcelona",
+  "atletico madrid": "Atlético de Madrid", "atletico de madrid": "Atlético de Madrid", "atl. madrid": "Atlético de Madrid",
+  "real sociedad": "Real Sociedad",
+  "real betis": "Real Betis Balompié", "real betis balompie": "Real Betis Balompié",
+  "villarreal": "Villarreal CF", "villarreal cf": "Villarreal CF",
+  "athletic bilbao": "Athletic Bilbao", "athletic club": "Athletic Bilbao",
+  "sevilla": "Sevilla FC", "sevilla fc": "Sevilla FC",
+  "valencia": "Valencia CF", "valencia cf": "Valencia CF",
+  "girona": "Girona FC", "girona fc": "Girona FC",
+  "celta vigo": "Celta de Vigo", "celta de vigo": "Celta de Vigo",
+  "getafe": "Getafe CF", "getafe cf": "Getafe CF",
+  "rayo vallecano": "Rayo Vallecano",
+  "osasuna": "CA Osasuna", "ca osasuna": "CA Osasuna",
+  "mallorca": "RCD Mallorca", "rcd mallorca": "RCD Mallorca",
+  "alaves": "Deportivo Alavés", "deportivo alaves": "Deportivo Alavés",
+  "espanyol": "RCD Espanyol Barcelona", "rcd espanyol": "RCD Espanyol Barcelona",
+  "elche": "Elche CF", "elche cf": "Elche CF",
+  "real oviedo": "Real Oviedo",
+  "levante": "Levante UD", "levante ud": "Levante UD",
+  // Germany
+  "bayern munich": "FC Bayern München", "fc bayern munich": "FC Bayern München", "bayern munchen": "FC Bayern München", "bayern": "FC Bayern München",
+  "borussia dortmund": "Borussia Dortmund", "dortmund": "Borussia Dortmund", "bvb": "Borussia Dortmund",
+  "rb leipzig": "RB Leipzig", "rasenballsport leipzig": "RB Leipzig",
+  "bayer leverkusen": "Bayer 04 Leverkusen", "bayer 04 leverkusen": "Bayer 04 Leverkusen", "leverkusen": "Bayer 04 Leverkusen",
+  "sc freiburg": "SC Freiburg", "freiburg": "SC Freiburg",
+  "eintracht frankfurt": "Eintracht Frankfurt", "frankfurt": "Eintracht Frankfurt",
+  "vfl wolfsburg": "VfL Wolfsburg", "wolfsburg": "VfL Wolfsburg",
+  "tsg hoffenheim": "TSG 1899 Hoffenheim", "hoffenheim": "TSG 1899 Hoffenheim",
+  "borussia monchengladbach": "Borussia Mönchengladbach", "gladbach": "Borussia Mönchengladbach", "monchengladbach": "Borussia Mönchengladbach",
+  "vfb stuttgart": "VfB Stuttgart", "stuttgart": "VfB Stuttgart",
+  "fc augsburg": "FC Augsburg", "augsburg": "FC Augsburg",
+  "1. fc union berlin": "1. FC Union Berlin", "union berlin": "1. FC Union Berlin",
+  "werder bremen": "SV Werder Bremen", "werder": "SV Werder Bremen",
+  "1. fc heidenheim": "1. FC Heidenheim 1846", "heidenheim": "1. FC Heidenheim 1846",
+  "1. fc koln": "1. FC Köln", "koln": "1. FC Köln",
+  "sv darmstadt 98": "SV Darmstadt 98", "darmstadt": "SV Darmstadt 98",
+  "fc st. pauli": "FC St. Pauli", "st. pauli": "FC St. Pauli",
+  "holstein kiel": "Holstein Kiel", "kiel": "Holstein Kiel",
+  // Italy
+  "inter milan": "FC Internazionale Milano", "inter": "FC Internazionale Milano", "internazionale": "FC Internazionale Milano",
+  "ac milan": "AC Milan", "milan": "AC Milan",
+  "juventus": "Juventus FC", "juventus fc": "Juventus FC",
+  "napoli": "SSC Napoli", "ssc napoli": "SSC Napoli",
+  "atalanta": "Atalanta BC", "atalanta bc": "Atalanta BC",
+  "roma": "AS Roma", "as roma": "AS Roma",
+  "lazio": "SS Lazio", "ss lazio": "SS Lazio",
+  "fiorentina": "ACF Fiorentina", "acf fiorentina": "ACF Fiorentina",
+  "torino": "Torino FC", "torino fc": "Torino FC",
+  "bologna": "Bologna FC 1909", "bologna fc": "Bologna FC 1909",
+  "udinese": "Udinese Calcio", "udinese calcio": "Udinese Calcio",
+  "empoli": "Empoli FC", "empoli fc": "Empoli FC",
+  "sassuolo": "US Sassuolo", "us sassuolo": "US Sassuolo",
+  "monza": "AC Monza", "ac monza": "AC Monza",
+  "lecce": "US Lecce", "us lecce": "US Lecce",
+  "cagliari": "Cagliari Calcio", "cagliari calcio": "Cagliari Calcio",
+  "hellas verona": "Hellas Verona FC", "verona": "Hellas Verona FC",
+  "genoa": "Genoa CFC", "genoa cfc": "Genoa CFC",
+  "salernitana": "US Salernitana 1919", "us salernitana": "US Salernitana 1919",
+  "frosinone": "Frosinone Calcio", "frosinone calcio": "Frosinone Calcio",
+  "como": "Como 1907", "como 1907": "Como 1907",
+  "venezia": "Venezia FC", "venezia fc": "Venezia FC",
+  "parma": "Parma Calcio 1913", "parma calcio": "Parma Calcio 1913",
+  // France
+  "paris saint-germain": "Paris Saint-Germain", "psg": "Paris Saint-Germain",
+  "olympique marseille": "Olympique de Marseille", "marseille": "Olympique de Marseille", "om": "Olympique de Marseille",
+  "olympique lyonnais": "Olympique Lyonnais", "lyon": "Olympique Lyonnais", "ol": "Olympique Lyonnais",
+  "monaco": "AS Monaco", "as monaco": "AS Monaco",
+  "lille": "LOSC Lille", "losc lille": "LOSC Lille", "losc": "LOSC Lille",
+  "rennes": "Stade Rennais FC", "stade rennais": "Stade Rennais FC",
+  "nice": "OGC Nice", "ogc nice": "OGC Nice",
+  "lens": "RC Lens", "rc lens": "RC Lens",
+  "strasbourg": "RC Strasbourg Alsace", "rc strasbourg": "RC Strasbourg Alsace",
+  "nantes": "FC Nantes", "fc nantes": "FC Nantes",
+  "toulouse": "Toulouse FC", "toulouse fc": "Toulouse FC",
+  "montpellier": "Montpellier HSC", "montpellier hsc": "Montpellier HSC",
+  "stade brestois": "Stade Brestois 29", "brest": "Stade Brestois 29",
+  "reims": "Stade de Reims", "stade de reims": "Stade de Reims",
+  "le havre": "Le Havre AC", "le havre ac": "Le Havre AC",
+  "clermont": "Clermont Foot 63", "clermont foot": "Clermont Foot 63",
+  "lorient": "FC Lorient", "fc lorient": "FC Lorient",
+  "metz": "FC Metz", "fc metz": "FC Metz",
+  // Netherlands
+  "ajax": "AFC Ajax", "afc ajax": "AFC Ajax",
+  "psv eindhoven": "PSV", "psv": "PSV",
+  "feyenoord": "Feyenoord Rotterdam", "feyenoord rotterdam": "Feyenoord Rotterdam",
+  "az alkmaar": "AZ", "az": "AZ",
+  "fc twente": "FC Twente", "twente": "FC Twente",
+  "fc utrecht": "FC Utrecht", "utrecht": "FC Utrecht",
+  // Portugal
+  "benfica": "SL Benfica", "sl benfica": "SL Benfica",
+  "porto": "FC Porto", "fc porto": "FC Porto",
+  "sporting cp": "Sporting CP", "sporting lisbon": "Sporting CP", "sporting": "Sporting CP",
+  "sporting braga": "SC Braga", "sc braga": "SC Braga", "braga": "SC Braga",
+};
+
+// In-memory cache of verified GitHub logo URLs (24h)
+const _footballLogosCache = new Map();
+const FOOTBALL_LOGOS_CACHE_TTL = 24 * 60 * 60 * 1000;
+
+function normalizeForLogoMatch(str) {
+  return String(str || "")
     .toLowerCase()
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^a-z0-9]/g, "");
-  const logo = String(logoUrl || "").toLowerCase();
-  if (
-    name.includes("clubbrugge") ||
-    name.includes("clubbruggekv") ||
-    logo.includes("club-brugge") ||
-    logo.includes("clubbrugge")
-  ) {
-    return CLUB_BRUGGE_NEW_LOGO;
+    .replace(/[^a-z0-9 ]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function resolveFootballLogosUrl(teamName, leagueName) {
+  const normalized = normalizeForLogoMatch(teamName);
+  if (!normalized) return null;
+
+  // Check cache first
+  const cKey = `${normalized}__${normalizeForLogoMatch(leagueName)}`;
+  const cached = _footballLogosCache.get(cKey);
+  if (cached && Date.now() - cached.ts < FOOTBALL_LOGOS_CACHE_TTL) return cached.url;
+
+  // Find the league folder
+  const folder = LEAGUE_TO_LOGO_FOLDER[leagueName] || LEAGUE_TO_LOGO_FOLDER[normalizeLeagueName(leagueName)] || null;
+
+  // Find the team file name (try alias first, then original name)
+  const aliasKey = TEAM_LOGO_ALIASES[normalized];
+  let fileName = aliasKey || null;
+
+  // If no alias, try common patterns
+  if (!fileName) {
+    // Try the display name directly
+    fileName = String(teamName || "").trim();
   }
 
+  if (folder && fileName) {
+    const url = `${FOOTBALL_LOGOS_BASE}/${encodeURIComponent(folder)}/${encodeURIComponent(fileName)}.png`;
+    _footballLogosCache.set(cKey, { url, ts: Date.now() });
+    return url;
+  }
+
+  // Try all league folders with the alias
+  if (fileName) {
+    for (const [, folderName] of Object.entries(LEAGUE_TO_LOGO_FOLDER)) {
+      const url = `${FOOTBALL_LOGOS_BASE}/${encodeURIComponent(folderName)}/${encodeURIComponent(fileName)}.png`;
+      _footballLogosCache.set(cKey, { url, ts: Date.now() });
+      return url;
+    }
+  }
+
+  return null;
+}
+
+function normalizeTeamLogo(teamName, logoUrl, ...fallbackCandidates) {
   const candidates = [logoUrl, ...fallbackCandidates];
   for (const candidate of candidates) {
     const value = String(candidate || "").trim();
@@ -860,18 +1070,30 @@ async function enrichMatchLogos(matches) {
   )];
   if (teamNames.length === 0) return matches;
 
-  // Batched TheSportsDB lookups (max 5 parallel) to avoid rate-limit on free key
+  // 1. Football-logos (highest quality, GitHub-hosted PNGs)
+  const flMap = {};
+  const leagueHintByTeam = {};
+  for (const m of matches) {
+    if (m.homeTeam) leagueHintByTeam[m.homeTeam] = m.league;
+    if (m.awayTeam) leagueHintByTeam[m.awayTeam] = m.league;
+  }
+  for (const name of teamNames) {
+    flMap[name] = resolveFootballLogosUrl(name, leagueHintByTeam[name] || "");
+  }
+
+  // 2. Batched TheSportsDB lookups (max 5 parallel)
+  const needsTsdb = teamNames.filter((name) => !flMap[name]);
   const tsdbMap = {};
-  for (let i = 0; i < teamNames.length; i += 5) {
-    const batch = teamNames.slice(i, i + 5);
+  for (let i = 0; i < needsTsdb.length; i += 5) {
+    const batch = needsTsdb.slice(i, i + 5);
     const results = await Promise.all(batch.map(async (name) => [name, await fetchTheSportsDBTeamLogo(name)]));
     for (const [name, logo] of results) tsdbMap[name] = logo;
   }
 
-  // Wikipedia only for teams that TSDB missed AND have no existing ESPN CDN logo
+  // 3. Wikipedia only for teams that still have no logo
   const needsWiki = teamNames.filter((name) => {
     const hasExistingLogo = matches.some((m) => (m.homeTeam === name && m.homeTeamLogo) || (m.awayTeam === name && m.awayTeamLogo));
-    return !tsdbMap[name] && !hasExistingLogo;
+    return !flMap[name] && !tsdbMap[name] && !hasExistingLogo;
   });
   const wikiMap = {};
   if (needsWiki.length > 0) {
@@ -881,9 +1103,9 @@ async function enrichMatchLogos(matches) {
 
   return matches.map((m) => ({
     ...m,
-    // Priority: TSDB badge > existing ESPN CDN URL > Wikipedia (last resort)
-    homeTeamLogo: tsdbMap[m.homeTeam] || m.homeTeamLogo || wikiMap[m.homeTeam] || null,
-    awayTeamLogo: tsdbMap[m.awayTeam] || m.awayTeamLogo || wikiMap[m.awayTeam] || null,
+    // Priority: Football-logos > TSDB > ESPN CDN > Wikipedia
+    homeTeamLogo: flMap[m.homeTeam] || tsdbMap[m.homeTeam] || m.homeTeamLogo || wikiMap[m.homeTeam] || null,
+    awayTeamLogo: flMap[m.awayTeam] || tsdbMap[m.awayTeam] || m.awayTeamLogo || wikiMap[m.awayTeam] || null,
   }));
 }
 
@@ -4316,7 +4538,8 @@ app.get("/api/sports/team/:teamId", async (req, res) => {
       );
 
       const teamDisplayName = team?.displayName || team?.name || teamNameFromQuery || "";
-      const baseLogo = normalizeTeamLogo(
+      const footballLogosUrl = resolveFootballLogosUrl(teamDisplayName, normalizeLeagueName(espnLeague) || "");
+      const baseLogo = footballLogosUrl || normalizeTeamLogo(
         teamDisplayName,
         team?.logos?.[0]?.href || team?.logo || null,
         team?.id ? `https://a.espncdn.com/i/teamlogos/soccer/500/${encodeURIComponent(String(team.id))}.png` : null,
@@ -6342,4 +6565,40 @@ app.listen(PORT, () => {
     }, 10 * 60 * 1000);
     console.log(`Keep-alive ping enabled → ${selfPingUrl}/health`);
   }
+
+  // Background enrichment agent: warm logo/photo/value caches for active leagues
+  const ENRICHMENT_INTERVAL = 30 * 60 * 1000; // 30 min
+  async function runEnrichmentCycle() {
+    try {
+      const date = new Date().toISOString().slice(0, 10);
+      const espn = await espnScoreboard(date).catch(() => null);
+      const events = Array.isArray(espn?.events) ? espn.events : [];
+      const matches = events.map(mapEspnEventToMatch).filter((m) => m.league);
+      const teamNames = [...new Set(matches.flatMap((m) => [m.homeTeam, m.awayTeam].filter(Boolean)))];
+
+      // Warm logo cache from football-logos + TheSportsDB
+      for (const name of teamNames) {
+        const league = matches.find((m) => m.homeTeam === name || m.awayTeam === name)?.league || "";
+        resolveFootballLogosUrl(name, league);
+      }
+      for (let i = 0; i < teamNames.length; i += 5) {
+        const batch = teamNames.slice(i, i + 5);
+        await Promise.allSettled(batch.map((n) => fetchTheSportsDBTeamLogo(n)));
+      }
+
+      // Warm player value cache for today's teams (best-effort)
+      const uniqueTeams = teamNames.slice(0, 10); // limit to 10 teams per cycle
+      for (const teamName of uniqueTeams) {
+        try {
+          await fetchTransfermarktClubPlayers(teamName);
+        } catch {}
+      }
+      console.log(`[enrichment] Warmed caches for ${teamNames.length} teams, ${uniqueTeams.length} rosters`);
+    } catch (e) {
+      console.error("[enrichment] Cycle error:", e.message);
+    }
+  }
+  // Initial run after 60s, then every 30 min
+  setTimeout(runEnrichmentCycle, 60_000);
+  setInterval(runEnrichmentCycle, ENRICHMENT_INTERVAL);
 });

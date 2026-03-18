@@ -71,7 +71,7 @@ function getSportAccent(sport?: string): string {
   return SPORT_ACCENTS[key] || COLORS.accent;
 }
 
-const LOGO_SIZE = 36;
+const LOGO_SIZE = 40;
 
 // Static live dot (no animation — removeChild proof)
 const LivePulse = memo(function LivePulse() {
@@ -260,10 +260,15 @@ const s = StyleSheet.create({
   },
   card: {
     backgroundColor: COLORS.card,
-    borderRadius: 14,
+    borderRadius: 16,
     overflow: 'hidden',
     borderWidth: 1,
     borderColor: COLORS.border,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.12,
+    shadowRadius: 6,
+    elevation: 3,
   },
   cardLive: {
     borderColor: 'rgba(255, 59, 92, 0.35)',
@@ -327,11 +332,12 @@ const s = StyleSheet.create({
     minWidth: 0,
   },
   teamName: {
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '600',
     color: COLORS.textSecondary,
-    lineHeight: 14,
+    lineHeight: 15,
     textAlign: 'center',
+    letterSpacing: 0.2,
   },
   teamNameRight: {
     textAlign: 'center',
@@ -357,10 +363,10 @@ const s = StyleSheet.create({
     minWidth: 78,
   },
   score: {
-    fontSize: 24,
+    fontSize: 26,
     fontWeight: '800',
     color: COLORS.text,
-    letterSpacing: 0.5,
+    letterSpacing: 1,
     includeFontPadding: false,
   },
   scoreLive: {
@@ -441,7 +447,7 @@ const s = StyleSheet.create({
   },
   possBar: {
     flex: 1,
-    height: 3,
+    height: 4,
     borderRadius: 2,
     flexDirection: 'row',
     overflow: 'hidden',
