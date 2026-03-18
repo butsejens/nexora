@@ -429,32 +429,25 @@ function resolveFootballLogosUrl(teamName, leagueName) {
   const cached = _footballLogosCache.get(cKey);
   if (cached && Date.now() - cached.ts < FOOTBALL_LOGOS_CACHE_TTL) return cached.url;
 
+  // Find the team file name from alias only (raw names are unreliable)
+  const fileName = TEAM_LOGO_ALIASES[normalized] || null;
+  if (!fileName) return null;
+
   // Find the league folder
   const folder = LEAGUE_TO_LOGO_FOLDER[leagueName] || LEAGUE_TO_LOGO_FOLDER[normalizeLeagueName(leagueName)] || null;
 
-  // Find the team file name (try alias first, then original name)
-  const aliasKey = TEAM_LOGO_ALIASES[normalized];
-  let fileName = aliasKey || null;
-
-  // If no alias, try common patterns
-  if (!fileName) {
-    // Try the display name directly
-    fileName = String(teamName || "").trim();
-  }
-
-  if (folder && fileName) {
+  if (folder) {
     const url = `${FOOTBALL_LOGOS_BASE}/${encodeURIComponent(folder)}/${encodeURIComponent(fileName)}.png`;
     _footballLogosCache.set(cKey, { url, ts: Date.now() });
     return url;
   }
 
-  // Try all league folders with the alias
-  if (fileName) {
-    for (const [, folderName] of Object.entries(LEAGUE_TO_LOGO_FOLDER)) {
-      const url = `${FOOTBALL_LOGOS_BASE}/${encodeURIComponent(folderName)}/${encodeURIComponent(fileName)}.png`;
-      _footballLogosCache.set(cKey, { url, ts: Date.now() });
-      return url;
-    }
+  // No league folder — search only unique folders for this alias
+  const allFolders = [...new Set(Object.values(LEAGUE_TO_LOGO_FOLDER))];
+  for (const folderName of allFolders) {
+    const url = `${FOOTBALL_LOGOS_BASE}/${encodeURIComponent(folderName)}/${encodeURIComponent(fileName)}.png`;
+    _footballLogosCache.set(cKey, { url, ts: Date.now() });
+    return url;
   }
 
   return null;
@@ -1255,6 +1248,56 @@ function buildSofaDataFromEvent(rawEvent) {
   };
 }
 
+async function fetchSofaIncidents(sofaEventId) {
+  if (!sofaEventId) return [];
+  const cacheKey = `sofascore_incidents_${sofaEventId}`;
+  const cached = cacheGet(cacheKey);
+  if (cached !== null) return Array.isArray(cached) ? cached : [];
+
+  try {
+    const url = `${SOFASCORE_API_BASE}/event/${encodeURIComponent(sofaEventId)}/incidents`;
+    const resp = await fetch(url, {
+      headers: { "user-agent": "Mozilla/5.0 (Nexora/1.0)", accept: "application/json" },
+      signal: AbortSignal.timeout(6000),
+    });
+    if (!resp.ok) { cacheSet(cacheKey, [], 120_000); return []; }
+    const data = await resp.json().catch(() => ({}));
+    const incidents = Array.isArray(data?.incidents) ? data.incidents : [];
+    const mapped = incidents
+      .filter((inc) => inc?.incidentType && inc.incidentType !== "period")
+      .map((inc) => {
+        const type = String(inc?.incidentType || "").toLowerCase();
+        const detail = String(inc?.incidentClass || inc?.reason || "").toLowerCase();
+        let eventType = type;
+        if (type === "card" && detail.includes("yellow")) eventType = "Yellow Card";
+        else if (type === "card" && detail.includes("red")) eventType = "Red Card";
+        else if (type === "goal" && detail.includes("own")) eventType = "Own Goal";
+        else if (type === "goal" && detail.includes("penal")) eventType = "Penalty - Loss";
+        else if (type === "goal") eventType = "Goal";
+        else if (type === "substitution") eventType = "Substitution";
+        else if (type === "varDecision" || type === "var") eventType = "VAR";
+        else eventType = type;
+
+        return {
+          time: inc?.time || null,
+          extra: inc?.addedTime || null,
+          team: String(inc?.isHome === true ? "__HOME__" : inc?.isHome === false ? "__AWAY__" : ""),
+          type: eventType,
+          detail: eventType,
+          text: eventType,
+          player: String(inc?.player?.name || inc?.player?.shortName || ""),
+          assist: String(inc?.assist1?.name || inc?.assist1?.shortName || ""),
+          name: String(inc?.player?.name || ""),
+        };
+      });
+    cacheSet(cacheKey, mapped, 5 * 60_000);
+    return mapped;
+  } catch {
+    cacheSet(cacheKey, [], 120_000);
+    return [];
+  }
+}
+
 async function fetchSofaEventsByDate(date) {
   const d = String(date || "").slice(0, 10);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return [];
@@ -1589,7 +1632,6 @@ async function enrichRosterMarketValues(players, teamName, _leagueName) {
       return next;
     }
 
-    next.marketValue = "";
     next.isRealValue = false;
     next.valueMethod = "unverified";
     return next;
@@ -3393,6 +3435,8 @@ function firstStatValue(rawStats, aliases) {
 }
 
 function normalizeTeamSide(teamName, homeTeam, awayTeam) {
+  if (teamName === "__HOME__") return "home";
+  if (teamName === "__AWAY__") return "away";
   const eventTeam = normalizeTeamKey(teamName);
   const homeKey = normalizeTeamKey(homeTeam);
   const awayKey = normalizeTeamKey(awayTeam);
@@ -3403,12 +3447,17 @@ function normalizeTeamSide(teamName, homeTeam, awayTeam) {
 }
 
 function formatEventMinuteLabel(time, extra) {
-  const minuteNum = toNum(time);
-  const extraNum = toNum(extra);
+  const minuteNum = Math.floor(toNum(time));
+  const extraNum = Math.floor(toNum(extra));
   if (minuteNum > 0 && extraNum > 0) return `${minuteNum}+${extraNum}'`;
   if (minuteNum > 0) return `${minuteNum}'`;
   const raw = String(time || "").trim();
-  return raw ? `${raw}${raw.includes("'") ? "" : "'"}` : "";
+  if (raw) {
+    const m = raw.match(/(\d+)/);
+    if (m) return `${m[1]}'`;
+    return `${raw}${raw.includes("'") ? "" : "'"}`;
+  }
+  return "";
 }
 
 function eventMinuteValue(time, extra, fallback = 0) {
@@ -3930,6 +3979,21 @@ app.get("/api/sports/match/:matchId", async (req, res) => {
           },
         ], String(headerComp?.date || "").slice(0, 10));
 
+        // SofaScore incident fallback: if ESPN returned no events, try SofaScore
+        let mergedKeyEvents = withSofa?.keyEvents || details;
+        if ((!mergedKeyEvents || mergedKeyEvents.length === 0) && withSofa?.sofaData?.id) {
+          try {
+            const sofaIncidents = await fetchSofaIncidents(withSofa.sofaData.id);
+            if (sofaIncidents.length > 0) {
+              mergedKeyEvents = sofaIncidents.map((inc) => ({
+                ...inc,
+                team: inc.team === "__HOME__" ? (mapped.homeTeam || "") : inc.team === "__AWAY__" ? (mapped.awayTeam || "") : inc.team,
+              }));
+              console.log(`[sofa] Fetched ${mergedKeyEvents.length} incidents for match ${matchId}`);
+            }
+          } catch { /* SofaScore incidents are best-effort */ }
+        }
+
         return finalizeMatchPayload({
           ...mapped,
           ...withSofa,
@@ -3942,7 +4006,7 @@ app.get("/api/sports/match/:matchId", async (req, res) => {
           homeStats: withSofa?.homeStats || {},
           awayStats: withSofa?.awayStats || {},
           watchOptions: withSofa?.watchOptions || watchOptions,
-          keyEvents: withSofa?.keyEvents || details,
+          keyEvents: mergedKeyEvents,
           starters: withSofa?.starters || (espnLineups.length > 0 ? starters : []),
         });
       }

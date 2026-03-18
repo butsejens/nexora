@@ -89,13 +89,13 @@ export function getLeagueLogo(leagueName?: string): string | number | null {
 
 export function resolveTeamLogoUri(teamName?: string, logoUri?: string | null): string | number | null {
   const normalized = normalizeName(String(teamName || ""));
-  if (normalized.includes("club brugge") || normalized.includes("clubbrugge")) {
+  if (normalized === "club brugge" || normalized === "club brugge kv" || normalized.startsWith("club brugge ")) {
     return LOCAL_LOGOS.clubBrugge;
   }
   if (
-    normalized.includes("raal") ||
-    normalized.includes("raal la louviere") ||
-    normalized.includes("la louviere")
+    normalized === "raal la louviere" ||
+    normalized === "raal" ||
+    normalized.startsWith("raal la louviere")
   ) {
     return LOCAL_LOGOS.raalLaLouviere;
   }

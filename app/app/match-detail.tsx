@@ -108,17 +108,21 @@ function buildFormationRows(players: any[], formationRaw?: string) {
   const gk = takeFrom([...byRole.gk], 1);
   if (!gk.length && pool.length) gk.push(pool.shift());
 
-  const lines = formationNums.length >= 3 ? formationNums.slice(0, 3) : [4, 3, 3];
-  const defenders = takeFrom([...byRole.def], lines[0]);
-  while (defenders.length < lines[0] && pool.length) defenders.push(pool.shift());
+  const lines = formationNums.length >= 3 ? formationNums : [4, 3, 3];
 
-  const mids = takeFrom([...byRole.mid], lines[1]);
-  while (mids.length < lines[1] && pool.length) mids.push(pool.shift());
+  // Build rows from back to front: defenders first, then additional lines toward attack
+  const rows: any[][] = [];
+  for (let i = 0; i < lines.length; i++) {
+    const count = lines[i];
+    // Pick from the most logical role pool, fallback to remaining pool
+    const rolePool = i === 0 ? byRole.def : i === lines.length - 1 ? byRole.fwd : byRole.mid;
+    const row = takeFrom([...rolePool], count);
+    while (row.length < count && pool.length) row.push(pool.shift());
+    rows.push(row);
+  }
 
-  const fwds = takeFrom([...byRole.fwd], lines[2]);
-  while (fwds.length < lines[2] && pool.length) fwds.push(pool.shift());
-
-  return [fwds, mids, defenders, gk].filter((row) => row.length > 0);
+  // Return from front (attackers) to back (GK) for rendering
+  return [...rows.reverse(), gk].filter((row) => row.length > 0);
 }
 
 export default function MatchDetailScreen() {
@@ -1059,8 +1063,11 @@ function MatchTimelineInner({ events, homeTeam, awayTeam }: { events: any[]; hom
     if (ev?.side === "away" || ev?.side === "center") return false;
     const evTeam = safeStr(ev?.team || ev?.teamName || "").toLowerCase();
     const home = homeTeam.toLowerCase();
-    if (!evTeam) return true; // default to home if unknown
-    return evTeam.includes(home.split(" ")[0]) || home.includes(evTeam.split(" ")[0]);
+    const away = awayTeam.toLowerCase();
+    if (!evTeam) return false; // unknown team → render as center
+    if (evTeam.includes(home.split(" ")[0]) || home.includes(evTeam.split(" ")[0])) return true;
+    if (evTeam.includes(away.split(" ")[0]) || away.includes(evTeam.split(" ")[0])) return false;
+    return false;
   };
 
   return (
@@ -1073,7 +1080,8 @@ function MatchTimelineInner({ events, homeTeam, awayTeam }: { events: any[]; hom
         const title = safeStr(ev?.title || cfg.label);
         const description = safeStr(ev?.description || ev?.player || ev?.name || ev?.text || ev?.detail || "");
         const secondary = safeStr(ev?.secondary || ev?.assist || "");
-        const isCenterEvent = ev?.side === "center" || ["kickoff", "halftime", "fulltime"].includes(String(ev?.kind || ""));
+        const isCenterEvent = ev?.side === "center" || ["kickoff", "halftime", "fulltime"].includes(String(ev?.kind || ""))
+          || (!ev?.side && !safeStr(ev?.team || ev?.teamName || ""));
 
         return (
           <View key={i} style={styles.timelineRow}>
@@ -1320,9 +1328,10 @@ function StatsBarsInner({ homeTeam, awayTeam, homeStats, awayStats }: { homeTeam
     const rawA = String(awayStats?.[key] ?? "0");
     const hVal = parseFloat(rawH.replace("%", "")) || 0;
     const aVal = parseFloat(rawA.replace("%", "")) || 0;
-    const total = hVal + aVal || 1;
-    const hPct = (hVal / total) * 100;
-    const aPct = 100 - hPct;
+    const bothZero = hVal === 0 && aVal === 0;
+    const total = bothZero ? 1 : (hVal + aVal || 1);
+    const hPct = bothZero ? 0 : (hVal / total) * 100;
+    const aPct = bothZero ? 0 : 100 - hPct;
     const isPossession = key === "ball_possession" || key === "possession" || key === "pass_accuracy";
     const isLast = idx === arr.length - 1;
     const hDisplay = `${homeStats?.[key] ?? "0"}${isPossession && typeof homeStats?.[key] === "number" ? "%" : ""}`;
@@ -1336,14 +1345,14 @@ function StatsBarsInner({ homeTeam, awayTeam, homeStats, awayStats }: { homeTeam
             <View style={styles.statBarsWrapper}>
               {/* Home bar — grows right-to-left from center */}
               <View style={styles.statBarHalf}>
-                <View style={{ flex: Math.max(1, 100 - hPct) }} />
-                <View style={[styles.statBarHomeFill, { flex: Math.max(1, hPct) }]} />
+                <View style={{ flex: 100 - hPct || 1 }} />
+                <View style={[styles.statBarHomeFill, { flex: hPct || 0 }]} />
               </View>
               <View style={styles.statBarCenterGap} />
               {/* Away bar — grows left-to-right from center */}
               <View style={styles.statBarHalf}>
-                <View style={[styles.statBarAwayFill, { flex: Math.max(1, aPct) }]} />
-                <View style={{ flex: Math.max(1, 100 - aPct) }} />
+                <View style={[styles.statBarAwayFill, { flex: aPct || 0 }]} />
+                <View style={{ flex: 100 - aPct || 1 }} />
               </View>
             </View>
           </View>
@@ -1505,19 +1514,21 @@ function shortPlayerName(name: string): string {
 
 function PitchDot({ player, color }: { player: any; color: string }) {
   const [photoOk, setPhotoOk] = React.useState(false);
+  const [photoFailed, setPhotoFailed] = React.useState(false);
   const photoUri = player?.photo || player?.headshot || null;
+  const showPhoto = photoUri && !photoFailed;
   return (
     <View style={styles.pitchDotWrap}>
       <View style={[styles.pitchDotCircle, { borderColor: color }]}>
-        {photoUri ? (
+        {showPhoto ? (
           <Image
             source={{ uri: photoUri }}
-            style={styles.pitchDotPhoto}
+            style={[styles.pitchDotPhoto, !photoOk && { opacity: 0 }]}
             onLoad={() => setPhotoOk(true)}
-            onError={() => setPhotoOk(false)}
+            onError={() => { setPhotoOk(false); setPhotoFailed(true); }}
           />
         ) : null}
-        {!photoUri || !photoOk ? (
+        {!showPhoto || !photoOk ? (
           <Text style={[styles.pitchDotNum, { color }]}>{player.jersey || "—"}</Text>
         ) : null}
       </View>
