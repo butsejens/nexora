@@ -236,7 +236,7 @@ function normalizeStatusFromEspn(comp) {
 // FOOTBALL-LOGOS INTEGRATION (github.com/luukhopman/football-logos)
 // High-quality 139×181 PNG club crests for 25 European leagues
 // =============================================================
-const FOOTBALL_LOGOS_BASE = "https://raw.githubusercontent.com/luukhopman/football-logos/main/logos";
+const FOOTBALL_LOGOS_BASE = "https://raw.githubusercontent.com/luukhopman/football-logos/master/logos";
 
 // ESPN/Nexora league name → football-logos folder name
 const LEAGUE_TO_LOGO_FOLDER = {
@@ -1824,10 +1824,15 @@ async function enrichRosterMarketValues(players, teamName, _leagueName) {
   // Step 1: Transfermarkt community API – real values, no key required (cached 24h)
   const tmPlayers = teamName ? await fetchTransfermarktClubPlayers(teamName) : null;
   const tmValueMap = new Map();
+  const tmEntries = [];
   if (Array.isArray(tmPlayers)) {
     for (const p of tmPlayers) {
+      const normed = normalizePersonName(p.name);
       const eur = parseNumberish(p.marketValueEur);
-      if (Number.isFinite(eur) && eur > 0) tmValueMap.set(p.name, eur);
+      if (Number.isFinite(eur) && eur > 0) {
+        tmValueMap.set(normed, eur);
+        tmEntries.push({ normed, eur });
+      }
     }
   }
   console.log(`[market] ${teamName}: Transfermarkt found ${tmValueMap.size}/${players.length} values`);
@@ -1836,12 +1841,35 @@ async function enrichRosterMarketValues(players, teamName, _leagueName) {
     const next = { ...p };
     const normedName = normalizePersonName(next.name || "");
 
-    // Transfermarkt first (real value)
+    // Transfermarkt exact match first (real value)
     const tmValue = tmValueMap.get(normedName);
     if (Number.isFinite(tmValue) && tmValue > 0) {
       next.marketValue = formatEURShort(tmValue);
       next.isRealValue = true;
       next.valueMethod = "transfermarkt";
+      return next;
+    }
+
+    // Transfermarkt fuzzy match – last-name + similarity score
+    let bestTmVal = null;
+    let bestTmScore = 0;
+    for (const entry of tmEntries) {
+      const score = similarityScore(normedName, entry.normed);
+      if (score > bestTmScore) { bestTmScore = score; bestTmVal = entry.eur; }
+    }
+    if (bestTmScore >= 0.65 && Number.isFinite(bestTmVal) && bestTmVal > 0) {
+      next.marketValue = formatEURShort(bestTmVal);
+      next.isRealValue = true;
+      next.valueMethod = "transfermarkt-fuzzy";
+      return next;
+    }
+
+    // Estimated fallback – position + age + league tier
+    const estimated = estimateMarketValueEUR(next, _leagueName);
+    if (Number.isFinite(estimated) && estimated > 0) {
+      next.marketValue = formatEURShort(estimated);
+      next.isRealValue = false;
+      next.valueMethod = "estimated";
       return next;
     }
 
@@ -1859,16 +1887,31 @@ async function enrichRosterPhotos(players, teamName) {
   // Step 0: Transfermarkt community API – has player profile images (cached, already fetched for values)
   const tmPlayers = teamName ? await fetchTransfermarktClubPlayers(teamName) : null;
   const tmPhotoMap = new Map();
+  const tmPhotoEntries = [];
   if (Array.isArray(tmPlayers)) {
     for (const p of tmPlayers) {
-      if (p.name && p.photo && /^https?:\/\//i.test(p.photo)) tmPhotoMap.set(p.name, p.photo);
+      if (p.name && p.photo && /^https?:\/\//i.test(p.photo)) {
+        const normed = normalizePersonName(p.name);
+        tmPhotoMap.set(normed, p.photo);
+        tmPhotoEntries.push({ normed, photo: p.photo });
+      }
     }
   }
   let enriched = players.map((player) => {
     if (!player || player.photo) return player;
     const normName = normalizePersonName(player.name || "");
+    // Exact match first
     const photo = tmPhotoMap.get(normName);
-    return photo ? { ...player, photo } : player;
+    if (photo) return { ...player, photo };
+    // Fuzzy match via similarity score
+    let bestPhoto = null;
+    let bestScore = 0;
+    for (const entry of tmPhotoEntries) {
+      const score = similarityScore(normName, entry.normed);
+      if (score > bestScore) { bestScore = score; bestPhoto = entry.photo; }
+    }
+    if (bestScore >= 0.65 && bestPhoto) return { ...player, photo: bestPhoto };
+    return player;
   });
 
   // Step 1: TheSportsDB – exact normalized name matches only
@@ -1885,11 +1928,23 @@ async function enrichRosterPhotos(players, teamName) {
     return player;
   });
 
-  // Step 2: TheSportsDB fuzzy matching – last name match when only one candidate
+  // Step 2: TheSportsDB fuzzy matching – similarity score + last-name match
   enriched = enriched.map((player) => {
     if (!player || player.photo) return player;
     const normName = normalizePersonName(player.name || "");
     if (!normName) return player;
+
+    // Similarity-score matching against all TheSportsDB players
+    let bestDbPhoto = null;
+    let bestDbScore = 0;
+    for (const dbp of dbPlayers) {
+      if (!dbp.photo) continue;
+      const score = similarityScore(normName, dbp.name || "");
+      if (score > bestDbScore) { bestDbScore = score; bestDbPhoto = dbp.photo; }
+    }
+    if (bestDbScore >= 0.65 && bestDbPhoto) return { ...player, photo: bestDbPhoto };
+
+    // Last-name fallback when only one candidate shares the last name
     const lastNameParts = normName.split(" ");
     const lastName = lastNameParts[lastNameParts.length - 1];
     if (!lastName || lastName.length < 3) return player;
@@ -4413,7 +4468,7 @@ app.get("/api/sports/match/:matchId", async (req, res) => {
           .filter((t) => t.players.length > 0);
 
         for (const team of starters) {
-          const valued = await enrichRosterMarketValues(team.players || [], team.team || "");
+          const valued = await enrichRosterMarketValues(team.players || [], team.team || "", mapped.league || espnLeague);
           team.players = await enrichRosterPhotos(valued, team.team || "");
         }
 
@@ -4543,7 +4598,7 @@ app.get("/api/sports/match/:matchId", async (req, res) => {
       }));
 
       for (const team of starters) {
-        const valued = await enrichRosterMarketValues(team.players || [], team.team || "");
+        const valued = await enrichRosterMarketValues(team.players || [], team.team || "", mapped.league || espnLeague);
         team.players = await enrichRosterPhotos(valued, team.team || "");
       }
 
