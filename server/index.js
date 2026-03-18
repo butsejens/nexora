@@ -2843,15 +2843,15 @@ app.get("/api/download/apk", async (req, res) => {
     if (existsSync(vf)) {
       const data = JSON.parse(readFileSync(vf, "utf8"));
       if (data.apkUrl) {
-        const upstream = await fetch(data.apkUrl, { timeout: 60000 });
+        const upstream = await fetch(data.apkUrl);
         if (!upstream.ok) {
           return res.status(502).json({ error: `APK niet beschikbaar (${upstream.status})` });
         }
+        const payload = Buffer.from(await upstream.arrayBuffer());
         res.setHeader("Content-Type", "application/vnd.android.package-archive");
         res.setHeader("Content-Disposition", 'attachment; filename="nexora.apk"');
-        const contentLength = upstream.headers.get("content-length");
-        if (contentLength) res.setHeader("Content-Length", contentLength);
-        upstream.body.pipe(res);
+        res.setHeader("Content-Length", String(payload.length));
+        res.send(payload);
         return;
       }
     }
