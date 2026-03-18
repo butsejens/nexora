@@ -197,9 +197,8 @@ export default function RootLayout() {
     return () => clearTimeout(safety);
   }, [fontsLoaded, fontFallbackReady, introFinished, handleIntroFinish]);
 
-  // OTA check after boot — only when the server version matches the native binary.
-  // If the server has a newer version, OTA can't bridge the runtimeVersion gap;
-  // the user needs a new APK (handled by the server-update check below).
+  // OTA check after boot.
+  // Always check OTA first; whether a newer APK exists is handled separately.
   useEffect(() => {
     if (!bootDone) return;
     if (hasCheckedOtaUpdateOnce) return;
@@ -208,13 +207,6 @@ export default function RootLayout() {
     const run = async () => {
       try {
         if (__DEV__) return;
-        // Check server version first — if it's newer than the native binary,
-        // skip OTA entirely (runtimeVersion mismatch = OTA won't help).
-        const nativeVer = String(Application.nativeApplicationVersion || "0.0.0");
-        const res = await apiRequest("GET", "/api/app-version");
-        const data = await res.json() as { version: string };
-        if (compareVersions(data.version, nativeVer) > 0) return; // needs APK update, skip OTA
-
         const update = await Updates.checkForUpdateAsync();
         if (!update.isAvailable) return;
         await Updates.fetchUpdateAsync();
@@ -238,14 +230,14 @@ export default function RootLayout() {
         if (__DEV__) return;
         const res = await apiRequest("GET", "/api/app-version");
         const data = await res.json() as { version: string; apkUrl?: string; directApkUrl?: string };
-        const appVer = resolveInstalledVersion();
-        if (compareVersions(data.version, appVer) <= 0) return;
+        const nativeVer = String(Application.nativeApplicationVersion || "0.0.0");
+        if (compareVersions(data.version, nativeVer) <= 0) return;
 
         // Small delay so the main UI is fully rendered before alert appears
         await new Promise(r => setTimeout(r, 1200));
 
         const doInstall = async () => {
-          const url = data.directApkUrl || data.apkUrl;
+          const url = data.apkUrl || data.directApkUrl;
           if (!url) { router.push("/profile"); return; }
           const normalizedUrl = String(url).replace(/^http:\/\//i, "https://");
 
