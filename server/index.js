@@ -5906,13 +5906,29 @@ app.get("/api/sports/team/:teamId", async (req, res) => {
       const squadValue = clubMarketValue ? formatEURShort(clubMarketValue) : null;
 
       const teamDisplayName = team?.displayName || team?.name || teamNameFromQuery || "";
+      const isNationalTeam = espnLeague.includes("fifa") || /teamlogos\/countries/i.test(String(team?.logos?.[0]?.href || ""));
       const footballLogosUrl = resolveFootballLogosUrl(teamDisplayName, normalizeLeagueName(espnLeague) || "");
-      const baseLogo = footballLogosUrl || normalizeTeamLogo(
-        teamDisplayName,
-        team?.logos?.[0]?.href || team?.logo || null,
-        team?.id ? `https://a.espncdn.com/i/teamlogos/soccer/500/${encodeURIComponent(String(team.id))}.png` : null,
-      );
-      const resolvedLogo = baseLogo || await fetchTheSportsDBTeamLogo(teamDisplayName) || await fetchWikipediaTeamLogo(teamDisplayName) || null;
+
+      let resolvedLogo;
+      if (isNationalTeam) {
+        // For national teams: prefer TheSportsDB badge (actual team crest) over ESPN flag
+        resolvedLogo = footballLogosUrl
+          || await fetchTheSportsDBTeamLogo(teamDisplayName)
+          || await fetchWikipediaTeamLogo(teamDisplayName)
+          || normalizeTeamLogo(
+              teamDisplayName,
+              team?.logos?.[0]?.href || team?.logo || null,
+              team?.id ? `https://a.espncdn.com/i/teamlogos/soccer/500/${encodeURIComponent(String(team.id))}.png` : null,
+            )
+          || null;
+      } else {
+        const baseLogo = footballLogosUrl || normalizeTeamLogo(
+          teamDisplayName,
+          team?.logos?.[0]?.href || team?.logo || null,
+          team?.id ? `https://a.espncdn.com/i/teamlogos/soccer/500/${encodeURIComponent(String(team.id))}.png` : null,
+        );
+        resolvedLogo = baseLogo || await fetchTheSportsDBTeamLogo(teamDisplayName) || await fetchWikipediaTeamLogo(teamDisplayName) || null;
+      }
 
       return {
         id: String(team?.id || resolvedTeamId || ""),

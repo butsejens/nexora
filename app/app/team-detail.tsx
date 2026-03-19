@@ -212,12 +212,11 @@ export default function TeamDetailScreen() {
   });
 
   const heroOpacity = scrollY.interpolate({ inputRange: [0, 100], outputRange: [1, 0], extrapolate: "clamp" });
-  const heroMaxHeight = scrollY.interpolate({ inputRange: [0, 140], outputRange: [300, 80], extrapolate: "clamp" });
 
   return (
     <View style={styles.container}>
       {/* Header */}
-      <Animated.View style={{ maxHeight: heroMaxHeight, overflow: "hidden", zIndex: 30 }}>
+      <View style={{ zIndex: 30, elevation: 30 }}>
       <LinearGradient
         colors={[data?.color || "#1a3a6b", COLORS.background] as any}
         style={[styles.header, { paddingTop: topPad + 8 }]}
@@ -295,7 +294,7 @@ export default function TeamDetailScreen() {
         </View>
         </Animated.View>
       </LinearGradient>
-      </Animated.View>
+      </View>
 
       {isLoading ? (
         <View style={styles.loadingState}>

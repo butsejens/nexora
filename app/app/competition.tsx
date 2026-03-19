@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useRef } from "react";
 import {
   View, Text, StyleSheet, TouchableOpacity, ScrollView,
-  Image, Platform, ActivityIndicator, FlatList, Animated,
+  Image, Platform, ActivityIndicator, Animated,
 } from "react-native";
 import { MatchRowCard } from "@/components/premium";
 import { router, useLocalSearchParams } from "expo-router";
@@ -159,8 +159,7 @@ export default function CompetitionScreen() {
 
   const scrollY = useRef(new Animated.Value(0)).current;
   const heroOpacity = scrollY.interpolate({ inputRange: [0, 80], outputRange: [1, 0], extrapolate: "clamp" });
-  const heroMaxHeight = scrollY.interpolate({ inputRange: [0, 100], outputRange: [180, 60], extrapolate: "clamp" });
-  const onListScroll = useMemo(() => Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], { useNativeDriver: false }), [scrollY]);
+  const onListScroll = useMemo(() => Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], { useNativeDriver: true }), [scrollY]);
 
   const { data: standingsData, isLoading: standingsLoading } = useQuery({
     queryKey: ["standings", leagueName],
@@ -251,7 +250,7 @@ export default function CompetitionScreen() {
   return (
     <View style={styles.container}>
       {/* Header */}
-      <Animated.View style={{ maxHeight: heroMaxHeight, overflow: "hidden", zIndex: 30 }}>
+      <View style={{ zIndex: 30, elevation: 30 }}>
       <LinearGradient colors={[...gradColors, COLORS.background] as any}
         style={[styles.header, { paddingTop: topPad + 8 }]}>
         <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
@@ -292,7 +291,7 @@ export default function CompetitionScreen() {
         </View>
         </Animated.View>
       </LinearGradient>
-      </Animated.View>
+      </View>
 
       {/* Tabs */}
       <View style={styles.tabBar}>
@@ -327,7 +326,7 @@ export default function CompetitionScreen() {
             {(standingsData as any)?.error ? <Text style={styles.errorDetail}>{standingsError.userMessage}</Text> : null}
           </View>
         ) : (
-          <ScrollView showsVerticalScrollIndicator={false} onScroll={onListScroll} scrollEventThrottle={16}>
+          <Animated.ScrollView showsVerticalScrollIndicator={false} onScroll={onListScroll} scrollEventThrottle={16}>
             <View style={styles.standingsHeaderRow}>
               <Text style={[styles.standingsHeaderCell, { width: 24 }]}>#</Text>
               <Text style={[styles.standingsHeaderCell, { flex: 1, textAlign: "left" }]}>{t("competition.club")}</Text>
@@ -342,7 +341,7 @@ export default function CompetitionScreen() {
               <StandingsRow key={team.teamId || idx} team={team} rank={team.rank || idx + 1} league={leagueName} espnLeague={espnLeague} />
             ))}
             <View style={{ height: 40 }} />
-          </ScrollView>
+          </Animated.ScrollView>
         )
       )}
 
@@ -360,7 +359,7 @@ export default function CompetitionScreen() {
             {(matchesData as any)?.error ? <Text style={styles.errorDetail}>{(matchesData as any).error}</Text> : null}
           </View>
         ) : (
-          <FlatList
+          <Animated.FlatList
             data={competitionMatches}
             keyExtractor={(item, idx) => String((item as any).id || idx)}
             renderItem={({ item }) => {
@@ -418,7 +417,7 @@ export default function CompetitionScreen() {
             <Text style={styles.emptyText}>{t("competition.noTeams") || "No teams found"}</Text>
           </View>
         ) : (
-          <FlatList
+          <Animated.FlatList
             data={competitionTeams}
             keyExtractor={(item) => String((item as any).id)}
             numColumns={2}
@@ -470,7 +469,7 @@ export default function CompetitionScreen() {
             {(scorersData as any)?.error ? <Text style={styles.errorDetail}>{scorersError.userMessage}</Text> : null}
           </View>
         ) : (
-          <FlatList
+          <Animated.FlatList
             data={scorers}
             keyExtractor={(item, idx) => String((item as any).name || idx)}
             renderItem={({ item, index }) => (
