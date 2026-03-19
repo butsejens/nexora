@@ -291,6 +291,8 @@ const LEAGUE_TO_LOGO_FOLDER = {
   "Romanian Liga 1":          "Romania - SuperLiga",
   "Super liga Srbije":        "Serbia - Super liga Srbije",
   "Serbian SuperLiga":        "Serbia - Super liga Srbije",
+  "Austrian Bundesliga":      "Austria - Bundesliga",
+  "Bundesliga (Austria)":     "Austria - Bundesliga",
   // UEFA competitions map to the relevant national folders (teams appear in their domestic league folder)
   "UEFA Champions League":    null,
   "Champions League":         null,
@@ -586,6 +588,75 @@ const TEAM_LOGO_ALIASES = {
   "ludogorets": "PFC Ludogorets Razgrad", "ludogorets razgrad": "PFC Ludogorets Razgrad",
   "cska sofia": "PFC CSKA Sofia",
   "levski sofia": "PFC Levski Sofia",
+  // ── UEL / UECL regulars (expanded) ──────────────────────────────
+  // Austria
+  "rapid wien": "SK Rapid Wien", "sk rapid wien": "SK Rapid Wien", "rapid vienna": "SK Rapid Wien",
+  "austria wien": "FK Austria Wien", "fk austria wien": "FK Austria Wien", "austria vienna": "FK Austria Wien",
+  "lask": "LASK", "lask linz": "LASK",
+  "wolfsberger ac": "Wolfsberger AC", "wolfsberger": "Wolfsberger AC", "wac": "Wolfsberger AC",
+  "red bull salzburg": "FC Red Bull Salzburg", "rb salzburg": "FC Red Bull Salzburg", "salzburg": "FC Red Bull Salzburg",
+  "sturm graz": "SK Sturm Graz", "sk sturm graz": "SK Sturm Graz",
+  // Cyprus
+  "apoel nicosia": "APOEL FC", "apoel": "APOEL FC", "apoel fc": "APOEL FC",
+  "omonia nicosia": "AC Omonia", "ac omonia": "AC Omonia", "omonia": "AC Omonia",
+  "aris limassol": "Aris Limassol FC", "aris limassol fc": "Aris Limassol FC",
+  "anorthosis famagusta": "Anorthosis Famagusta",
+  "pafos fc": "Pafos FC", "pafos": "Pafos FC",
+  // Scotland (UEL/UECL)
+  "st johnstone fc": "St Johnstone",
+  // Turkey (expanded)
+  "sivasspor": "Sivasspor",
+  "konyaspor": "Konyaspor",
+  "kasimpasa": "Kasımpaşa SK", "kasimpasa sk": "Kasımpaşa SK",
+  "antalyaspor": "Antalyaspor",
+  // Hungary
+  "ferencvaros": "Ferencvárosi TC", "ferencvarosi tc": "Ferencvárosi TC", "ferencvaros tc": "Ferencvárosi TC",
+  "puskas akademia": "Puskás Akadémia FC", "puskas akademia fc": "Puskás Akadémia FC",
+  "mol fehervar": "MOL Fehérvár FC", "mol fehervar fc": "MOL Fehérvár FC", "videoton": "MOL Fehérvár FC",
+  // Slovakia
+  "slovan bratislava": "ŠK Slovan Bratislava", "sk slovan bratislava": "ŠK Slovan Bratislava",
+  // Kazakhstan
+  "astana": "FK Astana", "fk astana": "FK Astana",
+  // Armenia
+  "pyunik yerevan": "FC Pyunik", "pyunik": "FC Pyunik",
+  // Azerbaijan
+  "qarabag": "Qarabağ FK", "qarabag fk": "Qarabağ FK",
+  "neftchi baku": "Neftçi PFK", "neftci baku": "Neftçi PFK",
+  // Georgia
+  "dinamo tbilisi": "FC Dinamo Tbilisi", "fc dinamo tbilisi": "FC Dinamo Tbilisi",
+  // Finland
+  "hjk helsinki": "HJK Helsinki", "hjk": "HJK Helsinki",
+  // Iceland
+  "vikingur reykjavik": "Víkingur Reykjavík",
+  // Albania
+  "partizani tirana": "FK Partizani", "fk partizani": "FK Partizani",
+  // Slovakia (expanded)
+  "spartak trnava": "Spartak Trnava",
+  // Republic of Ireland
+  "shamrock rovers": "Shamrock Rovers FC", "shamrock rovers fc": "Shamrock Rovers FC",
+  // Luxembourg
+  "f91 dudelange": "F91 Dudelange", "dudelange": "F91 Dudelange",
+  // North Macedonia
+  "shkendija": "KF Shkëndija", "shkendija tetovo": "KF Shkëndija",
+  // Moldova
+  "sheriff tiraspol": "FC Sheriff Tiraspol", "sheriff": "FC Sheriff Tiraspol",
+  // Belarus
+  "bate borisov": "FC BATE Borisov", "bate": "FC BATE Borisov",
+  // Lithuania
+  "zalgiris vilnius": "FK Žalgiris", "zalgiris": "FK Žalgiris",
+  // Latvia
+  "riga fc": "Riga FC", "riga": "Riga FC",
+  // Estonia
+  "flora tallinn": "FC Flora", "fc flora": "FC Flora",
+  // Bosnia
+  "zrinjski mostar": "HŠK Zrinjski", "zrinjski": "HŠK Zrinjski",
+  // Montenegro
+  "buducnost podgorica": "FK Budućnost Podgorica", "buducnost": "FK Budućnost Podgorica",
+  // Slovenia
+  "olimpija ljubljana": "NK Olimpija Ljubljana", "nk olimpija": "NK Olimpija Ljubljana",
+  "maribor": "NK Maribor", "nk maribor": "NK Maribor",
+  // Italy (UEL/UECL extras)
+  "us cremonese": "US Cremonese",
 };
 
 // Reverse lookup: team filename → domestic league folder
@@ -759,6 +830,13 @@ const TEAM_FILENAME_TO_FOLDER = (() => {
     // Bulgaria
     "PFC Ludogorets Razgrad": "Bulgaria - efbet Liga", "PFC CSKA Sofia": "Bulgaria - efbet Liga",
     "PFC Levski Sofia": "Bulgaria - efbet Liga",
+    // Austria
+    "SK Rapid Wien": "Austria - Bundesliga", "FK Austria Wien": "Austria - Bundesliga",
+    "LASK": "Austria - Bundesliga", "Wolfsberger AC": "Austria - Bundesliga",
+    "FC Red Bull Salzburg": "Austria - Bundesliga", "SK Sturm Graz": "Austria - Bundesliga",
+    // Cyprus – no football-logos folder; TheSportsDB/Wikipedia will be used
+    // Hungary – no football-logos folder
+    // Slovakia – no football-logos folder
   };
   return teamCountryMap;
 })();
@@ -1619,13 +1697,24 @@ async function enrichStandingsLogos(standings, leagueName) {
     for (const [name, logo] of results) tsdbMap[name] = logo;
   }
 
+  // 3. Wikipedia fallback for teams still without logos
+  const needsWikiS = teamNames.filter((name) => !flMap[name] && !tsdbMap[name] && !standings.find((t) => t.team === name)?.logo);
+  const wikiMapS = {};
+  if (needsWikiS.length > 0) {
+    for (let i = 0; i < needsWikiS.length; i += 5) {
+      const batch = needsWikiS.slice(i, i + 5);
+      const results = await Promise.all(batch.map(async (name) => [name, await fetchWikipediaTeamLogo(name)]));
+      for (const [name, logo] of results) wikiMapS[name] = logo;
+    }
+  }
+
   return standings.map((t) => ({
     ...t,
-    logo: flMap[t.team] || tsdbMap[t.team] || t.logo || null,
+    logo: flMap[t.team] || tsdbMap[t.team] || t.logo || wikiMapS[t.team] || null,
   }));
 }
 
-// Enrich topscorer teamLogo fields using Football-logos + TheSportsDB
+// Enrich topscorer teamLogo fields using Football-logos + TheSportsDB + Wikipedia
 async function enrichScorersLogos(scorers, leagueName) {
   if (!Array.isArray(scorers) || scorers.length === 0) return scorers;
 
@@ -1645,9 +1734,20 @@ async function enrichScorersLogos(scorers, leagueName) {
     for (const [name, logo] of results) tsdbMap[name] = logo;
   }
 
+  // 3. Wikipedia fallback for teams still without logos
+  const needsWikiSc = teamNames.filter((name) => !flMap[name] && !tsdbMap[name] && !scorers.find((s) => s.team === name)?.teamLogo);
+  const wikiMapSc = {};
+  if (needsWikiSc.length > 0) {
+    for (let i = 0; i < needsWikiSc.length; i += 5) {
+      const batch = needsWikiSc.slice(i, i + 5);
+      const results = await Promise.all(batch.map(async (name) => [name, await fetchWikipediaTeamLogo(name)]));
+      for (const [name, logo] of results) wikiMapSc[name] = logo;
+    }
+  }
+
   return scorers.map((s) => ({
     ...s,
-    teamLogo: flMap[s.team] || tsdbMap[s.team] || s.teamLogo || null,
+    teamLogo: flMap[s.team] || tsdbMap[s.team] || s.teamLogo || wikiMapSc[s.team] || null,
   }));
 }
 
