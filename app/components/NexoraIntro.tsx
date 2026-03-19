@@ -84,7 +84,7 @@ export function NexoraIntro({ onFinish }: Props) {
       <View style={styles.contentWrap}>
         {/* Logo */}
         <Animated.View style={{ transform: [{ scale: logoScale }], opacity: logoOpacity, alignItems: "center" }}>
-          <Image source={require("@/assets/images/icon.png")} style={styles.logoImage} resizeMode="contain" />
+          <Image source={require("@/assets/images/nexora-intro-logo.png")} style={styles.logoImage} resizeMode="contain" />
         </Animated.View>
 
         {/* Red accent line */}
@@ -137,8 +137,8 @@ const styles = StyleSheet.create({
     gap: 0,
   },
   logoImage: {
-    width: 168,
-    height: 168,
+    width: 280,
+    height: 150,
   },
   accentLine: {
     width: 60,
