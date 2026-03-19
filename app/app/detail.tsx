@@ -1,14 +1,13 @@
 import React, { useMemo, useState, useRef } from "react";
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  Image, Modal, Platform, Alert, ActivityIndicator, Linking,
+  Image, Modal, Platform, Alert, ActivityIndicator,
 } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import WebView from "react-native-webview";
 import * as FileSystem from "expo-file-system/legacy";
 import { COLORS } from "@/constants/colors";
 import { apiRequest } from "@/lib/query-client";
@@ -255,12 +254,8 @@ export default function DetailScreen() {
   const queryClient = useQueryClient();
   const { isFavorite, toggleFavorite, iptvChannels, isDownloaded, hasPremium } = useNexora();
 
-  const [showTrailer, setShowTrailer] = useState(false);
   const [showDownload, setShowDownload] = useState(false);
   const [activeTab, setActiveTab] = useState<"overview" | "cast" | "seasons">("overview");
-  const [trailerLoading, setTrailerLoading] = useState(true);
-  const [trailerError, setTrailerError] = useState<unknown>(null);
-  const [trailerErrorRef, setTrailerErrorRef] = useState("");
 
   // ── For IPTV items: get channel data from context first ───────────────────
   const iptvChannel = isIptv === "true"
@@ -534,16 +529,17 @@ export default function DetailScreen() {
                 style={styles.trailerBtnOutline}
                 onPress={() => {
                   SafeHaptics.impactLight();
-                  if (Platform.OS === "web") {
-                    setShowTrailer(true);
-                  } else {
-                    // Open YouTube directly in the YouTube app or browser
-                    const ytUrl = `https://www.youtube.com/watch?v=${data.trailerKey}`;
-                    Linking.openURL(ytUrl).catch(() => {
-                      // Fallback to in-app WebView if Linking fails
-                      setShowTrailer(true);
-                    });
-                  }
+                  router.push({
+                    pathname: "/player",
+                    params: {
+                      trailerKey: data.trailerKey,
+                      title: data.title || "",
+                      type: type || "movie",
+                      contentId: id,
+                      tmdbId: tmdbId || id,
+                      poster: data.poster || "",
+                    },
+                  });
                 }}
               >
                 <Ionicons name="videocam-outline" size={20} color={COLORS.accent} />
@@ -654,71 +650,6 @@ export default function DetailScreen() {
         <View style={{ height: Platform.OS === "web" ? 34 : insets.bottom + 20 }} />
       </ScrollView>
 
-      <Modal visible={showTrailer} transparent animationType="fade" onRequestClose={() => setShowTrailer(false)}>
-        <View style={styles.trailerModal}>
-          <TouchableOpacity style={styles.trailerClose} onPress={() => setShowTrailer(false)}>
-            <Ionicons name="close" size={24} color={COLORS.text} />
-          </TouchableOpacity>
-          <Text style={styles.trailerTitle} numberOfLines={1}>{data.title} — Trailer</Text>
-          <View style={styles.trailerContainer}>
-            {Platform.OS === "web" ? (
-              <iframe
-                src={`https://www.youtube.com/embed/${data.trailerKey}?autoplay=1`}
-                title={`${String(data.title || "Trailer")} trailer`}
-                style={styles.trailerFrame as any}
-                allow="autoplay; fullscreen"
-                allowFullScreen
-              />
-            ) : (
-              <WebView
-                source={{ uri: `https://www.youtube.com/embed/${data.trailerKey}?autoplay=1` }}
-                style={{ flex: 1 }}
-                allowsFullscreenVideo
-                mediaPlaybackRequiresUserAction={false}
-                onLoadStart={() => {
-                  setTrailerLoading(true);
-                  setTrailerError(null);
-                }}
-                onLoad={() => {
-                  setTrailerLoading(false);
-                  setTrailerError(null);
-                  setTrailerErrorRef("");
-                }}
-                onError={(event) => {
-                  setTrailerLoading(false);
-                  setTrailerError(event?.nativeEvent?.description || "Trailer kon niet laden");
-                  setTrailerErrorRef((prev) => prev || buildErrorReference("NX-TRL"));
-                }}
-              />
-            )}
-            {Platform.OS !== "web" && trailerLoading ? (
-              <View style={styles.trailerOverlay}>
-                <ActivityIndicator size="small" color={COLORS.accent} />
-                <Text style={styles.trailerOverlayText}>Trailer laden...</Text>
-              </View>
-            ) : null}
-            {Platform.OS !== "web" && trailerError ? (
-              <View style={styles.trailerOverlay}>
-                <Ionicons name="warning-outline" size={16} color={COLORS.live} />
-                <Text style={styles.trailerOverlayText}>{normalizeApiError(trailerError).userMessage}</Text>
-                <Text style={styles.errorRefText}>Foutcode: {trailerErrorRef || "NX-TRL"}</Text>
-                <TouchableOpacity
-                  style={styles.trailerRetryBtn}
-                  onPress={() => {
-                    setTrailerLoading(true);
-                    setTrailerError(null);
-                    setShowTrailer(false);
-                    setTimeout(() => setShowTrailer(true), 80);
-                  }}
-                >
-                  <Text style={styles.trailerRetryText}>Probeer opnieuw</Text>
-                </TouchableOpacity>
-              </View>
-            ) : null}
-          </View>
-        </View>
-      </Modal>
-
       <DownloadModal
         visible={showDownload}
         onClose={() => setShowDownload(false)}
@@ -796,21 +727,6 @@ const styles = StyleSheet.create({
   seasonName: { fontFamily: "Inter_600SemiBold", fontSize: 15, color: COLORS.text },
   seasonEpisodes: { fontFamily: "Inter_400Regular", fontSize: 12, color: COLORS.textMuted },
   seasonDate: { fontFamily: "Inter_400Regular", fontSize: 11, color: COLORS.textMuted },
-  trailerModal: { flex: 1, backgroundColor: "rgba(0,0,0,0.95)", paddingTop: Platform.OS === "web" ? 67 : 50, alignItems: "center" },
-  trailerClose: { position: "absolute", top: Platform.OS === "web" ? 67 : 50, right: 16, padding: 8, zIndex: 10 },
-  trailerTitle: { fontFamily: "Inter_600SemiBold", fontSize: 15, color: COLORS.text, marginBottom: 12, paddingHorizontal: 48, textAlign: "center" },
-  trailerContainer: { width: "100%", aspectRatio: 16 / 9 },
-  trailerFrame: { width: "100%", height: "100%", borderWidth: 0 },
-  trailerOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    backgroundColor: "rgba(0,0,0,0.58)",
-  },
-  trailerOverlayText: { fontFamily: "Inter_500Medium", fontSize: 13, color: COLORS.textSecondary, textAlign: "center", paddingHorizontal: 22 },
-  trailerRetryBtn: { marginTop: 4, borderRadius: 10, borderWidth: 1, borderColor: COLORS.accent, backgroundColor: COLORS.accentGlow, paddingHorizontal: 12, paddingVertical: 8 },
-  trailerRetryText: { fontFamily: "Inter_600SemiBold", fontSize: 12, color: COLORS.accent },
   modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.7)", justifyContent: "flex-end" },
   downloadModal: { backgroundColor: COLORS.cardElevated, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, paddingBottom: 40, alignItems: "center", gap: 12 },
   downloadHandle: { width: 36, height: 4, borderRadius: 2, backgroundColor: COLORS.border, marginBottom: 4 },
