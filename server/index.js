@@ -5790,16 +5790,22 @@ app.get("/api/sports/team/:teamId", async (req, res) => {
     const payload = await getOrFetch(key, 60_000, async () => {
       let resolvedTeamId = teamId;
 
-      // National team ID mapping — ESPN IDs for FIFA world teams
+      // National team ID mapping — verified ESPN IDs from fifa.world/teams
       const NATIONAL_TEAM_IDS = {
-        belgium: "187", netherlands: "7809", england: "660", spain: "164", germany: "131",
-        france: "478", italy: "247", portugal: "7813", brazil: "6", argentina: "1",
-        croatia: "468", denmark: "376", sweden: "7824", norway: "7819", switzerland: "376",
-        poland: "7820", austria: "17", scotland: "378", wales: "7825", ireland: "8702",
-        usa: "660", japan: "464", mexico: "7805", "united states": "660",
-        ukraine: "7827", turkey: "10010", czech republic: "7802", romania: "7822",
-        serbia: "8723", colombia: "7797", uruguay: "7828", chile: "7796",
-        morocco: "7806", senegal: "7823", nigeria: "7818", cameroon: "7795",
+        algeria: "624", argentina: "202", australia: "628", austria: "474",
+        belgium: "459", brazil: "205", canada: "206", colombia: "208",
+        croatia: "477", ecuador: "209", egypt: "2620", england: "448",
+        france: "478", germany: "481", ghana: "4469", "ir iran": "469",
+        "ivory coast": "4789", japan: "627", jordan: "2917", mexico: "203",
+        morocco: "2869", netherlands: "449", "new zealand": "2666", norway: "464",
+        panama: "2659", paraguay: "210", portugal: "482", qatar: "4398",
+        "saudi arabia": "655", scotland: "580", senegal: "654", "south africa": "467",
+        "south korea": "451", spain: "164", switzerland: "475", tunisia: "659",
+        "united states": "660", usa: "660", uruguay: "212", uzbekistan: "2570",
+        wales: "7825", italy: "247", poland: "7820", denmark: "376",
+        sweden: "7824", ukraine: "7827", turkey: "10010", "czech republic": "7802",
+        romania: "7822", serbia: "8723", chile: "7796", cameroon: "7795",
+        nigeria: "7818", ireland: "8702",
       };
 
       if (teamId.startsWith("name:")) {
@@ -5824,6 +5830,23 @@ app.get("/api/sports/team/:teamId", async (req, res) => {
             });
           if (found?.id) resolvedTeamId = String(found.id);
         }
+      }
+
+      // If name: resolution failed completely, try dynamic lookup on fifa.world
+      if (resolvedTeamId.startsWith("name:") && espnLeague.includes("fifa")) {
+        const rawName = decodeURIComponent(resolvedTeamId.replace(/^name:/, "")).toLowerCase();
+        try {
+          const fallbackResp = await fetch(`https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.world/teams`, {
+            headers: { "user-agent": "Mozilla/5.0 (Nexora/1.0)", accept: "application/json" },
+          });
+          const fallbackJson = fallbackResp.ok ? await fallbackResp.json() : {};
+          const fallbackTeams = fallbackJson?.sports?.[0]?.leagues?.[0]?.teams || fallbackJson?.teams || [];
+          const match = fallbackTeams.map((t) => t?.team || t).find((t) => {
+            const n = String(t?.displayName || t?.name || "").toLowerCase();
+            return n === rawName || n.includes(rawName) || rawName.includes(n);
+          });
+          if (match?.id) resolvedTeamId = String(match.id);
+        } catch {}
       }
 
       // For national teams, also try fifa.friendly if fifa.world fails
