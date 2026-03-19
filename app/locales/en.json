@@ -419,7 +419,14 @@
       "fw": "Forward",
       "defender": "Defender",
       "midfielder": "Midfielder",
-      "attacker": "Attacker"
+      "attacker": "Attacker",
+      "pg": "Point Guard",
+      "sg": "Shooting Guard",
+      "sf": "Small Forward",
+      "pf": "Power Forward",
+      "c": "Center",
+      "g": "Guard",
+      "f": "Forward"
     }
   },
 

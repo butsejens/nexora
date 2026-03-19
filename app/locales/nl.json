@@ -419,7 +419,14 @@
       "fw": "Aanvaller",
       "defender": "Verdediger",
       "midfielder": "Middenvelder",
-      "attacker": "Aanvaller"
+      "attacker": "Aanvaller",
+      "pg": "Point Guard",
+      "sg": "Shooting Guard",
+      "sf": "Small Forward",
+      "pf": "Power Forward",
+      "c": "Center",
+      "g": "Keeper",
+      "f": "Aanvaller"
     }
   },
 

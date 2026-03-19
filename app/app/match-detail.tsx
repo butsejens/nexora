@@ -1399,8 +1399,8 @@ function StatsBarsInner({ homeTeam, awayTeam, homeStats, awayStats }: { homeTeam
             if (hV > aV) homeWins++;
             else if (aV > hV) awayWins++;
           });
-          const total = homeWins + awayWins || 1;
-          const homePct = Math.round((homeWins / total) * 100);
+          const total = homeWins + awayWins;
+          const homePct = total === 0 ? 50 : Math.round((homeWins / total) * 100);
           return (
             <View style={styles.momentumContainer}>
               <Text style={styles.momentumLabel}>DOMINANTIE</Text>
@@ -2029,7 +2029,7 @@ function AIPredictionViewInner({ prediction, homeTeam, awayTeam }: any) {
               </View>
               <View style={{ flexDirection: "row", gap: 4, height: 8 }}>
                 <View style={{ flex: prediction.attackingStrength.home, backgroundColor: COLORS.accent, borderRadius: 4 }} />
-                <View style={{ flex: prediction.attackingStrength.away, backgroundColor: COLORS.live, borderRadius: 4 }} />
+                <View style={{ flex: prediction.attackingStrength.away, backgroundColor: "#5B8DEF", borderRadius: 4 }} />
               </View>
             </View>
             <View>
@@ -2039,7 +2039,7 @@ function AIPredictionViewInner({ prediction, homeTeam, awayTeam }: any) {
               </View>
               <View style={{ flexDirection: "row", gap: 4, height: 8 }}>
                 <View style={{ flex: prediction.defensiveStrength.home, backgroundColor: COLORS.accent, borderRadius: 4 }} />
-                <View style={{ flex: prediction.defensiveStrength.away, backgroundColor: COLORS.live, borderRadius: 4 }} />
+                <View style={{ flex: prediction.defensiveStrength.away, backgroundColor: "#5B8DEF", borderRadius: 4 }} />
               </View>
             </View>
           </View>
@@ -2052,9 +2052,9 @@ function AIPredictionViewInner({ prediction, homeTeam, awayTeam }: any) {
           <Text style={styles.infoCardTitle}>SPELER IMPACT</Text>
           {prediction.playerImpact.map((p: any, i: number) => (
             <View key={`pi-${i}`} style={[styles.factorRow, { marginBottom: 6 }]}>
-              <MaterialCommunityIcons name="account-star" size={13} color={p.team === "home" ? COLORS.accent : COLORS.live} />
+              <MaterialCommunityIcons name="account-star" size={13} color={p.team === "home" ? COLORS.accent : "#5B8DEF"} />
               <Text style={[styles.factorText, { marginLeft: 4 }]}>
-                <Text style={{ fontFamily: "Inter_600SemiBold", color: p.team === "home" ? COLORS.accent : COLORS.live }}>{p.name}</Text>
+                <Text style={{ fontFamily: "Inter_600SemiBold", color: p.team === "home" ? COLORS.accent : "#5B8DEF" }}>{p.name}</Text>
                 {" — "}{p.impact}
               </Text>
             </View>
@@ -3012,11 +3012,11 @@ const styles = StyleSheet.create({
   factorRow: { flexDirection: "row", alignItems: "flex-start", gap: 8, paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: COLORS.border },
   factorDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: COLORS.accent, marginTop: 6 },
   factorText: { fontFamily: "Inter_400Regular", fontSize: 13, color: COLORS.text, flex: 1 },
-  formRow: { flexDirection: "row", gap: 10 },
-  formCard: { backgroundColor: COLORS.card, borderRadius: 14, padding: 14, borderWidth: 1, borderColor: COLORS.border, gap: 8 },
+  formRow: { flexDirection: "row", gap: 10, flexWrap: "wrap" },
+  formCard: { backgroundColor: COLORS.card, borderRadius: 14, padding: 14, borderWidth: 1, borderColor: COLORS.border, gap: 8, flex: 1, overflow: "hidden" },
   formTeamName: { fontFamily: "Inter_600SemiBold", fontSize: 13, color: COLORS.text },
-  formBubbles: { flexDirection: "row", gap: 6 },
-  formBubble: { width: 24, height: 24, borderRadius: 12, alignItems: "center", justifyContent: "center" },
+  formBubbles: { flexDirection: "row", gap: 4, flexWrap: "wrap" },
+  formBubble: { width: 22, height: 22, borderRadius: 11, alignItems: "center", justifyContent: "center" },
   formW: { backgroundColor: "rgba(0,230,118,0.2)", borderWidth: 1, borderColor: COLORS.green },
   formD: { backgroundColor: "rgba(138,157,181,0.2)", borderWidth: 1, borderColor: COLORS.textMuted },
   formL: { backgroundColor: "rgba(255,59,48,0.2)", borderWidth: 1, borderColor: COLORS.live },

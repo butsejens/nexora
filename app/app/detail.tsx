@@ -1,7 +1,7 @@
 import React, { useMemo, useState, useRef } from "react";
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  Image, Modal, Platform, Alert, ActivityIndicator,
+  Image, Modal, Platform, Alert, ActivityIndicator, Linking,
 } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -532,17 +532,7 @@ export default function DetailScreen() {
                 style={styles.trailerBtnOutline}
                 onPress={() => {
                   SafeHaptics.impactLight();
-                  router.push({
-                    pathname: "/player",
-                    params: {
-                      trailerKey: data.trailerKey,
-                      title: data.title || "",
-                      type: type || "movie",
-                      contentId: id,
-                      tmdbId: tmdbId || id,
-                      poster: data.poster || "",
-                    },
-                  });
+                  Linking.openURL(`https://www.youtube.com/watch?v=${encodeURIComponent(data.trailerKey)}`);
                 }}
               >
                 <Ionicons name="videocam-outline" size={20} color={COLORS.accent} />
