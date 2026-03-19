@@ -1369,7 +1369,7 @@ async function fetchTheSportsDBTeamPlayers(teamName) {
     const playersData = await playersResp.json();
     const list = (playersData?.player || []).map((p) => ({
       name: normalizePersonName(p?.strPlayer || ""),
-      photo: p?.strCutout || p?.strThumb || null,
+      photo: p?.strCutout || p?.strThumb || p?.strRender || null,
     })).filter((p) => p.name && p.photo);
 
     cacheSet(cacheKey, list, 86_400_000); // cache 24h
@@ -1577,6 +1577,60 @@ async function enrichMatchLogos(matches) {
     // Priority: Football-logos > TSDB > ESPN CDN > Wikipedia
     homeTeamLogo: flMap[m.homeTeam] || tsdbMap[m.homeTeam] || m.homeTeamLogo || wikiMap[m.homeTeam] || null,
     awayTeamLogo: flMap[m.awayTeam] || tsdbMap[m.awayTeam] || m.awayTeamLogo || wikiMap[m.awayTeam] || null,
+  }));
+}
+
+// Enrich standings team logos using the same priority chain as match logos
+async function enrichStandingsLogos(standings, leagueName) {
+  if (!Array.isArray(standings) || standings.length === 0) return standings;
+
+  const teamNames = [...new Set(standings.map((t) => t.team).filter(Boolean))];
+  if (teamNames.length === 0) return standings;
+
+  // 1. Football-logos (highest quality)
+  const flMap = {};
+  for (const name of teamNames) {
+    flMap[name] = resolveFootballLogosUrl(name, leagueName || "");
+  }
+
+  // 2. Batched TheSportsDB lookups (max 5 parallel)
+  const needsTsdb = teamNames.filter((name) => !flMap[name]);
+  const tsdbMap = {};
+  for (let i = 0; i < needsTsdb.length; i += 5) {
+    const batch = needsTsdb.slice(i, i + 5);
+    const results = await Promise.all(batch.map(async (name) => [name, await fetchTheSportsDBTeamLogo(name)]));
+    for (const [name, logo] of results) tsdbMap[name] = logo;
+  }
+
+  return standings.map((t) => ({
+    ...t,
+    logo: flMap[t.team] || tsdbMap[t.team] || t.logo || null,
+  }));
+}
+
+// Enrich topscorer teamLogo fields using Football-logos + TheSportsDB
+async function enrichScorersLogos(scorers, leagueName) {
+  if (!Array.isArray(scorers) || scorers.length === 0) return scorers;
+
+  const teamNames = [...new Set(scorers.map((s) => s.team).filter(Boolean))];
+  if (teamNames.length === 0) return scorers;
+
+  const flMap = {};
+  for (const name of teamNames) {
+    flMap[name] = resolveFootballLogosUrl(name, leagueName || "");
+  }
+
+  const needsTsdb = teamNames.filter((name) => !flMap[name]);
+  const tsdbMap = {};
+  for (let i = 0; i < needsTsdb.length; i += 5) {
+    const batch = needsTsdb.slice(i, i + 5);
+    const results = await Promise.all(batch.map(async (name) => [name, await fetchTheSportsDBTeamLogo(name)]));
+    for (const [name, logo] of results) tsdbMap[name] = logo;
+  }
+
+  return scorers.map((s) => ({
+    ...s,
+    teamLogo: flMap[s.team] || tsdbMap[s.team] || s.teamLogo || null,
   }));
 }
 
@@ -2238,7 +2292,7 @@ async function enrichRosterPhotos(players, teamName) {
 
   // Step 3: TheSportsDB individual player search for remaining players without photos
   const stillNeedPhoto = enriched.filter((p) => p && !p.photo);
-  if (stillNeedPhoto.length > 0 && stillNeedPhoto.length <= 20) {
+  if (stillNeedPhoto.length > 0 && stillNeedPhoto.length <= 30) {
     const searchResults = await Promise.all(
       stillNeedPhoto.map(async (player) => {
         try {
@@ -2256,7 +2310,7 @@ async function enrichRosterPhotos(players, teamName) {
             const rName = normalizePersonName(r?.strPlayer || "");
             const score = similarityScore(normName, rName);
             const photo = r?.strCutout || r?.strThumb || r?.strRender || null;
-            if (score >= 0.6 && photo && /^https?:\/\//i.test(photo)) {
+            if (score >= 0.5 && photo && /^https?:\/\//i.test(photo)) {
               return [player.name, photo];
             }
           }
@@ -5230,9 +5284,10 @@ app.get("/api/sports/standings/:league", async (req, res) => {
       // 1) Try ESPN first (no key needed)
       try {
         const espnData = await espnStandings(leagueName);
-        const standings = mapEspnStandings(espnData);
+        let standings = mapEspnStandings(espnData);
         if (standings.length > 0) {
-          console.log(`[standings] ${leagueName}: ESPN → ${standings.length} teams`);
+          standings = await enrichStandingsLogos(standings, leagueName);
+          console.log(`[standings] ${leagueName}: ESPN → ${standings.length} teams (logos enriched)`);
           return { league: leagueName, season, seasonLabel, standings, source: "espn" };
         }
       } catch (e) {
@@ -5264,8 +5319,10 @@ app.get("/api/sports/topscorers/:league", async (req, res) => {
       // 1) ESPN first
       try {
         const espnData = await espnTopScorers(leagueName);
-        const scorers = mapEspnTopScorers(espnData);
+        let scorers = mapEspnTopScorers(espnData);
         if (scorers.length > 0) {
+          // Enrich team logos via Football-logos + TheSportsDB
+          scorers = await enrichScorersLogos(scorers, leagueName);
           // Enrich with market values per team (best-effort, cached by enrichRosterMarketValues)
           const teams = [...new Set(scorers.map(s => s.team).filter(Boolean))];
           await Promise.allSettled(
@@ -5293,8 +5350,9 @@ app.get("/api/sports/topscorers/:league", async (req, res) => {
 
       // 1b) ESPN HTML fallback (no key)
       try {
-        const htmlScorers = await espnTopScorersFromHtml(leagueName);
+        let htmlScorers = await espnTopScorersFromHtml(leagueName);
         if (htmlScorers.length > 0) {
+          htmlScorers = await enrichScorersLogos(htmlScorers, leagueName);
           console.log(`[topscorers] ${leagueName}: ESPN HTML → ${htmlScorers.length} scorers`);
           return { league: leagueName, season, seasonLabel, scorers: htmlScorers, source: "espn-html" };
         }
@@ -5582,7 +5640,7 @@ app.get("/api/sports/player/:playerId", async (req, res) => {
         const dbPlayers = await fetchTheSportsDBTeamPlayers(clubName);
         const normName = normalizePersonName(name || "");
         for (const dbp of dbPlayers) {
-          if (dbp.name === normName || similarityScore(normName, dbp.name) >= 0.6) {
+          if (dbp.name === normName || similarityScore(normName, dbp.name) >= 0.5) {
             resolvedPhoto = dbp.photo;
             break;
           }
@@ -5598,15 +5656,30 @@ app.get("/api/sports/player/:playerId", async (req, res) => {
           const tsdbCacheKey = `tsdb_player_${normalizePersonName(name)}`;
           let tsdbPhoto = cacheGet(tsdbCacheKey);
           if (tsdbPhoto === null) {
-            const tsdbResp = await fetch(`https://www.thesportsdb.com/api/v1/json/3/searchplayers.php?p=${encodeURIComponent(name)}`, {
-              headers: { "user-agent": "Mozilla/5.0", accept: "application/json" },
-              signal: AbortSignal.timeout(4000),
-            });
-            if (tsdbResp.ok) {
+            const normName = normalizePersonName(name);
+            // Try full name first, then surname only
+            const searchQueries = [name];
+            const parts = name.trim().split(/\s+/);
+            if (parts.length >= 2) searchQueries.push(parts[parts.length - 1]);
+            for (const q of searchQueries) {
+              if (tsdbPhoto) break;
+              const tsdbResp = await fetch(`https://www.thesportsdb.com/api/v1/json/3/searchplayers.php?p=${encodeURIComponent(q)}`, {
+                headers: { "user-agent": "Mozilla/5.0", accept: "application/json" },
+                signal: AbortSignal.timeout(4000),
+              });
+              if (!tsdbResp.ok) continue;
               const tsdbData = await tsdbResp.json();
-              tsdbPhoto = tsdbData?.player?.[0]?.strCutout || tsdbData?.player?.[0]?.strThumb || null;
-              cacheSet(tsdbCacheKey, tsdbPhoto, 86_400_000);
+              const results = Array.isArray(tsdbData?.player) ? tsdbData.player : [];
+              for (const r of results) {
+                const rName = normalizePersonName(r?.strPlayer || "");
+                const photo = r?.strCutout || r?.strThumb || r?.strRender || null;
+                if (photo && /^https?:\/\//i.test(photo) && similarityScore(normName, rName) >= 0.45) {
+                  tsdbPhoto = photo;
+                  break;
+                }
+              }
             }
+            cacheSet(tsdbCacheKey, tsdbPhoto || null, 86_400_000);
           }
           if (tsdbPhoto) resolvedPhoto = tsdbPhoto;
         } catch { /* ignore */ }

@@ -436,7 +436,7 @@ function StandingsRow({ team, rank, league, espnLeague }: { team: any; rank: num
       </View>
 
       <View style={styles.teamCell}>
-        <TeamLogo uri={team?.logo || null} teamName={String(team?.team || "")} size={18} />
+        <TeamLogo uri={team?.logo || null} teamName={String(team?.team || "")} size={28} />
         <Text style={styles.standingsTeamName} numberOfLines={1}>{team.team}</Text>
       </View>
 
@@ -484,7 +484,7 @@ function ScorerRow({ scorer, rank, league, espnLeague }: { scorer: any; rank: nu
       <View style={styles.scorerInfo}>
         <Text style={styles.scorerName}>{scorer.name}</Text>
         <View style={styles.scorerTeamRow}>
-          <TeamLogo uri={scorer?.teamLogo || null} teamName={String(scorer?.team || "")} size={16} />
+          <TeamLogo uri={scorer?.teamLogo || null} teamName={String(scorer?.team || "")} size={22} />
           <Text style={styles.scorerTeam}>{scorer.team}</Text>
         </View>
         {scorer.marketValue ? (
@@ -553,7 +553,7 @@ const styles = StyleSheet.create({
   rankIndicator: { width: 28, height: 28, borderRadius: 6, alignItems: "center", justifyContent: "center" },
   rankText: { fontFamily: "Inter_700Bold", fontSize: 13 },
   teamCell: { flex: 1, flexDirection: "row", alignItems: "center", gap: 10, paddingLeft: 4 },
-  standingsLogo: { width: 22, height: 22, borderRadius: 11 },
+  standingsLogo: { width: 28, height: 28, borderRadius: 14 },
   logoPlaceholder: { backgroundColor: COLORS.card, alignItems: "center", justifyContent: "center" },
   standingsTeamName: { fontFamily: "Inter_600SemiBold", fontSize: 13, color: COLORS.text, flex: 1 },
   standingsCell: { width: 32, textAlign: "center", fontFamily: "Inter_400Regular", fontSize: 13, color: COLORS.textSecondary },
