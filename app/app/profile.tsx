@@ -14,7 +14,7 @@ import {
   Linking,
   Image,
 } from "react-native";
-import { router } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import * as DocumentPicker from "expo-document-picker";
@@ -33,6 +33,17 @@ import * as FileSystem from "expo-file-system/legacy";
 import * as IntentLauncher from "expo-intent-launcher";
 
 const CHANGELOG: { version: string; date: string; changes: string[] }[] = [
+  {
+    version: "2.5.33",
+    date: "2026-03-19",
+    changes: [
+      "Spelersfotos en marktwaardes nu beschikbaar voor alle competities",
+      "Clubwaarde zichtbaar op team-detail pagina",
+      "Transfermarkt API hersteld — echte marktdata in plaats van schattingen",
+      "Competitielogo's lokaal opgeslagen (UCL, UEL, UECL, Challenger Pro League)",
+      "Update-melding navigeert nu correct naar update-scherm",
+    ],
+  },
   {
     version: "2.5.23",
     date: "2026-03-18",
@@ -619,6 +630,7 @@ function Divider() {
 
 export default function SettingsScreen() {
   const insets = useSafeAreaInsets();
+  const { openUpdate } = useLocalSearchParams<{ openUpdate?: string }>();
   const {selectedQuality, setSelectedQuality,
     subtitlesEnabled, setSubtitlesEnabled,
     audioLanguage, setAudioLanguage,
@@ -653,7 +665,7 @@ const [showAddPlaylist, setShowAddPlaylist] = useState(false);
   const [showPinModal, setShowPinModal] = useState(false);
   const [pinModalMode, setPinModalMode] = useState<"set" | "confirm">("set");
   const [showLangModal, setShowLangModal] = useState(false);
-  const [showUpdateModal, setShowUpdateModal] = useState(false);
+  const [showUpdateModal, setShowUpdateModal] = useState(openUpdate === "1");
 
   const bottomPad = Platform.OS === "web" ? 34 : insets.bottom + 90;
   const qualities = ["Auto", "4K", "FHD", "HD"] as const;
