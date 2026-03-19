@@ -148,6 +148,77 @@ const ESPN_TEAM_LOGO_IDS: Record<string, number> = {
   "benfica": 218, "porto": 224, "sporting cp": 228, "braga": 244,
 };
 
+// National team logos via ESPN country codes
+const NATIONAL_TEAM_CODES: Record<string, string> = {
+  "belgium": "bel", "belgie": "bel", "rode duivels": "bel",
+  "netherlands": "ned", "nederland": "ned", "holland": "ned", "oranje": "ned",
+  "france": "fra", "frankrijk": "fra",
+  "germany": "ger", "duitsland": "ger", "deutschland": "ger",
+  "england": "eng", "engeland": "eng",
+  "spain": "esp", "spanje": "esp", "espana": "esp",
+  "italy": "ita", "italie": "ita", "italia": "ita",
+  "portugal": "por",
+  "brazil": "bra", "brazilie": "bra", "brasil": "bra",
+  "argentina": "arg", "argentinie": "arg",
+  "croatia": "cro", "kroatie": "cro",
+  "morocco": "mar", "marokko": "mar",
+  "senegal": "sen",
+  "japan": "jpn",
+  "south korea": "kor", "korea republic": "kor",
+  "united states": "usa", "usa": "usa",
+  "mexico": "mex",
+  "colombia": "col",
+  "uruguay": "uru",
+  "denmark": "den", "denemarken": "den",
+  "switzerland": "sui", "zwitserland": "sui",
+  "poland": "pol", "polen": "pol",
+  "austria": "aut", "oostenrijk": "aut",
+  "wales": "wal",
+  "scotland": "sco", "schotland": "sco",
+  "ireland": "irl", "ierland": "irl",
+  "turkey": "tur", "turkije": "tur",
+  "czech republic": "cze", "czechia": "cze", "tsjechie": "cze",
+  "greece": "gre", "griekenland": "gre",
+  "sweden": "swe", "zweden": "swe",
+  "norway": "nor", "noorwegen": "nor",
+  "serbia": "srb", "servie": "srb",
+  "ukraine": "ukr", "oekraine": "ukr",
+  "romania": "rou", "roemenie": "rou",
+  "hungary": "hun", "hongarije": "hun",
+  "nigeria": "nga",
+  "cameroon": "cmr", "kameroen": "cmr",
+  "ghana": "gha",
+  "egypt": "egy", "egypte": "egy",
+  "tunisia": "tun", "tunesie": "tun",
+  "algeria": "alg", "algerije": "alg",
+  "ivory coast": "civ", "cote d ivoire": "civ", "ivoorkust": "civ",
+  "australia": "aus", "australie": "aus",
+  "canada": "can",
+  "chile": "chi",
+  "peru": "per",
+  "ecuador": "ecu",
+  "paraguay": "par",
+  "venezuela": "ven",
+  "costa rica": "crc",
+  "panama": "pan",
+  "jamaica": "jam",
+  "iceland": "isl", "ijsland": "isl",
+  "finland": "fin",
+  "slovakia": "svk", "slowakije": "svk",
+  "slovenia": "svn", "slovenie": "svn",
+  "albania": "alb", "albanie": "alb",
+  "north macedonia": "mkd", "noord macedonie": "mkd",
+  "montenegro": "mne",
+  "bosnia": "bih", "bosnia herzegovina": "bih",
+  "georgia": "geo", "georgie": "geo",
+  "israel": "isr",
+  "saudi arabia": "ksa", "saoedi arabie": "ksa",
+  "qatar": "qat",
+  "iran": "irn",
+  "china": "chn",
+  "india": "ind",
+};
+
 export function resolveTeamLogoUri(teamName?: string, logoUri?: string | null): string | number | null {
   const normalized = normalizeName(String(teamName || ""));
   if (normalized === "club brugge" || normalized === "club brugge kv" || normalized.startsWith("club brugge ")) {
@@ -172,6 +243,18 @@ export function resolveTeamLogoUri(teamName?: string, logoUri?: string | null): 
     for (const [key, id] of Object.entries(ESPN_TEAM_LOGO_IDS)) {
       if (normalized.includes(key) || key.includes(normalized)) {
         return `https://a.espncdn.com/i/teamlogos/soccer/500/${id}.png`;
+      }
+    }
+  }
+
+  // National team fallback: try ESPN country logos
+  const countryCode = NATIONAL_TEAM_CODES[normalized];
+  if (countryCode) return `https://a.espncdn.com/i/teamlogos/countries/500/${countryCode}.png`;
+  // Partial match for national teams
+  if (normalized.length >= 4) {
+    for (const [key, code] of Object.entries(NATIONAL_TEAM_CODES)) {
+      if (normalized.includes(key) || key.includes(normalized)) {
+        return `https://a.espncdn.com/i/teamlogos/countries/500/${code}.png`;
       }
     }
   }

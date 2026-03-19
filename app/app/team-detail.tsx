@@ -1,7 +1,7 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   View, Text, StyleSheet, TouchableOpacity, ScrollView,
-  Image, Platform, ActivityIndicator, FlatList,
+  Image, Platform, ActivityIndicator, FlatList, Animated,
 } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -75,6 +75,29 @@ export default function TeamDetailScreen() {
   const [posFilter, setPosFilter] = useState<string>("all");
   const [sortKey, setSortKey] = useState<"value_desc" | "value_asc" | "age_desc" | "age_asc" | "name_asc" | "position_asc">("value_desc");
   const topPad = Platform.OS === "web" ? 67 : insets.top;
+
+  // Scroll-hide animation for filter header
+  const scrollY = useRef(new Animated.Value(0)).current;
+  const lastScrollY = useRef(0);
+  const filterTranslateY = useRef(new Animated.Value(0)).current;
+  const handleScroll = useMemo(() => Animated.event(
+    [{ nativeEvent: { contentOffset: { y: scrollY } } }],
+    {
+      useNativeDriver: true,
+      listener: (e: any) => {
+        const currentY = e.nativeEvent.contentOffset.y;
+        const diff = currentY - lastScrollY.current;
+        if (currentY <= 10) {
+          Animated.spring(filterTranslateY, { toValue: 0, useNativeDriver: true, tension: 80, friction: 12 }).start();
+        } else if (diff > 4) {
+          Animated.spring(filterTranslateY, { toValue: -120, useNativeDriver: true, tension: 80, friction: 12 }).start();
+        } else if (diff < -4) {
+          Animated.spring(filterTranslateY, { toValue: 0, useNativeDriver: true, tension: 80, friction: 12 }).start();
+        }
+        lastScrollY.current = currentY;
+      },
+    },
+  ), []);
 
   const prefsKey = useMemo(
     () => `team_ui_prefs_${encodeURIComponent(String(teamIdParam || teamNameParam || "unknown"))}`,
@@ -307,7 +330,7 @@ export default function TeamDetailScreen() {
               </TouchableOpacity>
             )}
             ListHeaderComponent={positions.length > 1 ? (
-              <View style={styles.filterHeaderWrap}>
+              <Animated.View style={[styles.filterHeaderWrap, { transform: [{ translateY: filterTranslateY }] }]}>
                 <ScrollView horizontal showsHorizontalScrollIndicator={false}
                   style={[styles.filterScroll, styles.filterSticky]} contentContainerStyle={styles.filterRow}>
                   <TouchableOpacity
@@ -341,9 +364,11 @@ export default function TeamDetailScreen() {
                   <SortChip label={t("teamDetail.nameAZ")} active={sortKey === "name_asc"} onPress={() => setSortKey("name_asc")} />
                   <SortChip label={t("teamDetail.position")} active={sortKey === "position_asc"} onPress={() => setSortKey("position_asc")} />
                 </ScrollView>
-              </View>
+              </Animated.View>
             ) : null}
             stickyHeaderIndices={positions.length > 1 ? [0] : undefined}
+            onScroll={handleScroll}
+            scrollEventThrottle={16}
             contentContainerStyle={styles.playerList}
             showsVerticalScrollIndicator={false}
             ListEmptyComponent={
@@ -373,7 +398,7 @@ function PlayerCard({ player }: { player: any }) {
     <View style={styles.playerCard}>
       <View style={styles.playerTopRow}>
         <View style={[styles.jerseyBadge, { borderColor: posColor }]}> 
-          <Text style={[styles.jerseyNum, { color: posColor }]}>{player.jersey || tFn("teamDetail.unknown")}</Text>
+          <Text style={[styles.jerseyNum, { color: posColor }]}>{player.jersey || (player.position || "-")}</Text>
         </View>
 
         {photoUri ? (
