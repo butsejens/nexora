@@ -1302,6 +1302,9 @@ export default function SportsScreen() {
   const headerTranslateY = headerAnim.interpolate({ inputRange: [0, 1], outputRange: [-120, 0] });
   const miniTitleOpacity = headerAnim.interpolate({ inputRange: [0, 1], outputRange: [1, 0] });
 
+  // Height of header + sub-nav so ScrollView content starts below them
+  const headerAreaHeight = (Platform.OS === "web" ? 0 : insets.top) + 8 + 40 + 8 + 42;
+
   return (
     <View style={styles.container}>
       {/* Mini title bar – visible when header is scrolled away */}
@@ -1311,7 +1314,7 @@ export default function SportsScreen() {
         </Text>
       </Animated.View>
 
-      <Animated.View style={{ transform: [{ translateY: headerTranslateY }], opacity: headerOpacity, zIndex: 50 }}>
+      <Animated.View style={{ position: "absolute", top: 0, left: 0, right: 0, transform: [{ translateY: headerTranslateY }], opacity: headerOpacity, zIndex: 50 }}>
         <NexoraHeader
           title="SPORT"
           titleColor={P.accent}
@@ -1323,42 +1326,40 @@ export default function SportsScreen() {
           onFavorites={() => router.push("/favorites")}
           onProfile={() => router.push("/profile")}
         />
-      </Animated.View>
 
-      {/* ── Sports Sub-Nav ── */}
-      <Animated.View style={{ transform: [{ translateY: headerTranslateY }], opacity: headerOpacity, zIndex: 40 }}>
-      <View style={styles.subNav}>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.subNavContent}
-        >
-          {SPORTS_TABS.map((tab) => {
-            const isActive = sportsView === tab.id;
-            return (
-              <TouchableOpacity
-                key={tab.id}
-                style={styles.subNavItem}
-                onPress={() => setSportsView(tab.id)}
-                activeOpacity={0.75}
-              >
-                <Text style={[styles.subNavText, isActive && styles.subNavTextActive]}>
-                  {tab.label}
-                  {tab.id === "live" && sortedLive.length > 0 && (
-                    <Text style={styles.liveCount}> {sortedLive.length}</Text>
-                  )}
-                </Text>
-                {isActive && <View style={styles.subNavIndicator} />}
-              </TouchableOpacity>
-            );
-          })}
-        </ScrollView>
-      </View>
+        {/* ── Sports Sub-Nav ── */}
+        <View style={styles.subNav}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.subNavContent}
+          >
+            {SPORTS_TABS.map((tab) => {
+              const isActive = sportsView === tab.id;
+              return (
+                <TouchableOpacity
+                  key={tab.id}
+                  style={styles.subNavItem}
+                  onPress={() => setSportsView(tab.id)}
+                  activeOpacity={0.75}
+                >
+                  <Text style={[styles.subNavText, isActive && styles.subNavTextActive]}>
+                    {tab.label}
+                    {tab.id === "live" && sortedLive.length > 0 && (
+                      <Text style={styles.liveCount}> {sortedLive.length}</Text>
+                    )}
+                  </Text>
+                  {isActive && <View style={styles.subNavIndicator} />}
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+        </View>
       </Animated.View>
 
       {/* ── Sport Search ── */}
       {sportsSearchActive && (
-        <View style={styles.sportsSearchBar}>
+        <View style={[styles.sportsSearchBar, { marginTop: headerAreaHeight }]}>
           <Ionicons name="search" size={15} color={P.muted} />
           <TextInput
             style={styles.sportsSearchInput}
@@ -1412,7 +1413,7 @@ export default function SportsScreen() {
         scrollEventThrottle={16}
         onScroll={handleFeedScroll}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={P.accent} />}
-        contentContainerStyle={{ paddingBottom: bottomPad, width: contentWidth, alignSelf: "center" }}
+        contentContainerStyle={{ paddingTop: headerAreaHeight, paddingBottom: bottomPad, width: contentWidth, alignSelf: "center" }}
       >
         {/* ── Banners ── */}
         {filterEmpty && (
@@ -1989,6 +1990,7 @@ const styles = StyleSheet.create({
     backgroundColor: P.elevated, borderRadius: 12,
     paddingHorizontal: 14, paddingVertical: 9,
     borderWidth: 1, borderColor: P.border,
+    zIndex: 45, elevation: 45,
   },
   sportsSearchInput: {
     flex: 1, color: P.text, fontSize: 14, fontWeight: "500",
@@ -1998,6 +2000,7 @@ const styles = StyleSheet.create({
     marginHorizontal: 16, borderRadius: 12, overflow: "hidden",
     borderWidth: 1, borderColor: P.border,
     backgroundColor: P.card, marginBottom: 8,
+    zIndex: 44, elevation: 44,
   },
   sportsSearchResult: {
     flexDirection: "row", alignItems: "center", justifyContent: "space-between",

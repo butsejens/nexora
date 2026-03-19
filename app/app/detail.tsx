@@ -42,7 +42,7 @@ function summarizeList(values: unknown, limit = 3): string {
     .join(", ");
 }
 
-function CastCard({ person }: { person: any }) {
+const CastCard = React.memo(function CastCard({ person }: { person: any }) {
   return (
     <View style={styles.castCard}>
       {person.photo ? (
@@ -56,7 +56,7 @@ function CastCard({ person }: { person: any }) {
       <Text style={styles.castCharacter} numberOfLines={1}>{person.character}</Text>
     </View>
   );
-}
+});
 
 function DownloadModal({
   visible, onClose, title, contentId, type: contentType, streamUrl, poster, year,
@@ -272,6 +272,7 @@ export default function DetailScreen() {
   const [trailerIndex, setTrailerIndex] = useState(0);
   const [trailerLoading, setTrailerLoading] = useState(false);
   const [trailerUnavailable, setTrailerUnavailable] = useState(false);
+  const trailerAdvancingRef = useRef(false);
   const [activeTab, setActiveTab] = useState<"overview" | "cast" | "seasons">("overview");
 
   // ── For IPTV items: get channel data from context first ───────────────────
@@ -401,6 +402,7 @@ export default function DetailScreen() {
     setTrailerIndex(0);
     setTrailerLoading(true);
     setTrailerUnavailable(false);
+    trailerAdvancingRef.current = false;
     setShowTrailer(true);
   };
 
@@ -409,17 +411,24 @@ export default function DetailScreen() {
     setTrailerLoading(false);
     setTrailerUnavailable(false);
     setTrailerIndex(0);
+    trailerAdvancingRef.current = false;
   };
 
   const advanceTrailer = () => {
+    if (trailerAdvancingRef.current) return;
+    trailerAdvancingRef.current = true;
     const nextIndex = trailerIndex + 1;
     if (nextIndex < trailerCandidates.length) {
-      setTrailerIndex(nextIndex);
-      setTrailerLoading(true);
+      setTimeout(() => {
+        setTrailerIndex(nextIndex);
+        setTrailerLoading(true);
+        trailerAdvancingRef.current = false;
+      }, 800);
       return;
     }
     setTrailerLoading(false);
     setTrailerUnavailable(true);
+    trailerAdvancingRef.current = false;
   };
 
   const goToPlayer = (season = 1, episode = 1) => {
@@ -586,14 +595,14 @@ export default function DetailScreen() {
               <TouchableOpacity style={styles.playBtn} onPress={() => goToPlayer()} activeOpacity={0.85}>
                 <View style={styles.playBtnInner}>
                   <Ionicons name="play" size={22} color="#FFFFFF" />
-                  <Text style={styles.playBtnText}>{t("detail.play")}</Text>
+                  <Text style={styles.playBtnText} numberOfLines={1}>{t("detail.play")}</Text>
                 </View>
               </TouchableOpacity>
             ) : (
               <TouchableOpacity style={styles.playBtn} onPress={() => router.push("/premium")} activeOpacity={0.85}>
                 <View style={styles.lockedBtnInner}>
                   <Ionicons name="lock-closed" size={18} color="#FFFFFF" />
-                  <Text style={styles.playBtnText}>{t("detail.unlockPremium")}</Text>
+                  <Text style={styles.playBtnText} numberOfLines={1}>{t("detail.unlockPremium")}</Text>
                 </View>
               </TouchableOpacity>
             )}
@@ -744,19 +753,28 @@ export default function DetailScreen() {
               {trailerEmbedUrl && !trailerUnavailable ? (
                 <>
                   <WebView
+                    key={`trailer-${trailerIndex}`}
                     source={{ uri: trailerEmbedUrl }}
                     style={styles.trailerWebView}
                     allowsFullscreenVideo
                     allowsInlineMediaPlayback
                     mediaPlaybackRequiresUserAction={false}
                     javaScriptEnabled
+                    incognito
                     onLoadStart={() => {
                       setTrailerLoading(true);
                       setTrailerUnavailable(false);
                     }}
                     onLoadEnd={() => setTrailerLoading(false)}
                     onError={advanceTrailer}
-                    onHttpError={advanceTrailer}
+                    onHttpError={(e: any) => {
+                      const status = e?.nativeEvent?.statusCode;
+                      if (status && status >= 500) {
+                        advanceTrailer();
+                      } else if (status === 404 || status === 403) {
+                        advanceTrailer();
+                      }
+                    }}
                   />
                   {trailerLoading ? (
                     <View style={styles.trailerStatusOverlay}>
@@ -806,10 +824,10 @@ const styles = StyleSheet.create({
   genrePill: { backgroundColor: "rgba(255,255,255,0.06)", borderRadius: 6, paddingHorizontal: 10, paddingVertical: 5, borderWidth: 0.5, borderColor: "rgba(255,255,255,0.08)" },
   genrePillText: { fontFamily: "Inter_500Medium", fontSize: 11, color: COLORS.textSecondary },
   actionButtons: { flexDirection: "row", gap: 10, marginBottom: 20, alignItems: "center" },
-  playBtn: { flex: 1, borderRadius: 12, overflow: "hidden" },
-  playBtnInner: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, paddingVertical: 14, backgroundColor: COLORS.accent, borderRadius: 12 },
-  lockedBtnInner: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, paddingVertical: 14, backgroundColor: "rgba(229,9,20,0.35)", borderRadius: 12, borderWidth: 1, borderColor: "rgba(229,9,20,0.5)" },
-  playBtnText: { fontFamily: "Inter_700Bold", fontSize: 16, color: "#FFFFFF" },
+  playBtn: { flex: 1, borderRadius: 12, overflow: "hidden", minWidth: 0 },
+  playBtnInner: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, paddingVertical: 14, paddingHorizontal: 12, backgroundColor: COLORS.accent, borderRadius: 12 },
+  lockedBtnInner: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, paddingVertical: 14, paddingHorizontal: 12, backgroundColor: "rgba(229,9,20,0.35)", borderRadius: 12, borderWidth: 1, borderColor: "rgba(229,9,20,0.5)" },
+  playBtnText: { fontFamily: "Inter_700Bold", fontSize: 14, color: "#FFFFFF", flexShrink: 1 },
   downloadBtnOutline: { width: 48, height: 48, borderRadius: 12, borderWidth: 1.5, borderColor: "rgba(255,255,255,0.12)", alignItems: "center", justifyContent: "center", backgroundColor: "rgba(255,255,255,0.04)" },
   shareBtnOutline: { width: 48, height: 48, borderRadius: 12, borderWidth: 1.5, borderColor: "rgba(255,255,255,0.12)", alignItems: "center", justifyContent: "center", backgroundColor: "rgba(255,255,255,0.04)" },
   trailerBtnOutline: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, height: 48, paddingHorizontal: 16, borderRadius: 12, borderWidth: 1.5, borderColor: COLORS.accent + "44", backgroundColor: COLORS.accent + "12" },
@@ -824,8 +842,8 @@ const styles = StyleSheet.create({
   tabContent: { paddingBottom: 8 },
   synopsis: { fontFamily: "Inter_400Regular", fontSize: 15, color: COLORS.textSecondary, lineHeight: 24, marginBottom: 16 },
   metadataGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10, marginBottom: 16 },
-  metadataCard: { width: "48%", minHeight: 74, padding: 12, borderRadius: 12, backgroundColor: "rgba(255,255,255,0.04)", borderWidth: 1, borderColor: "rgba(255,255,255,0.06)", gap: 6 },
-  metadataLabel: { fontFamily: "Inter_600SemiBold", fontSize: 11, color: COLORS.textMuted, textTransform: "uppercase", letterSpacing: 0.5 },
+  metadataCard: { width: "48%", minHeight: 74, padding: 12, borderRadius: 12, backgroundColor: "rgba(255,255,255,0.05)", borderWidth: 1, borderColor: "rgba(255,255,255,0.08)", gap: 4 },
+  metadataLabel: { fontFamily: "Inter_600SemiBold", fontSize: 10, color: COLORS.textMuted, textTransform: "uppercase", letterSpacing: 0.8 },
   metadataValue: { fontFamily: "Inter_500Medium", fontSize: 13, color: COLORS.text, lineHeight: 18 },
   networkRow: { flexDirection: "row", marginBottom: 8 },
   networkLabel: { fontFamily: "Inter_600SemiBold", fontSize: 13, color: COLORS.textMuted },

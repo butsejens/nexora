@@ -123,7 +123,7 @@ function StorylineBar({ storylines }: { storylines: Storyline[] }) {
         <View key={i} style={[storyStyles.card, { borderColor: `${story.color}40` }]}>
           <Text style={storyStyles.icon}>{story.icon}</Text>
           <View style={storyStyles.textWrap}>
-            <Text style={[storyStyles.label, { color: story.color }]}>{story.label}</Text>
+            <Text style={[storyStyles.label, { color: story.color }]} numberOfLines={1}>{story.label}</Text>
             <Text style={storyStyles.text} numberOfLines={2}>{story.text}</Text>
           </View>
         </View>
@@ -138,7 +138,7 @@ const storyStyles = StyleSheet.create({
   card: {
     flexDirection: "row", alignItems: "flex-start", gap: 10,
     backgroundColor: "rgba(17,17,17,0.85)", borderRadius: 12,
-    borderWidth: 1, padding: 12, width: 240,
+    borderWidth: 1, padding: 12, width: 240, overflow: "hidden",
   },
   icon: { fontSize: 20, lineHeight: 24 },
   textWrap: { flex: 1, gap: 2 },
@@ -159,6 +159,7 @@ export default function CompetitionScreen() {
 
   const scrollY = useRef(new Animated.Value(0)).current;
   const heroOpacity = scrollY.interpolate({ inputRange: [0, 80], outputRange: [1, 0], extrapolate: "clamp" });
+  const heroTranslateY = scrollY.interpolate({ inputRange: [0, 80], outputRange: [0, -20], extrapolate: "clamp" });
   const onListScroll = useMemo(() => Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], { useNativeDriver: true }), [scrollY]);
 
   const { data: standingsData, isLoading: standingsLoading } = useQuery({
@@ -256,7 +257,6 @@ export default function CompetitionScreen() {
         <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
           <Ionicons name="chevron-back" size={24} color={COLORS.text} />
         </TouchableOpacity>
-        <Animated.View style={{ opacity: heroOpacity }}>
         <View style={styles.headerContent}>
           {(() => {
             const leagueLogo = getLeagueLogo(leagueName);
@@ -274,7 +274,8 @@ export default function CompetitionScreen() {
               </View>
             );
           })()}
-          <Text style={styles.leagueTitle}>{leagueName}</Text>
+          <Text style={styles.leagueTitle} numberOfLines={1}>{leagueName}</Text>
+          <Animated.View style={{ opacity: heroOpacity, transform: [{ translateY: heroTranslateY }] }}>
           <View style={styles.headerBadgeRow}>
             <View style={styles.headerBadge}>
               <Text style={styles.headerBadgeText}>{isCup ? t("competition.cup") : t("competition.league")}</Text>
@@ -288,8 +289,8 @@ export default function CompetitionScreen() {
               <Text style={styles.headerBadgeText}>{t("competition.football")}</Text>
             </View>
           </View>
+          </Animated.View>
         </View>
-        </Animated.View>
       </LinearGradient>
       </View>
 
@@ -400,6 +401,9 @@ export default function CompetitionScreen() {
             showsVerticalScrollIndicator={false}
             onScroll={onListScroll}
             scrollEventThrottle={16}
+            initialNumToRender={8}
+            maxToRenderPerBatch={6}
+            windowSize={5}
           />
         )
       )}
@@ -451,6 +455,9 @@ export default function CompetitionScreen() {
             showsVerticalScrollIndicator={false}
             onScroll={onListScroll}
             scrollEventThrottle={16}
+            initialNumToRender={10}
+            maxToRenderPerBatch={6}
+            windowSize={5}
           />
         )
       )}
@@ -484,6 +491,9 @@ export default function CompetitionScreen() {
             showsVerticalScrollIndicator={false}
             onScroll={onListScroll}
             scrollEventThrottle={16}
+            initialNumToRender={10}
+            maxToRenderPerBatch={6}
+            windowSize={5}
           />
         )
       )}
@@ -569,10 +579,10 @@ function ScorerRow({ scorer, rank, league, espnLeague }: { scorer: any; rank: nu
         </View>
       )}
       <View style={styles.scorerInfo}>
-        <Text style={styles.scorerName}>{scorer.name}</Text>
+        <Text style={styles.scorerName} numberOfLines={1}>{scorer.name}</Text>
         <View style={styles.scorerTeamRow}>
           <TeamLogo uri={scorer?.teamLogo || null} teamName={String(scorer?.team || "")} size={22} />
-          <Text style={styles.scorerTeam}>{scorer.team}</Text>
+          <Text style={styles.scorerTeam} numberOfLines={1}>{scorer.team}</Text>
         </View>
         {scorer.marketValue ? (
           <Text style={[styles.scorerMarketValue, { color: scorer.isRealValue ? COLORS.green : COLORS.textMuted }]}>
@@ -684,10 +694,10 @@ const styles = StyleSheet.create({
   scorerRank: { fontFamily: "Inter_700Bold", fontSize: 16, width: 24, textAlign: "center" },
   scorerPhoto: { width: 44, height: 44, borderRadius: 22 },
   scorerInfo: { flex: 1, gap: 3 },
-  scorerName: { fontFamily: "Inter_600SemiBold", fontSize: 14, color: COLORS.text },
+  scorerName: { fontFamily: "Inter_600SemiBold", fontSize: 14, color: COLORS.text, flexShrink: 1 },
   scorerTeamRow: { flexDirection: "row", alignItems: "center", gap: 6 },
   scorerTeamLogo: { width: 16, height: 16, borderRadius: 8 },
-  scorerTeam: { fontFamily: "Inter_400Regular", fontSize: 12, color: COLORS.textMuted },
+  scorerTeam: { fontFamily: "Inter_400Regular", fontSize: 12, color: COLORS.textMuted, flex: 1 },
   scorerMarketValue: { fontFamily: "Inter_600SemiBold", fontSize: 11 },
   scorerRight: { alignItems: "center" },
   scorerValueBadge: { alignItems: "center", gap: 2 },

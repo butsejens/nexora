@@ -258,6 +258,7 @@ export default function MoviesScreen() {
         genre: [],
         quality: "HD",
         isIptv: false,
+        tmdbId: h.tmdbId,
       }));
   }, [watchHistory]);
 
@@ -344,6 +345,7 @@ export default function MoviesScreen() {
           streamUrl: item.streamUrl, title: item.title,
           type: "movie", contentId: item.id,
           ...(tmdbId ? { tmdbId } : {}),
+          ...(item.poster ? { poster: item.poster } : {}),
           season: "1", episode: "1",
         },
       });
@@ -353,6 +355,7 @@ export default function MoviesScreen() {
         params: {
           tmdbId, title: item.title,
           type: "movie", contentId: item.id,
+          ...(item.poster ? { poster: item.poster } : {}),
           season: "1", episode: "1",
         },
       });
