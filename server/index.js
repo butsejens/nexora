@@ -1133,6 +1133,23 @@ function parseNumberish(value) {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+// Parse market value strings like "€6.00m", "€400k", "€232.30m", "€1.2B" into EUR number
+function parseMarketValueEUR(value) {
+  if (typeof value === "number" && Number.isFinite(value) && value > 0) return value;
+  if (value && typeof value === "object" && value.value != null) return parseMarketValueEUR(value.value);
+  const text = String(value ?? "").trim();
+  if (!text || text === "-") return null;
+  const match = text.match(/([\d.,]+)\s*(B|bn|M|m|K|k)?/i);
+  if (!match) return null;
+  const num = parseFloat(match[1].replace(",", "."));
+  if (!Number.isFinite(num) || num <= 0) return null;
+  const suffix = (match[2] || "").toUpperCase();
+  if (suffix === "B") return Math.round(num * 1_000_000_000);
+  if (suffix === "M") return Math.round(num * 1_000_000);
+  if (suffix === "K") return Math.round(num * 1_000);
+  return num > 1000 ? Math.round(num) : null;
+}
+
 function normalizeMarketValueInput(value) {
   if (value == null) return null;
   if (typeof value === "number" && Number.isFinite(value) && value > 0) {
@@ -1920,12 +1937,12 @@ async function enrichMatchesWithSofaData(matches, dateHint = "") {
 
 function leagueValueMultiplier(leagueName) {
   const n = String(leagueName || "").toLowerCase();
-  if (n.includes("jupiler") || n.includes("bel.1") || n.includes("pro league")) return 0.12;
-  if (n.includes("challenger") || n.includes("bel.2")) return 0.06;
+  if (n.includes("challenger") || n.includes("bel.2")) return 0.25;
+  if (n.includes("jupiler") || n.includes("bel.1") || n.includes("pro league")) return 0.45;
   if (n.includes("bundesliga") || n.includes("la liga") || n.includes("ligue 1") || n.includes("serie a")) return 0.85;
   if (n.includes("premier") || n.includes("champions")) return 1.0;
-  if (n.includes("eredivisie") || n.includes("scottish") || n.includes("liga nos") || n.includes("primeira")) return 0.35;
-  return 0.7; // generic mid-tier fallback
+  if (n.includes("eredivisie") || n.includes("scottish") || n.includes("liga nos") || n.includes("primeira")) return 0.45;
+  return 0.55; // generic mid-tier fallback
 }
 
 function estimateMarketValueEUR(player, leagueName) {
@@ -2117,7 +2134,7 @@ async function fetchTransfermarktPlayerDirect(playerName, teamName) {
 
   try {
     const q = encodeURIComponent(String(playerName).trim());
-    const searchResp = await fetch(`https://transfermarkt-api.vercel.app/players/search/${q}`, {
+    const searchResp = await fetch(`https://transfermarkt-api-sigma.vercel.app/players/search/${q}`, {
       headers: { "user-agent": "Mozilla/5.0 (Nexora/1.0)", accept: "application/json" },
       signal: AbortSignal.timeout(8000),
     });
@@ -2141,13 +2158,13 @@ async function fetchTransfermarktPlayerDirect(playerName, teamName) {
     if (!best || bestScore < 0.45) { cacheSet(cacheKey, null, 300_000); return null; }
 
     const playerId = best.id;
-    const marketValueEur = parseNumberish(best?.marketValue?.value ?? best?.marketValue);
+    const marketValueEur = parseMarketValueEUR(best?.marketValue?.value ?? best?.marketValue);
     const photo = proxyPhotoUrl(String(best?.image || best?.photo || "").trim() || null);
 
     // Fetch transfers for club history
     let transfers = [];
     try {
-      const trResp = await fetch(`https://transfermarkt-api.vercel.app/players/${encodeURIComponent(playerId)}/transfers`, {
+      const trResp = await fetch(`https://transfermarkt-api-sigma.vercel.app/players/${encodeURIComponent(playerId)}/transfers`, {
         headers: { "user-agent": "Mozilla/5.0 (Nexora/1.0)", accept: "application/json" },
         signal: AbortSignal.timeout(6000),
       });
@@ -2155,8 +2172,8 @@ async function fetchTransfermarktPlayerDirect(playerName, teamName) {
         const trData = await trResp.json();
         const trList = Array.isArray(trData?.transfers) ? trData.transfers : [];
         for (const t of trList.slice(0, 20)) {
-          const from = String(t?.from?.name || t?.oldClub?.name || t?.from?.club?.name || "").trim();
-          const to = String(t?.to?.name || t?.newClub?.name || t?.to?.club?.name || "").trim();
+          const from = String(t?.from?.clubName || t?.from?.name || t?.oldClub?.name || t?.from?.club?.name || "").trim();
+          const to = String(t?.to?.clubName || t?.to?.name || t?.newClub?.name || t?.to?.club?.name || "").trim();
           const date = String(t?.date || t?.season || "").trim();
           const fee = String(t?.fee || t?.transferFee || "").trim();
           if (from) transfers.push({ name: from, role: "from", date, fee });
@@ -2189,7 +2206,7 @@ async function fetchTransfermarktPlayerDirect(playerName, teamName) {
 }
 
 // Transfermarkt community API – free, no key required
-// https://transfermarkt-api.vercel.app (open-source wrapper)
+// https://transfermarkt-api-sigma.vercel.app (open-source wrapper)
 async function fetchTransfermarktClubPlayers(teamName) {
   if (!teamName) return null;
   const normKey = normalizePersonName(teamName);
@@ -2199,7 +2216,7 @@ async function fetchTransfermarktClubPlayers(teamName) {
 
   try {
     const q = encodeURIComponent(String(teamName).trim());
-    const searchResp = await fetch(`https://transfermarkt-api.vercel.app/clubs/search/${q}`, {
+    const searchResp = await fetch(`https://transfermarkt-api-sigma.vercel.app/clubs/search/${q}`, {
       headers: { "user-agent": "Mozilla/5.0 (Nexora/1.0)", accept: "application/json" },
       signal: AbortSignal.timeout(8000),
     });
@@ -2209,7 +2226,7 @@ async function fetchTransfermarktClubPlayers(teamName) {
     const club = clubs[0];
     if (!club?.id) { cacheSet(cacheKey, null, 300_000); return null; }
 
-    const playersResp = await fetch(`https://transfermarkt-api.vercel.app/clubs/${encodeURIComponent(club.id)}/players`, {
+    const playersResp = await fetch(`https://transfermarkt-api-sigma.vercel.app/clubs/${encodeURIComponent(club.id)}/players`, {
       headers: { "user-agent": "Mozilla/5.0 (Nexora/1.0)", accept: "application/json" },
       signal: AbortSignal.timeout(10000),
     });
@@ -2219,9 +2236,13 @@ async function fetchTransfermarktClubPlayers(teamName) {
 
     const result = players.map((p) => ({
       name: normalizePersonName(p?.name || ""),
-      marketValueEur: p?.marketValue?.value ?? p?.marketValue ?? null,
+      marketValueEur: parseMarketValueEUR(p?.marketValue?.value ?? p?.marketValue),
       photo: proxyPhotoUrl(String(p?.image || p?.photo || p?.picture || "").trim() || null),
     })).filter((p) => p.name);
+
+    // Also store the club squad market value for team endpoint
+    result._clubMarketValue = parseMarketValueEUR(club?.marketValue);
+    result._clubSquadSize = parseInt(club?.squad, 10) || players.length;
 
     cacheSet(cacheKey, result, 86_400_000); // cache 24h
     return result;
@@ -2241,7 +2262,7 @@ async function enrichRosterMarketValues(players, teamName, _leagueName) {
   if (Array.isArray(tmPlayers)) {
     for (const p of tmPlayers) {
       const normed = normalizePersonName(p.name);
-      const eur = parseNumberish(p.marketValueEur);
+      const eur = parseMarketValueEUR(p.marketValueEur);
       if (Number.isFinite(eur) && eur > 0) {
         tmValueMap.set(normed, eur);
         tmEntries.push({ normed, eur });
@@ -2270,7 +2291,7 @@ async function enrichRosterMarketValues(players, teamName, _leagueName) {
       const score = similarityScore(normedName, entry.normed);
       if (score > bestTmScore) { bestTmScore = score; bestTmVal = entry.eur; }
     }
-    if (bestTmScore >= 0.55 && Number.isFinite(bestTmVal) && bestTmVal > 0) {
+    if (bestTmScore >= 0.45 && Number.isFinite(bestTmVal) && bestTmVal > 0) {
       next.marketValue = formatEURShort(bestTmVal);
       next.isRealValue = true;
       next.valueMethod = "transfermarkt-fuzzy";
@@ -2323,7 +2344,7 @@ async function enrichRosterPhotos(players, teamName) {
       const score = similarityScore(normName, entry.normed);
       if (score > bestScore) { bestScore = score; bestPhoto = entry.photo; }
     }
-    if (bestScore >= 0.55 && bestPhoto) return { ...player, photo: bestPhoto };
+    if (bestScore >= 0.45 && bestPhoto) return { ...player, photo: bestPhoto };
     return player;
   });
 
@@ -2355,7 +2376,7 @@ async function enrichRosterPhotos(players, teamName) {
       const score = similarityScore(normName, dbp.name || "");
       if (score > bestDbScore) { bestDbScore = score; bestDbPhoto = dbp.photo; }
     }
-    if (bestDbScore >= 0.55 && bestDbPhoto) return { ...player, photo: bestDbPhoto };
+    if (bestDbScore >= 0.45 && bestDbPhoto) return { ...player, photo: bestDbPhoto };
 
     // Last-name fallback when only one candidate shares the last name
     const lastNameParts = normName.split(" ");
@@ -2373,27 +2394,32 @@ async function enrichRosterPhotos(players, teamName) {
 
   // Step 3: TheSportsDB individual player search for remaining players without photos
   const stillNeedPhoto = enriched.filter((p) => p && !p.photo);
-  if (stillNeedPhoto.length > 0 && stillNeedPhoto.length <= 30) {
+  if (stillNeedPhoto.length > 0 && stillNeedPhoto.length <= 50) {
     const searchResults = await Promise.all(
       stillNeedPhoto.map(async (player) => {
         try {
-          const q = encodeURIComponent(String(player.name || "").trim());
-          if (!q) return [player.name, null];
-          const resp = await fetch(`https://www.thesportsdb.com/api/v1/json/3/searchplayers.php?p=${q}`, {
-            headers: { "user-agent": "Mozilla/5.0 (Nexora/1.0)" },
-            signal: AbortSignal.timeout(5000),
-          });
-          if (!resp.ok) return [player.name, null];
-          const data = await resp.json();
-          const results = Array.isArray(data?.player) ? data.player : [];
           const normName = normalizePersonName(player.name || "");
+          const queries = [String(player.name || "").trim()];
+          const parts = String(player.name || "").trim().split(/\s+/);
+          if (parts.length >= 2) queries.push(parts[parts.length - 1]); // surname fallback
+          for (const rawQ of queries) {
+            const q = encodeURIComponent(rawQ);
+            if (!q) continue;
+            const resp = await fetch(`https://www.thesportsdb.com/api/v1/json/3/searchplayers.php?p=${q}`, {
+              headers: { "user-agent": "Mozilla/5.0 (Nexora/1.0)" },
+              signal: AbortSignal.timeout(5000),
+            });
+            if (!resp.ok) continue;
+            const data = await resp.json();
+            const results = Array.isArray(data?.player) ? data.player : [];
           for (const r of results) {
             const rName = normalizePersonName(r?.strPlayer || "");
             const score = similarityScore(normName, rName);
             const photo = r?.strCutout || r?.strThumb || r?.strRender || null;
-            if (score >= 0.5 && photo && /^https?:\/\//i.test(photo)) {
+            if (score >= 0.4 && photo && /^https?:\/\//i.test(photo)) {
               return [player.name, photo];
             }
+          }
           }
           return [player.name, null];
         } catch {
@@ -2414,7 +2440,31 @@ async function enrichRosterPhotos(players, teamName) {
     }
   }
 
-  // Step 4: ESPN CDN headshot fallback for players with ESPN IDs
+  // Step 4: Wikipedia photo fallback for remaining players
+  const stillNeedWiki = enriched.filter((p) => p && !p.photo && p.name && p.name !== "Onbekend");
+  if (stillNeedWiki.length > 0 && stillNeedWiki.length <= 20) {
+    const wikiResults = await Promise.all(
+      stillNeedWiki.map(async (player) => {
+        try {
+          const photo = await fetchWikipediaPlayerPhoto(player.name);
+          return [player.name, photo || null];
+        } catch { return [player.name, null]; }
+      })
+    );
+    const wikiPhotoMap = new Map();
+    for (const [name, photo] of wikiResults) {
+      if (name && photo) wikiPhotoMap.set(name, photo);
+    }
+    if (wikiPhotoMap.size > 0) {
+      enriched = enriched.map((player) => {
+        if (!player || player.photo) return player;
+        const found = wikiPhotoMap.get(player.name);
+        return found ? { ...player, photo: found } : player;
+      });
+    }
+  }
+
+  // Step 5: ESPN CDN headshot fallback for players with ESPN IDs
   enriched = enriched.map((player) => {
     if (!player || player.photo) return player;
     const espnId = String(player.id || "").trim();
@@ -5591,6 +5641,11 @@ app.get("/api/sports/team/:teamId", async (req, res) => {
         team?.displayName || team?.name || teamNameFromQuery || ""
       );
 
+      // Squad market value from Transfermarkt
+      const tmClubData = await fetchTransfermarktClubPlayers(team?.displayName || team?.name || teamNameFromQuery || "");
+      const clubMarketValue = tmClubData?._clubMarketValue || null;
+      const squadValue = clubMarketValue ? formatEURShort(clubMarketValue) : null;
+
       const teamDisplayName = team?.displayName || team?.name || teamNameFromQuery || "";
       const footballLogosUrl = resolveFootballLogosUrl(teamDisplayName, normalizeLeagueName(espnLeague) || "");
       const baseLogo = footballLogosUrl || normalizeTeamLogo(
@@ -5613,6 +5668,7 @@ app.get("/api/sports/team/:teamId", async (req, res) => {
         venue: team?.venue?.fullName || team?.venue?.name || "",
         coach: team?.staff?.[0]?.displayName || "",
         record: "",
+        squadMarketValue: squadValue,
         players: enrichedPlayers,
         source: "espn",
       };
