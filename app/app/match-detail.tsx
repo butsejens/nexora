@@ -1452,7 +1452,7 @@ function PlayerRow({ player, sport, compact = false, teamName = "" }: { player: 
     player?.id ? `https://a.espncdn.com/i/headshots/soccer/players/full/${encodeURIComponent(String(player.id))}.png` : null,
   ].filter(Boolean) as string[];
   const [photoIndex, setPhotoIndex] = useState(0);
-  const photoUri = photoCandidates[photoIndex];
+  const photoUri = photoCandidates[photoIndex] || null;
 
   const compactStyle = compact ? styles.playerRowCompact : null;
   const handleOpenProfile = () => {
@@ -1483,7 +1483,7 @@ function PlayerRow({ player, sport, compact = false, teamName = "" }: { player: 
           source={{ uri: photoUri }}
           style={styles.playerPhoto}
           onError={() => {
-            setPhotoIndex((idx) => (idx + 1 < photoCandidates.length ? idx + 1 : idx));
+            setPhotoIndex((idx) => idx + 1);
           }}
         />
       ) : (

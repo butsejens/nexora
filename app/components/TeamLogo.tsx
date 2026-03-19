@@ -12,12 +12,15 @@ export const TeamLogo = React.memo(function TeamLogo({
   teamName: string;
   size?: number;
 }) {
-  const [error, setError] = useState(false);
+  const [failCount, setFailCount] = useState(0);
   const [imageLoaded, setImageLoaded] = useState(false);
-  const resolved = useMemo(
-    () => (!error ? resolveTeamLogoUri(teamName, uri) : null),
-    [teamName, uri, error],
-  );
+  const resolved = useMemo(() => {
+    // First try: full resolution (server URI + ESPN)
+    if (failCount === 0) return resolveTeamLogoUri(teamName, uri);
+    // Second try: skip server URI, go straight to ESPN fallbacks
+    if (failCount === 1 && uri) return resolveTeamLogoUri(teamName, null);
+    return null;
+  }, [teamName, uri, failCount]);
   const initials = useMemo(() => getInitials(teamName, 2), [teamName]);
 
   const imageSource =
@@ -50,7 +53,7 @@ export const TeamLogo = React.memo(function TeamLogo({
           resizeMode="contain"
           onLoad={() => setImageLoaded(true)}
           onError={() => {
-            setError(true);
+            setFailCount((c) => c + 1);
             setImageLoaded(false);
           }}
         />
