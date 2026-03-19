@@ -31,6 +31,7 @@ let hasCompletedBootOnce = false;
 let hasShownIntroOnce = false;
 let hasCheckedOtaUpdateOnce = false;
 let hasCheckedServerUpdateOnce = false;
+let otaCheckDone: Promise<boolean> | null = null;
 
 function compareVersions(a: string, b: string): number {
   const pa = String(a || "")
@@ -203,22 +204,24 @@ export default function RootLayout() {
     if (hasCheckedOtaUpdateOnce) return;
     hasCheckedOtaUpdateOnce = true;
 
-    const run = async () => {
+    const run = async (): Promise<boolean> => {
       try {
-        if (__DEV__) return;
+        if (__DEV__) return false;
         const update = await Updates.checkForUpdateAsync();
-        if (!update.isAvailable) return;
+        if (!update.isAvailable) return false;
         await Updates.fetchUpdateAsync();
         await Updates.reloadAsync();
+        return true; // won't actually reach here due to reload
       } catch {
-        // Keep app usable even when OTA checks fail.
+        return false;
       }
     };
 
-    run();
+    otaCheckDone = run();
   }, [bootDone]);
 
-  // Server update check — shows an in-app popup when a newer APK is available
+  // Server update check — shows an in-app popup when a newer APK is available.
+  // Waits for OTA check to finish first: if OTA handled it, skip the alert.
   useEffect(() => {
     if (!bootDone) return;
     if (hasCheckedServerUpdateOnce) return;
@@ -227,6 +230,13 @@ export default function RootLayout() {
     const run = async () => {
       try {
         if (__DEV__) return;
+
+        // Wait for OTA check — if it downloaded + reloaded, we never reach here.
+        if (otaCheckDone) {
+          const otaHandled = await otaCheckDone;
+          if (otaHandled) return;
+        }
+
         const res = await apiRequest("GET", "/api/app-version");
         const data = await res.json() as { version: string; apkUrl?: string; directApkUrl?: string };
         const effectiveVer = resolveInstalledVersion();
