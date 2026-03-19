@@ -922,19 +922,33 @@ function resolveFootballLogosUrl(teamName, leagueName) {
   return null;
 }
 
+function normalizeRemoteMediaUrl(candidate, { allowSvg = false } = {}) {
+  const value = String(candidate || "").trim();
+  if (!/^https?:\/\//i.test(value)) return null;
+  if (/^(data|javascript|file):/i.test(value)) return null;
+  try {
+    const parsed = new URL(value);
+    const path = String(parsed.pathname || "").toLowerCase();
+    if (!allowSvg && path.endsWith(".svg")) return null;
+    return parsed.toString();
+  } catch {
+    return null;
+  }
+}
+
 function normalizeTeamLogo(teamName, logoUrl, ...fallbackCandidates) {
   const candidates = [logoUrl, ...fallbackCandidates];
   for (const candidate of candidates) {
-    const value = String(candidate || "").trim();
-    if (/^https?:\/\//i.test(value)) return value;
+    const value = normalizeRemoteMediaUrl(candidate);
+    if (value) return value;
   }
   return null;
 }
 
 function normalizePlayerPhoto(_playerId, ...candidates) {
   for (const c of candidates) {
-    const v = String(c || "").trim();
-    if (/^https?:\/\//i.test(v)) return v;
+    const v = normalizeRemoteMediaUrl(c);
+    if (v) return v;
   }
   return null;
 }
@@ -5909,26 +5923,14 @@ app.get("/api/sports/team/:teamId", async (req, res) => {
       const isNationalTeam = espnLeague.includes("fifa") || /teamlogos\/countries/i.test(String(team?.logos?.[0]?.href || ""));
       const footballLogosUrl = resolveFootballLogosUrl(teamDisplayName, normalizeLeagueName(espnLeague) || "");
 
-      let resolvedLogo;
-      if (isNationalTeam) {
-        // For national teams: prefer TheSportsDB badge (actual team crest) over ESPN flag
-        resolvedLogo = footballLogosUrl
-          || await fetchTheSportsDBTeamLogo(teamDisplayName)
-          || await fetchWikipediaTeamLogo(teamDisplayName)
-          || normalizeTeamLogo(
-              teamDisplayName,
-              team?.logos?.[0]?.href || team?.logo || null,
-              team?.id ? `https://a.espncdn.com/i/teamlogos/soccer/500/${encodeURIComponent(String(team.id))}.png` : null,
-            )
-          || null;
-      } else {
-        const baseLogo = footballLogosUrl || normalizeTeamLogo(
-          teamDisplayName,
-          team?.logos?.[0]?.href || team?.logo || null,
-          team?.id ? `https://a.espncdn.com/i/teamlogos/soccer/500/${encodeURIComponent(String(team.id))}.png` : null,
-        );
-        resolvedLogo = baseLogo || await fetchTheSportsDBTeamLogo(teamDisplayName) || await fetchWikipediaTeamLogo(teamDisplayName) || null;
-      }
+      const sportsDbLogo = await fetchTheSportsDBTeamLogo(teamDisplayName);
+      const wikipediaLogo = await fetchWikipediaTeamLogo(teamDisplayName);
+      const espnLogo = team?.id ? `https://a.espncdn.com/i/teamlogos/soccer/500/${encodeURIComponent(String(team.id))}.png` : null;
+      const rawTeamLogo = team?.logos?.[0]?.href || team?.logo || null;
+
+      const resolvedLogo = isNationalTeam
+        ? normalizeTeamLogo(teamDisplayName, footballLogosUrl, sportsDbLogo, wikipediaLogo, rawTeamLogo, espnLogo)
+        : normalizeTeamLogo(teamDisplayName, footballLogosUrl, rawTeamLogo, espnLogo, sportsDbLogo, wikipediaLogo);
 
       return {
         id: String(team?.id || resolvedTeamId || ""),
@@ -6155,6 +6157,7 @@ app.get("/api/sports/player/:playerId", async (req, res) => {
         name: valued?.name || name,
         photo: resolvedPhoto,
         age: valued?.age,
+        birthDate: profile?.dateOfBirth || espnAthlete?.dateOfBirth || apifyFallback?.birthDate || null,
         nationality: valued?.nationality,
         position: valued?.position,
         height: toMetersStringFromAny(profile?.height || espnAthlete?.displayHeight || espnAthlete?.height || apifyFallback?.height),
@@ -6760,14 +6763,61 @@ async function tmdbVideosAllLangs(mediaType, tmdbId) {
   } catch { return null; }
 }
 
+function pickTrailerCandidates(videos, limit = 5) {
+  const items = Array.isArray(videos?.results) ? videos.results : [];
+  const ranked = items
+    .map((video) => {
+      const site = String(video?.site || "").toLowerCase();
+      const type = String(video?.type || "").toLowerCase();
+      const key = String(video?.key || "").trim();
+      const language = String(video?.iso_639_1 || "").toLowerCase();
+      if (!key || site !== "youtube") return null;
+
+      let score = 0;
+      if (type.includes("trailer")) score += 220;
+      else if (type.includes("teaser")) score += 140;
+      else if (type.includes("clip")) score += 40;
+      else score -= 50;
+
+      if (video?.official) score += 80;
+      if (language === "en") score += 50;
+      else if (language === "nl") score += 35;
+      else if (!language || language === "null" || language === "und") score += 20;
+      else if (["de", "fr"].includes(language)) score += 10;
+
+      const size = Number(video?.size || 0);
+      if (Number.isFinite(size) && size > 0) score += Math.min(size, 2160) / 20;
+      if (video?.published_at) {
+        const ts = Date.parse(String(video.published_at));
+        if (Number.isFinite(ts)) score += ts / 1e13;
+      }
+
+      return {
+        key,
+        site: "youtube",
+        type: String(video?.type || "Trailer"),
+        name: String(video?.name || "Trailer"),
+        language: language || null,
+        official: Boolean(video?.official),
+        score,
+      };
+    })
+    .filter(Boolean)
+    .sort((a, b) => b.score - a.score);
+
+  const seen = new Set();
+  const unique = [];
+  for (const candidate of ranked) {
+    if (seen.has(candidate.key)) continue;
+    seen.add(candidate.key);
+    unique.push(candidate);
+    if (unique.length >= limit) break;
+  }
+  return unique;
+}
+
 function pickTrailerKey(videos) {
-  const items = videos?.results || [];
-  const yt = items.filter(
-    (v) =>
-      (v.site || "").toLowerCase() === "youtube" &&
-      (v.type || "").toLowerCase().includes("trailer")
-  );
-  return (yt[0] || items[0] || {})?.key || null;
+  return pickTrailerCandidates(videos, 1)[0]?.key || null;
 }
 
 function mapTrendingItem(it, type) {
@@ -6811,25 +6861,60 @@ function mapFullDetail(detail, videos, credits, type) {
 
   const genres = (detail.genres || []).map((g) => g.name).filter(Boolean);
 
-  const trailerKey = pickTrailerKey(videos);
+  const trailerCandidates = pickTrailerCandidates(videos);
+  const trailerKey = trailerCandidates[0]?.key || null;
 
   const networks = (detail.networks || []).map((n) => n.name).filter(Boolean);
   const creators = (detail.created_by || []).map((n) => n.name).filter(Boolean);
+  const directors = (credits?.crew || [])
+    .filter((person) => String(person?.job || "").toLowerCase() === "director")
+    .map((person) => person.name)
+    .filter(Boolean);
+  const writers = (credits?.crew || [])
+    .filter((person) => {
+      const job = String(person?.job || "").toLowerCase();
+      return job === "writer" || job === "screenplay" || job === "story";
+    })
+    .map((person) => person.name)
+    .filter(Boolean);
+  const spokenLanguages = (detail.spoken_languages || [])
+    .map((lang) => lang.english_name || lang.name || lang.iso_639_1)
+    .filter(Boolean);
+  const countries = (detail.production_countries || [])
+    .map((country) => country.name || country.iso_3166_1)
+    .filter(Boolean);
+  const studios = (detail.production_companies || [])
+    .map((company) => company.name)
+    .filter(Boolean);
+  const runtimeMinutes = type === "movie"
+    ? (Number(detail.runtime || 0) || null)
+    : (Number((detail.episode_run_time || [])[0] || 0) || null);
 
   return {
     id: String(detail.id),
     tmdbId: Number(detail.id),
     type,
     title: detail.title || detail.name || "",
+    originalTitle: detail.original_title || detail.original_name || detail.title || detail.name || "",
     tagline: detail.tagline || "",
     synopsis: detail.overview || "",
     poster,
     backdrop,
     trailerKey,
+    trailerCandidates,
     year: (detail.release_date || detail.first_air_date || "").slice(0, 4),
+    releaseDate: detail.release_date || detail.first_air_date || null,
+    status: detail.status || "",
     imdb: detail.vote_average ? String(Number(detail.vote_average).toFixed(1)) : null,
     rating: detail.vote_average ? String(Number(detail.vote_average).toFixed(1)) : null,
-    duration: type === "movie" ? minutesToDuration(detail.runtime) : null,
+    duration: runtimeMinutes ? minutesToDuration(runtimeMinutes) : null,
+    runtimeMinutes,
+    originalLanguage: String(detail.original_language || "").toUpperCase() || null,
+    spokenLanguages,
+    countries,
+    studios,
+    directors,
+    writers,
     seasons: type === "series"
       ? (detail.seasons || [])
           .filter((s) => s.season_number > 0)
@@ -6842,6 +6927,8 @@ function mapFullDetail(detail, videos, credits, type) {
             airDate: s.air_date || null,
           }))
       : null,
+    totalSeasons: type === "series" ? Number(detail.number_of_seasons || (detail.seasons || []).length || 0) || null : null,
+    totalEpisodes: type === "series" ? Number(detail.number_of_episodes || 0) || null : null,
     genre: genres,
     quality: "HD",
     cast,
@@ -6983,7 +7070,12 @@ app.get("/api/tmdb/search", tmdbLimiter, async (req, res) => {
       tmdb(type === "tv" ? `/tv/${first.id}/videos` : `/movie/${first.id}/videos`),
       tmdb(type === "tv" ? `/tv/${first.id}/credits` : `/movie/${first.id}/credits`),
     ]);
-    res.json(mapFullDetail(detail, videos, credits, mediaType));
+    let finalVideos = videos;
+    if (!pickTrailerKey(videos)) {
+      const allLangVideos = await tmdbVideosAllLangs(type === "tv" ? "tv" : "movie", first.id);
+      if (allLangVideos && pickTrailerKey(allLangVideos)) finalVideos = allLangVideos;
+    }
+    res.json(mapFullDetail(detail, finalVideos, credits, mediaType));
   } catch (e) {
     res.status(500).json({ error: String(e?.message || e) });
   }
@@ -7633,13 +7725,13 @@ app.get("/api/trailer/:tmdbId", tmdbLimiter, async (req, res) => {
     if (cached !== null) return res.json(cached);
 
     const videos = await tmdb(`/${type}/${encodeURIComponent(tmdbId)}/videos`);
-    let key = pickTrailerKey(videos);
+    let candidates = pickTrailerCandidates(videos);
     // Fallback: fetch with all languages if nl-NL has no trailer
-    if (!key) {
+    if (!candidates.length) {
       const allLangVideos = await tmdbVideosAllLangs(type, tmdbId);
-      if (allLangVideos) key = pickTrailerKey(allLangVideos);
+      if (allLangVideos) candidates = pickTrailerCandidates(allLangVideos);
     }
-    const result = { key, type: "youtube" };
+    const result = { key: candidates[0]?.key || null, type: candidates[0]?.site || null, candidates };
     cacheSet(cacheKey, result, 24 * 60 * 60 * 1000); // 24h
     res.json(result);
   } catch (e) {

@@ -238,7 +238,7 @@ export default function TeamDetailScreen() {
         <Animated.View style={{ opacity: heroOpacity }}>
         <View style={styles.teamHeaderContent}>
           <TeamLogo
-            uri={data.logo || logoParam || `https://a.espncdn.com/i/teamlogos/soccer/500/${encodeURIComponent(teamIdParam)}.png`}
+            uri={data.logo || logoParam || null}
             teamName={teamName}
             size={72}
           />

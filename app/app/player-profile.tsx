@@ -33,6 +33,17 @@ function formatUpdatedAt(value: unknown): string {
   }).format(date);
 }
 
+function formatDisplayDate(value: unknown): string {
+  const date = value ? new Date(String(value)) : null;
+  if (!date || Number.isNaN(date.getTime())) return UNKNOWN;
+  const locale = getLanguage() === "nl" ? "nl-BE" : "en-GB";
+  return new Intl.DateTimeFormat(locale, {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  }).format(date);
+}
+
 function initialsFromName(name: string): string {
   const parts = String(name || "").trim().split(/\s+/).filter(Boolean);
   if (!parts.length) return "?";
@@ -74,11 +85,13 @@ function normalizePlayerDto(raw: any, params: {
     name: baseName,
     photo: raw?.photo || null,
     age: toAgeNumber(raw?.age) ?? toAgeNumber(params.age),
+    birthDate: raw?.birthDate || null,
     nationality: normalizeText(raw?.nationality || params.nationality, ""),
     position: normalizeText(raw?.position || params.position, ""),
     height: normalizeText(raw?.height || params.height),
     weight: normalizeText(raw?.weight || params.weight),
     currentClub: normalizeText(raw?.currentClub || params.team),
+    currentClubLogo: raw?.currentClubLogo || null,
     formerClubs: Array.isArray(raw?.formerClubs) ? raw.formerClubs : [],
     marketValue: normalizeText(raw?.marketValue || params.marketValue, tFn("playerProfile.valueUnknown")),
     isRealValue: Boolean(raw?.isRealValue),
@@ -205,9 +218,15 @@ export default function PlayerProfileScreen() {
         >
           <Card title={t("playerProfile.overview")}>
             <Row label={t("playerProfile.age")} value={data?.age ? t("playerProfile.years", { age: String(data.age) }) : UNKNOWN} />
+            <Row label={t("playerProfile.birthDate")} value={data?.birthDate ? formatDisplayDate(data.birthDate) : UNKNOWN} />
+            <Row label={t("playerProfile.nationality")} value={normalizeText(data?.nationality || params.nationality)} />
+            <Row label={t("playerProfile.position")} value={normalizeText(data?.position || params.position)} />
             <Row label={t("playerProfile.height")} value={normalizeText(data?.height)} />
             <Row label={t("playerProfile.weight")} value={normalizeText(data?.weight)} />
-            <Row label={t("playerProfile.currentClub")} value={normalizeText(data?.currentClub || params.team)} />
+            <ClubRow label={t("playerProfile.currentClub")} value={normalizeText(data?.currentClub || params.team)} logo={data?.currentClubLogo} />
+            <Row label={t("playerProfile.marketValue")} value={normalizeText(data?.marketValue || params.marketValue, t("playerProfile.valueUnknown"))} />
+            <Row label={t("playerProfile.valueSource")} value={normalizeText(data?.valueMethod)} />
+            <Row label={t("playerProfile.profileSource")} value={normalizeText(data?.source)} />
             <Row label={t("playerProfile.lastUpdated")} value={formatUpdatedAt(data?.updatedAt)} />
           </Card>
 
@@ -298,6 +317,18 @@ function Row({ label, value }: { label: string; value: string }) {
   );
 }
 
+function ClubRow({ label, value, logo }: { label: string; value: string; logo?: string | null }) {
+  return (
+    <View style={styles.row}>
+      <Text style={styles.rowLabel}>{label}</Text>
+      <View style={styles.clubValueRow}>
+        {logo ? <TeamLogo uri={logo} teamName={value} size={24} /> : null}
+        <Text style={styles.rowValue} numberOfLines={2}>{value}</Text>
+      </View>
+    </View>
+  );
+}
+
 function Bullet({ text, good = false }: { text: string; good?: boolean }) {
   return (
     <View style={[styles.bulletPill, good ? styles.bulletPillGood : styles.bulletPillBad]}>
@@ -343,6 +374,7 @@ const styles = StyleSheet.create({
   row: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", borderBottomWidth: 1, borderBottomColor: COLORS.border, paddingVertical: 8 },
   rowLabel: { fontFamily: "Inter_400Regular", fontSize: 13, color: COLORS.textMuted },
   rowValue: { fontFamily: "Inter_600SemiBold", fontSize: 13, color: COLORS.text, flexShrink: 1, textAlign: "right", maxWidth: "60%" },
+  clubValueRow: { flexDirection: "row", alignItems: "center", justifyContent: "flex-end", gap: 8, flexShrink: 1, maxWidth: "60%" },
   analysisText: { fontFamily: "Inter_400Regular", fontSize: 13, lineHeight: 20, color: COLORS.textSecondary },
   analysisSource: { fontFamily: "Inter_500Medium", fontSize: 11, color: COLORS.accentDim },
   pillWrap: { flexDirection: "row", flexWrap: "wrap", gap: 8, paddingRight: 4 },

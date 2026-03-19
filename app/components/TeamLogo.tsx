@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from "react";
 import { View, Text, StyleSheet, Image } from "react-native";
 import { COLORS } from "@/constants/colors";
-import { getInitials, resolveTeamLogoUri } from "@/lib/logo-manager";
+import { getInitials, resolveTeamLogoUri, sanitizeRemoteLogoUri } from "@/lib/logo-manager";
 
 export const TeamLogo = React.memo(function TeamLogo({
   uri,
@@ -27,7 +27,9 @@ export const TeamLogo = React.memo(function TeamLogo({
     resolved != null
       ? typeof resolved === "number"
         ? resolved
-        : { uri: resolved as string }
+        : sanitizeRemoteLogoUri(resolved as string)
+          ? { uri: sanitizeRemoteLogoUri(resolved as string) as string }
+          : null
       : null;
 
   return (

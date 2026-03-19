@@ -33,6 +33,15 @@ async function searchTmdb(title: string, type: string) {
   return res.json();
 }
 
+function summarizeList(values: unknown, limit = 3): string {
+  if (!Array.isArray(values)) return "";
+  return values
+    .map((value) => String(value || "").trim())
+    .filter(Boolean)
+    .slice(0, limit)
+    .join(", ");
+}
+
 function CastCard({ person }: { person: any }) {
   return (
     <View style={styles.castCard}>
@@ -260,11 +269,14 @@ export default function DetailScreen() {
 
   const [showDownload, setShowDownload] = useState(false);
   const [showTrailer, setShowTrailer] = useState(false);
+  const [trailerIndex, setTrailerIndex] = useState(0);
+  const [trailerLoading, setTrailerLoading] = useState(false);
+  const [trailerUnavailable, setTrailerUnavailable] = useState(false);
   const [activeTab, setActiveTab] = useState<"overview" | "cast" | "seasons">("overview");
 
   // ── For IPTV items: get channel data from context first ───────────────────
   const iptvChannel = isIptv === "true"
-    ? iptvChannels.find(c => c.id === id)
+    ? iptvChannels.find((c: any) => c.id === id)
     : null;
 
   // ── Determine what TMDB id to use ─────────────────────────────────────────
@@ -289,6 +301,7 @@ export default function DetailScreen() {
       genre: [],
       cast: [],
       trailerKey: null,
+      trailerCandidates: [],
       seasons: null,
     };
   }, [id, paramTitle, routeBackdrop, routeOverview, routePoster, routeYear, tmdbId]);
@@ -336,6 +349,7 @@ export default function DetailScreen() {
         genre: [],
         cast: [],
         trailerKey: null,
+        trailerCandidates: [],
         seasons: (iptvChannel as any).seasons || null,
       };
     }
@@ -353,6 +367,60 @@ export default function DetailScreen() {
   const detailErrorRef = useMemo(() => buildErrorReference("NX-DTL"), []);
   const isMovie = type === "movie";
   const fav = isFavorite(id);
+  const trailerCandidates = useMemo(() => {
+    if (Array.isArray((data as any)?.trailerCandidates) && (data as any).trailerCandidates.length > 0) {
+      return (data as any).trailerCandidates.filter((candidate: any) => String(candidate?.key || "").trim());
+    }
+    const fallbackKey = String((data as any)?.trailerKey || "").trim();
+    return fallbackKey ? [{ key: fallbackKey, site: "youtube", type: "Trailer" }] : [];
+  }, [data]);
+  const activeTrailer = trailerCandidates[trailerIndex] || null;
+  const trailerEmbedUrl = activeTrailer?.key
+    ? `https://www.youtube.com/embed/${encodeURIComponent(String(activeTrailer.key))}?autoplay=1&hl=en&cc_lang_pref=en&rel=0&modestbranding=1&playsinline=1`
+    : null;
+  const metadataItems = useMemo(() => {
+    const originalTitle = String((data as any)?.originalTitle || "").trim();
+    const title = String((data as any)?.title || "").trim();
+    const items = [
+      originalTitle && originalTitle.toLowerCase() !== title.toLowerCase() ? { label: t("detail.originalTitle"), value: originalTitle } : null,
+      (data as any)?.releaseDate ? { label: t("detail.releaseDate"), value: String((data as any).releaseDate) } : null,
+      (data as any)?.status ? { label: t("detail.status"), value: String((data as any).status) } : null,
+      summarizeList((data as any)?.spokenLanguages) ? { label: t("detail.audioLanguages"), value: summarizeList((data as any).spokenLanguages) } : null,
+      (data as any)?.originalLanguage ? { label: t("detail.originalLanguage"), value: String((data as any).originalLanguage) } : null,
+      summarizeList((data as any)?.countries) ? { label: t("detail.countries"), value: summarizeList((data as any).countries) } : null,
+      summarizeList((data as any)?.directors) ? { label: t("detail.directors"), value: summarizeList((data as any).directors) } : null,
+      summarizeList((data as any)?.writers) && isMovie ? { label: t("detail.writers"), value: summarizeList((data as any).writers) } : null,
+      summarizeList((data as any)?.studios) ? { label: t("detail.studios"), value: summarizeList((data as any).studios) } : null,
+      !isMovie && (data as any)?.totalEpisodes ? { label: t("detail.totalEpisodes"), value: String((data as any).totalEpisodes) } : null,
+    ].filter(Boolean) as { label: string; value: string }[];
+    return items;
+  }, [data, isMovie, t]);
+
+  const openTrailer = () => {
+    SafeHaptics.impactLight();
+    setTrailerIndex(0);
+    setTrailerLoading(true);
+    setTrailerUnavailable(false);
+    setShowTrailer(true);
+  };
+
+  const closeTrailer = () => {
+    setShowTrailer(false);
+    setTrailerLoading(false);
+    setTrailerUnavailable(false);
+    setTrailerIndex(0);
+  };
+
+  const advanceTrailer = () => {
+    const nextIndex = trailerIndex + 1;
+    if (nextIndex < trailerCandidates.length) {
+      setTrailerIndex(nextIndex);
+      setTrailerLoading(true);
+      return;
+    }
+    setTrailerLoading(false);
+    setTrailerUnavailable(true);
+  };
 
   const goToPlayer = (season = 1, episode = 1) => {
     SafeHaptics.impactLight();
@@ -529,13 +597,10 @@ export default function DetailScreen() {
                 </View>
               </TouchableOpacity>
             )}
-            {data.trailerKey ? (
+            {trailerCandidates.length > 0 ? (
               <TouchableOpacity
                 style={styles.trailerBtnOutline}
-                onPress={() => {
-                  SafeHaptics.impactLight();
-                  setShowTrailer(true);
-                }}
+                onPress={openTrailer}
               >
                 <Ionicons name="videocam-outline" size={20} color={COLORS.accent} />
                 <Text style={styles.trailerBtnOutlineText}>{t("detail.trailer")}</Text>
@@ -572,6 +637,16 @@ export default function DetailScreen() {
           {activeTab === "overview" && (
             <View style={styles.tabContent}>
               <Text style={styles.synopsis}>{data.synopsis || t("detail.noDescription")}</Text>
+              {metadataItems.length > 0 ? (
+                <View style={styles.metadataGrid}>
+                  {metadataItems.map((item) => (
+                    <View key={`${item.label}:${item.value}`} style={styles.metadataCard}>
+                      <Text style={styles.metadataLabel}>{item.label}</Text>
+                      <Text style={styles.metadataValue}>{item.value}</Text>
+                    </View>
+                  ))}
+                </View>
+              ) : null}
               {!isMovie && data.networks?.length > 0 && (
                 <View style={styles.networkRow}>
                   <Text style={styles.networkLabel}>{t("detail.network")}</Text>
@@ -660,25 +735,45 @@ export default function DetailScreen() {
       />
 
       {/* In-app Trailer Modal */}
-      {data.trailerKey ? (
-        <Modal visible={showTrailer} transparent animationType="fade" onRequestClose={() => setShowTrailer(false)}>
+      <Modal visible={showTrailer} transparent animationType="fade" onRequestClose={closeTrailer}>
           <View style={styles.trailerModalOverlay}>
             <View style={styles.trailerModalContent}>
-              <TouchableOpacity style={styles.trailerCloseBtn} onPress={() => setShowTrailer(false)}>
+              <TouchableOpacity style={styles.trailerCloseBtn} onPress={closeTrailer}>
                 <Ionicons name="close" size={24} color={COLORS.text} />
               </TouchableOpacity>
-              <WebView
-                source={{ uri: `https://www.youtube.com/embed/${encodeURIComponent(data.trailerKey)}?autoplay=1&hl=en&cc_lang_pref=en&rel=0&modestbranding=1` }}
-                style={styles.trailerWebView}
-                allowsFullscreenVideo
-                allowsInlineMediaPlayback
-                mediaPlaybackRequiresUserAction={false}
-                javaScriptEnabled
-              />
+              {trailerEmbedUrl && !trailerUnavailable ? (
+                <>
+                  <WebView
+                    source={{ uri: trailerEmbedUrl }}
+                    style={styles.trailerWebView}
+                    allowsFullscreenVideo
+                    allowsInlineMediaPlayback
+                    mediaPlaybackRequiresUserAction={false}
+                    javaScriptEnabled
+                    onLoadStart={() => {
+                      setTrailerLoading(true);
+                      setTrailerUnavailable(false);
+                    }}
+                    onLoadEnd={() => setTrailerLoading(false)}
+                    onError={advanceTrailer}
+                    onHttpError={advanceTrailer}
+                  />
+                  {trailerLoading ? (
+                    <View style={styles.trailerStatusOverlay}>
+                      <ActivityIndicator size="small" color={COLORS.accent} />
+                      <Text style={styles.trailerStatusText}>{t("detail.trailerLoading")}</Text>
+                    </View>
+                  ) : null}
+                </>
+              ) : (
+                <View style={styles.trailerFallbackState}>
+                  <Ionicons name="videocam-off-outline" size={34} color={COLORS.textMuted} />
+                  <Text style={styles.trailerFallbackTitle}>{t("detail.trailerUnavailable")}</Text>
+                </View>
+              )}
             </View>
           </View>
         </Modal>
-      ) : null}
     </View>
   );
 }
@@ -728,6 +823,10 @@ const styles = StyleSheet.create({
   tabTextActive: { color: COLORS.accent, fontFamily: "Inter_600SemiBold" },
   tabContent: { paddingBottom: 8 },
   synopsis: { fontFamily: "Inter_400Regular", fontSize: 15, color: COLORS.textSecondary, lineHeight: 24, marginBottom: 16 },
+  metadataGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10, marginBottom: 16 },
+  metadataCard: { width: "48%", minHeight: 74, padding: 12, borderRadius: 12, backgroundColor: "rgba(255,255,255,0.04)", borderWidth: 1, borderColor: "rgba(255,255,255,0.06)", gap: 6 },
+  metadataLabel: { fontFamily: "Inter_600SemiBold", fontSize: 11, color: COLORS.textMuted, textTransform: "uppercase", letterSpacing: 0.5 },
+  metadataValue: { fontFamily: "Inter_500Medium", fontSize: 13, color: COLORS.text, lineHeight: 18 },
   networkRow: { flexDirection: "row", marginBottom: 8 },
   networkLabel: { fontFamily: "Inter_600SemiBold", fontSize: 13, color: COLORS.textMuted },
   networkValue: { fontFamily: "Inter_400Regular", fontSize: 13, color: COLORS.textSecondary },
@@ -758,6 +857,14 @@ const styles = StyleSheet.create({
   downloadBtn: { flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: COLORS.accent, borderRadius: 14, paddingVertical: 14, paddingHorizontal: 32, marginTop: 4, width: "100%", justifyContent: "center" },
   downloadBtnText: { fontFamily: "Inter_700Bold", fontSize: 15, color: COLORS.background },
   progressContainer: { width: "100%", gap: 10, alignItems: "center" },
+  trailerModalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.84)", justifyContent: "center", padding: 16 },
+  trailerModalContent: { backgroundColor: COLORS.cardElevated, borderRadius: 18, overflow: "hidden", minHeight: 260 },
+  trailerCloseBtn: { position: "absolute", top: 12, right: 12, zIndex: 2, width: 36, height: 36, borderRadius: 18, backgroundColor: "rgba(0,0,0,0.45)", alignItems: "center", justifyContent: "center" },
+  trailerWebView: { width: "100%", aspectRatio: 16 / 9, backgroundColor: COLORS.background },
+  trailerStatusOverlay: { ...StyleSheet.absoluteFillObject, alignItems: "center", justifyContent: "center", gap: 10, backgroundColor: "rgba(0,0,0,0.22)" },
+  trailerStatusText: { fontFamily: "Inter_500Medium", fontSize: 13, color: COLORS.text },
+  trailerFallbackState: { minHeight: 260, alignItems: "center", justifyContent: "center", gap: 12, padding: 24 },
+  trailerFallbackTitle: { fontFamily: "Inter_600SemiBold", fontSize: 15, color: COLORS.text, textAlign: "center" },
   downloadingText: { fontFamily: "Inter_600SemiBold", fontSize: 14, color: COLORS.text },
   progressTrack: { width: "100%", height: 6, backgroundColor: COLORS.border, borderRadius: 3, overflow: "hidden" },
   progressFill: { height: "100%", backgroundColor: COLORS.accent, borderRadius: 3 },
@@ -770,8 +877,4 @@ const styles = StyleSheet.create({
   closeBtnText: { fontFamily: "Inter_600SemiBold", fontSize: 15, color: COLORS.textSecondary },
   noDownloadNote: { flexDirection: "row", alignItems: "flex-start", gap: 8, backgroundColor: COLORS.accentGlow, borderRadius: 10, borderWidth: 1, borderColor: COLORS.accent, padding: 12, width: "100%" },
   noDownloadText: { fontFamily: "Inter_400Regular", fontSize: 13, color: COLORS.textSecondary, flex: 1, lineHeight: 18 },
-  trailerModalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.92)", justifyContent: "center", alignItems: "center" },
-  trailerModalContent: { width: "100%", aspectRatio: 16 / 9, maxHeight: "60%", position: "relative" },
-  trailerCloseBtn: { position: "absolute", top: -44, right: 16, zIndex: 10, width: 40, height: 40, borderRadius: 20, backgroundColor: "rgba(255,255,255,0.15)", alignItems: "center", justifyContent: "center" },
-  trailerWebView: { flex: 1, backgroundColor: "#000" },
 });
