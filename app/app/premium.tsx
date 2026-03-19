@@ -167,7 +167,7 @@ export default function PremiumScreen() {
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: bottomPad }}>
 
         {/* Header */}
-        <LinearGradient colors={[\"#111111\", COLORS.background]} style={[styles.header, { paddingTop: topPad + 16 }]}>
+        <LinearGradient colors={["#111111", COLORS.background]} style={[styles.header, { paddingTop: topPad + 16 }]}>
           <TouchableOpacity style={styles.closeBtn} onPress={() => router.back()}>
             <Ionicons name="close" size={22} color={COLORS.textSecondary} />
           </TouchableOpacity>
