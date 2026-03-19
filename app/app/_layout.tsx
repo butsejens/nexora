@@ -229,8 +229,8 @@ export default function RootLayout() {
         if (__DEV__) return;
         const res = await apiRequest("GET", "/api/app-version");
         const data = await res.json() as { version: string; apkUrl?: string; directApkUrl?: string };
-        const nativeVer = String(Application.nativeApplicationVersion || "0.0.0");
-        if (compareVersions(data.version, nativeVer) <= 0) return;
+        const effectiveVer = resolveInstalledVersion();
+        if (compareVersions(data.version, effectiveVer) <= 0) return;
 
         // Small delay so the main UI is fully rendered before alert appears
         await new Promise(r => setTimeout(r, 1200));
