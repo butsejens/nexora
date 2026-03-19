@@ -164,6 +164,10 @@ export default function PlayerProfileScreen() {
           <Ionicons name="chevron-back" size={24} color={COLORS.text} />
         </TouchableOpacity>
 
+        {/* Player name — always visible */}
+        <Text style={styles.name} numberOfLines={2}>{normalizeText(data?.name || params.name, t("playerProfile.player"))}</Text>
+
+        {/* Collapsible hero details — fades on scroll */}
         <Animated.View style={{ opacity: heroOpacity }}>
         <View style={styles.hero}>
           {photoUri ? (
@@ -173,7 +177,6 @@ export default function PlayerProfileScreen() {
               <Text style={styles.photoInitials}>{initials}</Text>
             </View>
           )}
-          <Text style={styles.name} numberOfLines={2}>{normalizeText(data?.name || params.name, t("playerProfile.player"))}</Text>
           <Text style={styles.meta} numberOfLines={2}>{normalizeText(data?.position || params.position)} {normalizeText(data?.nationality || params.nationality, "") ? `· ${normalizeText(data?.nationality || params.nationality)}` : ""}</Text>
           <Text style={[styles.value, data?.isRealValue ? styles.valueReal : null]}>
             {normalizeText(data?.marketValue || params.marketValue, t("playerProfile.valueUnknown"))}

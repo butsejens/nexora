@@ -1,7 +1,7 @@
 import React, { useMemo, useState, useRef } from "react";
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  Image, Modal, Platform, Alert, ActivityIndicator, Linking,
+  Image, Modal, Platform, Alert, ActivityIndicator,
 } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -9,6 +9,7 @@ import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import * as FileSystem from "expo-file-system/legacy";
+import { WebView } from "react-native-webview";
 import { COLORS } from "@/constants/colors";
 import { apiRequest } from "@/lib/query-client";
 import { useNexora } from "@/context/NexoraContext";
@@ -258,6 +259,7 @@ export default function DetailScreen() {
   const { t } = useTranslation();
 
   const [showDownload, setShowDownload] = useState(false);
+  const [showTrailer, setShowTrailer] = useState(false);
   const [activeTab, setActiveTab] = useState<"overview" | "cast" | "seasons">("overview");
 
   // ── For IPTV items: get channel data from context first ───────────────────
@@ -532,7 +534,7 @@ export default function DetailScreen() {
                 style={styles.trailerBtnOutline}
                 onPress={() => {
                   SafeHaptics.impactLight();
-                  Linking.openURL(`https://www.youtube.com/watch?v=${encodeURIComponent(data.trailerKey)}`);
+                  setShowTrailer(true);
                 }}
               >
                 <Ionicons name="videocam-outline" size={20} color={COLORS.accent} />
@@ -656,6 +658,27 @@ export default function DetailScreen() {
         poster={data.poster}
         year={data.year ? Number(data.year) : null}
       />
+
+      {/* In-app Trailer Modal */}
+      {data.trailerKey ? (
+        <Modal visible={showTrailer} transparent animationType="fade" onRequestClose={() => setShowTrailer(false)}>
+          <View style={styles.trailerModalOverlay}>
+            <View style={styles.trailerModalContent}>
+              <TouchableOpacity style={styles.trailerCloseBtn} onPress={() => setShowTrailer(false)}>
+                <Ionicons name="close" size={24} color={COLORS.text} />
+              </TouchableOpacity>
+              <WebView
+                source={{ uri: `https://www.youtube.com/embed/${encodeURIComponent(data.trailerKey)}?autoplay=1&hl=en&cc_lang_pref=en&rel=0&modestbranding=1` }}
+                style={styles.trailerWebView}
+                allowsFullscreenVideo
+                allowsInlineMediaPlayback
+                mediaPlaybackRequiresUserAction={false}
+                javaScriptEnabled
+              />
+            </View>
+          </View>
+        </Modal>
+      ) : null}
     </View>
   );
 }
@@ -747,4 +770,8 @@ const styles = StyleSheet.create({
   closeBtnText: { fontFamily: "Inter_600SemiBold", fontSize: 15, color: COLORS.textSecondary },
   noDownloadNote: { flexDirection: "row", alignItems: "flex-start", gap: 8, backgroundColor: COLORS.accentGlow, borderRadius: 10, borderWidth: 1, borderColor: COLORS.accent, padding: 12, width: "100%" },
   noDownloadText: { fontFamily: "Inter_400Regular", fontSize: 13, color: COLORS.textSecondary, flex: 1, lineHeight: 18 },
+  trailerModalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.92)", justifyContent: "center", alignItems: "center" },
+  trailerModalContent: { width: "100%", aspectRatio: 16 / 9, maxHeight: "60%", position: "relative" },
+  trailerCloseBtn: { position: "absolute", top: -44, right: 16, zIndex: 10, width: 40, height: 40, borderRadius: 20, backgroundColor: "rgba(255,255,255,0.15)", alignItems: "center", justifyContent: "center" },
+  trailerWebView: { flex: 1, backgroundColor: "#000" },
 });
