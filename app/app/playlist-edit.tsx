@@ -7,6 +7,7 @@ import { COLORS } from "@/constants/colors";
 import { NexoraHeader } from "@/components/NexoraHeader";
 import { useNexora } from "@/context/NexoraContext";
 import { SafeHaptics } from "@/lib/safeHaptics";
+import { useTranslation } from "@/lib/useTranslation";
 
 export default function PlaylistEditScreen() {
   const insets = useSafeAreaInsets();
@@ -14,6 +15,7 @@ export default function PlaylistEditScreen() {
   const playlistId = String(params.playlistId || "");
 
   const { playlists, updatePlaylist, removePlaylist } = useNexora();
+  const { t } = useTranslation();
 
   const pl = useMemo(() => playlists.find(p => p.id === playlistId), [playlists, playlistId]);
   const [name, setName] = useState(pl?.name || "");
@@ -22,27 +24,27 @@ export default function PlaylistEditScreen() {
   if (!pl) {
     return (
       <View style={[styles.container, { paddingTop: insets.top + 20 }]}> 
-        <Text style={styles.title}>Playlist niet gevonden</Text>
+        <Text style={styles.title}>{t("playlist.notFound")}</Text>
         <TouchableOpacity style={styles.btn} onPress={() => router.back()}>
-          <Text style={styles.btnText}>Terug</Text>
+          <Text style={styles.btnText}>{t("common.back")}</Text>
         </TouchableOpacity>
       </View>
     );
   }
 
   const onSave = () => {
-    if (!name.trim()) return Alert.alert("Error", "Name is required");
-    if (!url.trim()) return Alert.alert("Error", "URL is required");
+    if (!name.trim()) return Alert.alert(t("common.error"), t("playlist.errorNameRequired"));
+    if (!url.trim()) return Alert.alert(t("common.error"), t("playlist.errorUrlRequired"));
     updatePlaylist(pl.id, { name: name.trim(), url: url.trim() });
     SafeHaptics.success();
-    Alert.alert("Opgeslagen", "Playlist bijgewerkt.");
+    Alert.alert(t("playlist.saved"), t("playlist.saveDone"));
   };
 
   const onDelete = () => {
-    Alert.alert("Remove", `Remove playlist '${pl.name}'?`, [
-      { text: "Cancel", style: "cancel" },
+    Alert.alert(t("common.remove"), t("playlist.removeConfirm", { name: pl.name }), [
+      { text: t("common.cancel"), style: "cancel" },
       {
-        text: "Remove",
+        text: t("common.remove"),
         style: "destructive",
         onPress: () => {
           removePlaylist(pl.id);
@@ -71,16 +73,16 @@ export default function PlaylistEditScreen() {
       />
       <ScrollView contentContainerStyle={{ padding: 14, paddingBottom: bottomPad }}>
         <View style={styles.card}>
-          <Text style={styles.label}>Naam</Text>
+          <Text style={styles.label}>{t("playlist.name")}</Text>
           <TextInput
             style={styles.input}
             value={name}
             onChangeText={setName}
-            placeholder="Playlist naam"
+            placeholder={t("playlist.namePlaceholder")}
             placeholderTextColor={COLORS.textMuted}
           />
 
-          <Text style={[styles.label, { marginTop: 12 }]}>URL</Text>
+          <Text style={[styles.label, { marginTop: 12 }]}>{t("playlist.url")}</Text>
           <TextInput
             style={styles.input}
             value={url}
@@ -93,17 +95,17 @@ export default function PlaylistEditScreen() {
           <View style={styles.row}>
             <TouchableOpacity style={[styles.btn, styles.btnPrimary]} onPress={onSave}>
               <Ionicons name="save-outline" size={16} color={COLORS.text} />
-              <Text style={styles.btnText}>Opslaan</Text>
+              <Text style={styles.btnText}>{t("common.save")}</Text>
             </TouchableOpacity>
             <TouchableOpacity style={[styles.btn, styles.btnDanger]} onPress={onDelete}>
               <Ionicons name="trash-outline" size={16} color={COLORS.text} />
-              <Text style={styles.btnText}>Verwijder</Text>
+              <Text style={styles.btnText}>{t("common.delete")}</Text>
             </TouchableOpacity>
           </View>
         </View>
 
         <Text style={styles.hint}>
-          Tip: Voor Xtream accounts kan je ook het Xtream tabje gebruiken in Settings → IPTV Playlists.
+          {t("playlist.tip")}
         </Text>
       </ScrollView>
     </View>

@@ -14,6 +14,8 @@ import { apiRequest } from "@/lib/query-client";
 import { normalizeApiError } from "@/lib/error-messages";
 import { TeamLogo } from "@/components/TeamLogo";
 import { useNexora } from "@/context/NexoraContext";
+import { useTranslation } from "@/lib/useTranslation";
+import { t as tFn } from "@/lib/i18n";
 
 function asParam(value: string | string[] | undefined, fallback = ""): string {
   if (Array.isArray(value)) return String(value[0] || fallback);
@@ -30,15 +32,19 @@ const POSITION_COLORS: Record<string, string> = {
   PG: "#FF6B6B", SG: "#34C759", SF: "#5AC8FA", PF: "#30B0C7", C: "#FF9500", G: "#FF9500", F: "#FF3B30",
 };
 
-const POSITION_LABELS: Record<string, string> = {
-  GK: "Doelman", CB: "Centrale Verdediger", LB: "Linksback", RB: "Rechtsback",
-  LWB: "Links Wingback", RWB: "Rechts Wingback", DM: "Defensieve Middenvelder",
-  CM: "Centrale Middenvelder", AM: "Aanvallende Mid.", CAM: "Aanvallende Mid.",
-  LM: "Links Middenvelder", RM: "Rechts Middenvelder",
-  LW: "Links Vleugel", RW: "Rechts Vleugel", SS: "Schaduwspits",
-  CF: "Centrumaanvaller", ST: "Spits", FW: "Aanvaller",
-  DEF: "Verdediger", MID: "Middenvelder", ATT: "Aanvaller",
-  // Basketbal / algemeen
+const POSITION_KEY_MAP: Record<string, string> = {
+  GK: "gk", CB: "cb", LB: "lb", RB: "rb",
+  LWB: "lwb", RWB: "rwb", DM: "dm",
+  CM: "cm", AM: "am", CAM: "am",
+  LM: "lm", RM: "rm",
+  LW: "lw", RW: "rw", SS: "ss",
+  CF: "cf", ST: "st", FW: "fw",
+  DEF: "defender", MID: "midfielder", ATT: "attacker",
+  PG: "pg", SG: "sg", SF: "sf",
+  PF: "pf", C: "c", G: "g", F: "f",
+};
+
+const POSITION_LABELS_FALLBACK: Record<string, string> = {
   PG: "Point Guard", SG: "Shooting Guard", SF: "Small Forward",
   PF: "Power Forward", C: "Center", G: "Guard", F: "Forward",
 };
@@ -46,7 +52,9 @@ const POSITION_LABELS: Record<string, string> = {
 function positionLabel(pos: string, positionName?: string): string {
   if (positionName && positionName.length > 2 && !/^[A-Z]{1,3}$/.test(positionName)) return positionName;
   const key = String(pos || "").toUpperCase().trim();
-  return POSITION_LABELS[key] || key || "Unknown";
+  const i18nKey = POSITION_KEY_MAP[key];
+  if (i18nKey) return tFn(`teamDetail.positions.${i18nKey}`);
+  return POSITION_LABELS_FALLBACK[key] || key || tFn("teamDetail.unknown");
 }
 
 export default function TeamDetailScreen() {
@@ -61,6 +69,7 @@ export default function TeamDetailScreen() {
   const leagueParam = asParam(params.league, "eng.1");
   const insets = useSafeAreaInsets();
   const { isFavorite, toggleFavorite } = useNexora();
+  const { t } = useTranslation();
   const favKey = `sport_team:${teamIdParam || teamNameParam}`;
   const isFollowing = isFavorite(favKey);
   const [posFilter, setPosFilter] = useState<string>("all");
@@ -192,7 +201,7 @@ export default function TeamDetailScreen() {
         <TouchableOpacity style={styles.followBtn} onPress={() => toggleFavorite(favKey)} activeOpacity={0.75}>
           <Ionicons name={isFollowing ? "heart" : "heart-outline"} size={16} color={isFollowing ? COLORS.accent : COLORS.text} />
           <Text style={[styles.followBtnText, isFollowing && { color: COLORS.accent }]}>
-            {isFollowing ? "Volgend" : "Volgen"}
+            {isFollowing ? t("teamDetail.following") : t("teamDetail.follow")}
           </Text>
         </TouchableOpacity>
 
@@ -212,7 +221,7 @@ export default function TeamDetailScreen() {
               <Text style={styles.rankText}>
                 #{data.leagueRank} {data.leagueName}
                 {data.leaguePoints ? `  ·  ${data.leaguePoints} pts` : ""}
-                {data.leaguePlayed ? `  ·  ${data.leaguePlayed} wedstr.` : ""}
+                {data.leaguePlayed ? `  ·  ${t("teamDetail.matchesPlayed", { count: String(data.leaguePlayed) })}` : ""}
               </Text>
             </View>
           ) : null}
@@ -234,7 +243,7 @@ export default function TeamDetailScreen() {
           {data?.coach ? (
             <View style={styles.coachRow}>
               <Ionicons name="person-circle-outline" size={14} color={COLORS.textMuted} />
-              <Text style={styles.coachText}>Trainer: {data.coach}</Text>
+              <Text style={styles.coachText}>{t("teamDetail.coach", { name: data.coach })}</Text>
             </View>
           ) : null}
 
@@ -242,7 +251,7 @@ export default function TeamDetailScreen() {
             <View style={styles.tmBadge}>
               <MaterialCommunityIcons name="currency-eur" size={11} color="#00C896" />
               <Text style={styles.tmBadgeText}>
-                {data?.squadMarketValue ? `Clubwaarde: ${data.squadMarketValue}` : `${realValueCount} marktwaardes beschikbaar`}
+                {data?.squadMarketValue ? t("teamDetail.clubValue", { value: data.squadMarketValue }) : t("teamDetail.marketValues", { count: String(realValueCount) })}
               </Text>
             </View>
           ) : null}
@@ -251,7 +260,7 @@ export default function TeamDetailScreen() {
             <View style={styles.topScorerBadge}>
               <MaterialCommunityIcons name="trophy-outline" size={13} color={COLORS.gold} />
               <Text style={styles.topScorerText}>
-                Topscorer: {topScorerForTeam.name} · {topScorerForTeam.displayValue || topScorerForTeam.goals || 0} goals
+                {t("teamDetail.topScorerLabel", { name: topScorerForTeam.name, goals: String(topScorerForTeam.displayValue || topScorerForTeam.goals || 0) })}
               </Text>
             </View>
           ) : null}
@@ -261,12 +270,12 @@ export default function TeamDetailScreen() {
       {isLoading ? (
         <View style={styles.loadingState}>
           <ActivityIndicator size="large" color={COLORS.accent} />
-          <Text style={styles.loadingText}>Spelersinfo & marktwaardes laden...</Text>
+          <Text style={styles.loadingText}>{t("teamDetail.loadingPlayers")}</Text>
         </View>
       ) : error || !data ? (
         <View style={styles.emptyState}>
           <Ionicons name="alert-circle-outline" size={40} color={COLORS.textMuted} />
-          <Text style={styles.emptyText}>Team data niet beschikbaar</Text>
+          <Text style={styles.emptyText}>{t("teamDetail.dataUnavailable")}</Text>
           {error ? <Text style={styles.emptyHintText}>{normalizeApiError(error).userMessage}</Text> : null}
         </View>
       ) : (
@@ -306,7 +315,7 @@ export default function TeamDetailScreen() {
                     onPress={() => setPosFilter("all")}
                   >
                     <Text style={[styles.filterChipText, posFilter === "all" && styles.filterChipTextActive]}>
-                      Alle ({players.length})
+                      {t("teamDetail.all")} ({players.length})
                     </Text>
                   </TouchableOpacity>
                   {positions.map(pos => (
@@ -325,12 +334,12 @@ export default function TeamDetailScreen() {
                 </ScrollView>
 
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.sortScroll} contentContainerStyle={styles.filterRow}>
-                  <SortChip label="Waarde ↓" active={sortKey === "value_desc"} onPress={() => setSortKey("value_desc")} />
-                  <SortChip label="Waarde ↑" active={sortKey === "value_asc"} onPress={() => setSortKey("value_asc")} />
-                  <SortChip label="Leeftijd ↓" active={sortKey === "age_desc"} onPress={() => setSortKey("age_desc")} />
-                  <SortChip label="Leeftijd ↑" active={sortKey === "age_asc"} onPress={() => setSortKey("age_asc")} />
-                  <SortChip label="Naam A-Z" active={sortKey === "name_asc"} onPress={() => setSortKey("name_asc")} />
-                  <SortChip label="Positie" active={sortKey === "position_asc"} onPress={() => setSortKey("position_asc")} />
+                  <SortChip label={t("teamDetail.valueDesc")} active={sortKey === "value_desc"} onPress={() => setSortKey("value_desc")} />
+                  <SortChip label={t("teamDetail.valueAsc")} active={sortKey === "value_asc"} onPress={() => setSortKey("value_asc")} />
+                  <SortChip label={t("teamDetail.ageDesc")} active={sortKey === "age_desc"} onPress={() => setSortKey("age_desc")} />
+                  <SortChip label={t("teamDetail.ageAsc")} active={sortKey === "age_asc"} onPress={() => setSortKey("age_asc")} />
+                  <SortChip label={t("teamDetail.nameAZ")} active={sortKey === "name_asc"} onPress={() => setSortKey("name_asc")} />
+                  <SortChip label={t("teamDetail.position")} active={sortKey === "position_asc"} onPress={() => setSortKey("position_asc")} />
                 </ScrollView>
               </View>
             ) : null}
@@ -339,7 +348,7 @@ export default function TeamDetailScreen() {
             showsVerticalScrollIndicator={false}
             ListEmptyComponent={
               <View style={styles.emptyState}>
-                <Text style={styles.emptyText}>Geen spelers gevonden</Text>
+                <Text style={styles.emptyText}>{t("teamDetail.noPlayersFound")}</Text>
               </View>
             }
           />
@@ -357,14 +366,14 @@ function PlayerCard({ player }: { player: any }) {
   const photoUri = photoCandidates[photoIndex];
   const posColor = POSITION_COLORS[player.position] || COLORS.accent;
   const rawName = String(player?.name || "").trim();
-  const safeName = rawName || "Unknown";
+  const safeName = rawName || tFn("teamDetail.unknown");
   const initials = safeName.split(/\s+/).filter(Boolean).slice(0, 2).map((p: string) => p[0]).join("").toUpperCase() || "?";
 
   return (
     <View style={styles.playerCard}>
       <View style={styles.playerTopRow}>
         <View style={[styles.jerseyBadge, { borderColor: posColor }]}> 
-          <Text style={[styles.jerseyNum, { color: posColor }]}>{player.jersey || "Unknown"}</Text>
+          <Text style={[styles.jerseyNum, { color: posColor }]}>{player.jersey || tFn("teamDetail.unknown")}</Text>
         </View>
 
         {photoUri ? (
@@ -397,15 +406,15 @@ function PlayerCard({ player }: { player: any }) {
             </View>
             {player.nationality ? (
               <Text style={styles.playerNat} numberOfLines={1}>{player.nationality}</Text>
-            ) : <Text style={styles.playerNat} numberOfLines={1}>Onbekend</Text>}
+            ) : <Text style={styles.playerNat} numberOfLines={1}>{tFn("teamDetail.unknown")}</Text>}
           </View>
         </View>
       </View>
 
       <View style={styles.playerStats}>
-        <StatPill label="Age" value={player.age ? String(player.age) : "Unknown"} />
-        <StatPill label="Height" value={player.height || "Unknown"} />
-        <StatPill label="Weight" value={player.weight || "Unknown"} />
+        <StatPill label={tFn("playerProfile.age")} value={player.age ? String(player.age) : tFn("teamDetail.unknown")} />
+        <StatPill label={tFn("playerProfile.height")} value={player.height || tFn("teamDetail.unknown")} />
+        <StatPill label={tFn("playerProfile.weight")} value={player.weight || tFn("teamDetail.unknown")} />
       </View>
     </View>
   );

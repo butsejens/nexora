@@ -1,31 +1,31 @@
 export const COLORS = {
-  // Core backgrounds — deep navy sports broadcast palette
-  background:   "#070B1A",
-  surface:      "#0D1221",
-  card:         "#11162A",
-  cardElevated: "#182035",
-  cardBright:   "#1E2740",
+  // Core backgrounds — cinematic pure black
+  background:   "#000000",
+  surface:      "#0A0A0A",
+  card:         "#111111",
+  cardElevated: "#1A1A1A",
+  cardBright:   "#222222",
 
-  // Accent — SofaScore-inspired coral red
-  accent:          "#FF2D55",
-  accentDim:       "#CC2444",
-  accentGlow:      "rgba(255, 45, 85, 0.22)",
-  accentGlowStrong:"rgba(255, 45, 85, 0.40)",
+  // Accent — Netflix-inspired red
+  accent:          "#E50914",
+  accentDim:       "#B20710",
+  accentGlow:      "rgba(229, 9, 20, 0.22)",
+  accentGlowStrong:"rgba(229, 9, 20, 0.40)",
 
   // Live indicator
-  live:     "#FF3B5C",
-  liveGlow: "rgba(255, 59, 92, 0.28)",
+  live:     "#E50914",
+  liveGlow: "rgba(229, 9, 20, 0.28)",
 
   // Text hierarchy
   text:          "#FFFFFF",
-  textSecondary: "#A8B0D3",
-  textMuted:     "#5A6180",
-  textFaint:     "#383E5C",
+  textSecondary: "#A0A0A0",
+  textMuted:     "#555555",
+  textFaint:     "#333333",
 
   // Borders
-  border:      "#1E2740",
-  borderLight: "#2A3350",
-  borderGlow:  "rgba(255, 45, 85, 0.20)",
+  border:      "#1A1A1A",
+  borderLight: "#2A2A2A",
+  borderGlow:  "rgba(229, 9, 20, 0.20)",
 
   // Status
   gold:  "#FFD700",
@@ -34,13 +34,13 @@ export const COLORS = {
   yellow:"#FFB300",
 
   // Overlays
-  overlay:      "rgba(7, 11, 26, 0.90)",
-  overlayLight: "rgba(17, 22, 42, 0.80)",
-  overlayCard:  "rgba(7, 11, 26, 0.60)",
+  overlay:      "rgba(0, 0, 0, 0.90)",
+  overlayLight: "rgba(17, 17, 17, 0.80)",
+  overlayCard:  "rgba(0, 0, 0, 0.60)",
 
   // Tab bar
-  tabBar:       "#0A0F1E",
-  tabBarBorder: "#1E2740",
+  tabBar:       "#000000",
+  tabBarBorder: "#1A1A1A",
 };
 
 export default {

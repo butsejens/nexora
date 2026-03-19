@@ -5,6 +5,7 @@ import React from "react";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { COLORS } from "@/constants/colors";
 import { isTV } from "@/lib/platform";
+import { useTranslation } from "@/lib/useTranslation";
 
 const SP_ACCENT = COLORS.accent;
 
@@ -61,6 +62,7 @@ const tabIconStyles = StyleSheet.create({
 export default function TabLayout() {
   const isWeb = Platform.OS === "web";
   const isIOS = Platform.OS === "ios";
+  const { t } = useTranslation();
 
   // TV: sidebar-style — left rail with labels, no blur, larger hit areas
   if (isTV) {
@@ -93,7 +95,7 @@ export default function TabLayout() {
         <Tabs.Screen
           name="livetv"
           options={{
-            title: "Live TV",
+            title: t("tabs.livetv"),
             tabBarIcon: ({ focused }) => (
               <Ionicons
                 name={focused ? "tv" : "tv-outline"}
@@ -106,7 +108,7 @@ export default function TabLayout() {
         <Tabs.Screen
           name="movies"
           options={{
-            title: "Films",
+            title: t("tabs.films"),
             tabBarIcon: ({ focused }) => (
               <Ionicons
                 name={focused ? "film" : "film-outline"}
@@ -119,7 +121,7 @@ export default function TabLayout() {
         <Tabs.Screen
           name="series"
           options={{
-            title: "Series",
+            title: t("tabs.series"),
             tabBarIcon: ({ focused }) => (
               <Ionicons
                 name={focused ? "layers" : "layers-outline"}
@@ -132,7 +134,7 @@ export default function TabLayout() {
         <Tabs.Screen
           name="downloads"
           options={{
-            title: "Downloads",
+            title: t("tabs.downloads"),
             tabBarIcon: ({ focused }) => (
               <Ionicons
                 name={focused ? "arrow-down-circle" : "arrow-down-circle-outline"}
@@ -196,7 +198,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="index"
         options={{
-          title: "Sports",
+          title: t("tabs.sports"),
           tabBarIcon: ({ focused }) => (
             <TabIcon focused={focused} accentColor={SP_ACCENT}>
               <MaterialCommunityIcons
@@ -211,7 +213,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="livetv"
         options={{
-          title: "Live TV",
+          title: t("tabs.livetv"),
           tabBarIcon: ({ focused }) => (
             <TabIcon focused={focused} accentColor={COLORS.accent}>
               <Ionicons
@@ -226,7 +228,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="movies"
         options={{
-          title: "Movies",
+          title: t("tabs.movies"),
           tabBarIcon: ({ focused }) => (
             <TabIcon focused={focused} accentColor={COLORS.accent}>
               <Ionicons
@@ -241,7 +243,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="series"
         options={{
-          title: "Series",
+          title: t("tabs.series"),
           tabBarIcon: ({ focused }) => (
             <TabIcon focused={focused} accentColor={COLORS.accent}>
               <Ionicons
@@ -256,7 +258,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="downloads"
         options={{
-          title: "Downloads",
+          title: t("tabs.downloads"),
           tabBarIcon: ({ focused }) => (
             <TabIcon focused={focused} accentColor={COLORS.accent}>
               <Ionicons

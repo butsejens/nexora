@@ -5,6 +5,8 @@ import * as FileSystem from "expo-file-system";
 import { parseM3UContentAsync } from "@/lib/parseM3U";
 import { fetchM3UText } from "@/lib/fetchM3U";
 
+import { setLanguage as setI18nLanguage, type Language } from "@/lib/i18n";
+
 export type PremiumCategory = "sport" | "movies" | "series" | "livetv";
 
 export interface DownloadedItem {
@@ -95,6 +97,8 @@ interface NexoraContextValue {
   setSubtitlesEnabled: (v: boolean) => void;
   audioLanguage: string;
   setAudioLanguage: (lang: string) => void;
+  uiLanguage: Language;
+  setUiLanguage: (lang: Language) => void;
   autoplayEnabled: boolean;
   setAutoplayEnabled: (v: boolean) => void;
   downloadOverWifi: boolean;
@@ -138,6 +142,7 @@ export function NexoraProvider({ children }: { children: ReactNode }) {
   const [selectedQuality, setSelectedQualityState] = useState<"4K" | "FHD" | "HD" | "Auto">("Auto");
   const [subtitlesEnabled, setSubtitlesEnabledState] = useState(false);
   const [audioLanguage, setAudioLanguageState] = useState("auto");
+  const [uiLanguage, setUiLanguageState] = useState<Language>("en");
   const [autoplayEnabled, setAutoplayEnabledState] = useState(true);
   const [downloadOverWifi, setDownloadOverWifiState] = useState(true);
   const [notificationsEnabled, setNotificationsEnabledState] = useState(true);
@@ -194,10 +199,10 @@ export function NexoraProvider({ children }: { children: ReactNode }) {
           "nexora_iptv_channels", "nexora_hidden_channels", "nexora_hidden_groups",
           "nexora_premium", "nexora_premium_cats",
           "nexora_audio_lang", "nexora_autoplay", "nexora_dl_wifi", "nexora_notif",
-          "nexora_downloads",
+          "nexora_downloads", "nexora_ui_lang",
         ];
         const [favs, hist, pls, qual, subs, pin, prof, iptv, hidCh, hidGr, prem, cats,
-               audioLang, autoplay, dlWifi, notif, dlItems] =
+               audioLang, autoplay, dlWifi, notif, dlItems, uiLang] =
           await AsyncStorage.multiGet(keys).then(r => r.map(([, v]) => v));
 
         if (favs) setFavorites(JSON.parse(favs));
@@ -210,6 +215,10 @@ export function NexoraProvider({ children }: { children: ReactNode }) {
         if (hidCh) setHiddenChannels(JSON.parse(hidCh));
         if (hidGr) setHiddenGroups(JSON.parse(hidGr));
         if (audioLang) setAudioLanguageState(audioLang);
+        if (uiLang && (uiLang === "en" || uiLang === "nl")) {
+          setUiLanguageState(uiLang as Language);
+          setI18nLanguage(uiLang as Language);
+        }
         if (autoplay != null) setAutoplayEnabledState(autoplay === "true");
         if (dlWifi != null) setDownloadOverWifiState(dlWifi === "true");
         if (notif != null) setNotificationsEnabledState(notif === "true");
@@ -364,6 +373,12 @@ export function NexoraProvider({ children }: { children: ReactNode }) {
     await AsyncStorage.setItem("nexora_audio_lang", lang);
   };
 
+  const setUiLanguage = async (lang: Language) => {
+    setUiLanguageState(lang);
+    setI18nLanguage(lang);
+    await AsyncStorage.setItem("nexora_ui_lang", lang);
+  };
+
   const setAutoplayEnabled = async (v: boolean) => {
     setAutoplayEnabledState(v);
     await AsyncStorage.setItem("nexora_autoplay", String(v));
@@ -445,7 +460,7 @@ export function NexoraProvider({ children }: { children: ReactNode }) {
       "nexora_playlists", "nexora_pin", "nexora_profile", "nexora_quality",
       "nexora_subtitles", "nexora_premium", "nexora_premium_cats",
       "nexora_audio_lang", "nexora_autoplay", "nexora_dl_wifi", "nexora_notif",
-      "nexora_schema_v2", "nexora_schema_v3", "nexora_downloads",
+      "nexora_schema_v2", "nexora_schema_v3", "nexora_downloads", "nexora_ui_lang",
     ];
     try {
       await AsyncStorage.multiRemove(keys);
@@ -461,6 +476,8 @@ export function NexoraProvider({ children }: { children: ReactNode }) {
     setSelectedQualityState("Auto");
     setSubtitlesEnabledState(false);
     setAudioLanguageState("auto");
+    setUiLanguageState("en");
+    setI18nLanguage("en");
     setAutoplayEnabledState(true);
     setDownloadOverWifiState(true);
     setNotificationsEnabledState(true);
@@ -484,6 +501,7 @@ export function NexoraProvider({ children }: { children: ReactNode }) {
     selectedQuality, setSelectedQuality,
     subtitlesEnabled, setSubtitlesEnabled,
     audioLanguage, setAudioLanguage,
+    uiLanguage, setUiLanguage,
     autoplayEnabled, setAutoplayEnabled,
     downloadOverWifi, setDownloadOverWifi,
     notificationsEnabled, setNotificationsEnabled,
@@ -494,7 +512,7 @@ export function NexoraProvider({ children }: { children: ReactNode }) {
     downloads, addDownload, removeDownload, isDownloaded, getDownload,
     resetAll,
   }), [favorites, watchHistory, playlists, iptvChannels, isLoadingPlaylist, hiddenChannels, hiddenGroups,
-       selectedQuality, subtitlesEnabled, audioLanguage, autoplayEnabled, downloadOverWifi,
+       selectedQuality, subtitlesEnabled, audioLanguage, uiLanguage, autoplayEnabled, downloadOverWifi,
        notificationsEnabled, parentalPin, activeProfile, premiumCategories, downloads, avatarUri]);
 
   return <NexoraContext.Provider value={value}>{children}</NexoraContext.Provider>;

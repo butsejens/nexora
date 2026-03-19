@@ -15,6 +15,8 @@ import { apiRequest } from "@/lib/query-client";
 import { normalizeApiError } from "@/lib/error-messages";
 import { resolveTeamLogoUri, getLeagueLogo } from "@/lib/logo-manager";
 import { TeamLogo } from "@/components/TeamLogo";
+import { useTranslation } from "@/lib/useTranslation";
+import { t as tFn } from "@/lib/i18n";
 
 function asParam(value: string | string[] | undefined, fallback = ""): string {
   if (Array.isArray(value)) return String(value[0] || fallback);
@@ -33,7 +35,7 @@ function formatMatchTime(dateStr?: string | null): string {
   if (!dateStr) return "";
   try {
     const d = new Date(dateStr);
-    return d.toLocaleTimeString("nl-BE", { hour: "2-digit", minute: "2-digit" });
+    return d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
   } catch { return ""; }
 }
 
@@ -72,16 +74,16 @@ function buildStorylines(standings: any[], scorers: any[]): Storyline[] {
   if (leader) {
     const gap = second ? (Number(leader.points || 0) - Number(second.points || 0)) : 0;
     if (gap === 0) {
-      stories.push({ icon: "🏆", label: "Titelstrijd", text: `${leader.team} en ${second?.team} staan gelijk aan de leiding!`, color: "#FFD700" });
+      stories.push({ icon: "🏆", label: tFn("storyline.titleRace"), text: tFn("storyline.titleRaceText", { team1: leader.team, team2: second?.team }), color: "#FFD700" });
     } else {
-      stories.push({ icon: "🏆", label: "Leider", text: `${leader.team} leidt met ${gap} ${gap === 1 ? "punt" : "punten"} voorsprong.`, color: "#FFD700" });
+      stories.push({ icon: "🏆", label: tFn("storyline.leader"), text: tFn("storyline.leaderText", { team: leader.team, gap: String(gap), plural: gap === 1 ? "point" : "points" }), color: "#FFD700" });
     }
   }
 
   // Top scorer
   if (scorers.length > 0) {
     const top = scorers[0];
-    stories.push({ icon: "⚽", label: "Topschutter", text: `${top.name || top.player} (${top.team}) staat bovenaan met ${top.goals} goals.`, color: "#4CAF82" });
+    stories.push({ icon: "⚽", label: tFn("storyline.topScorer"), text: tFn("storyline.topScorerText", { name: top.name || top.player, team: top.team, goals: String(top.goals) }), color: "#4CAF82" });
   }
 
   // Relegation zone
@@ -91,7 +93,7 @@ function buildStorylines(standings: any[], scorers: any[]): Storyline[] {
     const worstPts = Number(relZone[0]?.points || 0);
     const safePts = Number(safeTeam?.points || 0);
     const relGap = safePts - worstPts;
-    stories.push({ icon: "⬇️", label: "Degradatiezone", text: `${relZone[0].team}, ${relZone[1]?.team}, ${relZone[2]?.team} strijden om te ontsnappen${relGap > 0 ? ` (${relGap} pts te winnen)` : ""}.`, color: "#FF5252" });
+    stories.push({ icon: "⬇️", label: tFn("storyline.relegation"), text: tFn("storyline.relegationText", { t1: relZone[0].team, t2: relZone[1]?.team, t3: relZone[2]?.team, gapText: relGap > 0 ? tFn("storyline.relegationGap", { gap: String(relGap) }) : "" }), color: "#FF5252" });
   }
 
   // Form: team with most wins in sorted top 6
@@ -99,14 +101,14 @@ function buildStorylines(standings: any[], scorers: any[]): Storyline[] {
     return Number(curr.won || 0) > Number(best?.won || 0) ? curr : best;
   }, null);
   if (formTeam && formTeam !== leader) {
-    stories.push({ icon: "🔥", label: "In Form", text: `${formTeam.team} heeft de meeste overwinningen in de top 6.`, color: "#FF6B35" });
+    stories.push({ icon: "🔥", label: tFn("storyline.inForm"), text: tFn("storyline.inFormText", { team: formTeam.team }), color: "#FF6B35" });
   }
 
   // Close top 3 race
   if (sorted.length >= 3) {
     const top3Pts = [Number(sorted[0]?.points || 0), Number(sorted[1]?.points || 0), Number(sorted[2]?.points || 0)];
     if (top3Pts[0] - top3Pts[2] <= 4) {
-      stories.push({ icon: "⚡", label: "Spannend", text: `Top 3 zit op maar ${top3Pts[0] - top3Pts[2]} punten van elkaar!`, color: "#A78BFA" });
+      stories.push({ icon: "⚡", label: tFn("storyline.thrilling"), text: tFn("storyline.thrillingText", { gap: String(top3Pts[0] - top3Pts[2]) }), color: "#A78BFA" });
     }
   }
 
@@ -135,7 +137,7 @@ const storyStyles = StyleSheet.create({
   content: { paddingHorizontal: 12, paddingVertical: 10, gap: 10, flexDirection: "row" },
   card: {
     flexDirection: "row", alignItems: "flex-start", gap: 10,
-    backgroundColor: "rgba(17,22,42,0.85)", borderRadius: 12,
+    backgroundColor: "rgba(17,17,17,0.85)", borderRadius: 12,
     borderWidth: 1, padding: 12, width: 240,
   },
   icon: { fontSize: 20, lineHeight: 24 },
@@ -146,7 +148,7 @@ const storyStyles = StyleSheet.create({
 
 export default function CompetitionScreen() {
   const params = useLocalSearchParams<{ league: string; sport?: string; espnLeague?: string }>();
-  const leagueName = asParam(params.league, "Onbekende competitie");
+  const leagueName = asParam(params.league, tFn("competition.unknownCompetition"));
   const espnLeague = asParam(params.espnLeague, "eng.1");
   const insets = useSafeAreaInsets();
   const topPad = Platform.OS === "web" ? 67 : insets.top;
@@ -215,10 +217,12 @@ export default function CompetitionScreen() {
     (scorersData as any)?.seasonLabel ||
     formatSeasonLabel((standingsData as any)?.season || (scorersData as any)?.season);
 
+  const { t } = useTranslation();
+
   const tabs: { id: TabId; label: string; icon: string }[] = [
-    ...(!isCup ? [{ id: "standings" as TabId, label: "Ranglijst", icon: "list-outline" }] : []),
-    { id: "matches" as TabId, label: "Wedstrijden", icon: "football-outline" },
-    { id: "scorers" as TabId, label: "Topscorers", icon: "trophy-outline" },
+    ...(!isCup ? [{ id: "standings" as TabId, label: t("competition.standings"), icon: "list-outline" }] : []),
+    { id: "matches" as TabId, label: t("competition.matches"), icon: "football-outline" },
+    { id: "scorers" as TabId, label: t("competition.topScorers"), icon: "trophy-outline" },
   ];
 
   return (
@@ -249,7 +253,7 @@ export default function CompetitionScreen() {
           <Text style={styles.leagueTitle}>{leagueName}</Text>
           <View style={styles.headerBadgeRow}>
             <View style={styles.headerBadge}>
-              <Text style={styles.headerBadgeText}>{isCup ? "Beker" : "Competitie"}</Text>
+              <Text style={styles.headerBadgeText}>{isCup ? t("competition.cup") : t("competition.league")}</Text>
             </View>
             {seasonLabel ? (
               <View style={[styles.headerBadge, styles.headerBadgeSeason]}>
@@ -257,7 +261,7 @@ export default function CompetitionScreen() {
               </View>
             ) : null}
             <View style={styles.headerBadge}>
-              <Text style={styles.headerBadgeText}>Voetbal</Text>
+              <Text style={styles.headerBadgeText}>{t("competition.football")}</Text>
             </View>
           </View>
         </View>
@@ -285,25 +289,25 @@ export default function CompetitionScreen() {
         standingsLoading ? (
           <View style={styles.loadingState}>
             <ActivityIndicator size="large" color={COLORS.accent} />
-            <Text style={styles.loadingText}>Ranglijst laden...</Text>
+            <Text style={styles.loadingText}>{t("competition.loadingStandings")}</Text>
           </View>
         ) : standings.length === 0 ? (
           <View style={styles.emptyState}>
             <Ionicons name="list-outline" size={40} color={COLORS.textMuted} />
-            <Text style={styles.emptyText}>Ranglijst niet beschikbaar</Text>
+            <Text style={styles.emptyText}>{t("competition.standingsUnavailable")}</Text>
             {(standingsData as any)?.error ? <Text style={styles.errorDetail}>{standingsError.userMessage}</Text> : null}
           </View>
         ) : (
           <ScrollView showsVerticalScrollIndicator={false}>
             <View style={styles.standingsHeaderRow}>
               <Text style={[styles.standingsHeaderCell, { width: 28 }]}>#</Text>
-              <Text style={[styles.standingsHeaderCell, { flex: 1 }]}>Club</Text>
-              <Text style={styles.standingsHeaderCell}>GS</Text>
-              <Text style={styles.standingsHeaderCell}>W</Text>
-              <Text style={styles.standingsHeaderCell}>G</Text>
-              <Text style={styles.standingsHeaderCell}>V</Text>
-              <Text style={styles.standingsHeaderCell}>+/-</Text>
-              <Text style={[styles.standingsHeaderCell, { color: COLORS.accent }]}>Pts</Text>
+              <Text style={[styles.standingsHeaderCell, { flex: 1 }]}>{t("competition.club")}</Text>
+              <Text style={styles.standingsHeaderCell}>{t("competition.mp")}</Text>
+              <Text style={styles.standingsHeaderCell}>{t("competition.w")}</Text>
+              <Text style={styles.standingsHeaderCell}>{t("competition.d")}</Text>
+              <Text style={styles.standingsHeaderCell}>{t("competition.l")}</Text>
+              <Text style={styles.standingsHeaderCell}>{t("competition.gd")}</Text>
+              <Text style={[styles.standingsHeaderCell, { color: COLORS.accent }]}>{t("competition.pts")}</Text>
             </View>
             {standings.map((team: any, idx: number) => (
               <StandingsRow key={team.teamId || idx} team={team} rank={team.rank || idx + 1} league={leagueName} espnLeague={espnLeague} />
@@ -318,12 +322,12 @@ export default function CompetitionScreen() {
         matchesLoading ? (
           <View style={styles.loadingState}>
             <ActivityIndicator size="large" color={COLORS.accent} />
-            <Text style={styles.loadingText}>Wedstrijden laden...</Text>
+            <Text style={styles.loadingText}>{t("competition.loadingMatches")}</Text>
           </View>
         ) : competitionMatches.length === 0 ? (
           <View style={styles.emptyState}>
             <Ionicons name="football-outline" size={40} color={COLORS.textMuted} />
-            <Text style={styles.emptyText}>Geen wedstrijden gevonden</Text>
+            <Text style={styles.emptyText}>{t("competition.noMatches")}</Text>
             {(matchesData as any)?.error ? <Text style={styles.errorDetail}>{(matchesData as any).error}</Text> : null}
           </View>
         ) : (
@@ -375,12 +379,12 @@ export default function CompetitionScreen() {
         scorersLoading ? (
           <View style={styles.loadingState}>
             <ActivityIndicator size="large" color={COLORS.accent} />
-            <Text style={styles.loadingText}>Topscorers laden...</Text>
+            <Text style={styles.loadingText}>{t("competition.loadingScorers")}</Text>
           </View>
         ) : scorers.length === 0 ? (
           <View style={styles.emptyState}>
             <Ionicons name="trophy-outline" size={40} color={COLORS.textMuted} />
-            <Text style={styles.emptyText}>Topscorers niet beschikbaar</Text>
+            <Text style={styles.emptyText}>{t("competition.scorersUnavailable")}</Text>
             {(scorersData as any)?.error ? <Text style={styles.errorDetail}>{scorersError.userMessage}</Text> : null}
           </View>
         ) : (

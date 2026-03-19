@@ -8,6 +8,8 @@ import { useQuery } from "@tanstack/react-query";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { COLORS } from "@/constants/colors";
 import { apiRequest } from "@/lib/query-client";
+import { useTranslation } from "@/lib/useTranslation";
+import { t as tFn, getLanguage } from "@/lib/i18n";
 
 const UNKNOWN = "Unknown";
 
@@ -20,7 +22,8 @@ function normalizeText(value: unknown, fallback = UNKNOWN): string {
 function formatUpdatedAt(value: unknown): string {
   const date = value ? new Date(String(value)) : null;
   if (!date || Number.isNaN(date.getTime())) return UNKNOWN;
-  return new Intl.DateTimeFormat("nl-BE", {
+  const locale = getLanguage() === "nl" ? "nl-BE" : "en-GB";
+  return new Intl.DateTimeFormat(locale, {
     day: "2-digit",
     month: "2-digit",
     year: "numeric",
@@ -76,12 +79,12 @@ function normalizePlayerDto(raw: any, params: {
     weight: normalizeText(raw?.weight || params.weight),
     currentClub: normalizeText(raw?.currentClub || params.team),
     formerClubs: Array.isArray(raw?.formerClubs) ? raw.formerClubs : [],
-    marketValue: normalizeText(raw?.marketValue || params.marketValue, "Waarde onbekend"),
+    marketValue: normalizeText(raw?.marketValue || params.marketValue, tFn("playerProfile.valueUnknown")),
     isRealValue: Boolean(raw?.isRealValue),
     valueMethod: normalizeText(raw?.valueMethod),
     strengths: Array.isArray(raw?.strengths) ? raw.strengths : [],
     weaknesses: Array.isArray(raw?.weaknesses) ? raw.weaknesses : [],
-    analysis: normalizeText(raw?.analysis, "Analyse tijdelijk niet beschikbaar."),
+    analysis: normalizeText(raw?.analysis, tFn("playerProfile.analysisTempUnavailable")),
     source: normalizeText(raw?.source, "real-data"),
     updatedAt: raw?.updatedAt || null,
     offlineData: Boolean(raw?.offlineData),
@@ -90,6 +93,7 @@ function normalizePlayerDto(raw: any, params: {
 
 export default function PlayerProfileScreen() {
   const insets = useSafeAreaInsets();
+  const { t } = useTranslation();
   const params = useLocalSearchParams<{
     playerId?: string;
     name?: string;
@@ -164,15 +168,15 @@ export default function PlayerProfileScreen() {
               <Text style={styles.photoInitials}>{initials}</Text>
             </View>
           )}
-          <Text style={styles.name} numberOfLines={2}>{normalizeText(data?.name || params.name, "Speler")}</Text>
+          <Text style={styles.name} numberOfLines={2}>{normalizeText(data?.name || params.name, t("playerProfile.player"))}</Text>
           <Text style={styles.meta} numberOfLines={2}>{normalizeText(data?.position || params.position)} {normalizeText(data?.nationality || params.nationality, "") ? `· ${normalizeText(data?.nationality || params.nationality)}` : ""}</Text>
           <Text style={[styles.value, data?.isRealValue ? styles.valueReal : null]}>
-            {normalizeText(data?.marketValue || params.marketValue, "Waarde onbekend")}
+            {normalizeText(data?.marketValue || params.marketValue, t("playerProfile.valueUnknown"))}
           </Text>
           {data?.offlineData ? (
             <View style={styles.offlineBadge}>
               <Ionicons name="cloud-offline-outline" size={12} color={COLORS.gold} />
-              <Text style={styles.offlineText}>Offline data</Text>
+              <Text style={styles.offlineText}>{t("playerProfile.offlineData")}</Text>
             </View>
           ) : null}
         </View>
@@ -181,30 +185,30 @@ export default function PlayerProfileScreen() {
       {isLoading ? (
         <View style={styles.loading}>
           <ActivityIndicator size="large" color={COLORS.accent} />
-          <Text style={styles.loadingText}>Spelerprofiel laden...</Text>
+          <Text style={styles.loadingText}>{t("playerProfile.loading")}</Text>
         </View>
       ) : (
         <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-          <Card title="Overzicht">
-            <Row label="Leeftijd" value={data?.age ? `${String(data.age)} jaar` : UNKNOWN} />
-            <Row label="Lengte" value={normalizeText(data?.height)} />
-            <Row label="Gewicht" value={normalizeText(data?.weight)} />
-            <Row label="Huidige club" value={normalizeText(data?.currentClub || params.team)} />
-            <Row label="Waarde bron" value={normalizeText(data?.valueMethod)} />
-            <Row label="Laatste update" value={formatUpdatedAt(data?.updatedAt)} />
+          <Card title={t("playerProfile.overview")}>
+            <Row label={t("playerProfile.age")} value={data?.age ? t("playerProfile.years", { age: String(data.age) }) : UNKNOWN} />
+            <Row label={t("playerProfile.height")} value={normalizeText(data?.height)} />
+            <Row label={t("playerProfile.weight")} value={normalizeText(data?.weight)} />
+            <Row label={t("playerProfile.currentClub")} value={normalizeText(data?.currentClub || params.team)} />
+            <Row label={t("playerProfile.valueSource")} value={normalizeText(data?.valueMethod)} />
+            <Row label={t("playerProfile.lastUpdated")} value={formatUpdatedAt(data?.updatedAt)} />
           </Card>
 
-          <Card title="Analyse">
+          <Card title={t("playerProfile.analysis")}>
             <LinearGradient
-              colors={["rgba(229,9,20,0.07)", "rgba(17,22,42,0)"]}
+              colors={["rgba(229,9,20,0.07)", "rgba(17,17,17,0)"]}
               style={{ borderRadius: 10, padding: 12, marginBottom: 4 }}
             >
-              <Text style={[styles.analysisText, { color: COLORS.text }]}>{data?.analysis || "Analyse niet beschikbaar."}</Text>
+              <Text style={[styles.analysisText, { color: COLORS.text }]}>{data?.analysis || t("playerProfile.analysisUnavailable")}</Text>
             </LinearGradient>
-            <Text style={styles.analysisSource}>Bron: {data?.source || "real-data"}</Text>
+            <Text style={styles.analysisSource}>{t("playerProfile.source", { source: data?.source || "real-data" })}</Text>
           </Card>
 
-          <Card title="Sterktes">
+          <Card title={t("playerProfile.strengths")}>
             <View style={styles.pillWrap}>
               {(Array.isArray(data?.strengths) ? data.strengths : []).slice(0, 6).map((item: string, idx: number) => (
                 <Bullet key={`s_${idx}`} text={item} good />
@@ -213,7 +217,7 @@ export default function PlayerProfileScreen() {
             </View>
           </Card>
 
-          <Card title="Zwaktes">
+          <Card title={t("playerProfile.weaknesses")}>
             <View style={styles.pillWrap}>
               {(Array.isArray(data?.weaknesses) ? data.weaknesses : []).slice(0, 6).map((item: string, idx: number) => (
                 <Bullet key={`w_${idx}`} text={item} />
@@ -222,9 +226,9 @@ export default function PlayerProfileScreen() {
             </View>
           </Card>
 
-          <Card title="Clubhistoriek">
+          <Card title={t("playerProfile.clubHistory")}>
             {(Array.isArray(data?.formerClubs) ? data.formerClubs : []).length === 0 ? (
-              <Text style={styles.placeholder}>Geen transferhistoriek beschikbaar.</Text>
+              <Text style={styles.placeholder}>{t("playerProfile.noTransferHistory")}</Text>
             ) : (
               ((data?.formerClubs ?? []) as any[]).map((club, idx) => (
                 <View key={`${club?.name || "club"}_${idx}`} style={styles.clubRow}>

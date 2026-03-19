@@ -14,6 +14,7 @@ import { apiRequest } from "@/lib/query-client";
 import { useNexora } from "@/context/NexoraContext";
 import { SafeHaptics } from "@/lib/safeHaptics";
 import { buildErrorReference, normalizeApiError } from "@/lib/error-messages";
+import { useTranslation } from "@/lib/useTranslation";
 
 // ── TMDB fetch ───────────────────────────────────────────────────────────────
 async function fetchDetails(id: string, type: string) {
@@ -55,6 +56,7 @@ function DownloadModal({
   poster?: string | null; year?: number | null;
 }) {
   const { addDownload, isDownloaded, removeDownload, getDownload } = useNexora();
+  const { t } = useTranslation();
   const [step, setStep] = useState<"select" | "downloading" | "done" | "error">("select");
   const [quality, setQuality] = useState("FHD");
   const [progress, setProgress] = useState(0);
@@ -79,7 +81,7 @@ function DownloadModal({
 
   const startDownload = async () => {
     if (!canDownload || !streamUrl) {
-      setErrorMsg("Direct downloaden is alleen mogelijk voor MP4/TS streams vanuit een IPTV playlist.");
+      setErrorMsg(t("detail.directDownloadNote"));
       setStep("error");
       return;
     }
@@ -122,10 +124,10 @@ function DownloadModal({
         });
         setStep("done");
       } else {
-        throw new Error("Download mislukt");
+        throw new Error(t("detail.downloadFailed"));
       }
     } catch (e: any) {
-      setErrorMsg(e?.message || "Download mislukt");
+      setErrorMsg(e?.message || t("detail.downloadFailed"));
       setStep("error");
     }
   };
@@ -155,18 +157,18 @@ function DownloadModal({
         <View style={styles.downloadModal}>
           <View style={styles.downloadHandle} />
           <Text style={styles.downloadTitle}>
-            {alreadyDownloaded ? "Gedownload" : "Download voor Offline"}
+            {alreadyDownloaded ? t("detail.downloaded") : t("detail.downloadOffline")}
           </Text>
           <Text style={styles.downloadSubtitle} numberOfLines={2}>{title}</Text>
 
           {alreadyDownloaded && step === "select" ? (
             <View style={styles.doneContainer}>
               <View style={styles.doneIcon}><Ionicons name="checkmark-circle" size={36} color={COLORS.accent} /></View>
-              <Text style={styles.doneText}>Al opgeslagen op je toestel</Text>
-              <Text style={styles.doneNote}>Beschikbaar zonder internet</Text>
+              <Text style={styles.doneText}>{t("detail.alreadySaved")}</Text>
+              <Text style={styles.doneNote}>{t("detail.availableOffline")}</Text>
               <TouchableOpacity style={[styles.downloadBtn, { backgroundColor: COLORS.liveGlow, marginTop: 8 }]} onPress={handleRemove}>
                 <Ionicons name="trash-outline" size={16} color={COLORS.live} />
-                <Text style={[styles.downloadBtnText, { color: COLORS.live }]}>Download verwijderen</Text>
+                <Text style={[styles.downloadBtnText, { color: COLORS.live }]}>{t("detail.removeDownload")}</Text>
               </TouchableOpacity>
             </View>
           ) : step === "select" ? (
@@ -176,14 +178,14 @@ function DownloadModal({
                   <Ionicons name="information-circle-outline" size={16} color={COLORS.accent} />
                   <Text style={styles.noDownloadText}>
                     {streamUrl?.includes(".m3u8")
-                      ? "HLS/M3U8 streams kunnen niet lokaal worden opgeslagen. Probeer een andere server."
-                      : "Dit item heeft geen directe stream URL. Voeg een IPTV playlist toe om te downloaden."}
+                      ? t("detail.hlsExclusion")
+                      : t("detail.noStreamUrlNote")}
                   </Text>
                 </View>
               )}
               {canDownload && (
                 <>
-                  <Text style={styles.downloadLabel}>Kwaliteit</Text>
+                  <Text style={styles.downloadLabel}>{t("detail.qualityLabel")}</Text>
                   <View style={styles.qualityOptions}>
                     {["HD", "FHD"].map((q) => (
                       <TouchableOpacity
@@ -198,7 +200,7 @@ function DownloadModal({
                   </View>
                   <TouchableOpacity style={styles.downloadBtn} onPress={startDownload}>
                     <Ionicons name="download-outline" size={18} color={COLORS.background} />
-                    <Text style={styles.downloadBtnText}>Start Download</Text>
+                    <Text style={styles.downloadBtnText}>{t("detail.startDownload")}</Text>
                   </TouchableOpacity>
                 </>
               )}
@@ -206,31 +208,31 @@ function DownloadModal({
           ) : step === "downloading" ? (
             <View style={styles.progressContainer}>
               <ActivityIndicator color={COLORS.accent} size="small" />
-              <Text style={styles.downloadingText}>Downloaden... {Math.round(progress * 100)}%</Text>
+              <Text style={styles.downloadingText}>{t("detail.downloadProgress", { progress: Math.round(progress * 100) })}</Text>
               <View style={styles.progressTrack}>
                 <View style={[styles.progressFill, { width: `${Math.round(progress * 100)}%` as any }]} />
               </View>
-              <Text style={styles.progressNote}>Houd de app open tijdens het downloaden</Text>
+              <Text style={styles.progressNote}>{t("detail.keepAppOpen")}</Text>
             </View>
           ) : step === "done" ? (
             <View style={styles.doneContainer}>
               <View style={styles.doneIcon}><Ionicons name="checkmark" size={32} color={COLORS.accent} /></View>
-              <Text style={styles.doneText}>Opgeslagen op je toestel</Text>
-              <Text style={styles.doneNote}>Beschikbaar zonder internet</Text>
+              <Text style={styles.doneText}>{t("detail.savedOnDevice")}</Text>
+              <Text style={styles.doneNote}>{t("detail.availableOffline")}</Text>
             </View>
           ) : (
             <View style={styles.doneContainer}>
               <Ionicons name="warning-outline" size={32} color={COLORS.live} />
-              <Text style={[styles.doneText, { color: COLORS.live }]}>Download mislukt</Text>
+              <Text style={[styles.doneText, { color: COLORS.live }]}>{t("detail.downloadFailed")}</Text>
               <Text style={styles.doneNote}>{errorMsg}</Text>
               <TouchableOpacity style={[styles.downloadBtn, { marginTop: 8 }]} onPress={resetState}>
-                <Text style={styles.downloadBtnText}>Opnieuw proberen</Text>
+                <Text style={styles.downloadBtnText}>{t("detail.retry")}</Text>
               </TouchableOpacity>
             </View>
           )}
 
           <TouchableOpacity style={styles.closeBtnSmall} onPress={step === "downloading" ? handleCancel : () => { resetState(); onClose(); }}>
-            <Text style={styles.closeBtnText}>{step === "done" || step === "error" ? "Close" : step === "downloading" ? "Cancel" : "Close"}</Text>
+            <Text style={styles.closeBtnText}>{step === "downloading" ? t("detail.cancel") : t("detail.close")}</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -253,6 +255,7 @@ export default function DetailScreen() {
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
   const { isFavorite, toggleFavorite, iptvChannels, isDownloaded, hasPremium } = useNexora();
+  const { t } = useTranslation();
 
   const [showDownload, setShowDownload] = useState(false);
   const [activeTab, setActiveTab] = useState<"overview" | "cast" | "seasons">("overview");
@@ -343,7 +346,7 @@ export default function DetailScreen() {
     (searchData as any)?.error ||
     (tmdbError as any)?.message ||
     (searchError as any)?.message ||
-    "Detail data ontbreekt";
+    t("detail.detailMissing");
   const normalizedDetailError = normalizeApiError(rawDetailError);
   const detailErrorRef = useMemo(() => buildErrorReference("NX-DTL"), []);
   const isMovie = type === "movie";
@@ -402,10 +405,10 @@ export default function DetailScreen() {
         <View style={styles.loadingSpinner}>
           <Ionicons name="film-outline" size={40} color={COLORS.accent} />
         </View>
-        <Text style={styles.loadingText}>Details laden...</Text>
+        <Text style={styles.loadingText}>{t("detail.loadingDetails")}</Text>
         <TouchableOpacity style={styles.backBtnLoading} onPress={() => router.back()}>
           <Ionicons name="chevron-back" size={22} color={COLORS.textMuted} />
-          <Text style={styles.backBtnLoadingText}>Terug</Text>
+          <Text style={styles.backBtnLoadingText}>{t("detail.back")}</Text>
         </TouchableOpacity>
       </View>
     );
@@ -418,18 +421,18 @@ export default function DetailScreen() {
         <Text style={[styles.loadingText, { marginTop: 16, color: COLORS.text }]}>
           {normalizedDetailError.userMessage}
         </Text>
-        <Text style={styles.errorRefText}>Foutcode: {detailErrorRef}</Text>
+        <Text style={styles.errorRefText}>{t("detail.errorCode", { code: detailErrorRef })}</Text>
         <View style={{ flexDirection: "row", gap: 12, marginTop: 24 }}>
           <TouchableOpacity
             style={[styles.backBtnLoading, { backgroundColor: COLORS.accent, borderRadius: 10, paddingHorizontal: 20, paddingVertical: 10 }]}
             onPress={() => refetch()}
           >
             <Ionicons name="refresh-outline" size={16} color={COLORS.background} />
-            <Text style={[styles.backBtnLoadingText, { color: COLORS.background }]}>Opnieuw</Text>
+            <Text style={[styles.backBtnLoadingText, { color: COLORS.background }]}>{t("detail.refresh")}</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.backBtnLoading} onPress={() => router.back()}>
             <Ionicons name="chevron-back" size={16} color={COLORS.textMuted} />
-            <Text style={styles.backBtnLoadingText}>Terug</Text>
+            <Text style={styles.backBtnLoadingText}>{t("detail.back")}</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -455,7 +458,7 @@ export default function DetailScreen() {
             style={styles.heroTopGradient}
           />
           <LinearGradient
-            colors={["transparent", "rgba(7,11,26,0.5)", "rgba(7,11,26,0.85)", COLORS.background]}
+            colors={["transparent", "rgba(0,0,0,0.5)", "rgba(0,0,0,0.85)", COLORS.background]}
             style={styles.heroGradient}
             locations={[0, 0.4, 0.7, 1]}
           />
@@ -490,7 +493,7 @@ export default function DetailScreen() {
                 </View>
               ) : null}
               {data.duration ? <Text style={styles.heroMetaText}>{data.duration}</Text> : null}
-              {!isMovie && data.seasons?.length ? <Text style={styles.heroMetaText}>{data.seasons.length} Seizoen{data.seasons.length > 1 ? "en" : ""}</Text> : null}
+              {!isMovie && data.seasons?.length ? <Text style={styles.heroMetaText}>{data.seasons.length > 1 ? t("detail.seasonCountPlural", { count: data.seasons.length }) : t("detail.seasonCount", { count: data.seasons.length })}</Text> : null}
               <View style={styles.qualityBadge}>
                 <Text style={styles.qualityText}>{data.quality || "HD"}</Text>
               </View>
@@ -513,14 +516,14 @@ export default function DetailScreen() {
               <TouchableOpacity style={styles.playBtn} onPress={() => goToPlayer()} activeOpacity={0.85}>
                 <View style={styles.playBtnInner}>
                   <Ionicons name="play" size={22} color="#FFFFFF" />
-                  <Text style={styles.playBtnText}>Afspelen</Text>
+                  <Text style={styles.playBtnText}>{t("detail.play")}</Text>
                 </View>
               </TouchableOpacity>
             ) : (
               <TouchableOpacity style={styles.playBtn} onPress={() => router.push("/premium")} activeOpacity={0.85}>
                 <View style={styles.lockedBtnInner}>
                   <Ionicons name="lock-closed" size={18} color="#FFFFFF" />
-                  <Text style={styles.playBtnText}>Ontgrendel met Premium</Text>
+                  <Text style={styles.playBtnText}>{t("detail.unlockPremium")}</Text>
                 </View>
               </TouchableOpacity>
             )}
@@ -543,7 +546,7 @@ export default function DetailScreen() {
                 }}
               >
                 <Ionicons name="videocam-outline" size={20} color={COLORS.accent} />
-                <Text style={styles.trailerBtnOutlineText}>Trailer</Text>
+                <Text style={styles.trailerBtnOutlineText}>{t("detail.trailer")}</Text>
               </TouchableOpacity>
             ) : null}
             <TouchableOpacity
@@ -568,7 +571,7 @@ export default function DetailScreen() {
                 onPress={() => setActiveTab(tab as any)}
               >
                 <Text style={[styles.tabText, activeTab === tab && styles.tabTextActive]}>
-                  {tab === "overview" ? "Overzicht" : tab === "cast" ? "Cast" : "Seizoenen"}
+                  {tab === "overview" ? t("detail.overview") : tab === "cast" ? t("detail.cast") : t("detail.seasons")}
                 </Text>
               </TouchableOpacity>
             ))}
@@ -576,16 +579,16 @@ export default function DetailScreen() {
 
           {activeTab === "overview" && (
             <View style={styles.tabContent}>
-              <Text style={styles.synopsis}>{data.synopsis || "Geen beschrijving beschikbaar."}</Text>
+              <Text style={styles.synopsis}>{data.synopsis || t("detail.noDescription")}</Text>
               {!isMovie && data.networks?.length > 0 && (
                 <View style={styles.networkRow}>
-                  <Text style={styles.networkLabel}>Netwerk: </Text>
+                  <Text style={styles.networkLabel}>{t("detail.network")}</Text>
                   <Text style={styles.networkValue}>{data.networks.join(", ")}</Text>
                 </View>
               )}
               {!isMovie && data.creators?.length > 0 && (
                 <View style={styles.networkRow}>
-                  <Text style={styles.networkLabel}>Gemaakt door: </Text>
+                  <Text style={styles.networkLabel}>{t("detail.createdBy")}</Text>
                   <Text style={styles.networkValue}>{data.creators.join(", ")}</Text>
                 </View>
               )}
@@ -603,7 +606,7 @@ export default function DetailScreen() {
                   </View>
                 </ScrollView>
               ) : (
-                <Text style={styles.synopsis}>Geen castinformatie beschikbaar.</Text>
+                <Text style={styles.synopsis}>{t("detail.noCast")}</Text>
               )}
             </View>
           )}
@@ -626,7 +629,7 @@ export default function DetailScreen() {
                     )}
                     <View style={styles.seasonInfo}>
                       <Text style={styles.seasonName}>{season.name}</Text>
-                      <Text style={styles.seasonEpisodes}>{season.episodes} Afleveringen</Text>
+                      <Text style={styles.seasonEpisodes}>{season.episodes} {t("detail.episodes")}</Text>
                       {season.airDate && <Text style={styles.seasonDate}>{new Date(season.airDate).getFullYear()}</Text>}
                     </View>
                     <Ionicons name={hasPremium("series") ? "play-circle-outline" : "lock-closed"} size={hasPremium("series") ? 28 : 20} color={hasPremium("series") ? COLORS.accent : COLORS.textMuted} />
@@ -638,8 +641,8 @@ export default function DetailScreen() {
                     <Ionicons name={hasPremium("series") ? "play" : "lock-closed"} size={20} color={hasPremium("series") ? COLORS.accent : COLORS.textMuted} />
                   </View>
                   <View style={styles.seasonInfo}>
-                    <Text style={styles.seasonName}>Seizoen 1</Text>
-                    <Text style={styles.seasonEpisodes}>{hasPremium("series") ? "Afspelen" : "Premium vereist"}</Text>
+                    <Text style={styles.seasonName}>{t("detail.season")} 1</Text>
+                    <Text style={styles.seasonEpisodes}>{hasPremium("series") ? t("detail.play") : t("detail.premiumRequired")}</Text>
                   </View>
                   <Ionicons name={hasPremium("series") ? "play-circle-outline" : "lock-closed"} size={hasPremium("series") ? 28 : 20} color={hasPremium("series") ? COLORS.accent : COLORS.textMuted} />
                 </TouchableOpacity>
