@@ -476,14 +476,6 @@ export default function DetailScreen() {
           >
             <Ionicons name={fav ? "heart" : "heart-outline"} size={22} color={fav ? COLORS.live : COLORS.text} />
           </TouchableOpacity>
-          {data.trailerKey && (
-            <TouchableOpacity style={styles.trailerPlayBtn} onPress={() => setShowTrailer(true)}>
-              <View style={styles.trailerPlay}>
-                <Ionicons name="play" size={18} color={COLORS.text} />
-              </View>
-              <Text style={styles.trailerBtnText}>Trailer</Text>
-            </TouchableOpacity>
-          )}
           {isIptv === "true" && (
             <View style={styles.iptvBadge}>
               <MaterialCommunityIcons name="play-network" size={11} color={COLORS.accent} />

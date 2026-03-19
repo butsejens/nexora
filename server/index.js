@@ -258,6 +258,7 @@ const LEAGUE_TO_LOGO_FOLDER = {
   "Jupiler Pro League":       "Belgium - Jupiler Pro League",
   "Belgian Pro League":       "Belgium - Jupiler Pro League",
   "Belgian First Division A": "Belgium - Jupiler Pro League",
+  "Challenger Pro League":    "Belgium - Jupiler Pro League",
   "Eredivisie":               "Netherlands - Eredivisie",
   "KNVB Beker":               "Netherlands - Eredivisie",
   "Primeira Liga":            "Portugal - Liga Portugal",
@@ -507,6 +508,15 @@ const TEAM_LOGO_ALIASES = {
   "kv kortrijk": "KV Kortrijk", "kortrijk": "KV Kortrijk",
   "rwdm": "RWDM", "rwd molenbeek": "RWDM",
   "beerschot va": "Beerschot VA", "beerschot": "Beerschot VA",
+  // Belgian second division (Challenger Pro League) — additional teams
+  "lommel sk": "Lommel SK", "lommel": "Lommel SK",
+  "lierse kempenzonen": "Lierse Kempenzonen", "lierse": "Lierse Kempenzonen",
+  "sk beveren": "SK Beveren", "beveren": "SK Beveren",
+  "club nl": "Club NXT", "club nxt": "Club NXT",
+  "patro eisden maasmechelen": "Patro Eisden Maasmechelen", "patro eisden": "Patro Eisden Maasmechelen",
+  "francs borains": "Francs Borains",
+  "sk deinze": "SK Deinze", "deinze": "SK Deinze",
+  "virton": "Royal Excelsior Virton", "excelsior virton": "Royal Excelsior Virton",
   // France (expanded)
   "rc strasbourg alsace": "RC Strasbourg Alsace",
   "angers": "Angers SCO", "angers sco": "Angers SCO",
@@ -1042,16 +1052,46 @@ function similarityScore(a, b) {
     }
   }
 
+  // Partial token matching: "de bruyne" /startsWith "debruyne" → boost
+  let partialMatches = 0;
+  for (const tokenA of tokensA) {
+    if (tokenA.length >= 3 && !setB.has(tokenA)) {
+      for (const tokenB of tokensB) {
+        if (tokenB.length >= 3 && !setA.has(tokenB)) {
+          if (tokenA.startsWith(tokenB) || tokenB.startsWith(tokenA)) {
+            partialMatches += 0.5;
+            break;
+          }
+        }
+      }
+    }
+  }
+
   // Last-name emphasis: if both share the same last token (surname), boost score
   const lastA = tokensA[tokensA.length - 1];
   const lastB = tokensB[tokensB.length - 1];
   const surnameMatch = lastA && lastB && lastA.length >= 3 && lastA === lastB;
 
-  const totalMatched = overlap + initialMatches * 0.7;
+  // Also check if last names are very close (1 char difference) for typo tolerance
+  let surnameClose = false;
+  if (!surnameMatch && lastA && lastB && lastA.length >= 4 && lastB.length >= 4) {
+    const lenDiff = Math.abs(lastA.length - lastB.length);
+    if (lenDiff <= 1) {
+      let diffs = 0;
+      const maxLen = Math.max(lastA.length, lastB.length);
+      for (let i = 0; i < maxLen; i++) {
+        if ((lastA[i] || "") !== (lastB[i] || "")) diffs++;
+      }
+      if (diffs <= 1) surnameClose = true;
+    }
+  }
+
+  const totalMatched = overlap + initialMatches * 0.7 + partialMatches;
   const denom = Math.max(setA.size, setB.size, 1);
   let score = totalMatched / denom;
 
   if (surnameMatch && score < 0.85) score = Math.max(score, 0.75);
+  if (surnameClose && score < 0.7) score = Math.max(score, 0.65);
 
   return score;
 }
@@ -2095,7 +2135,7 @@ async function enrichRosterMarketValues(players, teamName, _leagueName) {
       const score = similarityScore(normedName, entry.normed);
       if (score > bestTmScore) { bestTmScore = score; bestTmVal = entry.eur; }
     }
-    if (bestTmScore >= 0.65 && Number.isFinite(bestTmVal) && bestTmVal > 0) {
+    if (bestTmScore >= 0.55 && Number.isFinite(bestTmVal) && bestTmVal > 0) {
       next.marketValue = formatEURShort(bestTmVal);
       next.isRealValue = true;
       next.valueMethod = "transfermarkt-fuzzy";
@@ -2141,14 +2181,14 @@ async function enrichRosterPhotos(players, teamName) {
     // Exact match first
     const photo = tmPhotoMap.get(normName);
     if (photo) return { ...player, photo };
-    // Fuzzy match via similarity score (threshold lowered: our improved similarityScore handles initials)
+    // Fuzzy match via similarity score
     let bestPhoto = null;
     let bestScore = 0;
     for (const entry of tmPhotoEntries) {
       const score = similarityScore(normName, entry.normed);
       if (score > bestScore) { bestScore = score; bestPhoto = entry.photo; }
     }
-    if (bestScore >= 0.6 && bestPhoto) return { ...player, photo: bestPhoto };
+    if (bestScore >= 0.55 && bestPhoto) return { ...player, photo: bestPhoto };
     return player;
   });
 
@@ -2180,7 +2220,7 @@ async function enrichRosterPhotos(players, teamName) {
       const score = similarityScore(normName, dbp.name || "");
       if (score > bestDbScore) { bestDbScore = score; bestDbPhoto = dbp.photo; }
     }
-    if (bestDbScore >= 0.6 && bestDbPhoto) return { ...player, photo: bestDbPhoto };
+    if (bestDbScore >= 0.55 && bestDbPhoto) return { ...player, photo: bestDbPhoto };
 
     // Last-name fallback when only one candidate shares the last name
     const lastNameParts = normName.split(" ");
@@ -2196,7 +2236,50 @@ async function enrichRosterPhotos(players, teamName) {
     return player;
   });
 
-  // Step 3: ESPN CDN headshot fallback for players with ESPN IDs
+  // Step 3: TheSportsDB individual player search for remaining players without photos
+  const stillNeedPhoto = enriched.filter((p) => p && !p.photo);
+  if (stillNeedPhoto.length > 0 && stillNeedPhoto.length <= 20) {
+    const searchResults = await Promise.all(
+      stillNeedPhoto.map(async (player) => {
+        try {
+          const q = encodeURIComponent(String(player.name || "").trim());
+          if (!q) return [player.name, null];
+          const resp = await fetch(`https://www.thesportsdb.com/api/v1/json/3/searchplayers.php?p=${q}`, {
+            headers: { "user-agent": "Mozilla/5.0 (Nexora/1.0)" },
+            signal: AbortSignal.timeout(5000),
+          });
+          if (!resp.ok) return [player.name, null];
+          const data = await resp.json();
+          const results = Array.isArray(data?.player) ? data.player : [];
+          const normName = normalizePersonName(player.name || "");
+          for (const r of results) {
+            const rName = normalizePersonName(r?.strPlayer || "");
+            const score = similarityScore(normName, rName);
+            const photo = r?.strCutout || r?.strThumb || r?.strRender || null;
+            if (score >= 0.6 && photo && /^https?:\/\//i.test(photo)) {
+              return [player.name, photo];
+            }
+          }
+          return [player.name, null];
+        } catch {
+          return [player.name, null];
+        }
+      })
+    );
+    const searchPhotoMap = new Map();
+    for (const [name, photo] of searchResults) {
+      if (name && photo) searchPhotoMap.set(name, photo);
+    }
+    if (searchPhotoMap.size > 0) {
+      enriched = enriched.map((player) => {
+        if (!player || player.photo) return player;
+        const found = searchPhotoMap.get(player.name);
+        return found ? { ...player, photo: found } : player;
+      });
+    }
+  }
+
+  // Step 4: ESPN CDN headshot fallback for players with ESPN IDs
   enriched = enriched.map((player) => {
     if (!player || player.photo) return player;
     const espnId = String(player.id || "").trim();
@@ -2382,8 +2465,12 @@ function normalizeLeagueName(name) {
   if (/europa.?league/i.test(n) || /uefa.?europa/i.test(n)) return "UEFA Europa League";
   // Conference League variants
   if (/conference.?league/i.test(n) || /uefa.?conference/i.test(n) || /europa.?conference/i.test(n)) return "UEFA Conference League";
-  // Belgium
+  // Belgian second division (must be checked BEFORE generic pro league pattern)
+  if (/challenger/i.test(n) || /bel\.?2/i.test(n) || /belgian.?second/i.test(n) || /tweede.*klasse/i.test(n)) return "Challenger Pro League";
+  // Belgium first division
   if (/jupiler|pro.?league|belgian.?first|eerste.*klasse/i.test(n)) return "Jupiler Pro League";
+  // Belgian Cup
+  if (/belgian.?cup|beker.*belgi/i.test(n)) return "Belgian Cup";
   // Premier League
   if (/premier.?league|epl|english.?premier/i.test(n)) return "Premier League";
   // La Liga
@@ -2433,6 +2520,7 @@ const LEAGUE_IDS = {
   "La Liga": 140,
   "Bundesliga": 78,
   "Jupiler Pro League": 144,
+  "Challenger Pro League": 145,
   "Ligue 1": 61,
   "Serie A": 135,
 };
@@ -2445,6 +2533,7 @@ const HERO_GRADIENTS = {
   "La Liga": ["#1A0810", "#0D0408"],
   "Bundesliga": ["#1A0808", "#0D0404"],
   "Jupiler Pro League": ["#0A1A0F", "#050D08"],
+  "Challenger Pro League": ["#0A1A0F", "#050D08"],
   "Ligue 1": ["#0E0A1A", "#07050D"],
   "Serie A": ["#0A101A", "#05080D"],
 };
