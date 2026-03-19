@@ -4599,30 +4599,30 @@ function mapEspnSummaryDetails(summary) {
 }
 
 const MATCH_STAT_ALIASES = {
-  possession: ["ball_possession", "possession", "possession_pct", "possessionPct"],
-  total_shots: ["total_shots", "shots", "totalShots", "shots_total", "shots_total_total"],
-  shots_on_target: ["shots_on_goal", "shots_on_target", "shotsOnTarget", "shotsOnGoal"],
-  shots_off_target: ["shots_off_goal", "shots_off_target", "shotsOffTarget"],
-  expected_goals: ["expected_goals", "xg", "expectedGoals"],
-  big_chances: ["big_chances", "bigChances"],
-  corners: ["corner_kicks", "corners", "cornerKicks"],
-  crosses: ["crosses", "crosses_total", "crossesTotal"],
+  possession: ["ball_possession", "possession", "possession_pct", "possessionPct", "possessionpct"],
+  total_shots: ["total_shots", "shots", "totalShots", "shots_total", "shots_total_total", "totalshots"],
+  shots_on_target: ["shots_on_goal", "shots_on_target", "shotsOnTarget", "shotsOnGoal", "shotsontarget"],
+  shots_off_target: ["shots_off_goal", "shots_off_target", "shotsOffTarget", "shotsofftarget"],
+  expected_goals: ["expected_goals", "xg", "expectedGoals", "expectedgoals"],
+  big_chances: ["big_chances", "bigChances", "bigchances"],
+  corners: ["corner_kicks", "corners", "cornerKicks", "wonCorners", "woncorners"],
+  crosses: ["crosses", "crosses_total", "crossesTotal", "totalcrosses", "totalCrosses", "accuratecrosses"],
   successful_dribbles: ["successful_dribbles", "dribbles_completed", "dribblesCompleted"],
   passes_final_third: ["passes_final_third", "passesFinalThird", "passes_in_final_third"],
   touches_in_box: ["touches_in_box", "touches_inside_box", "touchesInBox", "touches_in_opposition_box"],
-  total_passes: ["total_passes", "passes", "passes_total", "totalPasses"],
-  pass_accuracy: ["pass_accuracy", "passAccuracy", "passes_pct", "passes_accurate_pct"],
-  key_passes: ["key_passes", "keyPasses"],
+  total_passes: ["total_passes", "passes", "passes_total", "totalPasses", "totalpasses", "accuratepasses"],
+  pass_accuracy: ["pass_accuracy", "passAccuracy", "passes_pct", "passes_accurate_pct", "passpct"],
+  key_passes: ["key_passes", "keyPasses", "keypasses"],
   progressive_passes: ["progressive_passes", "progressivePasses"],
   through_balls: ["through_balls", "throughBalls"],
-  tackles: ["total_tackles", "tackles", "tacklesWon"],
+  tackles: ["total_tackles", "tackles", "tacklesWon", "effectivetackles", "totaltackles", "effectiveTackles", "totalTackles"],
   interceptions: ["interceptions"],
-  clearances: ["clearances"],
-  blocks: ["blocks", "blocked_shots", "blockedShots"],
+  clearances: ["clearances", "effectiveclearance", "totalclearance", "effectiveClearance", "totalClearance"],
+  blocks: ["blocks", "blocked_shots", "blockedShots", "blockedshots"],
   duels_won: ["duels_won", "duelsWon", "aerial_won", "aerialWon", "ground_duels_won"],
-  fouls: ["fouls", "foulsCommitted"],
-  yellow_cards: ["yellow_cards", "yellowCards"],
-  red_cards: ["red_cards", "redCards"],
+  fouls: ["fouls", "foulsCommitted", "foulscommitted"],
+  yellow_cards: ["yellow_cards", "yellowCards", "yellowcards"],
+  red_cards: ["red_cards", "redCards", "redcards"],
   saves: ["goalkeeper_saves", "goalkeeperSaves", "saves"],
   goals_prevented: ["goals_prevented", "goalsPrevented"],
   punches: ["punches", "claims", "punches_claims"],
@@ -4919,8 +4919,14 @@ function buildAdvancedStats(homeStatsRaw, awayStatsRaw, timeline) {
     const keyPasses = read("key_passes") ?? countTimelineEvents(timeline, side, ["goal", "penalty_goal", "chance"]);
     const bigChances = read("big_chances") ?? countTimelineEvents(timeline, side, ["goal", "penalty_goal", "chance", "missed_penalty"]);
 
+    const readRaw = (key) => { const v = firstStatValue(rawStats, MATCH_STAT_ALIASES[key] || []); return v != null ? toNum(v) : null; };
+    const rawPassAcc = readRaw("pass_accuracy");
+    const passAccuracy = rawPassAcc != null && rawPassAcc > 0 && rawPassAcc <= 1 ? Math.round(rawPassAcc * 100) : rawPassAcc != null ? Math.round(rawPassAcc) : null;
+    const rawPossession = readRaw("possession");
+    const possession = rawPossession != null && rawPossession > 0 && rawPossession <= 1 ? Math.round(rawPossession * 100) : rawPossession != null ? Math.round(rawPossession) : null;
+
     return Object.fromEntries(Object.entries({
-      possession: read("possession"),
+      possession,
       total_shots: totalShots,
       shots_on_target: shotsOnTarget,
       shots_off_target: shotsOffTarget,
@@ -4932,7 +4938,7 @@ function buildAdvancedStats(homeStatsRaw, awayStatsRaw, timeline) {
       passes_final_third: passesFinalThird,
       touches_in_box: touchesInBox,
       total_passes: read("total_passes"),
-      pass_accuracy: read("pass_accuracy"),
+      pass_accuracy: passAccuracy,
       key_passes: keyPasses,
       progressive_passes: read("progressive_passes"),
       through_balls: read("through_balls"),
@@ -5947,10 +5953,10 @@ app.get("/api/sports/team/:teamId", async (req, res) => {
         "saudi arabia": "655", scotland: "580", senegal: "654", "south africa": "467",
         "south korea": "451", spain: "164", switzerland: "475", tunisia: "659",
         "united states": "660", usa: "660", uruguay: "212", uzbekistan: "2570",
-        wales: "7825", italy: "247", poland: "7820", denmark: "376",
+        italy: "162", wales: "7825", poland: "7820", denmark: "376",
         sweden: "7824", ukraine: "7827", turkey: "10010", "czech republic": "7802",
-        romania: "7822", serbia: "8723", chile: "7796", cameroon: "7795",
-        nigeria: "7818", ireland: "8702",
+        romania: "7822", serbia: "8723", chile: "207", cameroon: "656",
+        nigeria: "657", ireland: "8702",
       };
 
       if (teamId.startsWith("name:")) {
@@ -5994,8 +6000,8 @@ app.get("/api/sports/team/:teamId", async (req, res) => {
         } catch {}
       }
 
-      // For national teams, also try fifa.friendly if fifa.world fails
-      const leagueVariants = espnLeague.includes("fifa") ? [espnLeague, "fifa.friendly"] : [espnLeague];
+      // For national teams, try multiple league contexts for roster data
+      const leagueVariants = espnLeague.includes("fifa") ? [espnLeague, "fifa.friendly", "uefa.nations", "uefa.euro"] : [espnLeague];
 
       let teamJson = {};
       let rosterJson = {};
@@ -6068,7 +6074,16 @@ app.get("/api/sports/team/:teamId", async (req, res) => {
         name: teamDisplayName || "Team",
         shortName: team?.abbreviation || team?.shortDisplayName || "",
         logo: resolvedLogo,
-        color: (typeof team?.color === "string" && /^[0-9a-fA-F]{3,8}$/.test(team.color.replace("#", ""))) ? `#${String(team.color).replace("#", "")}` : "#151515",
+        color: (() => {
+          const raw = String(team?.color || "").replace("#", "");
+          if (!/^[0-9a-fA-F]{3,8}$/.test(raw)) return "#1a3a6b";
+          const hex = raw.length === 3 ? raw.split("").map(c => c + c).join("") : raw.slice(0, 6);
+          const r = parseInt(hex.slice(0, 2), 16), g = parseInt(hex.slice(2, 4), 16), b = parseInt(hex.slice(4, 6), 16);
+          const lum = (0.299 * r + 0.587 * g + 0.114 * b);
+          if (lum > 220) return "#1a3a6b"; // too bright (e.g. #ffffff)
+          if (lum < 25) return "#1a3a6b";  // too dark (e.g. #000000)
+          return `#${hex}`;
+        })(),
         leagueName: rosterJson?.team?.links?.[0]?.text || espnLeague,
         leagueRank: undefined,
         leaguePoints: undefined,
