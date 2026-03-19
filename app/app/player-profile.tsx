@@ -10,6 +10,7 @@ import { COLORS } from "@/constants/colors";
 import { apiRequest } from "@/lib/query-client";
 import { useTranslation } from "@/lib/useTranslation";
 import { t as tFn, getLanguage } from "@/lib/i18n";
+import { TeamLogo } from "@/components/TeamLogo";
 
 const UNKNOWN = "Unknown";
 
@@ -138,17 +139,17 @@ export default function PlayerProfileScreen() {
   });
 
   const safePlayerId = /^\d+$/.test(String(params.playerId || "").trim()) ? String(params.playerId).trim() : "";
-  const photoCandidates = [
+  const photoCandidates = useMemo(() => [
     data?.photo,
     safePlayerId ? `https://a.espncdn.com/i/headshots/soccer/players/full/${encodeURIComponent(safePlayerId)}.png` : null,
-  ].filter(Boolean) as string[];
+  ].filter(Boolean) as string[], [data?.photo, safePlayerId]);
 
   const [photoIdx, setPhotoIdx] = useState(0);
-  const photoUri = photoCandidates[photoIdx];
+  const photoUri = photoCandidates[photoIdx] || null;
 
   useEffect(() => {
     setPhotoIdx(0);
-  }, [photoCandidates.length]);
+  }, [photoCandidates.join(",")]);
 
   const badgeColor = colorFromSeed(`${data?.currentClub || params.team || "nexora"}`);
   const initials = initialsFromName(String(data?.name || params.name || "?"));
@@ -162,7 +163,7 @@ export default function PlayerProfileScreen() {
 
         <View style={styles.hero}>
           {photoUri ? (
-            <Image source={{ uri: photoUri }} style={[styles.photo, { backgroundColor: COLORS.card }]} resizeMode="contain" onError={() => setPhotoIdx((i) => (i + 1 < photoCandidates.length ? i + 1 : i))} />
+            <Image source={{ uri: photoUri }} style={[styles.photo, { backgroundColor: COLORS.card }]} resizeMode="contain" onError={() => setPhotoIdx((i) => i + 1)} />
           ) : (
             <View style={[styles.photo, styles.photoFallback, { borderColor: badgeColor }]}> 
               <Text style={styles.photoInitials}>{initials}</Text>
@@ -230,13 +231,35 @@ export default function PlayerProfileScreen() {
             {(Array.isArray(data?.formerClubs) ? data.formerClubs : []).length === 0 ? (
               <Text style={styles.placeholder}>{t("playerProfile.noTransferHistory")}</Text>
             ) : (
-              ((data?.formerClubs ?? []) as any[]).map((club, idx) => (
-                <View key={`${club?.name || "club"}_${idx}`} style={styles.clubRow}>
-                  <MaterialCommunityIcons name={club?.role === "to" ? "arrow-right-bold-circle-outline" : "arrow-left-bold-circle-outline"} size={15} color={COLORS.accent} />
-                  <Text style={styles.clubName}>{club?.name || "Unknown"}</Text>
-                  <Text style={styles.clubDate}>{club?.date || ""}</Text>
-                </View>
-              ))
+              <View style={styles.timeline}>
+                {((data?.formerClubs ?? []) as any[]).map((club, idx, arr) => {
+                  const isLast = idx === arr.length - 1;
+                  const isJoin = club?.role === "to";
+                  return (
+                    <View key={`${club?.name || "club"}_${idx}`} style={styles.timelineItem}>
+                      {/* Timeline line */}
+                      <View style={styles.timelineSide}>
+                        <View style={[styles.timelineDot, isJoin ? styles.timelineDotJoin : styles.timelineDotLeave]} />
+                        {!isLast && <View style={styles.timelineLine} />}
+                      </View>
+                      {/* Content */}
+                      <View style={styles.timelineContent}>
+                        <View style={styles.timelineRow}>
+                          <TeamLogo uri={club?.logo} teamName={club?.name || "Unknown"} size={32} />
+                          <View style={styles.timelineInfo}>
+                            <Text style={styles.timelineClub} numberOfLines={1}>{club?.name || "Unknown"}</Text>
+                            <View style={styles.timelineMetaRow}>
+                              <Text style={styles.timelineLabel}>{isJoin ? "Joined" : "Left"}</Text>
+                              {club?.date ? <Text style={styles.timelineDate}>{club.date}</Text> : null}
+                            </View>
+                            {club?.fee ? <Text style={styles.timelineFee}>{club.fee}</Text> : null}
+                          </View>
+                        </View>
+                      </View>
+                    </View>
+                  );
+                })}
+              </View>
             )}
           </Card>
         </ScrollView>
@@ -281,7 +304,7 @@ const styles = StyleSheet.create({
   header: { paddingHorizontal: 16, paddingBottom: 16 },
   backBtn: { width: 38, height: 38, alignItems: "center", justifyContent: "center", marginBottom: 6 },
   hero: { alignItems: "center", gap: 6 },
-  photo: { width: 86, height: 86, borderRadius: 43 },
+  photo: { width: 110, height: 110, borderRadius: 55, borderWidth: 2, borderColor: "rgba(255,255,255,0.1)" },
   photoFallback: { backgroundColor: COLORS.card, alignItems: "center", justifyContent: "center", borderWidth: 2 },
   photoInitials: { fontFamily: "Inter_700Bold", fontSize: 24, color: COLORS.text },
   name: { fontFamily: "Inter_800ExtraBold", fontSize: 22, color: COLORS.text, textAlign: "center", paddingHorizontal: 16, maxWidth: "100%" },
@@ -327,4 +350,20 @@ const styles = StyleSheet.create({
   clubRow: { flexDirection: "row", alignItems: "center", gap: 8, borderBottomWidth: 1, borderBottomColor: COLORS.border, paddingVertical: 7 },
   clubName: { fontFamily: "Inter_500Medium", fontSize: 13, color: COLORS.text, flex: 1 },
   clubDate: { fontFamily: "Inter_400Regular", fontSize: 11, color: COLORS.textMuted },
+  // Timeline styles
+  timeline: { gap: 0 },
+  timelineItem: { flexDirection: "row", minHeight: 56 },
+  timelineSide: { width: 24, alignItems: "center" },
+  timelineDot: { width: 10, height: 10, borderRadius: 5, marginTop: 11 },
+  timelineDotJoin: { backgroundColor: "#4CAF82" },
+  timelineDotLeave: { backgroundColor: COLORS.accent },
+  timelineLine: { width: 2, flex: 1, backgroundColor: COLORS.border, marginVertical: 2 },
+  timelineContent: { flex: 1, paddingBottom: 12, paddingLeft: 8 },
+  timelineRow: { flexDirection: "row", alignItems: "center", gap: 10 },
+  timelineInfo: { flex: 1, gap: 2 },
+  timelineClub: { fontFamily: "Inter_600SemiBold", fontSize: 14, color: COLORS.text },
+  timelineMetaRow: { flexDirection: "row", alignItems: "center", gap: 6 },
+  timelineLabel: { fontFamily: "Inter_500Medium", fontSize: 11, color: COLORS.textMuted },
+  timelineDate: { fontFamily: "Inter_400Regular", fontSize: 11, color: COLORS.textSecondary },
+  timelineFee: { fontFamily: "Inter_600SemiBold", fontSize: 11, color: "#00C896", marginTop: 2 },
 });
