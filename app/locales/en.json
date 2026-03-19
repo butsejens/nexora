@@ -400,6 +400,7 @@
     "marketValues": "{{count}} market values available",
     "loadingPlayers": "Loading player info & market values...",
     "dataUnavailable": "Team data not available",
+    "retry": "Try again",
     "noPlayersFound": "No players found",
     "following": "Following",
     "follow": "Follow",

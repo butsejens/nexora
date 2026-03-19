@@ -5938,7 +5938,7 @@ app.get("/api/sports/team/:teamId", async (req, res) => {
   const key = `team_${teamId}_${season}_${espnLeague}`;
 
   try {
-    const payload = await getOrFetch(key, 60_000, async () => {
+    const payload = await getOrFetch(key, 1_800_000, async () => {
       let resolvedTeamId = teamId;
 
       // National team ID mapping — verified ESPN IDs from fifa.world/teams
@@ -5970,6 +5970,7 @@ app.get("/api/sports/team/:teamId", async (req, res) => {
           // Fallback: search teams list
           const teamsResp = await fetch(`https://site.api.espn.com/apis/site/v2/sports/soccer/${encodeURIComponent(espnLeague)}/teams`, {
             headers: { "user-agent": "Mozilla/5.0 (Nexora/1.0)", accept: "application/json" },
+            signal: AbortSignal.timeout(8000),
           });
           const teamsJson = teamsResp.ok ? await teamsResp.json() : {};
           const teams = teamsJson?.sports?.[0]?.leagues?.[0]?.teams || teamsJson?.teams || [];
@@ -5989,6 +5990,7 @@ app.get("/api/sports/team/:teamId", async (req, res) => {
         try {
           const fallbackResp = await fetch(`https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.world/teams`, {
             headers: { "user-agent": "Mozilla/5.0 (Nexora/1.0)", accept: "application/json" },
+            signal: AbortSignal.timeout(8000),
           });
           const fallbackJson = fallbackResp.ok ? await fallbackResp.json() : {};
           const fallbackTeams = fallbackJson?.sports?.[0]?.leagues?.[0]?.teams || fallbackJson?.teams || [];
@@ -6009,9 +6011,11 @@ app.get("/api/sports/team/:teamId", async (req, res) => {
         const [teamResp, rosterResp] = await Promise.all([
           fetch(`https://site.api.espn.com/apis/site/v2/sports/soccer/${encodeURIComponent(leagueSlug)}/teams/${encodeURIComponent(resolvedTeamId)}`, {
             headers: { "user-agent": "Mozilla/5.0 (Nexora/1.0)", accept: "application/json" },
+            signal: AbortSignal.timeout(8000),
           }),
           fetch(`https://site.api.espn.com/apis/site/v2/sports/soccer/${encodeURIComponent(leagueSlug)}/teams/${encodeURIComponent(resolvedTeamId)}/roster`, {
             headers: { "user-agent": "Mozilla/5.0 (Nexora/1.0)", accept: "application/json" },
+            signal: AbortSignal.timeout(8000),
           }),
         ]);
         teamJson = teamResp.ok ? await teamResp.json() : {};
@@ -6045,29 +6049,38 @@ app.get("/api/sports/team/:teamId", async (req, res) => {
         if (!dedup.has(id)) dedup.set(id, mapped);
       }
       const players = Array.from(dedup.values());
-      const valuedPlayers = await enrichRosterMarketValues(players, team?.displayName || team?.name || teamNameFromQuery || "", espnLeague);
-      const enrichedPlayers = await enrichRosterPhotos(
-        valuedPlayers,
-        team?.displayName || team?.name || teamNameFromQuery || ""
-      );
 
-      // Squad market value from Transfermarkt
-      const tmClubData = await fetchTransfermarktClubPlayers(team?.displayName || team?.name || teamNameFromQuery || "");
-      const clubMarketValue = tmClubData?._clubMarketValue || null;
-      const squadValue = clubMarketValue ? formatEURShort(clubMarketValue) : null;
-
+      // Build basic team response first (fast) — enrichment runs with a deadline
       const teamDisplayName = team?.displayName || team?.name || teamNameFromQuery || "";
       const isNationalTeam = espnLeague.includes("fifa") || /teamlogos\/countries/i.test(String(team?.logos?.[0]?.href || ""));
-      const footballLogosUrl = resolveFootballLogosUrl(teamDisplayName, normalizeLeagueName(espnLeague) || "");
-
-      const sportsDbLogo = await fetchTheSportsDBTeamLogo(teamDisplayName);
-      const wikipediaLogo = await fetchWikipediaTeamLogo(teamDisplayName);
       const espnLogo = team?.id ? `https://a.espncdn.com/i/teamlogos/soccer/500/${encodeURIComponent(String(team.id))}.png` : null;
       const rawTeamLogo = team?.logos?.[0]?.href || team?.logo || null;
+      const footballLogosUrl = resolveFootballLogosUrl(teamDisplayName, normalizeLeagueName(espnLeague) || "");
 
-      const resolvedLogo = isNationalTeam
-        ? normalizeTeamLogo(teamDisplayName, footballLogosUrl, sportsDbLogo, wikipediaLogo, rawTeamLogo, espnLogo)
-        : normalizeTeamLogo(teamDisplayName, footballLogosUrl, rawTeamLogo, espnLogo, sportsDbLogo, wikipediaLogo);
+      // Run enrichment + logo resolution with a 20-second deadline
+      const ENRICH_DEADLINE = 20_000;
+      const enrichResult = await Promise.race([
+        (async () => {
+          const valuedPlayers = await enrichRosterMarketValues(players, teamDisplayName, espnLeague);
+          const enrichedPlayers = await enrichRosterPhotos(valuedPlayers, teamDisplayName);
+          const tmClubData = await fetchTransfermarktClubPlayers(teamDisplayName);
+          const clubMarketValue = tmClubData?._clubMarketValue || null;
+          const [sportsDbLogo, wikipediaLogo] = await Promise.all([
+            fetchTheSportsDBTeamLogo(teamDisplayName),
+            fetchWikipediaTeamLogo(teamDisplayName),
+          ]);
+          const resolvedLogo = isNationalTeam
+            ? normalizeTeamLogo(teamDisplayName, footballLogosUrl, sportsDbLogo, wikipediaLogo, rawTeamLogo, espnLogo)
+            : normalizeTeamLogo(teamDisplayName, footballLogosUrl, rawTeamLogo, espnLogo, sportsDbLogo, wikipediaLogo);
+          return { enrichedPlayers, squadMarketValue: clubMarketValue ? formatEURShort(clubMarketValue) : null, resolvedLogo };
+        })(),
+        new Promise((resolve) => setTimeout(() => resolve(null), ENRICH_DEADLINE)),
+      ]);
+
+      // If enrichment timed out, use basic player data and ESPN logo
+      const finalPlayers = enrichResult?.enrichedPlayers ?? players;
+      const squadValue = enrichResult?.squadMarketValue ?? null;
+      const resolvedLogo = enrichResult?.resolvedLogo ?? (rawTeamLogo || espnLogo || footballLogosUrl || null);
 
       return {
         id: String(team?.id || resolvedTeamId || ""),
@@ -6092,7 +6105,7 @@ app.get("/api/sports/team/:teamId", async (req, res) => {
         coach: team?.staff?.[0]?.displayName || "",
         record: "",
         squadMarketValue: squadValue,
-        players: enrichedPlayers,
+        players: finalPlayers,
         source: "espn",
       };
     });
