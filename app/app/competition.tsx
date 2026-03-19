@@ -251,7 +251,7 @@ export default function CompetitionScreen() {
   return (
     <View style={styles.container}>
       {/* Header */}
-      <Animated.View style={{ maxHeight: heroMaxHeight, overflow: "hidden" }}>
+      <Animated.View style={{ maxHeight: heroMaxHeight, overflow: "hidden", zIndex: 30 }}>
       <LinearGradient colors={[...gradColors, COLORS.background] as any}
         style={[styles.header, { paddingTop: topPad + 8 }]}>
         <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
@@ -296,16 +296,18 @@ export default function CompetitionScreen() {
 
       {/* Tabs */}
       <View style={styles.tabBar}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tabBarScroll}>
         {tabs.map(tab => (
           <TouchableOpacity
             key={tab.id}
             style={[styles.tab, activeTab === tab.id && styles.tabActive]}
             onPress={() => setActiveTab(tab.id)}
           >
-            <Ionicons name={tab.icon as any} size={16} color={activeTab === tab.id ? COLORS.accent : COLORS.textMuted} />
-            <Text style={[styles.tabText, activeTab === tab.id && styles.tabTextActive]}>{tab.label}</Text>
+            <Ionicons name={tab.icon as any} size={15} color={activeTab === tab.id ? COLORS.accent : COLORS.textMuted} />
+            <Text style={[styles.tabText, activeTab === tab.id && styles.tabTextActive]} numberOfLines={1}>{tab.label}</Text>
           </TouchableOpacity>
         ))}
+        </ScrollView>
       </View>
 
       {/* AI Storyline bar */}
@@ -327,8 +329,8 @@ export default function CompetitionScreen() {
         ) : (
           <ScrollView showsVerticalScrollIndicator={false} onScroll={onListScroll} scrollEventThrottle={16}>
             <View style={styles.standingsHeaderRow}>
-              <Text style={[styles.standingsHeaderCell, { width: 28 }]}>#</Text>
-              <Text style={[styles.standingsHeaderCell, { flex: 1 }]}>{t("competition.club")}</Text>
+              <Text style={[styles.standingsHeaderCell, { width: 24 }]}>#</Text>
+              <Text style={[styles.standingsHeaderCell, { flex: 1, textAlign: "left" }]}>{t("competition.club")}</Text>
               <Text style={styles.standingsHeaderCell}>{t("competition.mp")}</Text>
               <Text style={styles.standingsHeaderCell}>{t("competition.w")}</Text>
               <Text style={styles.standingsHeaderCell}>{t("competition.d")}</Text>
@@ -522,7 +524,7 @@ function StandingsRow({ team, rank, league, espnLeague }: { team: any; rank: num
       </View>
 
       <View style={styles.teamCell}>
-        <TeamLogo uri={team?.logo || null} teamName={String(team?.team || "")} size={28} />
+        <TeamLogo uri={team?.logo || null} teamName={String(team?.team || "")} size={24} />
         <Text style={styles.standingsTeamName} numberOfLines={1}>{team.team}</Text>
       </View>
 
@@ -612,8 +614,9 @@ const styles = StyleSheet.create({
     borderColor: `${COLORS.accent}66`, backgroundColor: `${COLORS.accent}22`,
   },
   headerBadgeText: { fontFamily: "Inter_600SemiBold", fontSize: 11, color: "rgba(255,255,255,0.75)" },
-  tabBar: { flexDirection: "row", borderBottomWidth: 1, borderBottomColor: COLORS.border, backgroundColor: COLORS.overlayLight, zIndex: 10 },
-  tab: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, paddingVertical: 13 },
+  tabBar: { borderBottomWidth: 1, borderBottomColor: COLORS.border, backgroundColor: COLORS.overlayLight, zIndex: 20 },
+  tabBarScroll: { flexDirection: "row", paddingHorizontal: 4 },
+  tab: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 5, paddingVertical: 13, paddingHorizontal: 14 },
   tabActive: { borderBottomWidth: 2, borderBottomColor: COLORS.accent },
   tabText: { fontFamily: "Inter_500Medium", fontSize: 13, color: COLORS.textMuted },
   tabTextActive: { color: COLORS.accent, fontFamily: "Inter_600SemiBold" },
@@ -626,23 +629,23 @@ const styles = StyleSheet.create({
 
   // Standings
   standingsHeaderRow: {
-    flexDirection: "row", alignItems: "center", paddingHorizontal: 16, paddingVertical: 8,
+    flexDirection: "row", alignItems: "center", paddingHorizontal: 10, paddingVertical: 8,
     borderBottomWidth: 1, borderBottomColor: COLORS.border, backgroundColor: COLORS.overlayLight,
   },
-  standingsHeaderCell: { fontFamily: "Inter_600SemiBold", fontSize: 11, color: COLORS.textMuted, width: 32, textAlign: "center" },
+  standingsHeaderCell: { fontFamily: "Inter_600SemiBold", fontSize: 11, color: COLORS.textMuted, width: 26, textAlign: "center" },
   standingsRow: {
-    flexDirection: "row", alignItems: "center", paddingHorizontal: 16, paddingVertical: 11,
+    flexDirection: "row", alignItems: "center", paddingHorizontal: 10, paddingVertical: 11,
     borderBottomWidth: 1, borderBottomColor: COLORS.border,
-    marginHorizontal: 12, marginBottom: 6, borderRadius: 12, backgroundColor: COLORS.cardElevated,
+    marginHorizontal: 10, marginBottom: 6, borderRadius: 12, backgroundColor: COLORS.cardElevated,
   },
   standingsRowTop: { backgroundColor: "rgba(0,212,255,0.03)" },
-  rankIndicator: { width: 28, height: 28, borderRadius: 6, alignItems: "center", justifyContent: "center" },
-  rankText: { fontFamily: "Inter_700Bold", fontSize: 13 },
-  teamCell: { flex: 1, flexDirection: "row", alignItems: "center", gap: 10, paddingLeft: 4 },
-  standingsLogo: { width: 28, height: 28, borderRadius: 14 },
+  rankIndicator: { width: 24, height: 24, borderRadius: 6, alignItems: "center", justifyContent: "center" },
+  rankText: { fontFamily: "Inter_700Bold", fontSize: 12 },
+  teamCell: { flex: 1, flexDirection: "row", alignItems: "center", gap: 8, paddingLeft: 4 },
+  standingsLogo: { width: 24, height: 24, borderRadius: 12 },
   logoPlaceholder: { backgroundColor: COLORS.card, alignItems: "center", justifyContent: "center" },
-  standingsTeamName: { fontFamily: "Inter_600SemiBold", fontSize: 13, color: COLORS.text, flex: 1 },
-  standingsCell: { width: 32, textAlign: "center", fontFamily: "Inter_400Regular", fontSize: 13, color: COLORS.textSecondary },
+  standingsTeamName: { fontFamily: "Inter_600SemiBold", fontSize: 12, color: COLORS.text, flex: 1 },
+  standingsCell: { width: 26, textAlign: "center", fontFamily: "Inter_400Regular", fontSize: 12, color: COLORS.textSecondary },
   standingsPts: { fontFamily: "Inter_700Bold", color: COLORS.accent },
 
   // Wedstrijden

@@ -805,7 +805,7 @@ export default function SportsScreen() {
   const toggleHeaderVisibility = useCallback((visible: boolean) => {
     if (showHeaderRef.current === visible) return;
     showHeaderRef.current = visible;
-    Animated.timing(headerAnim, { toValue: visible ? 1 : 0, duration: 200, useNativeDriver: false }).start();
+    Animated.timing(headerAnim, { toValue: visible ? 1 : 0, duration: 250, useNativeDriver: false }).start();
   }, [headerAnim]);
 
   const toggleFiltersVisibility = useCallback((visible: boolean) => {
@@ -1008,14 +1008,38 @@ export default function SportsScreen() {
     setRefreshing(false);
   }, [qc, selectedDate]);
 
+  const cumulativeDeltaRef = useRef(0);
+
   const handleFeedScroll = useCallback((event: any) => {
     const nextY = Number(event?.nativeEvent?.contentOffset?.y || 0);
     const prevY = lastScrollYRef.current;
     const delta = nextY - prevY;
     lastScrollYRef.current = nextY;
-    if (nextY <= 16) { toggleFiltersVisibility(true); toggleHeaderVisibility(true); return; }
-    if (delta > 12 && nextY > 120) { toggleFiltersVisibility(false); toggleHeaderVisibility(false); }
-    else if (delta < -10) { toggleFiltersVisibility(true); toggleHeaderVisibility(true); }
+
+    // At top: always show header
+    if (nextY <= 10) {
+      cumulativeDeltaRef.current = 0;
+      toggleFiltersVisibility(true);
+      toggleHeaderVisibility(true);
+      return;
+    }
+
+    // Accumulate scroll direction — reset on direction change
+    if ((delta > 0 && cumulativeDeltaRef.current < 0) || (delta < 0 && cumulativeDeltaRef.current > 0)) {
+      cumulativeDeltaRef.current = 0;
+    }
+    cumulativeDeltaRef.current += delta;
+
+    // Hide after 30px of cumulative downward scroll, past y=80
+    if (cumulativeDeltaRef.current > 30 && nextY > 80) {
+      toggleFiltersVisibility(false);
+      toggleHeaderVisibility(false);
+    }
+    // Show after 20px of cumulative upward scroll
+    else if (cumulativeDeltaRef.current < -20) {
+      toggleFiltersVisibility(true);
+      toggleHeaderVisibility(true);
+    }
   }, [toggleFiltersVisibility, toggleHeaderVisibility]);
 
   const sportToolSourceMatches = useMemo(() => {
@@ -1281,13 +1305,13 @@ export default function SportsScreen() {
   return (
     <View style={styles.container}>
       {/* Mini title bar – visible when header is scrolled away */}
-      <Animated.View style={{ opacity: miniTitleOpacity, position: "absolute", top: 0, left: 0, right: 0, zIndex: 20, paddingTop: Platform.OS === "web" ? 10 : insets.top + 6, paddingBottom: 8, paddingHorizontal: 16, backgroundColor: COLORS.background }} pointerEvents="none">
+      <Animated.View style={{ opacity: miniTitleOpacity, position: "absolute", top: 0, left: 0, right: 0, zIndex: 100, paddingTop: Platform.OS === "web" ? 10 : insets.top + 6, paddingBottom: 8, paddingHorizontal: 16, backgroundColor: COLORS.background }} pointerEvents="none">
         <Text style={{ fontFamily: "Inter_800ExtraBold", fontSize: 16, color: COLORS.text, letterSpacing: 1 }}>
           <Text style={{ color: COLORS.accent }}>N</Text>EXORA <Text style={{ color: COLORS.accent }}>SPORT</Text>
         </Text>
       </Animated.View>
 
-      <Animated.View style={{ opacity: headerOpacity, maxHeight: headerMaxHeight, overflow: "hidden" }}>
+      <Animated.View style={{ opacity: headerOpacity, maxHeight: headerMaxHeight, overflow: "hidden", zIndex: 50 }}>
         <NexoraHeader
           title="SPORT"
           titleColor={P.accent}
@@ -1302,7 +1326,7 @@ export default function SportsScreen() {
       </Animated.View>
 
       {/* ── Sports Sub-Nav ── */}
-      <Animated.View style={{ opacity: headerOpacity, maxHeight: headerAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 56] }), overflow: "hidden" }}>
+      <Animated.View style={{ opacity: headerOpacity, maxHeight: headerAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 56] }), overflow: "hidden", zIndex: 40 }}>
       <View style={styles.subNav}>
         <ScrollView
           horizontal
@@ -1578,7 +1602,7 @@ export default function SportsScreen() {
                   style={styles.compListRow}
                   onPress={() => {
                     if (comp.tier === "national" && comp.nationalTeamName) {
-                      router.push({ pathname: "/team-detail", params: { teamId: `name:${encodeURIComponent(comp.nationalTeamName)}`, teamName: comp.nationalTeamName, sport: "soccer", league: comp.espn } });
+                      router.push({ pathname: "/team-detail", params: { teamId: `name:${encodeURIComponent(comp.nationalTeamName)}`, teamName: comp.nationalTeamName, sport: "soccer", league: comp.espn, espnLeague: comp.espn } });
                     } else {
                       handleCompetitionPress(comp);
                     }

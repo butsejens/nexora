@@ -165,7 +165,7 @@ export default function PlayerProfileScreen() {
           <Ionicons name="chevron-back" size={24} color={COLORS.text} />
         </TouchableOpacity>
 
-        <Animated.View style={{ opacity: heroOpacity, maxHeight: heroMaxHeight, overflow: "hidden" }}>
+        <Animated.View style={{ opacity: heroOpacity, maxHeight: heroMaxHeight, overflow: "hidden", zIndex: 30 }}>
         <View style={styles.hero}>
           {photoUri ? (
             <Image source={{ uri: photoUri }} style={[styles.photo, { backgroundColor: COLORS.card }]} resizeMode="contain" onError={() => setPhotoIdx((i) => i + 1)} />

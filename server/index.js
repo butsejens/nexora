@@ -5789,33 +5789,62 @@ app.get("/api/sports/team/:teamId", async (req, res) => {
   try {
     const payload = await getOrFetch(key, 60_000, async () => {
       let resolvedTeamId = teamId;
+
+      // National team ID mapping — ESPN IDs for FIFA world teams
+      const NATIONAL_TEAM_IDS = {
+        belgium: "187", netherlands: "7809", england: "660", spain: "164", germany: "131",
+        france: "478", italy: "247", portugal: "7813", brazil: "6", argentina: "1",
+        croatia: "468", denmark: "376", sweden: "7824", norway: "7819", switzerland: "376",
+        poland: "7820", austria: "17", scotland: "378", wales: "7825", ireland: "8702",
+        usa: "660", japan: "464", mexico: "7805", "united states": "660",
+        ukraine: "7827", turkey: "10010", czech republic: "7802", romania: "7822",
+        serbia: "8723", colombia: "7797", uruguay: "7828", chile: "7796",
+        morocco: "7806", senegal: "7823", nigeria: "7818", cameroon: "7795",
+      };
+
       if (teamId.startsWith("name:")) {
         const rawName = decodeURIComponent(teamId.replace(/^name:/, "")).toLowerCase();
-        const teamsResp = await fetch(`https://site.api.espn.com/apis/site/v2/sports/soccer/${encodeURIComponent(espnLeague)}/teams`, {
-          headers: { "user-agent": "Mozilla/5.0 (Nexora/1.0)", accept: "application/json" },
-        });
-        const teamsJson = teamsResp.ok ? await teamsResp.json() : {};
-        const teams = teamsJson?.sports?.[0]?.leagues?.[0]?.teams || teamsJson?.teams || [];
-        const found = teams
-          .map((t) => t?.team || t)
-          .find((t) => {
-            const n = String(t?.displayName || t?.name || "").toLowerCase();
-            return n === rawName || n.includes(rawName) || rawName.includes(n);
+
+        // Try direct national team ID mapping first
+        const nationalId = NATIONAL_TEAM_IDS[rawName];
+        if (nationalId && espnLeague.includes("fifa")) {
+          resolvedTeamId = nationalId;
+        } else {
+          // Fallback: search teams list
+          const teamsResp = await fetch(`https://site.api.espn.com/apis/site/v2/sports/soccer/${encodeURIComponent(espnLeague)}/teams`, {
+            headers: { "user-agent": "Mozilla/5.0 (Nexora/1.0)", accept: "application/json" },
           });
-        if (found?.id) resolvedTeamId = String(found.id);
+          const teamsJson = teamsResp.ok ? await teamsResp.json() : {};
+          const teams = teamsJson?.sports?.[0]?.leagues?.[0]?.teams || teamsJson?.teams || [];
+          const found = teams
+            .map((t) => t?.team || t)
+            .find((t) => {
+              const n = String(t?.displayName || t?.name || "").toLowerCase();
+              return n === rawName || n.includes(rawName) || rawName.includes(n);
+            });
+          if (found?.id) resolvedTeamId = String(found.id);
+        }
       }
 
-      const [teamResp, rosterResp] = await Promise.all([
-        fetch(`https://site.api.espn.com/apis/site/v2/sports/soccer/${encodeURIComponent(espnLeague)}/teams/${encodeURIComponent(resolvedTeamId)}`, {
-          headers: { "user-agent": "Mozilla/5.0 (Nexora/1.0)", accept: "application/json" },
-        }),
-        fetch(`https://site.api.espn.com/apis/site/v2/sports/soccer/${encodeURIComponent(espnLeague)}/teams/${encodeURIComponent(resolvedTeamId)}/roster`, {
-          headers: { "user-agent": "Mozilla/5.0 (Nexora/1.0)", accept: "application/json" },
-        }),
-      ]);
+      // For national teams, also try fifa.friendly if fifa.world fails
+      const leagueVariants = espnLeague.includes("fifa") ? [espnLeague, "fifa.friendly"] : [espnLeague];
 
-      const teamJson = teamResp.ok ? await teamResp.json() : {};
-      const rosterJson = rosterResp.ok ? await rosterResp.json() : {};
+      let teamJson = {};
+      let rosterJson = {};
+      for (const leagueSlug of leagueVariants) {
+        const [teamResp, rosterResp] = await Promise.all([
+          fetch(`https://site.api.espn.com/apis/site/v2/sports/soccer/${encodeURIComponent(leagueSlug)}/teams/${encodeURIComponent(resolvedTeamId)}`, {
+            headers: { "user-agent": "Mozilla/5.0 (Nexora/1.0)", accept: "application/json" },
+          }),
+          fetch(`https://site.api.espn.com/apis/site/v2/sports/soccer/${encodeURIComponent(leagueSlug)}/teams/${encodeURIComponent(resolvedTeamId)}/roster`, {
+            headers: { "user-agent": "Mozilla/5.0 (Nexora/1.0)", accept: "application/json" },
+          }),
+        ]);
+        teamJson = teamResp.ok ? await teamResp.json() : {};
+        rosterJson = rosterResp.ok ? await rosterResp.json() : {};
+        // If we got team data, stop trying variants
+        if (teamJson?.team?.id || teamJson?.team?.displayName) break;
+      }
       const team = teamJson?.team || {};
 
       const flattenAthletes = (input) => {
