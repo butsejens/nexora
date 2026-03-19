@@ -80,6 +80,7 @@ export default function TeamDetailScreen() {
   const scrollY = useRef(new Animated.Value(0)).current;
   const lastScrollY = useRef(0);
   const filterTranslateY = useRef(new Animated.Value(0)).current;
+  const activeSpring = useRef<Animated.CompositeAnimation | null>(null);
   const handleScroll = useMemo(() => Animated.event(
     [{ nativeEvent: { contentOffset: { y: scrollY } } }],
     {
@@ -87,12 +88,18 @@ export default function TeamDetailScreen() {
       listener: (e: any) => {
         const currentY = e.nativeEvent.contentOffset.y;
         const diff = currentY - lastScrollY.current;
+        let toValue: number | null = null;
         if (currentY <= 10) {
-          Animated.spring(filterTranslateY, { toValue: 0, useNativeDriver: true, tension: 80, friction: 12 }).start();
+          toValue = 0;
         } else if (diff > 4) {
-          Animated.spring(filterTranslateY, { toValue: -120, useNativeDriver: true, tension: 80, friction: 12 }).start();
+          toValue = -120;
         } else if (diff < -4) {
-          Animated.spring(filterTranslateY, { toValue: 0, useNativeDriver: true, tension: 80, friction: 12 }).start();
+          toValue = 0;
+        }
+        if (toValue !== null) {
+          if (activeSpring.current) activeSpring.current.stop();
+          activeSpring.current = Animated.spring(filterTranslateY, { toValue, useNativeDriver: true, tension: 80, friction: 12 });
+          activeSpring.current.start(() => { activeSpring.current = null; });
         }
         lastScrollY.current = currentY;
       },
@@ -171,7 +178,9 @@ export default function TeamDetailScreen() {
   }, [players]);
 
   const positions = Object.keys(positionGroups).sort((a, b) => {
-    return (POSITION_ORDER.indexOf(a) ?? 99) - (POSITION_ORDER.indexOf(b) ?? 99);
+    const ia = POSITION_ORDER.indexOf(a);
+    const ib = POSITION_ORDER.indexOf(b);
+    return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib);
   });
 
   const parseValueToNumber = (value: string): number => {
@@ -215,9 +224,9 @@ export default function TeamDetailScreen() {
     return team && current && (team.includes(current) || current.includes(team));
   });
 
-  const heroOpacity = scrollY.interpolate({ inputRange: [0, 100], outputRange: [1, 0], extrapolate: "clamp" });
-  const heroTranslateY = scrollY.interpolate({ inputRange: [0, 100], outputRange: [0, -40], extrapolate: "clamp" });
-  const heroScale = scrollY.interpolate({ inputRange: [0, 100], outputRange: [1, 0.92], extrapolate: "clamp" });
+  const heroOpacity = useMemo(() => scrollY.interpolate({ inputRange: [0, 100], outputRange: [1, 0], extrapolate: "clamp" }), []);
+  const heroTranslateY = useMemo(() => scrollY.interpolate({ inputRange: [0, 100], outputRange: [0, -40], extrapolate: "clamp" }), []);
+  const heroScale = useMemo(() => scrollY.interpolate({ inputRange: [0, 100], outputRange: [1, 0.92], extrapolate: "clamp" }), []);
 
   return (
     <View style={styles.container}>
@@ -328,7 +337,7 @@ export default function TeamDetailScreen() {
       ) : (
         <>
           {/* Player list */}
-          <FlatList
+          <Animated.FlatList
             data={filteredPlayers}
             keyExtractor={(item, idx) => String(item.id || idx)}
             renderItem={({ item }) => (
@@ -390,7 +399,6 @@ export default function TeamDetailScreen() {
                 </ScrollView>
               </Animated.View>
             ) : null}
-            stickyHeaderIndices={positions.length > 1 ? [0] : undefined}
             onScroll={handleScroll}
             scrollEventThrottle={16}
             contentContainerStyle={styles.playerList}
