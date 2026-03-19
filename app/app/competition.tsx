@@ -14,6 +14,7 @@ import { COLORS } from "@/constants/colors";
 import { apiRequest } from "@/lib/query-client";
 import { normalizeApiError } from "@/lib/error-messages";
 import { resolveTeamLogoUri, getLeagueLogo } from "@/lib/logo-manager";
+import { TeamLogo } from "@/components/TeamLogo";
 
 function asParam(value: string | string[] | undefined, fallback = ""): string {
   if (Array.isArray(value)) return String(value[0] || fallback);
@@ -406,8 +407,6 @@ export default function CompetitionScreen() {
 function StandingsRow({ team, rank, league, espnLeague }: { team: any; rank: number; league: string; espnLeague: string }) {
   const isTop3 = rank <= 3;
   const isTopZone = rank <= 4;
-  const [logoError, setLogoError] = useState(false);
-  const teamLogo = !logoError ? resolveTeamLogoUri(String(team?.team || ""), team?.logo || null) : null;
   const rankColor = rank === 1 ? COLORS.gold : rank <= 3 ? COLORS.accent : COLORS.text;
 
   const handlePress = () => {
@@ -437,17 +436,7 @@ function StandingsRow({ team, rank, league, espnLeague }: { team: any; rank: num
       </View>
 
       <View style={styles.teamCell}>
-        {teamLogo ? (
-          <Image
-            source={typeof teamLogo === "number" ? teamLogo : { uri: teamLogo as string }}
-            style={styles.standingsLogo}
-            onError={() => setLogoError(true)}
-          />
-        ) : (
-          <View style={[styles.standingsLogo, styles.logoPlaceholder]}>
-            <Ionicons name="shield" size={12} color={COLORS.textMuted} />
-          </View>
-        )}
+        <TeamLogo uri={team?.logo || null} teamName={String(team?.team || "")} size={18} />
         <Text style={styles.standingsTeamName} numberOfLines={1}>{team.team}</Text>
       </View>
 
@@ -467,8 +456,6 @@ function StandingsRow({ team, rank, league, espnLeague }: { team: any; rank: num
 
 function ScorerRow({ scorer, rank, league, espnLeague }: { scorer: any; rank: number; league: string; espnLeague: string }) {
   const rankColor = rank === 1 ? COLORS.gold : rank === 2 ? "#C0C0C0" : rank === 3 ? "#CD7F32" : COLORS.textMuted;
-  const [teamLogoError, setTeamLogoError] = useState(false);
-  const teamLogo = !teamLogoError ? resolveTeamLogoUri(String(scorer?.team || ""), scorer?.teamLogo || null) : null;
 
   const handlePress = () => {
     if (!scorer.id) return;
@@ -497,7 +484,7 @@ function ScorerRow({ scorer, rank, league, espnLeague }: { scorer: any; rank: nu
       <View style={styles.scorerInfo}>
         <Text style={styles.scorerName}>{scorer.name}</Text>
         <View style={styles.scorerTeamRow}>
-          {teamLogo ? <Image source={typeof teamLogo === "number" ? teamLogo : { uri: teamLogo as string }} style={styles.scorerTeamLogo} onError={() => setTeamLogoError(true)} /> : null}
+          <TeamLogo uri={scorer?.teamLogo || null} teamName={String(scorer?.team || "")} size={16} />
           <Text style={styles.scorerTeam}>{scorer.team}</Text>
         </View>
         {scorer.marketValue ? (

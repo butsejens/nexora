@@ -578,6 +578,181 @@ const TEAM_LOGO_ALIASES = {
   "levski sofia": "PFC Levski Sofia",
 };
 
+// Reverse lookup: team filename → domestic league folder
+// Built once at startup from TEAM_LOGO_ALIASES + LEAGUE_TO_LOGO_FOLDER
+const TEAM_FILENAME_TO_FOLDER = (() => {
+  const map = {};
+  // Group aliases by the comment-section they belong to (Belgium, England, etc.)
+  // We build it by mapping each alias fileName to ALL league folders that could contain it.
+  // Strategy: team aliases are grouped by country in comments. We map fileName → country folder.
+  const fileNameToCountry = {};
+  // Build from the alias table: each alias entry has a filename value.
+  // The comment structure shows which country group each team belongs to.
+  // We can infer via the known folder list.
+  const folderByCountryKeyword = {};
+  for (const [, folder] of Object.entries(LEAGUE_TO_LOGO_FOLDER)) {
+    if (!folder) continue;
+    // Extract country part: "England - Premier League" → "england"
+    const country = folder.split(" - ")[0].toLowerCase().trim();
+    if (!folderByCountryKeyword[country]) folderByCountryKeyword[country] = folder;
+  }
+  // Hard-map known teams to their domestic folder by filename patterns
+  const teamCountryMap = {
+    // Belgium
+    "Club Brugge KV": "Belgium - Jupiler Pro League", "KRC Genk": "Belgium - Jupiler Pro League",
+    "Royal Antwerp FC": "Belgium - Jupiler Pro League", "KAA Gent": "Belgium - Jupiler Pro League",
+    "RSC Anderlecht": "Belgium - Jupiler Pro League", "Standard Liège": "Belgium - Jupiler Pro League",
+    "Union Saint-Gilloise": "Belgium - Jupiler Pro League", "Cercle Brugge": "Belgium - Jupiler Pro League",
+    "Oud-Heverlee Leuven": "Belgium - Jupiler Pro League", "KV Mechelen": "Belgium - Jupiler Pro League",
+    "Sint-Truidense VV": "Belgium - Jupiler Pro League", "KVC Westerlo": "Belgium - Jupiler Pro League",
+    "FCV Dender EH": "Belgium - Jupiler Pro League", "Zulte Waregem": "Belgium - Jupiler Pro League",
+    "RAAL La Louvière": "Belgium - Jupiler Pro League", "Royal Charleroi SC": "Belgium - Jupiler Pro League",
+    "KV Kortrijk": "Belgium - Jupiler Pro League", "RWDM": "Belgium - Jupiler Pro League",
+    "Beerschot VA": "Belgium - Jupiler Pro League",
+    // England
+    "Arsenal FC": "England - Premier League", "Aston Villa": "England - Premier League",
+    "AFC Bournemouth": "England - Premier League", "Brentford FC": "England - Premier League",
+    "Brighton & Hove Albion": "England - Premier League", "Burnley FC": "England - Premier League",
+    "Chelsea FC": "England - Premier League", "Crystal Palace": "England - Premier League",
+    "Everton FC": "England - Premier League", "Fulham FC": "England - Premier League",
+    "Leeds United": "England - Premier League", "Liverpool FC": "England - Premier League",
+    "Manchester City": "England - Premier League", "Manchester United": "England - Premier League",
+    "Newcastle United": "England - Premier League", "Nottingham Forest": "England - Premier League",
+    "Sunderland AFC": "England - Premier League", "Tottenham Hotspur": "England - Premier League",
+    "West Ham United": "England - Premier League", "Wolverhampton Wanderers": "England - Premier League",
+    "Leicester City": "England - Premier League", "Ipswich Town": "England - Premier League",
+    "Southampton FC": "England - Premier League", "Sheffield United": "England - Premier League",
+    "Luton Town": "England - Premier League", "Watford FC": "England - Premier League",
+    "Norwich City": "England - Premier League", "West Bromwich Albion": "England - Premier League",
+    "Middlesbrough FC": "England - Premier League", "Coventry City": "England - Premier League",
+    "Stoke City": "England - Premier League", "Hull City": "England - Premier League",
+    "Blackburn Rovers": "England - Premier League", "Swansea City": "England - Premier League",
+    "Queens Park Rangers": "England - Premier League",
+    // Spain
+    "Real Madrid": "Spain - LaLiga", "FC Barcelona": "Spain - LaLiga",
+    "Atlético de Madrid": "Spain - LaLiga", "Real Sociedad": "Spain - LaLiga",
+    "Real Betis Balompié": "Spain - LaLiga", "Villarreal CF": "Spain - LaLiga",
+    "Athletic Bilbao": "Spain - LaLiga", "Sevilla FC": "Spain - LaLiga",
+    "Valencia CF": "Spain - LaLiga", "Girona FC": "Spain - LaLiga",
+    "Celta de Vigo": "Spain - LaLiga", "Getafe CF": "Spain - LaLiga",
+    "Rayo Vallecano": "Spain - LaLiga", "CA Osasuna": "Spain - LaLiga",
+    "RCD Mallorca": "Spain - LaLiga", "Deportivo Alavés": "Spain - LaLiga",
+    "RCD Espanyol Barcelona": "Spain - LaLiga", "Elche CF": "Spain - LaLiga",
+    "Real Oviedo": "Spain - LaLiga", "Levante UD": "Spain - LaLiga",
+    "UD Las Palmas": "Spain - LaLiga", "Real Valladolid CF": "Spain - LaLiga",
+    "CD Leganés": "Spain - LaLiga", "Cádiz CF": "Spain - LaLiga",
+    "UD Almería": "Spain - LaLiga", "Granada CF": "Spain - LaLiga",
+    // Germany
+    "FC Bayern München": "Germany - Bundesliga", "Borussia Dortmund": "Germany - Bundesliga",
+    "RB Leipzig": "Germany - Bundesliga", "Bayer 04 Leverkusen": "Germany - Bundesliga",
+    "SC Freiburg": "Germany - Bundesliga", "Eintracht Frankfurt": "Germany - Bundesliga",
+    "VfL Wolfsburg": "Germany - Bundesliga", "TSG 1899 Hoffenheim": "Germany - Bundesliga",
+    "Borussia Mönchengladbach": "Germany - Bundesliga", "VfB Stuttgart": "Germany - Bundesliga",
+    "FC Augsburg": "Germany - Bundesliga", "1. FC Union Berlin": "Germany - Bundesliga",
+    "SV Werder Bremen": "Germany - Bundesliga", "1. FC Heidenheim 1846": "Germany - Bundesliga",
+    "1. FC Köln": "Germany - Bundesliga", "SV Darmstadt 98": "Germany - Bundesliga",
+    "FC St. Pauli": "Germany - Bundesliga", "Holstein Kiel": "Germany - Bundesliga",
+    "1. FSV Mainz 05": "Germany - Bundesliga", "FC Schalke 04": "Germany - Bundesliga",
+    "Hertha BSC": "Germany - Bundesliga", "1. FC Nürnberg": "Germany - Bundesliga",
+    "Fortuna Düsseldorf": "Germany - Bundesliga", "Hamburger SV": "Germany - Bundesliga",
+    "Hannover 96": "Germany - Bundesliga", "VfL Bochum": "Germany - Bundesliga",
+    // Italy
+    "FC Internazionale Milano": "Italy - Serie A", "AC Milan": "Italy - Serie A",
+    "Juventus FC": "Italy - Serie A", "SSC Napoli": "Italy - Serie A",
+    "Atalanta BC": "Italy - Serie A", "AS Roma": "Italy - Serie A",
+    "SS Lazio": "Italy - Serie A", "ACF Fiorentina": "Italy - Serie A",
+    "Torino FC": "Italy - Serie A", "Bologna FC 1909": "Italy - Serie A",
+    "Udinese Calcio": "Italy - Serie A", "Empoli FC": "Italy - Serie A",
+    "US Sassuolo": "Italy - Serie A", "AC Monza": "Italy - Serie A",
+    "US Lecce": "Italy - Serie A", "Cagliari Calcio": "Italy - Serie A",
+    "Hellas Verona FC": "Italy - Serie A", "Genoa CFC": "Italy - Serie A",
+    "US Salernitana 1919": "Italy - Serie A", "Frosinone Calcio": "Italy - Serie A",
+    "Como 1907": "Italy - Serie A", "Venezia FC": "Italy - Serie A",
+    "Parma Calcio 1913": "Italy - Serie A", "Spezia Calcio": "Italy - Serie A",
+    "UC Sampdoria": "Italy - Serie A", "US Cremonese": "Italy - Serie A",
+    // France
+    "Paris Saint-Germain": "France - Ligue 1", "Olympique de Marseille": "France - Ligue 1",
+    "Olympique Lyonnais": "France - Ligue 1", "AS Monaco": "France - Ligue 1",
+    "LOSC Lille": "France - Ligue 1", "Stade Rennais FC": "France - Ligue 1",
+    "OGC Nice": "France - Ligue 1", "RC Lens": "France - Ligue 1",
+    "RC Strasbourg Alsace": "France - Ligue 1", "FC Nantes": "France - Ligue 1",
+    "Toulouse FC": "France - Ligue 1", "Montpellier HSC": "France - Ligue 1",
+    "Stade Brestois 29": "France - Ligue 1", "Stade de Reims": "France - Ligue 1",
+    "Le Havre AC": "France - Ligue 1", "Clermont Foot 63": "France - Ligue 1",
+    "FC Lorient": "France - Ligue 1", "FC Metz": "France - Ligue 1",
+    "Angers SCO": "France - Ligue 1", "AJ Auxerre": "France - Ligue 1",
+    "AS Saint-Étienne": "France - Ligue 1",
+    // Netherlands
+    "AFC Ajax": "Netherlands - Eredivisie", "PSV": "Netherlands - Eredivisie",
+    "Feyenoord Rotterdam": "Netherlands - Eredivisie", "AZ": "Netherlands - Eredivisie",
+    "FC Twente": "Netherlands - Eredivisie", "FC Utrecht": "Netherlands - Eredivisie",
+    "sc Heerenveen": "Netherlands - Eredivisie", "Vitesse": "Netherlands - Eredivisie",
+    "NEC": "Netherlands - Eredivisie", "Fortuna Sittard": "Netherlands - Eredivisie",
+    "Go Ahead Eagles": "Netherlands - Eredivisie", "RKC Waalwijk": "Netherlands - Eredivisie",
+    "Sparta Rotterdam": "Netherlands - Eredivisie", "Heracles Almelo": "Netherlands - Eredivisie",
+    "PEC Zwolle": "Netherlands - Eredivisie", "Willem II": "Netherlands - Eredivisie",
+    "Excelsior Rotterdam": "Netherlands - Eredivisie", "FC Volendam": "Netherlands - Eredivisie",
+    "Almere City FC": "Netherlands - Eredivisie",
+    // Portugal
+    "SL Benfica": "Portugal - Liga Portugal", "FC Porto": "Portugal - Liga Portugal",
+    "Sporting CP": "Portugal - Liga Portugal", "SC Braga": "Portugal - Liga Portugal",
+    "Vitória SC": "Portugal - Liga Portugal", "Boavista FC": "Portugal - Liga Portugal",
+    "Gil Vicente FC": "Portugal - Liga Portugal", "Casa Pia AC": "Portugal - Liga Portugal",
+    "FC Famalicão": "Portugal - Liga Portugal", "Rio Ave FC": "Portugal - Liga Portugal",
+    "CF Estrela da Amadora": "Portugal - Liga Portugal", "FC Arouca": "Portugal - Liga Portugal",
+    "Moreirense FC": "Portugal - Liga Portugal",
+    // Scotland
+    "Celtic FC": "Scotland - Scottish Premiership", "Rangers FC": "Scotland - Scottish Premiership",
+    "Heart of Midlothian": "Scotland - Scottish Premiership", "Aberdeen FC": "Scotland - Scottish Premiership",
+    "Hibernian FC": "Scotland - Scottish Premiership", "Dundee United": "Scotland - Scottish Premiership",
+    "St Mirren": "Scotland - Scottish Premiership", "Kilmarnock FC": "Scotland - Scottish Premiership",
+    "Motherwell FC": "Scotland - Scottish Premiership", "Ross County FC": "Scotland - Scottish Premiership",
+    "Livingston FC": "Scotland - Scottish Premiership", "St Johnstone": "Scotland - Scottish Premiership",
+    // Turkey
+    "Galatasaray SK": "Türkiye - Süper Lig", "Fenerbahçe SK": "Türkiye - Süper Lig",
+    "Beşiktaş JK": "Türkiye - Süper Lig", "Trabzonspor": "Türkiye - Süper Lig",
+    "İstanbul Başakşehir FK": "Türkiye - Süper Lig",
+    // Denmark
+    "FC København": "Denmark - Superliga", "FC Midtjylland": "Denmark - Superliga",
+    "Brøndby IF": "Denmark - Superliga", "FC Nordsjælland": "Denmark - Superliga",
+    "Aarhus GF": "Denmark - Superliga",
+    // Switzerland
+    "BSC Young Boys": "Switzerland - Super League", "FC Basel 1893": "Switzerland - Super League",
+    "FC Zürich": "Switzerland - Super League", "Servette FC": "Switzerland - Super League",
+    "FC Lugano": "Switzerland - Super League",
+    // Norway
+    "FK Bodø/Glimt": "Norway - Eliteserien", "Rosenborg BK": "Norway - Eliteserien",
+    "Molde FK": "Norway - Eliteserien", "Viking FK": "Norway - Eliteserien",
+    "SK Brann": "Norway - Eliteserien",
+    // Sweden
+    "Malmö FF": "Sweden - Allsvenskan", "Djurgårdens IF": "Sweden - Allsvenskan",
+    "Hammarby IF": "Sweden - Allsvenskan", "AIK": "Sweden - Allsvenskan",
+    // Poland
+    "Legia Warszawa": "Poland - PKO BP Ekstraklasa", "Lech Poznań": "Poland - PKO BP Ekstraklasa",
+    "Raków Częstochowa": "Poland - PKO BP Ekstraklasa",
+    // Croatia
+    "GNK Dinamo Zagreb": "Croatia - SuperSport HNL", "HNK Hajduk Split": "Croatia - SuperSport HNL",
+    // Greece
+    "Olympiacos FC": "Greece - Super League 1", "Panathinaikos FC": "Greece - Super League 1",
+    "AEK Athens FC": "Greece - Super League 1", "PAOK FC": "Greece - Super League 1",
+    // Czech Republic
+    "AC Sparta Praha": "Czech Republic - Chance Liga", "SK Slavia Praha": "Czech Republic - Chance Liga",
+    // Serbia
+    "FK Crvena zvezda": "Serbia - Super liga Srbije", "FK Partizan": "Serbia - Super liga Srbije",
+    // Romania
+    "FCSB": "Romania - SuperLiga", "CFR Cluj": "Romania - SuperLiga",
+    // Ukraine
+    "FC Shakhtar Donetsk": "Ukraine - Premier Liga", "FC Dynamo Kyiv": "Ukraine - Premier Liga",
+    // Israel
+    "Maccabi Tel Aviv FC": "Israel - Ligat ha'Al", "Maccabi Haifa FC": "Israel - Ligat ha'Al",
+    "Hapoel Beer Sheva FC": "Israel - Ligat ha'Al",
+    // Bulgaria
+    "PFC Ludogorets Razgrad": "Bulgaria - efbet Liga", "PFC CSKA Sofia": "Bulgaria - efbet Liga",
+    "PFC Levski Sofia": "Bulgaria - efbet Liga",
+  };
+  return teamCountryMap;
+})();
+
 // In-memory cache of verified GitHub logo URLs (24h)
 const _footballLogosCache = new Map();
 const FOOTBALL_LOGOS_CACHE_TTL = 24 * 60 * 60 * 1000;
@@ -629,6 +804,30 @@ function resolveFootballLogosUrl(teamName, leagueName) {
     }
   }
 
+  // Token-overlap matching as last resort: find alias where all significant tokens overlap
+  if (!fileName && normalized.length >= 5) {
+    const inputTokens = new Set(normalized.split(" ").filter((t) => t.length >= 3));
+    if (inputTokens.size >= 1) {
+      const aliasKeys = Object.keys(TEAM_LOGO_ALIASES);
+      let bestKey = null;
+      let bestOverlap = 0;
+      for (const k of aliasKeys) {
+        const kTokens = new Set(k.split(" ").filter((t) => t.length >= 3));
+        if (kTokens.size === 0) continue;
+        let overlap = 0;
+        for (const t of inputTokens) {
+          if (kTokens.has(t)) overlap++;
+        }
+        const score = overlap / Math.max(inputTokens.size, kTokens.size, 1);
+        if (score > bestOverlap && score >= 0.5) {
+          bestOverlap = score;
+          bestKey = k;
+        }
+      }
+      if (bestKey) fileName = TEAM_LOGO_ALIASES[bestKey];
+    }
+  }
+
   if (!fileName) return null;
 
   // Find the league folder  
@@ -641,11 +840,10 @@ function resolveFootballLogosUrl(teamName, leagueName) {
     return url;
   }
 
-  // No league folder or UEFA competition — search all unique folders for this alias
-  const allFolders = [...new Set(Object.values(LEAGUE_TO_LOGO_FOLDER).filter(Boolean))];
-  if (allFolders.length > 0) {
-    // Pick the first folder (best-effort: logos are unique filenames across the repo)
-    const url = `${FOOTBALL_LOGOS_BASE}/${encodeURIComponent(allFolders[0])}/${encodeURIComponent(fileName)}.png`;
+  // UEFA competition or unknown league — look up the team's domestic league folder
+  const domesticFolder = TEAM_FILENAME_TO_FOLDER[fileName];
+  if (domesticFolder) {
+    const url = `${FOOTBALL_LOGOS_BASE}/${encodeURIComponent(domesticFolder)}/${encodeURIComponent(fileName)}.png`;
     _footballLogosCache.set(cKey, { url, ts: Date.now() });
     return url;
   }
@@ -808,14 +1006,54 @@ function similarityScore(a, b) {
   if (!a || !b) return 0;
   if (a === b) return 1;
   if (a.includes(b) || b.includes(a)) return 0.85;
-  const setA = new Set(a.split(" ").filter(Boolean));
-  const setB = new Set(b.split(" ").filter(Boolean));
+
+  const tokensA = a.split(" ").filter(Boolean);
+  const tokensB = b.split(" ").filter(Boolean);
+  const setA = new Set(tokensA);
+  const setB = new Set(tokensB);
+
+  // Standard token overlap
   let overlap = 0;
   for (const token of setA) {
     if (setB.has(token)) overlap += 1;
   }
+
+  // Initial matching: "k" matches "kevin", "j" matches "jude" etc.
+  // Only count if the initial is a single character (from "K." → normalized to "k")
+  let initialMatches = 0;
+  for (const tokenA of tokensA) {
+    if (tokenA.length === 1 && !setB.has(tokenA)) {
+      for (const tokenB of tokensB) {
+        if (tokenB.length > 1 && tokenB.startsWith(tokenA)) {
+          initialMatches += 1;
+          break;
+        }
+      }
+    }
+  }
+  for (const tokenB of tokensB) {
+    if (tokenB.length === 1 && !setA.has(tokenB)) {
+      for (const tokenA of tokensA) {
+        if (tokenA.length > 1 && tokenA.startsWith(tokenB)) {
+          initialMatches += 1;
+          break;
+        }
+      }
+    }
+  }
+
+  // Last-name emphasis: if both share the same last token (surname), boost score
+  const lastA = tokensA[tokensA.length - 1];
+  const lastB = tokensB[tokensB.length - 1];
+  const surnameMatch = lastA && lastB && lastA.length >= 3 && lastA === lastB;
+
+  const totalMatched = overlap + initialMatches * 0.7;
   const denom = Math.max(setA.size, setB.size, 1);
-  return overlap / denom;
+  let score = totalMatched / denom;
+
+  if (surnameMatch && score < 0.85) score = Math.max(score, 0.75);
+
+  return score;
 }
 
 function pickBestProfileMatch(profiles, player, teamName) {
@@ -1903,14 +2141,14 @@ async function enrichRosterPhotos(players, teamName) {
     // Exact match first
     const photo = tmPhotoMap.get(normName);
     if (photo) return { ...player, photo };
-    // Fuzzy match via similarity score
+    // Fuzzy match via similarity score (threshold lowered: our improved similarityScore handles initials)
     let bestPhoto = null;
     let bestScore = 0;
     for (const entry of tmPhotoEntries) {
       const score = similarityScore(normName, entry.normed);
       if (score > bestScore) { bestScore = score; bestPhoto = entry.photo; }
     }
-    if (bestScore >= 0.65 && bestPhoto) return { ...player, photo: bestPhoto };
+    if (bestScore >= 0.6 && bestPhoto) return { ...player, photo: bestPhoto };
     return player;
   });
 
@@ -1942,7 +2180,7 @@ async function enrichRosterPhotos(players, teamName) {
       const score = similarityScore(normName, dbp.name || "");
       if (score > bestDbScore) { bestDbScore = score; bestDbPhoto = dbp.photo; }
     }
-    if (bestDbScore >= 0.65 && bestDbPhoto) return { ...player, photo: bestDbPhoto };
+    if (bestDbScore >= 0.6 && bestDbPhoto) return { ...player, photo: bestDbPhoto };
 
     // Last-name fallback when only one candidate shares the last name
     const lastNameParts = normName.split(" ");
