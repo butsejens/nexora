@@ -230,8 +230,8 @@ export default function MoviesScreen() {
       .map(h => ({
         id: h.id,
         title: h.title,
-        poster: null,
-        backdrop: null,
+        poster: h.poster || null,
+        backdrop: h.backdrop || null,
         synopsis: "",
         year: undefined,
         imdb: undefined,
@@ -250,8 +250,8 @@ export default function MoviesScreen() {
       .map(h => ({
         id: h.id,
         title: h.title,
-        poster: null,
-        backdrop: null,
+        poster: h.poster || null,
+        backdrop: h.backdrop || null,
         synopsis: "",
         year: undefined,
         imdb: undefined,
