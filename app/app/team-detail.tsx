@@ -217,7 +217,7 @@ export default function TeamDetailScreen() {
   return (
     <View style={styles.container}>
       {/* Header */}
-      <Animated.View style={{ maxHeight: heroMaxHeight, overflow: "hidden" }}>
+      <Animated.View style={{ maxHeight: heroMaxHeight, overflow: "hidden", zIndex: 30 }}>
       <LinearGradient
         colors={[data?.color || "#1a3a6b", COLORS.background] as any}
         style={[styles.header, { paddingTop: topPad + 8 }]}

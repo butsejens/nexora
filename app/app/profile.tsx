@@ -323,8 +323,8 @@ function UpdateModal({
       // Always check server for the latest APK version
       const res = await apiRequest("GET", "/api/app-version");
       const data = await res.json() as { version: string; apkUrl: string; directApkUrl?: string };
-      const nativeVersion = String(Application.nativeApplicationVersion || "0.0.0");
-      const hasNewerApk = compareVersions(data.version, nativeVersion) > 0;
+      // Compare against effective app version (includes OTA updates), not just native binary version
+      const hasNewerApk = compareVersions(data.version, currentVersion) > 0;
 
       if (!__DEV__ && Updates.isEnabled) {
         try {
