@@ -34,6 +34,16 @@ import * as IntentLauncher from "expo-intent-launcher";
 
 const CHANGELOG: { version: string; date: string; changes: string[] }[] = [
   {
+    version: "2.5.35",
+    date: "2026-03-19",
+    changes: [
+      "Trailer-knop nu zichtbaar bij bijna alle films en series (EN/NL/DE/FR talen)",
+      "Spelerfoto's en marktwaardes verbeterd voor alle competities (50+ clubnamen)",
+      "Teamlogo's gecorrigeerd: Lyon, AEK Athens, Mainz, Shakhtar, AZ Alkmaar, Sparta Prague, Lech Poznan",
+      "Wikipedia-fotolimiet verhoogd naar 40 spelers per team",
+    ],
+  },
+  {
     version: "2.5.34",
     date: "2026-03-19",
     changes: [
