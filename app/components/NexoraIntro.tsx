@@ -8,6 +8,7 @@ import {
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { COLORS } from "@/constants/colors";
+import { t } from "@/lib/i18n";
 
 
 interface Props {
@@ -15,58 +16,39 @@ interface Props {
 }
 
 export function NexoraIntro({ onFinish }: Props) {
-  const logoScale        = useRef(new Animated.Value(0.3)).current;
+  const logoScale        = useRef(new Animated.Value(0.5)).current;
   const logoOpacity      = useRef(new Animated.Value(0)).current;
   const glowOpacity      = useRef(new Animated.Value(0)).current;
   const tagOpacity       = useRef(new Animated.Value(0)).current;
-  const subtitleOpacity  = useRef(new Animated.Value(0)).current;
-  const curtainLeft      = useRef(new Animated.Value(0)).current;
-  const curtainRight     = useRef(new Animated.Value(0)).current;
   const containerOpacity = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
-    // Phase 1 — Logo scales + fades in (0–900ms)
+    // Phase 1 — Logo scales + fades in (0–400ms)
     Animated.parallel([
-      Animated.spring(logoScale, { toValue: 1, tension: 60, friction: 7, useNativeDriver: true }),
-      Animated.timing(logoOpacity,  { toValue: 1, duration: 900, useNativeDriver: true }),
+      Animated.spring(logoScale, { toValue: 1, tension: 80, friction: 8, useNativeDriver: true }),
+      Animated.timing(logoOpacity, { toValue: 1, duration: 400, useNativeDriver: true }),
     ]).start();
 
-    // Phase 2 — Glow appears (800ms)
-    setTimeout(() => {
-      Animated.timing(glowOpacity, { toValue: 1, duration: 900, useNativeDriver: true }).start();
-    }, 800);
-
-    // Phase 3 — Tagline + subtitle fade in (1600ms)
+    // Phase 2 — Glow + tagline (300ms)
     setTimeout(() => {
       Animated.parallel([
-        Animated.timing(tagOpacity,      { toValue: 1, duration: 700, useNativeDriver: true }),
-        Animated.timing(subtitleOpacity, { toValue: 1, duration: 900, useNativeDriver: true }),
+        Animated.timing(glowOpacity, { toValue: 1, duration: 400, useNativeDriver: true }),
+        Animated.timing(tagOpacity, { toValue: 1, duration: 500, useNativeDriver: true }),
       ]).start();
-    }, 1600);
+    }, 300);
 
-    // Phase 4 — Curtains slide open (2700–3700ms)
-    setTimeout(() => {
-      Animated.parallel([
-        Animated.timing(curtainLeft,  { toValue: 1, duration: 1000, useNativeDriver: false }),
-        Animated.timing(curtainRight, { toValue: 1, duration: 1000, useNativeDriver: false }),
-      ]).start();
-    }, 2700);
-
-    // Phase 5 — Fade out + finish (4200–4700ms)
+    // Phase 3 — Fade out + finish (1200–1700ms)
     setTimeout(() => {
       Animated.timing(containerOpacity, { toValue: 0, duration: 500, useNativeDriver: true })
         .start(() => onFinish());
-    }, 4200);
-  }, [logoScale, logoOpacity, glowOpacity, tagOpacity, subtitleOpacity, curtainLeft, curtainRight, containerOpacity, onFinish]);
-
-  const curtainLeftWidth  = curtainLeft.interpolate({ inputRange: [0, 1], outputRange: ["50%", "0%"] });
-  const curtainRightWidth = curtainRight.interpolate({ inputRange: [0, 1], outputRange: ["50%", "0%"] });
+    }, 1200);
+  }, [logoScale, logoOpacity, glowOpacity, tagOpacity, containerOpacity, onFinish]);
 
   return (
     <Animated.View style={[styles.root, { opacity: containerOpacity }]} pointerEvents="none">
       {/* Background gradient */}
       <LinearGradient
-        colors={["#0a0509", "#0f111a", COLORS.background]}
+        colors={["#000000", "#050505", COLORS.background]}
         start={{ x: 0.5, y: 0 }}
         end={{ x: 0.5, y: 1 }}
         style={styles.bg}
@@ -80,30 +62,18 @@ export function NexoraIntro({ onFinish }: Props) {
           : {})}
       />
 
-      {/* Center content — single column, no absolute positioning */}
+      {/* Center content */}
       <View style={styles.contentWrap}>
-        {/* Logo */}
         <Animated.View style={{ transform: [{ scale: logoScale }], opacity: logoOpacity, alignItems: "center" }}>
           <Image source={require("@/assets/images/nexora-intro-logo.png")} style={styles.logoImage} resizeMode="contain" />
         </Animated.View>
 
-        {/* Red accent line */}
         <Animated.View style={[styles.accentLine, { opacity: logoOpacity }]} />
 
-        {/* Tagline */}
         <Animated.Text style={[styles.tagline, { opacity: tagOpacity }]}>
-          Premium Sports • Live TV • Entertainment
-        </Animated.Text>
-
-        {/* Subtitle */}
-        <Animated.Text style={[styles.subtitle, { opacity: subtitleOpacity }]}>
-          STREAMING REIMAGINED
+          {t("intro.tagline")}
         </Animated.Text>
       </View>
-
-      {/* Curtains slide out left + right */}
-      <Animated.View style={[styles.curtainLeft,  { width: curtainLeftWidth }]} />
-      <Animated.View style={[styles.curtainRight, { width: curtainRightWidth }]} />
     </Animated.View>
   );
 }
@@ -156,29 +126,5 @@ const styles = StyleSheet.create({
     fontFamily: "Inter_600SemiBold",
     textAlign: "center",
     paddingHorizontal: 40,
-  },
-  subtitle: {
-    fontFamily: "Inter_600SemiBold",
-    fontSize: 10,
-    letterSpacing: 3,
-    color: COLORS.textMuted,
-    marginTop: 10,
-    textAlign: "center",
-  },
-  curtainLeft: {
-    position: "absolute",
-    left: 0,
-    top: 0,
-    bottom: 0,
-    backgroundColor: COLORS.background,
-    zIndex: 10,
-  },
-  curtainRight: {
-    position: "absolute",
-    right: 0,
-    top: 0,
-    bottom: 0,
-    backgroundColor: COLORS.background,
-    zIndex: 10,
   },
 });

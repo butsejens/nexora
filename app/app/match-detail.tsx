@@ -19,6 +19,8 @@ import { buildErrorReference, normalizeApiError } from "@/lib/error-messages";
 import { safeStr } from "@/lib/utils";
 import { SilentResetBoundary } from "@/components/SilentResetBoundary";
 import { useNexora } from "@/context/NexoraContext";
+import { useTranslation } from "@/lib/useTranslation";
+import { t as tFn } from "@/lib/i18n";
 
 const BLOCK_POPUP_JS = `
 (function(){
@@ -62,12 +64,12 @@ true;
 `;
 
 const TABS = [
-  { id: "stream",    label: "Stream",      icon: "play-circle-outline" },
-  { id: "stats",    label: "Stats",       icon: "bar-chart-outline" },
-  { id: "lineups",  label: "Lineups",     icon: "people-outline" },
-  { id: "timeline", label: "Timeline",    icon: "git-branch-outline" },
-  { id: "highlights", label: "Highlights", icon: "star-outline" },
-  { id: "ai",       label: "Analyse",     icon: "analytics-outline" },
+  { id: "stream",    label: "matchDetail.stream",      icon: "play-circle-outline" },
+  { id: "stats",    label: "matchDetail.stats",       icon: "bar-chart-outline" },
+  { id: "lineups",  label: "matchDetail.lineups",     icon: "people-outline" },
+  { id: "timeline", label: "matchDetail.timeline",    icon: "git-branch-outline" },
+  { id: "highlights", label: "matchDetail.highlights", icon: "star-outline" },
+  { id: "ai",       label: "matchDetail.analysis",     icon: "analytics-outline" },
 ] as const;
 
 type TabId = "stream" | "stats" | "lineups" | "timeline" | "highlights" | "ai";
@@ -497,7 +499,7 @@ export default function MatchDetailScreen() {
             onPress={() => handleTabChange(tab.id)}
           >
             <Ionicons name={tab.icon as any} size={14} color={activeTab === tab.id ? "#fff" : COLORS.textMuted} />
-            <Text style={[styles.tabText, activeTab === tab.id && styles.tabTextActive]}>{tab.label}</Text>
+            <Text style={[styles.tabText, activeTab === tab.id && styles.tabTextActive]}>{tFn(tab.label)}</Text>
           </TouchableOpacity>
         ))}
       </ScrollView>
@@ -521,20 +523,20 @@ export default function MatchDetailScreen() {
               <View style={styles.streamFinderContainer}>
                 <LinearGradient colors={["#0d0d1a", "#120a14", "#0a0a12"]} style={styles.streamFinderBg}>
                   <ActivityIndicator size="large" color={COLORS.accent} />
-                  <Text style={styles.streamFinderTitle}>AI zoekt de beste stream…</Text>
-                  <Text style={styles.streamFinderSub}>Even geduld, prioriteit: officiële uitzender → hoogste kwaliteit → laagste latency</Text>
+                  <Text style={styles.streamFinderTitle}>{tFn("matchDetail.streamFinderTitle")}</Text>
+                  <Text style={styles.streamFinderSub}>{tFn("matchDetail.streamFinderSub")}</Text>
                   <View style={styles.streamFinderSteps}>
                     <View style={styles.streamFinderStep}>
                       <Ionicons name="checkmark-circle" size={14} color={COLORS.green} />
-                      <Text style={styles.streamFinderStepText}>Officiële broadcaster zoeken…</Text>
+                      <Text style={styles.streamFinderStepText}>{tFn("matchDetail.streamStep1")}</Text>
                     </View>
                     <View style={styles.streamFinderStep}>
                       <Ionicons name="radio-button-on" size={14} color={COLORS.accent} />
-                      <Text style={styles.streamFinderStepText}>Beste resolutie bepalen…</Text>
+                      <Text style={styles.streamFinderStepText}>{tFn("matchDetail.streamStep2")}</Text>
                     </View>
                     <View style={styles.streamFinderStep}>
                       <Ionicons name="radio-button-off" size={14} color={COLORS.textMuted} />
-                      <Text style={[styles.streamFinderStepText, { color: COLORS.textMuted }]}>Stream initialiseren…</Text>
+                      <Text style={[styles.streamFinderStepText, { color: COLORS.textMuted }]}>{tFn("matchDetail.streamStep3")}</Text>
                     </View>
                   </View>
                 </LinearGradient>
@@ -559,7 +561,7 @@ export default function MatchDetailScreen() {
                         return true;
                       }}
                       onError={(event) => {
-                        const err = event?.nativeEvent?.description || "WebView stream fout";
+                        const err = event?.nativeEvent?.description || tFn("matchDetail.webviewError");
                         setStreamWebError(err);
                         setStreamErrorRef((prev) => prev || buildErrorReference("NX-STR"));
                       }}
@@ -578,19 +580,19 @@ export default function MatchDetailScreen() {
                       <MaterialCommunityIcons name="alert-octagon-outline" size={14} color={COLORS.live} />
                       <View style={{ flex: 1, gap: 4 }}>
                         <Text style={styles.streamErrorText}>{streamPlayerError.userMessage}</Text>
-                        {streamErrorRef ? <Text style={styles.streamErrorRef}>Foutcode: {streamErrorRef}</Text> : null}
+                        {streamErrorRef ? <Text style={styles.streamErrorRef}>{tFn("matchDetail.errorCode", { code: streamErrorRef })}</Text> : null}
                       </View>
                     </View>
                   ) : null}
                   {hasStreamApiIssue && hasStreamPlayerIssue ? (
                     <View style={styles.streamErrorCard}>
                       <MaterialCommunityIcons name="alert-circle-outline" size={14} color={COLORS.textMuted} />
-                      <Text style={styles.streamErrorText}>Geen stream beschikbaar momenteel.</Text>
+                      <Text style={styles.streamErrorText}>{tFn("matchDetail.noStreamAvailable")}</Text>
                     </View>
                   ) : null}
                   <TouchableOpacity style={styles.serverBtn} onPress={handleRetryAutoStream}>
                     <Ionicons name="refresh-outline" size={12} color={COLORS.accent} />
-                    <Text style={styles.serverBtnText}>Andere stream laden</Text>
+                    <Text style={styles.serverBtnText}>{tFn("matchDetail.loadOtherStream")}</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
                     style={styles.serverBtn}
@@ -608,8 +610,8 @@ export default function MatchDetailScreen() {
           ) : (
             <View style={styles.notLiveContainer}>
               <Ionicons name="time-outline" size={48} color={COLORS.textMuted} />
-              <Text style={styles.notLiveTitle}>Wedstrijd nog niet begonnen</Text>
-              <Text style={styles.notLiveText}>De livestream start automatisch zodra de wedstrijd begint.</Text>
+              <Text style={styles.notLiveTitle}>{tFn("matchDetail.matchNotStarted")}</Text>
+              <Text style={styles.notLiveText}>{tFn("matchDetail.streamAutoStart")}</Text>
             </View>
           )}
         </View>
@@ -642,7 +644,7 @@ export default function MatchDetailScreen() {
               </InfoBlock>
             </>
           ) : (
-            <EmptyState icon="stats-chart-outline" text="Statistieken niet beschikbaar voor deze wedstrijd" />
+            <EmptyState icon="stats-chart-outline" text={tFn("matchDetail.statsUnavailable")} />
           )}
         </ScrollView>
       ) : null}
@@ -703,7 +705,7 @@ export default function MatchDetailScreen() {
                     <View style={styles.lineupHeaderRow}>
                       <Text style={styles.sectionLabel}>{team.team?.toUpperCase()}</Text>
                       <View style={styles.lineupTypeBadge}>
-                        <Text style={styles.lineupTypeText}>{team.lineupType === "official" ? "OFFICIEEL" : "VERWACHT"}</Text>
+                        <Text style={styles.lineupTypeText}>{team.lineupType === "official" ? tFn("matchDetail.official") : tFn("matchDetail.expected")}</Text>
                       </View>
                     </View>
 
@@ -745,7 +747,7 @@ export default function MatchDetailScreen() {
               )}
             </>
           ) : (
-            <EmptyState icon="people-outline" text="Opstelling nog niet beschikbaar" />
+            <EmptyState icon="people-outline" text={tFn("matchDetail.lineupsUnavailable")} />
           )}
         </ScrollView>
       ) : null}
@@ -765,7 +767,7 @@ export default function MatchDetailScreen() {
             />
           </>
         ) : (
-          <EmptyState icon="git-branch-outline" text="Timeline nog niet beschikbaar" />
+          <EmptyState icon="git-branch-outline" text={tFn("matchDetail.timelineUnavailable")} />
         )}
       </ScrollView>
       ) : null}
@@ -779,7 +781,7 @@ export default function MatchDetailScreen() {
           const fallbackMoments = timelineEvents.filter((event: any) => !["kickoff", "halftime", "fulltime", "info"].includes(String(event?.kind || "")));
           const usableMoments = highlightMoments.length > 0 ? highlightMoments : fallbackMoments;
           const hasHighlights = usableMoments.length > 0 || highlightRecap.length > 0 || highlightSummary?.summary;
-          if (!hasHighlights) return <EmptyState icon="star-outline" text="Hoogtepunten nog niet beschikbaar" />;
+          if (!hasHighlights) return <EmptyState icon="star-outline" text={tFn("matchDetail.highlightsUnavailable")} />;
           // Compute match excitement rating (1-5 stars)
           const goalEvents = usableMoments.filter((e: any) => /goal/i.test(String(e?.kind || e?.type || "")));
           const cardEvents = usableMoments.filter((e: any) => /red|yellow_red/i.test(String(e?.kind || e?.type || "")));
@@ -792,7 +794,7 @@ export default function MatchDetailScreen() {
               <View style={styles.highlightRatingCard}>
                 <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
                   <MaterialCommunityIcons name="fire" size={16} color="#FF9800" />
-                  <Text style={styles.highlightRatingTitle}>Wedstrijdrating</Text>
+                  <Text style={styles.highlightRatingTitle}>{tFn("matchDetail.matchRating")}</Text>
                 </View>
                 <View style={{ flexDirection: "row", gap: 3 }}>
                   {[1,2,3,4,5].map(s => (
@@ -800,7 +802,7 @@ export default function MatchDetailScreen() {
                   ))}
                 </View>
                 <Text style={styles.highlightRatingSub}>
-                  {goalEvents.length} doelpunt{goalEvents.length !== 1 ? "en" : ""} · {usableMoments.length} momenten
+                  {goalEvents.length} {tFn("matchDetail.goals")} · {usableMoments.length} {tFn("matchDetail.moments")}
                 </Text>
               </View>
 
@@ -847,10 +849,10 @@ export default function MatchDetailScreen() {
           <View style={{ gap: 16, alignItems: "center" }}>
             <LinearGradient colors={["rgba(229,9,20,0.14)", "rgba(229,9,20,0.04)"]} style={{ borderRadius: 16, padding: 24, alignItems: "center", gap: 12 }}>
               <Ionicons name="lock-closed" size={36} color={COLORS.accent} />
-              <Text style={{ fontFamily: "Inter_700Bold", fontSize: 18, color: COLORS.text, textAlign: "center" }}>Premium AI Analyse</Text>
-              <Text style={{ fontFamily: "Inter_400Regular", fontSize: 13, color: COLORS.textSecondary, textAlign: "center", lineHeight: 19 }}>Krijg toegang tot geavanceerde AI match analyse, voorspellingen, tactische inzichten en live analyse met Nexora Premium.</Text>
+              <Text style={{ fontFamily: "Inter_700Bold", fontSize: 18, color: COLORS.text, textAlign: "center" }}>{tFn("matchDetail.premiumAIAnalysis")}</Text>
+              <Text style={{ fontFamily: "Inter_400Regular", fontSize: 13, color: COLORS.textSecondary, textAlign: "center", lineHeight: 19 }}>{tFn("matchDetail.premiumAIDesc")}</Text>
               <TouchableOpacity onPress={() => router.push("/premium")} style={{ backgroundColor: COLORS.accent, borderRadius: 12, paddingHorizontal: 28, paddingVertical: 12, marginTop: 4 }}>
-                <Text style={{ fontFamily: "Inter_600SemiBold", fontSize: 14, color: "#fff" }}>Premium activeren</Text>
+                <Text style={{ fontFamily: "Inter_600SemiBold", fontSize: 14, color: "#fff" }}>{tFn("matchDetail.activatePremium")}</Text>
               </TouchableOpacity>
             </LinearGradient>
             {/* Blurred preview of what they'd get */}
@@ -873,16 +875,16 @@ export default function MatchDetailScreen() {
           {preMatchLoading && !preMatchPrediction ? (
             <View style={styles.aiLoading}>
               <ActivityIndicator size="large" color={COLORS.accent} />
-              <Text style={styles.aiLoadingText}>Pre-match AI analyse wordt voorbereid...</Text>
-              <Text style={[styles.aiLoadingText, { fontSize: 12, marginTop: 4 }]}>Vaste analyse op basis van vorm en context</Text>
+              <Text style={styles.aiLoadingText}>{tFn("matchDetail.preMatchLoading")}</Text>
+              <Text style={[styles.aiLoadingText, { fontSize: 12, marginTop: 4 }]}>{tFn("matchDetail.preMatchBasis")}</Text>
             </View>
           ) : preMatchPrediction && !preMatchPrediction.error ? (
             <>
-              <Text style={styles.sectionLabel}>PRE-MATCH ANALYSE (VAST)</Text>
+              <Text style={styles.sectionLabel}>{tFn("matchDetail.preMatchLabel")}</Text>
               <AIPredictionView prediction={preMatchPrediction} homeTeam={params.homeTeam} awayTeam={params.awayTeam} />
               <TouchableOpacity style={styles.aiRefreshBtn} onPress={() => fetchPreMatchPrediction()}>
                 <Ionicons name="refresh-outline" size={13} color={COLORS.textMuted} />
-                <Text style={styles.aiRefreshText}>Vaste analyse vernieuwen</Text>
+                <Text style={styles.aiRefreshText}>{tFn("matchDetail.preMatchRefresh")}</Text>
               </TouchableOpacity>
             </>
           ) : (
@@ -890,11 +892,11 @@ export default function MatchDetailScreen() {
               <TouchableOpacity style={styles.aiTrigger} onPress={() => fetchPreMatchPrediction()}>
                 <LinearGradient colors={["rgba(229,9,20,0.12)", "rgba(229,9,20,0.04)"]} style={styles.aiTriggerGrad}>
                   <MaterialCommunityIcons name="robot-outline" size={40} color={COLORS.accent} />
-                  <Text style={styles.aiTriggerTitle}>Pre-match AI Analyse</Text>
-                  <Text style={styles.aiTriggerSub}>Stabiele analyse die niet verandert tijdens de match</Text>
+                  <Text style={styles.aiTriggerTitle}>{tFn("matchDetail.preMatchTitle")}</Text>
+                  <Text style={styles.aiTriggerSub}>{tFn("matchDetail.preMatchSubtitle")}</Text>
                   <View style={styles.aiTriggerBtn}>
                     <Ionicons name="sparkles-outline" size={14} color="#fff" />
-                    <Text style={styles.aiTriggerBtnText}>Start pre-match analyse</Text>
+                    <Text style={styles.aiTriggerBtnText}>{tFn("matchDetail.startPreMatch")}</Text>
                   </View>
                 </LinearGradient>
               </TouchableOpacity>
@@ -905,15 +907,15 @@ export default function MatchDetailScreen() {
             livePredictionLoading && !livePrediction ? (
               <View style={styles.aiLoading}>
                 <ActivityIndicator size="small" color={COLORS.live} />
-                <Text style={styles.aiLoadingText}>Live AI analyse wordt ververst...</Text>
+                <Text style={styles.aiLoadingText}>{tFn("matchDetail.liveLoading")}</Text>
               </View>
             ) : livePrediction && !livePrediction.error ? (
               <>
-                <Text style={styles.sectionLabel}>LIVE ANALYSE (DYNAMISCH)</Text>
+                <Text style={styles.sectionLabel}>{tFn("matchDetail.liveLabel")}</Text>
                 <AIPredictionView prediction={livePrediction} homeTeam={params.homeTeam} awayTeam={params.awayTeam} />
                 <TouchableOpacity style={styles.aiRefreshBtn} onPress={() => fetchLivePrediction()}>
                   <Ionicons name="refresh-outline" size={13} color={COLORS.textMuted} />
-                  <Text style={styles.aiRefreshText}>Live analyse vernieuwen</Text>
+                  <Text style={styles.aiRefreshText}>{tFn("matchDetail.liveRefresh")}</Text>
                 </TouchableOpacity>
               </>
             ) : (
@@ -927,11 +929,11 @@ export default function MatchDetailScreen() {
                 <TouchableOpacity style={styles.aiTrigger} onPress={() => fetchLivePrediction()}>
                   <LinearGradient colors={["rgba(229,9,20,0.12)", "rgba(229,9,20,0.04)"]} style={styles.aiTriggerGrad}>
                     <MaterialCommunityIcons name="chart-timeline-variant" size={40} color={COLORS.live} />
-                    <Text style={styles.aiTriggerTitle}>Live AI Analyse</Text>
-                    <Text style={styles.aiTriggerSub}>Realtime analyse met score, events en momentum</Text>
+                    <Text style={styles.aiTriggerTitle}>{tFn("matchDetail.liveTitle")}</Text>
+                    <Text style={styles.aiTriggerSub}>{tFn("matchDetail.liveSubtitle")}</Text>
                     <View style={styles.aiTriggerBtn}>
                       <Ionicons name="pulse-outline" size={14} color="#fff" />
-                      <Text style={styles.aiTriggerBtnText}>Start live analyse</Text>
+                      <Text style={styles.aiTriggerBtnText}>{tFn("matchDetail.startLive")}</Text>
                     </View>
                   </LinearGradient>
                 </TouchableOpacity>
@@ -940,7 +942,7 @@ export default function MatchDetailScreen() {
           ) : (
             <View style={styles.tipCard}>
               <MaterialCommunityIcons name="information-outline" size={16} color={COLORS.accent} />
-              <Text style={styles.tipText}>Live analyse start automatisch zodra de wedstrijd live is.</Text>
+              <Text style={styles.tipText}>{tFn("matchDetail.autoStartTip")}</Text>
             </View>
           )}
           </>
@@ -967,7 +969,7 @@ function MiniAIPill({ prediction, homeTeam, awayTeam, loading, onPress }: any) {
   const homeShort = (homeTeam || "").split(" ")[0];
   const awayShort = (awayTeam || "").split(" ")[0];
   const winner = prediction.prediction === "Home Win" ? homeShort :
-    prediction.prediction === "Away Win" ? awayShort : "Gelijk";
+    prediction.prediction === "Away Win" ? awayShort : tFn("matchDetail.drawChance");
   const winnerColor = prediction.prediction === "Home Win" ? COLORS.accent :
     prediction.prediction === "Away Win" ? COLORS.live : "#FFD700";
   return (
@@ -1326,7 +1328,7 @@ function StatsBarsInner({ homeTeam, awayTeam, homeStats, awayStats }: { homeTeam
       <View style={styles.infoCard}>
         <View style={{ alignItems: "center", gap: 8, paddingVertical: 12 }}>
           <Ionicons name="stats-chart-outline" size={28} color={COLORS.textMuted} />
-          <Text style={styles.noStatsText}>Stats worden geladen tijdens de wedstrijd</Text>
+          <Text style={styles.noStatsText}>{tFn("matchDetail.statsLoadingDuringMatch")}</Text>
         </View>
       </View>
     );
@@ -1507,7 +1509,7 @@ function PlayerRow({ player, sport, compact = false, teamName = "" }: { player: 
         )}
         {player.starter && (
           <View style={styles.starterBadge}>
-            <Text style={styles.starterText}>Basis</Text>
+            <Text style={styles.starterText}>{tFn("matchDetail.starter")}</Text>
           </View>
         )}
       </View>}
@@ -1695,17 +1697,17 @@ function AIPredictionViewInner({ prediction, homeTeam, awayTeam }: any) {
         {prediction?.providerError && prediction?.insufficientData ? (
           <View style={styles.aiWarnCard}>
             <MaterialCommunityIcons name="alert-outline" size={14} color={COLORS.gold} />
-            <Text style={styles.aiWarnText}>Onvoldoende data voor volledige AI analyse.</Text>
+            <Text style={styles.aiWarnText}>{tFn("matchDetail.insufficientData")}</Text>
           </View>
         ) : null}
 
         <Text style={[styles.aiPrediction, { color: winnerColor }]}>
-          {prediction.prediction === "Home Win" ? `${homeTeam} Wint` :
-           prediction.prediction === "Away Win" ? `${awayTeam} Wint` : "Gelijkspel"}
+          {prediction.prediction === "Home Win" ? tFn("matchDetail.wins", { team: homeTeam }) :
+           prediction.prediction === "Away Win" ? tFn("matchDetail.wins", { team: awayTeam }) : tFn("matchDetail.draw")}
         </Text>
 
         {prediction.predictedScore && (
-          <Text style={styles.aiScore}>Verwachte score: {prediction.predictedScore}</Text>
+          <Text style={styles.aiScore}>{tFn("matchDetail.expectedScore")} {prediction.predictedScore}</Text>
         )}
 
         {prediction.confidenceReason ? (
@@ -1752,7 +1754,7 @@ function AIPredictionViewInner({ prediction, homeTeam, awayTeam }: any) {
         ) : (
           <View style={styles.aiWarnCard}>
             <MaterialCommunityIcons name="information-outline" size={14} color={COLORS.textMuted} />
-            <Text style={styles.aiWarnText}>xG: Onvoldoende data</Text>
+            <Text style={styles.aiWarnText}>xG: {tFn("matchDetail.insufficientDataShort")}</Text>
           </View>
         )}
       </LinearGradient>
@@ -1765,28 +1767,28 @@ function AIPredictionViewInner({ prediction, homeTeam, awayTeam }: any) {
               <View style={styles.marketCard}>
                 <Text style={styles.marketLabel}>BTTS</Text>
                 <Text style={styles.marketValue}>{Math.round(bttsPct)}%</Text>
-                <Text style={styles.marketSub}>Beide teams scoren</Text>
+                <Text style={styles.marketSub}>{tFn("matchDetail.btts")}</Text>
               </View>
             ) : null}
             {Number.isFinite(over25Pct) ? (
               <View style={styles.marketCard}>
                 <Text style={styles.marketLabel}>Over 2.5</Text>
                 <Text style={styles.marketValue}>{Math.round(over25Pct)}%</Text>
-                <Text style={styles.marketSub}>Totaal goals</Text>
+                <Text style={styles.marketSub}>{tFn("matchDetail.totalGoals")}</Text>
               </View>
             ) : null}
             {Number.isFinite(homeDcPct) ? (
               <View style={styles.marketCard}>
                 <Text style={styles.marketLabel}>1X</Text>
                 <Text style={styles.marketValue}>{Math.round(homeDcPct)}%</Text>
-                <Text style={styles.marketSub}>{homeShortName} of gelijk</Text>
+                <Text style={styles.marketSub}>{homeShortName} {tFn("matchDetail.orDraw")}</Text>
               </View>
             ) : null}
             {Number.isFinite(awayDcPct) ? (
               <View style={styles.marketCard}>
                 <Text style={styles.marketLabel}>X2</Text>
                 <Text style={styles.marketValue}>{Math.round(awayDcPct)}%</Text>
-                <Text style={styles.marketSub}>{awayShortName} of gelijk</Text>
+                <Text style={styles.marketSub}>{awayShortName} {tFn("matchDetail.orDraw")}</Text>
               </View>
             ) : null}
           </View>
@@ -1800,29 +1802,29 @@ function AIPredictionViewInner({ prediction, homeTeam, awayTeam }: any) {
       ) : null}
 
       <View style={styles.infoCard}>
-        <Text style={styles.infoCardTitle}>AI SIGNALEN</Text>
+        <Text style={styles.infoCardTitle}>{tFn("matchDetail.aiSignals")}</Text>
         <View style={styles.marketGrid}>
           <View style={styles.marketCard}>
-            <Text style={styles.marketLabel}>Win Tilt</Text>
+            <Text style={styles.marketLabel}>{tFn("matchDetail.winTilt")}</Text>
             <Text style={styles.marketValue}>{winGapPct}%</Text>
-            <Text style={styles.marketSub}>Voorsprong tussen thuis/uit</Text>
+            <Text style={styles.marketSub}>{tFn("matchDetail.winTiltSub")}</Text>
           </View>
           <View style={styles.marketCard}>
-            <Text style={styles.marketLabel}>Volatiliteit</Text>
+            <Text style={styles.marketLabel}>{tFn("matchDetail.volatility")}</Text>
             <Text style={styles.marketValue}>{volatilityScore}%</Text>
-            <Text style={styles.marketSub}>Hoe onvoorspelbaar de match is</Text>
+            <Text style={styles.marketSub}>{tFn("matchDetail.volatilityDesc")}</Text>
           </View>
           {totalXg !== null ? (
             <View style={styles.marketCard}>
-              <Text style={styles.marketLabel}>Goal Expectancy</Text>
+              <Text style={styles.marketLabel}>{tFn("matchDetail.goalExpectancy")}</Text>
               <Text style={styles.marketValue}>{totalXg.toFixed(2)}</Text>
-              <Text style={styles.marketSub}>Verwachte totale xG</Text>
+              <Text style={styles.marketSub}>{tFn("matchDetail.expectedTotalXg")}</Text>
             </View>
           ) : null}
           <View style={styles.marketCard}>
-            <Text style={styles.marketLabel}>AI Band</Text>
+            <Text style={styles.marketLabel}>{tFn("matchDetail.aiBand")}</Text>
             <Text style={[styles.marketValue, { color: recommendationColor }]}>{recommendationLabel}</Text>
-            <Text style={styles.marketSub}>Waarde-inschatting model</Text>
+            <Text style={styles.marketSub}>{tFn("matchDetail.modelEstimate")}</Text>
           </View>
         </View>
       </View>
@@ -1832,7 +1834,7 @@ function AIPredictionViewInner({ prediction, homeTeam, awayTeam }: any) {
         <View style={styles.nextGoalCard}>
           <View style={styles.nextGoalHeader}>
             <MaterialCommunityIcons name="soccer" size={14} color={COLORS.accent} />
-            <Text style={styles.nextGoalTitle}>Kans op doelpunt (15 min)</Text>
+            <Text style={styles.nextGoalTitle}>{tFn("matchDetail.nextGoalChance")}</Text>
             <Text style={styles.nextGoalPct}>{prediction.nextGoalProbability}%</Text>
           </View>
           <View style={styles.nextGoalBar}>
@@ -1846,21 +1848,21 @@ function AIPredictionViewInner({ prediction, homeTeam, awayTeam }: any) {
         {prediction.momentum && (
           <View style={[styles.metaBadge, { flex: 1 }]}>
             <MaterialCommunityIcons name="trending-up" size={14} color={COLORS.accent} />
-            <Text style={styles.metaBadgeLabel}>Momentum</Text>
+            <Text style={styles.metaBadgeLabel}>{tFn("matchDetail.momentum")}</Text>
             <Text style={styles.metaBadgeValue}>{prediction.momentum}</Text>
           </View>
         )}
         {prediction.danger && (
           <View style={[styles.metaBadge, { flex: 1 }]}>
             <MaterialCommunityIcons name="alert-circle-outline" size={14} color={COLORS.live} />
-            <Text style={styles.metaBadgeLabel}>Gevaar</Text>
+            <Text style={styles.metaBadgeLabel}>{tFn("matchDetail.danger")}</Text>
             <Text style={styles.metaBadgeValue}>{prediction.danger.replace(" Attack", "")}</Text>
           </View>
         )}
         {prediction.riskLevel && (
           <View style={[styles.metaBadge, { flex: 1 }]}>
             <MaterialCommunityIcons name="shield-outline" size={14} color={riskColor} />
-            <Text style={styles.metaBadgeLabel}>Risico</Text>
+            <Text style={styles.metaBadgeLabel}>{tFn("matchDetail.risk")}</Text>
             <Text style={[styles.metaBadgeValue, { color: riskColor }]}>{prediction.riskLevel}</Text>
           </View>
         )}
@@ -1869,7 +1871,7 @@ function AIPredictionViewInner({ prediction, homeTeam, awayTeam }: any) {
       {/* Summary */}
       {prediction.summary && (
         <View style={styles.infoCard}>
-          <Text style={styles.infoCardTitle}>TACTISCHE ANALYSE</Text>
+          <Text style={styles.infoCardTitle}>{tFn("matchDetail.tacticalAnalysis")}</Text>
           <Text style={styles.aiSummary}>{prediction.summary}</Text>
         </View>
       )}
@@ -1877,7 +1879,7 @@ function AIPredictionViewInner({ prediction, homeTeam, awayTeam }: any) {
       {/* Key factors */}
       {prediction.keyFactors?.length > 0 && (
         <View style={styles.infoCard}>
-          <Text style={styles.infoCardTitle}>SLEUTELFACTOREN</Text>
+          <Text style={styles.infoCardTitle}>{tFn("matchDetail.keyFactors")}</Text>
           {prediction.keyFactors.map((f: string, i: number) => (
             <View key={i} style={styles.factorRow}>
               <View style={styles.factorDot} />
@@ -1890,7 +1892,7 @@ function AIPredictionViewInner({ prediction, homeTeam, awayTeam }: any) {
       {/* Tactical notes */}
       {prediction.tacticalNotes?.length > 0 && (
         <View style={styles.infoCard}>
-          <Text style={styles.infoCardTitle}>TACTISCHE NOTITIES</Text>
+          <Text style={styles.infoCardTitle}>{tFn("matchDetail.tacticalNotes")}</Text>
           {prediction.tacticalNotes.map((n: string, i: number) => (
             <View key={i} style={styles.factorRow}>
               <MaterialCommunityIcons name="chess-rook" size={12} color={COLORS.accent} />
@@ -2085,7 +2087,7 @@ function AIPredictionViewInner({ prediction, homeTeam, awayTeam }: any) {
       )}
 
       <Text style={styles.aiDisclaimer}>
-        * AI-analyse is indicatief en gebaseerd op historische gegevens. Geen gokadvies.
+        {tFn("matchDetail.aiDisclaimer")}
       </Text>
     </View>
   );
@@ -2131,7 +2133,7 @@ function LoadingState() {
   return (
     <View style={styles.loadingState}>
       <ActivityIndicator size="large" color={COLORS.accent} />
-      <Text style={styles.loadingText}>Wedstrijd data laden...</Text>
+      <Text style={styles.loadingText}>{tFn("matchDetail.matchDataLoading")}</Text>
     </View>
   );
 }

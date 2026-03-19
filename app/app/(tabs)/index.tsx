@@ -19,6 +19,8 @@ import { LinearGradient } from "expo-linear-gradient";
 import { getLeagueLogo } from "@/lib/logo-manager";
 import { safeStr, toPct, flagFromIso2 } from "@/lib/utils";
 import { useNexora } from "@/context/NexoraContext";
+import { t as tFn, getLanguage } from "@/lib/i18n";
+import { useTranslation } from "@/lib/useTranslation";
 import {
   MatchSnapshot,
   MatchSubscription,
@@ -98,30 +100,30 @@ async function fetchSportsPayloadWithTimeout(path: string, timeoutMs = 6500): Pr
 }
 
 const SPORT_CATEGORIES = [
-  { id: "all",        label: "All Sports",  icon: "apps-outline"                as const },
-  { id: "football",   label: "Football",    icon: "football-outline"            as const },
-  { id: "basketball", label: "Basketball",  icon: "basketball-outline"          as const },
-  { id: "mma",        label: "MMA",         icon: "fitness-outline"             as const },
-  { id: "motorsport", label: "Motorsport",  icon: "car-sport-outline"           as const },
-  { id: "tennis",     label: "Tennis",      icon: "tennisball-outline"          as const },
-  { id: "baseball",   label: "Baseball",    icon: "baseball-outline"            as const },
-  { id: "ice_hockey", label: "Ice Hockey",  icon: "snow-outline"                as const },
-  { id: "other",      label: "Other",       icon: "ellipsis-horizontal-outline" as const },
+  { id: "all",        labelKey: "sports.allSports",  icon: "apps-outline"                as const },
+  { id: "football",   labelKey: "sports.football",    icon: "football-outline"            as const },
+  { id: "basketball", labelKey: "sports.basketball",  icon: "basketball-outline"          as const },
+  { id: "mma",        labelKey: "sports.mma",         icon: "fitness-outline"             as const },
+  { id: "motorsport", labelKey: "sports.motorsport",  icon: "car-sport-outline"           as const },
+  { id: "tennis",     labelKey: "sports.tennis",      icon: "tennisball-outline"          as const },
+  { id: "baseball",   labelKey: "sports.baseball",    icon: "baseball-outline"            as const },
+  { id: "ice_hockey", labelKey: "sports.iceHockey",   icon: "snow-outline"                as const },
+  { id: "other",      labelKey: "sports.other",       icon: "ellipsis-horizontal-outline" as const },
 ];
 type SportCategoryId = typeof SPORT_CATEGORIES[number]["id"];
 
 const SPORT_TOOL_CARDS = [
   {
     id: "football-predictions",
-    title: "Football Predictions",
-    subtitle: "Top picks met 1X2 en confidence",
+    titleKey: "sports.predictions",
+    subtitleKey: "sports.predictionsDesc",
     icon: "analytics-outline" as const,
     accent: COLORS.accent,
   },
   {
     id: "daily-acca-picks",
-    title: "Daily Acca Picks",
-    subtitle: "Combinaties met hoogste value",
+    titleKey: "sports.dailyAcca",
+    subtitleKey: "sports.dailyAccaDesc",
     icon: "ticket-outline" as const,
     accent: COLORS.green,
   },
@@ -153,10 +155,10 @@ function buildHomeAwayBadges(homePctRaw: any, awayPctRaw: any, drawPctRaw?: any)
   const homeBetter = homePct >= awayPct;
   const awayBetter = awayPct > homePct;
   const badges: { label: string; tone: "positive" | "negative" | "neutral" }[] = [
-    { label: `THUIS ${homePct}%`, tone: homeBetter ? "positive" : "negative" },
-    { label: `UIT ${awayPct}%`, tone: awayBetter ? "positive" : "negative" },
+    { label: tFn("sports.home", { pct: homePct }), tone: homeBetter ? "positive" : "negative" },
+    { label: tFn("sports.away", { pct: awayPct }), tone: awayBetter ? "positive" : "negative" },
   ];
-  if (drawPct != null) badges.push({ label: `GELIJK ${drawPct}%`, tone: "neutral" });
+  if (drawPct != null) badges.push({ label: tFn("sports.draw", { pct: drawPct }), tone: "neutral" });
   return badges;
 }
 
@@ -183,72 +185,72 @@ type CountryCatalog = {
 const COUNTRY_COMPETITIONS: CountryCatalog[] = [
   {
     countryCode: "BE",
-    countryName: "België",
+    countryName: "countries.belgium",
     competitions: [
-      { id: "be_d1", tier: "division1", title: "1e Klasse", league: "Jupiler Pro League", espn: "bel.1", color: "#006600" },
-      { id: "be_d2", tier: "division2", title: "2e Klasse", league: "Challenger Pro League", espn: "bel.2", color: "#228b22" },
-      { id: "be_cup", tier: "cup", title: "Beker", league: "Belgian Cup", espn: "bel.cup", color: "#4f7d4f" },
-      { id: "be_nt", tier: "national", title: "Nationaal Team", league: "Belgium National Team", espn: "fifa.world", color: "#7f9f7f", nationalTeamName: "Belgium" },
+      { id: "be_d1", tier: "division1", title: "countries.tier1", league: "Jupiler Pro League", espn: "bel.1", color: "#006600" },
+      { id: "be_d2", tier: "division2", title: "countries.tier2", league: "Challenger Pro League", espn: "bel.2", color: "#228b22" },
+      { id: "be_cup", tier: "cup", title: "countries.cup", league: "Belgian Cup", espn: "bel.cup", color: "#4f7d4f" },
+      { id: "be_nt", tier: "national", title: "countries.nationalTeam", league: "Belgium National Team", espn: "fifa.world", color: "#7f9f7f", nationalTeamName: "Belgium" },
     ],
   },
   {
     countryCode: "GB",
-    countryName: "Engeland",
+    countryName: "countries.england",
     competitions: [
-      { id: "en_d1", tier: "division1", title: "1e Klasse", league: "Premier League", espn: "eng.1", color: "#3d0099" },
-      { id: "en_d2", tier: "division2", title: "2e Klasse", league: "Championship", espn: "eng.2", color: "#5220a3" },
-      { id: "en_cup", tier: "cup", title: "Beker", league: "FA Cup", espn: "eng.fa", color: "#6c3eb6" },
-      { id: "en_nt", tier: "national", title: "Nationaal Team", league: "England National Team", espn: "fifa.world", color: "#8460c4", nationalTeamName: "England" },
+      { id: "en_d1", tier: "division1", title: "countries.tier1", league: "Premier League", espn: "eng.1", color: "#3d0099" },
+      { id: "en_d2", tier: "division2", title: "countries.tier2", league: "Championship", espn: "eng.2", color: "#5220a3" },
+      { id: "en_cup", tier: "cup", title: "countries.cup", league: "FA Cup", espn: "eng.fa", color: "#6c3eb6" },
+      { id: "en_nt", tier: "national", title: "countries.nationalTeam", league: "England National Team", espn: "fifa.world", color: "#8460c4", nationalTeamName: "England" },
     ],
   },
   {
     countryCode: "ES",
-    countryName: "Spanje",
+    countryName: "countries.spain",
     competitions: [
-      { id: "es_d1", tier: "division1", title: "1e Klasse", league: "La Liga", espn: "esp.1", color: "#cc0033" },
-      { id: "es_d2", tier: "division2", title: "2e Klasse", league: "La Liga 2", espn: "esp.2", color: "#d93d63" },
-      { id: "es_cup", tier: "cup", title: "Beker", league: "Copa del Rey", espn: "esp.copa_del_rey", color: "#de5d81" },
-      { id: "es_nt", tier: "national", title: "Nationaal Team", league: "Spain National Team", espn: "fifa.world", color: "#e1829f", nationalTeamName: "Spain" },
+      { id: "es_d1", tier: "division1", title: "countries.tier1", league: "La Liga", espn: "esp.1", color: "#cc0033" },
+      { id: "es_d2", tier: "division2", title: "countries.tier2", league: "La Liga 2", espn: "esp.2", color: "#d93d63" },
+      { id: "es_cup", tier: "cup", title: "countries.cup", league: "Copa del Rey", espn: "esp.copa_del_rey", color: "#de5d81" },
+      { id: "es_nt", tier: "national", title: "countries.nationalTeam", league: "Spain National Team", espn: "fifa.world", color: "#e1829f", nationalTeamName: "Spain" },
     ],
   },
   {
     countryCode: "DE",
-    countryName: "Duitsland",
+    countryName: "countries.germany",
     competitions: [
-      { id: "de_d1", tier: "division1", title: "1e Klasse", league: "Bundesliga", espn: "ger.1", color: "#cc0000" },
-      { id: "de_d2", tier: "division2", title: "2e Klasse", league: "2. Bundesliga", espn: "ger.2", color: "#b42a2a" },
-      { id: "de_cup", tier: "cup", title: "Beker", league: "DFB Pokal", espn: "ger.dfb_pokal", color: "#a64545" },
-      { id: "de_nt", tier: "national", title: "Nationaal Team", league: "Germany National Team", espn: "fifa.world", color: "#956262", nationalTeamName: "Germany" },
+      { id: "de_d1", tier: "division1", title: "countries.tier1", league: "Bundesliga", espn: "ger.1", color: "#cc0000" },
+      { id: "de_d2", tier: "division2", title: "countries.tier2", league: "2. Bundesliga", espn: "ger.2", color: "#b42a2a" },
+      { id: "de_cup", tier: "cup", title: "countries.cup", league: "DFB Pokal", espn: "ger.dfb_pokal", color: "#a64545" },
+      { id: "de_nt", tier: "national", title: "countries.nationalTeam", league: "Germany National Team", espn: "fifa.world", color: "#956262", nationalTeamName: "Germany" },
     ],
   },
   {
     countryCode: "IT",
-    countryName: "Italië",
+    countryName: "countries.italy",
     competitions: [
-      { id: "it_d1", tier: "division1", title: "1e Klasse", league: "Serie A", espn: "ita.1", color: "#990033" },
-      { id: "it_d2", tier: "division2", title: "2e Klasse", league: "Serie B", espn: "ita.2", color: "#ab3657" },
-      { id: "it_cup", tier: "cup", title: "Beker", league: "Coppa Italia", espn: "ita.coppa_italia", color: "#b9617b" },
-      { id: "it_nt", tier: "national", title: "Nationaal Team", league: "Italy National Team", espn: "fifa.world", color: "#c78a9f", nationalTeamName: "Italy" },
+      { id: "it_d1", tier: "division1", title: "countries.tier1", league: "Serie A", espn: "ita.1", color: "#990033" },
+      { id: "it_d2", tier: "division2", title: "countries.tier2", league: "Serie B", espn: "ita.2", color: "#ab3657" },
+      { id: "it_cup", tier: "cup", title: "countries.cup", league: "Coppa Italia", espn: "ita.coppa_italia", color: "#b9617b" },
+      { id: "it_nt", tier: "national", title: "countries.nationalTeam", league: "Italy National Team", espn: "fifa.world", color: "#c78a9f", nationalTeamName: "Italy" },
     ],
   },
   {
     countryCode: "FR",
-    countryName: "Frankrijk",
+    countryName: "countries.france",
     competitions: [
-      { id: "fr_d1", tier: "division1", title: "1e Klasse", league: "Ligue 1", espn: "fra.1", color: "#330066" },
-      { id: "fr_d2", tier: "division2", title: "2e Klasse", league: "Ligue 2", espn: "fra.2", color: "#5d3d82" },
-      { id: "fr_cup", tier: "cup", title: "Beker", league: "Coupe de France", espn: "fra.coupe_de_france", color: "#7d63a0" },
-      { id: "fr_nt", tier: "national", title: "Nationaal Team", league: "France National Team", espn: "fifa.world", color: "#9f8ac0", nationalTeamName: "France" },
+      { id: "fr_d1", tier: "division1", title: "countries.tier1", league: "Ligue 1", espn: "fra.1", color: "#330066" },
+      { id: "fr_d2", tier: "division2", title: "countries.tier2", league: "Ligue 2", espn: "fra.2", color: "#5d3d82" },
+      { id: "fr_cup", tier: "cup", title: "countries.cup", league: "Coupe de France", espn: "fra.coupe_de_france", color: "#7d63a0" },
+      { id: "fr_nt", tier: "national", title: "countries.nationalTeam", league: "France National Team", espn: "fifa.world", color: "#9f8ac0", nationalTeamName: "France" },
     ],
   },
   {
     countryCode: "NL",
-    countryName: "Nederland",
+    countryName: "countries.netherlands",
     competitions: [
-      { id: "nl_d1", tier: "division1", title: "1e Klasse", league: "Eredivisie", espn: "ned.1", color: "#ff6a00" },
-      { id: "nl_d2", tier: "division2", title: "2e Klasse", league: "Eerste Divisie", espn: "ned.2", color: "#ff8b2f" },
-      { id: "nl_cup", tier: "cup", title: "Beker", league: "KNVB Beker", espn: "ned.knvb_beker", color: "#ffa866" },
-      { id: "nl_nt", tier: "national", title: "Nationaal Team", league: "Netherlands National Team", espn: "fifa.world", color: "#ffc39a", nationalTeamName: "Netherlands" },
+      { id: "nl_d1", tier: "division1", title: "countries.tier1", league: "Eredivisie", espn: "ned.1", color: "#ff6a00" },
+      { id: "nl_d2", tier: "division2", title: "countries.tier2", league: "Eerste Divisie", espn: "ned.2", color: "#ff8b2f" },
+      { id: "nl_cup", tier: "cup", title: "countries.cup", league: "KNVB Beker", espn: "ned.knvb_beker", color: "#ffa866" },
+      { id: "nl_nt", tier: "national", title: "countries.nationalTeam", league: "Netherlands National Team", espn: "fifa.world", color: "#ffc39a", nationalTeamName: "Netherlands" },
     ],
   },
 ];
@@ -328,11 +330,12 @@ function shiftDate(ymd: string, days: number): string {
 
 function formatDateDisplay(ymd: string): string {
   const today = todayUTC();
-  if (ymd === today) return "Vandaag";
-  if (ymd === shiftDate(today, -1)) return "Gisteren";
-  if (ymd === shiftDate(today, 1)) return "Morgen";
+  if (ymd === today) return tFn("sportsHome.today");
+  if (ymd === shiftDate(today, -1)) return tFn("sportsHome.yesterday");
+  if (ymd === shiftDate(today, 1)) return tFn("sportsHome.tomorrow");
   try {
-    return new Intl.DateTimeFormat("nl-BE", {
+    const locale = getLanguage() === "nl" ? "nl-BE" : "en-GB";
+    return new Intl.DateTimeFormat(locale, {
       weekday: "short", day: "numeric", month: "short",
     }).format(new Date(ymd + "T12:00:00Z"));
   } catch {
@@ -389,7 +392,7 @@ function DateSelector({ date, onDateChange }: { date: string; onDateChange: (d: 
       </TouchableOpacity>
       {date !== todayUTC() && (
         <TouchableOpacity style={dsStyles.todayBtn} onPress={() => onDateChange(todayUTC())}>
-          <Text style={dsStyles.todayBtnText}>Vandaag</Text>
+          <Text style={dsStyles.todayBtnText}>{tFn("sportsHome.today")}</Text>
         </TouchableOpacity>
       )}
     </View>
@@ -696,7 +699,7 @@ function CountryCard({ country, active, onPress }: { country: CountryCatalog; ac
   return (
     <TouchableOpacity onPress={onPress} activeOpacity={0.82} style={[countryCardStyles.card, active && countryCardStyles.cardActive]}>
       <Text style={countryCardStyles.flag}>{flagFromIso2(country.countryCode)}</Text>
-      <Text style={[countryCardStyles.name, active && countryCardStyles.nameActive]} numberOfLines={1}>{country.countryName}</Text>
+      <Text style={[countryCardStyles.name, active && countryCardStyles.nameActive]} numberOfLines={1}>{tFn(country.countryName)}</Text>
       {active && <Ionicons name="checkmark-circle" size={14} color={P.accent} />}
     </TouchableOpacity>
   );
@@ -777,6 +780,7 @@ export default function SportsScreen() {
   const compCardWidth = Math.floor((Math.min(screenWidth, 480) - 16 * 2 - 10 * 3) / 4);
   const qc = useQueryClient();
   const { favorites } = useNexora();
+  const { t } = useTranslation();
 
   const [refreshing, setRefreshing] = useState(false);
   const [statusFilter] = useState<"all" | "live" | "upcoming">("all");
@@ -1237,10 +1241,10 @@ export default function SportsScreen() {
   );
 
   const tierLabel = (tier: CompetitionTier) => {
-    if (tier === "division1") return "1e Klasse";
-    if (tier === "division2") return "2e Klasse";
-    if (tier === "cup") return "Beker";
-    return "Nationaal Team";
+    if (tier === "division1") return tFn("countries.tier1");
+    if (tier === "division2") return tFn("countries.tier2");
+    if (tier === "cup") return tFn("countries.cup");
+    return tFn("countries.nationalTeam");
   };
 
   const tierIcon = (tier: CompetitionTier) => {
@@ -1258,10 +1262,10 @@ export default function SportsScreen() {
 
   // ── Sports sub-nav tabs ────────────────────────────────────────────────────
   const SPORTS_TABS = [
-    { id: "competitions" as const, label: "Explore" },
-    { id: "live" as const,         label: "Live" },
-    { id: "upcoming" as const,     label: "Matchday" },
-    { id: "menu" as const,         label: "Analyse" },
+    { id: "competitions" as const, label: t("sportsHome.explore") },
+    { id: "live" as const,         label: t("sportsHome.live") },
+    { id: "upcoming" as const,     label: t("sportsHome.matchday") },
+    { id: "menu" as const,         label: t("sportsHome.analyse") },
   ];
 
   // ── Today section matches ─────────────────────────────────────────────────
@@ -1324,7 +1328,7 @@ export default function SportsScreen() {
           <Ionicons name="search" size={15} color={P.muted} />
           <TextInput
             style={styles.sportsSearchInput}
-            placeholder="Zoek team of competitie..."
+            placeholder={t("sportsHome.searchPlaceholder")}
             placeholderTextColor={P.muted}
             value={sportsSearchQuery}
             onChangeText={setSportsSearchQuery}
@@ -1339,7 +1343,7 @@ export default function SportsScreen() {
       {sportsSearchActive && sportsSearchQuery.trim().length >= 2 && (
         <View style={styles.sportsSearchResults}>
           {sportsSearchResults.length === 0 ? (
-            <Text style={styles.sportsSearchEmpty}>Geen resultaten voor &quot;{sportsSearchQuery}&quot;</Text>
+            <Text style={styles.sportsSearchEmpty}>{t("sportsHome.noResults")} &quot;{sportsSearchQuery}&quot;</Text>
           ) : sportsSearchResults.map((match: any) => {
             const isLiveMatch = String(match?.status || "").toLowerCase() === "live";
             return (
@@ -1353,7 +1357,7 @@ export default function SportsScreen() {
                     {match.homeTeam} vs {match.awayTeam}
                   </Text>
                   <Text style={styles.sportsSearchResultMeta} numberOfLines={1}>
-                    {match.league} · {isLiveMatch ? "🔴 LIVE" : (match.startTime || "Gepland")}
+                    {match.league} · {isLiveMatch ? "🔴 LIVE" : (match.startTime || t("sportsHome.scheduled"))}
                   </Text>
                 </View>
                 {isLiveMatch && (
@@ -1380,7 +1384,7 @@ export default function SportsScreen() {
         {filterEmpty && (
           <View style={styles.banner}>
             <Ionicons name="information-circle-outline" size={14} color={P.accent} />
-            <Text style={styles.bannerText}>No matches for &quot;{SPORT_CATEGORIES.find(c => c.id === sportCategory)?.label}&quot; – showing all sports.</Text>
+            <Text style={styles.bannerText}>{t("sportsHome.noMatchesFilter", { filter: SPORT_CATEGORIES.find(c => c.id === sportCategory)?.labelKey ? tFn(SPORT_CATEGORIES.find(c => c.id === sportCategory)!.labelKey) : "" })}</Text>
           </View>
         )}
         {normalizedApiError && (
@@ -1395,7 +1399,7 @@ export default function SportsScreen() {
         {noRemoteData && (
           <View style={styles.banner}>
             <Ionicons name="cloud-offline-outline" size={14} color={P.accent} />
-            <Text style={styles.bannerText}>No live data received. Results will follow when available.</Text>
+            <Text style={styles.bannerText}>{t("sportsHome.noLiveData")}</Text>
           </View>
         )}
 
@@ -1420,7 +1424,7 @@ export default function SportsScreen() {
                     style={[styles.sportCatPill, isActive && styles.sportCatPillActive]}
                   >
                     <Ionicons name={cat.icon} size={14} color={isActive ? "#fff" : P.muted} />
-                    <Text style={[styles.sportCatLabel, isActive && styles.sportCatLabelActive]}>{cat.label}</Text>
+                    <Text style={[styles.sportCatLabel, isActive && styles.sportCatLabelActive]}>{tFn(cat.labelKey)}</Text>
                   </TouchableOpacity>
                 );
               })}
@@ -1429,7 +1433,7 @@ export default function SportsScreen() {
             {/* ── MIJN TEAMS ── */}
             {myTeamMatches.length > 0 && (
               <>
-                <SectionTitle title="⭐ Mijn Teams" accent />
+                <SectionTitle title={`⭐ ${t("sportsHome.myTeams")}`} accent />
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.carouselContent}>
                   {myTeamMatches.slice(0, 8).map((match: any) => (
                     <TodayMatchCard key={match.id} match={match} onPress={() => handleMatchPress(match)} />
@@ -1440,10 +1444,10 @@ export default function SportsScreen() {
 
             {/* ── LIVE NOW ── */}
             <SectionTitle
-              title="🔴 Live Nu"
+              title={`🔴 ${t("sportsHome.liveNow")}`}
               accent
               count={sortedLive.length}
-              action={sortedLive.length > 3 ? `Alle ${sortedLive.length}` : undefined}
+              action={sortedLive.length > 3 ? t("sportsHome.allCount", { count: sortedLive.length }) : undefined}
               onAction={() => setSportsView("live")}
             />
             {liveFirstLoad ? (
@@ -1453,7 +1457,7 @@ export default function SportsScreen() {
             ) : sortedLive.length === 0 ? (
               <View style={styles.emptyCarousel}>
                 <Ionicons name="radio-button-off-outline" size={24} color={P.muted} />
-                <Text style={styles.emptyText}>No live matches right now</Text>
+                <Text style={styles.emptyText}>{t("sportsHome.noLiveMatches")}</Text>
               </View>
             ) : (
               <ScrollView
@@ -1469,9 +1473,9 @@ export default function SportsScreen() {
 
             {/* ── VANDAAG ── */}
             <SectionTitle
-              title="Today"
+              title={t("sportsHome.today")}
               accent
-              action={todayCombined.length > 5 ? "All matches" : undefined}
+              action={todayCombined.length > 5 ? t("sportsHome.allMatches") : undefined}
               onAction={() => setSportsView("upcoming")}
             />
             {todayFirstLoad ? (
@@ -1481,7 +1485,7 @@ export default function SportsScreen() {
             ) : todayCombined.length === 0 ? (
               <View style={styles.emptyCarousel}>
                 <Ionicons name="calendar-outline" size={24} color={P.muted} />
-                <Text style={styles.emptyText}>No matches today</Text>
+                <Text style={styles.emptyText}>{t("sportsHome.noMatchesToday")}</Text>
               </View>
             ) : (
               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.carouselContent}>
@@ -1492,7 +1496,7 @@ export default function SportsScreen() {
             )}
 
             {/* ── POPULAR COMPETITIONS ── */}
-            <SectionTitle title="Popular Competitions" accent />
+            <SectionTitle title={t("sportsHome.popularCompetitions")} accent />
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
@@ -1512,7 +1516,7 @@ export default function SportsScreen() {
             </ScrollView>
 
             {/* ── LANDEN ── */}
-            <SectionTitle title="Landen" accent />
+            <SectionTitle title={t("sportsHome.countriesTitle")} accent />
             <View style={styles.countryGrid}>
               {COUNTRY_COMPETITIONS.map((country) => (
                 <CountryCard
@@ -1527,7 +1531,7 @@ export default function SportsScreen() {
             {/* ── HIGHLIGHTS & REPLAYS ── */}
             {sortedFinished.length > 0 && (
               <>
-                <SectionTitle title="Highlights & Replays" accent />
+                <SectionTitle title={t("sportsHome.highlightsReplays")} accent />
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.carouselContent}>
                   {sortedFinished.slice(0, 10).map((match: any) => (
                     <HighlightCard key={match.id} match={match} onPress={() => {
@@ -1555,7 +1559,7 @@ export default function SportsScreen() {
             )}
 
             {/* ── ALLE COMPETITIES (selected country) ── */}
-            <SectionTitle title={`${flagFromIso2(selectedCountryCode)} ${selectedCountry?.countryName} · Competities`} accent />
+            <SectionTitle title={`${flagFromIso2(selectedCountryCode)} ${tFn(selectedCountry?.countryName || "")} · ${t("sportsHome.competitions")}`} accent />
             <View style={styles.compListPanel}>
               {(selectedCountry?.competitions || []).map((comp) => (
                 <TouchableOpacity
@@ -1594,7 +1598,7 @@ export default function SportsScreen() {
             <View style={styles.sectionHead}>
               <View style={styles.livePillInline}>
                 <View style={styles.liveDotInline} />
-                <Text style={styles.livePillText}>Live Nu</Text>
+                <Text style={styles.livePillText}>{t("sportsHome.liveNow")}</Text>
               </View>
               <LiveBadge />
             </View>
@@ -1603,7 +1607,7 @@ export default function SportsScreen() {
             ) : sortedLive.length === 0 ? (
               <View style={styles.emptyState}>
                 <Ionicons name="radio-button-off-outline" size={28} color={P.muted} />
-                <Text style={styles.emptyText}>No live matches</Text>
+                <Text style={styles.emptyText}>{t("sportsHome.noLive")}</Text>
               </View>
             ) : (
               sortedLive.slice(0, 60).map((match: any) => (
@@ -1628,7 +1632,7 @@ export default function SportsScreen() {
               <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
                 <View style={{ width: 3, height: 18, backgroundColor: P.accent, borderRadius: 2 }} />
                 <Text style={styles.sectionTitle}>
-                  {selectedDate === todayUTC() ? "Matches today" : formatDateDisplay(selectedDate)}
+                  {selectedDate === todayUTC() ? t("sportsHome.matchesToday") : formatDateDisplay(selectedDate)}
                 </Text>
               </View>
             </View>
@@ -1637,13 +1641,13 @@ export default function SportsScreen() {
             ) : sortedUpcoming.length === 0 && sortedFinished.length === 0 ? (
               <View style={styles.emptyState}>
                 <Ionicons name="calendar-outline" size={28} color={P.muted} />
-                <Text style={styles.emptyText}>No matches on {formatDateDisplay(selectedDate)}</Text>
+                <Text style={styles.emptyText}>{t("sportsHome.noMatchesOn", { date: formatDateDisplay(selectedDate) })}</Text>
               </View>
             ) : (
               <>
                 {sortedUpcoming.length > 0 && (
                   <>
-                    <Text style={styles.subHead}>Upcoming</Text>
+                    <Text style={styles.subHead}>{t("sportsHome.upcoming")}</Text>
                     {sortedUpcoming.slice(0, 60).map((match: any) => (
                       <MatchRowCard
                         key={match.id}
@@ -1656,7 +1660,7 @@ export default function SportsScreen() {
                 )}
                 {sortedFinished.length > 0 && (
                   <>
-                    <Text style={[styles.subHead, { marginTop: 16 }]}>Afgelopen</Text>
+                    <Text style={[styles.subHead, { marginTop: 16 }]}>{t("sportsHome.finished")}</Text>
                     {sortedFinished.slice(0, 60).map((match: any) => (
                       <MatchRowCard
                         key={match.id}
@@ -1680,7 +1684,7 @@ export default function SportsScreen() {
             <View style={styles.sectionHead}>
               <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
                 <View style={{ width: 3, height: 18, backgroundColor: P.accent, borderRadius: 2 }} />
-                <Text style={styles.sectionTitle}>Analyse</Text>
+                <Text style={styles.sectionTitle}>{t("sportsHome.analyse")}</Text>
               </View>
             </View>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.toolsRow}>
@@ -1700,10 +1704,10 @@ export default function SportsScreen() {
                       <View style={[styles.toolIconWrap, { backgroundColor: `${card.accent}22`, borderColor: `${card.accent}55` }]}>
                         <Ionicons name={card.icon} size={16} color={card.accent} />
                       </View>
-                      <Text style={styles.toolTitle} numberOfLines={1}>{card.title}</Text>
-                      <Text style={styles.toolSub} numberOfLines={2}>{card.subtitle}</Text>
+                      <Text style={styles.toolTitle} numberOfLines={1}>{tFn(card.titleKey)}</Text>
+                      <Text style={styles.toolSub} numberOfLines={2}>{tFn(card.subtitleKey)}</Text>
                       <View style={styles.toolAction}>
-                        <Text style={[styles.toolActionText, { color: card.accent }]}>Open</Text>
+                        <Text style={[styles.toolActionText, { color: card.accent }]}>{t("sportsHome.open")}</Text>
                         <Ionicons name="chevron-forward" size={12} color={card.accent} />
                       </View>
                     </LinearGradient>
@@ -1713,8 +1717,8 @@ export default function SportsScreen() {
             </ScrollView>
             <LinearGradient colors={[COLORS.cardElevated, COLORS.background]} style={styles.toolPanel}>
               <View style={styles.toolPanelHead}>
-                <Text style={styles.toolPanelTitle}>{activeSportToolCard.title}</Text>
-                <Text style={styles.toolPanelCount}>{activeToolRows.length} picks</Text>
+                <Text style={styles.toolPanelTitle}>{tFn(activeSportToolCard.titleKey)}</Text>
+                <Text style={styles.toolPanelCount}>{activeToolRows.length} {t("sportsHome.picks")}</Text>
               </View>
               {activeToolRows.length > 0 ? activeToolRows.map((row: any) => (
                 <TouchableOpacity
@@ -1738,7 +1742,7 @@ export default function SportsScreen() {
                   )}
                 </TouchableOpacity>
               )) : (
-                <Text style={styles.toolEmpty}>Nog geen data beschikbaar.</Text>
+                <Text style={styles.toolEmpty}>{t("sportsHome.noDataYet")}</Text>
               )}
             </LinearGradient>
           </View>

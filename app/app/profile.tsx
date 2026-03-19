@@ -25,6 +25,8 @@ import * as Updates from "expo-updates";
 import { COLORS } from "@/constants/colors";
 import { NexoraHeader } from "@/components/NexoraHeader";
 import { useNexora } from "@/context/NexoraContext";
+import { useTranslation } from "@/lib/useTranslation";
+import { t as tFn, type Language } from "@/lib/i18n";
 import { apiRequest, queryClient } from "@/lib/query-client";
 import { fetchM3UText } from "@/lib/fetchM3U";
 import { parseM3UContentAsync } from "@/lib/parseM3U";
@@ -403,13 +405,13 @@ function UpdateModal({
       <View style={updateStyles.overlay}>
         <View style={updateStyles.modal}>
           <View style={updateStyles.header}>
-            <Text style={updateStyles.title}>Wat is er nieuw?</Text>
+            <Text style={updateStyles.title}>{tFn("update.whatsNew")}</Text>
             <TouchableOpacity onPress={onClose} style={updateStyles.closeBtn}>
               <Ionicons name="close" size={20} color={COLORS.textMuted} />
             </TouchableOpacity>
           </View>
 
-          <Text style={updateStyles.currentVersion}>Huidige versie: {currentVersion}</Text>
+          <Text style={updateStyles.currentVersion}>{tFn("update.currentVersion", { version: currentVersion })}</Text>
 
           <ScrollView style={updateStyles.logScroll} showsVerticalScrollIndicator={false}>
             {CHANGELOG.map((entry) => (
@@ -419,7 +421,7 @@ function UpdateModal({
                   <Text style={updateStyles.entryDate}>{entry.date}</Text>
                   {entry.version === currentVersion && (
                     <View style={updateStyles.currentBadge}>
-                      <Text style={updateStyles.currentBadgeText}>huidig</Text>
+                      <Text style={updateStyles.currentBadgeText}>{tFn("update.current")}</Text>
                     </View>
                   )}
                 </View>
@@ -435,16 +437,16 @@ function UpdateModal({
 
           <View style={updateStyles.footer}>
             {status === "uptodate" && (
-              <Text style={updateStyles.statusText}>You have the latest version.</Text>
+              <Text style={updateStyles.statusText}>{tFn("update.latestVersion")}</Text>
             )}
             {status === "update" && (
               <Text style={[updateStyles.statusText, { color: COLORS.accent }]}>
-                New version available!
+                {tFn("update.newVersionAvailable")}
               </Text>
             )}
             {status === "downloading" && (
               <>
-                <Text style={updateStyles.statusText}>Downloading update... {Math.round(downloadProgress * 100)}%</Text>
+                <Text style={updateStyles.statusText}>{tFn("update.downloading", { progress: String(Math.round(downloadProgress * 100)) })}</Text>
                 <View style={{ width: "100%", height: 6, borderRadius: 3, backgroundColor: "rgba(255,255,255,0.1)", marginTop: 8 }}>
                   <View style={{ width: `${Math.round(downloadProgress * 100)}%`, height: 6, borderRadius: 3, backgroundColor: COLORS.accent }} />
                 </View>
@@ -452,19 +454,19 @@ function UpdateModal({
             )}
             {status === "ready" && (
               <Text style={[updateStyles.statusText, { color: "#22c55e" }]}>
-                Update ready — tap to restart.
+                {tFn("update.updateReady")}
               </Text>
             )}
 
             {status === "ready" ? (
               <TouchableOpacity style={updateStyles.checkBtn} onPress={handleReload}>
                 <Ionicons name="refresh" size={16} color={COLORS.background} />
-                <Text style={updateStyles.checkBtnText}>Restart and install</Text>
+                <Text style={updateStyles.checkBtnText}>{tFn("update.restartInstall")}</Text>
               </TouchableOpacity>
             ) : status === "update" ? (
               <TouchableOpacity style={updateStyles.checkBtn} onPress={handleDownload}>
                 <Ionicons name="download-outline" size={16} color={COLORS.background} />
-                <Text style={updateStyles.checkBtnText}>Download & install</Text>
+                <Text style={updateStyles.checkBtnText}>{tFn("update.downloadInstall")}</Text>
               </TouchableOpacity>
             ) : (
               <TouchableOpacity
@@ -478,7 +480,7 @@ function UpdateModal({
                   <Ionicons name="cloud-download-outline" size={16} color={COLORS.background} />
                 )}
                 <Text style={updateStyles.checkBtnText}>
-                  {checking ? "Checking..." : "Check for updates"}
+                  {checking ? tFn("update.checking") : tFn("update.checkForUpdates")}
                 </Text>
               </TouchableOpacity>
             )}
@@ -660,7 +662,8 @@ export default function SettingsScreen() {
     parentalPin, setParentalPin,
     playlists, addPlaylist, removePlaylist, updatePlaylist,
     favorites, watchHistory, clearHistory, iptvChannels, setIptvChannelsForPlaylist,
-    isPremium, resetAll, avatarUri, setAvatarUri} = useNexora();
+    isPremium, resetAll, avatarUri, setAvatarUri, uiLanguage, setUiLanguage} = useNexora();
+  const { t } = useTranslation();
 
   const [progressVisible, setProgressVisible] = useState(false);
   const [progressPct, setProgressPct] = useState(0);
@@ -1171,7 +1174,7 @@ const [showAddPlaylist, setShowAddPlaylist] = useState(false);
       />
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: bottomPad }}>
-        <Text style={styles.heroHeadline}>Jouw profiel, playlists en streaming instellingen</Text>
+        <Text style={styles.heroHeadline}>{t("settings.subtitle")}</Text>
         <View style={styles.profileSection}>
           <TouchableOpacity
             style={styles.avatarContainer}
@@ -1206,7 +1209,7 @@ const [showAddPlaylist, setShowAddPlaylist] = useState(false);
               <Ionicons name="camera" size={12} color="#fff" />
             </View>
           </TouchableOpacity>
-          <Text style={styles.profileName}>Main Profile</Text>
+          <Text style={styles.profileName}>{t("settings.mainProfile")}</Text>
           <TouchableOpacity
             style={[styles.premiumBadge, isPremium && styles.premiumBadgeActive]}
             onPress={() => router.push("/premium")}
@@ -1214,7 +1217,7 @@ const [showAddPlaylist, setShowAddPlaylist] = useState(false);
           >
             <MaterialCommunityIcons name="crown" size={13} color={isPremium ? "#FFD700" : COLORS.textMuted} />
             <Text style={[styles.premiumBadgeText, isPremium && styles.premiumBadgeTextActive]}>
-              {isPremium ? "NEXORA Premium" : "Upgrade to Premium"}
+              {isPremium ? t("settings.premium") : t("settings.upgradePremium")}
             </Text>
             {!isPremium && <Ionicons name="chevron-forward" size={13} color={COLORS.accent} />}
           </TouchableOpacity>
@@ -1223,17 +1226,17 @@ const [showAddPlaylist, setShowAddPlaylist] = useState(false);
         <View style={styles.statsBar}>
           <View style={styles.statItem}>
             <Text style={styles.statValue}>{favorites.length}</Text>
-            <Text style={styles.statLabel}>Favorites</Text>
+            <Text style={styles.statLabel}>{t("settings.favorites")}</Text>
           </View>
           <View style={styles.statDivider} />
           <View style={styles.statItem}>
             <Text style={styles.statValue}>{watchHistory.length}</Text>
-            <Text style={styles.statLabel}>Watched</Text>
+            <Text style={styles.statLabel}>{t("settings.watched")}</Text>
           </View>
           <View style={styles.statDivider} />
           <View style={styles.statItem}>
             <Text style={styles.statValue}>{playlists.length}</Text>
-            <Text style={styles.statLabel}>Playlists</Text>
+            <Text style={styles.statLabel}>{t("settings.playlists")}</Text>
           </View>
         </View>
 
@@ -1241,27 +1244,27 @@ const [showAddPlaylist, setShowAddPlaylist] = useState(false);
           <View style={styles.channelStatsBar}>
             <View style={styles.channelStat}>
               <Text style={styles.channelStatNum}>{liveCount}</Text>
-              <Text style={styles.channelStatLbl}>Live</Text>
+              <Text style={styles.channelStatLbl}>{t("common.live")}</Text>
             </View>
             <View style={styles.channelStatDiv} />
             <View style={styles.channelStat}>
               <Text style={styles.channelStatNum}>{movieCount}</Text>
-              <Text style={styles.channelStatLbl}>Movies</Text>
+              <Text style={styles.channelStatLbl}>{t("tabs.movies")}</Text>
             </View>
             <View style={styles.channelStatDiv} />
             <View style={styles.channelStat}>
               <Text style={styles.channelStatNum}>{seriesCount}</Text>
-              <Text style={styles.channelStatLbl}>Series</Text>
+              <Text style={styles.channelStatLbl}>{t("tabs.series")}</Text>
             </View>
             <View style={styles.channelStatDiv} />
             <TouchableOpacity onPress={() => router.push("/playlist-manage")} style={styles.manageQuickBtn}>
               <Ionicons name="options-outline" size={14} color={COLORS.accent} />
-              <Text style={styles.manageQuickBtnText}>Manage</Text>
+              <Text style={styles.manageQuickBtnText}>{t("common.manage")}</Text>
             </TouchableOpacity>
           </View>
         )}
 
-        <Section title="IPTV Playlists">
+        <Section title={t("settings.iptvPlaylists")}>
           {playlists.map((pl) => {
             const isLoading = loadingPlaylistId === pl.id || pl.status === "loading";
             return (
@@ -1288,7 +1291,7 @@ const [showAddPlaylist, setShowAddPlaylist] = useState(false);
                     )}
                   </View>
                   <Text style={styles.playlistUrl} numberOfLines={1}>{pl.url}</Text>
-                  {isLoading && <Text style={styles.loadingText}>Loading channels...</Text>}
+                  {isLoading && <Text style={styles.loadingText}>{t("settings.loadingChannels")}</Text>}
                   {pl.status === "ready" && (
                     <Text style={styles.channelCountText}>
                       {pl.liveCount} live · {pl.movieCount} movies · {pl.seriesCount} series
@@ -1442,17 +1445,17 @@ const [showAddPlaylist, setShowAddPlaylist] = useState(false);
           ) : (
             <TouchableOpacity style={styles.addPlaylistBtn} onPress={() => setShowAddPlaylist(true)}>
               <Ionicons name="add-circle-outline" size={18} color={COLORS.accent} />
-              <Text style={styles.addPlaylistText}>Add M3U Playlist</Text>
+              <Text style={styles.addPlaylistText}>{t("settings.addM3U")}</Text>
             </TouchableOpacity>
           )}
         </Section>
 
-        <Section title="Playback">
+        <Section title={t("settings.playback")}>
           <View style={styles.qualityRow}>
             <View style={styles.rowIcon}>
               <Ionicons name="videocam-outline" size={18} color={COLORS.accent} />
             </View>
-            <Text style={styles.rowLabel}>Quality</Text>
+            <Text style={styles.rowLabel}>{t("settings.quality")}</Text>
             <View style={styles.qualityButtons}>
               {qualities.map((q) => (
                 <TouchableOpacity
@@ -1468,7 +1471,7 @@ const [showAddPlaylist, setShowAddPlaylist] = useState(false);
           <Divider />
           <SettingRow
             icon="text-outline"
-            label="Subtitles"
+            label={t("settings.subtitles")}
             rightElement={
               <Switch
                 value={subtitlesEnabled}
@@ -1481,14 +1484,14 @@ const [showAddPlaylist, setShowAddPlaylist] = useState(false);
           <Divider />
           <SettingRow
             icon="language-outline"
-            label="Audio Language"
+            label={t("settings.audioLanguage")}
             value={selectedLangLabel}
             onPress={() => setShowLangModal(true)}
           />
           <Divider />
           <SettingRow
             icon="play-skip-forward-outline"
-            label="Autoplay Next"
+            label={t("settings.autoplayNext")}
             rightElement={
               <Switch
                 value={autoplayEnabled}
@@ -1500,10 +1503,10 @@ const [showAddPlaylist, setShowAddPlaylist] = useState(false);
           />
         </Section>
 
-        <Section title="Downloads">
+        <Section title={t("settings.downloadsSection")}>
           <SettingRow
             icon="wifi-outline"
-            label="Download over Wi-Fi only"
+            label={t("settings.wifiOnly")}
             rightElement={
               <Switch
                 value={downloadOverWifi}
@@ -1516,16 +1519,16 @@ const [showAddPlaylist, setShowAddPlaylist] = useState(false);
           <Divider />
           <SettingRow
             icon="folder-outline"
-            label="Offline downloads"
-            value="Not available"
-            onPress={() => Alert.alert("Downloads", "Offline downloads are not yet available in this version. Content streams directly from your IPTV playlist.")}
+            label={t("settings.offlineDownloads")}
+            value={t("settings.notAvailable")}
+            onPress={() => Alert.alert(t("settings.downloadsSection"), t("settings.offlineNotAvailable"))}
           />
         </Section>
 
-        <Section title="Notifications">
+        <Section title={t("settings.notifications")}>
           <SettingRow
             icon="notifications-outline"
-            label="Push Notifications"
+            label={t("settings.pushNotifications")}
             rightElement={
               <Switch
                 value={notificationsEnabled}
@@ -1538,61 +1541,87 @@ const [showAddPlaylist, setShowAddPlaylist] = useState(false);
           <Divider />
           <SettingRow
             icon="calendar-outline"
-            label="Nieuwe releases"
-            value="Binnenkort"
-            onPress={() => Alert.alert("Nieuwe releases", "Meldingen voor nieuwe content komen in een toekomstige update.")}
+            label={t("settings.newReleases")}
+            value={t("settings.comingSoon")}
+            onPress={() => Alert.alert(t("settings.newReleases"), t("settings.notifHint"))}
           />
         </Section>
 
-        <Section title="Security">
+        <Section title={t("settings.security")}>
           <SettingRow
             icon="lock-closed-outline"
-            label="Parental Control"
-            value={parentalPin ? "Active (PIN set)" : "Off"}
+            label={t("settings.parentalControl")}
+            value={parentalPin ? t("settings.pinActive") : t("settings.pinOff")}
             onPress={handleSetPin}
           />
           <Divider />
           <SettingRow
             icon="time-outline"
-            label="Clear watch history"
-            value={watchHistory.length > 0 ? `${watchHistory.length} items` : "Leeg"}
+            label={t("settings.clearHistory")}
+            value={watchHistory.length > 0 ? `${watchHistory.length} ${t("settings.items")}` : t("common.empty")}
             onPress={handleClearHistory}
           />
           <Divider />
           <SettingRow
             icon="refresh-outline"
-            label="Reset App Data"
+            label={t("settings.resetApp")}
             danger
             onPress={handleResetAppData}
           />
         </Section>
 
-        <Section title="About">
-          <SettingRow icon="information-circle-outline" label="Version" value={appVersion} />
+        <Section title={t("settings.language")}>
+          <TouchableOpacity
+            style={[styles.langOption, uiLanguage === "en" && styles.langOptionActive]}
+            onPress={() => { SafeHaptics.impactLight(); setUiLanguage("en"); }}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.langFlag}>🇬🇧</Text>
+            <Text style={[styles.langLabel, uiLanguage === "en" && styles.langLabelActive]}>
+              {t("settings.languageEnglish")}
+            </Text>
+            {uiLanguage === "en" && <Ionicons name="checkmark-circle" size={20} color={COLORS.accent} />}
+          </TouchableOpacity>
+          <Divider />
+          <TouchableOpacity
+            style={[styles.langOption, uiLanguage === "nl" && styles.langOptionActive]}
+            onPress={() => { SafeHaptics.impactLight(); setUiLanguage("nl"); }}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.langFlag}>🇳🇱</Text>
+            <Text style={[styles.langLabel, uiLanguage === "nl" && styles.langLabelActive]}>
+              {t("settings.languageDutch")}
+            </Text>
+            {uiLanguage === "nl" && <Ionicons name="checkmark-circle" size={20} color={COLORS.accent} />}
+          </TouchableOpacity>
+        </Section>
+
+        <Section title={t("settings.about")}>
+          <SettingRow icon="information-circle-outline" label={t("settings.version")} value={appVersion} />
           <Divider />
           <SettingRow
             icon="cloud-download-outline"
-            label="Check app updates"
+            label={t("settings.checkUpdates")}
             value={appVersion}
             onPress={handleManualUpdateCheck}
           />
           <Divider />
           <SettingRow
             icon="star-outline"
-            label="Rate NEXORA"
-            onPress={() => Alert.alert("Thanks!", "Your rating helps us improve. Rating will be available on release.")}
+            label={t("settings.rateApp")}
+            onPress={() => Alert.alert(t("settings.rateTitle"), t("settings.rateMessage"))}
           />
           <Divider />
           <SettingRow
             icon="help-circle-outline"
-            label="Support"
-            onPress={() => Alert.alert("Support", "support@nexora.app\n\nResponse time: 24-48 hours")}
+            label={t("settings.support")}
+            onPress={() => Alert.alert(t("settings.support"), `${t("settings.supportEmail")}\n\n${t("settings.supportResponse")}`)}
           />
           <Divider />
           <SettingRow
             icon="shield-checkmark-outline"
-            label="Privacy Policy"
-            onPress={() => Alert.alert("Privacy Policy", "Your data is stored locally and never shared with third parties.")}
+            label={t("settings.privacyPolicy")}
+            onPress={() => Alert.alert(t("settings.privacyPolicy"), t("settings.privacyMessage"))}
           />
         </Section>
       </ScrollView>
@@ -1628,16 +1657,16 @@ const [showAddPlaylist, setShowAddPlaylist] = useState(false);
             />
             <Text style={progStyles.title}>
               {progressStage === "done"
-                ? "Klaar!"
+                ? t("progress.done")
                 : progressStage === "parse"
-                ? "Kanalen verwerken..."
-                : "Playlist downloaden..."}
+                ? t("progress.processingChannels")
+                : t("progress.downloadingPlaylist")}
             </Text>
             <View style={progStyles.barBg}>
               <View style={[progStyles.barFill, { width: `${progressPct}%` as any }]} />
             </View>
             <Text style={progStyles.pct}>{progressPct}%</Text>
-            <Text style={progStyles.hint}>Even geduld, grote lijsten kunnen even duren.</Text>
+            <Text style={progStyles.hint}>{t("progress.patience")}</Text>
           </View>
         </View>
       </Modal>
@@ -1823,6 +1852,13 @@ const styles = StyleSheet.create({
   qualityBtnActive: { backgroundColor: COLORS.accentGlow, borderColor: COLORS.accent },
   qualityBtnText: { fontFamily: "Inter_600SemiBold", fontSize: 11, color: COLORS.textMuted },
   qualityBtnTextActive: { color: COLORS.accent },
+  langOption: {
+    flexDirection: "row", alignItems: "center", paddingHorizontal: 16, paddingVertical: 14, gap: 12,
+  },
+  langOptionActive: { backgroundColor: COLORS.accentGlow + "18" },
+  langFlag: { fontSize: 22 },
+  langLabel: { flex: 1, fontFamily: "Inter_500Medium", fontSize: 15, color: COLORS.textSecondary },
+  langLabelActive: { color: COLORS.text, fontFamily: "Inter_600SemiBold" },
 });
 
 const updateStyles = StyleSheet.create({

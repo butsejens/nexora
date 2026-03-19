@@ -12,6 +12,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
+import { t } from "@/lib/i18n";
 
 export type ErrorFallbackProps = {
   error: Error;
@@ -79,11 +80,11 @@ export function ErrorFallback({ error, resetError }: ErrorFallbackProps) {
 
       <View style={styles.content}>
         <Text style={[styles.title, { color: theme.text }]}>
-          Something went wrong
+          {t("errors.somethingWrong")}
         </Text>
 
         <Text style={[styles.message, { color: theme.textSecondary }]}>
-          Please reload the app to continue.
+          {t("errors.reloadApp")}
         </Text>
 
         <Pressable
@@ -98,7 +99,7 @@ export function ErrorFallback({ error, resetError }: ErrorFallbackProps) {
           ]}
         >
           <Text style={[styles.buttonText, { color: theme.buttonText }]}>
-            Try Again
+            {t("errors.tryAgain")}
           </Text>
         </Pressable>
       </View>
@@ -128,7 +129,7 @@ export function ErrorFallback({ error, resetError }: ErrorFallbackProps) {
                 ]}
               >
                 <Text style={[styles.modalTitle, { color: theme.text }]}>
-                  Error Details
+                  {t("errors.errorDetails")}
                 </Text>
                 <Pressable
                   onPress={() => setIsModalVisible(false)}

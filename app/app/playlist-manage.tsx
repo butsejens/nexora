@@ -9,6 +9,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { COLORS } from "@/constants/colors";
 import { useNexora } from "@/context/NexoraContext";
 import { SafeHaptics } from "@/lib/safeHaptics";
+import { useTranslation } from "@/lib/useTranslation";
 
 type Tab = "groups" | "channels";
 
@@ -20,6 +21,7 @@ export default function PlaylistManageScreen() {
     iptvChannels, hiddenChannels, hiddenGroups,
     toggleHideChannel, toggleHideGroup, isChannelVisible,
   } = useNexora();
+  const { t } = useTranslation();
 
   const [tab, setTab] = useState<Tab>("groups");
   const [search, setSearch] = useState("");
@@ -54,17 +56,17 @@ export default function PlaylistManageScreen() {
   const bottomPad = Platform.OS === "web" ? 34 : insets.bottom + 16;
 
   const CATS: { key: "all" | "live" | "movie" | "series"; label: string }[] = [
-    { key: "all", label: "All" },
-    { key: "live", label: "Live" },
-    { key: "movie", label: "Movies" },
-    { key: "series", label: "Series" },
+    { key: "all", label: t("playlist.allFilter") },
+    { key: "live", label: t("playlist.liveFilter") },
+    { key: "movie", label: t("playlist.moviesFilter") },
+    { key: "series", label: t("playlist.seriesFilter") },
   ];
 
   const handleUnhideAll = () => {
-    Alert.alert("Unhide All", "Make all hidden channels and groups visible again?", [
-      { text: "Cancel", style: "cancel" },
+    Alert.alert(t("playlist.unhideAll"), t("playlist.unhideAllConfirm"), [
+      { text: t("common.cancel"), style: "cancel" },
       {
-        text: "Unhide All", onPress: async () => {
+        text: t("playlist.unhideAll"), onPress: async () => {
           for (const id of [...hiddenChannels]) await toggleHideChannel(id);
           for (const g of [...hiddenGroups]) await toggleHideGroup(g);
           SafeHaptics.success();
@@ -79,10 +81,10 @@ export default function PlaylistManageScreen() {
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
           <Ionicons name="chevron-back" size={24} color={COLORS.text} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Manage Channels</Text>
+        <Text style={styles.headerTitle}>{t("playlist.manageChannels")}</Text>
         {(hiddenGroupCount > 0 || hiddenChannelCount > 0) && (
           <TouchableOpacity onPress={handleUnhideAll} style={styles.unhideBtn}>
-            <Text style={styles.unhideBtnText}>Unhide All</Text>
+            <Text style={styles.unhideBtnText}>{t("playlist.unhideAll")}</Text>
           </TouchableOpacity>
         )}
       </View>
@@ -90,29 +92,29 @@ export default function PlaylistManageScreen() {
       <View style={styles.statsRow}>
         <View style={styles.statChip}>
           <Text style={styles.statNum}>{iptvChannels.length}</Text>
-          <Text style={styles.statLbl}>Total</Text>
+          <Text style={styles.statLbl}>{t("playlist.total")}</Text>
         </View>
         <View style={styles.statChip}>
           <Text style={[styles.statNum, { color: COLORS.live }]}>{hiddenGroupCount}</Text>
-          <Text style={styles.statLbl}>Hidden Groups</Text>
+          <Text style={styles.statLbl}>{t("playlist.hiddenGroups")}</Text>
         </View>
         <View style={styles.statChip}>
           <Text style={[styles.statNum, { color: COLORS.live }]}>{hiddenChannelCount}</Text>
-          <Text style={styles.statLbl}>Hidden Channels</Text>
+          <Text style={styles.statLbl}>{t("playlist.hiddenChannels")}</Text>
         </View>
       </View>
 
       {/* Playlists management (add/edit/delete) */}
       <View style={styles.playlistsCard}>
         <View style={styles.playlistsHeader}>
-          <Text style={styles.playlistsTitle}>Playlists</Text>
+          <Text style={styles.playlistsTitle}>{t("playlist.playlistsTitle")}</Text>
           <TouchableOpacity onPress={() => router.push("/profile")} style={styles.playlistsAddBtn}>
             <Ionicons name="add-circle-outline" size={16} color={COLORS.accent} />
-            <Text style={styles.playlistsAddText}>Add</Text>
+            <Text style={styles.playlistsAddText}>{t("common.add")}</Text>
           </TouchableOpacity>
         </View>
         {playlists.length === 0 ? (
-          <Text style={styles.playlistsEmpty}>Nog geen playlists. Voeg er één toe in Settings.</Text>
+          <Text style={styles.playlistsEmpty}>{t("playlist.noPlaylistsYet")}</Text>
         ) : (
           playlists.map((pl) => (
             <View key={pl.id} style={styles.playlistRow}>
@@ -120,7 +122,7 @@ export default function PlaylistManageScreen() {
                 <Text style={styles.playlistName} numberOfLines={1}>{pl.name}</Text>
                 <Text style={styles.playlistUrl} numberOfLines={1}>{pl.url}</Text>
                 {pl.channelCount ? (
-                  <Text style={styles.playlistMeta}>{pl.channelCount} kanalen · {pl.liveCount ?? 0} live · {pl.movieCount ?? 0} films · {pl.seriesCount ?? 0} series</Text>
+                  <Text style={styles.playlistMeta}>{t("playlist.channelMeta", { channels: pl.channelCount, live: pl.liveCount ?? 0, movies: pl.movieCount ?? 0, series: pl.seriesCount ?? 0 })}</Text>
                 ) : null}
               </View>
               <View style={styles.playlistBtns}>
@@ -129,19 +131,19 @@ export default function PlaylistManageScreen() {
                   style={styles.iconPill}
                 >
                   <Ionicons name="create-outline" size={15} color={COLORS.accent} />
-                  <Text style={styles.iconPillText}>Bewerk</Text>
+                  <Text style={styles.iconPillText}>{t("playlist.editBtn")}</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   onPress={() =>
-                    Alert.alert("Remove Playlist", `Remove "${pl.name}" and all its channels?`, [
-                      { text: "Cancel", style: "cancel" },
-                      { text: "Remove", style: "destructive", onPress: () => removePlaylist(pl.id) },
+                    Alert.alert(t("common.remove"), t("playlist.removePlaylistConfirm", { name: pl.name }), [
+                      { text: t("common.cancel"), style: "cancel" },
+                      { text: t("common.remove"), style: "destructive", onPress: () => removePlaylist(pl.id) },
                     ])
                   }
                   style={[styles.iconPill, { backgroundColor: COLORS.liveGlow, borderColor: COLORS.live }]}
                 >
                   <Ionicons name="trash-outline" size={15} color={COLORS.live} />
-                  <Text style={[styles.iconPillText, { color: COLORS.live }]}>Wis</Text>
+                  <Text style={[styles.iconPillText, { color: COLORS.live }]}>{t("playlist.deleteBtn")}</Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -150,14 +152,14 @@ export default function PlaylistManageScreen() {
       </View>
 
       <View style={styles.tabRow}>
-        {(["groups", "channels"] as Tab[]).map(t => (
+        {(["groups", "channels"] as Tab[]).map(tb => (
           <TouchableOpacity
-            key={t}
-            style={[styles.tabBtn, tab === t && styles.tabBtnActive]}
-            onPress={() => setTab(t)}
+            key={tb}
+            style={[styles.tabBtn, tab === tb && styles.tabBtnActive]}
+            onPress={() => setTab(tb)}
           >
-            <Text style={[styles.tabBtnText, tab === t && styles.tabBtnTextActive]}>
-              {t === "groups" ? `Groups (${groups.length})` : `Channels (${channels.length}${channels.length === 200 ? "+" : ""})`}
+            <Text style={[styles.tabBtnText, tab === tb && styles.tabBtnTextActive]}>
+              {tb === "groups" ? t("playlist.groups", { count: groups.length }) : t("playlist.channels", { count: `${channels.length}${channels.length === 200 ? "+" : ""}` })}
             </Text>
           </TouchableOpacity>
         ))}
@@ -180,7 +182,7 @@ export default function PlaylistManageScreen() {
           <Ionicons name="search" size={14} color={COLORS.textMuted} />
           <TextInput
             style={styles.searchInput}
-            placeholder="Search channels..."
+            placeholder={t("playlist.searchChannels")}
             placeholderTextColor={COLORS.textMuted}
             value={search}
             onChangeText={setSearch}
@@ -196,8 +198,8 @@ export default function PlaylistManageScreen() {
       {iptvChannels.length === 0 ? (
         <View style={styles.empty}>
           <Ionicons name="list-outline" size={40} color={COLORS.textMuted} />
-          <Text style={styles.emptyText}>No channels loaded yet.</Text>
-          <Text style={styles.emptySubtext}>Add a playlist in Settings first.</Text>
+          <Text style={styles.emptyText}>{t("playlist.noChannels")}</Text>
+          <Text style={styles.emptySubtext}>{t("playlist.addPlaylistFirst")}</Text>
         </View>
       ) : (
         <ScrollView contentContainerStyle={{ paddingBottom: bottomPad }}>
@@ -208,7 +210,7 @@ export default function PlaylistManageScreen() {
                 <View style={[styles.catDot, { backgroundColor: getCatColor("live") }]} />
                 <View style={styles.rowInfo}>
                   <Text style={[styles.rowName, hidden && styles.rowNameHidden]} numberOfLines={1}>{group}</Text>
-                  <Text style={styles.rowSub}>{count} channels</Text>
+                  <Text style={styles.rowSub}>{t("playlist.channelCount", { count })}</Text>
                 </View>
                 <Switch
                   value={!hidden}

@@ -11,58 +11,60 @@ import { COLORS } from "@/constants/colors";
 import { useNexora } from "@/context/NexoraContext";
 import type { PremiumCategory } from "@/context/NexoraContext";
 import { SafeHaptics } from "@/lib/safeHaptics";
+import { useTranslation } from "@/lib/useTranslation";
+import { t as tFn } from "@/lib/i18n";
 
 type BillingCycle = "weekly" | "monthly" | "yearly";
 
 const CATEGORIES: {
   id: PremiumCategory;
-  label: string;
+  labelKey: string;
   icon: string;
   iconLib: "ion" | "mci";
   priceMonthly: number;
   color: string;
-  features: string[];
-  badge: string | null;
+  featureKeys: string[];
+  badgeKey: string | null;
 }[] = [
   {
     id: "sport",
-    label: "Sport AI",
+    labelKey: "premium.sportAI",
     icon: "robot",
     iconLib: "mci",
     priceMonthly: 7.99,
     color: "#00C4E8",
-    features: ["AI voorspellingen & xG analyse", "Tactische matchanalyse", "H2H & vormvergelijking", "Dagelijkse kanskaarten"],
-    badge: null,
+    featureKeys: ["premium.features.aiPredictions", "premium.features.tacticalAnalysis", "premium.features.h2h", "premium.features.dailyCards"],
+    badgeKey: null,
   },
   {
     id: "movies",
-    label: "Films",
+    labelKey: "premium.films",
     icon: "film",
     iconLib: "mci",
     priceMonthly: 5.99,
     color: "#FF6B6B",
-    features: ["4K filmcatalogus", "Nieuwe releases & trending", "Uitgebreide filminfo & ratings", "Premium speler zonder reclame"],
-    badge: "Populairst",
+    featureKeys: ["premium.features.filmCatalog4k", "premium.features.newReleases", "premium.features.filmInfo", "premium.features.premiumPlayer"],
+    badgeKey: "premium.mostPopular",
   },
   {
     id: "series",
-    label: "Series",
+    labelKey: "premium.series",
     icon: "television-play",
     iconLib: "mci",
     priceMonthly: 5.99,
     color: "#A855F7",
-    features: ["Alle series onbeperkt", "Seizoen & afleveringen overzicht", "Trending & exclusieve titels", "Verder kijken support"],
-    badge: null,
+    featureKeys: ["premium.features.seriesUnlimited", "premium.features.seasonOverview", "premium.features.trendingExclusive", "premium.features.continueWatching"],
+    badgeKey: null,
   },
   {
     id: "livetv",
-    label: "Live TV",
+    labelKey: "premium.liveTV",
     icon: "antenna",
     iconLib: "mci",
     priceMonthly: 0.99,
     color: "#F59E0B",
-    features: ["IPTV live kanalen", "HD & 4K streams", "M3U & Xtream support", "Onbeperkt zappen"],
-    badge: null,
+    featureKeys: ["premium.features.iptvChannels", "premium.features.hd4k", "premium.features.m3uXtream", "premium.features.unlimitedZapping"],
+    badgeKey: null,
   },
 ];
 
@@ -88,19 +90,20 @@ function calcPrice(selected: PremiumCategory[], cycle: BillingCycle): { monthly:
 
   if (cycle === "weekly") {
     const weekly = Math.round(baseMonthly * 0.3 * 100) / 100;
-    return { monthly: weekly, total: weekly, discount, label: "/week" };
+    return { monthly: weekly, total: weekly, discount, label: tFn("premium.perWeek") };
   }
   if (cycle === "yearly") {
     const monthly = Math.round(baseMonthly * 0.833 * 100) / 100;
     const total = Math.round(monthly * 12 * 100) / 100;
-    return { monthly, total, discount, label: `/jaar (€${total.toFixed(2)})` };
+    return { monthly, total, discount, label: `${tFn("premium.perYear")} (€${total.toFixed(2)})` };
   }
-  return { monthly: baseMonthly, total: baseMonthly, discount, label: "/maand" };
+  return { monthly: baseMonthly, total: baseMonthly, discount, label: tFn("premium.perMonth") };
 }
 
 export default function PremiumScreen() {
   const insets = useSafeAreaInsets();
   const { premiumCategories, hasPremium, activatePremiumCategories, deactivatePremium } = useNexora();
+  const { t } = useTranslation();
   const [selected, setSelected] = useState<PremiumCategory[]>([]);
   const [cycle, setCycle] = useState<BillingCycle>("monthly");
   const [loading, setLoading] = useState(false);
@@ -131,22 +134,22 @@ export default function PremiumScreen() {
     await activatePremiumCategories(selected);
     setLoading(false);
     SafeHaptics.success();
-    const categoryNames = selected.map(id => CATEGORIES.find(c => c.id === id)?.label).join(", ");
+    const categoryNames = selected.map(id => CATEGORIES.find(c => c.id === id)?.labelKey).map(k => k ? tFn(k) : "").join(", ");
     Alert.alert(
-      "Premium geactiveerd!",
-      `Je hebt toegang tot: ${categoryNames}`,
-      [{ text: "Aan de slag", onPress: () => router.back() }]
+      t("premium.activated"),
+      t("premium.activatedMsg", { categories: categoryNames }),
+      [{ text: t("premium.getStarted"), onPress: () => router.back() }]
     );
   };
 
   const handleDeactivate = () => {
     Alert.alert(
-      "Premium opzeggen",
-      "Wil je alle premium abonnementen opzeggen?",
+      t("premium.cancelTitle"),
+      t("premium.cancelMessage"),
       [
-        { text: "Annuleren", style: "cancel" },
+        { text: t("common.cancel"), style: "cancel" },
         {
-          text: "Alles opzeggen",
+          text: t("premium.cancelAll"),
           style: "destructive",
           onPress: async () => {
             await deactivatePremium();
@@ -164,7 +167,7 @@ export default function PremiumScreen() {
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: bottomPad }}>
 
         {/* Header */}
-        <LinearGradient colors={["#0d1a2e", "#0A0A0F"]} style={[styles.header, { paddingTop: topPad + 16 }]}>
+        <LinearGradient colors={[\"#111111\", COLORS.background]} style={[styles.header, { paddingTop: topPad + 16 }]}>
           <TouchableOpacity style={styles.closeBtn} onPress={() => router.back()}>
             <Ionicons name="close" size={22} color={COLORS.textSecondary} />
           </TouchableOpacity>
@@ -173,8 +176,8 @@ export default function PremiumScreen() {
             <MaterialCommunityIcons name="crown" size={32} color="#fff" />
           </LinearGradient>
 
-          <Text style={styles.headerTitle}>NEXORA Premium</Text>
-          <Text style={styles.headerSub}>Kies precies wat jij wil unlocken</Text>
+          <Text style={styles.headerTitle}>{t("premium.title")}</Text>
+          <Text style={styles.headerSub}>{t("premium.subtitle")}</Text>
 
           {/* Active categories */}
           {hasAnyPremium && (
@@ -184,7 +187,7 @@ export default function PremiumScreen() {
                 return (
                   <View key={id} style={[styles.activeCatBadge, { borderColor: `${cat.color}55`, backgroundColor: `${cat.color}18` }]}>
                     <MaterialCommunityIcons name={cat.icon as any} size={11} color={cat.color} />
-                    <Text style={[styles.activeCatText, { color: cat.color }]}>{cat.label}</Text>
+                    <Text style={[styles.activeCatText, { color: cat.color }]}>{tFn(cat.labelKey)}</Text>
                   </View>
                 );
               })}
@@ -195,9 +198,9 @@ export default function PremiumScreen() {
         {/* Category tiles */}
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Kies jouw pakket</Text>
+            <Text style={styles.sectionTitle}>{t("premium.choosePackage")}</Text>
             <TouchableOpacity onPress={toggleAll} style={styles.selectAllBtn}>
-              <Text style={styles.selectAllText}>{allSelected ? "Deselecteer alles" : "Alles selecteren"}</Text>
+              <Text style={styles.selectAllText}>{allSelected ? t("premium.deselectAll") : t("premium.selectAll")}</Text>
             </TouchableOpacity>
           </View>
 
@@ -218,15 +221,15 @@ export default function PremiumScreen() {
                 >
                   {isOwned && (
                     <View style={[styles.ownedBadge, { backgroundColor: cat.color }]}>
-                      <Text style={styles.ownedBadgeText}>Actief</Text>
+                      <Text style={styles.ownedBadgeText}>{t("premium.active")}</Text>
                     </View>
                   )}
-                  {cat.badge && !isOwned && (
+                  {cat.badgeKey && !isOwned && (
                     <View style={[styles.popularBadge, { backgroundColor: cat.color }]}>
-                      <Text style={styles.popularBadgeText}>{cat.badge}</Text>
+                      <Text style={styles.popularBadgeText}>{tFn(cat.badgeKey)}</Text>
                     </View>
                   )}
-                  {isSelected && !isOwned && !cat.badge && (
+                  {isSelected && !isOwned && !cat.badgeKey && (
                     <View style={styles.checkCircle}>
                       <Ionicons name="checkmark-circle" size={18} color={cat.color} />
                     </View>
@@ -239,16 +242,16 @@ export default function PremiumScreen() {
                     <MaterialCommunityIcons name={cat.icon as any} size={26} color={cat.color} />
                   </LinearGradient>
 
-                  <Text style={styles.catLabel}>{cat.label}</Text>
+                  <Text style={styles.catLabel}>{tFn(cat.labelKey)}</Text>
                   <Text style={[styles.catPrice, { color: cat.color }]}>
                     €{cat.priceMonthly.toFixed(2)}
-                    <Text style={styles.catPricePeriod}>/mnd</Text>
+                    <Text style={styles.catPricePeriod}>{t("premium.perMonth")}</Text>
                   </Text>
 
-                  {cat.features.map((f, i) => (
+                  {cat.featureKeys.map((fk, i) => (
                     <View key={i} style={styles.catFeatureRow}>
                       <Ionicons name="checkmark" size={12} color={cat.color} />
-                      <Text style={styles.catFeatureText} numberOfLines={1}>{f}</Text>
+                      <Text style={styles.catFeatureText} numberOfLines={1}>{tFn(fk)}</Text>
                     </View>
                   ))}
                 </TouchableOpacity>
@@ -260,7 +263,7 @@ export default function PremiumScreen() {
         {/* Billing cycle */}
         {selected.length > 0 && (
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Facturatieperiode</Text>
+            <Text style={styles.sectionTitle}>{t("premium.billingPeriod")}</Text>
             <View style={styles.cycleRow}>
               {(["weekly", "monthly", "yearly"] as BillingCycle[]).map(c => (
                 <TouchableOpacity
@@ -271,18 +274,18 @@ export default function PremiumScreen() {
                 >
                   {c === "yearly" && (
                     <View style={styles.cycleSaveBadge}>
-                      <Text style={styles.cycleSaveBadgeText}>2 mnd gratis</Text>
+                      <Text style={styles.cycleSaveBadgeText}>{t("premium.yearlyDiscount")}</Text>
                     </View>
                   )}
                   <Text style={[styles.cycleBtnText, cycle === c && styles.cycleBtnTextActive]}>
-                    {c === "weekly" ? "Wekelijks" : c === "monthly" ? "Maandelijks" : "Jaarlijks"}
+                    {c === "weekly" ? t("premium.weekly") : c === "monthly" ? t("premium.monthly") : t("premium.yearly")}
                   </Text>
                   <Text style={[styles.cycleBtnSub, cycle === c && { color: COLORS.accent }]}>
                     {c === "weekly"
-                      ? `€${calcPrice(selected, "weekly").monthly.toFixed(2)}/wk`
+                      ? `€${calcPrice(selected, "weekly").monthly.toFixed(2)}${t("premium.perWeek")}`
                       : c === "monthly"
-                      ? `€${calcPrice(selected, "monthly").monthly.toFixed(2)}/mnd`
-                      : `€${calcPrice(selected, "yearly").monthly.toFixed(2)}/mnd`}
+                      ? `€${calcPrice(selected, "monthly").monthly.toFixed(2)}${t("premium.perMonth")}`
+                      : `€${calcPrice(selected, "yearly").monthly.toFixed(2)}${t("premium.perMonth")}`}
                   </Text>
                 </TouchableOpacity>
               ))}
@@ -298,18 +301,18 @@ export default function PremiumScreen() {
                 <MaterialCommunityIcons name="tag-outline" size={14} color="#4CAF50" />
                 <Text style={styles.discountText}>
                   {selected.length === 4
-                    ? "Alles-in-één bundel — bespaar €" + (CATEGORIES.reduce((a, c) => a + c.priceMonthly, 0) - 9.99).toFixed(2) + "/mnd"
+                    ? t("premium.bundleDiscount", { amount: (CATEGORIES.reduce((a, c) => a + c.priceMonthly, 0) - 9.99).toFixed(2) })
                     : selected.length === 3
-                    ? "3 categorieën — 25% korting"
-                    : "2 categorieën — 15% korting"}
+                    ? t("premium.threeCategories")
+                    : t("premium.twoCategories")}
                 </Text>
               </View>
             )}
             <View style={styles.priceRow}>
-              <Text style={styles.priceTotalLabel}>Totaal</Text>
+              <Text style={styles.priceTotalLabel}>{t("premium.total")}</Text>
               <View style={styles.priceTotalRight}>
                 <Text style={styles.priceTotalAmount}>€{pricing.monthly.toFixed(2)}</Text>
-                <Text style={styles.priceTotalPeriod}>{cycle === "yearly" ? `/mnd · €${(pricing.monthly * 12).toFixed(2)}/jaar` : cycle === "weekly" ? "/week" : "/maand"}</Text>
+                <Text style={styles.priceTotalPeriod}>{cycle === "yearly" ? `${t("premium.perMonth")} · €${(pricing.monthly * 12).toFixed(2)}${t("premium.perYear")}` : cycle === "weekly" ? t("premium.perWeek") : t("premium.perMonth")}</Text>
               </View>
             </View>
           </View>
@@ -329,38 +332,38 @@ export default function PremiumScreen() {
             end={{ x: 1, y: 0 }}
           >
             {loading ? (
-              <Text style={[styles.ctaBtnText, selected.length === 0 && { color: COLORS.textMuted }]}>Activeren...</Text>
+              <Text style={[styles.ctaBtnText, selected.length === 0 && { color: COLORS.textMuted }]}>{t("premium.activating")}</Text>
             ) : selected.length === 0 ? (
-              <Text style={[styles.ctaBtnText, { color: COLORS.textMuted }]}>Selecteer een pakket</Text>
+              <Text style={[styles.ctaBtnText, { color: COLORS.textMuted }]}>{t("premium.selectPackage")}</Text>
             ) : (
               <>
                 <MaterialCommunityIcons name="crown" size={20} color="#fff" />
                 <Text style={styles.ctaBtnText}>
-                  Activeer voor €{pricing.monthly.toFixed(2)}{cycle === "yearly" ? "/mnd" : "/mnd"}
+                  {t("premium.activateFor", { price: pricing.monthly.toFixed(2) })}
                 </Text>
               </>
             )}
           </LinearGradient>
         </TouchableOpacity>
 
-        <Text style={styles.trialNote}>✓ 7 dagen gratis proberen · Annuleer wanneer je wil</Text>
+        <Text style={styles.trialNote}>✓ {t("premium.freeTrial")}</Text>
 
         {/* Feature detail per category */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Alle voordelen</Text>
+          <Text style={styles.sectionTitle}>{t("premium.allBenefits")}</Text>
           {CATEGORIES.map(cat => (
             <View key={cat.id} style={styles.featureGroup}>
               <View style={styles.featureGroupHeader}>
                 <LinearGradient colors={[`${cat.color}33`, `${cat.color}11`]} style={styles.featureGroupIcon}>
                   <MaterialCommunityIcons name={cat.icon as any} size={16} color={cat.color} />
                 </LinearGradient>
-                <Text style={[styles.featureGroupLabel, { color: cat.color }]}>{cat.label}</Text>
-                <Text style={styles.featureGroupPrice}>€{cat.priceMonthly.toFixed(2)}/mnd</Text>
+                <Text style={[styles.featureGroupLabel, { color: cat.color }]}>{tFn(cat.labelKey)}</Text>
+                <Text style={styles.featureGroupPrice}>€{cat.priceMonthly.toFixed(2)}{t("premium.perMonth")}</Text>
               </View>
-              {cat.features.map((f, i) => (
+              {cat.featureKeys.map((fk, i) => (
                 <View key={i} style={styles.featureRow}>
                   <Ionicons name="checkmark-circle" size={16} color={cat.color} />
-                  <Text style={styles.featureText}>{f}</Text>
+                  <Text style={styles.featureText}>{tFn(fk)}</Text>
                 </View>
               ))}
             </View>
@@ -370,7 +373,7 @@ export default function PremiumScreen() {
         {/* Cancel */}
         {hasAnyPremium && (
           <TouchableOpacity style={styles.cancelBtn} onPress={handleDeactivate}>
-            <Text style={styles.cancelBtnText}>Abonnement opzeggen</Text>
+            <Text style={styles.cancelBtnText}>{t("premium.cancelSubscription")}</Text>
           </TouchableOpacity>
         )}
       </ScrollView>

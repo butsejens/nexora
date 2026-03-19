@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, Animated, Image } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { BlurView } from "expo-blur";
 import { COLORS } from "@/constants/colors";
+import { t } from "@/lib/i18n";
 
 interface Props {
   progress: number;
@@ -35,7 +36,7 @@ export function NexoraBootScreen({ progress, message }: Props) {
   return (
     <View style={styles.container}>
       <LinearGradient
-        colors={["#0a0509", "#0e0f17", COLORS.background]}
+        colors={["#000000", "#050505", COLORS.background]}
         start={{ x: 0.5, y: 0 }}
         end={{ x: 0.5, y: 1 }}
         style={styles.bg}
@@ -66,7 +67,7 @@ export function NexoraBootScreen({ progress, message }: Props) {
             colors={["rgba(229,9,20,0.08)", "rgba(38,20,45,0.08)"]}
             style={styles.cardGradient}
           >
-            <Text style={styles.title}>App wordt voorbereid</Text>
+            <Text style={styles.title}>{t("boot.preparing")}</Text>
             <Text style={styles.subtitle}>{message}</Text>
 
             {/* Enhanced Progress Bar */}

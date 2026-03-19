@@ -789,6 +789,36 @@ const TEAM_FILENAME_TO_FOLDER = (() => {
 const _footballLogosCache = new Map();
 const FOOTBALL_LOGOS_CACHE_TTL = 24 * 60 * 60 * 1000;
 
+// Levenshtein distance for fuzzy string matching with confidence scoring
+function levenshteinDistance(a, b) {
+  if (a === b) return 0;
+  if (!a.length) return b.length;
+  if (!b.length) return a.length;
+  const m = a.length, n = b.length;
+  let prev = Array.from({ length: n + 1 }, (_, i) => i);
+  let curr = new Array(n + 1);
+  for (let i = 1; i <= m; i++) {
+    curr[0] = i;
+    for (let j = 1; j <= n; j++) {
+      curr[j] = a[i - 1] === b[j - 1]
+        ? prev[j - 1]
+        : 1 + Math.min(prev[j - 1], prev[j], curr[j - 1]);
+    }
+    [prev, curr] = [curr, prev];
+  }
+  return prev[n];
+}
+
+// Convert Levenshtein distance to a 0-1 confidence score
+function fuzzyConfidence(a, b) {
+  if (!a || !b) return 0;
+  const dist = levenshteinDistance(a, b);
+  return 1 - dist / Math.max(a.length, b.length);
+}
+
+// Minimum confidence threshold for logo matching
+const LOGO_CONFIDENCE_THRESHOLD = 0.65;
+
 function normalizeForLogoMatch(str) {
   return String(str || "")
     .toLowerCase()
@@ -836,23 +866,32 @@ function resolveFootballLogosUrl(teamName, leagueName) {
     }
   }
 
-  // Token-overlap matching as last resort: find alias where all significant tokens overlap
+  // Token-overlap matching with confidence scoring as last resort
   if (!fileName && normalized.length >= 5) {
     const inputTokens = new Set(normalized.split(" ").filter((t) => t.length >= 3));
     if (inputTokens.size >= 1) {
       const aliasKeys = Object.keys(TEAM_LOGO_ALIASES);
       let bestKey = null;
-      let bestOverlap = 0;
+      let bestScore = 0;
+
       for (const k of aliasKeys) {
+        // Token overlap score
         const kTokens = new Set(k.split(" ").filter((t) => t.length >= 3));
         if (kTokens.size === 0) continue;
         let overlap = 0;
         for (const t of inputTokens) {
           if (kTokens.has(t)) overlap++;
         }
-        const score = overlap / Math.max(inputTokens.size, kTokens.size, 1);
-        if (score > bestOverlap && score >= 0.5) {
-          bestOverlap = score;
+        const tokenScore = overlap / Math.max(inputTokens.size, kTokens.size, 1);
+
+        // Levenshtein confidence score
+        const levScore = fuzzyConfidence(normalized, k);
+
+        // Combined score: weighted average (token overlap is more reliable)
+        const combined = tokenScore * 0.6 + levScore * 0.4;
+
+        if (combined > bestScore && combined >= LOGO_CONFIDENCE_THRESHOLD) {
+          bestScore = combined;
           bestKey = k;
         }
       }
