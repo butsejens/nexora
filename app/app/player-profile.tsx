@@ -156,16 +156,15 @@ export default function PlayerProfileScreen() {
 
   const scrollY = useRef(new Animated.Value(0)).current;
   const heroOpacity = scrollY.interpolate({ inputRange: [0, 100], outputRange: [1, 0], extrapolate: "clamp" });
-  const heroMaxHeight = scrollY.interpolate({ inputRange: [0, 120], outputRange: [220, 0], extrapolate: "clamp" });
 
   return (
     <View style={styles.container}>
-      <LinearGradient colors={[COLORS.card, COLORS.background]} style={[styles.header, { paddingTop: insets.top + 10 }]}> 
+      <LinearGradient colors={[COLORS.card, COLORS.background]} style={[styles.header, { paddingTop: insets.top + 10, zIndex: 30, elevation: 30 }]}> 
         <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
           <Ionicons name="chevron-back" size={24} color={COLORS.text} />
         </TouchableOpacity>
 
-        <Animated.View style={{ opacity: heroOpacity, maxHeight: heroMaxHeight, overflow: "hidden", zIndex: 30 }}>
+        <Animated.View style={{ opacity: heroOpacity }}>
         <View style={styles.hero}>
           {photoUri ? (
             <Image source={{ uri: photoUri }} style={[styles.photo, { backgroundColor: COLORS.card }]} resizeMode="contain" onError={() => setPhotoIdx((i) => i + 1)} />
@@ -198,7 +197,7 @@ export default function PlayerProfileScreen() {
         <Animated.ScrollView
           contentContainerStyle={styles.content}
           showsVerticalScrollIndicator={false}
-          onScroll={Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], { useNativeDriver: false })}
+          onScroll={Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], { useNativeDriver: true })}
           scrollEventThrottle={16}
         >
           <Card title={t("playerProfile.overview")}>
