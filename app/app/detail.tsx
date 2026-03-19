@@ -1,7 +1,7 @@
 import React, { useMemo, useState, useRef } from "react";
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  Image, Modal, Platform, Alert, ActivityIndicator,
+  Image, Modal, Platform, Alert, ActivityIndicator, Linking,
 } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -532,7 +532,19 @@ export default function DetailScreen() {
             {data.trailerKey ? (
               <TouchableOpacity
                 style={styles.trailerBtnOutline}
-                onPress={() => { SafeHaptics.impactLight(); setShowTrailer(true); }}
+                onPress={() => {
+                  SafeHaptics.impactLight();
+                  if (Platform.OS === "web") {
+                    setShowTrailer(true);
+                  } else {
+                    // Open YouTube directly in the YouTube app or browser
+                    const ytUrl = `https://www.youtube.com/watch?v=${data.trailerKey}`;
+                    Linking.openURL(ytUrl).catch(() => {
+                      // Fallback to in-app WebView if Linking fails
+                      setShowTrailer(true);
+                    });
+                  }
+                }}
               >
                 <Ionicons name="videocam-outline" size={20} color={COLORS.accent} />
                 <Text style={styles.trailerBtnOutlineText}>Trailer</Text>

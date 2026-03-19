@@ -238,11 +238,11 @@ export default function TeamDetailScreen() {
             </View>
           ) : null}
 
-          {(realValueCount > 0 || data.squadMarketValue) ? (
+          {(realValueCount > 0 || data?.squadMarketValue) ? (
             <View style={styles.tmBadge}>
               <MaterialCommunityIcons name="currency-eur" size={11} color="#00C896" />
               <Text style={styles.tmBadgeText}>
-                {data.squadMarketValue ? `Clubwaarde: ${data.squadMarketValue}` : `${realValueCount} marktwaardes beschikbaar`}
+                {data?.squadMarketValue ? `Clubwaarde: ${data.squadMarketValue}` : `${realValueCount} marktwaardes beschikbaar`}
               </Text>
             </View>
           ) : null}
