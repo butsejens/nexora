@@ -215,34 +215,37 @@ export default function TeamDetailScreen() {
 
   return (
     <View style={styles.container}>
-      {/* Header */}
+      {/* Header — always visible: back button + team name stay, hero details fade */}
       <View style={{ zIndex: 30, elevation: 30 }}>
       <LinearGradient
         colors={[data?.color || "#1a3a6b", COLORS.background] as any}
         style={[styles.header, { paddingTop: topPad + 8 }]}
       >
-        <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
-          <Ionicons name="chevron-back" size={24} color={COLORS.text} />
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.followBtn} onPress={() => toggleFavorite(favKey)} activeOpacity={0.75}>
-          <Ionicons name={isFollowing ? "heart" : "heart-outline"} size={16} color={isFollowing ? COLORS.accent : COLORS.text} />
-          <Text style={[styles.followBtnText, isFollowing && { color: COLORS.accent }]}>
-            {isFollowing ? t("teamDetail.following") : t("teamDetail.follow")}
-          </Text>
-        </TouchableOpacity>
+        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+          <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
+            <Ionicons name="chevron-back" size={24} color={COLORS.text} />
+          </TouchableOpacity>
+          <Text style={[styles.teamTitle, { flex: 1, marginHorizontal: 8 }]} numberOfLines={1}>{data?.name || teamNameParam}</Text>
+          <TouchableOpacity style={styles.followBtn} onPress={() => toggleFavorite(favKey)} activeOpacity={0.75}>
+            <Ionicons name={isFollowing ? "heart" : "heart-outline"} size={16} color={isFollowing ? COLORS.accent : COLORS.text} />
+            <Text style={[styles.followBtnText, isFollowing && { color: COLORS.accent }]}>
+              {isFollowing ? t("teamDetail.following") : t("teamDetail.follow")}
+            </Text>
+          </TouchableOpacity>
+        </View>
 
+        {data ? (
         <Animated.View style={{ opacity: heroOpacity }}>
         <View style={styles.teamHeaderContent}>
           <TeamLogo
-            uri={data?.logo || logoParam || `https://a.espncdn.com/i/teamlogos/soccer/500/${encodeURIComponent(teamIdParam)}.png`}
+            uri={data.logo || logoParam || `https://a.espncdn.com/i/teamlogos/soccer/500/${encodeURIComponent(teamIdParam)}.png`}
             teamName={teamName}
             size={72}
           />
-          <Text style={styles.teamTitle}>{data?.name || teamNameParam}</Text>
-          {data?.shortName ? <Text style={styles.teamShort}>{data.shortName}</Text> : null}
+          {data.shortName ? <Text style={styles.teamShort}>{data.shortName}</Text> : null}
 
           {/* League position row */}
-          {data?.leagueRank ? (
+          {data.leagueRank ? (
             <View style={styles.rankBadge}>
               <MaterialCommunityIcons name="trophy-outline" size={14} color="#FFD700" />
               <Text style={styles.rankText}>
@@ -254,31 +257,31 @@ export default function TeamDetailScreen() {
           ) : null}
 
           <View style={styles.teamMetaRow}>
-            {data?.venue ? (
+            {data.venue ? (
               <View style={styles.metaBadge}>
                 <Ionicons name="location-outline" size={12} color={COLORS.textMuted} />
                 <Text style={styles.metaText}>{data.venue}</Text>
               </View>
             ) : null}
-            {data?.record ? (
+            {data.record ? (
               <View style={styles.metaBadge}>
                 <MaterialCommunityIcons name="scoreboard-outline" size={12} color={COLORS.textMuted} />
                 <Text style={styles.metaText}>{data.record}</Text>
               </View>
             ) : null}
           </View>
-          {data?.coach ? (
+          {data.coach ? (
             <View style={styles.coachRow}>
               <Ionicons name="person-circle-outline" size={14} color={COLORS.textMuted} />
               <Text style={styles.coachText}>{t("teamDetail.coach", { name: data.coach })}</Text>
             </View>
           ) : null}
 
-          {(realValueCount > 0 || data?.squadMarketValue) ? (
+          {(realValueCount > 0 || data.squadMarketValue) ? (
             <View style={styles.tmBadge}>
               <MaterialCommunityIcons name="currency-eur" size={11} color="#00C896" />
               <Text style={styles.tmBadgeText}>
-                {data?.squadMarketValue ? t("teamDetail.clubValue", { value: data.squadMarketValue }) : t("teamDetail.marketValues", { count: String(realValueCount) })}
+                {data.squadMarketValue ? t("teamDetail.clubValue", { value: data.squadMarketValue }) : t("teamDetail.marketValues", { count: String(realValueCount) })}
               </Text>
             </View>
           ) : null}
@@ -293,6 +296,7 @@ export default function TeamDetailScreen() {
           ) : null}
         </View>
         </Animated.View>
+        ) : null}
       </LinearGradient>
       </View>
 
@@ -477,7 +481,6 @@ const styles = StyleSheet.create({
   header: { paddingHorizontal: 16, paddingBottom: 20 },
   backBtn: { width: 38, height: 38, alignItems: "center", justifyContent: "center", marginBottom: 8 },
   followBtn: {
-    position: "absolute", top: 0, right: 0,
     flexDirection: "row", alignItems: "center", gap: 5,
     backgroundColor: "rgba(255,255,255,0.1)", borderRadius: 20,
     paddingHorizontal: 12, paddingVertical: 6,

@@ -805,7 +805,7 @@ export default function SportsScreen() {
   const toggleHeaderVisibility = useCallback((visible: boolean) => {
     if (showHeaderRef.current === visible) return;
     showHeaderRef.current = visible;
-    Animated.timing(headerAnim, { toValue: visible ? 1 : 0, duration: 250, useNativeDriver: false }).start();
+    Animated.timing(headerAnim, { toValue: visible ? 1 : 0, duration: 250, useNativeDriver: true }).start();
   }, [headerAnim]);
 
   const toggleFiltersVisibility = useCallback((visible: boolean) => {
@@ -814,7 +814,7 @@ export default function SportsScreen() {
     if (now - lastFilterToggleAtRef.current < 220) return;
     lastFilterToggleAtRef.current = now;
     showFiltersRef.current = visible;
-    Animated.timing(filterAnim, { toValue: visible ? 1 : 0, duration: 180, useNativeDriver: false }).start();
+    Animated.timing(filterAnim, { toValue: visible ? 1 : 0, duration: 180, useNativeDriver: true }).start();
   }, [filterAnim]);
 
   useEffect(() => {
@@ -1299,7 +1299,7 @@ export default function SportsScreen() {
   ], [sortedLive, sortedUpcoming]);
 
   const headerOpacity = headerAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 1] });
-  const headerMaxHeight = headerAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 120] });
+  const headerTranslateY = headerAnim.interpolate({ inputRange: [0, 1], outputRange: [-120, 0] });
   const miniTitleOpacity = headerAnim.interpolate({ inputRange: [0, 1], outputRange: [1, 0] });
 
   return (
@@ -1311,7 +1311,7 @@ export default function SportsScreen() {
         </Text>
       </Animated.View>
 
-      <Animated.View style={{ opacity: headerOpacity, maxHeight: headerMaxHeight, overflow: "hidden", zIndex: 50 }}>
+      <Animated.View style={{ transform: [{ translateY: headerTranslateY }], opacity: headerOpacity, zIndex: 50 }}>
         <NexoraHeader
           title="SPORT"
           titleColor={P.accent}
@@ -1326,7 +1326,7 @@ export default function SportsScreen() {
       </Animated.View>
 
       {/* ── Sports Sub-Nav ── */}
-      <Animated.View style={{ opacity: headerOpacity, maxHeight: headerAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 56] }), overflow: "hidden", zIndex: 40 }}>
+      <Animated.View style={{ transform: [{ translateY: headerTranslateY }], opacity: headerOpacity, zIndex: 40 }}>
       <View style={styles.subNav}>
         <ScrollView
           horizontal
