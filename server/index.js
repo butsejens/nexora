@@ -2309,6 +2309,60 @@ async function fetchTransfermarktPlayerDirect(playerName, teamName) {
 
 // Transfermarkt community API – free, no key required
 // https://transfermarkt-api-sigma.vercel.app (open-source wrapper)
+// ESPN display names → Transfermarkt search names (for names that don't yield TM results)
+const TM_CLUB_NAME_MAP = {
+  "Wolverhampton Wanderers": "Wolverhampton",
+  "Nottingham Forest": "Nottm Forest",
+  "Brighton and Hove Albion": "Brighton",
+  "West Ham United": "West Ham",
+  "Sheffield United": "Sheffield Utd",
+  "Leicester City": "Leicester",
+  "Leeds United": "Leeds",
+  "Norwich City": "Norwich",
+  "Ipswich Town": "Ipswich",
+  "FC Internazionale Milano": "Inter Milan",
+  "SSC Napoli": "Napoli",
+  "ACF Fiorentina": "Fiorentina",
+  "Bologna FC 1909": "Bologna",
+  "Torino FC": "Torino",
+  "Hellas Verona FC": "Verona",
+  "Atlético de Madrid": "Atletico Madrid",
+  "Real Sociedad de Fútbol": "Real Sociedad",
+  "Athletic Club": "Athletic Bilbao",
+  "Villarreal CF": "Villarreal",
+  "1. FC Heidenheim 1846": "Heidenheim",
+  "1. FC Union Berlin": "Union Berlin",
+  "TSG 1899 Hoffenheim": "Hoffenheim",
+  "VfL Wolfsburg": "Wolfsburg",
+  "VfB Stuttgart": "Stuttgart",
+  "SV Werder Bremen": "Werder Bremen",
+  "Borussia Mönchengladbach": "Gladbach",
+  "Paris Saint-Germain": "PSG",
+  "Stade Rennais FC": "Rennes",
+  "RC Strasbourg Alsace": "Strasbourg",
+  "Stade Brestois 29": "Brest",
+  "Toulouse FC": "Toulouse",
+  "Montpellier HSC": "Montpellier",
+  "Stade de Reims": "Reims",
+  "RC Lens": "Lens",
+  "Le Havre AC": "Le Havre",
+  "Club Brugge KV": "Club Brugge",
+  "KRC Genk": "Genk",
+  "RSC Anderlecht": "Anderlecht",
+  "KAA Gent": "Gent",
+  "Feyenoord Rotterdam": "Feyenoord",
+  "AFC Ajax": "Ajax",
+  "GNK Dinamo Zagreb": "Dinamo Zagreb",
+  "HNK Hajduk Split": "Hajduk Split",
+  "FK Crvena zvezda": "Red Star Belgrade",
+  "AC Sparta Prague": "Sparta Prague",
+  "SK Slavia Prague": "Slavia Prague",
+  "Legia Warszawa": "Legia Warsaw",
+  "Lech Poznan": "Lech Poznan",
+  "Malmö FF": "Malmö",
+  "Djurgårdens IF": "Djurgarden",
+};
+
 async function fetchTransfermarktClubPlayers(teamName) {
   if (!teamName) return null;
   const normKey = normalizePersonName(teamName);
@@ -2317,15 +2371,40 @@ async function fetchTransfermarktClubPlayers(teamName) {
   if (cached !== null) return cached;
 
   try {
-    const q = encodeURIComponent(String(teamName).trim());
+    // Use mapped name if available for more accurate Transfermarkt search
+    const searchName = TM_CLUB_NAME_MAP[teamName] || String(teamName).trim();
+    const q = encodeURIComponent(searchName);
     const searchResp = await fetch(`https://transfermarkt-api-sigma.vercel.app/clubs/search/${q}`, {
       headers: { "user-agent": "Mozilla/5.0 (Nexora/1.0)", accept: "application/json" },
       signal: AbortSignal.timeout(8000),
     });
     if (!searchResp.ok) { cacheSet(cacheKey, null, 300_000); return null; }
     const searchData = await searchResp.json();
-    const clubs = Array.isArray(searchData?.results) ? searchData.results : [];
-    const club = clubs[0];
+    let clubs = Array.isArray(searchData?.results) ? searchData.results : [];
+
+    // If mapped name found no results, retry with original ESPN name
+    if (clubs.length === 0 && TM_CLUB_NAME_MAP[teamName]) {
+      const q2 = encodeURIComponent(String(teamName).trim());
+      const resp2 = await fetch(`https://transfermarkt-api-sigma.vercel.app/clubs/search/${q2}`, {
+        headers: { "user-agent": "Mozilla/5.0 (Nexora/1.0)", accept: "application/json" },
+        signal: AbortSignal.timeout(8000),
+      });
+      if (resp2.ok) {
+        const data2 = await resp2.json();
+        clubs = Array.isArray(data2?.results) ? data2.results : [];
+      }
+    }
+    if (clubs.length === 0) { cacheSet(cacheKey, null, 300_000); return null; }
+
+    // Pick best matching club by name similarity instead of always first result
+    const normInput = normalizePersonName(teamName);
+    let club = clubs[0];
+    let bestScore = 0;
+    for (const c of clubs) {
+      const cName = normalizePersonName(c?.name || c?.club || "");
+      const score = similarityScore(normInput, cName);
+      if (score > bestScore) { bestScore = score; club = c; }
+    }
     if (!club?.id) { cacheSet(cacheKey, null, 300_000); return null; }
 
     const playersResp = await fetch(`https://transfermarkt-api-sigma.vercel.app/clubs/${encodeURIComponent(club.id)}/players`, {
@@ -2544,7 +2623,7 @@ async function enrichRosterPhotos(players, teamName) {
 
   // Step 4: Wikipedia photo fallback for remaining players
   const stillNeedWiki = enriched.filter((p) => p && !p.photo && p.name && p.name !== "Onbekend");
-  if (stillNeedWiki.length > 0 && stillNeedWiki.length <= 20) {
+  if (stillNeedWiki.length > 0 && stillNeedWiki.length <= 40) {
     const wikiResults = await Promise.all(
       stillNeedWiki.map(async (player) => {
         try {
@@ -6575,6 +6654,18 @@ async function tmdb(pathAndQuery) {
   return data;
 }
 
+// Fetch TMDB videos with all languages included (trailers are often only in English)
+async function tmdbVideosAllLangs(mediaType, tmdbId) {
+  const key = process.env.TMDB_API_KEY;
+  if (!key) return null;
+  const url = `${TMDB_BASE}/${mediaType}/${encodeURIComponent(tmdbId)}/videos?api_key=${encodeURIComponent(key)}&include_video_language=en,nl,de,fr,null`;
+  try {
+    const r = await fetch(url);
+    if (!r.ok) return null;
+    return await r.json();
+  } catch { return null; }
+}
+
 function pickTrailerKey(videos) {
   const items = videos?.results || [];
   const yt = items.filter(
@@ -6893,7 +6984,14 @@ app.get("/api/movies/:id/full", tmdbLimiter, async (req, res) => {
       tmdb(`/movie/${encodeURIComponent(id)}/credits`),
     ]);
 
-    res.json(mapFullDetail(detail, videos, credits, "movie"));
+    // If no trailer found in nl-NL, retry with all languages
+    let finalVideos = videos;
+    if (!pickTrailerKey(videos)) {
+      const allLangVideos = await tmdbVideosAllLangs("movie", id);
+      if (allLangVideos && pickTrailerKey(allLangVideos)) finalVideos = allLangVideos;
+    }
+
+    res.json(mapFullDetail(detail, finalVideos, credits, "movie"));
   } catch (e) {
     res.status(200).json({ error: String(e?.message || e) });
   }
@@ -6910,7 +7008,14 @@ app.get("/api/series/:id/full", tmdbLimiter, async (req, res) => {
       tmdb(`/tv/${encodeURIComponent(id)}/credits`),
     ]);
 
-    res.json(mapFullDetail(detail, videos, credits, "series"));
+    // If no trailer found in nl-NL, retry with all languages
+    let finalVideos = videos;
+    if (!pickTrailerKey(videos)) {
+      const allLangVideos = await tmdbVideosAllLangs("tv", id);
+      if (allLangVideos && pickTrailerKey(allLangVideos)) finalVideos = allLangVideos;
+    }
+
+    res.json(mapFullDetail(detail, finalVideos, credits, "series"));
   } catch (e) {
     res.status(200).json({ error: String(e?.message || e) });
   }
@@ -7434,7 +7539,12 @@ app.get("/api/trailer/:tmdbId", tmdbLimiter, async (req, res) => {
     if (cached !== null) return res.json(cached);
 
     const videos = await tmdb(`/${type}/${encodeURIComponent(tmdbId)}/videos`);
-    const key = pickTrailerKey(videos);
+    let key = pickTrailerKey(videos);
+    // Fallback: fetch with all languages if nl-NL has no trailer
+    if (!key) {
+      const allLangVideos = await tmdbVideosAllLangs(type, tmdbId);
+      if (allLangVideos) key = pickTrailerKey(allLangVideos);
+    }
     const result = { key, type: "youtube" };
     cacheSet(cacheKey, result, 24 * 60 * 60 * 1000); // 24h
     res.json(result);
