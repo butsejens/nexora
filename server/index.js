@@ -2107,6 +2107,87 @@ async function aiEstimateRosterValues(players, teamName, leagueName) {
   }
 }
 
+// Transfermarkt community API – direct player search (market value + transfers + photo)
+async function fetchTransfermarktPlayerDirect(playerName, teamName) {
+  if (!playerName) return null;
+  const normKey = `${normalizePersonName(playerName)}_${normalizePersonName(teamName || "")}`;
+  const cacheKey = `transfermarkt_player_direct_${normKey}`;
+  const cached = cacheGet(cacheKey);
+  if (cached !== null) return cached;
+
+  try {
+    const q = encodeURIComponent(String(playerName).trim());
+    const searchResp = await fetch(`https://transfermarkt-api.vercel.app/players/search/${q}`, {
+      headers: { "user-agent": "Mozilla/5.0 (Nexora/1.0)", accept: "application/json" },
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!searchResp.ok) { cacheSet(cacheKey, null, 300_000); return null; }
+    const searchData = await searchResp.json();
+    const results = Array.isArray(searchData?.results) ? searchData.results : [];
+    if (results.length === 0) { cacheSet(cacheKey, null, 300_000); return null; }
+
+    // Pick best match: prefer exact team match, then name similarity
+    const normTeam = normalizePersonName(teamName || "");
+    const normPlayer = normalizePersonName(playerName);
+    let best = null;
+    let bestScore = 0;
+    for (const r of results.slice(0, 10)) {
+      const rName = normalizePersonName(r?.name || r?.playerName || "");
+      const rClub = normalizePersonName(r?.club?.name || r?.team || "");
+      let score = similarityScore(normPlayer, rName);
+      if (normTeam && rClub && similarityScore(normTeam, rClub) >= 0.5) score += 0.3;
+      if (score > bestScore) { bestScore = score; best = r; }
+    }
+    if (!best || bestScore < 0.45) { cacheSet(cacheKey, null, 300_000); return null; }
+
+    const playerId = best.id;
+    const marketValueEur = parseNumberish(best?.marketValue?.value ?? best?.marketValue);
+    const photo = proxyPhotoUrl(String(best?.image || best?.photo || "").trim() || null);
+
+    // Fetch transfers for club history
+    let transfers = [];
+    try {
+      const trResp = await fetch(`https://transfermarkt-api.vercel.app/players/${encodeURIComponent(playerId)}/transfers`, {
+        headers: { "user-agent": "Mozilla/5.0 (Nexora/1.0)", accept: "application/json" },
+        signal: AbortSignal.timeout(6000),
+      });
+      if (trResp.ok) {
+        const trData = await trResp.json();
+        const trList = Array.isArray(trData?.transfers) ? trData.transfers : [];
+        for (const t of trList.slice(0, 20)) {
+          const from = String(t?.from?.name || t?.oldClub?.name || t?.from?.club?.name || "").trim();
+          const to = String(t?.to?.name || t?.newClub?.name || t?.to?.club?.name || "").trim();
+          const date = String(t?.date || t?.season || "").trim();
+          const fee = String(t?.fee || t?.transferFee || "").trim();
+          if (from) transfers.push({ name: from, role: "from", date, fee });
+          if (to) transfers.push({ name: to, role: "to", date, fee });
+        }
+      }
+    } catch { /* ignore */ }
+
+    // Deduplicate transfers
+    const seen = new Set();
+    transfers = transfers.filter(t => {
+      const key = `${t.name}_${t.date}_${t.role}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return Boolean(t.name);
+    }).slice(0, 12);
+
+    const result = {
+      marketValueEur: Number.isFinite(marketValueEur) && marketValueEur > 0 ? marketValueEur : null,
+      photo: photo || null,
+      transfers,
+      source: "transfermarkt-direct",
+    };
+    cacheSet(cacheKey, result, 86_400_000); // cache 24h
+    return result;
+  } catch {
+    cacheSet(cacheKey, null, 300_000);
+    return null;
+  }
+}
+
 // Transfermarkt community API – free, no key required
 // https://transfermarkt-api.vercel.app (open-source wrapper)
 async function fetchTransfermarktClubPlayers(teamName) {
@@ -5601,21 +5682,41 @@ app.get("/api/sports/player/:playerId", async (req, res) => {
       };
 
       const valuedFromModel = (await enrichRosterMarketValues([normalizedPlayer], teamName || profileStats?.team?.name || espnTeam?.displayName || "", espnLeague))[0] || normalizedPlayer;
-      const valued =
-        apifyFallback?.marketValue && !valuedFromModel?.marketValue
-          ? {
-              ...valuedFromModel,
-              marketValue: apifyFallback.marketValue,
-              isRealValue: true,
-              valueMethod: "apify-transfermarkt",
-            }
-          : valuedFromModel;
+
+      // Direct Transfermarkt player search – better accuracy for individual profiles
+      const tmDirect = await fetchTransfermarktPlayerDirect(name, teamName || espnTeam?.displayName || "");
+
+      let valued = valuedFromModel;
+      // Prefer direct Transfermarkt value over club-based fuzzy or estimated
+      if (tmDirect?.marketValueEur && (!valued?.isRealValue || valued?.valueMethod === "estimated")) {
+        valued = {
+          ...valued,
+          marketValue: formatEURShort(tmDirect.marketValueEur),
+          isRealValue: true,
+          valueMethod: "transfermarkt-direct",
+        };
+      } else if (apifyFallback?.marketValue && !valued?.marketValue) {
+        valued = {
+          ...valued,
+          marketValue: apifyFallback.marketValue,
+          isRealValue: true,
+          valueMethod: "apify-transfermarkt",
+        };
+      }
+
       const fallbackInsights = inferStrengthsWeaknesses(valued?.position, valued?.age);
+
+      // Club history: prefer Transfermarkt direct transfers > API-Sports > Apify
+      const tmTransfers = tmDirect?.transfers || [];
+      const apiSportsTransfers = mapFormerClubs(apiSports?.transfers || []);
+      const apifyTransfers = apifyFallback?.formerClubs || [];
+      const formerClubs = tmTransfers.length ? tmTransfers : (apiSportsTransfers.length ? apiSportsTransfers : apifyTransfers);
+
       const aiInsights = await aiAnalyzePlayerProfile(
         {
           ...valued,
           currentClub: profileStats?.team?.name || espnTeam?.displayName || espnTeam?.name || teamName || apifyFallback?.team || null,
-          formerClubs: mapFormerClubs(apiSports?.transfers || []).length ? mapFormerClubs(apiSports?.transfers || []) : (apifyFallback?.formerClubs || []),
+          formerClubs,
         },
         {
           league: espnLeague,
@@ -5623,9 +5724,6 @@ app.get("/api/sports/player/:playerId", async (req, res) => {
         }
       );
 
-      const formerClubs = mapFormerClubs(apiSports?.transfers || []).length
-        ? mapFormerClubs(apiSports?.transfers || [])
-        : (apifyFallback?.formerClubs || []);
       const sourceTag = apifyFallback?.source || apiSports?.source || "espn";
 
       const clubName = profileStats?.team?.name || espnTeam?.displayName || espnTeam?.name || teamName || apifyFallback?.team || "";
@@ -5635,7 +5733,21 @@ app.get("/api/sports/player/:playerId", async (req, res) => {
         apifyFallback?.photo,
         espnAthlete?.headshot?.href,
       );
-      let resolvedPhoto = basePhoto;
+      // Transfermarkt direct photo as early fallback
+      let resolvedPhoto = basePhoto || (tmDirect?.photo || null);
+      // Transfermarkt club-based photo lookup
+      if (!resolvedPhoto && clubName) {
+        const tmPlayers = await fetchTransfermarktClubPlayers(clubName);
+        if (Array.isArray(tmPlayers)) {
+          const normName = normalizePersonName(name || "");
+          for (const p of tmPlayers) {
+            if (p.photo && (p.name === normName || similarityScore(normName, p.name) >= 0.5)) {
+              resolvedPhoto = p.photo;
+              break;
+            }
+          }
+        }
+      }
       if (!resolvedPhoto && clubName) {
         const dbPlayers = await fetchTheSportsDBTeamPlayers(clubName);
         const normName = normalizePersonName(name || "");
