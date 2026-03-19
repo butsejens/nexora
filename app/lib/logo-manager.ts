@@ -2,6 +2,10 @@
 const LOCAL_LOGOS = {
   clubBrugge: require("../assets/logos/club-brugge.png"),
   jupilerProLeague: require("../assets/logos/jupiler-pro-league.png"),
+  challengerProLeague: require("../assets/logos/challenger-pro-league.png"),
+  championsLeague: require("../assets/logos/champions-league.png"),
+  europaLeague: require("../assets/logos/europa-league.png"),
+  conferenceLeague: require("../assets/logos/conference-league.png"),
   raalLaLouviere: require("../assets/logos/raal-la-louviere.png"),
 };
 
@@ -39,7 +43,8 @@ const LEAGUE_LOGO_MAP: Record<string, string | number> = {
 
   "Jupiler Pro League":      LOCAL_LOGOS.jupilerProLeague,
   "Belgian Pro League":      LOCAL_LOGOS.jupilerProLeague,
-  "Challenger Pro League":   LOCAL_LOGOS.jupilerProLeague,
+  "Challenger Pro League":   LOCAL_LOGOS.challengerProLeague,
+  "Belgian First Division B": LOCAL_LOGOS.challengerProLeague,
   "Beker van België":        LOCAL_LOGOS.jupilerProLeague,
   "Belgian Cup":             LOCAL_LOGOS.jupilerProLeague,
 
@@ -51,15 +56,15 @@ const LEAGUE_LOGO_MAP: Record<string, string | number> = {
   "Premiership":             ESPN(54),
 
   // ── UEFA Competitions ─────────────────────────────────────────────────────
-  "UEFA Champions League":   "https://img.uefa.com/imgml/uefacom/ucl/social/og-default.png",
-  "Champions League":        "https://img.uefa.com/imgml/uefacom/ucl/social/og-default.png",
-  "UCL":                     "https://img.uefa.com/imgml/uefacom/ucl/social/og-default.png",
-  "UEFA Europa League":      "https://img.uefa.com/imgml/uefacom/uel/social/og-default.png",
-  "Europa League":           "https://img.uefa.com/imgml/uefacom/uel/social/og-default.png",
-  "UEL":                     "https://img.uefa.com/imgml/uefacom/uel/social/og-default.png",
-  "UEFA Conference League":  "https://img.uefa.com/imgml/uefacom/uecl/social/og-default.png",
-  "Conference League":       "https://img.uefa.com/imgml/uefacom/uecl/social/og-default.png",
-  "UECL":                    "https://img.uefa.com/imgml/uefacom/uecl/social/og-default.png",
+  "UEFA Champions League":   LOCAL_LOGOS.championsLeague,
+  "Champions League":        LOCAL_LOGOS.championsLeague,
+  "UCL":                     LOCAL_LOGOS.championsLeague,
+  "UEFA Europa League":      LOCAL_LOGOS.europaLeague,
+  "Europa League":           LOCAL_LOGOS.europaLeague,
+  "UEL":                     LOCAL_LOGOS.europaLeague,
+  "UEFA Conference League":  LOCAL_LOGOS.conferenceLeague,
+  "Conference League":       LOCAL_LOGOS.conferenceLeague,
+  "UECL":                    LOCAL_LOGOS.conferenceLeague,
   "UEFA Nations League":     ESPN(72),
   "Nations League":          ESPN(72),
 
