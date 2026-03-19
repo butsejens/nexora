@@ -87,6 +87,51 @@ export function getLeagueLogo(leagueName?: string): string | number | null {
   return found?.[1] ?? null;
 }
 
+// ESPN CDN team logo fallback: normalized name → ESPN team ID
+// Used when server provides no logo URL (e.g. network failure, missing alias)
+const ESPN_TEAM_LOGO_IDS: Record<string, number> = {
+  // Belgium
+  "club brugge": 8782, "krc genk": 8782, "royal antwerp": 9498, "anderlecht": 9499,
+  "gent": 9497, "standard liege": 8782, "union saint gilloise": 15327,
+  // England
+  "arsenal": 359, "aston villa": 362, "bournemouth": 349, "brentford": 337,
+  "brighton": 331, "chelsea": 363, "crystal palace": 384, "everton": 368,
+  "fulham": 370, "ipswich town": 373, "leicester city": 375, "liverpool": 364,
+  "manchester city": 382, "manchester united": 360, "newcastle united": 361,
+  "nottingham forest": 393, "southampton": 376, "tottenham hotspur": 367,
+  "west ham united": 371, "wolverhampton wanderers": 380,
+  // Spain
+  "real madrid": 86, "barcelona": 83, "atletico madrid": 1068, "real sociedad": 89,
+  "athletic bilbao": 93, "villarreal": 102, "real betis": 244, "sevilla": 243,
+  "girona": 9812, "valencia": 94, "celta vigo": 2922, "getafe": 2919,
+  "mallorca": 3842, "osasuna": 99, "rayo vallecano": 2924, "espanyol": 88,
+  "las palmas": 3843, "leganes": 3844, "valladolid": 95, "alaves": 96,
+  // Germany
+  "bayern munich": 132, "borussia dortmund": 124, "bayer leverkusen": 131,
+  "rb leipzig": 11420, "eintracht frankfurt": 125, "freiburg": 10936,
+  "stuttgart": 133, "wolfsburg": 134, "hoffenheim": 10937, "mainz": 10938,
+  "gladbach": 127, "werder bremen": 129, "augsburg": 10935, "union berlin": 8606,
+  "dortmund": 124, "heidenheim": 15331, "st pauli": 128, "holstein kiel": 15332,
+  "bochum": 135,
+  // Italy
+  "inter milan": 110, "ac milan": 103, "juventus": 111, "napoli": 114,
+  "atalanta": 102, "roma": 104, "lazio": 105, "fiorentina": 109,
+  "torino": 113, "bologna": 107, "udinese": 115, "empoli": 8599,
+  "cagliari": 108, "lecce": 9869, "genoa": 106, "monza": 9870,
+  "como": 15333, "parma": 112, "verona": 116, "venezia": 3046,
+  // France
+  "paris saint germain": 160, "psg": 160, "marseille": 166, "lyon": 167,
+  "monaco": 174, "lille": 172, "rennes": 177, "nice": 173, "lens": 176,
+  "strasbourg": 179, "nantes": 175, "toulouse": 178, "brest": 9813,
+  "reims": 180, "montpellier": 171, "le havre": 9814, "angers": 169,
+  "auxerre": 170, "saint etienne": 163,
+  // Netherlands
+  "ajax": 139, "psv": 148, "feyenoord": 143, "az alkmaar": 140,
+  "twente": 155, "utrecht": 156,
+  // Portugal
+  "benfica": 218, "porto": 224, "sporting cp": 228, "braga": 244,
+};
+
 export function resolveTeamLogoUri(teamName?: string, logoUri?: string | null): string | number | null {
   const normalized = normalizeName(String(teamName || ""));
   if (normalized === "club brugge" || normalized === "club brugge kv" || normalized.startsWith("club brugge ")) {
@@ -100,7 +145,22 @@ export function resolveTeamLogoUri(teamName?: string, logoUri?: string | null): 
     return LOCAL_LOGOS.raalLaLouviere;
   }
   const safeLogo = String(logoUri || "").trim();
-  return safeLogo || null;
+  if (safeLogo) return safeLogo;
+
+  // ESPN CDN fallback when server provides no logo
+  const espnId = ESPN_TEAM_LOGO_IDS[normalized];
+  if (espnId) return `https://a.espncdn.com/i/teamlogos/soccer/500/${espnId}.png`;
+
+  // Try partial match: find ESPN entry where key is contained in normalized or vice versa
+  if (normalized.length >= 4) {
+    for (const [key, id] of Object.entries(ESPN_TEAM_LOGO_IDS)) {
+      if (normalized.includes(key) || key.includes(normalized)) {
+        return `https://a.espncdn.com/i/teamlogos/soccer/500/${id}.png`;
+      }
+    }
+  }
+
+  return null;
 }
 
 export function getInitials(value?: string, max = 2): string {

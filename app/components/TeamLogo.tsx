@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import { View, Text, StyleSheet, Image } from "react-native";
 import { COLORS } from "@/constants/colors";
 import { getInitials, resolveTeamLogoUri } from "@/lib/logo-manager";
@@ -14,8 +14,11 @@ export const TeamLogo = React.memo(function TeamLogo({
 }) {
   const [error, setError] = useState(false);
   const [imageLoaded, setImageLoaded] = useState(false);
-  const resolved = !error ? resolveTeamLogoUri(teamName, uri) : null;
-  const initials = getInitials(teamName, 2);
+  const resolved = useMemo(
+    () => (!error ? resolveTeamLogoUri(teamName, uri) : null),
+    [teamName, uri, error],
+  );
+  const initials = useMemo(() => getInitials(teamName, 2), [teamName]);
 
   const imageSource =
     resolved != null

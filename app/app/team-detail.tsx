@@ -12,7 +12,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { COLORS } from "@/constants/colors";
 import { apiRequest } from "@/lib/query-client";
 import { normalizeApiError } from "@/lib/error-messages";
-import { getInitials, resolveTeamLogoUri } from "@/lib/logo-manager";
+import { TeamLogo } from "@/components/TeamLogo";
 import { useNexora } from "@/context/NexoraContext";
 
 function asParam(value: string | string[] | undefined, fallback = ""): string {
@@ -63,7 +63,6 @@ export default function TeamDetailScreen() {
   const { isFavorite, toggleFavorite } = useNexora();
   const favKey = `sport_team:${teamIdParam || teamNameParam}`;
   const isFollowing = isFavorite(favKey);
-  const [teamLogoFailed, setTeamLogoFailed] = useState(false);
   const [posFilter, setPosFilter] = useState<string>("all");
   const [sortKey, setSortKey] = useState<"value_desc" | "value_asc" | "age_desc" | "age_asc" | "name_asc" | "position_asc">("value_desc");
   const topPad = Platform.OS === "web" ? 67 : insets.top;
@@ -122,7 +121,6 @@ export default function TeamDetailScreen() {
   });
 
   const teamName = String(data?.name || teamNameParam || "Team");
-  const teamLogoUri = resolveTeamLogoUri(teamName, data?.logo || logoParam || `https://a.espncdn.com/i/teamlogos/soccer/500/${encodeURIComponent(teamIdParam)}.png`);
 
   const players: any[] = useMemo(() => data?.players || [], [data?.players]);
 
@@ -199,18 +197,11 @@ export default function TeamDetailScreen() {
         </TouchableOpacity>
 
         <View style={styles.teamHeaderContent}>
-          {teamLogoUri && !teamLogoFailed ? (
-            <Image
-              source={typeof teamLogoUri === "number" ? teamLogoUri : { uri: teamLogoUri }}
-              style={[styles.teamBigLogo, { backgroundColor: COLORS.card }]}
-              resizeMode="contain"
-              onError={() => setTeamLogoFailed(true)}
-            />
-          ) : (
-            <View style={[styles.teamBigLogo, styles.logoPlaceholder]}>
-              <Text style={styles.logoPlaceholderText}>{getInitials(teamName, 2)}</Text>
-            </View>
-          )}
+          <TeamLogo
+            uri={data?.logo || logoParam || `https://a.espncdn.com/i/teamlogos/soccer/500/${encodeURIComponent(teamIdParam)}.png`}
+            teamName={teamName}
+            size={72}
+          />
           <Text style={styles.teamTitle}>{data?.name || teamNameParam}</Text>
           {data?.shortName ? <Text style={styles.teamShort}>{data.shortName}</Text> : null}
 
