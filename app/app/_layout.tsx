@@ -2,9 +2,8 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { Stack, router } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import React, { useEffect, useRef, useState } from "react";
-import { Alert, Linking, Platform } from "react-native";
-import * as FileSystem from "expo-file-system/legacy";
-import * as IntentLauncher from "expo-intent-launcher";
+import { Alert } from "react-native";
+
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { queryClient, getApiBaseCandidates, apiRequest } from "@/lib/query-client";
@@ -236,48 +235,15 @@ export default function RootLayout() {
         // Small delay so the main UI is fully rendered before alert appears
         await new Promise(r => setTimeout(r, 1200));
 
-        const doInstall = async () => {
-          const url = data.apkUrl || data.directApkUrl;
-          if (!url) { router.push("/profile"); return; }
-          const normalizedUrl = String(url).replace(/^http:\/\//i, "https://");
-
-          // Android: download APK to cache and trigger package installer
-          if (Platform.OS === "android") {
-            try {
-              const dir = (FileSystem.cacheDirectory || "") + "updates/";
-              await FileSystem.makeDirectoryAsync(dir, { intermediates: true }).catch(() => {});
-              const fileUri = dir + `nexora-${data.version}.apk`;
-              const dl = FileSystem.createDownloadResumable(
-                normalizedUrl, fileUri,
-                { headers: { Accept: "application/vnd.android.package-archive" } }
-              );
-              const result = await dl.downloadAsync();
-              if (!result?.uri) throw new Error("dl-failed");
-              const contentUri = await FileSystem.getContentUriAsync(result.uri);
-              await IntentLauncher.startActivityAsync("android.intent.action.VIEW", {
-                data: contentUri,
-                type: "application/vnd.android.package-archive",
-                flags: 1, // FLAG_GRANT_READ_URI_PERMISSION
-              });
-              return;
-            } catch {
-              // Fallback: open in browser
-            }
-          }
-
-          try {
-            await Linking.openURL(normalizedUrl);
-          } catch {
-            router.push("/profile");
-          }
-        };
-
         Alert.alert(
           "Update beschikbaar",
           `Nexora ${data.version} is klaar.\nUpdate nu voor de nieuwste functies en bugfixes.`,
           [
             { text: "Straks", style: "cancel" },
-            { text: "Update nu", onPress: doInstall },
+            {
+              text: "Update nu",
+              onPress: () => router.push("/profile?openUpdate=1"),
+            },
           ],
           { cancelable: true }
         );
