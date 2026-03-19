@@ -657,6 +657,7 @@ const TOP_COMPETITIONS = [
   { id: "fr_d1", league: "Ligue 1", espn: "fra.1", color: "#ae2028", emoji: "🇫🇷" },
   { id: "be_d1", league: "Jupiler Pro League", espn: "bel.1", color: "#005b99", emoji: "🇧🇪" },
   { id: "uel", league: "UEFA Europa League", espn: "uefa.europa", color: "#f47920", emoji: "🏆" },
+  { id: "uecl", league: "UEFA Conference League", espn: "uefa.europa.conf", color: "#25a851", emoji: "🏆" },
 ];
 
 function PopularCompetitionCard({ comp, onPress, cardWidth }: { comp: typeof TOP_COMPETITIONS[0]; onPress: () => void; cardWidth: number }) {
@@ -722,6 +723,10 @@ function HighlightCard({ match, onPress }: { match: any; onPress: () => void }) 
   return (
     <TouchableOpacity onPress={onPress} activeOpacity={0.85} style={hlStyles.wrap}>
       <LinearGradient colors={["#151520", "#0B0B14"]} style={hlStyles.card}>
+        <View style={hlStyles.hlBadge}>
+          <Ionicons name="star" size={8} color="#FFD700" />
+          <Text style={hlStyles.hlBadgeText}>Highlights</Text>
+        </View>
         <View style={hlStyles.playBtn}>
           <Ionicons name="play" size={20} color="#fff" />
         </View>
@@ -742,6 +747,12 @@ const hlStyles = StyleSheet.create({
     borderWidth: 1, borderColor: P.border,
     alignItems: "center", justifyContent: "center",
   },
+  hlBadge: {
+    position: "absolute", top: 8, right: 8, flexDirection: "row", alignItems: "center", gap: 3,
+    backgroundColor: "rgba(255,215,0,0.15)", borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2,
+    borderWidth: 1, borderColor: "rgba(255,215,0,0.3)",
+  },
+  hlBadgeText: { color: "#FFD700", fontSize: 8, fontWeight: "700" },
   playBtn: {
     width: 44, height: 44, borderRadius: 22,
     backgroundColor: "rgba(255,255,255,0.18)", alignItems: "center", justifyContent: "center",
@@ -1501,7 +1512,25 @@ export default function SportsScreen() {
                 <SectionTitle title="Highlights & Replays" accent />
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.carouselContent}>
                   {sortedFinished.slice(0, 10).map((match: any) => (
-                    <HighlightCard key={match.id} match={match} onPress={() => handleMatchPress(match)} />
+                    <HighlightCard key={match.id} match={match} onPress={() => {
+                      router.push({
+                        pathname: "/match-detail",
+                        params: {
+                          matchId: match.id,
+                          homeTeam: match.homeTeam,
+                          awayTeam: match.awayTeam,
+                          homeTeamLogo: match.homeTeamLogo || "",
+                          awayTeamLogo: match.awayTeamLogo || "",
+                          homeScore: String(match.homeScore ?? 0),
+                          awayScore: String(match.awayScore ?? 0),
+                          league: match.league,
+                          minute: match.minute !== undefined ? String(match.minute) : "",
+                          status: match.status,
+                          sport: match.sport,
+                          initialTab: "highlights",
+                        },
+                      });
+                    }} />
                   ))}
                 </ScrollView>
               </>

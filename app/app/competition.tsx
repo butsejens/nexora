@@ -13,7 +13,7 @@ import { useQuery } from "@tanstack/react-query";
 import { COLORS } from "@/constants/colors";
 import { apiRequest } from "@/lib/query-client";
 import { normalizeApiError } from "@/lib/error-messages";
-import { resolveTeamLogoUri } from "@/lib/logo-manager";
+import { resolveTeamLogoUri, getLeagueLogo } from "@/lib/logo-manager";
 
 function asParam(value: string | string[] | undefined, fallback = ""): string {
   if (Array.isArray(value)) return String(value[0] || fallback);
@@ -41,11 +41,15 @@ type TabId = "standings" | "scorers" | "matches";
 const LEAGUE_COLORS: Record<string, string[]> = {
   "Premier League": ["#3d0099", "#1a0044"],
   "UEFA Champions League": ["#003399", "#001144"],
+  "UEFA Europa League": ["#f47920", "#5c2d00"],
+  "UEFA Conference League": ["#25a851", "#0e3d1f"],
   "Bundesliga": ["#cc0000", "#440000"],
   "La Liga": ["#cc0033", "#440011"],
   "Jupiler Pro League": ["#006600", "#002200"],
+  "Challenger Pro League": ["#004d00", "#001a00"],
   "Ligue 1": ["#330066", "#110022"],
   "Serie A": ["#990033", "#330011"],
+  "Eredivisie": ["#ff6600", "#441a00"],
 };
 
 // Cup competitions don't have standings – detect by ESPN league code
@@ -225,9 +229,22 @@ export default function CompetitionScreen() {
           <Ionicons name="chevron-back" size={24} color={COLORS.text} />
         </TouchableOpacity>
         <View style={styles.headerContent}>
-          <View style={styles.headerIconWrap}>
-            <MaterialCommunityIcons name={isCup ? "trophy-outline" as any : "soccer"} size={26} color="rgba(255,255,255,0.95)" />
-          </View>
+          {(() => {
+            const leagueLogo = getLeagueLogo(leagueName);
+            return leagueLogo ? (
+              <View style={styles.headerIconWrap}>
+                <Image
+                  source={typeof leagueLogo === "number" ? leagueLogo : { uri: leagueLogo as string }}
+                  style={{ width: 38, height: 38 }}
+                  resizeMode="contain"
+                />
+              </View>
+            ) : (
+              <View style={styles.headerIconWrap}>
+                <MaterialCommunityIcons name={isCup ? "trophy-outline" as any : "soccer"} size={26} color="rgba(255,255,255,0.95)" />
+              </View>
+            );
+          })()}
           <Text style={styles.leagueTitle}>{leagueName}</Text>
           <View style={styles.headerBadgeRow}>
             <View style={styles.headerBadge}>
