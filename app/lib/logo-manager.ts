@@ -83,6 +83,19 @@ function normalizeName(value: string): string {
     .trim();
 }
 
+export function sanitizeRemoteLogoUri(value?: string | null): string | null {
+  const raw = String(value || "").trim();
+  if (!/^https?:\/\//i.test(raw)) return null;
+  if (/^(data|javascript|file):/i.test(raw)) return null;
+  try {
+    const parsed = new URL(raw);
+    if (String(parsed.pathname || "").toLowerCase().endsWith(".svg")) return null;
+    return parsed.toString();
+  } catch {
+    return null;
+  }
+}
+
 export function getLeagueLogo(leagueName?: string): string | number | null {
   const key = String(leagueName || "").trim();
   // Exact match first
@@ -231,7 +244,7 @@ export function resolveTeamLogoUri(teamName?: string, logoUri?: string | null): 
   ) {
     return LOCAL_LOGOS.raalLaLouviere;
   }
-  const safeLogo = String(logoUri || "").trim();
+  const safeLogo = sanitizeRemoteLogoUri(logoUri);
   if (safeLogo) return safeLogo;
 
   // ESPN CDN fallback when server provides no logo
