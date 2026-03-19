@@ -594,8 +594,7 @@ export default function DetailScreen() {
             {hasPremium(isMovie ? "movies" : "series") ? (
               <TouchableOpacity style={styles.playBtn} onPress={() => goToPlayer()} activeOpacity={0.85}>
                 <View style={styles.playBtnInner}>
-                  <Ionicons name="play" size={22} color="#FFFFFF" />
-                  <Text style={styles.playBtnText} numberOfLines={1}>{t("detail.play")}</Text>
+                  <Text style={styles.playBtnEmoji}>▶️</Text>
                 </View>
               </TouchableOpacity>
             ) : (
@@ -761,6 +760,25 @@ export default function DetailScreen() {
                     mediaPlaybackRequiresUserAction={false}
                     javaScriptEnabled
                     incognito
+                    injectedJavaScript={`
+                      (function() {
+                        var check = setInterval(function() {
+                          var err = document.querySelector('.ytp-error, .ytp-error-content-wrap, [class*="error"]');
+                          if (err && err.offsetHeight > 0) {
+                            clearInterval(check);
+                            window.ReactNativeWebView.postMessage(JSON.stringify({type:'yt-error'}));
+                          }
+                        }, 1500);
+                        setTimeout(function() { clearInterval(check); }, 20000);
+                      })();
+                      true;
+                    `}
+                    onMessage={(event: any) => {
+                      try {
+                        const msg = JSON.parse(event.nativeEvent.data);
+                        if (msg.type === 'yt-error') advanceTrailer();
+                      } catch {}
+                    }}
                     onLoadStart={() => {
                       setTrailerLoading(true);
                       setTrailerUnavailable(false);
@@ -828,6 +846,7 @@ const styles = StyleSheet.create({
   playBtnInner: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, paddingVertical: 14, paddingHorizontal: 12, backgroundColor: COLORS.accent, borderRadius: 12 },
   lockedBtnInner: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, paddingVertical: 14, paddingHorizontal: 12, backgroundColor: "rgba(229,9,20,0.35)", borderRadius: 12, borderWidth: 1, borderColor: "rgba(229,9,20,0.5)" },
   playBtnText: { fontFamily: "Inter_700Bold", fontSize: 14, color: "#FFFFFF", flexShrink: 1 },
+  playBtnEmoji: { fontSize: 22 },
   downloadBtnOutline: { width: 48, height: 48, borderRadius: 12, borderWidth: 1.5, borderColor: "rgba(255,255,255,0.12)", alignItems: "center", justifyContent: "center", backgroundColor: "rgba(255,255,255,0.04)" },
   shareBtnOutline: { width: 48, height: 48, borderRadius: 12, borderWidth: 1.5, borderColor: "rgba(255,255,255,0.12)", alignItems: "center", justifyContent: "center", backgroundColor: "rgba(255,255,255,0.04)" },
   trailerBtnOutline: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, height: 48, paddingHorizontal: 16, borderRadius: 12, borderWidth: 1.5, borderColor: COLORS.accent + "44", backgroundColor: COLORS.accent + "12" },
@@ -841,10 +860,10 @@ const styles = StyleSheet.create({
   tabTextActive: { color: COLORS.accent, fontFamily: "Inter_600SemiBold" },
   tabContent: { paddingBottom: 8 },
   synopsis: { fontFamily: "Inter_400Regular", fontSize: 15, color: COLORS.textSecondary, lineHeight: 24, marginBottom: 16 },
-  metadataGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10, marginBottom: 16 },
-  metadataCard: { width: "48%", minHeight: 74, padding: 12, borderRadius: 12, backgroundColor: "rgba(255,255,255,0.05)", borderWidth: 1, borderColor: "rgba(255,255,255,0.08)", gap: 4 },
-  metadataLabel: { fontFamily: "Inter_600SemiBold", fontSize: 10, color: COLORS.textMuted, textTransform: "uppercase", letterSpacing: 0.8 },
-  metadataValue: { fontFamily: "Inter_500Medium", fontSize: 13, color: COLORS.text, lineHeight: 18 },
+  metadataGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10, marginBottom: 16, marginTop: 8 },
+  metadataCard: { width: "47%", flexGrow: 1, minHeight: 80, padding: 14, borderRadius: 14, backgroundColor: "rgba(255,255,255,0.06)", borderWidth: 1, borderColor: "rgba(255,255,255,0.10)", gap: 6, justifyContent: "flex-start" },
+  metadataLabel: { fontFamily: "Inter_600SemiBold", fontSize: 10, color: COLORS.textMuted, textTransform: "uppercase", letterSpacing: 1.0 },
+  metadataValue: { fontFamily: "Inter_600SemiBold", fontSize: 14, color: COLORS.text, lineHeight: 20 },
   networkRow: { flexDirection: "row", marginBottom: 8 },
   networkLabel: { fontFamily: "Inter_600SemiBold", fontSize: 13, color: COLORS.textMuted },
   networkValue: { fontFamily: "Inter_400Regular", fontSize: 13, color: COLORS.textSecondary },

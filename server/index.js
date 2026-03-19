@@ -2088,6 +2088,7 @@ async function enrichMatchesWithSofaData(matches, dateHint = "") {
 
   const byKey = new Map();
   const byId = new Map();
+  const allSofaEvents = [];
 
   const batches = await Promise.allSettled(dates.map((d) => fetchSofaEventsByDate(d)));
   for (const batch of batches) {
@@ -2096,6 +2097,7 @@ async function enrichMatchesWithSofaData(matches, dateHint = "") {
       const sofa = buildSofaDataFromEvent(raw);
       if (!sofa) continue;
       if (sofa.id) byId.set(sofa.id, sofa);
+      allSofaEvents.push(sofa);
 
       const hk = normalizeTeamKey(sofa.homeTeam?.name);
       const ak = normalizeTeamKey(sofa.awayTeam?.name);
@@ -2109,7 +2111,27 @@ async function enrichMatchesWithSofaData(matches, dateHint = "") {
     const id = String(match?.id || "");
     const hk = normalizeTeamKey(match?.homeTeam);
     const ak = normalizeTeamKey(match?.awayTeam);
-    const sofa = byId.get(id) || byKey.get(`${hk}__${ak}`) || null;
+
+    // 1) Exact match by id or key
+    let sofa = byId.get(id) || byKey.get(`${hk}__${ak}`) || null;
+
+    // 2) Fuzzy match: one normalized name includes or is included in the other
+    if (!sofa && hk && ak) {
+      for (const candidate of allSofaEvents) {
+        const sh = normalizeTeamKey(candidate.homeTeam?.name);
+        const sa = normalizeTeamKey(candidate.awayTeam?.name);
+        if (!sh || !sa) continue;
+        const homeMatch = sh === hk || hk.includes(sh) || sh.includes(hk);
+        const awayMatch = sa === ak || ak.includes(sa) || sa.includes(ak);
+        const homeMatchReversed = sh === ak || ak.includes(sh) || sh.includes(ak);
+        const awayMatchReversed = sa === hk || hk.includes(sa) || sa.includes(hk);
+        if ((homeMatch && awayMatch) || (homeMatchReversed && awayMatchReversed)) {
+          sofa = candidate;
+          break;
+        }
+      }
+    }
+
     return { ...match, sofaData: sofa };
   });
 }
@@ -6046,7 +6068,7 @@ app.get("/api/sports/team/:teamId", async (req, res) => {
         name: teamDisplayName || "Team",
         shortName: team?.abbreviation || team?.shortDisplayName || "",
         logo: resolvedLogo,
-        color: team?.color ? `#${String(team.color).replace("#", "")}` : "#151515",
+        color: (typeof team?.color === "string" && /^[0-9a-fA-F]{3,8}$/.test(team.color.replace("#", ""))) ? `#${String(team.color).replace("#", "")}` : "#151515",
         leagueName: rosterJson?.team?.links?.[0]?.text || espnLeague,
         leagueRank: undefined,
         leaguePoints: undefined,
@@ -6063,7 +6085,7 @@ app.get("/api/sports/team/:teamId", async (req, res) => {
     res.json(payload);
   } catch (e) {
     console.error(`[team-detail] Error for ${teamId}:`, e.message);
-    res.status(200).json({ id: "", name: teamNameFromQuery || "Team", logo: null, players: [], error: String(e?.message || e) });
+    res.status(200).json({ id: "", name: teamNameFromQuery || "Team", logo: null, color: "#151515", players: [], error: String(e?.message || e) });
   }
 });
 

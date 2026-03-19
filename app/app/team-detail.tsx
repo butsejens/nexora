@@ -222,7 +222,7 @@ export default function TeamDetailScreen() {
       {/* Header — always visible: back button + team name stay, hero details fade */}
       <View style={{ zIndex: 30, elevation: 30 }}>
       <LinearGradient
-        colors={[data?.color || "#1a3a6b", COLORS.background] as any}
+        colors={[/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/.test(data?.color || "") ? data.color : "#1a3a6b", COLORS.background] as any}
         style={[styles.header, { paddingTop: topPad + 8 }]}
       >
         <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
@@ -309,11 +309,12 @@ export default function TeamDetailScreen() {
           <ActivityIndicator size="large" color={COLORS.accent} />
           <Text style={styles.loadingText}>{t("teamDetail.loadingPlayers")}</Text>
         </View>
-      ) : error || !data ? (
+      ) : error || !data || (data as any).error ? (
         <View style={styles.emptyState}>
           <Ionicons name="alert-circle-outline" size={40} color={COLORS.textMuted} />
           <Text style={styles.emptyText}>{t("teamDetail.dataUnavailable")}</Text>
           {error ? <Text style={styles.emptyHintText}>{normalizeApiError(error).userMessage}</Text> : null}
+          {(data as any)?.error ? <Text style={styles.emptyHintText}>{String((data as any).error)}</Text> : null}
         </View>
       ) : (
         <>
