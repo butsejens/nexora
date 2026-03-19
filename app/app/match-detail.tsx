@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import {
   View, Text, StyleSheet, TouchableOpacity, Platform,
-  ScrollView, Image, ActivityIndicator,
+  ScrollView, Image, ActivityIndicator, useWindowDimensions,
 } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -131,19 +131,21 @@ export default function MatchDetailScreen() {
     homeTeamLogo?: string; awayTeamLogo?: string;
     homeScore?: string; awayScore?: string;
     league: string; minute?: string; status: string; sport: string;
+    initialTab?: string;
   }>();
 
   const insets = useSafeAreaInsets();
   const { hasPremium } = useNexora();
   const sportPremium = hasPremium("sport");
-  const [activeTab, setActiveTab] = useState<TabId>("stream");
+  const resolvedInitialTab = (params.initialTab && ["stream", "stats", "lineups", "timeline", "highlights", "ai"].includes(params.initialTab)) ? params.initialTab as TabId : "stream";
+  const [activeTab, setActiveTab] = useState<TabId>(resolvedInitialTab);
   const [visitedTabs, setVisitedTabs] = useState<Record<TabId, boolean>>({
-    stream: true,
-    stats: false,
-    lineups: false,
-    timeline: false,
-    highlights: false,
-    ai: false,
+    stream: resolvedInitialTab === "stream",
+    stats: resolvedInitialTab === "stats",
+    lineups: resolvedInitialTab === "lineups",
+    timeline: resolvedInitialTab === "timeline",
+    highlights: resolvedInitialTab === "highlights",
+    ai: resolvedInitialTab === "ai",
   });
   const [lineupView, setLineupView] = useState<"pitch" | "list">("pitch");
   const [streamKey, setStreamKey] = useState(0);
@@ -994,14 +996,16 @@ function MiniAIPill({ prediction, homeTeam, awayTeam, loading, onPress }: any) {
 }
 
 function TeamSide({ name, logo, onPress, align = "left" }: { name: string; logo?: string; onPress?: () => void; align?: "left" | "right" }) {
+  const { width } = useWindowDimensions();
+  const logoSize = width < 360 ? 40 : width < 400 ? 46 : 52;
   return (
     <TouchableOpacity
       style={styles.teamSide}
       onPress={onPress}
       activeOpacity={onPress ? 0.7 : 1}
     >
-      <TeamLogo uri={logo} teamName={name} size={52} />
-      <Text style={styles.teamName} numberOfLines={2}>{name}</Text>
+      <TeamLogo uri={logo} teamName={name} size={logoSize} />
+      <Text style={[styles.teamName, width < 360 && { fontSize: 10, maxWidth: 80 }]} numberOfLines={2}>{name}</Text>
     </TouchableOpacity>
   );
 }
@@ -1076,7 +1080,12 @@ function MatchTimelineInner({ events, homeTeam, awayTeam }: { events: any[]; hom
       {events.map((ev: any, i: number) => {
         const cfg = getEventConfig(ev);
         const onHome = isHomeEvent(ev);
-        const minute = safeStr(ev?.minute || (ev?.time ? `${String(ev.time)}'` : ""));
+        const rawMinute = safeStr(ev?.minute || (ev?.time ? `${String(ev.time)}'` : ""));
+        // Safety clamp: if minute looks like raw seconds (>150), convert
+        const minute = rawMinute.replace(/(\d+)/, (_, n) => {
+          const num = Number(n);
+          return num > 150 ? String(Math.floor(num / 60)) : n;
+        });
         const title = safeStr(ev?.title || cfg.label);
         const description = safeStr(ev?.description || ev?.player || ev?.name || ev?.text || ev?.detail || "");
         const secondary = safeStr(ev?.secondary || ev?.assist || "");
@@ -2175,7 +2184,7 @@ const styles = StyleSheet.create({
     textAlign: "center",
     maxWidth: 100,
   },
-  scoreCenter: { minWidth: 90, alignItems: "center", gap: 4 },
+  scoreCenter: { minWidth: 70, alignItems: "center", gap: 4 },
   score: {
     fontFamily: "Inter_800ExtraBold",
     fontSize: 48,
@@ -3024,8 +3033,8 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.15)",
     paddingVertical: 14,
-    paddingHorizontal: 8,
-    gap: 2,
+    paddingHorizontal: 12,
+    gap: 4,
     overflow: "hidden",
     position: "relative",
     alignItems: "center",
@@ -3036,7 +3045,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     alignSelf: "stretch",
     zIndex: 2,
-    paddingHorizontal: 2,
+    paddingHorizontal: 4,
     minHeight: 52,
   },
   pitchDivider: {
@@ -3161,7 +3170,7 @@ const styles = StyleSheet.create({
   pitchDotWrap: {
     alignItems: "center",
     gap: 2,
-    minWidth: 48,
+    minWidth: 44,
     maxWidth: 68,
     flex: 1,
     paddingVertical: 1,

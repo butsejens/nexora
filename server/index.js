@@ -3856,26 +3856,38 @@ function normalizeTeamSide(teamName, homeTeam, awayTeam) {
 }
 
 function formatEventMinuteLabel(time, extra) {
-  const minuteNum = Math.floor(toNum(time));
+  let minuteNum = Math.floor(toNum(time));
   const extraNum = Math.floor(toNum(extra));
+  // ESPN clock.value can be raw seconds (e.g. 5400 for 90') — convert if too large
+  if (minuteNum > 150) minuteNum = Math.floor(minuteNum / 60);
   if (minuteNum > 0 && extraNum > 0) return `${minuteNum}+${extraNum}'`;
   if (minuteNum > 0) return `${minuteNum}'`;
   const raw = String(time || "").trim();
   if (raw) {
     const m = raw.match(/(\d+)/);
-    if (m) return `${m[1]}'`;
+    if (m) {
+      let parsed = Number(m[1]);
+      if (parsed > 150) parsed = Math.floor(parsed / 60);
+      return `${parsed}'`;
+    }
     return `${raw}${raw.includes("'") ? "" : "'"}`;
   }
   return "";
 }
 
 function eventMinuteValue(time, extra, fallback = 0) {
-  const minuteNum = toNum(time);
+  let minuteNum = toNum(time);
   const extraNum = toNum(extra);
+  // ESPN clock.value can be raw seconds — convert if too large
+  if (minuteNum > 150) minuteNum = Math.floor(minuteNum / 60);
   if (minuteNum > 0) return minuteNum + (extraNum > 0 ? extraNum / 100 : 0);
   const raw = String(time || "");
   const match = raw.match(/(\d+)(?:\+(\d+))?/);
-  if (match) return Number(match[1]) + (match[2] ? Number(match[2]) / 100 : 0);
+  if (match) {
+    let parsed = Number(match[1]);
+    if (parsed > 150) parsed = Math.floor(parsed / 60);
+    return parsed + (match[2] ? Number(match[2]) / 100 : 0);
+  }
   return fallback;
 }
 
