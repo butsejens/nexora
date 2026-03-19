@@ -238,7 +238,7 @@ export default function SeriesScreen() {
       .slice(0, 15)
       .map(h => ({
         id: h.id, title: h.title, poster: h.poster || null, backdrop: h.backdrop || null, synopsis: "",
-        year: undefined, imdb: undefined, genre: [], quality: "HD", isIptv: false,
+        year: undefined, imdb: undefined, genre: [], quality: "HD", isIptv: false, tmdbId: h.tmdbId,
       }));
   }, [watchHistory]);
 
@@ -325,6 +325,7 @@ export default function SeriesScreen() {
           streamUrl: item.streamUrl, title: item.title,
           type: "series", contentId: item.id,
           ...(tmdbId ? { tmdbId } : {}),
+          ...(item.poster ? { poster: item.poster } : {}),
           season: "1", episode: "1",
         },
       });
@@ -334,6 +335,7 @@ export default function SeriesScreen() {
         params: {
           tmdbId, title: item.title,
           type: "series", contentId: item.id,
+          ...(item.poster ? { poster: item.poster } : {}),
           season: "1", episode: "1",
         },
       });

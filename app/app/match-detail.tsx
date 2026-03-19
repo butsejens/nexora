@@ -1352,7 +1352,7 @@ function StatsBarsInner({ homeTeam, awayTeam, homeStats, awayStats }: { homeTeam
         <View style={styles.statRow}>
           <Text style={[styles.statVal, hVal > aVal && styles.statValWinner]}>{hDisplay}</Text>
           <View style={styles.statBarContainer}>
-            <Text style={styles.statName}>{STAT_LABELS[key]}</Text>
+            <Text style={styles.statName} numberOfLines={1}>{STAT_LABELS[key]}</Text>
             <View style={styles.statBarsWrapper}>
               {/* Home bar — grows right-to-left from center */}
               <View style={styles.statBarHalf}>

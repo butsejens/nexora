@@ -142,13 +142,15 @@ export default function TeamDetailScreen() {
     refetchOnMount: true,
   });
 
+  const isNationalTeam = league.includes("fifa");
+
   const { data: scorersData } = useQuery({
     queryKey: ["topscorers", league],
     queryFn: async () => {
       const res = await apiRequest("GET", `/api/sports/topscorers/${encodeURIComponent(league)}`);
       return res.json();
     },
-    enabled: !!league,
+    enabled: !!league && !isNationalTeam,
     staleTime: 5 * 60 * 1000,
   });
 
@@ -212,6 +214,8 @@ export default function TeamDetailScreen() {
   });
 
   const heroOpacity = scrollY.interpolate({ inputRange: [0, 100], outputRange: [1, 0], extrapolate: "clamp" });
+  const heroTranslateY = scrollY.interpolate({ inputRange: [0, 100], outputRange: [0, -40], extrapolate: "clamp" });
+  const heroScale = scrollY.interpolate({ inputRange: [0, 100], outputRange: [1, 0.92], extrapolate: "clamp" });
 
   return (
     <View style={styles.container}>
@@ -235,7 +239,7 @@ export default function TeamDetailScreen() {
         </View>
 
         {data ? (
-        <Animated.View style={{ opacity: heroOpacity }}>
+        <Animated.View style={{ opacity: heroOpacity, transform: [{ translateY: heroTranslateY }, { scale: heroScale }] }}>
         <View style={styles.teamHeaderContent}>
           <TeamLogo
             uri={data.logo || logoParam || null}
@@ -381,6 +385,9 @@ export default function TeamDetailScreen() {
             scrollEventThrottle={16}
             contentContainerStyle={styles.playerList}
             showsVerticalScrollIndicator={false}
+            initialNumToRender={8}
+            maxToRenderPerBatch={6}
+            windowSize={5}
             ListEmptyComponent={
               <View style={styles.emptyState}>
                 <Text style={styles.emptyText}>{t("teamDetail.noPlayersFound")}</Text>
@@ -393,7 +400,7 @@ export default function TeamDetailScreen() {
   );
 }
 
-function PlayerCard({ player }: { player: any }) {
+const PlayerCard = React.memo(function PlayerCard({ player }: { player: any }) {
   const photoCandidates = [
     player?.photo,
   ].filter(Boolean) as string[];
@@ -437,7 +444,7 @@ function PlayerCard({ player }: { player: any }) {
           </View>
           <View style={styles.playerSubRow}>
             <View style={[styles.posTag, { backgroundColor: `${posColor}22`, borderColor: `${posColor}44` }]}>
-              <Text style={[styles.posTagText, { color: posColor }]}>{positionLabel(player.position || "", player.positionName)}</Text>
+              <Text style={[styles.posTagText, { color: posColor }]} numberOfLines={1}>{positionLabel(player.position || "", player.positionName)}</Text>
             </View>
             {player.nationality ? (
               <Text style={styles.playerNat} numberOfLines={1}>{player.nationality}</Text>
@@ -453,7 +460,7 @@ function PlayerCard({ player }: { player: any }) {
       </View>
     </View>
   );
-}
+});
 
 function SortChip({ label, active, onPress }: { label: string; active: boolean; onPress: () => void }) {
   return (
@@ -563,12 +570,12 @@ const styles = StyleSheet.create({
   playerInitials: { fontFamily: "Inter_700Bold", fontSize: 13, color: COLORS.text },
   playerMain: { flex: 1, gap: 4 },
   playerNameRow: { flexDirection: "row", alignItems: "center", gap: 6 },
-  playerName: { fontFamily: "Inter_600SemiBold", fontSize: 14, color: COLORS.text },
-  playerNameValue: { fontFamily: "Inter_700Bold", fontSize: 11, color: COLORS.textMuted },
+  playerName: { fontFamily: "Inter_600SemiBold", fontSize: 14, color: COLORS.text, flex: 1 },
+  playerNameValue: { fontFamily: "Inter_700Bold", fontSize: 11, color: COLORS.textMuted, flexShrink: 0 },
   playerNameValueReal: { color: "#00C896" },
   playerSubRow: { flexDirection: "row", alignItems: "center", gap: 8 },
   posTag: { borderRadius: 6, borderWidth: 1, paddingHorizontal: 7, paddingVertical: 2 },
-  posTagText: { fontFamily: "Inter_600SemiBold", fontSize: 10 },
+  posTagText: { fontFamily: "Inter_600SemiBold", fontSize: 10, maxWidth: 100 },
   playerNat: { fontFamily: "Inter_400Regular", fontSize: 12, color: COLORS.textMuted, flexShrink: 1 },
   playerStats: { flexDirection: "row", gap: 8, flexWrap: "wrap", paddingLeft: 84 },
   statPill: { alignItems: "center", gap: 1, minWidth: 68, backgroundColor: COLORS.card, borderRadius: 8, paddingVertical: 5, paddingHorizontal: 8, borderWidth: 1, borderColor: COLORS.border },

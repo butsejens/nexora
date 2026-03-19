@@ -1957,6 +1957,88 @@ async function fetchSofaIncidents(sofaEventId) {
   }
 }
 
+async function fetchSofaStatistics(sofaEventId) {
+  if (!sofaEventId) return null;
+  const cacheKey = `sofascore_stats_${sofaEventId}`;
+  const cached = cacheGet(cacheKey);
+  if (cached !== null) return cached;
+  try {
+    const url = `${SOFASCORE_API_BASE}/event/${encodeURIComponent(sofaEventId)}/statistics`;
+    const resp = await fetch(url, {
+      headers: { "user-agent": "Mozilla/5.0 (Nexora/1.0)", accept: "application/json" },
+      signal: AbortSignal.timeout(6000),
+    });
+    if (!resp.ok) { cacheSet(cacheKey, null, 120_000); return null; }
+    const data = await resp.json().catch(() => ({}));
+    const periods = Array.isArray(data?.statistics) ? data.statistics : [];
+    const all = periods.find((p) => p?.period === "ALL") || periods[0] || {};
+    const groups = Array.isArray(all?.groups) ? all.groups : [];
+    const homeStats = {};
+    const awayStats = {};
+    for (const group of groups) {
+      for (const item of (group?.statisticsItems || [])) {
+        const key = String(item?.key || item?.name || "").toLowerCase().replace(/\s+/g, "_");
+        if (!key) continue;
+        homeStats[key] = item?.homeValue ?? item?.home ?? 0;
+        awayStats[key] = item?.awayValue ?? item?.away ?? 0;
+      }
+    }
+    const result = { homeStats, awayStats };
+    cacheSet(cacheKey, result, 5 * 60_000);
+    return result;
+  } catch {
+    cacheSet(cacheKey, null, 120_000);
+    return null;
+  }
+}
+
+async function fetchSofaLineups(sofaEventId) {
+  if (!sofaEventId) return null;
+  const cacheKey = `sofascore_lineups_${sofaEventId}`;
+  const cached = cacheGet(cacheKey);
+  if (cached !== null) return cached;
+  try {
+    const url = `${SOFASCORE_API_BASE}/event/${encodeURIComponent(sofaEventId)}/lineups`;
+    const resp = await fetch(url, {
+      headers: { "user-agent": "Mozilla/5.0 (Nexora/1.0)", accept: "application/json" },
+      signal: AbortSignal.timeout(6000),
+    });
+    if (!resp.ok) { cacheSet(cacheKey, null, 120_000); return null; }
+    const data = await resp.json().catch(() => ({}));
+    const result = [];
+    for (const side of ["home", "away"]) {
+      const lineup = data?.[side];
+      if (!lineup) continue;
+      const teamName = lineup?.team?.name || lineup?.team?.shortName || "";
+      const formation = lineup?.formation || "";
+      const players = (lineup?.players || []).map((row) => {
+        const p = row?.player || row || {};
+        return {
+          id: String(p?.id || ""),
+          name: p?.name || p?.shortName || "",
+          jersey: String(row?.shirtNumber || p?.shirtNumber || "") || undefined,
+          position: row?.position || "",
+          positionName: row?.positionName || "",
+          starter: !(row?.substitute),
+          photo: p?.id ? `https://api.sofascore.app/api/v1/player/${encodeURIComponent(p.id)}/image` : null,
+        };
+      });
+      result.push({
+        team: teamName,
+        teamLogo: lineup?.team?.id ? `https://api.sofascore.app/api/v1/team/${encodeURIComponent(lineup.team.id)}/image` : null,
+        formation,
+        lineupType: "official",
+        players: players.filter((p) => p.starter),
+      });
+    }
+    cacheSet(cacheKey, result.length > 0 ? result : null, 5 * 60_000);
+    return result.length > 0 ? result : null;
+  } catch {
+    cacheSet(cacheKey, null, 120_000);
+    return null;
+  }
+}
+
 async function fetchSofaEventsByDate(date) {
   const d = String(date || "").slice(0, 10);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return [];
@@ -5210,6 +5292,33 @@ app.get("/api/sports/match/:matchId", async (req, res) => {
           } catch { /* SofaScore incidents are best-effort */ }
         }
 
+        // SofaScore stats fallback: if ESPN returned empty stats, try SofaScore
+        let finalHomeStats = withSofa?.homeStats || {};
+        let finalAwayStats = withSofa?.awayStats || {};
+        const hasStats = Object.keys(finalHomeStats).length > 2 || Object.keys(finalAwayStats).length > 2;
+        if (!hasStats && withSofa?.sofaData?.id) {
+          try {
+            const sofaStats = await fetchSofaStatistics(withSofa.sofaData.id);
+            if (sofaStats) {
+              finalHomeStats = { ...finalHomeStats, ...sofaStats.homeStats };
+              finalAwayStats = { ...finalAwayStats, ...sofaStats.awayStats };
+              console.log(`[sofa] Fetched stats fallback for match ${matchId}`);
+            }
+          } catch { /* SofaScore stats are best-effort */ }
+        }
+
+        // SofaScore lineups fallback: if ESPN returned no lineups, try SofaScore
+        let finalStarters = withSofa?.starters || (espnLineups.length > 0 ? starters : []);
+        if (finalStarters.length === 0 && withSofa?.sofaData?.id) {
+          try {
+            const sofaLineups = await fetchSofaLineups(withSofa.sofaData.id);
+            if (sofaLineups && sofaLineups.length > 0) {
+              finalStarters = sofaLineups;
+              console.log(`[sofa] Fetched lineups fallback for match ${matchId}`);
+            }
+          } catch { /* SofaScore lineups are best-effort */ }
+        }
+
         return finalizeMatchPayload({
           ...mapped,
           ...withSofa,
@@ -5219,11 +5328,11 @@ app.get("/api/sports/match/:matchId", async (req, res) => {
           city: withSofa?.city || headerComp?.venue?.address?.city || summary?.gameInfo?.venue?.address?.city || "",
           referee: withSofa?.referee || summary?.gameInfo?.officials?.[0]?.displayName || "",
           round: withSofa?.round || summary?.header?.season?.type?.name || "",
-          homeStats: withSofa?.homeStats || {},
-          awayStats: withSofa?.awayStats || {},
+          homeStats: finalHomeStats,
+          awayStats: finalAwayStats,
           watchOptions: withSofa?.watchOptions || watchOptions,
           keyEvents: mergedKeyEvents,
-          starters: withSofa?.starters || (espnLineups.length > 0 ? starters : []),
+          starters: finalStarters,
         });
       }
 
@@ -5953,7 +6062,8 @@ app.get("/api/sports/team/:teamId", async (req, res) => {
 
     res.json(payload);
   } catch (e) {
-    res.status(200).json({ team: null, stats: null, error: String(e?.message || e) });
+    console.error(`[team-detail] Error for ${teamId}:`, e.message);
+    res.status(200).json({ id: "", name: teamNameFromQuery || "Team", logo: null, players: [], error: String(e?.message || e) });
   }
 });
 
@@ -7735,7 +7845,7 @@ app.get("/api/trailer/:tmdbId", tmdbLimiter, async (req, res) => {
     cacheSet(cacheKey, result, 24 * 60 * 60 * 1000); // 24h
     res.json(result);
   } catch (e) {
-    res.json({ key: null });
+    res.json({ key: null, type: null, candidates: [] });
   }
 });
 
