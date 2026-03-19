@@ -731,7 +731,11 @@ function HighlightCard({ match, onPress }: { match: any; onPress: () => void }) 
           <Ionicons name="play" size={20} color="#fff" />
         </View>
         <View style={hlStyles.overlay}>
-          <Text style={hlStyles.score}>{homeScore} - {awayScore}</Text>
+          <View style={hlStyles.teamsLogoRow}>
+            <TeamLogo uri={match?.homeTeamLogo} teamName={match?.homeTeam || ""} size={22} />
+            <Text style={hlStyles.score}>{homeScore} - {awayScore}</Text>
+            <TeamLogo uri={match?.awayTeamLogo} teamName={match?.awayTeam || ""} size={22} />
+          </View>
           <Text style={hlStyles.teams} numberOfLines={1}>{match?.homeTeam} · {match?.awayTeam}</Text>
           <Text style={hlStyles.league} numberOfLines={1}>{match?.league || "Sport"}</Text>
         </View>
@@ -759,6 +763,7 @@ const hlStyles = StyleSheet.create({
     borderWidth: 1.5, borderColor: "rgba(255,255,255,0.5)",
   },
   overlay: { position: "absolute", bottom: 0, left: 0, right: 0, padding: 9 },
+  teamsLogoRow: { flexDirection: "row", alignItems: "center", gap: 6 },
   score: { color: P.text, fontSize: 15, fontWeight: "800" },
   teams: { color: P.muted, fontSize: 10, fontWeight: "500" },
   league: { color: P.muted, fontSize: 9, marginTop: 1 },
@@ -790,6 +795,14 @@ export default function SportsScreen() {
   const showFiltersRef = useRef(true);
   const lastFilterToggleAtRef = useRef(0);
   const filterAnim = useRef(new Animated.Value(1)).current;
+  const headerAnim = useRef(new Animated.Value(1)).current;
+  const showHeaderRef = useRef(true);
+
+  const toggleHeaderVisibility = useCallback((visible: boolean) => {
+    if (showHeaderRef.current === visible) return;
+    showHeaderRef.current = visible;
+    Animated.timing(headerAnim, { toValue: visible ? 1 : 0, duration: 200, useNativeDriver: false }).start();
+  }, [headerAnim]);
 
   const toggleFiltersVisibility = useCallback((visible: boolean) => {
     if (showFiltersRef.current === visible) return;
@@ -996,10 +1009,10 @@ export default function SportsScreen() {
     const prevY = lastScrollYRef.current;
     const delta = nextY - prevY;
     lastScrollYRef.current = nextY;
-    if (nextY <= 16) { toggleFiltersVisibility(true); return; }
-    if (delta > 12 && nextY > 120) toggleFiltersVisibility(false);
-    else if (delta < -10) toggleFiltersVisibility(true);
-  }, [toggleFiltersVisibility]);
+    if (nextY <= 16) { toggleFiltersVisibility(true); toggleHeaderVisibility(true); return; }
+    if (delta > 12 && nextY > 120) { toggleFiltersVisibility(false); toggleHeaderVisibility(false); }
+    else if (delta < -10) { toggleFiltersVisibility(true); toggleHeaderVisibility(true); }
+  }, [toggleFiltersVisibility, toggleHeaderVisibility]);
 
   const sportToolSourceMatches = useMemo(() => {
     if (sortedUpcoming.length > 0) return sortedUpcoming;
@@ -1257,19 +1270,24 @@ export default function SportsScreen() {
     ...sortedUpcoming.slice(0, 12),
   ], [sortedLive, sortedUpcoming]);
 
+  const headerOpacity = headerAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 1] });
+  const headerMaxHeight = headerAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 120] });
+
   return (
     <View style={styles.container}>
-      <NexoraHeader
-        title="SPORT"
-        titleColor={P.accent}
-        showSearch
-        showNotification
-        showFavorites
-        showProfile
-        onSearch={() => { setSportsSearchActive(s => !s); setSportsSearchQuery(""); }}
-        onFavorites={() => router.push("/favorites")}
-        onProfile={() => router.push("/profile")}
-      />
+      <Animated.View style={{ opacity: headerOpacity, maxHeight: headerMaxHeight, overflow: "hidden" }}>
+        <NexoraHeader
+          title="SPORT"
+          titleColor={P.accent}
+          showSearch
+          showNotification
+          showFavorites
+          showProfile
+          onSearch={() => { setSportsSearchActive(s => !s); setSportsSearchQuery(""); }}
+          onFavorites={() => router.push("/favorites")}
+          onProfile={() => router.push("/profile")}
+        />
+      </Animated.View>
 
       {/* ── Sports Sub-Nav ── */}
       <View style={styles.subNav}>

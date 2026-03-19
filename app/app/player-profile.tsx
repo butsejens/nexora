@@ -267,7 +267,7 @@ function Bullet({ text, good = false }: { text: string; good?: boolean }) {
         size={13}
         color={good ? "#4CAF82" : "#FF5252"}
       />
-      <Text style={[styles.bulletText, { color: good ? "#4CAF82" : "#FF5252" }]}>{text}</Text>
+      <Text style={[styles.bulletText, { color: good ? "#4CAF82" : "#FF5252" }]} numberOfLines={1}>{text}</Text>
     </View>
   );
 }
@@ -306,11 +306,11 @@ const styles = StyleSheet.create({
   rowValue: { fontFamily: "Inter_600SemiBold", fontSize: 13, color: COLORS.text, flexShrink: 1, textAlign: "right", maxWidth: "60%" },
   analysisText: { fontFamily: "Inter_400Regular", fontSize: 13, lineHeight: 20, color: COLORS.textSecondary },
   analysisSource: { fontFamily: "Inter_500Medium", fontSize: 11, color: COLORS.accentDim },
-  pillWrap: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  pillWrap: { flexDirection: "row", flexWrap: "wrap", gap: 8, paddingRight: 4 },
   bulletPill: {
     flexDirection: "row", alignItems: "center", gap: 5,
     borderRadius: 20, paddingHorizontal: 10, paddingVertical: 6,
-    borderWidth: 1,
+    borderWidth: 1, maxWidth: "100%", flexShrink: 1,
   },
   bulletPillGood: { backgroundColor: "rgba(76,175,130,0.12)", borderColor: "rgba(76,175,130,0.35)" },
   bulletPillBad: { backgroundColor: "rgba(255,82,82,0.12)", borderColor: "rgba(255,82,82,0.35)" },
@@ -318,7 +318,7 @@ const styles = StyleSheet.create({
   bulletDot: { width: 7, height: 7, borderRadius: 4 },
   bulletGood: { backgroundColor: "#00C896" },
   bulletBad: { backgroundColor: COLORS.live },
-  bulletText: { fontFamily: "Inter_500Medium", fontSize: 12, color: COLORS.text },
+  bulletText: { fontFamily: "Inter_500Medium", fontSize: 12, color: COLORS.text, flexShrink: 1 },
   placeholder: { fontFamily: "Inter_400Regular", fontSize: 13, color: COLORS.textMuted },
   clubRow: { flexDirection: "row", alignItems: "center", gap: 8, borderBottomWidth: 1, borderBottomColor: COLORS.border, paddingVertical: 7 },
   clubName: { fontFamily: "Inter_500Medium", fontSize: 13, color: COLORS.text, flex: 1 },

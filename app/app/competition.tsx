@@ -131,7 +131,7 @@ function StorylineBar({ storylines }: { storylines: Storyline[] }) {
 }
 
 const storyStyles = StyleSheet.create({
-  bar: { flexGrow: 0, marginBottom: 4 },
+  bar: { flexGrow: 0, marginBottom: 12 },
   content: { paddingHorizontal: 12, paddingVertical: 10, gap: 10, flexDirection: "row" },
   card: {
     flexDirection: "row", alignItems: "flex-start", gap: 10,
