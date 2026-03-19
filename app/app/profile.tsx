@@ -36,6 +36,18 @@ import * as IntentLauncher from "expo-intent-launcher";
 
 const CHANGELOG: { version: string; date: string; changes: string[] }[] = [
   {
+    version: "2.5.39",
+    date: "2026-03-20",
+    changes: [
+      "Teams-tab toegevoegd aan competitiepagina (alle teams met logo's)",
+      "Kwaliteitsselector vernieuwd als modaal (zoals audiotaal)",
+      "Spelerssterktes en zwaktes volledig zichtbaar (geen tekst meer afgeknipt)",
+      "Bronvermelding verborgen op spelersprofiel",
+      "Sportmenu verbergt soepel bij scrollen — enkel 'Nexora Sport' blijft zichtbaar",
+      "Meer wedstrijden geladen voor competities (±4 weken bereik)",
+    ],
+  },
+  {
     version: "2.5.35",
     date: "2026-03-19",
     changes: [
@@ -616,6 +628,37 @@ function LanguageModal({ visible, selected, onClose, onSelect }: {
   );
 }
 
+function QualityModal({ visible, selected, onClose, onSelect }: {
+  visible: boolean; selected: string; onClose: () => void; onSelect: (q: string) => void;
+}) {
+  const QUALITY_OPTIONS = [
+    { code: "Auto", label: "Auto" },
+    { code: "4K", label: "4K Ultra HD" },
+    { code: "FHD", label: "Full HD (1080p)" },
+    { code: "HD", label: "HD (720p)" },
+  ];
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <View style={langStyles.overlay}>
+        <View style={langStyles.sheet}>
+          <View style={langStyles.handle} />
+          <Text style={langStyles.title}>{tFn("settings.quality")}</Text>
+          {QUALITY_OPTIONS.map(q => (
+            <TouchableOpacity
+              key={q.code}
+              style={langStyles.option}
+              onPress={() => { SafeHaptics.impactLight(); onSelect(q.code); onClose(); }}
+            >
+              <Text style={langStyles.optionText}>{q.label}</Text>
+              {selected === q.code && <Ionicons name="checkmark" size={18} color={COLORS.accent} />}
+            </TouchableOpacity>
+          ))}
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <View style={styles.section}>
@@ -688,6 +731,7 @@ const [showAddPlaylist, setShowAddPlaylist] = useState(false);
   const [showPinModal, setShowPinModal] = useState(false);
   const [pinModalMode, setPinModalMode] = useState<"set" | "confirm">("set");
   const [showLangModal, setShowLangModal] = useState(false);
+  const [showQualityModal, setShowQualityModal] = useState(false);
   const [showUpdateModal, setShowUpdateModal] = useState(openUpdate === "1");
 
   const bottomPad = Platform.OS === "web" ? 34 : insets.bottom + 90;
@@ -1451,23 +1495,12 @@ const [showAddPlaylist, setShowAddPlaylist] = useState(false);
         </Section>
 
         <Section title={t("settings.playback")}>
-          <View style={styles.qualityRow}>
-            <View style={styles.rowIcon}>
-              <Ionicons name="videocam-outline" size={18} color={COLORS.accent} />
-            </View>
-            <Text style={styles.rowLabel}>{t("settings.quality")}</Text>
-            <View style={styles.qualityButtons}>
-              {qualities.map((q) => (
-                <TouchableOpacity
-                  key={q}
-                  style={[styles.qualityBtn, selectedQuality === q && styles.qualityBtnActive]}
-                  onPress={() => { SafeHaptics.impactLight(); setSelectedQuality(q); }}
-                >
-                  <Text style={[styles.qualityBtnText, selectedQuality === q && styles.qualityBtnTextActive]}>{q}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          </View>
+          <SettingRow
+            icon="videocam-outline"
+            label={t("settings.quality")}
+            value={selectedQuality}
+            onPress={() => setShowQualityModal(true)}
+          />
           <Divider />
           <SettingRow
             icon="text-outline"
@@ -1638,6 +1671,13 @@ const [showAddPlaylist, setShowAddPlaylist] = useState(false);
         selected={audioLanguage}
         onClose={() => setShowLangModal(false)}
         onSelect={setAudioLanguage}
+      />
+
+      <QualityModal
+        visible={showQualityModal}
+        selected={selectedQuality}
+        onClose={() => setShowQualityModal(false)}
+        onSelect={setSelectedQuality}
       />
 
       <UpdateModal

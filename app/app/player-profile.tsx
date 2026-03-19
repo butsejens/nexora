@@ -1,5 +1,5 @@
-import React, { useEffect, useMemo, useState } from "react";
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Image, ActivityIndicator } from "react-native";
+import React, { useEffect, useMemo, useState, useRef, useCallback } from "react";
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Image, ActivityIndicator, Animated } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
@@ -154,6 +154,10 @@ export default function PlayerProfileScreen() {
   const badgeColor = colorFromSeed(`${data?.currentClub || params.team || "nexora"}`);
   const initials = initialsFromName(String(data?.name || params.name || "?"));
 
+  const scrollY = useRef(new Animated.Value(0)).current;
+  const heroOpacity = scrollY.interpolate({ inputRange: [0, 100], outputRange: [1, 0], extrapolate: "clamp" });
+  const heroMaxHeight = scrollY.interpolate({ inputRange: [0, 120], outputRange: [220, 0], extrapolate: "clamp" });
+
   return (
     <View style={styles.container}>
       <LinearGradient colors={[COLORS.card, COLORS.background]} style={[styles.header, { paddingTop: insets.top + 10 }]}> 
@@ -161,6 +165,7 @@ export default function PlayerProfileScreen() {
           <Ionicons name="chevron-back" size={24} color={COLORS.text} />
         </TouchableOpacity>
 
+        <Animated.View style={{ opacity: heroOpacity, maxHeight: heroMaxHeight, overflow: "hidden" }}>
         <View style={styles.hero}>
           {photoUri ? (
             <Image source={{ uri: photoUri }} style={[styles.photo, { backgroundColor: COLORS.card }]} resizeMode="contain" onError={() => setPhotoIdx((i) => i + 1)} />
@@ -181,6 +186,7 @@ export default function PlayerProfileScreen() {
             </View>
           ) : null}
         </View>
+        </Animated.View>
       </LinearGradient>
 
       {isLoading ? (
@@ -189,13 +195,17 @@ export default function PlayerProfileScreen() {
           <Text style={styles.loadingText}>{t("playerProfile.loading")}</Text>
         </View>
       ) : (
-        <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+        <Animated.ScrollView
+          contentContainerStyle={styles.content}
+          showsVerticalScrollIndicator={false}
+          onScroll={Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], { useNativeDriver: false })}
+          scrollEventThrottle={16}
+        >
           <Card title={t("playerProfile.overview")}>
             <Row label={t("playerProfile.age")} value={data?.age ? t("playerProfile.years", { age: String(data.age) }) : UNKNOWN} />
             <Row label={t("playerProfile.height")} value={normalizeText(data?.height)} />
             <Row label={t("playerProfile.weight")} value={normalizeText(data?.weight)} />
             <Row label={t("playerProfile.currentClub")} value={normalizeText(data?.currentClub || params.team)} />
-            <Row label={t("playerProfile.valueSource")} value={normalizeText(data?.valueMethod)} />
             <Row label={t("playerProfile.lastUpdated")} value={formatUpdatedAt(data?.updatedAt)} />
           </Card>
 
@@ -206,7 +216,7 @@ export default function PlayerProfileScreen() {
             >
               <Text style={[styles.analysisText, { color: COLORS.text }]}>{data?.analysis || t("playerProfile.analysisUnavailable")}</Text>
             </LinearGradient>
-            <Text style={styles.analysisSource}>{t("playerProfile.source", { source: data?.source || "real-data" })}</Text>
+
           </Card>
 
           <Card title={t("playerProfile.strengths")}>
@@ -262,7 +272,7 @@ export default function PlayerProfileScreen() {
               </View>
             )}
           </Card>
-        </ScrollView>
+        </Animated.ScrollView>
       )}
     </View>
   );
@@ -294,7 +304,7 @@ function Bullet({ text, good = false }: { text: string; good?: boolean }) {
         size={13}
         color={good ? "#4CAF82" : "#FF5252"}
       />
-      <Text style={[styles.bulletText, { color: good ? "#4CAF82" : "#FF5252" }]} numberOfLines={1}>{text}</Text>
+      <Text style={[styles.bulletText, { color: good ? "#4CAF82" : "#FF5252" }]}>{text}</Text>
     </View>
   );
 }
