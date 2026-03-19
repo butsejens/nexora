@@ -227,7 +227,7 @@ export default function SeriesScreen() {
       .filter(h => h.type === "series" && h.progress && h.progress > 0 && h.progress < 0.95)
       .slice(0, 20)
       .map(h => ({
-        id: h.id, title: h.title, poster: null, backdrop: null, synopsis: "",
+        id: h.id, title: h.title, poster: h.poster || null, backdrop: h.backdrop || null, synopsis: "",
         year: undefined, imdb: undefined, genre: [], quality: "HD", isIptv: false, progress: h.progress,
       }));
   }, [watchHistory]);
@@ -237,7 +237,7 @@ export default function SeriesScreen() {
       .filter(h => h.type === "series")
       .slice(0, 15)
       .map(h => ({
-        id: h.id, title: h.title, poster: null, backdrop: null, synopsis: "",
+        id: h.id, title: h.title, poster: h.poster || null, backdrop: h.backdrop || null, synopsis: "",
         year: undefined, imdb: undefined, genre: [], quality: "HD", isIptv: false,
       }));
   }, [watchHistory]);

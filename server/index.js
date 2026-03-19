@@ -377,7 +377,7 @@ const TEAM_LOGO_ALIASES = {
   "1. fc union berlin": "1.FC Union Berlin", "union berlin": "1.FC Union Berlin",
   "werder bremen": "SV Werder Bremen", "werder": "SV Werder Bremen",
   "1. fc heidenheim": "1.FC Heidenheim 1846", "heidenheim": "1.FC Heidenheim 1846",
-  "1. fc koln": "1.FC Köln", "koln": "1.FC Köln",
+  "1. fc koln": "1.FC Köln", "koln": "1.FC Köln", "cologne": "1.FC Köln", "fc cologne": "1.FC Köln", "1. fc cologne": "1.FC Köln",
   "fc st. pauli": "FC St. Pauli", "st. pauli": "FC St. Pauli",
   // Italy
   "inter milan": "Inter Milan", "inter": "Inter Milan", "internazionale": "Inter Milan",
@@ -5676,7 +5676,8 @@ app.get("/api/sports/competition-matches/:league", async (req, res) => {
     const payload = await getOrFetch(key, 5 * 60_000, async () => {
       const events = await espnLeagueMatches(leagueName);
       const matchesRaw = events.map(mapEspnEventToMatch);
-      const matches = await enrichMatchesWithSofaData(matchesRaw);
+      const enrichedLogos = await enrichMatchLogos(matchesRaw);
+      const matches = await enrichMatchesWithSofaData(enrichedLogos);
       const now = Date.now();
       // Sort: upcoming / live first, then recent finished
       matches.sort((a, b) => {

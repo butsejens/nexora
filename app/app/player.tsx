@@ -781,7 +781,7 @@ export default function PlayerScreen() {
   }>();
 
   const insets = useSafeAreaInsets();
-  const { isFavorite, toggleFavorite, addToHistory, updateProgress, hasPremium } = useNexora();
+  const { isFavorite, toggleFavorite, addToHistory, updateProgress, watchHistory, hasPremium } = useNexora();
 
   // ── Premium gate — block playback if user lacks entitlement ─────────────
   const contentCategory = type === "movie" ? "movies" : type === "series" ? "series" : null;
@@ -808,6 +808,7 @@ export default function PlayerScreen() {
   const webviewCrashCountRef = useRef(0);
   const progressSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastProgressRef = useRef({ currentTime: 0, duration: 0 });
+  const resumedRef = useRef(false);
   const [hlsPaused, setHlsPaused]       = useState(false);
   const [hlsDuration, setHlsDuration]   = useState(0);
   const [hlsCurrentTime, setHlsCurrentTime] = useState(0);
@@ -983,6 +984,17 @@ export default function PlayerScreen() {
         setHlsCurrentTime(data.currentTime || 0);
         setHlsDuration(data.duration || 0);
         setHlsIsLive(data.isLive || false);
+        // Resume from saved position on first load
+        if (!resumedRef.current && data.duration > 0 && !trailerKey) {
+          resumedRef.current = true;
+          const saved = watchHistory.find(h => h.id === contentId);
+          if (saved?.currentTime && saved.currentTime > 10 && saved.progress && saved.progress < 0.95) {
+            const seekTime = Math.max(0, saved.currentTime - 5);
+            hlsWebviewRef.current?.injectJavaScript(
+              `(function(){ var v=document.getElementById('v'); if(v){ v.currentTime=${seekTime}; } })();true;`
+            );
+          }
+        }
         // Track progress for Continue Watching
         lastProgressRef.current = { currentTime: data.currentTime || 0, duration: data.duration || 0 };
         if (!progressSaveTimerRef.current && data.duration > 0) {
@@ -997,7 +1009,7 @@ export default function PlayerScreen() {
         }
       }
     } catch {}
-  }, [contentId, type, updateProgress]);
+  }, [contentId, type, updateProgress, watchHistory, trailerKey]);
 
   // ── Provider switching ────────────────────────────────────────────────────
   const tryNextProvider = useCallback(() => {
@@ -1063,8 +1075,8 @@ export default function PlayerScreen() {
   // ── What to render ────────────────────────────────────────────────────────
   const embedUrl: string | null = (() => {
     if (allProvidersFailed) return null;
-    if (tmdbId) return getEmbedUrl(provider, tmdbId, type || "movie", season || "1", episode || "1");
     if (trailerKey) return `https://www.youtube.com/embed/${trailerKey}?autoplay=1&rel=0&modestbranding=1&playsinline=1`;
+    if (tmdbId) return getEmbedUrl(provider, tmdbId, type || "movie", season || "1", episode || "1");
     return null;
   })();
 
