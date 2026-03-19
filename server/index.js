@@ -408,7 +408,7 @@ const TEAM_LOGO_ALIASES = {
   // France
   "paris saint-germain": "Paris Saint-Germain", "psg": "Paris Saint-Germain",
   "olympique marseille": "Olympique de Marseille", "marseille": "Olympique de Marseille", "om": "Olympique de Marseille",
-  "olympique lyonnais": "Olympique Lyonnais", "lyon": "Olympique Lyonnais", "ol": "Olympique Lyonnais",
+  "olympique lyonnais": "Olympique Lyon", "lyon": "Olympique Lyon", "ol": "Olympique Lyon", "olympique lyon": "Olympique Lyon",
   "monaco": "AS Monaco", "as monaco": "AS Monaco",
   "lille": "LOSC Lille", "losc lille": "LOSC Lille", "losc": "LOSC Lille",
   "rennes": "Stade Rennais FC", "stade rennais": "Stade Rennais FC",
@@ -428,7 +428,7 @@ const TEAM_LOGO_ALIASES = {
   "ajax": "AFC Ajax", "afc ajax": "AFC Ajax",
   "psv eindhoven": "PSV", "psv": "PSV",
   "feyenoord": "Feyenoord Rotterdam", "feyenoord rotterdam": "Feyenoord Rotterdam",
-  "az alkmaar": "AZ", "az": "AZ",
+  "az alkmaar": "AZ Alkmaar", "az": "AZ Alkmaar",
   "fc twente": "FC Twente", "twente": "FC Twente",
   "fc utrecht": "FC Utrecht", "utrecht": "FC Utrecht",
   // Portugal
@@ -532,7 +532,7 @@ const TEAM_LOGO_ALIASES = {
   "almeria": "UD Almería", "ud almeria": "UD Almería",
   "granada": "Granada CF", "granada cf": "Granada CF",
   // Germany (expanded)
-  "mainz 05": "1. FSV Mainz 05", "mainz": "1. FSV Mainz 05", "1  fsv mainz 05": "1. FSV Mainz 05",
+  "mainz 05": "1.FSV Mainz 05", "mainz": "1.FSV Mainz 05", "1. fsv mainz 05": "1.FSV Mainz 05", "1.fsv mainz 05": "1.FSV Mainz 05", "fsv mainz": "1.FSV Mainz 05",
   "fc schalke 04": "FC Schalke 04", "schalke": "FC Schalke 04",
   "hertha bsc": "Hertha BSC", "hertha berlin": "Hertha BSC",
   "1. fc nurnberg": "1. FC Nürnberg", "nurnberg": "1. FC Nürnberg",
@@ -558,7 +558,7 @@ const TEAM_LOGO_ALIASES = {
   "aik": "AIK",
   // Poland
   "legia warsaw": "Legia Warszawa", "legia warszawa": "Legia Warszawa",
-  "lech poznan": "Lech Poznań", "lech poznan": "Lech Poznań",
+  "lech poznan": "Lech Poznan", "lech": "Lech Poznan",
   "rakow czestochowa": "Raków Częstochowa", "rakow": "Raków Częstochowa",
   // Croatia
   "dinamo zagreb": "GNK Dinamo Zagreb", "gnk dinamo zagreb": "GNK Dinamo Zagreb",
@@ -566,11 +566,13 @@ const TEAM_LOGO_ALIASES = {
   // Greece
   "olympiacos": "Olympiacos FC", "olympiacos fc": "Olympiacos FC", "olympiakos": "Olympiacos FC",
   "panathinaikos": "Panathinaikos FC", "panathinaikos fc": "Panathinaikos FC",
-  "aek athens": "AEK Athens FC", "aek athens fc": "AEK Athens FC",
+  "aek athens": "AEK Athens", "aek athens fc": "AEK Athens", "aek athene": "AEK Athens",
+  // Cyprus
+  "aek larnaca": "AEK Larnaca", "aek larnaca fc": "AEK Larnaca", "aek larnaka": "AEK Larnaca",
   "paok": "PAOK FC", "paok fc": "PAOK FC",
   // Czech Republic
-  "sparta prague": "AC Sparta Praha", "ac sparta praha": "AC Sparta Praha", "sparta praha": "AC Sparta Praha",
-  "slavia prague": "SK Slavia Praha", "sk slavia praha": "SK Slavia Praha", "slavia praha": "SK Slavia Praha",
+  "sparta prague": "AC Sparta Prague", "ac sparta praha": "AC Sparta Prague", "sparta praha": "AC Sparta Prague", "ac sparta prague": "AC Sparta Prague", "sparta praag": "AC Sparta Prague",
+  "slavia prague": "SK Slavia Prague", "sk slavia praha": "SK Slavia Prague", "slavia praha": "SK Slavia Prague", "sk slavia prague": "SK Slavia Prague",
   // Serbia
   "red star belgrade": "FK Crvena zvezda", "crvena zvezda": "FK Crvena zvezda", "fk crvena zvezda": "FK Crvena zvezda",
   "partizan belgrade": "FK Partizan", "fk partizan": "FK Partizan", "partizan": "FK Partizan",
@@ -578,7 +580,7 @@ const TEAM_LOGO_ALIASES = {
   "fcsb": "FCSB", "steaua bucharest": "FCSB",
   "cfr cluj": "CFR Cluj",
   // Ukraine
-  "shakhtar donetsk": "FC Shakhtar Donetsk", "shakhtar": "FC Shakhtar Donetsk",
+  "shakhtar donetsk": "Shakhtar Donetsk", "shakhtar": "Shakhtar Donetsk", "fc shakhtar donetsk": "Shakhtar Donetsk", "shaktar donetsk": "Shakhtar Donetsk",
   "dynamo kyiv": "FC Dynamo Kyiv", "dynamo kiev": "FC Dynamo Kyiv",
   // Israel
   "maccabi tel aviv": "Maccabi Tel Aviv FC", "maccabi tel-aviv": "Maccabi Tel Aviv FC",
@@ -733,7 +735,7 @@ const TEAM_FILENAME_TO_FOLDER = (() => {
     "SV Werder Bremen": "Germany - Bundesliga", "1. FC Heidenheim 1846": "Germany - Bundesliga",
     "1. FC Köln": "Germany - Bundesliga", "SV Darmstadt 98": "Germany - Bundesliga",
     "FC St. Pauli": "Germany - Bundesliga", "Holstein Kiel": "Germany - Bundesliga",
-    "1. FSV Mainz 05": "Germany - Bundesliga", "FC Schalke 04": "Germany - Bundesliga",
+    "1.FSV Mainz 05": "Germany - Bundesliga", "FC Schalke 04": "Germany - Bundesliga",
     "Hertha BSC": "Germany - Bundesliga", "1. FC Nürnberg": "Germany - Bundesliga",
     "Fortuna Düsseldorf": "Germany - Bundesliga", "Hamburger SV": "Germany - Bundesliga",
     "Hannover 96": "Germany - Bundesliga", "VfL Bochum": "Germany - Bundesliga",
@@ -753,7 +755,7 @@ const TEAM_FILENAME_TO_FOLDER = (() => {
     "UC Sampdoria": "Italy - Serie A", "US Cremonese": "Italy - Serie A",
     // France
     "Paris Saint-Germain": "France - Ligue 1", "Olympique de Marseille": "France - Ligue 1",
-    "Olympique Lyonnais": "France - Ligue 1", "AS Monaco": "France - Ligue 1",
+    "Olympique Lyon": "France - Ligue 1", "AS Monaco": "France - Ligue 1",
     "LOSC Lille": "France - Ligue 1", "Stade Rennais FC": "France - Ligue 1",
     "OGC Nice": "France - Ligue 1", "RC Lens": "France - Ligue 1",
     "RC Strasbourg Alsace": "France - Ligue 1", "FC Nantes": "France - Ligue 1",
@@ -765,7 +767,7 @@ const TEAM_FILENAME_TO_FOLDER = (() => {
     "AS Saint-Étienne": "France - Ligue 1",
     // Netherlands
     "AFC Ajax": "Netherlands - Eredivisie", "PSV": "Netherlands - Eredivisie",
-    "Feyenoord Rotterdam": "Netherlands - Eredivisie", "AZ": "Netherlands - Eredivisie",
+    "Feyenoord Rotterdam": "Netherlands - Eredivisie", "AZ Alkmaar": "Netherlands - Eredivisie",
     "FC Twente": "Netherlands - Eredivisie", "FC Utrecht": "Netherlands - Eredivisie",
     "sc Heerenveen": "Netherlands - Eredivisie", "Vitesse": "Netherlands - Eredivisie",
     "NEC": "Netherlands - Eredivisie", "Fortuna Sittard": "Netherlands - Eredivisie",
@@ -809,21 +811,21 @@ const TEAM_FILENAME_TO_FOLDER = (() => {
     "Malmö FF": "Sweden - Allsvenskan", "Djurgårdens IF": "Sweden - Allsvenskan",
     "Hammarby IF": "Sweden - Allsvenskan", "AIK": "Sweden - Allsvenskan",
     // Poland
-    "Legia Warszawa": "Poland - PKO BP Ekstraklasa", "Lech Poznań": "Poland - PKO BP Ekstraklasa",
+    "Legia Warszawa": "Poland - PKO BP Ekstraklasa", "Lech Poznan": "Poland - PKO BP Ekstraklasa",
     "Raków Częstochowa": "Poland - PKO BP Ekstraklasa",
     // Croatia
     "GNK Dinamo Zagreb": "Croatia - SuperSport HNL", "HNK Hajduk Split": "Croatia - SuperSport HNL",
     // Greece
     "Olympiacos FC": "Greece - Super League 1", "Panathinaikos FC": "Greece - Super League 1",
-    "AEK Athens FC": "Greece - Super League 1", "PAOK FC": "Greece - Super League 1",
+    "AEK Athens": "Greece - Super League 1", "PAOK FC": "Greece - Super League 1",
     // Czech Republic
-    "AC Sparta Praha": "Czech Republic - Chance Liga", "SK Slavia Praha": "Czech Republic - Chance Liga",
+    "AC Sparta Prague": "Czech Republic - Chance Liga", "SK Slavia Prague": "Czech Republic - Chance Liga",
     // Serbia
     "FK Crvena zvezda": "Serbia - Super liga Srbije", "FK Partizan": "Serbia - Super liga Srbije",
     // Romania
     "FCSB": "Romania - SuperLiga", "CFR Cluj": "Romania - SuperLiga",
     // Ukraine
-    "FC Shakhtar Donetsk": "Ukraine - Premier Liga", "FC Dynamo Kyiv": "Ukraine - Premier Liga",
+    "Shakhtar Donetsk": "Ukraine - Premier Liga", "FC Dynamo Kyiv": "Ukraine - Premier Liga",
     // Israel
     "Maccabi Tel Aviv FC": "Israel - Ligat ha'Al", "Maccabi Haifa FC": "Israel - Ligat ha'Al",
     "Hapoel Beer Sheva FC": "Israel - Ligat ha'Al",
