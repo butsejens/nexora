@@ -400,6 +400,7 @@
     "marketValues": "{{count}} marktwaardes beschikbaar",
     "loadingPlayers": "Spelersinfo & marktwaardes laden...",
     "dataUnavailable": "Team data niet beschikbaar",
+    "retry": "Opnieuw proberen",
     "noPlayersFound": "Geen spelers gevonden",
     "following": "Volgend",
     "follow": "Volgen",

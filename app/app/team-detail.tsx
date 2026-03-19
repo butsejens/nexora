@@ -130,7 +130,7 @@ export default function TeamDetailScreen() {
   const sport = sportParam || "soccer";
   const league = espnLeagueParam || leagueParam || "eng.1";
 
-  const { data, isLoading, error } = useQuery({
+  const { data, isLoading, error, refetch } = useQuery({
     queryKey: ["team-detail", teamIdParam, sport, league],
     queryFn: async () => {
       if (!teamIdParam) throw new Error("Team ID ontbreekt");
@@ -138,8 +138,10 @@ export default function TeamDetailScreen() {
       const res = await apiRequest("GET", `/api/sports/team/${encodeURIComponent(teamIdParam)}?sport=${encodeURIComponent(sport)}&league=${encodeURIComponent(league)}&teamName=${tn}`);
       return res.json();
     },
-    staleTime: 0,
+    staleTime: 5 * 60 * 1000,
     refetchOnMount: true,
+    retry: 2,
+    retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 8000),
   });
 
   const isNationalTeam = league.includes("fifa");
@@ -315,6 +317,13 @@ export default function TeamDetailScreen() {
           <Text style={styles.emptyText}>{t("teamDetail.dataUnavailable")}</Text>
           {error ? <Text style={styles.emptyHintText}>{normalizeApiError(error).userMessage}</Text> : null}
           {(data as any)?.error ? <Text style={styles.emptyHintText}>{String((data as any).error)}</Text> : null}
+          <TouchableOpacity
+            style={{ marginTop: 16, paddingHorizontal: 24, paddingVertical: 10, borderRadius: 20, backgroundColor: COLORS.accent }}
+            onPress={() => refetch()}
+            activeOpacity={0.75}
+          >
+            <Text style={{ fontFamily: "Inter_600SemiBold", fontSize: 14, color: "#fff" }}>{t("teamDetail.retry") || "Opnieuw proberen"}</Text>
+          </TouchableOpacity>
         </View>
       ) : (
         <>
