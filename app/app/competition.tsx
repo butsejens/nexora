@@ -1,7 +1,7 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useRef } from "react";
 import {
   View, Text, StyleSheet, TouchableOpacity, ScrollView,
-  Image, Platform, ActivityIndicator, FlatList,
+  Image, Platform, ActivityIndicator, FlatList, Animated,
 } from "react-native";
 import { MatchRowCard } from "@/components/premium";
 import { router, useLocalSearchParams } from "expo-router";
@@ -39,7 +39,7 @@ function formatMatchTime(dateStr?: string | null): string {
   } catch { return ""; }
 }
 
-type TabId = "standings" | "scorers" | "matches";
+type TabId = "standings" | "scorers" | "matches" | "teams";
 
 const LEAGUE_COLORS: Record<string, string[]> = {
   "Premier League": ["#3d0099", "#1a0044"],
@@ -157,6 +157,11 @@ export default function CompetitionScreen() {
   const isCup = detectCup(espnLeague, leagueName);
   const [activeTab, setActiveTab] = useState<TabId>(isCup ? "matches" : "standings");
 
+  const scrollY = useRef(new Animated.Value(0)).current;
+  const heroOpacity = scrollY.interpolate({ inputRange: [0, 80], outputRange: [1, 0], extrapolate: "clamp" });
+  const heroMaxHeight = scrollY.interpolate({ inputRange: [0, 100], outputRange: [180, 60], extrapolate: "clamp" });
+  const onListScroll = useMemo(() => Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], { useNativeDriver: false }), [scrollY]);
+
   const { data: standingsData, isLoading: standingsLoading } = useQuery({
     queryKey: ["standings", leagueName],
     queryFn: async () => {
@@ -205,9 +210,26 @@ export default function CompetitionScreen() {
     retry: 1,
   });
 
+  const { data: teamsData, isLoading: teamsLoading } = useQuery({
+    queryKey: ["competition-teams", leagueName],
+    queryFn: async () => {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 15000);
+      try {
+        const res = await apiRequest("GET", `/api/sports/competition-teams/${encodeURIComponent(leagueName)}`);
+        clearTimeout(timeout);
+        return res.json();
+      } catch (e) { clearTimeout(timeout); throw e; }
+    },
+    enabled: activeTab === "teams",
+    staleTime: 10 * 60 * 1000,
+    retry: 1,
+  });
+
   const standings: any[] = standingsData?.standings || [];
   const scorers: any[] = scorersData?.scorers || [];
   const competitionMatches: any[] = matchesData?.matches || [];
+  const competitionTeams: any[] = teamsData?.teams || [];
   const standingsError = normalizeApiError((standingsData as any)?.error || null);
   const scorersError = normalizeApiError((scorersData as any)?.error || null);
   const storylines = useMemo(() => buildStorylines(standings, scorers), [standings, scorers]);
@@ -222,17 +244,20 @@ export default function CompetitionScreen() {
   const tabs: { id: TabId; label: string; icon: string }[] = [
     ...(!isCup ? [{ id: "standings" as TabId, label: t("competition.standings"), icon: "list-outline" }] : []),
     { id: "matches" as TabId, label: t("competition.matches"), icon: "football-outline" },
+    { id: "teams" as TabId, label: t("competition.teams") || "Teams", icon: "people-outline" },
     { id: "scorers" as TabId, label: t("competition.topScorers"), icon: "trophy-outline" },
   ];
 
   return (
     <View style={styles.container}>
       {/* Header */}
+      <Animated.View style={{ maxHeight: heroMaxHeight, overflow: "hidden" }}>
       <LinearGradient colors={[...gradColors, COLORS.background] as any}
         style={[styles.header, { paddingTop: topPad + 8 }]}>
         <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
           <Ionicons name="chevron-back" size={24} color={COLORS.text} />
         </TouchableOpacity>
+        <Animated.View style={{ opacity: heroOpacity }}>
         <View style={styles.headerContent}>
           {(() => {
             const leagueLogo = getLeagueLogo(leagueName);
@@ -265,7 +290,9 @@ export default function CompetitionScreen() {
             </View>
           </View>
         </View>
+        </Animated.View>
       </LinearGradient>
+      </Animated.View>
 
       {/* Tabs */}
       <View style={styles.tabBar}>
@@ -298,7 +325,7 @@ export default function CompetitionScreen() {
             {(standingsData as any)?.error ? <Text style={styles.errorDetail}>{standingsError.userMessage}</Text> : null}
           </View>
         ) : (
-          <ScrollView showsVerticalScrollIndicator={false}>
+          <ScrollView showsVerticalScrollIndicator={false} onScroll={onListScroll} scrollEventThrottle={16}>
             <View style={styles.standingsHeaderRow}>
               <Text style={[styles.standingsHeaderCell, { width: 28 }]}>#</Text>
               <Text style={[styles.standingsHeaderCell, { flex: 1 }]}>{t("competition.club")}</Text>
@@ -370,6 +397,59 @@ export default function CompetitionScreen() {
             }}
             contentContainerStyle={styles.listContent}
             showsVerticalScrollIndicator={false}
+            onScroll={onListScroll}
+            scrollEventThrottle={16}
+          />
+        )
+      )}
+
+      {/* Teams */}
+      {activeTab === "teams" && (
+        teamsLoading ? (
+          <View style={styles.loadingState}>
+            <ActivityIndicator size="large" color={COLORS.accent} />
+            <Text style={styles.loadingText}>{t("competition.loadingTeams") || "Loading teams..."}</Text>
+          </View>
+        ) : competitionTeams.length === 0 ? (
+          <View style={styles.emptyState}>
+            <Ionicons name="people-outline" size={40} color={COLORS.textMuted} />
+            <Text style={styles.emptyText}>{t("competition.noTeams") || "No teams found"}</Text>
+          </View>
+        ) : (
+          <FlatList
+            data={competitionTeams}
+            keyExtractor={(item) => String((item as any).id)}
+            numColumns={2}
+            columnWrapperStyle={styles.teamsColumnWrapper}
+            renderItem={({ item }) => {
+              const team = item as any;
+              return (
+                <TouchableOpacity
+                  style={styles.teamCard}
+                  activeOpacity={0.75}
+                  onPress={() => {
+                    router.push({
+                      pathname: "/team-detail",
+                      params: {
+                        teamId: team.id,
+                        sport: "soccer",
+                        league: leagueName,
+                        teamName: team.name,
+                        espnLeague,
+                      },
+                    });
+                  }}
+                >
+                  <TeamLogo uri={team.logo} teamName={team.name} size={40} />
+                  <Text style={styles.teamCardName} numberOfLines={2}>{team.name}</Text>
+                  {team.abbreviation ? <Text style={styles.teamCardAbbr}>{team.abbreviation}</Text> : null}
+                </TouchableOpacity>
+              );
+            }}
+            contentContainerStyle={styles.listContent}
+            showsVerticalScrollIndicator={false}
+            onScroll={onListScroll}
+            scrollEventThrottle={16}
           />
         )
       )}
@@ -401,6 +481,8 @@ export default function CompetitionScreen() {
             )}
             contentContainerStyle={styles.listContent}
             showsVerticalScrollIndicator={false}
+            onScroll={onListScroll}
+            scrollEventThrottle={16}
           />
         )
       )}
@@ -609,4 +691,15 @@ const styles = StyleSheet.create({
   scorerValueBadge: { alignItems: "center", gap: 2 },
   scorerValue: { fontFamily: "Inter_800ExtraBold", fontSize: 22, color: COLORS.accent },
   scorerStat: { fontFamily: "Inter_400Regular", fontSize: 10, color: COLORS.textMuted },
+
+  // Teams
+  teamsColumnWrapper: { paddingHorizontal: 12, gap: 10 },
+  teamCard: {
+    flex: 1, alignItems: "center", gap: 8,
+    padding: 14, borderRadius: 14,
+    backgroundColor: COLORS.cardElevated,
+    borderWidth: 1, borderColor: COLORS.border,
+  },
+  teamCardName: { fontFamily: "Inter_600SemiBold", fontSize: 13, color: COLORS.text, textAlign: "center" },
+  teamCardAbbr: { fontFamily: "Inter_400Regular", fontSize: 11, color: COLORS.textMuted },
 });

@@ -5670,14 +5670,15 @@ app.get("/api/sports/topscorers/:league", async (req, res) => {
 });
 
 // Competition matches (current round + nearby weeks for a specific competition)
-async function espnLeagueMatches(leagueName) {
+async function espnLeagueMatches(leagueName, wideRange = false) {
   const baseUrl = ESPN_LEAGUE_SCOREBOARDS[leagueName];
   if (!baseUrl) return [];
   const leagueSlug = String(baseUrl.match(/\/soccer\/([^/]+)\/scoreboard/)?.[1] || "");
   const now = new Date();
-  // Build a set of date strings: current + ±2 weeks
+  // Build a set of date strings: current + date offsets
   const dateStrs = [""];
-  for (const offsetDays of [-14, -7, 7, 14]) {
+  const offsets = wideRange ? [-28, -21, -14, -7, 7, 14, 21, 28] : [-14, -7, 7, 14];
+  for (const offsetDays of offsets) {
     const d = new Date(now.getTime() + offsetDays * 86400000);
     dateStrs.push(d.toISOString().slice(0, 10).replace(/-/g, ""));
   }
@@ -5713,7 +5714,7 @@ app.get("/api/sports/competition-matches/:league", async (req, res) => {
   const key = `comp_matches_${leagueName}`;
   try {
     const payload = await getOrFetch(key, 5 * 60_000, async () => {
-      const events = await espnLeagueMatches(leagueName);
+      const events = await espnLeagueMatches(leagueName, true);
       const matchesRaw = events.map(mapEspnEventToMatch);
       const enrichedLogos = await enrichMatchLogos(matchesRaw);
       const matches = await enrichMatchesWithSofaData(enrichedLogos);
@@ -5735,6 +5736,45 @@ app.get("/api/sports/competition-matches/:league", async (req, res) => {
   } catch (e) {
     console.error(`[comp-matches] Error for ${leagueName}:`, e.message);
     res.status(200).json({ league: leagueName, matches: [], error: String(e?.message || e) });
+  }
+});
+
+// Competition teams list
+app.get("/api/sports/competition-teams/:league", async (req, res) => {
+  const leagueName = normalizeLeagueName(decodeURIComponent(req.params.league));
+  const espnSlug = ESPN_LEAGUE_SLUGS[leagueName];
+  if (!espnSlug) {
+    return res.json({ league: leagueName, teams: [], error: "Unknown league" });
+  }
+  const key = `comp_teams_${leagueName}`;
+  try {
+    const payload = await getOrFetch(key, 10 * 60_000, async () => {
+      const resp = await fetchWithTimeout(
+        fetch(`https://site.api.espn.com/apis/site/v2/sports/soccer/${encodeURIComponent(espnSlug)}/teams`, {
+          headers: { "user-agent": "Mozilla/5.0 (Nexora/1.0)", accept: "application/json" },
+        }),
+        15000
+      );
+      const json = resp.ok ? await resp.json() : {};
+      const rawTeams = json?.sports?.[0]?.leagues?.[0]?.teams || json?.teams || [];
+      const teams = rawTeams.map((entry) => {
+        const t = entry?.team || entry;
+        return {
+          id: String(t?.id || ""),
+          name: t?.displayName || t?.name || "",
+          abbreviation: t?.abbreviation || "",
+          logo: t?.logos?.[0]?.href || t?.logo || "",
+          color: t?.color ? `#${t.color}` : null,
+        };
+      }).filter(t => t.id && t.name);
+      teams.sort((a, b) => a.name.localeCompare(b.name));
+      console.log(`[comp-teams] ${leagueName}: ${teams.length} teams`);
+      return { league: leagueName, teams, source: "espn" };
+    });
+    res.json(payload);
+  } catch (e) {
+    console.error(`[comp-teams] Error for ${leagueName}:`, e.message);
+    res.status(200).json({ league: leagueName, teams: [], error: String(e?.message || e) });
   }
 });
 

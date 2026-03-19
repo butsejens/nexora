@@ -1276,9 +1276,17 @@ export default function SportsScreen() {
 
   const headerOpacity = headerAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 1] });
   const headerMaxHeight = headerAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 120] });
+  const miniTitleOpacity = headerAnim.interpolate({ inputRange: [0, 1], outputRange: [1, 0] });
 
   return (
     <View style={styles.container}>
+      {/* Mini title bar – visible when header is scrolled away */}
+      <Animated.View style={{ opacity: miniTitleOpacity, position: "absolute", top: 0, left: 0, right: 0, zIndex: 20, paddingTop: Platform.OS === "web" ? 10 : insets.top + 6, paddingBottom: 8, paddingHorizontal: 16, backgroundColor: COLORS.background }} pointerEvents="none">
+        <Text style={{ fontFamily: "Inter_800ExtraBold", fontSize: 16, color: COLORS.text, letterSpacing: 1 }}>
+          <Text style={{ color: COLORS.accent }}>N</Text>EXORA <Text style={{ color: COLORS.accent }}>SPORT</Text>
+        </Text>
+      </Animated.View>
+
       <Animated.View style={{ opacity: headerOpacity, maxHeight: headerMaxHeight, overflow: "hidden" }}>
         <NexoraHeader
           title="SPORT"
@@ -1294,6 +1302,7 @@ export default function SportsScreen() {
       </Animated.View>
 
       {/* ── Sports Sub-Nav ── */}
+      <Animated.View style={{ opacity: headerOpacity, maxHeight: headerAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 56] }), overflow: "hidden" }}>
       <View style={styles.subNav}>
         <ScrollView
           horizontal
@@ -1321,6 +1330,7 @@ export default function SportsScreen() {
           })}
         </ScrollView>
       </View>
+      </Animated.View>
 
       {/* ── Sport Search ── */}
       {sportsSearchActive && (

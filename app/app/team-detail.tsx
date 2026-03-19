@@ -211,9 +211,13 @@ export default function TeamDetailScreen() {
     return team && current && (team.includes(current) || current.includes(team));
   });
 
+  const heroOpacity = scrollY.interpolate({ inputRange: [0, 100], outputRange: [1, 0], extrapolate: "clamp" });
+  const heroMaxHeight = scrollY.interpolate({ inputRange: [0, 140], outputRange: [300, 80], extrapolate: "clamp" });
+
   return (
     <View style={styles.container}>
       {/* Header */}
+      <Animated.View style={{ maxHeight: heroMaxHeight, overflow: "hidden" }}>
       <LinearGradient
         colors={[data?.color || "#1a3a6b", COLORS.background] as any}
         style={[styles.header, { paddingTop: topPad + 8 }]}
@@ -228,6 +232,7 @@ export default function TeamDetailScreen() {
           </Text>
         </TouchableOpacity>
 
+        <Animated.View style={{ opacity: heroOpacity }}>
         <View style={styles.teamHeaderContent}>
           <TeamLogo
             uri={data?.logo || logoParam || `https://a.espncdn.com/i/teamlogos/soccer/500/${encodeURIComponent(teamIdParam)}.png`}
@@ -288,7 +293,9 @@ export default function TeamDetailScreen() {
             </View>
           ) : null}
         </View>
+        </Animated.View>
       </LinearGradient>
+      </Animated.View>
 
       {isLoading ? (
         <View style={styles.loadingState}>
