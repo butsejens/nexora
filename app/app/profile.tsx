@@ -34,6 +34,16 @@ import * as IntentLauncher from "expo-intent-launcher";
 
 const CHANGELOG: { version: string; date: string; changes: string[] }[] = [
   {
+    version: "2.5.34",
+    date: "2026-03-19",
+    changes: [
+      "Team-detail pagina crasht niet meer bij openen",
+      "Trailer opent nu direct in YouTube-app in plaats van foutmelding",
+      "50+ teamlogo's toegevoegd voor Europa League en Conference League clubs",
+      "Wikipedia-fallback voor ontbrekende logo's in standen en topscorers",
+    ],
+  },
+  {
     version: "2.5.33",
     date: "2026-03-19",
     changes: [
