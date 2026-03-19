@@ -506,9 +506,9 @@ function ScorerRow({ scorer, rank, league, espnLeague }: { scorer: any; rank: nu
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
-  header: { paddingHorizontal: 16, paddingBottom: 28 },
-  backBtn: { width: 38, height: 38, alignItems: "center", justifyContent: "center", marginBottom: 10 },
-  headerContent: { alignItems: "center", gap: 10 },
+  header: { paddingHorizontal: 16, paddingBottom: 16 },
+  backBtn: { width: 38, height: 38, alignItems: "center", justifyContent: "center", marginBottom: 6 },
+  headerContent: { alignItems: "center", gap: 6 },
   headerIconWrap: {
     width: 56, height: 56, borderRadius: 28,
     backgroundColor: "rgba(255,255,255,0.12)",
@@ -526,7 +526,7 @@ const styles = StyleSheet.create({
     borderColor: `${COLORS.accent}66`, backgroundColor: `${COLORS.accent}22`,
   },
   headerBadgeText: { fontFamily: "Inter_600SemiBold", fontSize: 11, color: "rgba(255,255,255,0.75)" },
-  tabBar: { flexDirection: "row", borderBottomWidth: 1, borderBottomColor: COLORS.border, backgroundColor: COLORS.overlayLight },
+  tabBar: { flexDirection: "row", borderBottomWidth: 1, borderBottomColor: COLORS.border, backgroundColor: COLORS.overlayLight, zIndex: 10 },
   tab: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, paddingVertical: 13 },
   tabActive: { borderBottomWidth: 2, borderBottomColor: COLORS.accent },
   tabText: { fontFamily: "Inter_500Medium", fontSize: 13, color: COLORS.textMuted },

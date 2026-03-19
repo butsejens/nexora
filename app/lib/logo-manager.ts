@@ -39,6 +39,9 @@ const LEAGUE_LOGO_MAP: Record<string, string | number> = {
 
   "Jupiler Pro League":      LOCAL_LOGOS.jupilerProLeague,
   "Belgian Pro League":      LOCAL_LOGOS.jupilerProLeague,
+  "Challenger Pro League":   LOCAL_LOGOS.jupilerProLeague,
+  "Beker van België":        LOCAL_LOGOS.jupilerProLeague,
+  "Belgian Cup":             LOCAL_LOGOS.jupilerProLeague,
 
   "Primeira Liga":           ESPN(24),
   "Liga Portugal":           ESPN(24),
@@ -90,9 +93,17 @@ export function getLeagueLogo(leagueName?: string): string | number | null {
 // ESPN CDN team logo fallback: normalized name → ESPN team ID
 // Used when server provides no logo URL (e.g. network failure, missing alias)
 const ESPN_TEAM_LOGO_IDS: Record<string, number> = {
-  // Belgium
-  "club brugge": 8782, "krc genk": 8782, "royal antwerp": 9498, "anderlecht": 9499,
-  "gent": 9497, "standard liege": 8782, "union saint gilloise": 15327,
+  // Belgium - Pro League
+  "club brugge": 8782, "krc genk": 740, "racing genk": 740, "royal antwerp": 9498, "anderlecht": 9499,
+  "gent": 9497, "kaa gent": 9497, "standard liege": 8784, "union saint gilloise": 15327,
+  "cercle brugge": 8783, "oh leuven": 9916, "oud heverlee leuven": 9916,
+  "sint truiden": 8785, "stvv": 8785, "mechelen": 9917, "kv mechelen": 9917,
+  "westerlo": 9918, "kortrijk": 9919, "kv kortrijk": 9919, "charleroi": 9500,
+  "as eupen": 15329, "eupen": 15329, "rwdm": 15330, "beerschot": 15328,
+  // Belgium - Challenger Pro League (2nd division)
+  "lommel": 15334, "lommel sk": 15334, "lierse kempenzonen": 15335, "lierse": 15335,
+  "sk beveren": 15336, "beveren": 15336, "club nxt": 15337, "patro eisden": 15338,
+  "francs borains": 15339, "sk deinze": 15340, "deinze": 15340, "virton": 15341,
   // England
   "arsenal": 359, "aston villa": 362, "bournemouth": 349, "brentford": 337,
   "brighton": 331, "chelsea": 363, "crystal palace": 384, "everton": 368,

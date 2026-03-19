@@ -164,8 +164,8 @@ export default function PlayerProfileScreen() {
               <Text style={styles.photoInitials}>{initials}</Text>
             </View>
           )}
-          <Text style={styles.name}>{normalizeText(data?.name || params.name, "Speler")}</Text>
-          <Text style={styles.meta}>{normalizeText(data?.position || params.position)} {normalizeText(data?.nationality || params.nationality, "") ? `· ${normalizeText(data?.nationality || params.nationality)}` : ""}</Text>
+          <Text style={styles.name} numberOfLines={2}>{normalizeText(data?.name || params.name, "Speler")}</Text>
+          <Text style={styles.meta} numberOfLines={2}>{normalizeText(data?.position || params.position)} {normalizeText(data?.nationality || params.nationality, "") ? `· ${normalizeText(data?.nationality || params.nationality)}` : ""}</Text>
           <Text style={[styles.value, data?.isRealValue ? styles.valueReal : null]}>
             {normalizeText(data?.marketValue || params.marketValue, "Waarde onbekend")}
           </Text>
@@ -254,7 +254,7 @@ function Row({ label, value }: { label: string; value: string }) {
   return (
     <View style={styles.row}>
       <Text style={styles.rowLabel}>{label}</Text>
-      <Text style={styles.rowValue}>{value}</Text>
+      <Text style={styles.rowValue} numberOfLines={2}>{value}</Text>
     </View>
   );
 }
@@ -280,8 +280,8 @@ const styles = StyleSheet.create({
   photo: { width: 86, height: 86, borderRadius: 43 },
   photoFallback: { backgroundColor: COLORS.card, alignItems: "center", justifyContent: "center", borderWidth: 2 },
   photoInitials: { fontFamily: "Inter_700Bold", fontSize: 24, color: COLORS.text },
-  name: { fontFamily: "Inter_800ExtraBold", fontSize: 22, color: COLORS.text, textAlign: "center" },
-  meta: { fontFamily: "Inter_400Regular", fontSize: 13, color: COLORS.textMuted, textAlign: "center" },
+  name: { fontFamily: "Inter_800ExtraBold", fontSize: 22, color: COLORS.text, textAlign: "center", paddingHorizontal: 16, maxWidth: "100%" },
+  meta: { fontFamily: "Inter_400Regular", fontSize: 13, color: COLORS.textMuted, textAlign: "center", paddingHorizontal: 24, maxWidth: "100%" },
   value: { fontFamily: "Inter_700Bold", fontSize: 14, color: COLORS.textMuted },
   valueReal: { color: "#00C896" },
   offlineBadge: {
@@ -303,7 +303,7 @@ const styles = StyleSheet.create({
   cardTitle: { fontFamily: "Inter_700Bold", fontSize: 12, color: COLORS.accent, letterSpacing: 0.6, textTransform: "uppercase" },
   row: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", borderBottomWidth: 1, borderBottomColor: COLORS.border, paddingVertical: 8 },
   rowLabel: { fontFamily: "Inter_400Regular", fontSize: 13, color: COLORS.textMuted },
-  rowValue: { fontFamily: "Inter_600SemiBold", fontSize: 13, color: COLORS.text, flexShrink: 1, textAlign: "right" },
+  rowValue: { fontFamily: "Inter_600SemiBold", fontSize: 13, color: COLORS.text, flexShrink: 1, textAlign: "right", maxWidth: "60%" },
   analysisText: { fontFamily: "Inter_400Regular", fontSize: 13, lineHeight: 20, color: COLORS.textSecondary },
   analysisSource: { fontFamily: "Inter_500Medium", fontSize: 11, color: COLORS.accentDim },
   pillWrap: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
