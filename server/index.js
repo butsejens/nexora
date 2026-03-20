@@ -5196,34 +5196,33 @@ app.get("/api/sports/highlights", async (req, res) => {
   const CACHE_KEY = "scorebat_highlights";
   try {
     const payload = await getOrFetch(CACHE_KEY, 600_000, async () => {
-      const resp = await fetch("https://www.scorebat.com/video-api/v3/feed/?token=MTkwMTlfMTcyMTIyMTYyN18zOTFjOGRmMjRhOGQwNjMxMWUzYjU5YjgyYTBmYzJjZWI1MGRjOWFh", {
+      const resp = await fetch("https://www.scorebat.com/video-api/v1/", {
         headers: { "user-agent": "Mozilla/5.0 (Nexora/1.0)", accept: "application/json" },
         signal: AbortSignal.timeout(10000),
       });
       if (!resp.ok) return { highlights: [] };
       const data = await resp.json();
-      const items = Array.isArray(data?.response) ? data.response : (Array.isArray(data) ? data : []);
+      const items = Array.isArray(data) ? data : [];
       const highlights = items.slice(0, 30).map((item) => {
         const videos = Array.isArray(item?.videos) ? item.videos : [];
-        const embedUrl = videos.length > 0 ? (videos[0]?.embed || "") : "";
-        const matchUrl = item?.matchviewUrl || item?.url || "";
-        const competition = item?.competition?.name || item?.competitionName || "";
-        const competitionLogo = item?.competition?.url || "";
+        const firstVideoEmbed = videos.length > 0 ? (videos[0]?.embed || "") : "";
+        const matchUrl = item?.url || "";
+        const competition = item?.competition?.name || "";
         const title = item?.title || "";
-        // Extract team names from title like "Team A vs Team B"
-        const titleParts = title.split(/\s+(?:vs\.?|v\.?|-)\s+/i);
-        const homeTeam = titleParts[0]?.trim() || "";
-        const awayTeam = titleParts[1]?.replace(/\s*\(.*$/, "")?.trim() || "";
-        const thumbnail = item?.thumbnail || (videos[0]?.thumbnail || "");
+        const homeTeam = item?.side1?.name || "";
+        const awayTeam = item?.side2?.name || "";
+        const thumbnail = item?.thumbnail || "";
+        // Extract iframe src from embed HTML
+        const embedSrcMatch = firstVideoEmbed.match(/src=["']([^"']+)["']/);
+        const embedUrl = embedSrcMatch ? embedSrcMatch[1] : "";
         return {
-          id: String(item?.id || matchUrl || title).slice(0, 100),
+          id: String(matchUrl || title).slice(0, 100),
           title,
           homeTeam,
           awayTeam,
           competition,
-          competitionLogo,
           thumbnail,
-          embedUrl: embedUrl.replace(/<[^>]+>/g, "").match(/src=["']([^"']+)["']/)?.[1] || embedUrl,
+          embedUrl,
           matchUrl,
           date: item?.date || "",
         };
