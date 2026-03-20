@@ -36,7 +36,7 @@ export const PremiumTabBar = React.memo(
     const { width: screenWidth } = useWindowDimensions();
 
     // Calculate container width (80% of screen)
-    const containerWidth = screenWidth * LAYOUT.tabBar.width - LAYOUT.tabBar.margin.horizontal;
+    const containerWidth = screenWidth * 0.8 - LAYOUT.tabBar.margin.horizontal;
 
     // Render icon based on type
     const renderIcon = (iconName: string, isActive: boolean) => {

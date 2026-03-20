@@ -58,7 +58,7 @@ export function NexoraIntro({ onFinish }: Props) {
       <Animated.View
         style={[styles.glow, { opacity: glowOpacity }]}
         {...(Platform.OS === "web"
-          ? { style: [styles.glow, { opacity: glowOpacity, background: "radial-gradient(circle, rgba(229,9,20,0.24) 0%, rgba(229,9,20,0) 72%)" }] }
+          ? { style: [styles.glow, { opacity: glowOpacity, background: "radial-gradient(circle, rgba(229,9,20,0.24) 0%, rgba(229,9,20,0) 72%)" } as any] }
           : {})}
       />
 
