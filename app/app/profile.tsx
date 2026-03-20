@@ -36,6 +36,15 @@ import * as IntentLauncher from "expo-intent-launcher";
 
 const CHANGELOG: { version: string; date: string; changes: string[] }[] = [
   {
+    version: "2.4.42",
+    date: "2026-03-20",
+    changes: [
+      "App crash bij opstarten opgelost — ontbrekende expo-application dependency toegevoegd",
+      "Versienummer in Android systeeminstellingen toont nu correct de laatste versie",
+      "Alle versiereferenties gesynchroniseerd naar 2.4.42",
+    ],
+  },
+  {
     version: "2.5.39",
     date: "2026-03-20",
     changes: [
