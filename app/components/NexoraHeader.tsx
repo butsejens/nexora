@@ -9,6 +9,7 @@ import { COLORS } from "@/constants/colors";
 interface Props {
   title?: string;
   titleColor?: string;
+  compact?: boolean;
   showSearch?: boolean;
   showNotification?: boolean;
   showFavorites?: boolean;
@@ -23,6 +24,7 @@ interface Props {
 export function NexoraHeader({
   title,
   titleColor,
+  compact = false,
   showSearch = true,
   showNotification = false,
   showFavorites = false,
@@ -44,7 +46,30 @@ export function NexoraHeader({
   const handleFavorites = onFavorites ?? (() => router.push("/favorites"));
   const handleProfile = onProfile ?? (() => router.push("/profile"));
 
-  const content = (
+  const content = compact ? (
+    <View style={styles.contentRow}>
+      <View style={styles.logoCompact}>
+        <Text style={styles.logoTextCompact}>
+          <Text style={styles.logoN}>N</Text>
+        </Text>
+        {title ? <Text style={[styles.sectionTitleCompact, titleColor ? { color: titleColor } : null]}>{title}</Text> : null}
+      </View>
+
+      <View style={styles.actions}>
+        {rightElement}
+        {showSearch && (
+          <TouchableOpacity style={styles.iconBtnCompact} onPress={onSearch} activeOpacity={0.7}>
+            <Ionicons name="search" size={18} color={COLORS.textSecondary} />
+          </TouchableOpacity>
+        )}
+        {showProfile && (
+          <TouchableOpacity style={styles.iconBtnCompact} onPress={handleProfile} activeOpacity={0.7}>
+            <Ionicons name="person" size={14} color={COLORS.accent} />
+          </TouchableOpacity>
+        )}
+      </View>
+    </View>
+  ) : (
     <View style={styles.contentRow}>
       <View style={styles.logo}>
         <Text style={styles.logoText}>
@@ -84,7 +109,8 @@ export function NexoraHeader({
     <View
       style={[
         styles.container,
-        { paddingTop: topPad + 8, maxWidth: containerMax, alignSelf: "center", width: "100%" },
+        compact && styles.containerCompact,
+        { paddingTop: compact ? topPad + 4 : topPad + 8, maxWidth: containerMax, alignSelf: "center", width: "100%" },
       ]}
     >
       {isIOS ? (
@@ -163,6 +189,36 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.cardElevated,
     borderWidth: 1,
     borderColor: COLORS.accent,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  containerCompact: {
+    paddingBottom: 4,
+  },
+  logoCompact: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  logoTextCompact: {
+    fontSize: 18,
+    letterSpacing: 2,
+    fontFamily: "Inter_800ExtraBold",
+  },
+  sectionTitleCompact: {
+    fontSize: 13,
+    fontFamily: "Inter_700Bold",
+    color: COLORS.textSecondary,
+    letterSpacing: 1.2,
+    textTransform: "uppercase",
+  },
+  iconBtnCompact: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: COLORS.cardElevated,
+    borderWidth: 1,
+    borderColor: COLORS.border,
     alignItems: "center",
     justifyContent: "center",
   },

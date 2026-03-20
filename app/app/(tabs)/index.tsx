@@ -812,6 +812,8 @@ export default function SportsScreen() {
   const matchSnapshotsRef = useRef<Record<string, MatchSnapshot>>({});
   const notificationCooldownRef = useRef<Record<string, number>>({});
   const lastScrollYRef = useRef(0);
+  const compactHeaderRef = useRef(false);
+  const [compactHeader, setCompactHeader] = useState(false);
   const showFiltersRef = useRef(true);
   const lastFilterToggleAtRef = useRef(0);
   const filterAnim = useRef(new Animated.Value(1)).current;
@@ -1032,6 +1034,12 @@ export default function SportsScreen() {
   const handleFeedScroll = useCallback((event: any) => {
     const nextY = Number(event?.nativeEvent?.contentOffset?.y || 0);
     lastScrollYRef.current = nextY;
+    // Compact header when scrolled past threshold
+    const shouldCompact = nextY > 60;
+    if (shouldCompact !== compactHeaderRef.current) {
+      compactHeaderRef.current = shouldCompact;
+      setCompactHeader(shouldCompact);
+    }
   }, []);
 
   const sportToolSourceMatches = useMemo(() => {
@@ -1292,7 +1300,8 @@ export default function SportsScreen() {
 
   // Height of header + sub-nav (+ sport categories when visible) so ScrollView content starts below them
   const sportCatBarHeight = showCompetitionsSection ? 48 : 0;
-  const headerAreaHeight = (Platform.OS === "web" ? 0 : insets.top) + 8 + 40 + 8 + 42 + sportCatBarHeight;
+  const headerContentHeight = compactHeader ? 28 : 40;
+  const headerAreaHeight = (Platform.OS === "web" ? 0 : insets.top) + 8 + headerContentHeight + 8 + 42 + sportCatBarHeight;
 
   return (
     <View style={styles.container}>
@@ -1301,6 +1310,7 @@ export default function SportsScreen() {
         <NexoraHeader
           title="SPORT"
           titleColor={P.accent}
+          compact={compactHeader}
           showSearch
           showNotification
           showFavorites
@@ -1342,33 +1352,7 @@ export default function SportsScreen() {
 
       {/* ── Sticky Sport Categories ── */}
       {showCompetitionsSection && (
-        <View style={{ position: "absolute", top: (Platform.OS === "web" ? 0 : insets.top) + 8 + 40 + 8 + 42, left: 0, right: 0, zIndex: 40, backgroundColor: COLORS.background }}>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={{ paddingHorizontal: 16, paddingVertical: 10, gap: 8, flexDirection: "row" }}
-          >
-            {SPORT_CATEGORIES.map((cat) => {
-              const isActive = sportCategory === cat.id;
-              return (
-                <TouchableOpacity
-                  key={cat.id}
-                  onPress={() => setSportCategory(cat.id as SportCategoryId)}
-                  activeOpacity={0.75}
-                  style={[styles.sportCatPill, isActive && styles.sportCatPillActive]}
-                >
-                  <Ionicons name={cat.icon} size={14} color={isActive ? "#fff" : P.muted} />
-                  <Text style={[styles.sportCatLabel, isActive && styles.sportCatLabelActive]}>{tFn(cat.labelKey)}</Text>
-                </TouchableOpacity>
-              );
-            })}
-          </ScrollView>
-        </View>
-      )}
-
-      {/* ── Sticky Sport Categories ── */}
-      {showCompetitionsSection && (
-        <View style={{ position: "absolute", top: (Platform.OS === "web" ? 0 : insets.top) + 8 + 40 + 8 + 42, left: 0, right: 0, zIndex: 40, backgroundColor: COLORS.background }}>
+        <View style={{ position: "absolute", top: (Platform.OS === "web" ? 0 : insets.top) + 8 + headerContentHeight + 8 + 42, left: 0, right: 0, zIndex: 40, backgroundColor: COLORS.background }}>
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
@@ -1591,6 +1575,8 @@ export default function SportsScreen() {
                             params: {
                               embedUrl: url,
                               title: hl.title || `${hl.homeTeam || ""} vs ${hl.awayTeam || ""}`,
+                              type: "sport",
+                              contentId: `sport_${hl.id || idx}`,
                             },
                           });
                         }

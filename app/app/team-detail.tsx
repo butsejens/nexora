@@ -435,6 +435,13 @@ const PlayerCard = React.memo(function PlayerCard({ player }: { player: any }) {
     player?.theSportsDbPhoto || null,
   ].filter(Boolean) as string[];
   const [photoIndex, setPhotoIndex] = useState(0);
+  const playerKey = String(player?.id || player?.name || "");
+
+  // Reset photo index when player changes (FlatList recycling)
+  useEffect(() => {
+    setPhotoIndex(0);
+  }, [playerKey]);
+
   const photoUri = photoCandidates[photoIndex];
   const posColor = POSITION_COLORS[player.position] || COLORS.accent;
   const rawName = String(player?.name || "").trim();

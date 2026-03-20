@@ -377,7 +377,7 @@ export default function DetailScreen() {
   }, [data]);
   const activeTrailer = trailerCandidates[trailerIndex] || null;
   const trailerEmbedUrl = activeTrailer?.key
-    ? `https://www.youtube.com/embed/${encodeURIComponent(String(activeTrailer.key))}?autoplay=1&hl=en&cc_lang_pref=en&rel=0&modestbranding=1&playsinline=1`
+    ? `https://www.youtube-nocookie.com/embed/${encodeURIComponent(String(activeTrailer.key))}?autoplay=1&hl=en&cc_lang_pref=en&rel=0&modestbranding=1&playsinline=1&origin=https://nexora.app`
     : null;
   const metadataItems = useMemo(() => {
     const originalTitle = String((data as any)?.originalTitle || "").trim();
@@ -594,7 +594,8 @@ export default function DetailScreen() {
             {hasPremium(isMovie ? "movies" : "series") ? (
               <TouchableOpacity style={styles.playBtn} onPress={() => goToPlayer()} activeOpacity={0.85}>
                 <View style={styles.playBtnInner}>
-                  <Text style={styles.playBtnEmoji}>▶️</Text>
+                  <Ionicons name="play" size={22} color="#FFFFFF" />
+                  <Text style={styles.playBtnText}>Play</Text>
                 </View>
               </TouchableOpacity>
             ) : (
@@ -843,10 +844,9 @@ const styles = StyleSheet.create({
   genrePillText: { fontFamily: "Inter_500Medium", fontSize: 11, color: COLORS.textSecondary },
   actionButtons: { flexDirection: "row", gap: 10, marginBottom: 20, alignItems: "center" },
   playBtn: { flex: 1, borderRadius: 12, overflow: "hidden", minWidth: 0 },
-  playBtnInner: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, paddingVertical: 14, paddingHorizontal: 12, backgroundColor: COLORS.accent, borderRadius: 12 },
+  playBtnInner: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, paddingVertical: 14, paddingHorizontal: 16, backgroundColor: COLORS.accent, borderRadius: 12, shadowColor: COLORS.accent, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.45, shadowRadius: 12, elevation: 8 },
   lockedBtnInner: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, paddingVertical: 14, paddingHorizontal: 12, backgroundColor: "rgba(229,9,20,0.35)", borderRadius: 12, borderWidth: 1, borderColor: "rgba(229,9,20,0.5)" },
-  playBtnText: { fontFamily: "Inter_700Bold", fontSize: 14, color: "#FFFFFF", flexShrink: 1 },
-  playBtnEmoji: { fontSize: 22 },
+  playBtnText: { fontFamily: "Inter_800ExtraBold", fontSize: 16, color: "#FFFFFF", flexShrink: 1, letterSpacing: 0.5 },
   downloadBtnOutline: { width: 48, height: 48, borderRadius: 12, borderWidth: 1.5, borderColor: "rgba(255,255,255,0.12)", alignItems: "center", justifyContent: "center", backgroundColor: "rgba(255,255,255,0.04)" },
   shareBtnOutline: { width: 48, height: 48, borderRadius: 12, borderWidth: 1.5, borderColor: "rgba(255,255,255,0.12)", alignItems: "center", justifyContent: "center", backgroundColor: "rgba(255,255,255,0.04)" },
   trailerBtnOutline: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, height: 48, paddingHorizontal: 16, borderRadius: 12, borderWidth: 1.5, borderColor: COLORS.accent + "44", backgroundColor: COLORS.accent + "12" },

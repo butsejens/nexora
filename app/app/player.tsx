@@ -809,6 +809,7 @@ export default function PlayerScreen() {
   const webviewCrashCountRef = useRef(0);
   const progressSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastProgressRef = useRef({ currentTime: 0, duration: 0 });
+  const embedProgressTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const resumedRef = useRef(false);
   const [hlsPaused, setHlsPaused]       = useState(false);
   const [hlsDuration, setHlsDuration]   = useState(0);
@@ -941,9 +942,34 @@ export default function PlayerScreen() {
       // Null out WebView refs to prevent any post-unmount injections
       hlsWebviewRef.current = null;
       embedWebviewRef.current = null;
+      // Clear embed progress timer
+      if (embedProgressTimerRef.current) clearInterval(embedProgressTimerRef.current);
+      embedProgressTimerRef.current = null;
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [addToHistory, contentId, scheduleHide, title, type]);
+
+  // ── Embed progress tracking (for Continue Watching) ───────────────────────
+  // Embed WebViews can't report currentTime, so we estimate progress with a timer.
+  useEffect(() => {
+    // Only track when: not loading, in embed mode (no HLS stream), not a trailer
+    const isEmbedMode = !effectiveStreamUrl || useFallbackEmbed;
+    if (isLoading || !isEmbedMode) return;
+    if (!contentId || trailerKey) return;
+    const id = contentId;
+    const estimatedDuration = (type === "series") ? 2700 : 7200; // 45min or 120min
+    let elapsed = 0;
+    embedProgressTimerRef.current = setInterval(() => {
+      elapsed += 30;
+      const ct = Math.min(elapsed, estimatedDuration - 60);
+      updateProgress(id, ct, estimatedDuration);
+    }, 30000); // every 30 seconds
+    return () => {
+      if (embedProgressTimerRef.current) clearInterval(embedProgressTimerRef.current);
+      embedProgressTimerRef.current = null;
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLoading, effectiveStreamUrl, useFallbackEmbed, contentId, trailerKey, type]);
 
   useEffect(() => {
     // Clear lingering autoplay timers when provider/key changes
@@ -1243,7 +1269,7 @@ export default function PlayerScreen() {
           originWhitelist={["http://*", "https://*", "about:*", "blob:*", "*"]}
           userAgent="Mozilla/5.0 (Linux; Android 12; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
           injectedJavaScriptBeforeContentLoaded={AD_BLOCK_JS}
-          onLoad={() => { if (!disposedRef.current) { setIsLoading(false); setStreamError(null); setStreamErrorRef(""); injectEmbedAutoplay(); } }}
+          onLoad={() => { if (!disposedRef.current) { setIsLoading(false); setStreamError(null); setStreamErrorRef(""); injectEmbedAutoplay(); scheduleHide(); } }}
           onError={(event) => {
             if (disposedRef.current) return;
             const msg = String(event?.nativeEvent?.description || "");
@@ -1490,8 +1516,8 @@ export default function PlayerScreen() {
           )}
         </Animated.View>
       ) : (embedUrl && Platform.OS !== "web") ? (
-        /* ─── Embed mode: static minimal overlay — no RN controls, embed player handles its own UI ─── */
-        <View style={styles.embedMinimalOverlay} pointerEvents="box-none">
+        /* ─── Embed mode: auto-hide overlay (back + title + refresh) ─── */
+        <Animated.View style={[styles.embedMinimalOverlay, { opacity: controlsOpacity }]} pointerEvents={controlsVisible ? "box-none" : "none"}>
           <LinearGradient colors={["rgba(0,0,0,0.7)", "transparent"]} style={[styles.embedMinimalBar, { paddingTop: insets.top + 8 }]}>
             <TouchableOpacity
               style={styles.embedBackBtn}
@@ -1514,8 +1540,16 @@ export default function PlayerScreen() {
               </TouchableOpacity>
             )}
           </LinearGradient>
-        </View>
+        </Animated.View>
       ) : null}
+      {/* Tap zone to re-show embed controls when hidden */}
+      {embedUrl && Platform.OS !== "web" && !controlsVisible && (
+        <TouchableOpacity
+          style={{ position: "absolute", top: 0, left: 0, right: 0, height: insets.top + 44, zIndex: 99 }}
+          activeOpacity={1}
+          onPress={showControls}
+        />
+      )}
     </View>
   );
 }
