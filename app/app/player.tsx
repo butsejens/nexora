@@ -33,23 +33,23 @@ import type { SubtitleTrack } from "@/lib/subtitle-manager";
 
 // ─── Stream providers ──────────────────────────────────────────────────────────
 const STREAM_PROVIDERS = [
-  { id: "videasy",      label: "Server 1"  },
-  { id: "vidlink",      label: "Server 2"  },
+  { id: "vidlink",      label: "Server 1"  },
+  { id: "embedsu",      label: "Server 2"  },
   { id: "vidsrcpro",    label: "Server 3"  },
-  { id: "vidsrcto",     label: "Server 4"  },
-  { id: "embedsu",      label: "Server 5"  },
-  { id: "autoembed",    label: "Server 6"  },
-  { id: "superembed",   label: "Server 7"  },
-  { id: "vidbinge",     label: "Server 8"  },
-  { id: "vidsrcme",     label: "Server 9"  },
-  { id: "2embed",       label: "Server 10" },
-  { id: "moviesapi",    label: "Server 11" },
-  { id: "vidsrcxyz",    label: "Server 12" },
-  { id: "multiembed",   label: "Server 13" },
-  { id: "vidsrcicu",    label: "Server 14" },
-  { id: "smashystream", label: "Server 15" },
-  { id: "embedcc",      label: "Server 16" },
-  { id: "rive",         label: "Server 17" },
+  { id: "vidbinge",     label: "Server 4"  },
+  { id: "autoembed",    label: "Server 5"  },
+  { id: "videasy",      label: "Server 6"  },
+  { id: "vidsrcto",     label: "Server 7"  },
+  { id: "superembed",   label: "Server 8"  },
+  { id: "rive",         label: "Server 9"  },
+  { id: "vidsrcme",     label: "Server 10" },
+  { id: "2embed",       label: "Server 11" },
+  { id: "moviesapi",    label: "Server 12" },
+  { id: "vidsrcxyz",    label: "Server 13" },
+  { id: "multiembed",   label: "Server 14" },
+  { id: "vidsrcicu",    label: "Server 15" },
+  { id: "smashystream", label: "Server 16" },
+  { id: "embedcc",      label: "Server 17" },
   { id: "nontongo",     label: "Server 18" },
   { id: "111movies",    label: "Server 19" },
   { id: "frembed",      label: "Server 20" },
@@ -197,6 +197,12 @@ const AD_DOMAINS = [
   "mouseflow.com", "crazyegg.com", "luckyorange.com",
   "acscdn.com", "cloudfront.net/ad", "bongacams.com", "chaturbate.com",
   "livejasmin.com", "stripchat.com", "cam4.com", "camsoda.com",
+  "tinyurl.com", "bit.ly", "goo.gl", "clck.ru",
+  "pushground.com", "a-ads.com", "roller-ads.com", "rollerads.com",
+  "notix.io", "pushwoosh.com", "pushcrew.com", "pn.vg",
+  "push.house", "pushame.com", "gravitec.net", "sendpulse.com",
+  "optad360.io", "setupad.com", "snigel.com", "raptive.com",
+  "monetag.com", "ads-monetag.com",
 ];
 
 // ─── JS injected in embed WebView ─────────────────────────────────────────────
@@ -240,6 +246,10 @@ const AD_BLOCK_JS = `
   window.alert = function(){};
   window.confirm = function(){ return true; };
   window.prompt = function(){ return ''; };
+  // Block notification/permission popups used by ad providers
+  try{ window.Notification = { requestPermission: function(cb){ if(cb) cb('denied'); return Promise.resolve('denied'); }, permission: 'denied' }; }catch(e){}
+  try{ if(navigator.serviceWorker){ navigator.serviceWorker.register = function(){ return Promise.reject('blocked'); }; } }catch(e){}
+  try{ navigator.permissions.query = function(desc){ return Promise.resolve({ state: desc && desc.name === 'notifications' ? 'denied' : 'granted', onchange: null }); }; }catch(e){}
   var _swallowRemoveChildError = function(msg){
     var text = String(msg || '').toLowerCase();
     return text.includes('removechild') || text.includes('notfounderror') || text.includes('not a child') || text.includes('hierarchyrequesterror');
@@ -293,7 +303,7 @@ const AD_BLOCK_JS = `
 
   // ── 2. Click gate: allow playback interactions, block ad redirects ─────
   // Ad URL patterns (always blocked, even on first click)
-  var _adPatterns = [
+    var _adPatterns = [
     /doubleclick\\.net/i, /googlesyndication/i, /googleadservices/i,
     /adnxs\\.com/i, /exoclick/i, /juicyads/i, /popads\\.net/i, /popcash/i,
     /trafficjunky/i, /adsterra/i, /hilltopads/i, /propellerads/i,
@@ -303,6 +313,9 @@ const AD_BLOCK_JS = `
     /vpn|norton|mcafee|avast|cleanmaster/i,
     /play\.google\.com\/store/i, /apps\.apple\.com/i,
     /install\s+and\s+continue\s+watching/i,
+    /monetag|ads-monetag|pushground|roller-?ads|notix\.io/i,
+    /push\.house|pushame|gravitec|sendpulse/i,
+    /optad360|setupad|snigel|raptive/i,
   ];
   function _isAdUrl(href){
     if(!href) return false;
@@ -1095,7 +1108,7 @@ export default function PlayerScreen() {
     if (!isLoading) return;
     if (effectiveStreamUrl && !useFallbackEmbed) return;
     if (!tmdbId || allProvidersFailed) return;
-    const t = setTimeout(() => tryNextProvider(), 15000);
+    const t = setTimeout(() => tryNextProvider(), 8000);
     return () => clearTimeout(t);
   }, [isLoading, webviewKey, effectiveStreamUrl, useFallbackEmbed, tmdbId, allProvidersFailed, tryNextProvider]);
 
@@ -1126,6 +1139,8 @@ export default function PlayerScreen() {
         /install\s*and\s*continue/i,
         /vpn\s*recommended/i,
         /casino|gambling|bet365|1xbet|stake\.com/i,
+        /monetag|ads-monetag|pushground|roller-?ads|notix\.io/i,
+        /push\.house|pushame|gravitec|sendpulse/i,
       ];
       if (BLOCK_PATTERNS.some((pattern) => pattern.test(url))) return false;
 
@@ -1161,7 +1176,7 @@ export default function PlayerScreen() {
       if (disposedRef.current) return;
       const url: string = navState.url || "";
       if (!url || url.startsWith("about:") || url.startsWith("blob:") || url.startsWith("data:")) return;
-      if (/play\.google\.com\/store|apps\.apple\.com|install\s*and\s*continue|vpn\s*recommended|casino|gambling|bet365|1xbet|stake\.com/i.test(url)) {
+      if (/play\.google\.com\/store|apps\.apple\.com|install\s*and\s*continue|vpn\s*recommended|casino|gambling|bet365|1xbet|stake\.com|monetag|pushground|roller-?ads|notix\.io|push\.house/i.test(url)) {
         embedWebviewRef.current?.stopLoading();
         embedWebviewRef.current?.goBack();
         return;
