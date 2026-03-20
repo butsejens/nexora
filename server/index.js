@@ -2676,73 +2676,55 @@ async function enrichRosterPhotos(players, teamName) {
     return player;
   });
 
-  // Step 3: TheSportsDB individual player search for remaining players without photos
-  const stillNeedPhoto = enriched.filter((p) => p && !p.photo);
-  if (stillNeedPhoto.length > 0 && stillNeedPhoto.length <= 50) {
-    const searchResults = await Promise.all(
-      stillNeedPhoto.map(async (player) => {
-        try {
+  // Steps 3+4: TheSportsDB search + Wikipedia in parallel (batched, max 6 concurrent)
+  const stillNeedBoth = enriched.filter((p) => p && !p.photo && p.name && p.name !== "Onbekend");
+  if (stillNeedBoth.length > 0 && stillNeedBoth.length <= 50) {
+    const BATCH = 6;
+    const combinedMap = new Map();
+    for (let i = 0; i < stillNeedBoth.length; i += BATCH) {
+      const batch = stillNeedBoth.slice(i, i + BATCH);
+      const results = await Promise.all(
+        batch.map(async (player) => {
           const normName = normalizePersonName(player.name || "");
-          const queries = [String(player.name || "").trim()];
-          const parts = String(player.name || "").trim().split(/\s+/);
-          if (parts.length >= 2) queries.push(parts[parts.length - 1]); // surname fallback
-          for (const rawQ of queries) {
-            const q = encodeURIComponent(rawQ);
-            if (!q) continue;
-            const resp = await fetch(`https://www.thesportsdb.com/api/v1/json/3/searchplayers.php?p=${q}`, {
-              headers: { "user-agent": "Mozilla/5.0 (Nexora/1.0)" },
-              signal: AbortSignal.timeout(5000),
-            });
-            if (!resp.ok) continue;
-            const data = await resp.json();
-            const results = Array.isArray(data?.player) ? data.player : [];
-          for (const r of results) {
-            const rName = normalizePersonName(r?.strPlayer || "");
-            const score = similarityScore(normName, rName);
-            const photo = r?.strCutout || r?.strThumb || r?.strRender || null;
-            if (score >= 0.4 && photo && /^https?:\/\//i.test(photo)) {
-              return [player.name, photo];
+          // Try TheSportsDB search first
+          try {
+            const queries = [String(player.name || "").trim()];
+            const parts = String(player.name || "").trim().split(/\s+/);
+            if (parts.length >= 2) queries.push(parts[parts.length - 1]);
+            for (const rawQ of queries) {
+              const q = encodeURIComponent(rawQ);
+              if (!q) continue;
+              const resp = await fetch(`https://www.thesportsdb.com/api/v1/json/3/searchplayers.php?p=${q}`, {
+                headers: { "user-agent": "Mozilla/5.0 (Nexora/1.0)" },
+                signal: AbortSignal.timeout(4000),
+              });
+              if (!resp.ok) continue;
+              const data = await resp.json();
+              for (const r of (data?.player || [])) {
+                const rName = normalizePersonName(r?.strPlayer || "");
+                const photo = r?.strCutout || r?.strThumb || r?.strRender || null;
+                if (photo && /^https?:\/\//i.test(photo) && similarityScore(normName, rName) >= 0.4) {
+                  return [player.name, photo];
+                }
+              }
             }
-          }
-          }
+          } catch { /* ignore */ }
+          // Fall back to Wikipedia
+          try {
+            const wikiPhoto = await fetchWikipediaPlayerPhoto(player.name);
+            if (wikiPhoto) return [player.name, wikiPhoto];
+          } catch { /* ignore */ }
           return [player.name, null];
-        } catch {
-          return [player.name, null];
-        }
-      })
-    );
-    const searchPhotoMap = new Map();
-    for (const [name, photo] of searchResults) {
-      if (name && photo) searchPhotoMap.set(name, photo);
+        })
+      );
+      for (const [name, photo] of results) {
+        if (name && photo) combinedMap.set(name, photo);
+      }
     }
-    if (searchPhotoMap.size > 0) {
+    if (combinedMap.size > 0) {
       enriched = enriched.map((player) => {
         if (!player || player.photo) return player;
-        const found = searchPhotoMap.get(player.name);
-        return found ? { ...player, photo: found } : player;
-      });
-    }
-  }
-
-  // Step 4: Wikipedia photo fallback for remaining players
-  const stillNeedWiki = enriched.filter((p) => p && !p.photo && p.name && p.name !== "Onbekend");
-  if (stillNeedWiki.length > 0 && stillNeedWiki.length <= 40) {
-    const wikiResults = await Promise.all(
-      stillNeedWiki.map(async (player) => {
-        try {
-          const photo = await fetchWikipediaPlayerPhoto(player.name);
-          return [player.name, photo || null];
-        } catch { return [player.name, null]; }
-      })
-    );
-    const wikiPhotoMap = new Map();
-    for (const [name, photo] of wikiResults) {
-      if (name && photo) wikiPhotoMap.set(name, photo);
-    }
-    if (wikiPhotoMap.size > 0) {
-      enriched = enriched.map((player) => {
-        if (!player || player.photo) return player;
-        const found = wikiPhotoMap.get(player.name);
+        const found = combinedMap.get(player.name);
         return found ? { ...player, photo: found } : player;
       });
     }
@@ -2757,6 +2739,10 @@ async function enrichRosterPhotos(players, teamName) {
     }
     return player;
   });
+
+  const withPhoto = enriched.filter((p) => p && p.photo).length;
+  const total = enriched.filter((p) => p).length;
+  console.log(`[photos] ${teamName}: ${withPhoto}/${total} players have photos`);
 
   return enriched;
 }
@@ -2901,6 +2887,7 @@ function mapEspnRosterPlayer(player) {
     photo: normalizePlayerPhoto(
       playerId,
       player?.headshot?.href,
+      /^\d+$/.test(playerId) ? `https://a.espncdn.com/i/headshots/soccer/players/full/${playerId}.png` : null,
     ),
   };
 }
@@ -5310,6 +5297,7 @@ app.get("/api/sports/match/:matchId", async (req, res) => {
                 photo: normalizePlayerPhoto(
                   id,
                   ath?.headshot?.href,
+                  /^\d+$/.test(id) ? `https://a.espncdn.com/i/headshots/soccer/players/full/${id}.png` : null,
                 ),
               });
             }

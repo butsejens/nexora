@@ -1448,8 +1448,7 @@ const StatsBars = React.memo(StatsBarsInner);
 function PlayerRow({ player, sport, compact = false, teamName = "" }: { player: any; sport: string; compact?: boolean; teamName?: string }) {
   const photoCandidates = [
     player?.photo,
-    player?.id ? `https://media.api-sports.io/football/players/${encodeURIComponent(String(player.id))}.png` : null,
-    player?.id ? `https://a.espncdn.com/i/headshots/soccer/players/full/${encodeURIComponent(String(player.id))}.png` : null,
+    player?.id && /^\d+$/.test(String(player.id)) ? `https://a.espncdn.com/i/headshots/soccer/players/full/${encodeURIComponent(String(player.id))}.png` : null,
   ].filter(Boolean) as string[];
   const [photoIndex, setPhotoIndex] = useState(0);
   const photoUri = photoCandidates[photoIndex] || null;
@@ -1483,12 +1482,12 @@ function PlayerRow({ player, sport, compact = false, teamName = "" }: { player: 
           source={{ uri: photoUri }}
           style={styles.playerPhoto}
           onError={() => {
-            setPhotoIndex((idx) => idx + 1);
+            setPhotoIndex((idx) => (idx + 1 < photoCandidates.length ? idx + 1 : -1));
           }}
         />
       ) : (
         <View style={[styles.playerPhoto, styles.playerPhotoPlaceholder]}>
-          <Ionicons name="person" size={16} color={COLORS.textMuted} />
+          <Text style={{ fontFamily: "Inter_700Bold", fontSize: 12, color: COLORS.textMuted }}>{initialsFrom(player.name)}</Text>
         </View>
       )}
       <View style={styles.playerInfo}>
@@ -1521,6 +1520,10 @@ function shortPlayerName(name: string): string {
   const parts = (name || "").trim().split(/\s+/);
   if (parts.length <= 1) return (parts[0] || "").slice(0, 9);
   return `${parts[0][0]}. ${parts[parts.length - 1]}`.slice(0, 12);
+}
+
+function initialsFrom(name: string): string {
+  return (name || "?").trim().split(/\s+/).filter(Boolean).slice(0, 2).map((p) => p[0]).join("").toUpperCase() || "?";
 }
 
 function PitchDot({ player, color }: { player: any; color: string }) {

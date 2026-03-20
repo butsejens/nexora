@@ -428,6 +428,7 @@ export default function TeamDetailScreen() {
 const PlayerCard = React.memo(function PlayerCard({ player }: { player: any }) {
   const photoCandidates = [
     player?.photo,
+    player?.id && /^\d+$/.test(String(player.id)) ? `https://a.espncdn.com/i/headshots/soccer/players/full/${player.id}.png` : null,
   ].filter(Boolean) as string[];
   const [photoIndex, setPhotoIndex] = useState(0);
   const photoUri = photoCandidates[photoIndex];
