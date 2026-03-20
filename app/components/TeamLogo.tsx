@@ -53,7 +53,7 @@ export const TeamLogo = React.memo(function TeamLogo({
       {imageSource ? (
         <Image
           source={imageSource as any}
-          style={{ width: size - 10, height: size - 10, position: "absolute" }}
+          style={{ width: size, height: size, position: "absolute", borderRadius: size / 2 }}
           resizeMode="contain"
           onLoad={() => setImageLoaded(true)}
           onError={() => {
@@ -68,11 +68,10 @@ export const TeamLogo = React.memo(function TeamLogo({
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: COLORS.cardElevated,
+    backgroundColor: "transparent",
     alignItems: "center",
     justifyContent: "center",
-    borderWidth: 1.5,
-    borderColor: "rgba(255,255,255,0.08)",
+    overflow: "hidden",
     // @ts-ignore
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },

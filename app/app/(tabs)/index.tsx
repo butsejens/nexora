@@ -1475,32 +1475,31 @@ export default function SportsScreen() {
             )}
 
             {/* ── LIVE NOW ── */}
-            <SectionTitle
-              title={`🔴 ${t("sportsHome.liveNow")}`}
-              accent
-              count={sortedLive.length}
-              action={sortedLive.length > 3 ? t("sportsHome.allCount", { count: sortedLive.length }) : undefined}
-              onAction={() => setSportsView("live")}
-            />
-            {liveFirstLoad ? (
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.carouselContent}>
-                {[1, 2].map(i => <View key={i} style={styles.liveSkeleton} />)}
-              </ScrollView>
-            ) : sortedLive.length === 0 ? (
-              <View style={styles.emptyCarousel}>
-                <Ionicons name="radio-button-off-outline" size={24} color={P.muted} />
-                <Text style={styles.emptyText}>{t("sportsHome.noLiveMatches")}</Text>
-              </View>
-            ) : (
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.carouselContent}
-              >
-                {sortedLive.slice(0, 10).map((match: any) => (
-                  <LiveNowCard key={match.id} match={match} onPress={() => handleMatchPress(match)} />
-                ))}
-              </ScrollView>
+            {(liveFirstLoad || sortedLive.length > 0) && (
+              <>
+                <SectionTitle
+                  title={`🔴 ${t("sportsHome.liveNow")}`}
+                  accent
+                  count={sortedLive.length}
+                  action={sortedLive.length > 3 ? t("sportsHome.allCount", { count: sortedLive.length }) : undefined}
+                  onAction={() => setSportsView("live")}
+                />
+                {liveFirstLoad ? (
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.carouselContent}>
+                    {[1, 2].map(i => <View key={i} style={styles.liveSkeleton} />)}
+                  </ScrollView>
+                ) : (
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={styles.carouselContent}
+                  >
+                    {sortedLive.slice(0, 10).map((match: any) => (
+                      <LiveNowCard key={match.id} match={match} onPress={() => handleMatchPress(match)} />
+                    ))}
+                  </ScrollView>
+                )}
+              </>
             )}
 
             {/* ── VANDAAG ── */}

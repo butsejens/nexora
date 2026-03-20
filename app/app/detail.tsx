@@ -318,7 +318,8 @@ export default function DetailScreen() {
     staleTime: 10 * 60 * 1000,
     initialData: cachedDetail || undefined,
     placeholderData: !cachedDetail ? routeSeedData || undefined : undefined,
-    retry: 1,
+    retry: 2,
+    retryDelay: (attempt: number) => Math.min(1000 * 2 ** attempt, 5000),
   });
 
   // ── Fallback: search TMDB by title if IPTV has no tmdbId ─────────────────
@@ -378,7 +379,7 @@ export default function DetailScreen() {
   }, [data]);
   const activeTrailer = trailerCandidates[trailerIndex] || null;
   const trailerEmbedUrl = activeTrailer?.key
-    ? `https://www.youtube.com/embed/${encodeURIComponent(String(activeTrailer.key))}?autoplay=1&hl=en&cc_lang_pref=en&rel=0&modestbranding=1&playsinline=1`
+    ? `https://www.youtube-nocookie.com/embed/${encodeURIComponent(String(activeTrailer.key))}?autoplay=1&hl=en&cc_lang_pref=en&rel=0&modestbranding=1&playsinline=1`
     : null;
   const metadataItems = useMemo(() => {
     const originalTitle = String((data as any)?.originalTitle || "").trim();
@@ -765,13 +766,21 @@ export default function DetailScreen() {
                     injectedJavaScript={`
                       (function() {
                         var check = setInterval(function() {
-                          var err = document.querySelector('.ytp-error, .ytp-error-content-wrap');
-                          if (err && err.offsetHeight > 0) {
+                          var err = document.querySelector('.ytp-error, .ytp-error-content-wrap, .ytp-error-content-wrap-reason');
+                          var consent = document.querySelector('form[action*="consent"], .consent-page, #consent-bump');
+                          if ((err && err.offsetHeight > 0) || consent) {
                             clearInterval(check);
                             window.ReactNativeWebView.postMessage(JSON.stringify({type:'yt-error'}));
                           }
-                        }, 1500);
-                        setTimeout(function() { clearInterval(check); }, 20000);
+                        }, 1200);
+                        setTimeout(function() { clearInterval(check); }, 15000);
+                        // Timeout: if video hasn't started after 12s, report error
+                        setTimeout(function() {
+                          var vid = document.querySelector('video');
+                          if (!vid || vid.paused || vid.readyState < 2) {
+                            window.ReactNativeWebView.postMessage(JSON.stringify({type:'yt-error'}));
+                          }
+                        }, 12000);
                       })();
                       true;
                     `}

@@ -1141,7 +1141,7 @@ export default function PlayerScreen() {
   const embedUrl: string | null = (() => {
     if (paramEmbedUrl) return paramEmbedUrl;
     if (allProvidersFailed) return null;
-    if (trailerKey) return `https://www.youtube.com/embed/${trailerKey}?autoplay=1&rel=0&modestbranding=1&playsinline=1`;
+    if (trailerKey) return `https://www.youtube-nocookie.com/embed/${trailerKey}?autoplay=1&rel=0&modestbranding=1&playsinline=1`;
     if (tmdbId) return getEmbedUrl(provider, tmdbId, type || "movie", season || "1", episode || "1");
     return null;
   })();
@@ -1585,7 +1585,7 @@ export default function PlayerScreen() {
       {/* Tap zone to re-show embed controls when hidden */}
       {embedUrl && Platform.OS !== "web" && !controlsVisible && (
         <TouchableOpacity
-          style={{ position: "absolute", top: 0, left: 0, right: 0, height: insets.top + 44, zIndex: 99 }}
+          style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, zIndex: 99 }}
           activeOpacity={1}
           onPress={showControls}
         />

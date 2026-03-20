@@ -6,6 +6,7 @@ import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { COLORS } from "@/constants/colors";
 import { isTV } from "@/lib/platform";
 import { useTranslation } from "@/lib/useTranslation";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 const SP_ACCENT = COLORS.accent;
 
@@ -63,6 +64,8 @@ export default function TabLayout() {
   const isWeb = Platform.OS === "web";
   const isIOS = Platform.OS === "ios";
   const { t } = useTranslation();
+  const insets = useSafeAreaInsets();
+  const tabMarginBottom = isIOS ? Math.max(14, insets.bottom - 10) : Math.max(12, insets.bottom || 12);
 
   // TV: sidebar-style — left rail with labels, no blur, larger hit areas
   if (isTV) {
@@ -164,7 +167,7 @@ export default function TabLayout() {
           borderTopColor: "rgba(255,255,255,0.06)",
           borderRadius: isIOS ? 28 : 24,
           marginHorizontal: isIOS ? 14 : 12,
-          marginBottom: isIOS ? 14 : 12,
+          marginBottom: tabMarginBottom,
           height: isIOS ? 62 : 58,
           paddingTop: 0,
           paddingBottom: 0,
