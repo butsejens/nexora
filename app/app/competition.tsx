@@ -1,7 +1,7 @@
-import React, { useState, useMemo, useRef } from "react";
+import React, { useState, useMemo } from "react";
 import {
   View, Text, StyleSheet, TouchableOpacity, ScrollView,
-  Image, Platform, ActivityIndicator, Animated,
+  Image, Platform, ActivityIndicator, FlatList,
 } from "react-native";
 import { MatchRowCard } from "@/components/premium";
 import { router, useLocalSearchParams } from "expo-router";
@@ -157,10 +157,6 @@ export default function CompetitionScreen() {
   const isCup = detectCup(espnLeague, leagueName);
   const [activeTab, setActiveTab] = useState<TabId>(isCup ? "matches" : "standings");
 
-  const scrollY = useRef(new Animated.Value(0)).current;
-  const heroOpacity = scrollY.interpolate({ inputRange: [0, 80], outputRange: [1, 0], extrapolate: "clamp" });
-  const heroTranslateY = scrollY.interpolate({ inputRange: [0, 80], outputRange: [0, -20], extrapolate: "clamp" });
-  const onListScroll = useMemo(() => Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], { useNativeDriver: true }), [scrollY]);
 
   const { data: standingsData, isLoading: standingsLoading } = useQuery({
     queryKey: ["standings", leagueName],
@@ -309,6 +305,8 @@ export default function CompetitionScreen() {
         </ScrollView>
       </View>
 
+      {/* Content area */}
+      <View style={{ flex: 1 }}>
       {/* AI Storyline bar */}
       {storylines.length > 0 && <StorylineBar storylines={storylines} />}
 
@@ -326,7 +324,7 @@ export default function CompetitionScreen() {
             {(standingsData as any)?.error ? <Text style={styles.errorDetail}>{standingsError.userMessage}</Text> : null}
           </View>
         ) : (
-          <Animated.ScrollView showsVerticalScrollIndicator={false} onScroll={onListScroll} scrollEventThrottle={16}>
+          <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}>
             <View style={styles.standingsHeaderRow}>
               <Text style={[styles.standingsHeaderCell, { width: 24 }]}>#</Text>
               <Text style={[styles.standingsHeaderCell, { flex: 1, textAlign: "left" }]}>{t("competition.club")}</Text>
@@ -341,7 +339,7 @@ export default function CompetitionScreen() {
               <StandingsRow key={team.teamId || idx} team={team} rank={team.rank || idx + 1} league={leagueName} espnLeague={espnLeague} />
             ))}
             <View style={{ height: 40 }} />
-          </Animated.ScrollView>
+          </ScrollView>
         )
       )}
 
@@ -359,7 +357,8 @@ export default function CompetitionScreen() {
             {(matchesData as any)?.error ? <Text style={styles.errorDetail}>{(matchesData as any).error}</Text> : null}
           </View>
         ) : (
-          <Animated.FlatList
+          <FlatList
+            style={{ flex: 1 }}
             data={competitionMatches}
             keyExtractor={(item, idx) => String((item as any).id || idx)}
             renderItem={({ item }) => {
@@ -398,8 +397,6 @@ export default function CompetitionScreen() {
             }}
             contentContainerStyle={styles.listContent}
             showsVerticalScrollIndicator={false}
-            onScroll={onListScroll}
-            scrollEventThrottle={16}
             initialNumToRender={8}
             maxToRenderPerBatch={6}
             windowSize={5}
@@ -420,7 +417,8 @@ export default function CompetitionScreen() {
             <Text style={styles.emptyText}>{t("competition.noTeams") || "No teams found"}</Text>
           </View>
         ) : (
-          <Animated.FlatList
+          <FlatList
+            style={{ flex: 1 }}
             data={competitionTeams}
             keyExtractor={(item) => String((item as any).id)}
             numColumns={2}
@@ -452,8 +450,6 @@ export default function CompetitionScreen() {
             }}
             contentContainerStyle={styles.listContent}
             showsVerticalScrollIndicator={false}
-            onScroll={onListScroll}
-            scrollEventThrottle={16}
             initialNumToRender={10}
             maxToRenderPerBatch={6}
             windowSize={5}
@@ -475,7 +471,8 @@ export default function CompetitionScreen() {
             {(scorersData as any)?.error ? <Text style={styles.errorDetail}>{scorersError.userMessage}</Text> : null}
           </View>
         ) : (
-          <Animated.FlatList
+          <FlatList
+            style={{ flex: 1 }}
             data={scorers}
             keyExtractor={(item, idx) => String((item as any).name || idx)}
             renderItem={({ item, index }) => (
@@ -488,15 +485,12 @@ export default function CompetitionScreen() {
             )}
             contentContainerStyle={styles.listContent}
             showsVerticalScrollIndicator={false}
-            onScroll={onListScroll}
-            scrollEventThrottle={16}
             initialNumToRender={10}
             maxToRenderPerBatch={6}
             windowSize={5}
           />
         )
-      )}
-    </View>
+      )}      </View>    </View>
   );
 }
 
@@ -602,7 +596,7 @@ function ScorerRow({ scorer, rank, league, espnLeague }: { scorer: any; rank: nu
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
-  header: { paddingHorizontal: 16, paddingBottom: 16 },
+  header: { paddingHorizontal: 16, paddingBottom: 20 },
   backBtn: { width: 38, height: 38, alignItems: "center", justifyContent: "center", marginBottom: 6 },
   headerContent: { alignItems: "center", gap: 6 },
   headerIconWrap: {

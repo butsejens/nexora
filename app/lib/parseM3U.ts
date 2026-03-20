@@ -34,13 +34,18 @@ function classify(group: string, url = "", name = ""): "live" | "movie" | "serie
 
   const g = group.toLowerCase().trim();
 
-  // 2. Series group title detection (check BEFORE movies — many providers put series in VOD groups)
+  // 2. Explicit sports/live group detection (before movie/series checks)
+  if (
+    /\bsport|football|soccer|basket|tennis|boxing|wrestling|mma|ufc|rugby|cricket|golf|f1|formula|motorsport|nfl|nba|nhl|mlb|hockey|voetbal|deportes?\b/i.test(g)
+  ) return "live";
+
+  // 3. Series group title detection (check BEFORE movies — many providers put series in VOD groups)
   if (
     /\bseries?\b|serie\b|seizoen|season|tv.?show|episode|tvshow|sitcom|docu.?series|mini.?series/i.test(g) ||
     /\|\s*series?|\|\s*serie/i.test(group)
   ) return "series";
 
-  // 3. Name-based series detection (S01E01, S01 E01, Season 1, Episode 3, etc.)
+  // 4. Name-based series detection (S01E01, S01 E01, Season 1, Episode 3, etc.)
   if (
     /\bS\d{1,2}\s*E\d{1,3}\b/i.test(name) ||        // S01E01, S1 E3
     /\bSeason\s+\d/i.test(name) ||                     // Season 1
@@ -54,7 +59,7 @@ function classify(group: string, url = "", name = ""): "live" | "movie" | "serie
     /\b\d{1,2}x\d{2,3}\b/.test(name)                    // 1x01, 2x03 format
   ) return "series";
 
-  // 4. Movie group title detection (group names + genre names used by IPTV providers)
+  // 5. Movie group title detection (group names + genre names used by IPTV providers)
   if (
     /\bvod\b|movie|film|cinema|bioscoop|spielfilm|pelicul|kino|flick/i.test(g) ||
     /\|\s*movie|\|\s*film|\|\s*vod/i.test(group) ||
@@ -62,7 +67,7 @@ function classify(group: string, url = "", name = ""): "live" | "movie" | "serie
     /^(action|adventure|animation|comedy|crime|documentary|drama|fantasy|horror|komedie|kinder|kids|misdaad|mystery|romance|sci.?fi|thriller|western|animatie|tekenfilm|avontuur|historisch|musical|oorlog)\b/i.test(g)
   ) return "movie";
 
-  // 5. URL file extension hints
+  // 6. URL file extension hints
   const urlLow = url.toLowerCase();
   if (/\.(mp4|mkv|avi|mov|wmv|divx|xvid)(\?|$)/.test(urlLow)) return "movie";
 

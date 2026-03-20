@@ -187,7 +187,7 @@ export default function TeamDetailScreen() {
   const parseValueToNumber = (value: string): number => {
     const text = String(value || "").trim().toLowerCase().replace(/€/g, "").replace(/\s+/g, "");
     if (!text) return 0;
-    const normalized = text.replace(",", ".");
+    const normalized = text.replace(/,/g, ".");
     const numberPart = Number(normalized.replace(/[^\d.]/g, ""));
     if (!Number.isFinite(numberPart)) return 0;
     if (normalized.includes("bn") || normalized.includes("b")) return numberPart * 1_000_000_000;
@@ -424,9 +424,15 @@ export default function TeamDetailScreen() {
 }
 
 const PlayerCard = React.memo(function PlayerCard({ player }: { player: any }) {
+  const espnId = player?.id && /^\d+$/.test(String(player.id)) ? String(player.id) : null;
   const photoCandidates = [
     player?.photo,
-    player?.id && /^\d+$/.test(String(player.id)) ? `https://a.espncdn.com/i/headshots/soccer/players/full/${player.id}.png` : null,
+    // ESPN headshot (full size)
+    espnId ? `https://a.espncdn.com/i/headshots/soccer/players/full/${espnId}.png` : null,
+    // ESPN headshot (combiner — different CDN path)
+    espnId ? `https://a.espncdn.com/combiner/i?img=/i/headshots/soccer/players/full/${espnId}.png&w=350&h=254` : null,
+    // TheSportsDB player photo (by name, only used as last resort)
+    player?.theSportsDbPhoto || null,
   ].filter(Boolean) as string[];
   const [photoIndex, setPhotoIndex] = useState(0);
   const photoUri = photoCandidates[photoIndex];
