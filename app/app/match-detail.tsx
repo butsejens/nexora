@@ -3043,6 +3043,10 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     position: "relative",
     alignItems: "center",
+    alignSelf: "center",
+    width: "100%",
+    maxWidth: 420,
+    marginHorizontal: 16,
   },
   combinedPitchRow: {
     flexDirection: "row",
