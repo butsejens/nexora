@@ -276,7 +276,6 @@ export default function CompetitionScreen() {
             );
           })()}
           <Text style={styles.leagueTitle} numberOfLines={1}>{leagueName}</Text>
-          <Animated.View style={{ opacity: heroOpacity, transform: [{ translateY: heroTranslateY }] }}>
           <View style={styles.headerBadgeRow}>
             <View style={styles.headerBadge}>
               <Text style={styles.headerBadgeText}>{isCup ? t("competition.cup") : t("competition.league")}</Text>
@@ -290,7 +289,6 @@ export default function CompetitionScreen() {
               <Text style={styles.headerBadgeText}>{t("competition.football")}</Text>
             </View>
           </View>
-          </Animated.View>
         </View>
       </LinearGradient>
       </View>

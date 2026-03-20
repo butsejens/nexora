@@ -257,7 +257,6 @@ export default function TeamDetailScreen() {
         </View>
 
         {data ? (
-        <Animated.View style={{ opacity: heroOpacity, transform: [{ translateY: heroTranslateY }, { scale: heroScale }] }}>
         <View style={styles.teamHeaderContent}>
           <TeamLogo
             uri={data.logo || logoParam || null}
@@ -317,7 +316,6 @@ export default function TeamDetailScreen() {
             </View>
           ) : null}
         </View>
-        </Animated.View>
         ) : null}
       </LinearGradient>
       </View>
@@ -448,7 +446,7 @@ const PlayerCard = React.memo(function PlayerCard({ player }: { player: any }) {
           <Image
             source={{ uri: photoUri }}
             style={[styles.playerPhoto, { backgroundColor: COLORS.card }]}
-            resizeMode="contain"
+            resizeMode="cover"
             onError={() => {
               setPhotoIndex((idx) => (idx + 1 < photoCandidates.length ? idx + 1 : idx));
             }}

@@ -705,7 +705,7 @@ export default function MoviesScreen() {
                     item={featured ?? { id: "", title: "", poster: null, backdrop: null, synopsis: "", year: undefined, imdb: undefined, genre: [], quality: "", isIptv: false, streamUrl: undefined, tmdbId: undefined, color: "" }}
                     onPlay={() => featured && goToPlayer(featured)}
                     onInfo={() => featured && goToDetail(featured)}
-                    trailerKey={null}
+                    trailerKey={featured?.trailerKey || null}
                   />
                   {/* Hero pagination dots */}
                   {heroItems.length > 1 && (
