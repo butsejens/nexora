@@ -424,14 +424,8 @@ export default function TeamDetailScreen() {
 }
 
 const PlayerCard = React.memo(function PlayerCard({ player }: { player: any }) {
-  const espnId = player?.id && /^\d+$/.test(String(player.id)) ? String(player.id) : null;
   const photoCandidates = [
     player?.photo,
-    // ESPN headshot (full size)
-    espnId ? `https://a.espncdn.com/i/headshots/soccer/players/full/${espnId}.png` : null,
-    // ESPN headshot (combiner — different CDN path)
-    espnId ? `https://a.espncdn.com/combiner/i?img=/i/headshots/soccer/players/full/${espnId}.png&w=350&h=254` : null,
-    // TheSportsDB player photo (by name, only used as last resort)
     player?.theSportsDbPhoto || null,
   ].filter(Boolean) as string[];
   const [photoIndex, setPhotoIndex] = useState(0);

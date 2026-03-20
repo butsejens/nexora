@@ -316,7 +316,8 @@ export default function DetailScreen() {
     queryFn: () => fetchDetails(tmdbId!, type),
     enabled: !!tmdbId,
     staleTime: 10 * 60 * 1000,
-    initialData: cachedDetail || routeSeedData || undefined,
+    initialData: cachedDetail || undefined,
+    placeholderData: !cachedDetail ? routeSeedData || undefined : undefined,
     retry: 1,
   });
 
@@ -377,7 +378,7 @@ export default function DetailScreen() {
   }, [data]);
   const activeTrailer = trailerCandidates[trailerIndex] || null;
   const trailerEmbedUrl = activeTrailer?.key
-    ? `https://www.youtube-nocookie.com/embed/${encodeURIComponent(String(activeTrailer.key))}?autoplay=1&hl=en&cc_lang_pref=en&rel=0&modestbranding=1&playsinline=1&origin=https://nexora.app`
+    ? `https://www.youtube.com/embed/${encodeURIComponent(String(activeTrailer.key))}?autoplay=1&hl=en&cc_lang_pref=en&rel=0&modestbranding=1&playsinline=1`
     : null;
   const metadataItems = useMemo(() => {
     const originalTitle = String((data as any)?.originalTitle || "").trim();
@@ -764,7 +765,7 @@ export default function DetailScreen() {
                     injectedJavaScript={`
                       (function() {
                         var check = setInterval(function() {
-                          var err = document.querySelector('.ytp-error, .ytp-error-content-wrap, [class*="error"]');
+                          var err = document.querySelector('.ytp-error, .ytp-error-content-wrap');
                           if (err && err.offsetHeight > 0) {
                             clearInterval(check);
                             window.ReactNativeWebView.postMessage(JSON.stringify({type:'yt-error'}));
