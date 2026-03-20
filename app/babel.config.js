@@ -26,6 +26,9 @@ module.exports = function (api) {
         },
       ],
       // Required by expo-router
-      ],
+      "expo-router/babel",
+      // React Compiler (experimental)
+      "babel-plugin-react-compiler",
+    ],
   };
 };
