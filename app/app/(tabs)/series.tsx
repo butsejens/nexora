@@ -224,7 +224,7 @@ export default function SeriesScreen() {
   // Continue Watching — series from watch history
   const continueWatching = useMemo(() => {
     return watchHistory
-      .filter(h => h.type === "series" && h.progress && h.progress > 0 && h.progress < 0.95)
+      .filter(h => h.type === "series" && !h.id.startsWith("sport_") && h.progress && h.progress > 0 && h.progress < 0.95)
       .slice(0, 20)
       .map(h => ({
         id: h.id, title: h.title, poster: h.poster || null, backdrop: h.backdrop || null, synopsis: "",
@@ -234,7 +234,7 @@ export default function SeriesScreen() {
 
   const recentlyWatched = useMemo(() => {
     return watchHistory
-      .filter(h => h.type === "series")
+      .filter(h => h.type === "series" && !h.id.startsWith("sport_"))
       .slice(0, 15)
       .map(h => ({
         id: h.id, title: h.title, poster: h.poster || null, backdrop: h.backdrop || null, synopsis: "",
