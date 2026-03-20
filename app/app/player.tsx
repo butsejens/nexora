@@ -774,10 +774,11 @@ function formatTime(secs: number): string {
 // ─── Main component ───────────────────────────────────────────────────────────
 export default function PlayerScreen() {
   const {
-    trailerKey, title, type, contentId, streamUrl, tmdbId, season, episode, poster,
+    trailerKey, title, type, contentId, streamUrl, tmdbId, season, episode, poster, embedUrl: paramEmbedUrl,
   } = useLocalSearchParams<{
     trailerKey?: string; title?: string; type?: string; contentId?: string;
     streamUrl?: string; tmdbId?: string; season?: string; episode?: string; poster?: string;
+    embedUrl?: string;
   }>();
 
   const insets = useSafeAreaInsets();
@@ -1074,6 +1075,7 @@ export default function PlayerScreen() {
 
   // ── What to render ────────────────────────────────────────────────────────
   const embedUrl: string | null = (() => {
+    if (paramEmbedUrl) return paramEmbedUrl;
     if (allProvidersFailed) return null;
     if (trailerKey) return `https://www.youtube.com/embed/${trailerKey}?autoplay=1&rel=0&modestbranding=1&playsinline=1`;
     if (tmdbId) return getEmbedUrl(provider, tmdbId, type || "movie", season || "1", episode || "1");

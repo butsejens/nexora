@@ -2,7 +2,7 @@ import React, { useState, useCallback, useEffect, useMemo, useRef } from "react"
 import {
   View, Text, StyleSheet, ScrollView,
   RefreshControl, Platform, TouchableOpacity, TextInput, Alert,
-  Image, useWindowDimensions, Animated, Linking } from "react-native";
+  Image, useWindowDimensions, Animated } from "react-native";
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -1331,8 +1331,9 @@ export default function SportsScreen() {
   const headerTranslateY = headerAnim.interpolate({ inputRange: [0, 1], outputRange: [-120, 0] });
   const miniTitleOpacity = headerAnim.interpolate({ inputRange: [0, 1], outputRange: [1, 0] });
 
-  // Height of header + sub-nav so ScrollView content starts below them
-  const headerAreaHeight = (Platform.OS === "web" ? 0 : insets.top) + 8 + 40 + 8 + 42;
+  // Height of header + sub-nav (+ sport categories when visible) so ScrollView content starts below them
+  const sportCatBarHeight = showCompetitionsSection ? 48 : 0;
+  const headerAreaHeight = (Platform.OS === "web" ? 0 : insets.top) + 8 + 40 + 8 + 42 + sportCatBarHeight;
 
   return (
     <View style={styles.container}>
@@ -1385,6 +1386,32 @@ export default function SportsScreen() {
           </ScrollView>
         </View>
       </Animated.View>
+
+      {/* ── Sticky Sport Categories ── */}
+      {showCompetitionsSection && (
+        <View style={{ position: "absolute", top: (Platform.OS === "web" ? 0 : insets.top) + 8 + 40 + 8 + 42, left: 0, right: 0, zIndex: 40, backgroundColor: COLORS.background }}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={{ paddingHorizontal: 16, paddingVertical: 10, gap: 8, flexDirection: "row" }}
+          >
+            {SPORT_CATEGORIES.map((cat) => {
+              const isActive = sportCategory === cat.id;
+              return (
+                <TouchableOpacity
+                  key={cat.id}
+                  onPress={() => setSportCategory(cat.id as SportCategoryId)}
+                  activeOpacity={0.75}
+                  style={[styles.sportCatPill, isActive && styles.sportCatPillActive]}
+                >
+                  <Ionicons name={cat.icon} size={14} color={isActive ? "#fff" : P.muted} />
+                  <Text style={[styles.sportCatLabel, isActive && styles.sportCatLabelActive]}>{tFn(cat.labelKey)}</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+        </View>
+      )}
 
       {/* ── Sport Search ── */}
       {sportsSearchActive && (
@@ -1472,28 +1499,6 @@ export default function SportsScreen() {
         ══════════════════════════════════════════ */}
         {showCompetitionsSection && (
           <>
-            {/* ── SPORT CATEGORIES FILTER ── */}
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={{ paddingHorizontal: 16, paddingVertical: 12, gap: 8, flexDirection: "row" }}
-            >
-              {SPORT_CATEGORIES.map((cat) => {
-                const isActive = sportCategory === cat.id;
-                return (
-                  <TouchableOpacity
-                    key={cat.id}
-                    onPress={() => setSportCategory(cat.id as SportCategoryId)}
-                    activeOpacity={0.75}
-                    style={[styles.sportCatPill, isActive && styles.sportCatPillActive]}
-                  >
-                    <Ionicons name={cat.icon} size={14} color={isActive ? "#fff" : P.muted} />
-                    <Text style={[styles.sportCatLabel, isActive && styles.sportCatLabelActive]}>{tFn(cat.labelKey)}</Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </ScrollView>
-
             {/* ── MIJN TEAMS ── */}
             {myTeamMatches.length > 0 && (
               <>
@@ -1602,7 +1607,13 @@ export default function SportsScreen() {
                       <HighlightCard key={hl.id || idx} match={hl} onPress={() => {
                         const url = hl.embedUrl || hl.matchUrl;
                         if (url) {
-                          Linking.openURL(url).catch(() => {});
+                          router.push({
+                            pathname: "/player",
+                            params: {
+                              embedUrl: url,
+                              title: hl.title || `${hl.homeTeam || ""} vs ${hl.awayTeam || ""}`,
+                            },
+                          });
                         }
                       }} />
                     ))

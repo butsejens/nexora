@@ -7,6 +7,7 @@ import {
   Image,
   Animated,
 } from "react-native";
+import { router } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
 import { COLORS } from "@/constants/colors";
@@ -210,7 +211,17 @@ export const RealHeroBanner = React.memo(function RealHeroBanner({ item, onPlay,
 
           {/* Auto-play trailer preview (muted, Netflix-style) */}
           {showTrailer && trailerKey && (
-            <View style={[StyleSheet.absoluteFill, { zIndex: 1 }]}>
+            <TouchableOpacity
+              style={[StyleSheet.absoluteFill, { zIndex: 1 }]}
+              activeOpacity={0.85}
+              onPress={() => {
+                SafeHaptics.impactLight();
+                router.push({
+                  pathname: "/player",
+                  params: { trailerKey, title: item.title },
+                });
+              }}
+            >
               <Image
                 source={{ uri: `https://img.youtube.com/vi/${trailerKey}/hqdefault.jpg` }}
                 style={StyleSheet.absoluteFill}
@@ -219,7 +230,7 @@ export const RealHeroBanner = React.memo(function RealHeroBanner({ item, onPlay,
               <View style={[StyleSheet.absoluteFill, { backgroundColor: "rgba(0,0,0,0.3)", alignItems: "center", justifyContent: "center" }]}>
                 <Ionicons name="play-circle" size={48} color="rgba(255,255,255,0.8)" />
               </View>
-            </View>
+            </TouchableOpacity>
           )}
 
           {/* Top vignette gradient */}
