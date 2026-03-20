@@ -152,11 +152,9 @@ export default function PlayerProfileScreen() {
     gcTime: 30 * 60_000,
   });
 
-  const safePlayerId = /^\d+$/.test(String(params.playerId || "").trim()) ? String(params.playerId).trim() : "";
   const photoCandidates = useMemo(() => [
     data?.photo,
-    safePlayerId ? `https://a.espncdn.com/i/headshots/soccer/players/full/${encodeURIComponent(safePlayerId)}.png` : null,
-  ].filter(Boolean) as string[], [data?.photo, safePlayerId]);
+  ].filter(Boolean) as string[], [data?.photo]);
 
   const [photoIdx, setPhotoIdx] = useState(0);
   const photoUri = photoCandidates[photoIdx] || null;
@@ -169,7 +167,7 @@ export default function PlayerProfileScreen() {
   const initials = initialsFromName(String(data?.name || params.name || "?"));
 
   const scrollY = useRef(new Animated.Value(0)).current;
-  const heroOpacity = scrollY.interpolate({ inputRange: [0, 100], outputRange: [1, 0], extrapolate: "clamp" });
+  const heroOpacity = scrollY.interpolate({ inputRange: [0, 120], outputRange: [1, 1], extrapolate: "clamp" });
 
   return (
     <View style={styles.container}>

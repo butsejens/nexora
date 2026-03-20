@@ -1667,8 +1667,8 @@ function AIPredictionViewInner({ prediction, homeTeam, awayTeam }: any) {
       ? COLORS.accent
       : COLORS.textMuted;
 
-  const homeShortName = homeTeam.split(" ")[0];
-  const awayShortName = awayTeam.split(" ")[0];
+  const homeShortName = homeTeam;
+  const awayShortName = awayTeam;
 
   return (
     <View style={{ gap: 12 }}>
