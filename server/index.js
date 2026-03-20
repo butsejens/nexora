@@ -2737,16 +2737,6 @@ async function enrichRosterPhotos(players, teamName) {
     }
   }
 
-  // Step 5: ESPN CDN headshot fallback for players with ESPN IDs
-  enriched = enriched.map((player) => {
-    if (!player || player.photo) return player;
-    const espnId = String(player.id || "").trim();
-    if (espnId && /^\d+$/.test(espnId)) {
-      return { ...player, photo: `https://a.espncdn.com/i/headshots/soccer/players/full/${espnId}.png` };
-    }
-    return player;
-  });
-
   const withPhoto = enriched.filter((p) => p && p.photo).length;
   const total = enriched.filter((p) => p).length;
   console.log(`[photos] ${teamName}: ${withPhoto}/${total} players have photos`);
@@ -2894,7 +2884,6 @@ function mapEspnRosterPlayer(player) {
     photo: normalizePlayerPhoto(
       playerId,
       player?.headshot?.href,
-      /^\d+$/.test(playerId) ? `https://a.espncdn.com/i/headshots/soccer/players/full/${playerId}.png` : null,
     ),
   };
 }

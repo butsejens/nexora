@@ -1116,7 +1116,7 @@ export default function PlayerScreen() {
   const embedUrl: string | null = (() => {
     if (paramEmbedUrl) return paramEmbedUrl;
     if (allProvidersFailed) return null;
-    if (trailerKey) return `https://www.youtube-nocookie.com/embed/${trailerKey}?autoplay=1&rel=0&modestbranding=1&playsinline=1&origin=https://nexora.app`;
+    if (trailerKey) return `https://www.youtube.com/embed/${trailerKey}?autoplay=1&rel=0&modestbranding=1&playsinline=1`;
     if (tmdbId) return getEmbedUrl(provider, tmdbId, type || "movie", season || "1", episode || "1");
     return null;
   })();
