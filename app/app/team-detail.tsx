@@ -424,9 +424,12 @@ export default function TeamDetailScreen() {
 }
 
 const PlayerCard = React.memo(function PlayerCard({ player }: { player: any }) {
+  const espnId = String(player?.id || "");
+  const espnCdn = /^\d+$/.test(espnId) ? `https://a.espncdn.com/i/headshots/soccer/players/full/${espnId}.png` : null;
   const photoCandidates = [
     player?.photo,
     player?.theSportsDbPhoto || null,
+    espnCdn,
   ].filter(Boolean) as string[];
   const [photoIndex, setPhotoIndex] = useState(0);
   const playerKey = String(player?.id || player?.name || "");

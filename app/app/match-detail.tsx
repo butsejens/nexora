@@ -631,6 +631,13 @@ export default function MatchDetailScreen() {
                 awayStats={matchDetail.awayStats || {}}
               />
 
+              <MatchHeatmap
+                homeTeam={params.homeTeam}
+                awayTeam={params.awayTeam}
+                homeStats={matchDetail.homeStats || {}}
+                awayStats={matchDetail.awayStats || {}}
+              />
+
               <InfoBlock title="MATCH INFO">
                 <InfoRow icon="trophy-outline" label="Competition" value={safeStr(params.league)} />
                 {matchDetail.round ? <InfoRow icon="layers-outline" label="Round" value={safeStr(matchDetail.round)} /> : null}
@@ -1165,6 +1172,325 @@ function MatchTimelineInner({ events, homeTeam, awayTeam }: { events: any[]; hom
 }
 
 const MatchTimeline = React.memo(MatchTimelineInner);
+
+// ── Match Heatmap – zone-based pitch visualization ──────────────────────────
+function MatchHeatmapInner({ homeTeam, awayTeam, homeStats, awayStats }: { homeTeam: string; awayTeam: string; homeStats: any; awayStats: any }) {
+  const toNum = (v: any) => { const n = parseFloat(String(v ?? "0").replace("%", "")); return Number.isFinite(n) ? n : 0; };
+
+  const hPoss = toNum(homeStats?.ball_possession ?? homeStats?.possession ?? homeStats?.possessionPct);
+  const aPoss = toNum(awayStats?.ball_possession ?? awayStats?.possession ?? awayStats?.possessionPct);
+  const hShots = toNum(homeStats?.total_shots ?? homeStats?.shots ?? homeStats?.totalShots);
+  const aShots = toNum(awayStats?.total_shots ?? awayStats?.shots ?? awayStats?.totalShots);
+  const hOnTarget = toNum(homeStats?.shots_on_goal ?? homeStats?.shots_on_target ?? homeStats?.shotsOnTarget);
+  const aOnTarget = toNum(awayStats?.shots_on_goal ?? awayStats?.shots_on_target ?? awayStats?.shotsOnTarget);
+  const hCorners = toNum(homeStats?.corner_kicks ?? homeStats?.corners ?? homeStats?.cornerKicks);
+  const aCorners = toNum(awayStats?.corner_kicks ?? awayStats?.corners ?? awayStats?.cornerKicks);
+  const hInsideBox = toNum(homeStats?.shots_insidebox ?? homeStats?.shotsInsideBox);
+  const aInsideBox = toNum(awayStats?.shots_insidebox ?? awayStats?.shotsInsideBox);
+  const hPasses = toNum(homeStats?.total_passes ?? homeStats?.totalPasses ?? homeStats?.passes);
+  const aPasses = toNum(awayStats?.total_passes ?? awayStats?.totalPasses ?? awayStats?.passes);
+
+  const hasData = hPoss > 0 || aPoss > 0 || hShots > 0 || aShots > 0;
+  if (!hasData) return null;
+
+  // Zone intensity: 0-1 scale for coloring (defense / midfield / attack for each team)
+  const maxShots = Math.max(hShots, aShots, 1);
+  const maxCorners = Math.max(hCorners, aCorners, 1);
+
+  // Home zones (bottom half): attack=near top, defense=near bottom
+  const hAttackIntensity = Math.min(1, ((hInsideBox || hOnTarget) / Math.max(maxShots, 1)) * 1.5 + 0.15);
+  const hMidIntensity = Math.min(1, (hPoss / 100) * 1.2);
+  const hDefIntensity = Math.min(1, (aPoss / 100) * 0.5 + (aCorners / Math.max(maxCorners, 1)) * 0.3);
+
+  // Away zones (top half): attack=near center, defense=near top
+  const aAttackIntensity = Math.min(1, ((aInsideBox || aOnTarget) / Math.max(maxShots, 1)) * 1.5 + 0.15);
+  const aMidIntensity = Math.min(1, (aPoss / 100) * 1.2);
+  const aDefIntensity = Math.min(1, (hPoss / 100) * 0.5 + (hCorners / Math.max(maxCorners, 1)) * 0.3);
+
+  const zoneColor = (intensity: number, teamColor: string) => {
+    const alpha = Math.max(0.08, Math.min(0.55, intensity * 0.6));
+    return teamColor === "home"
+      ? `rgba(232,93,47,${alpha.toFixed(2)})`
+      : `rgba(91,141,239,${alpha.toFixed(2)})`;
+  };
+
+  // Shot dots based on available data
+  const shotDots: { x: number; y: number; color: string; onTarget: boolean }[] = [];
+  const seedRng = (s: number) => { let v = s; return () => { v = (v * 16807 + 0) % 2147483647; return (v & 0x7fffffff) / 0x7fffffff; }; };
+  const rng = seedRng(hShots * 100 + aShots * 7 + hOnTarget * 33);
+
+  // Home shots (bottom attacking third → y 15%-44%)
+  for (let i = 0; i < Math.min(hShots, 12); i++) {
+    const onTarget = i < hOnTarget;
+    shotDots.push({ x: 15 + rng() * 70, y: 15 + rng() * 29, color: COLORS.accent, onTarget });
+  }
+  // Away shots (top attacking third → y 56%-85%)
+  for (let i = 0; i < Math.min(aShots, 12); i++) {
+    const onTarget = i < aOnTarget;
+    shotDots.push({ x: 15 + rng() * 70, y: 56 + rng() * 29, color: "#5B8DEF", onTarget });
+  }
+
+  return (
+    <View style={heatmapStyles.card}>
+      <View style={heatmapStyles.header}>
+        <View style={heatmapStyles.headerAccent} />
+        <Text style={heatmapStyles.headerIcon}>🔥</Text>
+        <Text style={heatmapStyles.headerTitle}>ZONE CONTROL & SHOTS</Text>
+      </View>
+
+      {/* Pitch */}
+      <View style={heatmapStyles.pitch}>
+        <LinearGradient colors={["#0d2e18", "#1a4428", "#1a4428", "#0d2e18"]} style={heatmapStyles.pitchGradient}>
+          {/* Away team zones (top half) */}
+          <View style={heatmapStyles.halfRow}>
+            <View style={[heatmapStyles.zone, { backgroundColor: zoneColor(aDefIntensity, "away") }]}>
+              <Text style={heatmapStyles.zoneLabel}>DEF</Text>
+            </View>
+            <View style={[heatmapStyles.zone, { backgroundColor: zoneColor(aMidIntensity, "away") }]}>
+              <Text style={heatmapStyles.zoneLabel}>MID</Text>
+            </View>
+            <View style={[heatmapStyles.zone, { backgroundColor: zoneColor(aAttackIntensity, "away") }]}>
+              <Text style={heatmapStyles.zoneLabel}>ATT</Text>
+            </View>
+          </View>
+
+          {/* Center line */}
+          <View style={heatmapStyles.centerLine} />
+
+          {/* Home team zones (bottom half) */}
+          <View style={heatmapStyles.halfRow}>
+            <View style={[heatmapStyles.zone, { backgroundColor: zoneColor(hAttackIntensity, "home") }]}>
+              <Text style={heatmapStyles.zoneLabel}>ATT</Text>
+            </View>
+            <View style={[heatmapStyles.zone, { backgroundColor: zoneColor(hMidIntensity, "home") }]}>
+              <Text style={heatmapStyles.zoneLabel}>MID</Text>
+            </View>
+            <View style={[heatmapStyles.zone, { backgroundColor: zoneColor(hDefIntensity, "home") }]}>
+              <Text style={heatmapStyles.zoneLabel}>DEF</Text>
+            </View>
+          </View>
+
+          {/* Shot dots overlay */}
+          {shotDots.map((dot, i) => (
+            <View
+              key={`shot_${i}`}
+              style={[
+                heatmapStyles.shotDot,
+                {
+                  left: `${dot.x}%` as any,
+                  top: `${dot.y}%` as any,
+                  backgroundColor: dot.onTarget ? dot.color : "transparent",
+                  borderColor: dot.color,
+                },
+              ]}
+            />
+          ))}
+
+          {/* Team labels */}
+          <View style={heatmapStyles.teamLabelTop}>
+            <Text style={[heatmapStyles.teamLabel, { color: "#5B8DEF" }]}>{safeStr(awayTeam).toUpperCase()}</Text>
+          </View>
+          <View style={heatmapStyles.teamLabelBottom}>
+            <Text style={[heatmapStyles.teamLabel, { color: COLORS.accent }]}>{safeStr(homeTeam).toUpperCase()}</Text>
+          </View>
+        </LinearGradient>
+      </View>
+
+      {/* Legend */}
+      <View style={heatmapStyles.legend}>
+        <View style={heatmapStyles.legendItem}>
+          <View style={[heatmapStyles.legendDot, { backgroundColor: COLORS.accent }]} />
+          <Text style={heatmapStyles.legendText}>On target</Text>
+        </View>
+        <View style={heatmapStyles.legendItem}>
+          <View style={[heatmapStyles.legendDotOutline, { borderColor: COLORS.accent }]} />
+          <Text style={heatmapStyles.legendText}>Off target</Text>
+        </View>
+        <View style={heatmapStyles.legendItem}>
+          <View style={[heatmapStyles.legendZone, { backgroundColor: "rgba(232,93,47,0.3)" }]} />
+          <Text style={heatmapStyles.legendText}>Home zone</Text>
+        </View>
+        <View style={heatmapStyles.legendItem}>
+          <View style={[heatmapStyles.legendZone, { backgroundColor: "rgba(91,141,239,0.3)" }]} />
+          <Text style={heatmapStyles.legendText}>Away zone</Text>
+        </View>
+      </View>
+
+      {/* Possession bar */}
+      {(hPoss > 0 || aPoss > 0) && (
+        <View style={heatmapStyles.possessionBar}>
+          <Text style={[heatmapStyles.possessionLabel, { color: COLORS.accent }]}>{hPoss}%</Text>
+          <View style={heatmapStyles.possessionTrack}>
+            <View style={[heatmapStyles.possessionHome, { flex: Math.max(1, hPoss) }]} />
+            <View style={[heatmapStyles.possessionAway, { flex: Math.max(1, aPoss || (100 - hPoss)) }]} />
+          </View>
+          <Text style={[heatmapStyles.possessionLabel, { color: "#5B8DEF" }]}>{aPoss || (100 - hPoss)}%</Text>
+        </View>
+      )}
+    </View>
+  );
+}
+
+const MatchHeatmap = React.memo(MatchHeatmapInner);
+
+const heatmapStyles = StyleSheet.create({
+  card: {
+    backgroundColor: COLORS.card,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    overflow: "hidden",
+  },
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+  },
+  headerAccent: {
+    width: 3,
+    height: 16,
+    borderRadius: 2,
+    backgroundColor: COLORS.accent,
+  },
+  headerIcon: { fontSize: 14 },
+  headerTitle: {
+    fontFamily: "Inter_700Bold",
+    fontSize: 12,
+    color: COLORS.text,
+    letterSpacing: 1,
+  },
+  pitch: {
+    marginHorizontal: 12,
+    marginVertical: 12,
+    borderRadius: 10,
+    overflow: "hidden",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.12)",
+  },
+  pitchGradient: {
+    aspectRatio: 0.72,
+    position: "relative",
+  },
+  halfRow: {
+    flex: 1,
+    flexDirection: "column",
+  },
+  zone: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  zoneLabel: {
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 10,
+    color: "rgba(255,255,255,0.3)",
+    letterSpacing: 1,
+  },
+  centerLine: {
+    height: 1,
+    backgroundColor: "rgba(255,255,255,0.25)",
+    marginHorizontal: 8,
+  },
+  shotDot: {
+    position: "absolute",
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    borderWidth: 1.5,
+    marginLeft: -4,
+    marginTop: -4,
+  },
+  teamLabelTop: {
+    position: "absolute",
+    top: 4,
+    left: 0,
+    right: 0,
+    alignItems: "center",
+  },
+  teamLabelBottom: {
+    position: "absolute",
+    bottom: 4,
+    left: 0,
+    right: 0,
+    alignItems: "center",
+  },
+  teamLabel: {
+    fontFamily: "Inter_700Bold",
+    fontSize: 9,
+    letterSpacing: 1.5,
+    opacity: 0.7,
+  },
+  legend: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.border,
+  },
+  legendItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
+  legendDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  legendDotOutline: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    borderWidth: 1.5,
+    backgroundColor: "transparent",
+  },
+  legendZone: {
+    width: 14,
+    height: 8,
+    borderRadius: 2,
+  },
+  legendText: {
+    fontFamily: "Inter_500Medium",
+    fontSize: 10,
+    color: COLORS.textMuted,
+  },
+  possessionBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingBottom: 12,
+  },
+  possessionTrack: {
+    flex: 1,
+    height: 6,
+    borderRadius: 3,
+    flexDirection: "row",
+    overflow: "hidden",
+  },
+  possessionHome: {
+    backgroundColor: COLORS.accent,
+    borderTopLeftRadius: 3,
+    borderBottomLeftRadius: 3,
+  },
+  possessionAway: {
+    backgroundColor: "#5B8DEF",
+    borderTopRightRadius: 3,
+    borderBottomRightRadius: 3,
+  },
+  possessionLabel: {
+    fontFamily: "Inter_700Bold",
+    fontSize: 12,
+    minWidth: 32,
+    textAlign: "center",
+  },
+});
 
 function StatsBarsInner({ homeTeam, awayTeam, homeStats, awayStats }: { homeTeam: string; awayTeam: string; homeStats: any; awayStats: any }) {
   const STAT_LABELS: Record<string, string> = {
@@ -3046,7 +3372,6 @@ const styles = StyleSheet.create({
     alignSelf: "center",
     width: "100%",
     maxWidth: 420,
-    marginHorizontal: 16,
   },
   combinedPitchRow: {
     flexDirection: "row",

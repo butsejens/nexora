@@ -1300,8 +1300,10 @@ export default function SportsScreen() {
 
   // Height of header + sub-nav (+ sport categories when visible) so ScrollView content starts below them
   const sportCatBarHeight = showCompetitionsSection ? 48 : 0;
-  const headerContentHeight = compactHeader ? 28 : 40;
-  const headerAreaHeight = (Platform.OS === "web" ? 0 : insets.top) + 8 + headerContentHeight + 8 + 42 + sportCatBarHeight;
+  // NexoraHeader: padTop(4/8) + contentRow(paddingV8×2 + iconBtn 30/36 or logo ~46) + padBot(4/8) + border(1)
+  const nexoraHeaderHeight = compactHeader ? (4 + 46 + 5) : (8 + 64 + 9);
+  const subNavHeight = 42;
+  const headerAreaHeight = (Platform.OS === "web" ? 0 : insets.top) + nexoraHeaderHeight + subNavHeight + sportCatBarHeight;
 
   return (
     <View style={styles.container}>
