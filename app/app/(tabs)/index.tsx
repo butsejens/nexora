@@ -2,7 +2,7 @@ import React, { useState, useCallback, useEffect, useMemo, useRef } from "react"
 import {
   View, Text, StyleSheet, ScrollView,
   RefreshControl, Platform, TouchableOpacity, TextInput, Alert,
-  Image, useWindowDimensions, Animated } from "react-native";
+  Image, useWindowDimensions, Animated, Linking } from "react-native";
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -723,26 +723,40 @@ const countryCardStyles = StyleSheet.create({
 function HighlightCard({ match, onPress }: { match: any; onPress: () => void }) {
   const homeScore = match?.homeScore ?? 0;
   const awayScore = match?.awayScore ?? 0;
+  const hasThumbnail = !!match?.thumbnail;
   return (
     <TouchableOpacity onPress={onPress} activeOpacity={0.85} style={hlStyles.wrap}>
-      <LinearGradient colors={["#151520", "#0B0B14"]} style={hlStyles.card}>
+      <View style={hlStyles.card}>
+        {hasThumbnail ? (
+          <Image source={{ uri: match.thumbnail }} style={StyleSheet.absoluteFill} resizeMode="cover" />
+        ) : (
+          <LinearGradient colors={["#1a1a2e", "#0f0f1a"]} style={StyleSheet.absoluteFill} />
+        )}
+        <LinearGradient colors={["transparent", "rgba(0,0,0,0.85)"]} style={[StyleSheet.absoluteFill, { top: "40%" }]} />
         <View style={hlStyles.hlBadge}>
           <Ionicons name="star" size={8} color="#FFD700" />
           <Text style={hlStyles.hlBadgeText}>Highlights</Text>
         </View>
-        <View style={hlStyles.playBtn}>
-          <Ionicons name="play" size={20} color="#fff" />
-        </View>
+        <LinearGradient
+          colors={["rgba(229,9,20,0.9)", "rgba(180,0,10,0.95)"]}
+          style={hlStyles.playBtn}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+        >
+          <Ionicons name="play" size={22} color="#fff" style={{ marginLeft: 2 }} />
+        </LinearGradient>
         <View style={hlStyles.overlay}>
-          <View style={hlStyles.teamsLogoRow}>
-            <TeamLogo uri={match?.homeTeamLogo} teamName={match?.homeTeam || ""} size={22} />
-            <Text style={hlStyles.score}>{homeScore} - {awayScore}</Text>
-            <TeamLogo uri={match?.awayTeamLogo} teamName={match?.awayTeam || ""} size={22} />
-          </View>
-          <Text style={hlStyles.teams} numberOfLines={1}>{match?.homeTeam} · {match?.awayTeam}</Text>
-          <Text style={hlStyles.league} numberOfLines={1}>{match?.league || "Sport"}</Text>
+          {match?.homeTeamLogo || match?.awayTeamLogo ? (
+            <View style={hlStyles.teamsLogoRow}>
+              <TeamLogo uri={match?.homeTeamLogo} teamName={match?.homeTeam || ""} size={22} />
+              <Text style={hlStyles.score}>{homeScore} - {awayScore}</Text>
+              <TeamLogo uri={match?.awayTeamLogo} teamName={match?.awayTeam || ""} size={22} />
+            </View>
+          ) : null}
+          <Text style={hlStyles.teams} numberOfLines={1}>{match?.homeTeam || match?.title}{match?.awayTeam ? ` · ${match.awayTeam}` : ""}</Text>
+          <Text style={hlStyles.league} numberOfLines={1}>{match?.league || match?.competition || "Sport"}</Text>
         </View>
-      </LinearGradient>
+      </View>
     </TouchableOpacity>
   );
 }
@@ -750,9 +764,10 @@ function HighlightCard({ match, onPress }: { match: any; onPress: () => void }) 
 const hlStyles = StyleSheet.create({
   wrap: { marginRight: 10 },
   card: {
-    width: 208, height: 120, borderRadius: 14, overflow: "hidden",
+    width: 240, height: 140, borderRadius: 14, overflow: "hidden",
     borderWidth: 1, borderColor: P.border,
     alignItems: "center", justifyContent: "center",
+    backgroundColor: "#0f0f1a",
   },
   hlBadge: {
     position: "absolute", top: 8, right: 8, flexDirection: "row", alignItems: "center", gap: 3,
@@ -761,9 +776,10 @@ const hlStyles = StyleSheet.create({
   },
   hlBadgeText: { color: "#FFD700", fontSize: 8, fontWeight: "700" },
   playBtn: {
-    width: 44, height: 44, borderRadius: 22,
-    backgroundColor: "rgba(255,255,255,0.18)", alignItems: "center", justifyContent: "center",
-    borderWidth: 1.5, borderColor: "rgba(255,255,255,0.5)",
+    width: 48, height: 48, borderRadius: 24,
+    alignItems: "center", justifyContent: "center",
+    shadowColor: "rgba(229,9,20,0.6)", shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.8, shadowRadius: 10, elevation: 8,
   },
   overlay: { position: "absolute", bottom: 0, left: 0, right: 0, padding: 9 },
   teamsLogoRow: { flexDirection: "row", alignItems: "center", gap: 6 },
@@ -881,6 +897,19 @@ export default function SportsScreen() {
     refetchOnReconnect: true,
     notifyOnChangeProps: ["data", "error", "isFetching"],
   });
+
+  const highlightsQuery = useQuery({
+    queryKey: ["sports", "highlights"],
+    queryFn: async () => {
+      const res = await apiRequest("GET", "/api/sports/highlights");
+      const json = await res.json();
+      return Array.isArray(json?.highlights) ? json.highlights : [];
+    },
+    staleTime: 10 * 60 * 1000,
+    refetchInterval: 10 * 60 * 1000,
+    retry: 1,
+  });
+  const realHighlights: any[] = highlightsQuery.data || [];
 
   const liveFirstLoad = liveQuery.isLoading && !liveQuery.data;
   const todayFirstLoad = todayQuery.isLoading && !todayQuery.data;
@@ -1564,31 +1593,42 @@ export default function SportsScreen() {
             </View>
 
             {/* ── HIGHLIGHTS & REPLAYS ── */}
-            {sortedFinished.length > 0 && (
+            {(realHighlights.length > 0 || sortedFinished.length > 0) && (
               <>
                 <SectionTitle title={t("sportsHome.highlightsReplays")} accent />
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.carouselContent}>
-                  {sortedFinished.slice(0, 10).map((match: any) => (
-                    <HighlightCard key={match.id} match={match} onPress={() => {
-                      router.push({
-                        pathname: "/match-detail",
-                        params: {
-                          matchId: match.id,
-                          homeTeam: match.homeTeam,
-                          awayTeam: match.awayTeam,
-                          homeTeamLogo: match.homeTeamLogo || "",
-                          awayTeamLogo: match.awayTeamLogo || "",
-                          homeScore: String(match.homeScore ?? 0),
-                          awayScore: String(match.awayScore ?? 0),
-                          league: match.league,
-                          minute: match.minute !== undefined ? String(match.minute) : "",
-                          status: match.status,
-                          sport: match.sport,
-                          initialTab: "highlights",
-                        },
-                      });
-                    }} />
-                  ))}
+                  {realHighlights.length > 0 ? (
+                    realHighlights.slice(0, 15).map((hl: any, idx: number) => (
+                      <HighlightCard key={hl.id || idx} match={hl} onPress={() => {
+                        const url = hl.embedUrl || hl.matchUrl;
+                        if (url) {
+                          Linking.openURL(url).catch(() => {});
+                        }
+                      }} />
+                    ))
+                  ) : (
+                    sortedFinished.slice(0, 10).map((match: any) => (
+                      <HighlightCard key={match.id} match={match} onPress={() => {
+                        router.push({
+                          pathname: "/match-detail",
+                          params: {
+                            matchId: match.id,
+                            homeTeam: match.homeTeam,
+                            awayTeam: match.awayTeam,
+                            homeTeamLogo: match.homeTeamLogo || "",
+                            awayTeamLogo: match.awayTeamLogo || "",
+                            homeScore: String(match.homeScore ?? 0),
+                            awayScore: String(match.awayScore ?? 0),
+                            league: match.league,
+                            minute: match.minute !== undefined ? String(match.minute) : "",
+                            status: match.status,
+                            sport: match.sport,
+                            initialTab: "highlights",
+                          },
+                        });
+                      }} />
+                    ))
+                  )}
                 </ScrollView>
               </>
             )}

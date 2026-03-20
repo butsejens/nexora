@@ -145,7 +145,8 @@ export default function TeamDetailScreen() {
       const res = await apiRequest("GET", `/api/sports/team/${encodeURIComponent(teamIdParam)}?sport=${encodeURIComponent(sport)}&league=${encodeURIComponent(league)}&teamName=${tn}`);
       return res.json();
     },
-    staleTime: 5 * 60 * 1000,
+    staleTime: 10 * 60 * 1000,
+    gcTime: 30 * 60 * 1000,
     refetchOnMount: true,
     retry: 2,
     retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 8000),
@@ -233,7 +234,13 @@ export default function TeamDetailScreen() {
       {/* Header — always visible: back button + team name stay, hero details fade */}
       <View style={{ zIndex: 30, elevation: 30 }}>
       <LinearGradient
-        colors={[/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/.test(data?.color || "") ? data.color : "#1a3a6b", COLORS.background] as any}
+        colors={[
+          /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/.test(data?.color || "") ? data.color : "#1a3a6b",
+          /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/.test(data?.color || "") ? `${data.color}CC` : "rgba(26,58,107,0.8)",
+          /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/.test(data?.color || "") ? `${data.color}66` : "rgba(26,58,107,0.4)",
+          COLORS.background,
+        ] as any}
+        locations={[0, 0.35, 0.7, 1]}
         style={[styles.header, { paddingTop: topPad + 8 }]}
       >
         <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>

@@ -150,14 +150,6 @@ export const RealContentCard = React.memo(function RealContentCard({ item, onPre
               />
             </TouchableOpacity>
           )}
-
-          {item.isIptv !== undefined && (
-            <View style={[styles.sourceBadge, item.isIptv ? styles.sourceBadgeIptv : styles.sourceBadgeTmdb]}>
-              <Text style={[styles.sourceBadgeText, item.isIptv ? styles.sourceBadgeTextIptv : styles.sourceBadgeTextTmdb]}>
-                {item.isIptv ? "IPTV" : "TMDB"}
-              </Text>
-            </View>
-          )}
         </View>
         <Text style={styles.title} numberOfLines={1}>{item.title}</Text>
         <View style={styles.meta}>

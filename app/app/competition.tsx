@@ -124,7 +124,7 @@ function StorylineBar({ storylines }: { storylines: Storyline[] }) {
           <Text style={storyStyles.icon}>{story.icon}</Text>
           <View style={storyStyles.textWrap}>
             <Text style={[storyStyles.label, { color: story.color }]} numberOfLines={1}>{story.label}</Text>
-            <Text style={storyStyles.text} numberOfLines={2}>{story.text}</Text>
+            <Text style={storyStyles.text} numberOfLines={3}>{story.text}</Text>
           </View>
         </View>
       ))}
@@ -138,12 +138,12 @@ const storyStyles = StyleSheet.create({
   card: {
     flexDirection: "row", alignItems: "flex-start", gap: 10,
     backgroundColor: "rgba(17,17,17,0.85)", borderRadius: 12,
-    borderWidth: 1, padding: 12, width: 240, overflow: "hidden",
+    borderWidth: 1, padding: 14, width: 270, minHeight: 72,
   },
   icon: { fontSize: 20, lineHeight: 24 },
-  textWrap: { flex: 1, gap: 2 },
-  label: { fontSize: 11, fontWeight: "700", letterSpacing: 0.5 },
-  text: { fontSize: 12, color: "rgba(255,255,255,0.75)", lineHeight: 16 },
+  textWrap: { flex: 1, gap: 3 },
+  label: { fontSize: 12, fontWeight: "700", letterSpacing: 0.5 },
+  text: { fontSize: 12, color: "rgba(255,255,255,0.75)", lineHeight: 17, flexWrap: "wrap" },
 });
 
 export default function CompetitionScreen() {
@@ -252,7 +252,8 @@ export default function CompetitionScreen() {
     <View style={styles.container}>
       {/* Header */}
       <View style={{ zIndex: 30, elevation: 30 }}>
-      <LinearGradient colors={[...gradColors, COLORS.background] as any}
+      <LinearGradient colors={[gradColors[0], `${gradColors[0]}CC`, `${gradColors[1]}99`, COLORS.background] as any}
+        locations={[0, 0.3, 0.65, 1]}
         style={[styles.header, { paddingTop: topPad + 8 }]}>
         <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
           <Ionicons name="chevron-back" size={24} color={COLORS.text} />
