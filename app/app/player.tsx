@@ -33,31 +33,30 @@ import type { SubtitleTrack } from "@/lib/subtitle-manager";
 
 // ─── Stream providers ──────────────────────────────────────────────────────────
 const STREAM_PROVIDERS = [
-  { id: "vidlink",      label: "Server 1"  },
-  { id: "videasy",      label: "Server 2"  },
-  { id: "autoembed",    label: "Server 3"  },
-  { id: "vidsrcto",     label: "Server 4"  },
-  { id: "vidsrcnl",     label: "Server 5"  },
-  { id: "vidsrccc",     label: "Server 6"  },
-  { id: "superembed",   label: "Server 7"  },
-  { id: "vidsrcme",     label: "Server 8"  },
-  { id: "2embed",       label: "Server 9"  },
-  { id: "moviesapi",    label: "Server 10" },
-  { id: "vidsrcxyz",    label: "Server 11" },
-  { id: "vidsrcdev",    label: "Server 12" },
-  { id: "vidsrcicu",    label: "Server 13" },
-  { id: "smashystream", label: "Server 14" },
-  { id: "flicky",       label: "Server 15" },
-  { id: "vidsrcvip",    label: "Server 16" },
-  { id: "2embedskin",   label: "Server 17" },
-  { id: "novafork",     label: "Server 18" },
-  { id: "embedrise",    label: "Server 19" },
-  { id: "embedflix",    label: "Server 20" },
-  { id: "vidsrcnet",    label: "Server 21" },
-  { id: "111movies",    label: "Server 22" },
-  { id: "primewire",    label: "Server 23" },
-  { id: "susflix",      label: "Server 24" },
-  { id: "fsapi",        label: "Server 25" },
+  { id: "videasy",      label: "Server 1"  },
+  { id: "autoembed",    label: "Server 2"  },
+  { id: "vidsrcto",     label: "Server 3"  },
+  { id: "vidsrcnl",     label: "Server 4"  },
+  { id: "vidsrccc",     label: "Server 5"  },
+  { id: "superembed",   label: "Server 6"  },
+  { id: "vidsrcme",     label: "Server 7"  },
+  { id: "2embed",       label: "Server 8"  },
+  { id: "moviesapi",    label: "Server 9"  },
+  { id: "vidsrcxyz",    label: "Server 10" },
+  { id: "vidsrcdev",    label: "Server 11" },
+  { id: "vidsrcicu",    label: "Server 12" },
+  { id: "smashystream", label: "Server 13" },
+  { id: "flicky",       label: "Server 14" },
+  { id: "vidsrcvip",    label: "Server 15" },
+  { id: "2embedskin",   label: "Server 16" },
+  { id: "novafork",     label: "Server 17" },
+  { id: "embedrise",    label: "Server 18" },
+  { id: "embedflix",    label: "Server 19" },
+  { id: "vidsrcnet",    label: "Server 20" },
+  { id: "111movies",    label: "Server 21" },
+  { id: "primewire",    label: "Server 22" },
+  { id: "susflix",      label: "Server 23" },
+  { id: "fsapi",        label: "Server 24" },
 ];
 
 function withEmbedAutoplayParams(rawUrl: string): string {
@@ -109,10 +108,6 @@ function getEmbedUrl(provider: string, tmdbId: string, type: string, season: str
       return isMovie
         ? `https://vidsrc.xyz/embed/movie?tmdb=${tmdbId}`
         : `https://vidsrc.xyz/embed/tv?tmdb=${tmdbId}&season=${s}&episode=${e}`;
-    case "vidlink":
-      return isMovie
-        ? `https://vidlink.pro/movie/${tmdbId}`
-        : `https://vidlink.pro/tv/${tmdbId}/${s}/${e}`;
 
     case "vidsrcicu":
       return isMovie
@@ -954,14 +949,18 @@ export default function PlayerScreen() {
 
   useEffect(() => {
     disposedRef.current = false;
-    addToHistory({
-      id: contentId || `${type}_${Date.now()}`,
-      type: (type as any) || "movie",
-      title: String(title || ""),
-      poster: poster || null,
-      tmdbId: tmdbId ? Number(tmdbId) : undefined,
-      lastWatched: new Date().toISOString(),
-    });
+    // Don't save trailers or sport highlights/replays to watch history
+    const isSport = type === "sport" || (contentId || "").startsWith("sport_");
+    if (!trailerKey && !isSport) {
+      addToHistory({
+        id: contentId || `${type}_${Date.now()}`,
+        type: (type as any) || "movie",
+        title: String(title || ""),
+        poster: poster || null,
+        tmdbId: tmdbId ? Number(tmdbId) : undefined,
+        lastWatched: new Date().toISOString(),
+      });
+    }
     scheduleHide();
     return () => {
       // Save final progress before unmount

@@ -225,7 +225,7 @@ export default function MoviesScreen() {
   // Continue Watching — movies from watch history
   const continueWatching = useMemo(() => {
     return watchHistory
-      .filter(h => h.type === "movie" && h.progress && h.progress > 0 && h.progress < 0.95)
+      .filter(h => h.type === "movie" && !h.id.startsWith("sport_") && h.progress && h.progress > 0 && h.progress < 0.95)
       .slice(0, 20)
       .map(h => ({
         id: h.id,
@@ -245,7 +245,7 @@ export default function MoviesScreen() {
   // Recently watched — for "Watch Again" row
   const recentlyWatched = useMemo(() => {
     return watchHistory
-      .filter(h => h.type === "movie")
+      .filter(h => h.type === "movie" && !h.id.startsWith("sport_"))
       .slice(0, 15)
       .map(h => ({
         id: h.id,
