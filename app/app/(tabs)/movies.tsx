@@ -39,7 +39,7 @@ async function withTimeout<T>(promise: Promise<T>, ms = 8000): Promise<T> {
 
 async function fetchMovies() {
   try {
-    const res = await withTimeout(apiRequest("GET", "/api/movies/trending"), 8000);
+    const res: any = await withTimeout(apiRequest("GET", "/api/movies/trending"), 8000);
     return await res.json();
   } catch (error: any) {
     return {
@@ -51,7 +51,7 @@ async function fetchMovies() {
 
 async function fetchMovieGenres(page = 1) {
   try {
-    const res = await withTimeout(apiRequest("GET", `/api/movies/genres-catalog?page=${page}`), 20000);
+    const res: any = await withTimeout(apiRequest("GET", `/api/movies/genres-catalog?page=${page}`), 20000);
     return await res.json();
   } catch {
     return { genres: [] };
@@ -60,7 +60,7 @@ async function fetchMovieGenres(page = 1) {
 
 async function fetchMovieDecades() {
   try {
-    const res = await withTimeout(apiRequest("GET", "/api/movies/decades"), 15000);
+    const res: any = await withTimeout(apiRequest("GET", "/api/movies/decades"), 15000);
     return await res.json();
   } catch {
     return { decades: [] };
@@ -69,7 +69,7 @@ async function fetchMovieDecades() {
 
 async function fetchGenreDiscover() {
   try {
-    const res = await withTimeout(apiRequest("GET", "/api/movies/discover-by-genre"), 15000);
+    const res: any = await withTimeout(apiRequest("GET", "/api/movies/discover-by-genre"), 15000);
     return await res.json();
   } catch {
     return { rows: [] };
@@ -158,7 +158,7 @@ export default function MoviesScreen() {
     queryKey: ["movies", "rec-for-you", topGenreIds.join(",")],
     queryFn: async () => {
       if (!topGenreIds.length) return { movies: [] };
-      const res = await withTimeout(apiRequest("GET", `/api/recommendations/for-you?genres=${topGenreIds.join(",")}`), 10000);
+      const res: any = await withTimeout(apiRequest("GET", `/api/recommendations/for-you?genres=${topGenreIds.join(",")}`), 10000);
       return await res.json();
     },
     staleTime: 30 * 60 * 1000,
@@ -168,14 +168,14 @@ export default function MoviesScreen() {
 
   // "Because You Watched" — similar to last watched movie
   const lastWatchedMovie = useMemo(() => {
-    return watchHistory.find(h => h.type === "movie" && h.tmdbId);
+    return watchHistory.find((h: any) => h.type === "movie" && h.tmdbId);
   }, [watchHistory]);
 
   const { data: becauseYouWatchedData } = useQuery({
     queryKey: ["movies", "because-you-watched", lastWatchedMovie?.tmdbId],
     queryFn: async () => {
       if (!lastWatchedMovie?.tmdbId) return { items: [] };
-      const res = await withTimeout(apiRequest("GET", `/api/recommendations/similar/${lastWatchedMovie.tmdbId}?type=movie`), 10000);
+      const res: any = await withTimeout(apiRequest("GET", `/api/recommendations/similar/${lastWatchedMovie.tmdbId}?type=movie`), 10000);
       return await res.json();
     },
     staleTime: 30 * 60 * 1000,
@@ -184,23 +184,23 @@ export default function MoviesScreen() {
   });
 
   const iptvMovies = useMemo(
-    () => iptvChannels.filter(c => c.category === "movie" && isChannelVisible(c.id, c.group)),
+    () => iptvChannels.filter((c: any) => c.category === "movie" && isChannelVisible(c.id, c.group)),
     [iptvChannels, isChannelVisible]
   );
 
   const iptvGroups = useMemo(() => {
     const groups = new Set<string>();
-    iptvMovies.forEach(c => { if (c.group) groups.add(c.group); });
+    iptvMovies.forEach((c: any) => { if (c.group) groups.add(c.group); });
     return ["All", ...Array.from(groups).sort()];
   }, [iptvMovies]);
 
   const filteredIptv = useMemo(() => {
-    let list = groupFilter === "All" ? iptvMovies : iptvMovies.filter(c => c.group === groupFilter);
+    let list = groupFilter === "All" ? iptvMovies : iptvMovies.filter((c: any) => c.group === groupFilter);
     if (search.trim()) {
       const q = search.toLowerCase();
-      list = list.filter(c => (c.title || c.name || "").toLowerCase().includes(q));
+      list = list.filter((c: any) => (c.title || c.name || "").toLowerCase().includes(q));
     }
-    return list.map(c => ({
+    return list.map((c: any) => ({
       id: c.id, title: c.title || c.name, poster: c.poster || null,
       backdrop: c.backdrop || null, synopsis: c.synopsis || "",
       year: c.year, imdb: c.rating, genre: [], quality: "HD",
@@ -225,9 +225,9 @@ export default function MoviesScreen() {
   // Continue Watching — movies from watch history
   const continueWatching = useMemo(() => {
     return watchHistory
-      .filter(h => h.type === "movie" && !h.id.startsWith("sport_") && h.progress && h.progress > 0 && h.progress < 0.95)
+      .filter((h: any) => h.type === "movie" && !h.id.startsWith("sport_") && h.progress && h.progress > 0 && h.progress < 0.95)
       .slice(0, 20)
-      .map(h => ({
+      .map((h: any) => ({
         id: h.id,
         title: h.title,
         poster: h.poster || null,
@@ -245,9 +245,9 @@ export default function MoviesScreen() {
   // Recently watched — for "Watch Again" row
   const recentlyWatched = useMemo(() => {
     return watchHistory
-      .filter(h => h.type === "movie" && !h.id.startsWith("sport_"))
+      .filter((h: any) => h.type === "movie" && !h.id.startsWith("sport_"))
       .slice(0, 15)
-      .map(h => ({
+      .map((h: any) => ({
         id: h.id,
         title: h.title,
         poster: h.poster || null,
@@ -395,7 +395,7 @@ export default function MoviesScreen() {
     const sortBy = CATEGORY_SORT[key] || "popularity.desc";
     setCategoryExtras(prev => ({ ...prev, [key]: { ...current, loading: true } }));
     try {
-      const res = await withTimeout(
+      const res: any = await withTimeout(
         apiRequest("GET", `/api/movies/all?page=${nextPage}&sort_by=${sortBy}`),
         15000
       );
@@ -889,7 +889,6 @@ const styles = StyleSheet.create({
   },
   errorText: { fontFamily: "Inter_500Medium", fontSize: 12, color: COLORS.textSecondary, flex: 1 },
   errorCodeText: { fontFamily: "Inter_400Regular", fontSize: 10, color: COLORS.textMuted },
-  section: { marginBottom: 28 },
   section: { marginBottom: 28 },
   sectionHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingHorizontal: 20, marginBottom: 12 },
   sectionTitle: { fontFamily: "Inter_700Bold", fontSize: 18, color: COLORS.text, paddingHorizontal: 20, marginBottom: 12 },
