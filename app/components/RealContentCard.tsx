@@ -223,9 +223,12 @@ export const RealHeroBanner = React.memo(function RealHeroBanner({ item, onPlay,
               }}
             >
               <Image
-                source={{ uri: `https://img.youtube.com/vi/${trailerKey}/hqdefault.jpg` }}
+                source={{ uri: `https://img.youtube.com/vi/${trailerKey}/maxresdefault.jpg` }}
                 style={StyleSheet.absoluteFill}
                 resizeMode="cover"
+                onError={(e) => {
+                  // fallback handled by parent image error state
+                }}
               />
               <View style={[StyleSheet.absoluteFill, { backgroundColor: "rgba(0,0,0,0.3)", alignItems: "center", justifyContent: "center" }]}>
                 <Ionicons name="play-circle" size={48} color="rgba(255,255,255,0.8)" />
@@ -505,27 +508,34 @@ const styles = StyleSheet.create({
   metaRow: { flexDirection: "row", alignItems: "center", gap: 10 },
   heroMeta: { fontFamily: "Inter_500Medium", fontSize: 12, color: COLORS.textMuted },
   ratingRow: { flexDirection: "row", alignItems: "center", gap: 3 },
-  heroActions: { flexDirection: "row", gap: 10, marginTop: 6 },
+  heroActions: { flexDirection: "row", gap: 12, marginTop: 8 },
   playButton: {
     flexDirection: "row",
     alignItems: "center",
+    justifyContent: "center",
     gap: 8,
     backgroundColor: COLORS.accent,
-    borderRadius: 10,
-    paddingHorizontal: 28,
-    paddingVertical: 13,
+    borderRadius: 12,
+    paddingHorizontal: 32,
+    paddingVertical: 14,
+    shadowColor: COLORS.accent,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.45,
+    shadowRadius: 12,
+    elevation: 8,
   },
-  playText: { fontFamily: "Inter_700Bold", fontSize: 16, color: "#FFFFFF" },
+  playText: { fontFamily: "Inter_800ExtraBold", fontSize: 16, color: "#FFFFFF", letterSpacing: 0.5 },
   infoButton: {
     flexDirection: "row",
     alignItems: "center",
+    justifyContent: "center",
     gap: 6,
-    backgroundColor: "rgba(255,255,255,0.08)",
-    borderRadius: 10,
-    paddingHorizontal: 18,
-    paddingVertical: 13,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.12)",
+    backgroundColor: "rgba(255,255,255,0.10)",
+    borderRadius: 12,
+    paddingHorizontal: 22,
+    paddingVertical: 14,
+    borderWidth: 1.5,
+    borderColor: "rgba(255,255,255,0.18)",
   },
-  infoText: { fontFamily: "Inter_600SemiBold", fontSize: 14, color: COLORS.text },
+  infoText: { fontFamily: "Inter_700Bold", fontSize: 14, color: COLORS.text },
 });

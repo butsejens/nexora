@@ -155,7 +155,7 @@ function getEmbedUrl(provider: string, tmdbId: string, type: string, season: str
         : `https://www.primewire.tf/embed/tv?tmdb=${tmdbId}&season=${s}&episode=${e}`;
     case "superembed":
       return isMovie
-        ? `https://multiembed.mov/?video_id=${tmdbId}&tmdb=1`
+        ? `https://multiembed.mov/?video_id=${tmdbId}&tmdb=1&s=1`
         : `https://multiembed.mov/?video_id=${tmdbId}&tmdb=1&s=${s}&e=${e}`;
     case "vidbinge":
       return isMovie
@@ -1077,7 +1077,7 @@ export default function PlayerScreen() {
   const embedUrl: string | null = (() => {
     if (paramEmbedUrl) return paramEmbedUrl;
     if (allProvidersFailed) return null;
-    if (trailerKey) return `https://www.youtube.com/embed/${trailerKey}?autoplay=1&rel=0&modestbranding=1&playsinline=1`;
+    if (trailerKey) return `https://www.youtube-nocookie.com/embed/${trailerKey}?autoplay=1&rel=0&modestbranding=1&playsinline=1&origin=https://nexora.app`;
     if (tmdbId) return getEmbedUrl(provider, tmdbId, type || "movie", season || "1", episode || "1");
     return null;
   })();
@@ -1114,7 +1114,7 @@ export default function PlayerScreen() {
           "vidsrc", "vidlink", "videasy", "autoembed", "moviesapi", "nontongo",
           "smashystream", "frembed", "jwplayer", "cloudflare", "m3u8", "hls", "stream",
           "rabbitstream", "vidcloud", "upcloud", "streamtape", "filemoon", "mixdrop", "dood",
-          "googlevideo", "akamaized", "cdn",
+          "googlevideo", "akamaized", "cdn", "youtube", "ytimg", "youtube-nocookie",
         ];
         const isKnownVideoHost = ALLOWED_HOST_SNIPPETS.some((snippet) => reqHost.includes(snippet));
         if (!isSameDomain) {

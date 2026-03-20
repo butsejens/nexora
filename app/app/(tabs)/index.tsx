@@ -815,14 +815,6 @@ export default function SportsScreen() {
   const showFiltersRef = useRef(true);
   const lastFilterToggleAtRef = useRef(0);
   const filterAnim = useRef(new Animated.Value(1)).current;
-  const headerAnim = useRef(new Animated.Value(1)).current;
-  const showHeaderRef = useRef(true);
-
-  const toggleHeaderVisibility = useCallback((visible: boolean) => {
-    if (showHeaderRef.current === visible) return;
-    showHeaderRef.current = visible;
-    Animated.timing(headerAnim, { toValue: visible ? 1 : 0, duration: 250, useNativeDriver: true }).start();
-  }, [headerAnim]);
 
   const toggleFiltersVisibility = useCallback((visible: boolean) => {
     if (showFiltersRef.current === visible) return;
@@ -1037,39 +1029,10 @@ export default function SportsScreen() {
     setRefreshing(false);
   }, [qc, selectedDate]);
 
-  const cumulativeDeltaRef = useRef(0);
-
   const handleFeedScroll = useCallback((event: any) => {
     const nextY = Number(event?.nativeEvent?.contentOffset?.y || 0);
-    const prevY = lastScrollYRef.current;
-    const delta = nextY - prevY;
     lastScrollYRef.current = nextY;
-
-    // At top: always show header
-    if (nextY <= 10) {
-      cumulativeDeltaRef.current = 0;
-      toggleFiltersVisibility(true);
-      toggleHeaderVisibility(true);
-      return;
-    }
-
-    // Accumulate scroll direction — reset on direction change
-    if ((delta > 0 && cumulativeDeltaRef.current < 0) || (delta < 0 && cumulativeDeltaRef.current > 0)) {
-      cumulativeDeltaRef.current = 0;
-    }
-    cumulativeDeltaRef.current += delta;
-
-    // Hide after 30px of cumulative downward scroll, past y=80
-    if (cumulativeDeltaRef.current > 30 && nextY > 80) {
-      toggleFiltersVisibility(false);
-      toggleHeaderVisibility(false);
-    }
-    // Show after 20px of cumulative upward scroll
-    else if (cumulativeDeltaRef.current < -20) {
-      toggleFiltersVisibility(true);
-      toggleHeaderVisibility(true);
-    }
-  }, [toggleFiltersVisibility, toggleHeaderVisibility]);
+  }, []);
 
   const sportToolSourceMatches = useMemo(() => {
     if (sortedUpcoming.length > 0) return sortedUpcoming;
@@ -1327,24 +1290,14 @@ export default function SportsScreen() {
     ...sortedUpcoming.slice(0, 12),
   ], [sortedLive, sortedUpcoming]);
 
-  const headerOpacity = headerAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 1] });
-  const headerTranslateY = headerAnim.interpolate({ inputRange: [0, 1], outputRange: [-120, 0] });
-  const miniTitleOpacity = headerAnim.interpolate({ inputRange: [0, 1], outputRange: [1, 0] });
-
   // Height of header + sub-nav (+ sport categories when visible) so ScrollView content starts below them
   const sportCatBarHeight = showCompetitionsSection ? 48 : 0;
   const headerAreaHeight = (Platform.OS === "web" ? 0 : insets.top) + 8 + 40 + 8 + 42 + sportCatBarHeight;
 
   return (
     <View style={styles.container}>
-      {/* Mini title bar – visible when header is scrolled away */}
-      <Animated.View style={{ opacity: miniTitleOpacity, position: "absolute", top: 0, left: 0, right: 0, zIndex: 100, paddingTop: Platform.OS === "web" ? 10 : insets.top + 6, paddingBottom: 8, paddingHorizontal: 16, backgroundColor: COLORS.background }} pointerEvents="none">
-        <Text style={{ fontFamily: "Inter_800ExtraBold", fontSize: 16, color: COLORS.text, letterSpacing: 1 }}>
-          <Text style={{ color: COLORS.accent }}>N</Text>EXORA <Text style={{ color: COLORS.accent }}>SPORT</Text>
-        </Text>
-      </Animated.View>
-
-      <Animated.View style={{ position: "absolute", top: 0, left: 0, right: 0, transform: [{ translateY: headerTranslateY }], opacity: headerOpacity, zIndex: 50 }}>
+      {/* Header — always visible */}
+      <View style={{ position: "absolute", top: 0, left: 0, right: 0, zIndex: 50 }}>
         <NexoraHeader
           title="SPORT"
           titleColor={P.accent}
@@ -1385,7 +1338,33 @@ export default function SportsScreen() {
             })}
           </ScrollView>
         </View>
-      </Animated.View>
+      </View>
+
+      {/* ── Sticky Sport Categories ── */}
+      {showCompetitionsSection && (
+        <View style={{ position: "absolute", top: (Platform.OS === "web" ? 0 : insets.top) + 8 + 40 + 8 + 42, left: 0, right: 0, zIndex: 40, backgroundColor: COLORS.background }}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={{ paddingHorizontal: 16, paddingVertical: 10, gap: 8, flexDirection: "row" }}
+          >
+            {SPORT_CATEGORIES.map((cat) => {
+              const isActive = sportCategory === cat.id;
+              return (
+                <TouchableOpacity
+                  key={cat.id}
+                  onPress={() => setSportCategory(cat.id as SportCategoryId)}
+                  activeOpacity={0.75}
+                  style={[styles.sportCatPill, isActive && styles.sportCatPillActive]}
+                >
+                  <Ionicons name={cat.icon} size={14} color={isActive ? "#fff" : P.muted} />
+                  <Text style={[styles.sportCatLabel, isActive && styles.sportCatLabelActive]}>{tFn(cat.labelKey)}</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+        </View>
+      )}
 
       {/* ── Sticky Sport Categories ── */}
       {showCompetitionsSection && (

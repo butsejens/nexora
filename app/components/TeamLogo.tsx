@@ -14,7 +14,9 @@ export const TeamLogo = React.memo(function TeamLogo({
 }) {
   const [failCount, setFailCount] = useState(0);
   const [imageLoaded, setImageLoaded] = useState(false);
+  const maxFails = 3;
   const resolved = useMemo(() => {
+    if (failCount >= maxFails) return null;
     // First try: full resolution (server URI + ESPN)
     if (failCount === 0) return resolveTeamLogoUri(teamName, uri);
     // Second try: skip server URI, go straight to ESPN fallbacks
@@ -55,7 +57,7 @@ export const TeamLogo = React.memo(function TeamLogo({
           resizeMode="contain"
           onLoad={() => setImageLoaded(true)}
           onError={() => {
-            setFailCount((c) => c + 1);
+            setFailCount((c) => Math.min(c + 1, maxFails));
             setImageLoaded(false);
           }}
         />

@@ -251,10 +251,13 @@ export function resolveTeamLogoUri(teamName?: string, logoUri?: string | null): 
   const espnId = ESPN_TEAM_LOGO_IDS[normalized];
   if (espnId) return `https://a.espncdn.com/i/teamlogos/soccer/500/${espnId}.png`;
 
-  // Try partial match: find ESPN entry where key is contained in normalized or vice versa
+  // Try partial match: find ESPN entry where key matches as a whole word in normalized or vice versa
   if (normalized.length >= 4) {
     for (const [key, id] of Object.entries(ESPN_TEAM_LOGO_IDS)) {
-      if (normalized.includes(key) || key.includes(normalized)) {
+      // Use word-boundary matching to prevent "lille" matching "lilliestrom"
+      const keyRegex = new RegExp(`\\b${key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`);
+      const normRegex = new RegExp(`\\b${normalized.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`);
+      if (keyRegex.test(normalized) || normRegex.test(key)) {
         return `https://a.espncdn.com/i/teamlogos/soccer/500/${id}.png`;
       }
     }
@@ -263,10 +266,12 @@ export function resolveTeamLogoUri(teamName?: string, logoUri?: string | null): 
   // National team fallback: try ESPN country logos
   const countryCode = NATIONAL_TEAM_CODES[normalized];
   if (countryCode) return `https://a.espncdn.com/i/teamlogos/countries/500/${countryCode}.png`;
-  // Partial match for national teams
+  // Partial match for national teams (word-boundary)
   if (normalized.length >= 4) {
     for (const [key, code] of Object.entries(NATIONAL_TEAM_CODES)) {
-      if (normalized.includes(key) || key.includes(normalized)) {
+      const keyRegex = new RegExp(`\\b${key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`);
+      const normRegex = new RegExp(`\\b${normalized.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`);
+      if (keyRegex.test(normalized) || normRegex.test(key)) {
         return `https://a.espncdn.com/i/teamlogos/countries/500/${code}.png`;
       }
     }
