@@ -2635,7 +2635,7 @@ async function enrichRosterPhotos(players, teamName) {
       const score = similarityScore(normName, entry.normed);
       if (score > bestScore) { bestScore = score; bestPhoto = entry.photo; }
     }
-    if (bestScore >= 0.45 && bestPhoto) return { ...player, photo: bestPhoto };
+    if (bestScore >= 0.35 && bestPhoto) return { ...player, photo: bestPhoto };
     return player;
   });
 
@@ -2667,7 +2667,7 @@ async function enrichRosterPhotos(players, teamName) {
       const score = similarityScore(normName, dbp.name || "");
       if (score > bestDbScore) { bestDbScore = score; bestDbPhoto = dbp.photo; }
     }
-    if (bestDbScore >= 0.45 && bestDbPhoto) return { ...player, photo: bestDbPhoto };
+    if (bestDbScore >= 0.35 && bestDbPhoto) return { ...player, photo: bestDbPhoto };
 
     // Last-name fallback when only one candidate shares the last name
     const lastNameParts = normName.split(" ");
@@ -2683,10 +2683,10 @@ async function enrichRosterPhotos(players, teamName) {
     return player;
   });
 
-  // Steps 3+4: TheSportsDB search + Wikipedia in parallel (batched, max 6 concurrent)
+  // Steps 3+4: TheSportsDB search + Wikipedia + Transfermarkt direct in parallel (batched, max 8 concurrent)
   const stillNeedBoth = enriched.filter((p) => p && !p.photo && p.name && p.name !== "Onbekend");
-  if (stillNeedBoth.length > 0 && stillNeedBoth.length <= 50) {
-    const BATCH = 6;
+  if (stillNeedBoth.length > 0 && stillNeedBoth.length <= 80) {
+    const BATCH = 8;
     const combinedMap = new Map();
     for (let i = 0; i < stillNeedBoth.length; i += BATCH) {
       const batch = stillNeedBoth.slice(i, i + BATCH);
@@ -2697,7 +2697,10 @@ async function enrichRosterPhotos(players, teamName) {
           try {
             const queries = [String(player.name || "").trim()];
             const parts = String(player.name || "").trim().split(/\s+/);
-            if (parts.length >= 2) queries.push(parts[parts.length - 1]);
+            if (parts.length >= 2) {
+              queries.push(parts[parts.length - 1]); // last name
+              queries.push(parts[0]); // first name
+            }
             for (const rawQ of queries) {
               const q = encodeURIComponent(rawQ);
               if (!q) continue;
@@ -2710,11 +2713,16 @@ async function enrichRosterPhotos(players, teamName) {
               for (const r of (data?.player || [])) {
                 const rName = normalizePersonName(r?.strPlayer || "");
                 const photo = r?.strCutout || r?.strThumb || r?.strRender || null;
-                if (photo && /^https?:\/\//i.test(photo) && similarityScore(normName, rName) >= 0.4) {
+                if (photo && /^https?:\/\//i.test(photo) && similarityScore(normName, rName) >= 0.35) {
                   return [player.name, photo];
                 }
               }
             }
+          } catch { /* ignore */ }
+          // Try Transfermarkt direct player search
+          try {
+            const tmResult = await fetchTransfermarktPlayerDirect(player.name, teamName);
+            if (tmResult?.photo) return [player.name, tmResult.photo];
           } catch { /* ignore */ }
           // Fall back to Wikipedia
           try {
@@ -7364,12 +7372,35 @@ app.get("/api/movies/:id/full", tmdbLimiter, async (req, res) => {
   try {
     if (!process.env.TMDB_API_KEY) return res.json(null);
 
-    const id = req.params.id;
-    const [detail, videos, credits] = await Promise.all([
-      tmdb(`/movie/${encodeURIComponent(id)}`),
-      tmdb(`/movie/${encodeURIComponent(id)}/videos`),
-      tmdb(`/movie/${encodeURIComponent(id)}/credits`),
-    ]);
+    let id = req.params.id;
+    let detail, videos, credits;
+
+    try {
+      [detail, videos, credits] = await Promise.all([
+        tmdb(`/movie/${encodeURIComponent(id)}`),
+        tmdb(`/movie/${encodeURIComponent(id)}/videos`),
+        tmdb(`/movie/${encodeURIComponent(id)}/credits`),
+      ]);
+    } catch (idErr) {
+      // Fallback: search by title if direct ID lookup fails (e.g. 404)
+      const title = String(req.query.title || "").trim();
+      if (title && idErr?.statusCode === 404) {
+        const search = await tmdb(`/search/movie?query=${encodeURIComponent(title)}`);
+        const first = search?.results?.[0];
+        if (first?.id) {
+          id = String(first.id);
+          [detail, videos, credits] = await Promise.all([
+            tmdb(`/movie/${encodeURIComponent(id)}`),
+            tmdb(`/movie/${encodeURIComponent(id)}/videos`),
+            tmdb(`/movie/${encodeURIComponent(id)}/credits`),
+          ]);
+        } else {
+          throw idErr;
+        }
+      } else {
+        throw idErr;
+      }
+    }
 
     // If no trailer found in nl-NL, retry with all languages
     let finalVideos = videos;
@@ -7388,12 +7419,35 @@ app.get("/api/series/:id/full", tmdbLimiter, async (req, res) => {
   try {
     if (!process.env.TMDB_API_KEY) return res.json(null);
 
-    const id = req.params.id;
-    const [detail, videos, credits] = await Promise.all([
-      tmdb(`/tv/${encodeURIComponent(id)}`),
-      tmdb(`/tv/${encodeURIComponent(id)}/videos`),
-      tmdb(`/tv/${encodeURIComponent(id)}/credits`),
-    ]);
+    let id = req.params.id;
+    let detail, videos, credits;
+
+    try {
+      [detail, videos, credits] = await Promise.all([
+        tmdb(`/tv/${encodeURIComponent(id)}`),
+        tmdb(`/tv/${encodeURIComponent(id)}/videos`),
+        tmdb(`/tv/${encodeURIComponent(id)}/credits`),
+      ]);
+    } catch (idErr) {
+      // Fallback: search by title if direct ID lookup fails (e.g. 404)
+      const title = String(req.query.title || "").trim();
+      if (title && idErr?.statusCode === 404) {
+        const search = await tmdb(`/search/tv?query=${encodeURIComponent(title)}`);
+        const first = search?.results?.[0];
+        if (first?.id) {
+          id = String(first.id);
+          [detail, videos, credits] = await Promise.all([
+            tmdb(`/tv/${encodeURIComponent(id)}`),
+            tmdb(`/tv/${encodeURIComponent(id)}/videos`),
+            tmdb(`/tv/${encodeURIComponent(id)}/credits`),
+          ]);
+        } else {
+          throw idErr;
+        }
+      } else {
+        throw idErr;
+      }
+    }
 
     // If no trailer found in nl-NL, retry with all languages
     let finalVideos = videos;

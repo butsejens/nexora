@@ -18,9 +18,10 @@ import { buildErrorReference, normalizeApiError } from "@/lib/error-messages";
 import { useTranslation } from "@/lib/useTranslation";
 
 // ── TMDB fetch ───────────────────────────────────────────────────────────────
-async function fetchDetails(id: string, type: string) {
+async function fetchDetails(id: string, type: string, title?: string) {
   const path = type === "movie" ? `/api/movies/${id}/full` : `/api/series/${id}/full`;
-  const res = await apiRequest("GET", path);
+  const titleParam = title ? `?title=${encodeURIComponent(title)}` : "";
+  const res = await apiRequest("GET", `${path}${titleParam}`);
   return res.json();
 }
 
@@ -313,7 +314,7 @@ export default function DetailScreen() {
 
   const { data: tmdbData, isLoading: tmdbLoading, error: tmdbError, refetch } = useQuery({
     queryKey: ["detail", type, tmdbId],
-    queryFn: () => fetchDetails(tmdbId!, type),
+    queryFn: () => fetchDetails(tmdbId!, type, paramTitle || undefined),
     enabled: !!tmdbId,
     staleTime: 10 * 60 * 1000,
     initialData: cachedDetail || undefined,
@@ -378,8 +379,17 @@ export default function DetailScreen() {
     return fallbackKey ? [{ key: fallbackKey, site: "youtube", type: "Trailer" }] : [];
   }, [data]);
   const activeTrailer = trailerCandidates[trailerIndex] || null;
+
+  // Cycle through embed providers when one fails (e.g. YouTube error 153)
+  const EMBED_PROVIDERS = [
+    (key: string) => `https://www.youtube-nocookie.com/embed/${encodeURIComponent(key)}?autoplay=1&hl=en&cc_lang_pref=en&rel=0&modestbranding=1&playsinline=1`,
+    (key: string) => `https://www.youtube.com/embed/${encodeURIComponent(key)}?autoplay=1&hl=en&cc_lang_pref=en&rel=0&modestbranding=1&playsinline=1`,
+    (key: string) => `https://inv.nadeko.net/embed/${encodeURIComponent(key)}?autoplay=1`,
+  ];
+  const [embedVariant, setEmbedVariant] = useState(0);
+  useEffect(() => { setEmbedVariant(0); }, [trailerIndex]);
   const trailerEmbedUrl = activeTrailer?.key
-    ? `https://www.youtube-nocookie.com/embed/${encodeURIComponent(String(activeTrailer.key))}?autoplay=1&hl=en&cc_lang_pref=en&rel=0&modestbranding=1&playsinline=1`
+    ? (EMBED_PROVIDERS[embedVariant] || EMBED_PROVIDERS[0])(String(activeTrailer.key))
     : null;
   const metadataItems = useMemo(() => {
     const originalTitle = String((data as any)?.originalTitle || "").trim();
@@ -419,6 +429,16 @@ export default function DetailScreen() {
   const advanceTrailer = () => {
     if (trailerAdvancingRef.current) return;
     trailerAdvancingRef.current = true;
+    // Try next embed provider for the same trailer key first
+    if (embedVariant + 1 < EMBED_PROVIDERS.length) {
+      setTimeout(() => {
+        setEmbedVariant((v) => v + 1);
+        setTrailerLoading(true);
+        trailerAdvancingRef.current = false;
+      }, 600);
+      return;
+    }
+    // All providers exhausted for this key — try next trailer candidate
     const nextIndex = trailerIndex + 1;
     if (nextIndex < trailerCandidates.length) {
       setTimeout(() => {
@@ -755,7 +775,7 @@ export default function DetailScreen() {
               {trailerEmbedUrl && !trailerUnavailable ? (
                 <>
                   <WebView
-                    key={`trailer-${trailerIndex}`}
+                    key={`trailer-${trailerIndex}-${embedVariant}`}
                     source={{ uri: trailerEmbedUrl }}
                     style={styles.trailerWebView}
                     allowsFullscreenVideo

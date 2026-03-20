@@ -152,9 +152,12 @@ export default function PlayerProfileScreen() {
     gcTime: 30 * 60_000,
   });
 
+  const espnId = String(data?.id || params.playerId || "");
+  const espnCdn = /^\d+$/.test(espnId) ? `https://a.espncdn.com/i/headshots/soccer/players/full/${espnId}.png` : null;
   const photoCandidates = useMemo(() => [
     data?.photo,
-  ].filter(Boolean) as string[], [data?.photo]);
+    espnCdn,
+  ].filter(Boolean) as string[], [data?.photo, espnCdn]);
 
   const [photoIdx, setPhotoIdx] = useState(0);
   const photoUri = photoCandidates[photoIdx] || null;
