@@ -148,7 +148,8 @@ export default function PlayerProfileScreen() {
         throw error;
       }
     },
-    staleTime: 60_000,
+    staleTime: 10 * 60_000,
+    gcTime: 30 * 60_000,
   });
 
   const safePlayerId = /^\d+$/.test(String(params.playerId || "").trim()) ? String(params.playerId).trim() : "";
@@ -225,8 +226,6 @@ export default function PlayerProfileScreen() {
             <Row label={t("playerProfile.weight")} value={normalizeText(data?.weight)} />
             <ClubRow label={t("playerProfile.currentClub")} value={normalizeText(data?.currentClub || params.team)} logo={data?.currentClubLogo} />
             <Row label={t("playerProfile.marketValue")} value={normalizeText(data?.marketValue || params.marketValue, t("playerProfile.valueUnknown"))} />
-            <Row label={t("playerProfile.valueSource")} value={normalizeText(data?.valueMethod)} />
-            <Row label={t("playerProfile.profileSource")} value={normalizeText(data?.source)} />
             <Row label={t("playerProfile.lastUpdated")} value={formatUpdatedAt(data?.updatedAt)} />
           </Card>
 

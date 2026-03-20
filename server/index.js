@@ -5191,6 +5191,52 @@ app.get("/api/sports/by-date", async (req, res) => {
   }
 });
 
+// Highlights/Replays — ScoreBat free API (real video embeds)
+app.get("/api/sports/highlights", async (req, res) => {
+  const CACHE_KEY = "scorebat_highlights";
+  try {
+    const payload = await getOrFetch(CACHE_KEY, 600_000, async () => {
+      const resp = await fetch("https://www.scorebat.com/video-api/v3/feed/?token=MTkwMTlfMTcyMTIyMTYyN18zOTFjOGRmMjRhOGQwNjMxMWUzYjU5YjgyYTBmYzJjZWI1MGRjOWFh", {
+        headers: { "user-agent": "Mozilla/5.0 (Nexora/1.0)", accept: "application/json" },
+        signal: AbortSignal.timeout(10000),
+      });
+      if (!resp.ok) return { highlights: [] };
+      const data = await resp.json();
+      const items = Array.isArray(data?.response) ? data.response : (Array.isArray(data) ? data : []);
+      const highlights = items.slice(0, 30).map((item) => {
+        const videos = Array.isArray(item?.videos) ? item.videos : [];
+        const embedUrl = videos.length > 0 ? (videos[0]?.embed || "") : "";
+        const matchUrl = item?.matchviewUrl || item?.url || "";
+        const competition = item?.competition?.name || item?.competitionName || "";
+        const competitionLogo = item?.competition?.url || "";
+        const title = item?.title || "";
+        // Extract team names from title like "Team A vs Team B"
+        const titleParts = title.split(/\s+(?:vs\.?|v\.?|-)\s+/i);
+        const homeTeam = titleParts[0]?.trim() || "";
+        const awayTeam = titleParts[1]?.replace(/\s*\(.*$/, "")?.trim() || "";
+        const thumbnail = item?.thumbnail || (videos[0]?.thumbnail || "");
+        return {
+          id: String(item?.id || matchUrl || title).slice(0, 100),
+          title,
+          homeTeam,
+          awayTeam,
+          competition,
+          competitionLogo,
+          thumbnail,
+          embedUrl: embedUrl.replace(/<[^>]+>/g, "").match(/src=["']([^"']+)["']/)?.[1] || embedUrl,
+          matchUrl,
+          date: item?.date || "",
+        };
+      }).filter((h) => h.title && (h.embedUrl || h.matchUrl));
+      return { highlights };
+    });
+    return res.json(payload);
+  } catch (e) {
+    console.error("[highlights] Error:", e?.message);
+    return res.json({ highlights: [], error: String(e?.message || "Unknown") });
+  }
+});
+
 // Match detail (used by match-detail.tsx)
 app.get("/api/sports/match/:matchId", async (req, res) => {
   const matchId = req.params.matchId;
@@ -6063,7 +6109,8 @@ app.get("/api/sports/team/:teamId", async (req, res) => {
         (async () => {
           const valuedPlayers = await enrichRosterMarketValues(players, teamDisplayName, espnLeague);
           const enrichedPlayers = await enrichRosterPhotos(valuedPlayers, teamDisplayName);
-          const tmClubData = await fetchTransfermarktClubPlayers(teamDisplayName);
+          // Reuse TM data from enrichRosterMarketValues cache (already fetched and cached during enrichment)
+          const tmClubData = cacheGet(`transfermarkt_club_${normalizePersonName(teamDisplayName)}`);
           const clubMarketValue = tmClubData?._clubMarketValue || null;
           const [sportsDbLogo, wikipediaLogo] = await Promise.all([
             fetchTheSportsDBTeamLogo(teamDisplayName),
@@ -6125,7 +6172,7 @@ app.get("/api/sports/player/:playerId", async (req, res) => {
   const cacheKey = `player_profile_${playerId}_${playerName}_${teamName}_${espnLeague}`;
 
   try {
-    const payload = await getOrFetch(cacheKey, 120_000, async () => {
+    const payload = await getOrFetch(cacheKey, 600_000, async () => {
       let espnAthlete = null;
       let espnTeam = null;
 
