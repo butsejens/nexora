@@ -209,6 +209,7 @@ export default function RootLayout() {
     const run = async (): Promise<boolean> => {
       try {
         if (__DEV__) return false;
+        if (!Updates.isEnabled) return false;
         const update = await Updates.checkForUpdateAsync();
         if (!update.isAvailable) return false;
         await Updates.fetchUpdateAsync();
