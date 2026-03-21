@@ -1,3 +1,4 @@
 {
-    "cmake.sourceDirectory": "/Users/jens/Downloads/nexora/node_modules/expo-modules-core/android"
+    "cmake.sourceDirectory": "/Users/jens/Downloads/nexora/node_modules/expo-modules-core/android",
+    "java.configuration.updateBuildConfiguration": "interactive"
 }
