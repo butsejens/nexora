@@ -4253,7 +4253,7 @@ app.get("/api/app-version", (req, res) => {
   const proto = forwardedProto || (isCloudHost ? "https" : req.protocol);
   const host  = req.headers["x-forwarded-host"]  || req.get("host");
   // Return the direct GitHub URL so the app can download without redirect hops.
-  const apkUrl = storedApkUrl || `${proto}://${host}/downloads/nexora.apk`;
+  const apkUrl = storedApkUrl || `${proto}://${host}/downloads/app-mobile-release.apk`;
   res.json({ version, apkUrl, directApkUrl: storedApkUrl || null });
 });
 
