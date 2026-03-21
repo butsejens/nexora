@@ -354,7 +354,16 @@ function UpdateModal({
   };
 
   const handleReload = async () => {
-    await Updates.reloadAsync();
+    if (!Updates.isEnabled) {
+      setStatus("idle");
+      return;
+    }
+    try {
+      await Updates.reloadAsync();
+    } catch {
+      setStatus("idle");
+      Alert.alert("Herstart mislukt", "Probeer opnieuw.");
+    }
   };
 
   const handleDownload = async () => {
