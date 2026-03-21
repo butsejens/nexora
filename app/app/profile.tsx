@@ -358,8 +358,8 @@ function UpdateModal({
   };
 
   const handleDownload = async () => {
-    // Prefer our own proxy endpoint first; it returns a clean APK response.
-    const url = apkUrl || directApkUrl;
+    // Prefer direct GitHub URL to avoid extra redirect hops through Render.
+    const url = directApkUrl || apkUrl;
     if (!url) return;
     const normalized = url.replace(/^http:\/\//i, "https://");
 

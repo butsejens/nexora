@@ -4252,30 +4252,20 @@ app.get("/api/app-version", (req, res) => {
   const isCloudHost = String(req.headers["x-forwarded-host"] || req.get("host") || "").includes("onrender.com");
   const proto = forwardedProto || (isCloudHost ? "https" : req.protocol);
   const host  = req.headers["x-forwarded-host"]  || req.get("host");
-  // Always expose the download through our own redirect endpoint so the app
-  // never needs to open a raw GitHub URL (avoids browser-specific download issues).
-  const apkUrl = storedApkUrl ? `${proto}://${host}/api/download/apk` : `${proto}://${host}/downloads/nexora.apk`;
+  // Return the direct GitHub URL so the app can download without redirect hops.
+  const apkUrl = storedApkUrl || `${proto}://${host}/downloads/nexora.apk`;
   res.json({ version, apkUrl, directApkUrl: storedApkUrl || null });
 });
 
-// ── APK download proxy ─────────────────────────────────────────────────────────
-// Streams the APK through Render so the user never gets redirected to GitHub.
+// ── APK download redirect ──────────────────────────────────────────────────────
+// Redirects to the GitHub release APK (streaming caused OOM on Render free tier).
 app.get("/api/download/apk", async (req, res) => {
   try {
     const vf = join(__dirname, "app-version.json");
     if (existsSync(vf)) {
       const data = JSON.parse(readFileSync(vf, "utf8"));
       if (data.apkUrl) {
-        const upstream = await fetch(data.apkUrl);
-        if (!upstream.ok) {
-          return res.status(502).json({ error: `APK niet beschikbaar (${upstream.status})` });
-        }
-        const payload = Buffer.from(await upstream.arrayBuffer());
-        res.setHeader("Content-Type", "application/vnd.android.package-archive");
-        res.setHeader("Content-Disposition", 'attachment; filename="nexora.apk"');
-        res.setHeader("Content-Length", String(payload.length));
-        res.send(payload);
-        return;
+        return res.redirect(302, data.apkUrl);
       }
     }
   } catch (err) {

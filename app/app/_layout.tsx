@@ -2,7 +2,7 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { Stack, router } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import React, { useEffect, useRef, useState } from "react";
-import { Alert } from "react-native";
+import { Alert, Platform, Linking } from "react-native";
 
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
@@ -14,6 +14,8 @@ import { NexoraBootScreen } from "@/components/NexoraBootScreen";
 import * as Updates from "expo-updates";
 import * as Notifications from "expo-notifications";
 import * as Application from "expo-application";
+import * as FileSystem from "expo-file-system/legacy";
+import * as IntentLauncher from "expo-intent-launcher";
 import Constants from "expo-constants";
 import {
   useFonts,
@@ -220,8 +222,8 @@ export default function RootLayout() {
     otaCheckDone = run();
   }, [bootDone]);
 
-  // Server update check — shows an in-app popup when a newer APK is available.
-  // Waits for OTA check to finish first: if OTA handled it, skip the alert.
+  // Server update check — auto-downloads and installs APK when a newer version is available.
+  // Waits for OTA check to finish first: if OTA handled it, skip.
   useEffect(() => {
     if (!bootDone) return;
     if (hasCheckedServerUpdateOnce) return;
@@ -242,21 +244,42 @@ export default function RootLayout() {
         const effectiveVer = resolveInstalledVersion();
         if (compareVersions(data.version, effectiveVer) <= 0) return;
 
-        // Small delay so the main UI is fully rendered before alert appears
-        await new Promise(r => setTimeout(r, 1200));
+        // Prefer direct GitHub URL to avoid redirect hops
+        const url = data.directApkUrl || data.apkUrl || "";
+        if (!url) return;
+        const normalized = url.replace(/^http:\/\//i, "https://");
 
-        Alert.alert(
-          "Update beschikbaar",
-          `Nexora ${data.version} is klaar.\nUpdate nu voor de nieuwste functies en bugfixes.`,
-          [
-            { text: "Straks", style: "cancel" },
-            {
-              text: "Update nu",
-              onPress: () => router.push("/profile?openUpdate=1"),
-            },
-          ],
-          { cancelable: true }
-        );
+        // Auto-download and install APK on Android
+        if (Platform.OS === "android") {
+          try {
+            const dir = (FileSystem.cacheDirectory || FileSystem.documentDirectory || "") + "updates/";
+            await FileSystem.makeDirectoryAsync(dir, { intermediates: true }).catch(() => {});
+            const filename = `nexora-update-${Date.now()}.apk`;
+            const fileUri = dir + filename;
+
+            const dl = FileSystem.createDownloadResumable(
+              normalized,
+              fileUri,
+              { headers: { Accept: "application/vnd.android.package-archive" } },
+            );
+            const result = await dl.downloadAsync();
+            if (!result?.uri) throw new Error("Download mislukt");
+
+            const contentUri = await FileSystem.getContentUriAsync(result.uri);
+            await IntentLauncher.startActivityAsync("android.intent.action.VIEW", {
+              data: contentUri,
+              type: "application/vnd.android.package-archive",
+              flags: 1, // FLAG_GRANT_READ_URI_PERMISSION
+            });
+          } catch {
+            // Fallback: open download URL in browser
+            try { await Linking.openURL(normalized); } catch {}
+          }
+          return;
+        }
+
+        // iOS / other: open in browser
+        try { await Linking.openURL(normalized); } catch {}
       } catch {}
     };
 
