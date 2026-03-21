@@ -890,7 +890,6 @@ const styles = StyleSheet.create({
   errorText: { fontFamily: "Inter_500Medium", fontSize: 12, color: COLORS.textSecondary, flex: 1 },
   errorCodeText: { fontFamily: "Inter_400Regular", fontSize: 10, color: COLORS.textMuted },
   section: { marginBottom: 28 },
-  section: { marginBottom: 28 },
   sectionHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingHorizontal: 20, marginBottom: 12 },
   sectionTitle: { fontFamily: "Inter_700Bold", fontSize: 18, color: COLORS.text, paddingHorizontal: 20, marginBottom: 12 },
   sectionHeaderTitle: { fontFamily: "Inter_700Bold", fontSize: 18, color: COLORS.text },

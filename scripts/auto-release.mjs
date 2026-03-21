@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { execSync } from "node:child_process";
 
@@ -6,10 +7,13 @@ const repoRoot = path.resolve(new URL("..", import.meta.url).pathname);
 const appJsonPath = path.join(repoRoot, "app", "app.json");
 const serverVersionPath = path.join(repoRoot, "server", "app-version.json");
 const androidGradlePath = path.join(repoRoot, "android", "app", "build.gradle");
+const rootPkgPath = path.join(repoRoot, "package.json");
 const appPkgPath = path.join(repoRoot, "app", "package.json");
 const serverPkgPath = path.join(repoRoot, "server", "package.json");
 const releaseApkPath = path.join(repoRoot, "android", "app", "build", "outputs", "apk", "release", "app-release.apk");
-const minReleaseApkBytes = 90 * 1024 * 1024;
+// 50MB floor — correct Hermes + New Architecture builds are ~60-65 MB; 98MB was a bloated
+// legacy build (wrong package/JSC). Threshold protects against truly empty/broken artifacts.
+const minReleaseApkBytes = 50 * 1024 * 1024;
 
 function run(command, cwd = repoRoot) {
   execSync(command, { cwd, stdio: "inherit", env: process.env });
@@ -48,9 +52,53 @@ function hasEncryptedEnvPair() {
   return fs.existsSync(path.join(repoRoot, "app", ".env.enc")) && fs.existsSync(path.join(repoRoot, "server", ".env.enc"));
 }
 
-function buildApk() {
+function getAaptPath() {
+  const configuredSdk = process.env.ANDROID_SDK_ROOT || process.env.ANDROID_HOME || path.join(os.homedir(), "Library", "Android", "sdk");
+  const buildToolsDir = path.join(configuredSdk, "build-tools");
+  if (!fs.existsSync(buildToolsDir)) {
+    throw new Error(`Android build-tools map ontbreekt: ${buildToolsDir}`);
+  }
+
+  const versions = fs.readdirSync(buildToolsDir).sort((left, right) => right.localeCompare(left, undefined, { numeric: true }));
+  for (const version of versions) {
+    const candidate = path.join(buildToolsDir, version, "aapt");
+    if (fs.existsSync(candidate)) {
+      return candidate;
+    }
+  }
+
+  throw new Error(`Kon geen aapt binary vinden in ${buildToolsDir}`);
+}
+
+function verifyReleaseApk(expectedVersion, expectedPackage) {
+  const aaptPath = getAaptPath();
+  const badging = execSync(`"${aaptPath}" dump badging "${releaseApkPath}"`, {
+    cwd: repoRoot,
+    encoding: "utf8",
+    env: process.env,
+  });
+  const packageLine = badging.split("\n").find((line) => line.startsWith("package:"));
+  if (!packageLine) {
+    throw new Error("Kon package metadata niet uitlezen uit release APK.");
+  }
+
+  const packageMatch = packageLine.match(/name='([^']+)'/);
+  const versionMatch = packageLine.match(/versionName='([^']+)'/);
+  const actualPackage = packageMatch?.[1] || "";
+  const actualVersion = versionMatch?.[1] || "";
+
+  if (actualPackage !== expectedPackage) {
+    throw new Error(`Release APK package mismatch: verwacht ${expectedPackage}, kreeg ${actualPackage || "onbekend"}.`);
+  }
+
+  if (actualVersion !== expectedVersion) {
+    throw new Error(`Release APK version mismatch: verwacht ${expectedVersion}, kreeg ${actualVersion || "onbekend"}.`);
+  }
+}
+
+function buildApk(expectedVersion, expectedPackage) {
   const androidCwd = path.join(repoRoot, "android");
-  run("./gradlew assembleRelease --rerun-tasks", androidCwd);
+  run("./gradlew clean assembleRelease --rerun-tasks", androidCwd);
   if (!fs.existsSync(releaseApkPath)) {
     throw new Error("APK build voltooid zonder release artifact: app-release.apk ontbreekt");
   }
@@ -60,6 +108,8 @@ function buildApk() {
     const mb = (apkBytes / (1024 * 1024)).toFixed(1);
     throw new Error(`Release APK is te klein (${mb}MB). Minimaal 90MB vereist.`);
   }
+
+  verifyReleaseApk(expectedVersion, expectedPackage);
 }
 
 function publishGithubRelease(version) {
@@ -70,6 +120,7 @@ function main() {
   const appJson = readJson(appJsonPath);
   const currentVersion = String(appJson?.expo?.version || "0.0.0");
   const nextVersion = bumpPatch(currentVersion);
+  const expectedAndroidPackage = String(appJson?.expo?.android?.package || "");
 
   appJson.expo.version = nextVersion;
   appJson.expo.runtimeVersion = nextVersion;
@@ -79,6 +130,10 @@ function main() {
   serverVersion.version = nextVersion;
   serverVersion.apkUrl = `https://github.com/butsejens/nexora/releases/download/v${nextVersion}/app-mobile-release.apk`;
   writeJson(serverVersionPath, serverVersion);
+
+  const rootPkg = readJson(rootPkgPath);
+  rootPkg.version = nextVersion;
+  writeJson(rootPkgPath, rootPkg);
 
   const appPkg = readJson(appPkgPath);
   appPkg.version = nextVersion;
@@ -92,10 +147,9 @@ function main() {
 
   run("npm -w app run lint");
   run("node --check server/index.js");
-  buildApk();
+  buildApk(nextVersion, expectedAndroidPackage);
 
-  run("git add app/app.json server/app-version.json app/package.json server/package.json");
-  run("git add -f app/android/app/build.gradle");
+  run("git add package.json app/app.json server/app-version.json app/package.json server/package.json android/app/build.gradle");
 
   try {
     run(`git commit -m \"chore(release): auto bump to ${nextVersion} [auto-release]\"`);
