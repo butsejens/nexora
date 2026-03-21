@@ -5,10 +5,11 @@ import { execSync } from "node:child_process";
 const repoRoot = path.resolve(new URL("..", import.meta.url).pathname);
 const appJsonPath = path.join(repoRoot, "app", "app.json");
 const serverVersionPath = path.join(repoRoot, "server", "app-version.json");
-const androidGradlePath = path.join(repoRoot, "app", "android", "app", "build.gradle");
+const androidGradlePath = path.join(repoRoot, "android", "app", "build.gradle");
 const appPkgPath = path.join(repoRoot, "app", "package.json");
 const serverPkgPath = path.join(repoRoot, "server", "package.json");
-const releaseApkPath = path.join(repoRoot, "app", "android", "app", "build", "outputs", "apk", "mobile", "release", "app-mobile-release.apk");
+const releaseApkPath = path.join(repoRoot, "android", "app", "build", "outputs", "apk", "release", "app-release.apk");
+const minReleaseApkBytes = 90 * 1024 * 1024;
 
 function run(command, cwd = repoRoot) {
   execSync(command, { cwd, stdio: "inherit", env: process.env });
@@ -48,15 +49,21 @@ function hasEncryptedEnvPair() {
 }
 
 function buildApk() {
-  const androidCwd = path.join(repoRoot, "app", "android");
+  const androidCwd = path.join(repoRoot, "android");
   run("./gradlew assembleRelease --rerun-tasks", androidCwd);
   if (!fs.existsSync(releaseApkPath)) {
     throw new Error("APK build voltooid zonder release artifact: app-release.apk ontbreekt");
   }
+
+  const apkBytes = fs.statSync(releaseApkPath).size;
+  if (apkBytes < minReleaseApkBytes) {
+    const mb = (apkBytes / (1024 * 1024)).toFixed(1);
+    throw new Error(`Release APK is te klein (${mb}MB). Minimaal 90MB vereist.`);
+  }
 }
 
 function publishGithubRelease(version) {
-  run(`gh release create "v${version}" "${releaseApkPath}" --title "v${version}" --notes "Nexora v${version}" --latest --repo butsejens/nexora`);
+  run(`gh release create "v${version}" "${releaseApkPath}#app-mobile-release.apk" --title "v${version}" --notes "Nexora v${version}" --latest --repo butsejens/nexora`);
 }
 
 function main() {
