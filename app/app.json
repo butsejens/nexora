@@ -5,8 +5,8 @@
     "version": "2.5.70",
   "runtimeVersion": "2.5.70",
     "updates": {
-      "enabled": true,
-      "checkAutomatically": "ON_LOAD",
+      "enabled": false,
+      "checkAutomatically": "NEVER",
       "fallbackToCacheTimeout": 0,
       "url": "https://u.expo.dev/d41d5b43-95e5-427b-b25f-780826d001e8",
       "requestHeaders": {
