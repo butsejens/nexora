@@ -113,7 +113,7 @@ function buildApk(expectedVersion, expectedPackage) {
 }
 
 function publishGithubRelease(version) {
-  run(`gh release create "v${version}" "${releaseApkPath}#app-mobile-release.apk" --title "v${version}" --notes "Nexora v${version}" --latest --repo butsejens/nexora`);
+  run(`gh release create "v${version}" "${releaseApkPath}" --title "v${version}" --notes "Nexora v${version}" --latest --repo butsejens/nexora`);
 }
 
 function main() {
@@ -128,7 +128,7 @@ function main() {
 
   const serverVersion = readJson(serverVersionPath);
   serverVersion.version = nextVersion;
-  serverVersion.apkUrl = `https://github.com/butsejens/nexora/releases/download/v${nextVersion}/app-mobile-release.apk`;
+  serverVersion.apkUrl = `https://github.com/butsejens/nexora/releases/download/v${nextVersion}/app-release.apk`;
   writeJson(serverVersionPath, serverVersion);
 
   const rootPkg = readJson(rootPkgPath);
@@ -158,7 +158,7 @@ function main() {
     return;
   }
 
-  run("git push");
+  run("git push --set-upstream origin main");
 
   publishGithubRelease(nextVersion);
 
