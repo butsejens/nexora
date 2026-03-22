@@ -1568,13 +1568,7 @@ export default function PlayerScreen() {
         </Animated.View>
       ) : (embedUrl && Platform.OS !== "web") ? (
         /* ─── Embed mode: auto-hide overlay (back + title + refresh) ─── */
-        <Animated.View style={[styles.embedMinimalOverlay, { opacity: controlsOpacity }]} pointerEvents={controlsVisible ? "auto" : "none"}>
-          {/* Background tap area — toggle controls */}
-          <TouchableOpacity
-            style={StyleSheet.absoluteFillObject}
-            onPress={toggleControls}
-            activeOpacity={1}
-          />
+        <Animated.View style={[styles.embedMinimalOverlay, { opacity: controlsOpacity }]} pointerEvents={controlsVisible ? "box-none" : "none"}>
           <LinearGradient colors={["rgba(0,0,0,0.7)", "transparent"]} style={[styles.embedMinimalBar, { paddingTop: insets.top + 8 }]}>
             <TouchableOpacity
               style={styles.embedBackBtn}
