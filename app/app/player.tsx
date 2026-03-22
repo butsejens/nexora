@@ -580,6 +580,11 @@ const AD_BLOCK_JS = `
   setTimeout(tryAutoPlay, 2000);
   setTimeout(tryAutoPlay, 3500);
   setTimeout(tryAutoPlay, 6000);
+
+  // ── 7. Notify React Native on user taps (toggle controls) ──────────
+  document.addEventListener('click', function(){
+    try{ window.ReactNativeWebView.postMessage(JSON.stringify({type:'user_tap'})); }catch(e){}
+  }, false);
 })();
 `;
 
@@ -1320,6 +1325,12 @@ export default function PlayerScreen() {
           originWhitelist={["http://*", "https://*", "about:*", "blob:*", "*"]}
           userAgent="Mozilla/5.0 (Linux; Android 12; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
           injectedJavaScriptBeforeContentLoaded={AD_BLOCK_JS}
+          onMessage={(event) => {
+            try {
+              const data = JSON.parse(event.nativeEvent.data);
+              if (data.type === "user_tap") toggleControls();
+            } catch {}
+          }}
           onLoad={() => { if (!disposedRef.current) { setIsLoading(false); setStreamError(null); setStreamErrorRef(""); injectEmbedAutoplay(); scheduleHide(); } }}
           onError={(event) => {
             if (disposedRef.current) return;
@@ -1593,14 +1604,6 @@ export default function PlayerScreen() {
           </LinearGradient>
         </Animated.View>
       ) : null}
-      {/* Tap zone to toggle embed controls when hidden */}
-      {embedUrl && Platform.OS !== "web" && !controlsVisible && (
-        <TouchableOpacity
-          style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, zIndex: 99 }}
-          activeOpacity={1}
-          onPress={toggleControls}
-        />
-      )}
     </View>
   );
 }
