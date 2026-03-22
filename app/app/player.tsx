@@ -589,6 +589,31 @@ const AD_BLOCK_JS = `
     _lastTapTime = now;
     try{ window.ReactNativeWebView.postMessage(JSON.stringify({type:'user_tap'})); }catch(e){}
   }, false);
+
+  // ── 8. Auto-fullscreen when video starts playing ──────────────────────
+  var _autoFSdone = false;
+  function goFullscreen(v){
+    if(_autoFSdone) return;
+    _autoFSdone = true;
+    try{
+      if(v.requestFullscreen) v.requestFullscreen();
+      else if(v.webkitEnterFullscreen) v.webkitEnterFullscreen();
+      else if(v.webkitRequestFullScreen) v.webkitRequestFullScreen();
+      else if(v.webkitRequestFullscreen) v.webkitRequestFullscreen();
+    }catch(e){}
+  }
+  document.addEventListener('playing', function(e){
+    if(e.target && e.target.tagName === 'VIDEO') goFullscreen(e.target);
+  }, true);
+  // Fallback: poll for playing video
+  var _fsInterval = setInterval(function(){
+    if(_autoFSdone){ clearInterval(_fsInterval); return; }
+    var vids = document.querySelectorAll('video');
+    for(var i=0; i<vids.length; i++){
+      if(!vids[i].paused && vids[i].readyState >= 2){ goFullscreen(vids[i]); break; }
+    }
+  }, 1500);
+  setTimeout(function(){ clearInterval(_fsInterval); }, 30000);
 })();
 `;
 
