@@ -755,6 +755,9 @@ const [showAddPlaylist, setShowAddPlaylist] = useState(false);
   const configVersion = String(Constants.expoConfig?.version || "0.0.0");
   const runtimeVersion = String(Updates.runtimeVersion || "0.0.0");
   const appVersion = [nativeVersion, configVersion, runtimeVersion].sort(compareVersions).at(-1) || nativeVersion;
+  const softwareVersion = Updates.updateId
+    ? `${configVersion}-${Updates.updateId.slice(0, 8)}`
+    : configVersion;
 
   const handleManualUpdateCheck = useCallback(() => {
     setShowUpdateModal(true);
@@ -1639,12 +1642,13 @@ const [showAddPlaylist, setShowAddPlaylist] = useState(false);
         </Section>
 
         <Section title={t("settings.about")}>
-          <SettingRow icon="information-circle-outline" label={t("settings.version")} value={appVersion} />
+          <SettingRow icon="phone-portrait-outline" label={t("settings.appVersion")} value={appVersion} />
+          <Divider />
+          <SettingRow icon="code-slash-outline" label={t("settings.softwareVersion")} value={softwareVersion} />
           <Divider />
           <SettingRow
             icon="cloud-download-outline"
             label={t("settings.checkUpdates")}
-            value={appVersion}
             onPress={handleManualUpdateCheck}
           />
           <Divider />
