@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useRef } from "react";
+import React, { useEffect, useMemo, useState, useRef } from "react";
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   Image, Modal, Platform, Alert, ActivityIndicator,

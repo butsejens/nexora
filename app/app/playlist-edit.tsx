@@ -66,8 +66,7 @@ export default function PlaylistEditScreen() {
         showProfile={false}
         rightElement={
           <TouchableOpacity onPress={() => router.back()} style={{ padding: 8 }}>
-            <Ionicons name="chevron-back" size={22} color={COLORS.textSecondary}   onProfile={() => router.push("/profile")}
-      />
+            <Ionicons name="chevron-back" size={22} color={COLORS.textSecondary} />
           </TouchableOpacity>
         }
       />
