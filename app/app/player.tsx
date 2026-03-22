@@ -581,8 +581,12 @@ const AD_BLOCK_JS = `
   setTimeout(tryAutoPlay, 3500);
   setTimeout(tryAutoPlay, 6000);
 
-  // ── 7. Notify React Native on user taps (toggle controls) ──────────
-  document.addEventListener('click', function(){
+  // ── 7. Notify React Native on real user taps (toggle controls) ──────
+  var _lastTapTime = 0;
+  document.addEventListener('touchend', function(e){
+    var now = Date.now();
+    if(now - _lastTapTime < 400) return; // debounce
+    _lastTapTime = now;
     try{ window.ReactNativeWebView.postMessage(JSON.stringify({type:'user_tap'})); }catch(e){}
   }, false);
 })();
