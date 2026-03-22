@@ -947,6 +947,17 @@ export default function PlayerScreen() {
     scheduleHide();
   }, [controlsOpacity, scheduleHide]);
 
+  const hideControls = useCallback(() => {
+    if (hideTimer.current) clearTimeout(hideTimer.current);
+    Animated.timing(controlsOpacity, { toValue: 0, duration: 300, useNativeDriver: true }).start(
+      () => setControlsVisible(false)
+    );
+  }, [controlsOpacity]);
+
+  const toggleControls = useCallback(() => {
+    if (controlsVisible) { hideControls(); } else { showControls(); }
+  }, [controlsVisible, hideControls, showControls]);
+
   useEffect(() => {
     disposedRef.current = false;
     // Don't save trailers or sport highlights/replays to watch history
@@ -1426,10 +1437,10 @@ export default function PlayerScreen() {
           style={[styles.overlay, { opacity: controlsOpacity }]}
           pointerEvents={controlsVisible ? "auto" : "none"}
         >
-          {/* Background tap area — dismisses overlay on empty-space tap */}
+          {/* Background tap area — toggles overlay */}
           <TouchableOpacity
             style={StyleSheet.absoluteFillObject}
-            onPress={() => setControlsVisible(false)}
+            onPress={hideControls}
             activeOpacity={1}
           />
           {/* Top bar */}
@@ -1557,7 +1568,13 @@ export default function PlayerScreen() {
         </Animated.View>
       ) : (embedUrl && Platform.OS !== "web") ? (
         /* ─── Embed mode: auto-hide overlay (back + title + refresh) ─── */
-        <Animated.View style={[styles.embedMinimalOverlay, { opacity: controlsOpacity }]} pointerEvents={controlsVisible ? "box-none" : "none"}>
+        <Animated.View style={[styles.embedMinimalOverlay, { opacity: controlsOpacity }]} pointerEvents={controlsVisible ? "auto" : "none"}>
+          {/* Background tap area — toggle controls */}
+          <TouchableOpacity
+            style={StyleSheet.absoluteFillObject}
+            onPress={toggleControls}
+            activeOpacity={1}
+          />
           <LinearGradient colors={["rgba(0,0,0,0.7)", "transparent"]} style={[styles.embedMinimalBar, { paddingTop: insets.top + 8 }]}>
             <TouchableOpacity
               style={styles.embedBackBtn}
@@ -1582,12 +1599,12 @@ export default function PlayerScreen() {
           </LinearGradient>
         </Animated.View>
       ) : null}
-      {/* Tap zone to re-show embed controls when hidden */}
+      {/* Tap zone to toggle embed controls when hidden */}
       {embedUrl && Platform.OS !== "web" && !controlsVisible && (
         <TouchableOpacity
           style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, zIndex: 99 }}
           activeOpacity={1}
-          onPress={showControls}
+          onPress={toggleControls}
         />
       )}
     </View>
