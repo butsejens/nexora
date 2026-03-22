@@ -1354,7 +1354,7 @@ export default function SportsScreen() {
 
       {/* ── Sticky Sport Categories ── */}
       {showCompetitionsSection && (
-        <View style={{ position: "absolute", top: (Platform.OS === "web" ? 0 : insets.top) + 8 + headerContentHeight + 8 + 42, left: 0, right: 0, zIndex: 40, backgroundColor: COLORS.background }}>
+        <View style={{ position: "absolute", top: (Platform.OS === "web" ? 0 : insets.top) + nexoraHeaderHeight + subNavHeight, left: 0, right: 0, zIndex: 40, backgroundColor: COLORS.background }}>
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
