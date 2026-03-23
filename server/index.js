@@ -1807,6 +1807,81 @@ async function enrichStandingsLogos(standings, leagueName) {
 }
 
 // Enrich topscorer teamLogo fields using Football-logos + TheSportsDB + Wikipedia
+// Enrich scorer photos — parallel search for scorers missing photos
+async function enrichScorersPhotos(scorers, leagueName) {
+  if (!Array.isArray(scorers) || scorers.length === 0) return scorers;
+  const needPhoto = scorers.filter((s) => s && !s.photo && s.name);
+  if (needPhoto.length === 0) return scorers;
+
+  console.log(`[topscorers][photos] ${leagueName}: ${needPhoto.length}/${scorers.length} scorers need photo enrichment`);
+  const photoMap = new Map();
+
+  // Batch: Transfermarkt search + TheSportsDB search + Wikipedia (parallel per scorer)
+  const BATCH = 8;
+  for (let i = 0; i < needPhoto.length; i += BATCH) {
+    const batch = needPhoto.slice(i, i + BATCH);
+    const results = await Promise.all(
+      batch.map(async (scorer) => {
+        const name = String(scorer.name || "").trim();
+        const team = String(scorer.team || "").trim();
+        // 1. Transfermarkt direct search (most accurate)
+        try {
+          const tm = await fetchTransfermarktPlayerDirect(name, team);
+          if (tm?.photo) return [name, proxyPhotoUrl(tm.photo)];
+        } catch { /* ignore */ }
+        // 2. TheSportsDB player search
+        try {
+          const q = encodeURIComponent(name);
+          const resp = await fetch(`https://www.thesportsdb.com/api/v1/json/3/searchplayers.php?p=${q}`, {
+            headers: { "user-agent": "Mozilla/5.0 (Nexora/1.0)" },
+            signal: AbortSignal.timeout(5000),
+          });
+          if (resp.ok) {
+            const data = await resp.json();
+            const normName = normalizePersonName(name);
+            const normTeam = normalizePersonName(team);
+            for (const r of (data?.player || [])) {
+              const rName = normalizePersonName(r?.strPlayer || "");
+              const rTeam = normalizePersonName(r?.strTeam || "");
+              const photo = r?.strCutout || r?.strThumb || r?.strRender || null;
+              if (!photo || !/^https?:\/\//i.test(photo)) continue;
+              const nameScore = similarityScore(normName, rName);
+              const teamMatch = normTeam && similarityScore(normTeam, rTeam) >= 0.45;
+              if (nameScore >= 0.50 || (nameScore >= 0.40 && teamMatch)) {
+                return [name, photo];
+              }
+            }
+          }
+        } catch { /* ignore */ }
+        // 3. Wikipedia photo
+        try {
+          const wiki = await fetchWikipediaPlayerPhoto(name);
+          if (wiki) return [name, wiki];
+        } catch { /* ignore */ }
+        // 4. ESPN CDN fallback
+        const espnId = String(scorer.id || "").trim();
+        if (espnId && /^\d+$/.test(espnId)) {
+          return [name, `https://a.espncdn.com/i/headshots/soccer/players/full/${espnId}.png`];
+        }
+        // 5. UI Avatars guaranteed fallback
+        return [name, `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&size=256&background=1a1a2e&color=e0e0e0&bold=true&format=png`];
+      })
+    );
+    for (const [name, photo] of results) {
+      if (name && photo) photoMap.set(name, photo);
+    }
+  }
+
+  if (photoMap.size > 0) {
+    console.log(`[topscorers][photos] ${leagueName}: Resolved ${photoMap.size} scorer photos`);
+  }
+  return scorers.map((s) => {
+    if (!s || s.photo) return s;
+    const found = photoMap.get(s.name);
+    return found ? { ...s, photo: found } : s;
+  });
+}
+
 async function enrichScorersLogos(scorers, leagueName) {
   if (!Array.isArray(scorers) || scorers.length === 0) return scorers;
 
@@ -2888,6 +2963,15 @@ async function enrichRosterPhotos(players, teamName) {
       return { ...player, photo: `https://a.espncdn.com/i/headshots/soccer/players/full/${espnId}.png` };
     }
     return player;
+  });
+
+  // ------ Step 7: UI Avatars guaranteed fallback (generates avatar from initials) ------
+  enriched = enriched.map((player) => {
+    if (!player || player.photo) return player;
+    const name = String(player.name || "Player").trim();
+    if (!name || name === "Onbekend") return player;
+    const avatarUrl = `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&size=256&background=1a1a2e&color=e0e0e0&bold=true&format=png`;
+    return { ...player, photo: avatarUrl, isGeneratedAvatar: true };
   });
 
   const withPhoto = enriched.filter((p) => p && p.photo).length;
@@ -6003,6 +6087,8 @@ app.get("/api/sports/topscorers/:league", async (req, res) => {
             )
           );
           console.log(`[topscorers] ${leagueName}: ESPN → ${scorers.length} scorers (enriched)`);
+          // Enrich scorer photos (Transfermarkt + TheSportsDB + Wikipedia + fallbacks)
+          scorers = await enrichScorersPhotos(scorers, leagueName);
           return { league: leagueName, season, seasonLabel, scorers, source: "espn" };
         }
       } catch (e) {
@@ -6015,6 +6101,7 @@ app.get("/api/sports/topscorers/:league", async (req, res) => {
         if (htmlScorers.length > 0) {
           htmlScorers = await enrichScorersLogos(htmlScorers, leagueName);
           console.log(`[topscorers] ${leagueName}: ESPN HTML → ${htmlScorers.length} scorers`);
+          htmlScorers = await enrichScorersPhotos(htmlScorers, leagueName);
           return { league: leagueName, season, seasonLabel, scorers: htmlScorers, source: "espn-html" };
         }
       } catch (e) {
@@ -6517,6 +6604,10 @@ app.get("/api/sports/player/:playerId", async (req, res) => {
       const espnPlayerId = String(espnAthlete?.id || valued?.id || "");
       if (!resolvedPhoto && espnPlayerId && /^\d+$/.test(espnPlayerId)) {
         resolvedPhoto = `https://a.espncdn.com/i/headshots/soccer/players/full/${encodeURIComponent(espnPlayerId)}.png`;
+      }
+      // UI Avatars guaranteed fallback
+      if (!resolvedPhoto && name && name !== "Onbekend") {
+        resolvedPhoto = `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&size=256&background=1a1a2e&color=e0e0e0&bold=true&format=png`;
       }
       const baseClubLogo = normalizeTeamLogo(
         clubName,
