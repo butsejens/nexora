@@ -973,8 +973,8 @@ async function validateEspnHeadshot(url) {
     const resp = await fetch(url, { method: "HEAD", signal: AbortSignal.timeout(4000) });
     if (!resp.ok) return null;
     const len = parseInt(resp.headers.get("content-length") || "0", 10);
-    // Real ESPN headshots are 15KB-200KB+; black placeholders are ~1-5KB
-    if (len > 0 && len < 10000) return null;
+    // Real ESPN headshots are 8KB-200KB+; black placeholders are ~1-3KB
+    if (len > 0 && len < 4500) return null;
     return url;
   } catch {
     return null;
@@ -1616,6 +1616,14 @@ async function fetchWikipediaPlayerPhoto(playerName, hintContext = "") {
       `${playerName.trim()} (soccer)`,
       `${playerName.trim()} (Belgian footballer)`,
       `${playerName.trim()} (Dutch footballer)`,
+      `${playerName.trim()} (French footballer)`,
+      `${playerName.trim()} (Spanish footballer)`,
+      `${playerName.trim()} (German footballer)`,
+      `${playerName.trim()} (Brazilian footballer)`,
+      `${playerName.trim()} (Portuguese footballer)`,
+      `${playerName.trim()} (English footballer)`,
+      `${playerName.trim()} (Italian footballer)`,
+      `${playerName.trim()} (Argentine footballer)`,
     ];
     for (const variant of footballerVariants) {
       const photo = await fetchPageImage(variant);
@@ -1624,22 +1632,22 @@ async function fetchWikipediaPlayerPhoto(playerName, hintContext = "") {
 
     // Final: Wikipedia opensearch
     const searchResp = await fetch(
-      `https://en.wikipedia.org/w/api.php?action=opensearch&search=${encodeURIComponent(playerName)}&limit=3&format=json&origin=*`,
+      `https://en.wikipedia.org/w/api.php?action=opensearch&search=${encodeURIComponent(playerName)}&limit=7&format=json&origin=*`,
       { headers: { "User-Agent": "NexoraApp/1.0 (sports app)" }, signal: AbortSignal.timeout(4000) }
     );
     if (searchResp.ok) {
       const searchData = await searchResp.json();
       const results = searchData?.[1] || [];
-      for (const title of results.slice(0, 3)) {
+      for (const title of results.slice(0, 7)) {
         const photo = await fetchPageImage(title);
         if (photo) { cacheSet(cacheKey, photo, 86_400_000); return photo; }
       }
     }
 
-    cacheSet(cacheKey, null, 300_000);
+    cacheSet(cacheKey, null, 60_000);
     return null;
   } catch {
-    cacheSet(cacheKey, null, 300_000);
+    cacheSet(cacheKey, null, 60_000);
     return null;
   }
 }
@@ -1861,8 +1869,8 @@ async function enrichScorersPhotos(scorers, leagueName) {
               const photo = r?.strCutout || r?.strThumb || r?.strRender || null;
               if (!photo || !/^https?:\/\//i.test(photo)) continue;
               const nameScore = similarityScore(normName, rName);
-              const teamMatch = normTeam && similarityScore(normTeam, rTeam) >= 0.45;
-              if (nameScore >= 0.50 || (nameScore >= 0.40 && teamMatch)) {
+              const teamMatch = normTeam && similarityScore(normTeam, rTeam) >= 0.40;
+              if (nameScore >= 0.42 || (nameScore >= 0.35 && teamMatch)) {
                 return [name, photo];
               }
             }
@@ -2843,7 +2851,7 @@ async function enrichRosterPhotos(players, teamName) {
           const score = similarityScore(normName, entry.normed);
           if (score > bestTmScore) { bestTmScore = score; bestTmPhoto = entry.photo; }
         }
-        if (bestTmScore >= 0.45 && bestTmPhoto) bestPhoto = bestTmPhoto;
+        if (bestTmScore >= 0.38 && bestTmPhoto) bestPhoto = bestTmPhoto;
       }
     }
 
@@ -2859,7 +2867,7 @@ async function enrichRosterPhotos(players, teamName) {
         const score = similarityScore(normName, entry.name);
         if (score > bestDbScore) { bestDbScore = score; bestDbPhoto = entry.photo; }
       }
-      if (bestDbScore >= 0.45 && bestDbPhoto) {
+      if (bestDbScore >= 0.38 && bestDbPhoto) {
         sportsDbPhoto = bestDbPhoto;
         if (!bestPhoto) bestPhoto = bestDbPhoto;
       } else {
@@ -2888,7 +2896,7 @@ async function enrichRosterPhotos(players, teamName) {
 
   // ------ Steps 3+4: TheSportsDB search + TM direct + Wikipedia (parallel, batched) ------
   const stillNeed = enriched.filter((p) => p && !p.photo && p.name && p.name !== "Onbekend");
-  if (stillNeed.length > 0 && stillNeed.length <= 80) {
+  if (stillNeed.length > 0 && stillNeed.length <= 200) {
     const BATCH = 10;
     const combinedMap = new Map();
     for (let i = 0; i < stillNeed.length; i += BATCH) {
@@ -2922,7 +2930,7 @@ async function enrichRosterPhotos(players, teamName) {
                 const photo = r?.strCutout || r?.strThumb || r?.strRender || null;
                 if (!photo || !/^https?:\/\//i.test(photo)) continue;
                 const nameScore = similarityScore(normName, rName);
-                if (nameScore < 0.50) continue;
+                if (nameScore < 0.42) continue;
                 // Boost score if team matches (strTeam or strTeam2)
                 const rTeam = normalizePersonName(r?.strTeam || "");
                 const rTeam2 = normalizePersonName(r?.strTeam2 || "");
