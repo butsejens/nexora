@@ -17,10 +17,10 @@ export const TeamLogo = React.memo(function TeamLogo({
   const maxFails = 3;
   const resolved = useMemo(() => {
     if (failCount >= maxFails) return null;
-    // First try: full resolution (server URI + ESPN)
+    // First try: server URI preferred, ESPN fallback
     if (failCount === 0) return resolveTeamLogoUri(teamName, uri);
-    // Second try: skip server URI, go straight to ESPN fallbacks
-    if (failCount === 1 && uri) return resolveTeamLogoUri(teamName, null);
+    // Second try: ESPN-only fallback (skip possibly-broken server URI)
+    if (failCount === 1) return resolveTeamLogoUri(teamName, null);
     return null;
   }, [teamName, uri, failCount]);
   const initials = useMemo(() => getInitials(teamName, 2), [teamName]);
