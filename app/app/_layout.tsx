@@ -17,6 +17,21 @@ import * as Application from "expo-application";
 import * as FileSystem from "expo-file-system/legacy";
 import * as IntentLauncher from "expo-intent-launcher";
 import Constants from "expo-constants";
+
+// Prefetch key API data into React Query cache so screens load instantly
+function prefetchHomeData() {
+  const today = new Date().toISOString().slice(0, 10);
+  const date = encodeURIComponent(today);
+  const fetcher = async (path: string) => {
+    const res = await apiRequest("GET", path);
+    return res.json();
+  };
+  // Fire all prefetches in parallel, silently ignore errors
+  queryClient.prefetchQuery({ queryKey: ["sports", "live", today], queryFn: () => fetcher(`/api/sports/live?date=${date}`), staleTime: 4_000 });
+  queryClient.prefetchQuery({ queryKey: ["sports", "today", today], queryFn: () => fetcher(`/api/sports/by-date?date=${date}`), staleTime: 30_000 });
+  queryClient.prefetchQuery({ queryKey: ["sports", "menu-tools", today, "all"], queryFn: () => fetcher(`/api/sports/menu-tools?date=${date}&league=all`), staleTime: 20_000 });
+  queryClient.prefetchQuery({ queryKey: ["sports", "highlights"], queryFn: () => fetcher("/api/sports/highlights"), staleTime: 10 * 60 * 1000 });
+}
 import {
   useFonts,
   Inter_400Regular,
@@ -165,6 +180,8 @@ export default function RootLayout() {
               fetch(`${candidates[0]}/health`).catch(() => null),
               new Promise((resolve) => setTimeout(resolve, isCloud ? 5000 : 2500)),
             ]);
+            // Server is reachable — start prefetching data in the background
+            prefetchHomeData();
           } else {
             await new Promise((resolve) => setTimeout(resolve, 900));
           }

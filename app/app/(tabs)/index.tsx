@@ -545,7 +545,7 @@ const liveCardStyles = StyleSheet.create({
   },
   topRow: { flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 10, paddingLeft: 4 },
   leagueLogo: { width: 20, height: 20 },
-  leagueLogoPlaceholder: { width: 20, height: 20, borderRadius: 10, backgroundColor: P.elevated },
+  leagueLogoPlaceholder: { width: 22, height: 22, borderRadius: 5, backgroundColor: P.elevated },
   leagueName: { flex: 1, color: P.muted, fontSize: 11, fontWeight: "500" },
   livePill: {
     flexDirection: "row", alignItems: "center", gap: 4,

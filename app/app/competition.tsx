@@ -600,7 +600,7 @@ const styles = StyleSheet.create({
   backBtn: { width: 38, height: 38, alignItems: "center", justifyContent: "center", marginBottom: 6 },
   headerContent: { alignItems: "center", gap: 6 },
   headerIconWrap: {
-    width: 56, height: 56, borderRadius: 28,
+    width: 64, height: 64, borderRadius: 14,
     backgroundColor: "rgba(255,255,255,0.12)",
     borderWidth: 1, borderColor: "rgba(255,255,255,0.2)",
     alignItems: "center", justifyContent: "center",

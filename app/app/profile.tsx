@@ -1799,19 +1799,19 @@ const styles = StyleSheet.create({
   profileSection: { alignItems: "center", paddingVertical: 22, gap: 6 },
   avatarContainer: { position: "relative", marginBottom: 8 },
   avatar: {
-    width: 80, height: 80, borderRadius: 40, backgroundColor: COLORS.cardElevated,
+    width: 86, height: 86, borderRadius: 18, backgroundColor: COLORS.cardElevated,
     borderWidth: 2, borderColor: COLORS.accent, alignItems: "center", justifyContent: "center",
     overflow: "hidden",
   },
-  avatarImage: { width: 80, height: 80, borderRadius: 40 },
+  avatarImage: { width: 86, height: 86, borderRadius: 18 },
   avatarEditBadge: {
-    position: "absolute", bottom: 0, right: 0, width: 26, height: 26, borderRadius: 13,
+    position: "absolute", bottom: 0, right: 0, width: 26, height: 26, borderRadius: 8,
     backgroundColor: COLORS.accent, alignItems: "center", justifyContent: "center",
     borderWidth: 2, borderColor: COLORS.background,
   },
   glowRing: {
-    position: "absolute", top: -4, left: -4, width: 88, height: 88,
-    borderRadius: 44, borderWidth: 1, borderColor: COLORS.accentGlowStrong,
+    position: "absolute", top: -4, left: -4, width: 94, height: 94,
+    borderRadius: 22, borderWidth: 1, borderColor: COLORS.accentGlowStrong,
   },
   profileName: { fontFamily: "Inter_700Bold", fontSize: 20, color: COLORS.text, marginBottom: 8 },
   premiumBadge: {
