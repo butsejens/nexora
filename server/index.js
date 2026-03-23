@@ -1520,9 +1520,9 @@ async function fetchWikipediaPageImage(title) {
   }
 }
 
-// AI-assisted player photo resolution via Groq – asks LLM for correct Wikipedia titles
+// AI-assisted player photo resolution via Gemini – asks LLM for correct Wikipedia titles
 async function resolvePlayerPhotosViaAI(players, teamName) {
-  const key = process.env.GROQ_API_KEY;
+  const key = process.env.GEMINI_API_KEY;
   if (!key || !Array.isArray(players) || players.length === 0) return new Map();
 
   const photoMap = new Map();
@@ -1547,7 +1547,7 @@ ${playerList}
 Return a JSON object mapping each player name to their EXACT English Wikipedia article title. Use null if unknown or uncertain.
 Return ONLY valid JSON. No markdown, no explanation.`;
 
-      const response = await groqChat(
+      const response = await geminiChat(
         [
           { role: "system", content: `You are a football/soccer expert who identifies players accurately. You know current squad rosters. When a player name is ambiguous, always pick the player who plays for the specified team. Never guess — use null when unsure.` },
           { role: "user", content: prompt },
@@ -1572,12 +1572,12 @@ Return ONLY valid JSON. No markdown, no explanation.`;
         if (name && photo) photoMap.set(name, photo);
       }
     } catch (err) {
-      console.warn(`[photos][ai] Groq batch failed:`, err.message);
+      console.warn(`[photos][ai] Gemini batch failed:`, err.message);
     }
   }
 
   if (photoMap.size > 0) {
-    console.log(`[photos][ai] Groq resolved ${photoMap.size} Wikipedia photos for ${teamName}`);
+    console.log(`[photos][ai] Gemini resolved ${photoMap.size} Wikipedia photos for ${teamName}`);
   }
   return photoMap;
 }
@@ -1888,7 +1888,7 @@ async function enrichScorersPhotos(scorers, leagueName) {
           const validated = await validateEspnHeadshot(espnUrl);
           if (validated) return [name, validated];
         }
-        // 5. Groq AI Wikipedia photo lookup
+        // 5. Gemini AI Wikipedia photo lookup
         try {
           const aiMap = await resolvePlayerPhotosViaAI([{ name, team }], leagueName);
           const aiPhoto = aiMap.get(name);
@@ -2967,13 +2967,13 @@ async function enrichRosterPhotos(players, teamName) {
     }
   }
 
-  // ------ Step 5: AI-assisted photo resolution via Groq ------
+  // ------ Step 5: AI-assisted photo resolution via Gemini ------
   const aiCandidates = enriched.filter((p) => p && !p.photo && p.name && p.name !== "Onbekend");
-  console.log(`[photos][ai] ${teamName}: ${aiCandidates.length} players without photo, attempting Groq AI...`);
+  console.log(`[photos][ai] ${teamName}: ${aiCandidates.length} players without photo, attempting Gemini AI...`);
   if (aiCandidates.length > 0 && aiCandidates.length <= 60) {
     try {
       const aiPhotoMap = await resolvePlayerPhotosViaAI(aiCandidates, teamName);
-      console.log(`[photos][ai] ${teamName}: Groq returned ${aiPhotoMap.size} photos`);
+      console.log(`[photos][ai] ${teamName}: Gemini returned ${aiPhotoMap.size} photos`);
       if (aiPhotoMap.size > 0) {
         enriched = enriched.map((player) => {
           if (!player || player.photo) return player;
@@ -6601,7 +6601,7 @@ app.get("/api/sports/player/:playerId", async (req, res) => {
       if (!resolvedPhoto && name && name !== "Onbekend") {
         resolvedPhoto = await fetchWikipediaPlayerPhoto(name) || null;
       }
-      // AI-assisted Wikipedia title resolution via Groq
+      // AI-assisted Wikipedia title resolution via Gemini
       if (!resolvedPhoto && name && name !== "Onbekend") {
         try {
           const aiMap = await resolvePlayerPhotosViaAI(
@@ -6652,7 +6652,7 @@ app.get("/api/sports/player/:playerId", async (req, res) => {
         const validated = await validateEspnHeadshot(espnUrl);
         if (validated) resolvedPhoto = validated;
       }
-      // Groq AI Wikipedia photo lookup
+      // Gemini AI Wikipedia photo lookup
       if (!resolvedPhoto && name && name !== "Onbekend") {
         try {
           const aiMap = await resolvePlayerPhotosViaAI([{ name, nationality: valued?.nationality, position: valued?.position }], clubName);
