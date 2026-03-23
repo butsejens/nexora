@@ -458,7 +458,7 @@ const PlayerCard = React.memo(function PlayerCard({ player }: { player: any }) {
             style={[styles.playerPhoto, { backgroundColor: COLORS.card }]}
             resizeMode="cover"
             onError={() => {
-              setPhotoIndex((idx) => (idx + 1 < photoCandidates.length ? idx + 1 : idx));
+              setPhotoIndex((idx) => idx + 1);
             }}
           />
         ) : (
