@@ -2862,15 +2862,36 @@ async function enrichRosterPhotos(players, teamName) {
     }
   }
 
-  // ------ Step 6: ESPN CDN headshot fallback for players with ESPN IDs ------
-  enriched = enriched.map((player) => {
-    if (!player || player.photo) return player;
-    const espnId = String(player.id || "").trim();
-    if (espnId && /^\d+$/.test(espnId)) {
-      return { ...player, photo: `https://a.espncdn.com/i/headshots/soccer/players/full/${espnId}.png` };
+  // ------ Step 6: ESPN CDN headshot fallback (validated) ------
+  const espnFallbackCandidates = enriched.filter(
+    (p) => p && !p.photo && /^\d+$/.test(String(p.id || ""))
+  );
+  if (espnFallbackCandidates.length > 0) {
+    try {
+      const checks = await Promise.allSettled(
+        espnFallbackCandidates.map(async (p) => {
+          const url = `https://a.espncdn.com/i/headshots/soccer/players/full/${p.id}.png`;
+          try {
+            const r = await fetch(url, { method: "HEAD", signal: AbortSignal.timeout(3000) });
+            return r.ok ? { id: p.id, url } : null;
+          } catch { return null; }
+        })
+      );
+      const validMap = new Map();
+      checks.forEach((r) => {
+        if (r.status === "fulfilled" && r.value) validMap.set(r.value.id, r.value.url);
+      });
+      if (validMap.size > 0) {
+        enriched = enriched.map((player) => {
+          if (!player || player.photo) return player;
+          const url = validMap.get(player.id);
+          return url ? { ...player, photo: url } : player;
+        });
+      }
+    } catch (err) {
+      console.warn(`[photos][espn-validate] ESPN headshot validation failed:`, err.message);
     }
-    return player;
-  });
+  }
 
   const withPhoto = enriched.filter((p) => p && p.photo).length;
   const total = enriched.filter((p) => p).length;
@@ -5420,11 +5441,7 @@ app.get("/api/sports/match/:matchId", async (req, res) => {
                 position,
                 positionName,
                 starter: Boolean(row?.starter),
-                photo: normalizePlayerPhoto(
-                  id,
-                  ath?.headshot?.href,
-                  /^\d+$/.test(id) ? `https://a.espncdn.com/i/headshots/soccer/players/full/${id}.png` : null,
-                ),
+                photo: normalizePlayerPhoto(id, ath?.headshot?.href),
               });
             }
 
@@ -5768,7 +5785,7 @@ function mapEspnTopScorers(data) {
         rank: idx + 1,
         id: athleteId,
         name: ath.displayName || ath.fullName || "",
-        photo: normalizePlayerPhoto(athleteId, ath.headshot?.href, athleteId ? `https://a.espncdn.com/i/headshots/soccer/players/full/${encodeURIComponent(athleteId)}.png` : null),
+        photo: normalizePlayerPhoto(athleteId, ath.headshot?.href),
         team: ath.team?.displayName || ath.team?.name || "",
         teamId: String(ath?.team?.id || ""),
         teamLogo: normalizeTeamLogo(
@@ -5866,7 +5883,7 @@ async function espnTopScorersFromHtml(leagueName) {
     rows.push({
       rank,
       name,
-      photo: athleteId ? `https://a.espncdn.com/i/headshots/soccer/players/full/${encodeURIComponent(athleteId)}.png` : null,
+      photo: null,
       team: teamName,
       teamLogo: null,
       goals,

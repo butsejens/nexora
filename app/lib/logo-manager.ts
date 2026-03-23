@@ -111,12 +111,13 @@ export function getLeagueLogo(leagueName?: string): string | number | null {
 // ESPN CDN team logo fallback: normalized name → ESPN team ID
 // All IDs verified against ESPN API (site.api.espn.com)
 const ESPN_TEAM_LOGO_IDS: Record<string, number> = {
-  // Belgium - Pro League
-  "club brugge": 8782, "krc genk": 740, "racing genk": 740, "royal antwerp": 9498, "anderlecht": 9499,
-  "gent": 9497, "kaa gent": 9497, "standard liege": 8784, "union saint gilloise": 15327,
-  "cercle brugge": 8783, "oh leuven": 9916, "oud heverlee leuven": 9916,
-  "sint truiden": 8785, "stvv": 8785, "mechelen": 9917, "kv mechelen": 9917,
-  "westerlo": 9918, "kortrijk": 9919, "kv kortrijk": 9919, "charleroi": 9500,
+  // Belgium - Pro League (IDs verified via ESPN teams API)
+  "club brugge": 570, "krc genk": 938, "racing genk": 938, "royal antwerp": 17544, "antwerp": 17544, "anderlecht": 441,
+  "gent": 3611, "kaa gent": 3611, "standard liege": 559, "union saint gilloise": 5807, "union st gilloise": 5807,
+  "cercle brugge": 3610, "oh leuven": 5579, "oud heverlee leuven": 5579,
+  "sint truiden": 936, "sint truidense": 936, "stvv": 936, "mechelen": 7879, "kv mechelen": 7879,
+  "westerlo": 606, "kvc westerlo": 606, "kortrijk": 9919, "kv kortrijk": 9919, "charleroi": 3616, "royal charleroi": 3616,
+  "dender": 7878, "fcv dender": 7878, "zulte waregem": 4691,
   "as eupen": 15329, "eupen": 15329, "rwdm": 15330, "beerschot": 15328,
   // Belgium - Challenger Pro League
   "lommel": 15334, "lommel sk": 15334, "lierse kempenzonen": 15335, "lierse": 15335,
@@ -264,13 +265,13 @@ export function resolveTeamLogoUri(teamName?: string, logoUri?: string | null): 
   ) {
     return LOCAL_LOGOS.raalLaLouviere;
   }
-  // ESPN curated ID takes priority (verified against ESPN API)
-  const espnId = ESPN_TEAM_LOGO_IDS[normalized];
-  if (espnId) return `https://a.espncdn.com/i/teamlogos/soccer/500/${espnId}.png`;
-
-  // Fallback to server-provided logo URL
+  // Server-provided logo URL takes priority (verified via HEAD requests on server)
   const safeLogo = sanitizeRemoteLogoUri(logoUri);
   if (safeLogo) return safeLogo;
+
+  // ESPN curated ID as fallback
+  const espnId = ESPN_TEAM_LOGO_IDS[normalized];
+  if (espnId) return `https://a.espncdn.com/i/teamlogos/soccer/500/${espnId}.png`;
 
   // Try partial match: find ESPN entry where key matches as a whole word in normalized or vice versa
   if (normalized.length >= 4) {
