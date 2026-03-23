@@ -4710,7 +4710,78 @@ async function fetchSportsByDateCore(date) {
   return { date, timezone: TZ, live: [], upcoming: [], finished: [], source: "espn" };
 }
 
-function buildSportsMenuToolsPayload(payload) {
+async function enhanceSportsFallbackWithGemini(scoredRows) {
+  if (!process.env.GEMINI_API_KEY || !Array.isArray(scoredRows) || scoredRows.length === 0) {
+    return { rows: scoredRows || [], usedGemini: false };
+  }
+
+  const batch = scoredRows.slice(0, 10).map((row) => ({
+    matchId: String(row.matchId),
+    homeTeam: String(row.homeTeam || ""),
+    awayTeam: String(row.awayTeam || ""),
+    league: String(row.league || ""),
+    startTime: String(row.startTime || ""),
+  }));
+
+  try {
+    const sys = {
+      role: "system",
+      content: "Je bent een voetbalanalist. Geef enkel geldige JSON zonder markdown of extra tekst.",
+    };
+    const user = {
+      role: "user",
+      content:
+        "Voorspel voor elke match exact deze velden: matchId, prediction (Home Win|Away Win|Draw), confidence (0-100), homePct, drawPct, awayPct, over25Pct, bothTeamsToScorePct.\n" +
+        "Regels: percentages moeten per match optellen tot 100. Wees conservatief en realistisch.\n" +
+        "Input:\n" + JSON.stringify(batch),
+    };
+
+    const raw = await geminiChat([sys, user], { temperature: 0.15 });
+    const cleaned = String(raw || "").replace(/```json\s*|```\s*/g, "").trim();
+    const parsed = tryParseJSON(cleaned);
+    const predictions = Array.isArray(parsed?.predictions) ? parsed.predictions : (Array.isArray(parsed) ? parsed : []);
+
+    if (!predictions.length) return { rows: scoredRows, usedGemini: false };
+
+    const byId = new Map(predictions.map((item) => [String(item?.matchId || ""), item]));
+    const merged = scoredRows.map((row) => {
+      const p = byId.get(String(row.matchId || ""));
+      if (!p) return row;
+
+      const homePctRaw = clamp(Math.round(toNum(p.homePct)), 0, 100);
+      const drawPctRaw = clamp(Math.round(toNum(p.drawPct)), 0, 100);
+      const awayPctRaw = clamp(Math.round(toNum(p.awayPct)), 0, 100);
+      const sum = homePctRaw + drawPctRaw + awayPctRaw;
+      const homePct = sum > 0 ? Math.round((homePctRaw / sum) * 100) : row.homePct;
+      const drawPct = sum > 0 ? Math.round((drawPctRaw / sum) * 100) : row.drawPct;
+      const awayPct = sum > 0 ? (100 - homePct - drawPct) : row.awayPct;
+
+      const prediction = ["Home Win", "Away Win", "Draw"].includes(String(p.prediction || ""))
+        ? String(p.prediction)
+        : row.prediction;
+
+      return {
+        ...row,
+        prediction,
+        confidence: clamp(Math.round(toNum(p.confidence)), 0, 100) || row.confidence,
+        homePct,
+        drawPct,
+        awayPct,
+        over25Pct: clamp(Math.round(toNum(p.over25Pct)), 0, 100) || row.over25Pct,
+        bothTeamsToScorePct: clamp(Math.round(toNum(p.bothTeamsToScorePct)), 0, 100) || row.bothTeamsToScorePct,
+        doubleChanceHomePct: clamp(homePct + drawPct, 0, 100),
+        doubleChanceAwayPct: clamp(awayPct + drawPct, 0, 100),
+      };
+    });
+
+    return { rows: merged, usedGemini: true };
+  } catch (err) {
+    console.warn("[menu-tools] Gemini fallback enrichment failed:", err?.message || err);
+    return { rows: scoredRows, usedGemini: false };
+  }
+}
+
+async function buildSportsMenuToolsPayload(payload) {
   const upcoming = Array.isArray(payload?.upcoming) ? payload.upcoming : [];
 
   const merged = [...upcoming]
@@ -4758,9 +4829,10 @@ function buildSportsMenuToolsPayload(payload) {
     };
   });
 
-  const footballPredictions = scored.slice(0, 10);
+  const { rows: enrichedScored, usedGemini } = await enhanceSportsFallbackWithGemini(scored);
+  const footballPredictions = enrichedScored.slice(0, 10);
 
-  const dailyAccaPicks = scored
+  const dailyAccaPicks = enrichedScored
     .filter((row) => row.prediction !== "Draw")
     .sort((a, b) => b.confidence - a.confidence)
     .slice(0, 8)
@@ -4772,7 +4844,7 @@ function buildSportsMenuToolsPayload(payload) {
 
   return {
     generatedAt: new Date().toISOString(),
-    source: "backend-model-v1",
+    source: usedGemini ? "backend-model-v1+gemini" : "backend-model-v1",
     footballPredictions,
     dailyAccaPicks,
   };
@@ -4796,7 +4868,7 @@ app.get("/api/sports/menu-tools", async (req, res) => {
       return {
         date: byDate.date,
         league,
-        ...buildSportsMenuToolsPayload({ live, upcoming, finished }),
+        ...(await buildSportsMenuToolsPayload({ live, upcoming, finished })),
       };
     });
 
