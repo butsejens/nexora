@@ -1027,6 +1027,8 @@ export default function SportsScreen() {
       qc.invalidateQueries({ queryKey: ["sports", "live", selectedDate] }),
       qc.invalidateQueries({ queryKey: ["sports", "today", selectedDate] }),
       qc.invalidateQueries({ queryKey: ["sports", "by-date", selectedDate] }),
+      qc.invalidateQueries({ queryKey: ["standings"] }),
+      qc.invalidateQueries({ queryKey: ["topscorers"] }),
     ]);
     setRefreshing(false);
   }, [qc, selectedDate]);
