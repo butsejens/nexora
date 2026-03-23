@@ -5483,29 +5483,31 @@ app.get("/api/sports/highlights", async (req, res) => {
 
 // Prefetch endpoint — warms caches for key leagues (standings + top scorers)
 // Called by the app at boot so data is ready when user navigates
-app.get("/api/sports/prefetch-home", async (_req, res) => {
+app.get("/api/sports/prefetch-home", async (req, res) => {
   const KEY_LEAGUES = ["bel.1", "eng.1", "esp.1", "ger.1", "ita.1", "fra.1", "ned.1", "uefa.champions"];
   const started = Date.now();
   try {
-    // Fire all prefetches in parallel with 20s timeout per item
+    // Use internal self-fetch to hit the real endpoints (so full enrichment runs)
+    const base = `${req.protocol}://${req.get("host")}`;
     const results = await Promise.allSettled(
-      KEY_LEAGUES.flatMap((slug) => {
-        const leagueName = slug; // getOrFetch inside these endpoints will normalize
-        return [
-          Promise.race([
-            getOrFetch(`standings_${leagueName}`, 5 * 60_000, () => espnStandings(leagueName)),
-            new Promise((r) => setTimeout(r, 20_000)),
-          ]).catch(() => null),
-          Promise.race([
-            getOrFetch(`topscorers_${leagueName}_${seasonForDate(new Date())}`, 6 * 60_000, () =>
-              espnTopScorers(leagueName).then((d) => mapEspnTopScorers(d))
-            ),
-            new Promise((r) => setTimeout(r, 20_000)),
-          ]).catch(() => null),
-        ];
-      })
+      KEY_LEAGUES.flatMap((slug) => [
+        Promise.race([
+          fetch(`${base}/api/sports/standings/${encodeURIComponent(slug)}`, {
+            headers: { "user-agent": "Nexora-Prefetch/1.0" },
+            signal: AbortSignal.timeout(25000),
+          }).then((r) => r.ok),
+          new Promise((r) => setTimeout(r, 25000)),
+        ]).catch(() => null),
+        Promise.race([
+          fetch(`${base}/api/sports/topscorers/${encodeURIComponent(slug)}`, {
+            headers: { "user-agent": "Nexora-Prefetch/1.0" },
+            signal: AbortSignal.timeout(25000),
+          }).then((r) => r.ok),
+          new Promise((r) => setTimeout(r, 25000)),
+        ]).catch(() => null),
+      ])
     );
-    const fulfilled = results.filter((r) => r.status === "fulfilled").length;
+    const fulfilled = results.filter((r) => r.status === "fulfilled" && r.value).length;
     console.log(`[prefetch] Warmed ${fulfilled}/${results.length} caches in ${Date.now() - started}ms`);
     res.json({ ok: true, warmed: fulfilled, total: results.length, ms: Date.now() - started });
   } catch (e) {
