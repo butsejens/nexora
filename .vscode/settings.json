@@ -1,4 +1,11 @@
 {
     "cmake.sourceDirectory": "/Users/jens/Downloads/nexora/node_modules/expo-modules-core/android",
-    "java.configuration.updateBuildConfiguration": "interactive"
+    "java.configuration.updateBuildConfiguration": "automatic",
+    "java.import.gradle.wrapper.enabled": true,
+    "java.import.gradle.java.home": "/Users/jens/.sdkman/candidates/java/17.0.10-tem",
+    "java.import.exclusions": [
+        "**/build/**",
+        "**/.gradle/**",
+        "**/oracleJdk-26.jdk/**"
+    ]
 }

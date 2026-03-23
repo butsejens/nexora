@@ -29,3 +29,4 @@ nexora-v*.apk
 **/nexora-v*.apk
 .local-jdk/
 app/dist-android/
+oracleJdk-*.jdk/

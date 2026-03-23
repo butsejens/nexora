@@ -292,6 +292,12 @@ const espnLeagueByName = COUNTRY_COMPETITIONS
     [normalizeLeagueKey("Premier League")]: "eng.1",
   });
 
+function resolveEspnLeagueForMatch(match: any): string {
+  const direct = String(match?.espnLeague || "").trim();
+  if (direct) return direct;
+  return espnLeagueByName[normalizeLeagueKey(String(match?.league || ""))] || "eng.1";
+}
+
 const interestingEventRegex = /(goal|kaart|card|halftime|half-time|break|einde|end|full time|kick[- ]?off|start)/i;
 
 function parseMatchTimestamp(match: any, selectedDate: string): number {
@@ -1093,6 +1099,10 @@ export default function SportsScreen() {
     [activeSportTool]
   );
 
+  const resolveEspnLeague = useCallback((match: any): string => {
+    return resolveEspnLeagueForMatch(match);
+  }, []);
+
   const handleMatchPress = useCallback((match: any) => {
     router.push({
       pathname: "/match-detail",
@@ -1105,12 +1115,13 @@ export default function SportsScreen() {
         homeScore: String(match.homeScore ?? 0),
         awayScore: String(match.awayScore ?? 0),
         league: match.league,
+        espnLeague: resolveEspnLeague(match),
         minute: match.minute !== undefined ? String(match.minute) : "",
         status: match.status,
         sport: match.sport,
       },
     });
-  }, []);
+  }, [resolveEspnLeague]);
 
   const handleToolMatchPress = (item: any) => {
     handleMatchPress({
@@ -1125,12 +1136,6 @@ export default function SportsScreen() {
       minute: item?.minute || "",
     });
   };
-
-  const resolveEspnLeague = useCallback((match: any): string => {
-    const direct = String(match?.espnLeague || "").trim();
-    if (direct) return direct;
-    return espnLeagueByName[normalizeLeagueKey(String(match?.league || ""))] || "eng.1";
-  }, []);
 
   const setSubscriptionsAndPersist = useCallback(async (next: Record<string, MatchSubscription>) => {
     subscriptionsRef.current = next;
@@ -1587,6 +1592,7 @@ export default function SportsScreen() {
                             homeScore: String(match.homeScore ?? 0),
                             awayScore: String(match.awayScore ?? 0),
                             league: match.league,
+                            espnLeague: resolveEspnLeague(match),
                             minute: match.minute !== undefined ? String(match.minute) : "",
                             status: match.status,
                             sport: match.sport,
