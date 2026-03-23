@@ -1844,6 +1844,7 @@ const StatsBars = React.memo(StatsBarsInner);
 function PlayerRow({ player, sport, compact = false, teamName = "" }: { player: any; sport: string; compact?: boolean; teamName?: string }) {
   const photoCandidates = [
     player?.photo,
+    player?.theSportsDbPhoto || null,
     player?.id && /^\d+$/.test(String(player.id)) ? `https://a.espncdn.com/i/headshots/soccer/players/full/${encodeURIComponent(String(player.id))}.png` : null,
   ].filter(Boolean) as string[];
   const [photoIndex, setPhotoIndex] = useState(0);
@@ -1926,13 +1927,14 @@ function PitchDot({ player, color }: { player: any; color: string }) {
   const photoCandidates = React.useMemo(() => {
     const candidates: string[] = [];
     if (player?.photo) candidates.push(player.photo);
+    if (player?.theSportsDbPhoto && player.theSportsDbPhoto !== player?.photo) candidates.push(player.theSportsDbPhoto);
     if (player?.headshot && player.headshot !== player?.photo) candidates.push(player.headshot);
     const eid = String(player?.id || "");
     if (/^\d+$/.test(eid)) {
       candidates.push(`https://a.espncdn.com/i/headshots/soccer/players/full/${eid}.png`);
     }
     return candidates;
-  }, [player?.photo, player?.headshot, player?.id]);
+  }, [player?.photo, player?.theSportsDbPhoto, player?.headshot, player?.id]);
 
   const [photoIdx, setPhotoIdx] = React.useState(0);
   const [photoOk, setPhotoOk] = React.useState(false);

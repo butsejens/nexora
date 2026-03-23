@@ -156,8 +156,9 @@ export default function PlayerProfileScreen() {
   const espnCdn = /^\d+$/.test(espnId) ? `https://a.espncdn.com/i/headshots/soccer/players/full/${espnId}.png` : null;
   const photoCandidates = useMemo(() => [
     data?.photo,
+    data?.theSportsDbPhoto || null,
     espnCdn,
-  ].filter(Boolean) as string[], [data?.photo, espnCdn]);
+  ].filter(Boolean) as string[], [data?.photo, data?.theSportsDbPhoto, espnCdn]);
 
   const [photoIdx, setPhotoIdx] = useState(0);
   const photoUri = photoCandidates[photoIdx] || null;
