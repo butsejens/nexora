@@ -1839,20 +1839,71 @@ async function enrichScorersPhotos(scorers, leagueName) {
   console.log(`[topscorers][photos] ${leagueName}: ${needPhoto.length}/${scorers.length} scorers need photo enrichment`);
   const photoMap = new Map();
 
-  // Batch: Transfermarkt search + TheSportsDB search + Wikipedia (parallel per scorer)
-  const BATCH = 8;
+  // --- STEP 0: Bulk preprocessing (Transfermarkt + TheSportsDB lookup tables) ---
+  const teamNames = [...new Set(needPhoto.map((s) => s.team).filter(Boolean))];
+  const tmPhotoMap = new Map();
+  const dbPhotoMap = new Map();
+
+  for (const teamName of teamNames) {
+    try {
+      const tmPlayers = await fetchTransfermarktClubPlayers(teamName);
+      if (Array.isArray(tmPlayers)) {
+        for (const p of tmPlayers) {
+          if (p.name && p.photo && /^https?:\/\//i.test(p.photo)) {
+            const normed = normalizePersonName(p.name);
+            if (!tmPhotoMap.has(normed)) tmPhotoMap.set(normed, p.photo);
+          }
+        }
+      }
+    } catch (err) {
+      console.warn(`[topscorers][photos] TM preprocessing failed for ${teamName}:`, err.message);
+    }
+  }
+
+  for (const teamName of teamNames) {
+    try {
+      const dbPlayers = await fetchTheSportsDBTeamPlayers(teamName);
+      if (Array.isArray(dbPlayers)) {
+        for (const p of dbPlayers) {
+          if (p.name && p.photo) {
+            if (!dbPhotoMap.has(p.name)) dbPhotoMap.set(p.name, p.photo);
+          }
+        }
+      }
+    } catch (err) {
+      console.warn(`[topscorers][photos] TheSportsDB preprocessing failed for ${teamName}:`, err.message);
+    }
+  }
+
+  console.log(`[topscorers][photos] ${leagueName}: Preprocessing found ${tmPhotoMap.size} TM + ${dbPhotoMap.size} TheSportsDB photos`);
+
+  // Batch processing with preprocessing + fallback chain
+  const BATCH = 10;
   for (let i = 0; i < needPhoto.length; i += BATCH) {
     const batch = needPhoto.slice(i, i + BATCH);
     const results = await Promise.all(
       batch.map(async (scorer) => {
         const name = String(scorer.name || "").trim();
         const team = String(scorer.team || "").trim();
-        // 1. Transfermarkt direct search (most accurate)
+        const normName = normalizePersonName(name);
+
+        // -- STEP 1: Check preprocessing tables (fastest) --
+        if (normName) {
+          const tmPhoto = tmPhotoMap.get(normName);
+          if (tmPhoto) return [name, proxyPhotoUrl(tmPhoto)];
+        }
+        const dbPhoto = dbPhotoMap.get(name);
+        if (dbPhoto) return [name, dbPhoto];
+
+        // -- STEP 2: Transfermarkt direct search --
         try {
           const tm = await fetchTransfermarktPlayerDirect(name, team);
           if (tm?.photo) return [name, proxyPhotoUrl(tm.photo)];
-        } catch { /* ignore */ }
-        // 2. TheSportsDB player search
+        } catch (err) {
+          console.debug(`[topscorers][photos] TM direct failed for ${name}:`, err.message);
+        }
+
+        // -- STEP 3: TheSportsDB player search --
         try {
           const q = encodeURIComponent(name);
           const resp = await fetch(`https://www.thesportsdb.com/api/v1/json/3/searchplayers.php?p=${q}`, {
@@ -1861,7 +1912,6 @@ async function enrichScorersPhotos(scorers, leagueName) {
           });
           if (resp.ok) {
             const data = await resp.json();
-            const normName = normalizePersonName(name);
             const normTeam = normalizePersonName(team);
             for (const r of (data?.player || [])) {
               const rName = normalizePersonName(r?.strPlayer || "");
@@ -1869,32 +1919,46 @@ async function enrichScorersPhotos(scorers, leagueName) {
               const photo = r?.strCutout || r?.strThumb || r?.strRender || null;
               if (!photo || !/^https?:\/\//i.test(photo)) continue;
               const nameScore = similarityScore(normName, rName);
-              const teamMatch = normTeam && similarityScore(normTeam, rTeam) >= 0.40;
+              const teamMatch = normTeam && similarityScore(normTeam, rTeam) >= 0.50;
               if (nameScore >= 0.42 || (nameScore >= 0.35 && teamMatch)) {
                 return [name, photo];
               }
             }
           }
-        } catch { /* ignore */ }
-        // 3. Wikipedia photo
+        } catch (err) {
+          console.debug(`[topscorers][photos] TheSportsDB search failed for ${name}:`, err.message);
+        }
+
+        // -- STEP 4: Wikipedia photo --
         try {
           const wiki = await fetchWikipediaPlayerPhoto(name);
           if (wiki) return [name, wiki];
-        } catch { /* ignore */ }
-        // 4. ESPN CDN fallback (validated — skip black placeholders)
-        const espnId = String(scorer.id || "").trim();
-        if (espnId && /^\d+$/.test(espnId)) {
-          const espnUrl = `https://a.espncdn.com/i/headshots/soccer/players/full/${espnId}.png`;
-          const validated = await validateEspnHeadshot(espnUrl);
-          if (validated) return [name, validated];
+        } catch (err) {
+          console.debug(`[topscorers][photos] Wikipedia failed for ${name}:`, err.message);
         }
-        // 5. Gemini AI Wikipedia photo lookup
+
+        // -- STEP 5: Gemini AI (BEFORE ESPN validation) --
         try {
           const aiMap = await resolvePlayerPhotosViaAI([{ name, team }], leagueName);
           const aiPhoto = aiMap.get(name);
           if (aiPhoto) return [name, aiPhoto];
-        } catch { /* ignore */ }
-        // 6. UI Avatars guaranteed fallback
+        } catch (err) {
+          console.debug(`[topscorers][photos] Gemini AI failed for ${name}:`, err.message);
+        }
+
+        // -- STEP 6: ESPN CDN (after AI try) --
+        const espnId = String(scorer.id || "").trim();
+        if (espnId && /^\d+$/.test(espnId)) {
+          try {
+            const espnUrl = `https://a.espncdn.com/i/headshots/soccer/players/full/${espnId}.png`;
+            const validated = await validateEspnHeadshot(espnUrl);
+            if (validated) return [name, validated];
+          } catch (err) {
+            console.debug(`[topscorers][photos] ESPN validation failed for ${name}:`, err.message);
+          }
+        }
+
+        // -- STEP 7: UI Avatars fallback --
         return [name, `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&size=256&background=1a1a2e&color=e0e0e0&bold=true&format=png`];
       })
     );
@@ -1903,9 +1967,9 @@ async function enrichScorersPhotos(scorers, leagueName) {
     }
   }
 
-  if (photoMap.size > 0) {
-    console.log(`[topscorers][photos] ${leagueName}: Resolved ${photoMap.size} scorer photos`);
-  }
+  const filledCount = photoMap.size;
+  const preFilledCount = scorers.filter((s) => s?.photo).length;
+  console.log(`[topscorers][photos] ${leagueName}: Resolved ${filledCount} + ${preFilledCount} prefilled = ${filledCount + preFilledCount}/${scorers.length} scorer photos (${Math.round(100 * (filledCount + preFilledCount) / (scorers.length || 1))}%)`);
   return scorers.map((s) => {
     if (!s || s.photo) return s;
     const found = photoMap.get(s.name);
