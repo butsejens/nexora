@@ -8,6 +8,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { useQuery } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { COLORS } from "@/constants/colors";
 import { apiRequest } from "@/lib/query-client";
@@ -16,6 +17,7 @@ import { TeamLogo } from "@/components/TeamLogo";
 import { useNexora } from "@/context/NexoraContext";
 import { useTranslation } from "@/lib/useTranslation";
 import { t as tFn } from "@/lib/i18n";
+import { getCachedPlayerImage } from "@/lib/player-image-system";
 
 function asParam(value: string | string[] | undefined, fallback = ""): string {
   if (Array.isArray(value)) return String(value[0] || fallback);
@@ -70,6 +72,7 @@ export default function TeamDetailScreen() {
   const insets = useSafeAreaInsets();
   const { isFavorite, toggleFavorite } = useNexora();
   const { t } = useTranslation();
+  const queryClient = useQueryClient();
   const favKey = `sport_team:${teamIdParam || teamNameParam}`;
   const isFollowing = isFavorite(favKey);
   const [posFilter, setPosFilter] = useState<string>("all");
@@ -141,15 +144,42 @@ export default function TeamDetailScreen() {
     queryKey: ["team-detail", teamIdParam, sport, league],
     queryFn: async () => {
       if (!teamIdParam) throw new Error("Team ID ontbreekt");
+      const key = ["team-detail", teamIdParam, sport, league] as const;
+      const cached = queryClient.getQueryData(key as any);
+      if (cached) return cached;
+
+      const backgroundFetch = async () => {
+        try {
+          const tn = encodeURIComponent(String(teamNameParam || ""));
+          const res = await apiRequest("GET", `/api/sports/team/${encodeURIComponent(teamIdParam)}?sport=${encodeURIComponent(sport)}&league=${encodeURIComponent(league)}&teamName=${tn}`);
+          const json = await res.json();
+          queryClient.setQueryData(key as any, json);
+        } catch {
+          // keep placeholder; user can retry manually
+        }
+      };
+      void backgroundFetch();
+
+      return {
+        id: String(teamIdParam || ""),
+        name: String(teamNameParam || "Team"),
+        logo: logoParam || null,
+        color: "#1a3a6b",
+        players: [],
+        source: "startup-preload-placeholder",
+      };
+
+      /*
       const tn = encodeURIComponent(String(teamNameParam || ""));
       const res = await apiRequest("GET", `/api/sports/team/${encodeURIComponent(teamIdParam)}?sport=${encodeURIComponent(sport)}&league=${encodeURIComponent(league)}&teamName=${tn}`);
       return res.json();
+      */
     },
-    staleTime: 10 * 60 * 1000,
+    staleTime: 24 * 60 * 60 * 1000,
     gcTime: 30 * 60 * 1000,
-    refetchOnMount: true,
-    retry: 2,
-    retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 8000),
+    refetchOnMount: false,
+    refetchOnWindowFocus: false,
+    retry: 0,
   });
 
   const isNationalTeam = league.includes("fifa");
@@ -426,7 +456,17 @@ export default function TeamDetailScreen() {
 const PlayerCard = React.memo(function PlayerCard({ player }: { player: any }) {
   const espnId = String(player?.id || "");
   const espnCdn = /^\d+$/.test(espnId) ? `https://a.espncdn.com/i/headshots/soccer/players/full/${espnId}.png` : null;
+  const cachedPhoto = getCachedPlayerImage({
+    id: String(player?.id || ""),
+    name: String(player?.name || ""),
+    team: String(player?.currentClub || player?.team || ""),
+    league: "",
+    sport: "soccer",
+    photo: player?.photo || null,
+    theSportsDbPhoto: player?.theSportsDbPhoto || null,
+  });
   const photoCandidates = [
+    cachedPhoto,
     player?.photo,
     player?.theSportsDbPhoto || null,
     espnCdn,
