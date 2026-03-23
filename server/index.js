@@ -966,6 +966,23 @@ function normalizePlayerPhoto(_playerId, ...candidates) {
   return null;
 }
 
+function isEspnHeadshotUrl(url) {
+  return /a\.espncdn\.com\/i\/headshots\/soccer\/players\/full\//i.test(String(url || ""));
+}
+
+function isGeneratedAvatarUrl(url) {
+  return /ui-avatars\.com\/api\//i.test(String(url || ""));
+}
+
+function keepIncomingPlayerPhoto(url) {
+  const normalized = normalizeRemoteMediaUrl(url);
+  if (!normalized) return null;
+  // ESPN URLs are provisional until validated later in the pipeline.
+  if (isEspnHeadshotUrl(normalized)) return null;
+  if (isGeneratedAvatarUrl(normalized)) return null;
+  return normalized;
+}
+
 // Validate ESPN CDN headshot — returns URL if real photo (>10KB), null if black placeholder
 async function validateEspnHeadshot(url) {
   if (!url) return null;
@@ -1833,10 +1850,17 @@ async function enrichStandingsLogos(standings, leagueName) {
 // Enrich scorer photos — parallel search for scorers missing photos
 async function enrichScorersPhotos(scorers, leagueName) {
   if (!Array.isArray(scorers) || scorers.length === 0) return scorers;
-  const needPhoto = scorers.filter((s) => s && !s.photo && s.name);
+  const preparedScorers = scorers.map((scorer) => {
+    if (!scorer) return scorer;
+    return {
+      ...scorer,
+      photo: keepIncomingPlayerPhoto(scorer.photo),
+    };
+  });
+  const needPhoto = preparedScorers.filter((s) => s && !s.photo && s.name);
   if (needPhoto.length === 0) return scorers;
 
-  console.log(`[topscorers][photos] ${leagueName}: ${needPhoto.length}/${scorers.length} scorers need photo enrichment`);
+  console.log(`[topscorers][photos] ${leagueName}: ${needPhoto.length}/${preparedScorers.length} scorers need photo enrichment`);
   const photoMap = new Map();
 
   // --- STEP 0: Bulk preprocessing (Transfermarkt + TheSportsDB lookup tables) ---
@@ -1968,9 +1992,9 @@ async function enrichScorersPhotos(scorers, leagueName) {
   }
 
   const filledCount = photoMap.size;
-  const preFilledCount = scorers.filter((s) => s?.photo).length;
-  console.log(`[topscorers][photos] ${leagueName}: Resolved ${filledCount} + ${preFilledCount} prefilled = ${filledCount + preFilledCount}/${scorers.length} scorer photos (${Math.round(100 * (filledCount + preFilledCount) / (scorers.length || 1))}%)`);
-  return scorers.map((s) => {
+  const preFilledCount = preparedScorers.filter((s) => s?.photo).length;
+  console.log(`[topscorers][photos] ${leagueName}: Resolved ${filledCount} + ${preFilledCount} prefilled = ${filledCount + preFilledCount}/${preparedScorers.length} scorer photos (${Math.round(100 * (filledCount + preFilledCount) / (preparedScorers.length || 1))}%)`);
+  return preparedScorers.map((s) => {
     if (!s || s.photo) return s;
     const found = photoMap.get(s.name);
     return found ? { ...s, photo: found } : s;
@@ -2900,7 +2924,7 @@ async function enrichRosterPhotos(players, teamName) {
     const normName = normalizePersonName(player.name || "");
     if (!normName) return player;
 
-    let bestPhoto = player.photo || null; // keep existing real headshot if present
+    let bestPhoto = keepIncomingPlayerPhoto(player.photo); // keep only non-provisional incoming photos
     let sportsDbPhoto = null;
 
     // --- Transfermarkt: exact then fuzzy ---
