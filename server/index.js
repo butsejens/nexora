@@ -6150,7 +6150,7 @@ app.get("/api/sports/standings/:league", async (req, res) => {
   const key = `standings_${leagueName}_${season}`;
 
   try {
-    const payload = await getOrFetch(key, 6 * 60_000, async () => {
+    const payload = await getOrFetch(key, 15 * 60_000, async () => {
       // 1) Try ESPN first (no key needed)
       try {
         const espnData = await espnStandings(leagueName);
@@ -6185,7 +6185,7 @@ app.get("/api/sports/topscorers/:league", async (req, res) => {
   const key = `topscorers_${leagueName}_${season}`;
 
   try {
-    const payload = await getOrFetch(key, 6 * 60_000, async () => {
+    const payload = await getOrFetch(key, 15 * 60_000, async () => {
       // 1) ESPN first
       try {
         const espnData = await espnTopScorers(leagueName);
