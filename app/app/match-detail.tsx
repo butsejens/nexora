@@ -1193,16 +1193,13 @@ function MatchHeatmapInner({ homeTeam, awayTeam, homeStats, awayStats }: { homeT
   const hasData = hPoss > 0 || aPoss > 0 || hShots > 0 || aShots > 0;
   if (!hasData) return null;
 
-  // Zone intensity: 0-1 scale for coloring (defense / midfield / attack for each team)
   const maxShots = Math.max(hShots, aShots, 1);
   const maxCorners = Math.max(hCorners, aCorners, 1);
 
-  // Home zones (bottom half): attack=near top, defense=near bottom
   const hAttackIntensity = Math.min(1, ((hInsideBox || hOnTarget) / Math.max(maxShots, 1)) * 1.5 + 0.15);
   const hMidIntensity = Math.min(1, (hPoss / 100) * 1.2);
   const hDefIntensity = Math.min(1, (aPoss / 100) * 0.5 + (aCorners / Math.max(maxCorners, 1)) * 0.3);
 
-  // Away zones (top half): attack=near center, defense=near top
   const aAttackIntensity = Math.min(1, ((aInsideBox || aOnTarget) / Math.max(maxShots, 1)) * 1.5 + 0.15);
   const aMidIntensity = Math.min(1, (aPoss / 100) * 1.2);
   const aDefIntensity = Math.min(1, (hPoss / 100) * 0.5 + (hCorners / Math.max(maxCorners, 1)) * 0.3);
@@ -1214,21 +1211,20 @@ function MatchHeatmapInner({ homeTeam, awayTeam, homeStats, awayStats }: { homeT
       : `rgba(91,141,239,${alpha.toFixed(2)})`;
   };
 
-  // Shot dots based on available data
   const shotDots: { x: number; y: number; color: string; onTarget: boolean }[] = [];
   const seedRng = (s: number) => { let v = s; return () => { v = (v * 16807 + 0) % 2147483647; return (v & 0x7fffffff) / 0x7fffffff; }; };
   const rng = seedRng(hShots * 100 + aShots * 7 + hOnTarget * 33);
 
-  // Home shots (bottom attacking third → y 15%-44%)
   for (let i = 0; i < Math.min(hShots, 12); i++) {
     const onTarget = i < hOnTarget;
     shotDots.push({ x: 15 + rng() * 70, y: 15 + rng() * 29, color: COLORS.accent, onTarget });
   }
-  // Away shots (top attacking third → y 56%-85%)
   for (let i = 0; i < Math.min(aShots, 12); i++) {
     const onTarget = i < aOnTarget;
     shotDots.push({ x: 15 + rng() * 70, y: 56 + rng() * 29, color: "#5B8DEF", onTarget });
   }
+
+  const LINE = "rgba(255,255,255,0.25)";
 
   return (
     <View style={heatmapStyles.card}>
@@ -1238,36 +1234,69 @@ function MatchHeatmapInner({ homeTeam, awayTeam, homeStats, awayStats }: { homeT
         <Text style={heatmapStyles.headerTitle}>ZONE CONTROL & SHOTS</Text>
       </View>
 
-      {/* Pitch */}
       <View style={heatmapStyles.pitch}>
-        <LinearGradient colors={["#0d2e18", "#1a4428", "#1a4428", "#0d2e18"]} style={heatmapStyles.pitchGradient}>
+        <LinearGradient colors={["#0a2613", "#154025", "#1a4a2a", "#1a4a2a", "#154025", "#0a2613"]} style={heatmapStyles.pitchGradient}>
           {/* Away team zones (top half) */}
           <View style={heatmapStyles.halfRow}>
-            <View style={[heatmapStyles.zone, { backgroundColor: zoneColor(aDefIntensity, "away") }]}>
-              <Text style={heatmapStyles.zoneLabel}>DEF</Text>
-            </View>
-            <View style={[heatmapStyles.zone, { backgroundColor: zoneColor(aMidIntensity, "away") }]}>
-              <Text style={heatmapStyles.zoneLabel}>MID</Text>
-            </View>
-            <View style={[heatmapStyles.zone, { backgroundColor: zoneColor(aAttackIntensity, "away") }]}>
-              <Text style={heatmapStyles.zoneLabel}>ATT</Text>
-            </View>
+            <View style={[heatmapStyles.zone, { backgroundColor: zoneColor(aDefIntensity, "away") }]} />
+            <View style={[heatmapStyles.zone, { backgroundColor: zoneColor(aMidIntensity, "away") }]} />
+            <View style={[heatmapStyles.zone, { backgroundColor: zoneColor(aAttackIntensity, "away") }]} />
           </View>
-
-          {/* Center line */}
-          <View style={heatmapStyles.centerLine} />
 
           {/* Home team zones (bottom half) */}
           <View style={heatmapStyles.halfRow}>
-            <View style={[heatmapStyles.zone, { backgroundColor: zoneColor(hAttackIntensity, "home") }]}>
-              <Text style={heatmapStyles.zoneLabel}>ATT</Text>
-            </View>
-            <View style={[heatmapStyles.zone, { backgroundColor: zoneColor(hMidIntensity, "home") }]}>
-              <Text style={heatmapStyles.zoneLabel}>MID</Text>
-            </View>
-            <View style={[heatmapStyles.zone, { backgroundColor: zoneColor(hDefIntensity, "home") }]}>
-              <Text style={heatmapStyles.zoneLabel}>DEF</Text>
-            </View>
+            <View style={[heatmapStyles.zone, { backgroundColor: zoneColor(hAttackIntensity, "home") }]} />
+            <View style={[heatmapStyles.zone, { backgroundColor: zoneColor(hMidIntensity, "home") }]} />
+            <View style={[heatmapStyles.zone, { backgroundColor: zoneColor(hDefIntensity, "home") }]} />
+          </View>
+
+          {/* ── Pitch markings overlay ─────────────────── */}
+          {/* Center line */}
+          <View style={{ position: "absolute", top: "50%", left: 6, right: 6, height: 1, backgroundColor: LINE }} />
+          {/* Center circle */}
+          <View style={{ position: "absolute", top: "50%", left: "50%", width: 60, height: 60, marginLeft: -30, marginTop: -30, borderRadius: 30, borderWidth: 1, borderColor: LINE }} />
+          {/* Center spot */}
+          <View style={{ position: "absolute", top: "50%", left: "50%", width: 6, height: 6, marginLeft: -3, marginTop: -3, borderRadius: 3, backgroundColor: LINE }} />
+
+          {/* Top penalty area */}
+          <View style={{ position: "absolute", top: 0, left: "20%", right: "20%", height: "16%", borderLeftWidth: 1, borderRightWidth: 1, borderBottomWidth: 1, borderColor: LINE }} />
+          {/* Top goal area */}
+          <View style={{ position: "absolute", top: 0, left: "33%", right: "33%", height: "7%", borderLeftWidth: 1, borderRightWidth: 1, borderBottomWidth: 1, borderColor: LINE }} />
+          {/* Top penalty spot */}
+          <View style={{ position: "absolute", top: "11%", left: "50%", width: 4, height: 4, marginLeft: -2, borderRadius: 2, backgroundColor: LINE }} />
+          {/* Top goal line center */}
+          <View style={{ position: "absolute", top: 0, left: "41%", right: "41%", height: 3, backgroundColor: "rgba(255,255,255,0.15)", borderBottomLeftRadius: 2, borderBottomRightRadius: 2 }} />
+
+          {/* Bottom penalty area */}
+          <View style={{ position: "absolute", bottom: 0, left: "20%", right: "20%", height: "16%", borderLeftWidth: 1, borderRightWidth: 1, borderTopWidth: 1, borderColor: LINE }} />
+          {/* Bottom goal area */}
+          <View style={{ position: "absolute", bottom: 0, left: "33%", right: "33%", height: "7%", borderLeftWidth: 1, borderRightWidth: 1, borderTopWidth: 1, borderColor: LINE }} />
+          {/* Bottom penalty spot */}
+          <View style={{ position: "absolute", bottom: "11%", left: "50%", width: 4, height: 4, marginLeft: -2, borderRadius: 2, backgroundColor: LINE }} />
+          {/* Bottom goal line center */}
+          <View style={{ position: "absolute", bottom: 0, left: "41%", right: "41%", height: 3, backgroundColor: "rgba(255,255,255,0.15)", borderTopLeftRadius: 2, borderTopRightRadius: 2 }} />
+
+          {/* Outer border */}
+          <View style={{ position: "absolute", top: 0, left: 6, right: 6, bottom: 0, borderWidth: 1, borderColor: LINE }} />
+
+          {/* Zone labels */}
+          <View style={{ position: "absolute", top: "4%", left: 0, right: 0, alignItems: "center" }}>
+            <Text style={heatmapStyles.zoneLabel}>DEF</Text>
+          </View>
+          <View style={{ position: "absolute", top: "21%", left: 0, right: 0, alignItems: "center" }}>
+            <Text style={heatmapStyles.zoneLabel}>MID</Text>
+          </View>
+          <View style={{ position: "absolute", top: "38%", left: 0, right: 0, alignItems: "center" }}>
+            <Text style={heatmapStyles.zoneLabel}>ATT</Text>
+          </View>
+          <View style={{ position: "absolute", bottom: "37%", left: 0, right: 0, alignItems: "center" }}>
+            <Text style={heatmapStyles.zoneLabel}>ATT</Text>
+          </View>
+          <View style={{ position: "absolute", bottom: "21%", left: 0, right: 0, alignItems: "center" }}>
+            <Text style={heatmapStyles.zoneLabel}>MID</Text>
+          </View>
+          <View style={{ position: "absolute", bottom: "4%", left: 0, right: 0, alignItems: "center" }}>
+            <Text style={heatmapStyles.zoneLabel}>DEF</Text>
           </View>
 
           {/* Shot dots overlay */}
@@ -1296,6 +1325,25 @@ function MatchHeatmapInner({ homeTeam, awayTeam, homeStats, awayStats }: { homeT
         </LinearGradient>
       </View>
 
+      {/* Shot stats mini cards */}
+      <View style={heatmapStyles.shotStatsRow}>
+        <View style={heatmapStyles.shotStatCard}>
+          <Text style={[heatmapStyles.shotStatValue, { color: COLORS.accent }]}>{hShots}</Text>
+          <Text style={heatmapStyles.shotStatLabel}>Shots</Text>
+          <Text style={[heatmapStyles.shotStatValue, { color: "#5B8DEF" }]}>{aShots}</Text>
+        </View>
+        <View style={heatmapStyles.shotStatCard}>
+          <Text style={[heatmapStyles.shotStatValue, { color: COLORS.accent }]}>{hOnTarget}</Text>
+          <Text style={heatmapStyles.shotStatLabel}>On Target</Text>
+          <Text style={[heatmapStyles.shotStatValue, { color: "#5B8DEF" }]}>{aOnTarget}</Text>
+        </View>
+        <View style={heatmapStyles.shotStatCard}>
+          <Text style={[heatmapStyles.shotStatValue, { color: COLORS.accent }]}>{hCorners}</Text>
+          <Text style={heatmapStyles.shotStatLabel}>Corners</Text>
+          <Text style={[heatmapStyles.shotStatValue, { color: "#5B8DEF" }]}>{aCorners}</Text>
+        </View>
+      </View>
+
       {/* Legend */}
       <View style={heatmapStyles.legend}>
         <View style={heatmapStyles.legendItem}>
@@ -1308,11 +1356,11 @@ function MatchHeatmapInner({ homeTeam, awayTeam, homeStats, awayStats }: { homeT
         </View>
         <View style={heatmapStyles.legendItem}>
           <View style={[heatmapStyles.legendZone, { backgroundColor: "rgba(232,93,47,0.3)" }]} />
-          <Text style={heatmapStyles.legendText}>Home zone</Text>
+          <Text style={heatmapStyles.legendText}>Home</Text>
         </View>
         <View style={heatmapStyles.legendItem}>
           <View style={[heatmapStyles.legendZone, { backgroundColor: "rgba(91,141,239,0.3)" }]} />
-          <Text style={heatmapStyles.legendText}>Away zone</Text>
+          <Text style={heatmapStyles.legendText}>Away</Text>
         </View>
       </View>
 
@@ -1372,7 +1420,7 @@ const heatmapStyles = StyleSheet.create({
     borderColor: "rgba(255,255,255,0.12)",
   },
   pitchGradient: {
-    aspectRatio: 0.72,
+    aspectRatio: 0.68,
     position: "relative",
   },
   halfRow: {
@@ -1381,19 +1429,12 @@ const heatmapStyles = StyleSheet.create({
   },
   zone: {
     flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
   },
   zoneLabel: {
-    fontFamily: "Inter_600SemiBold",
-    fontSize: 10,
-    color: "rgba(255,255,255,0.3)",
-    letterSpacing: 1,
-  },
-  centerLine: {
-    height: 1,
-    backgroundColor: "rgba(255,255,255,0.25)",
-    marginHorizontal: 8,
+    fontFamily: "Inter_700Bold",
+    fontSize: 9,
+    color: "rgba(255,255,255,0.2)",
+    letterSpacing: 1.5,
   },
   shotDot: {
     position: "absolute",
@@ -1459,6 +1500,35 @@ const heatmapStyles = StyleSheet.create({
     fontFamily: "Inter_500Medium",
     fontSize: 10,
     color: COLORS.textMuted,
+  },
+  shotStatsRow: {
+    flexDirection: "row",
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    gap: 8,
+  },
+  shotStatCard: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    backgroundColor: "rgba(255,255,255,0.04)",
+    borderRadius: 8,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+  },
+  shotStatValue: {
+    fontFamily: "Inter_700Bold",
+    fontSize: 13,
+    minWidth: 18,
+    textAlign: "center",
+  },
+  shotStatLabel: {
+    fontFamily: "Inter_500Medium",
+    fontSize: 9,
+    color: COLORS.textMuted,
+    letterSpacing: 0.3,
+    textAlign: "center",
   },
   possessionBar: {
     flexDirection: "row",
@@ -2779,18 +2849,21 @@ const styles = StyleSheet.create({
   },
   statSectionCard: {
     backgroundColor: COLORS.card,
-    borderRadius: 16,
-    paddingHorizontal: 14,
-    paddingTop: 12,
-    paddingBottom: 6,
+    borderRadius: 14,
+    paddingHorizontal: 12,
+    paddingTop: 10,
+    paddingBottom: 4,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.07)",
+    borderColor: "rgba(255,255,255,0.06)",
   },
   statSectionHeader: {
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
-    marginBottom: 14,
+    marginBottom: 10,
+    paddingBottom: 8,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: "rgba(255,255,255,0.08)",
   },
   statSectionAccent: {
     width: 3,
@@ -2808,12 +2881,12 @@ const styles = StyleSheet.create({
   statSectionIcon: {
     fontSize: 13,
   },
-  statRow: { flexDirection: "row", alignItems: "center", gap: 8, paddingBottom: 10 },
+  statRow: { flexDirection: "row", alignItems: "center", gap: 6, paddingVertical: 8, paddingHorizontal: 2 },
   statVal: {
     fontFamily: "Inter_700Bold",
     fontSize: 14,
     color: COLORS.textSecondary,
-    width: 44,
+    width: 42,
     textAlign: "center",
   },
   statValRight: {
@@ -2824,45 +2897,46 @@ const styles = StyleSheet.create({
     fontFamily: "Inter_800ExtraBold",
     fontSize: 15,
   },
-  statBarContainer: { flex: 1, alignItems: "center", gap: 5 },
+  statBarContainer: { flex: 1, alignItems: "center", gap: 4 },
   statName: {
-    fontFamily: "Inter_500Medium",
-    fontSize: 11,
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 10,
     color: COLORS.textMuted,
     textAlign: "center",
-    letterSpacing: 0.3,
+    letterSpacing: 0.5,
+    textTransform: "uppercase",
   },
   statBarsWrapper: {
     flexDirection: "row",
     alignItems: "center",
     width: "100%",
-    height: 7,
+    height: 5,
   },
   statBarHalf: {
     flex: 1,
     flexDirection: "row",
-    height: 7,
-    borderRadius: 3.5,
+    height: 5,
+    borderRadius: 2.5,
     overflow: "hidden",
-    backgroundColor: "rgba(255,255,255,0.06)",
+    backgroundColor: "rgba(255,255,255,0.05)",
   },
   statBarHomeFill: {
-    height: 7,
+    height: 5,
     backgroundColor: COLORS.accent,
-    borderRadius: 3.5,
+    borderRadius: 2.5,
   },
   statBarCenterGap: {
-    width: 3,
+    width: 2,
   },
   statBarAwayFill: {
-    height: 7,
+    height: 5,
     backgroundColor: "#5B8DEF",
-    borderRadius: 3.5,
+    borderRadius: 2.5,
   },
   statDivider: {
-    height: 1,
-    backgroundColor: "rgba(255,255,255,0.05)",
-    marginBottom: 12,
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: "rgba(255,255,255,0.06)",
+    marginHorizontal: 4,
   },
   noStatsText: {
     fontFamily: "Inter_400Regular",
