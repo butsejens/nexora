@@ -265,7 +265,7 @@ export default function MoviesScreen() {
   const heroItems = useMemo(() => {
     const pool = [...trending, ...newReleases, ...popular].filter(Boolean);
     return pool.slice(0, 10);
-  }, [iptvMovies, filteredIptv, trending, newReleases, popular]);
+  }, [trending, newReleases, popular]);
 
   const featured = heroItems[heroIndex % Math.max(heroItems.length, 1)] || null;
 

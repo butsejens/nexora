@@ -26,7 +26,7 @@ import { COLORS } from "@/constants/colors";
 import { NexoraHeader } from "@/components/NexoraHeader";
 import { useNexora } from "@/context/NexoraContext";
 import { useTranslation } from "@/lib/useTranslation";
-import { t as tFn, type Language } from "@/lib/i18n";
+import { t as tFn } from "@/lib/i18n";
 import { apiRequest, queryClient } from "@/lib/query-client";
 import { fetchM3UText } from "@/lib/fetchM3U";
 import { parseM3UContentAsync } from "@/lib/parseM3U";
@@ -744,7 +744,6 @@ const [showAddPlaylist, setShowAddPlaylist] = useState(false);
   const [showUpdateModal, setShowUpdateModal] = useState(openUpdate === "1");
 
   const bottomPad = Platform.OS === "web" ? 34 : insets.bottom + 90;
-  const qualities = ["Auto", "4K", "FHD", "HD"] as const;
   const selectedLangLabel = LANGUAGES.find(l => l.code === audioLanguage)?.label || "Auto";
 
   const totalChannels = iptvChannels.length;

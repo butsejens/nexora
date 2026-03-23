@@ -2,7 +2,7 @@ import React, { useState, useCallback, useEffect, useMemo, useRef } from "react"
 import {
   View, Text, StyleSheet, ScrollView,
   RefreshControl, Platform, TouchableOpacity, TextInput, Alert,
-  Image, useWindowDimensions, Animated } from "react-native";
+  Image, useWindowDimensions } from "react-native";
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -814,18 +814,6 @@ export default function SportsScreen() {
   const lastScrollYRef = useRef(0);
   const compactHeaderRef = useRef(false);
   const [compactHeader, setCompactHeader] = useState(false);
-  const showFiltersRef = useRef(true);
-  const lastFilterToggleAtRef = useRef(0);
-  const filterAnim = useRef(new Animated.Value(1)).current;
-
-  const toggleFiltersVisibility = useCallback((visible: boolean) => {
-    if (showFiltersRef.current === visible) return;
-    const now = Date.now();
-    if (now - lastFilterToggleAtRef.current < 220) return;
-    lastFilterToggleAtRef.current = now;
-    showFiltersRef.current = visible;
-    Animated.timing(filterAnim, { toValue: visible ? 1 : 0, duration: 180, useNativeDriver: true }).start();
-  }, [filterAnim]);
 
   useEffect(() => {
     let active = true;

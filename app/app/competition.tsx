@@ -13,7 +13,7 @@ import { useQuery } from "@tanstack/react-query";
 import { COLORS } from "@/constants/colors";
 import { apiRequest } from "@/lib/query-client";
 import { normalizeApiError } from "@/lib/error-messages";
-import { resolveTeamLogoUri, getLeagueLogo } from "@/lib/logo-manager";
+import { getLeagueLogo } from "@/lib/logo-manager";
 import { TeamLogo } from "@/components/TeamLogo";
 import { useTranslation } from "@/lib/useTranslation";
 import { t as tFn } from "@/lib/i18n";
@@ -222,8 +222,8 @@ export default function CompetitionScreen() {
     retry: 1,
   });
 
-  const standings: any[] = standingsData?.standings || [];
-  const scorers: any[] = scorersData?.scorers || [];
+  const standings: any[] = useMemo(() => standingsData?.standings || [], [standingsData]);
+  const scorers: any[] = useMemo(() => scorersData?.scorers || [], [scorersData]);
   const competitionMatches: any[] = matchesData?.matches || [];
   const competitionTeams: any[] = teamsData?.teams || [];
   const standingsError = normalizeApiError((standingsData as any)?.error || null);

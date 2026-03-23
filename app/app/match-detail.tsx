@@ -19,7 +19,6 @@ import { buildErrorReference, normalizeApiError } from "@/lib/error-messages";
 import { safeStr } from "@/lib/utils";
 import { SilentResetBoundary } from "@/components/SilentResetBoundary";
 import { useNexora } from "@/context/NexoraContext";
-import { useTranslation } from "@/lib/useTranslation";
 import { t as tFn } from "@/lib/i18n";
 
 const BLOCK_POPUP_JS = `
@@ -1187,8 +1186,6 @@ function MatchHeatmapInner({ homeTeam, awayTeam, homeStats, awayStats }: { homeT
   const aCorners = toNum(awayStats?.corner_kicks ?? awayStats?.corners ?? awayStats?.cornerKicks);
   const hInsideBox = toNum(homeStats?.shots_insidebox ?? homeStats?.shotsInsideBox);
   const aInsideBox = toNum(awayStats?.shots_insidebox ?? awayStats?.shotsInsideBox);
-  const hPasses = toNum(homeStats?.total_passes ?? homeStats?.totalPasses ?? homeStats?.passes);
-  const aPasses = toNum(awayStats?.total_passes ?? awayStats?.totalPasses ?? awayStats?.passes);
 
   const hasData = hPoss > 0 || aPoss > 0 || hShots > 0 || aShots > 0;
   if (!hasData) return null;
