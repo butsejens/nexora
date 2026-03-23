@@ -5651,35 +5651,26 @@ const ESPN_SCORERS_BASE = "https://site.web.api.espn.com/apis/v2/sports/soccer";
 const ESPN_LEAGUE_SLUGS = {
   "Premier League": "eng.1",
   Championship: "eng.2",
-  "FA Cup": "eng.fa",
   "UEFA Champions League": "uefa.champions",
   "Champions League": "uefa.champions",
   "UEFA Europa League": "uefa.europa",
   "UEFA Conference League": "uefa.europa.conf",
   "La Liga": "esp.1",
   "La Liga 2": "esp.2",
-  "Copa del Rey": "esp.copa_del_rey",
   "Bundesliga": "ger.1",
   "2. Bundesliga": "ger.2",
-  "DFB Pokal": "ger.dfb_pokal",
   "Jupiler Pro League": "bel.1",
   "Challenger Pro League": "bel.2",
-  "Belgian Cup": "bel.cup",
   "Ligue 1": "fra.1",
   "Ligue 2": "fra.2",
-  "Coupe de France": "fra.coupe_de_france",
   "Serie A": "ita.1",
   "Serie B": "ita.2",
-  "Coppa Italia": "ita.coppa_italia",
   Eredivisie: "ned.1",
   "Eerste Divisie": "ned.2",
-  "KNVB Beker": "ned.knvb_beker",
   "Primeira Liga": "por.1",
   "Liga Portugal 2": "por.2",
-  "Taca de Portugal": "por.taca_de_portugal",
   "Super Lig": "tur.1",
   "1. Lig": "tur.2",
-  "Turkish Cup": "tur.turkish_cup",
 };
 
 async function fetchWithTimeout(fetchPromise, timeoutMs = 12000) {
@@ -5691,9 +5682,27 @@ async function fetchWithTimeout(fetchPromise, timeoutMs = 12000) {
 
 async function espnStandings(leagueName) {
   const slug = ESPN_LEAGUE_SLUGS[leagueName] || ESPN_LEAGUE_SLUGS[normalizeLeagueName(leagueName)] || leagueName;
-  const url = `${ESPN_STANDINGS_BASE}/${slug}/standings`;
+  const base = `${ESPN_STANDINGS_BASE}/${slug}/standings`;
+  // Try seasontype=1 (regular season) first — required for leagues like bel.1
+  for (const st of [1, 2]) {
+    const url = `${base}?seasontype=${st}`;
+    const resp = await fetchWithTimeout(
+      fetch(url, { headers: { "user-agent": "Mozilla/5.0 (Nexora/1.0)", accept: "application/json" } }),
+      12000
+    );
+    if (!resp.ok) throw new Error(`ESPN standings ${resp.status}`);
+    const data = await resp.json();
+    // Check if this response has actual standings entries
+    const groups = data?.children || [];
+    const hasChildren = Array.isArray(groups) && groups[0]?.standings?.entries?.length > 0;
+    const hasDirect = Array.isArray(data?.standings?.entries) && data.standings.entries.length > 0;
+    if (hasChildren || hasDirect) return data;
+    // seasontype=1 empty → try seasontype=2 (playoffs)
+    console.log(`[standings] ${leagueName}: seasontype=${st} returned no entries, trying next`);
+  }
+  // If both empty, try without seasontype as final fallback
   const resp = await fetchWithTimeout(
-    fetch(url, { headers: { "user-agent": "Mozilla/5.0 (Nexora/1.0)", accept: "application/json" } }),
+    fetch(base, { headers: { "user-agent": "Mozilla/5.0 (Nexora/1.0)", accept: "application/json" } }),
     12000
   );
   if (!resp.ok) throw new Error(`ESPN standings ${resp.status}`);
