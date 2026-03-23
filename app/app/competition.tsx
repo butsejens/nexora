@@ -442,7 +442,7 @@ export default function CompetitionScreen() {
                     });
                   }}
                 >
-                  <TeamLogo uri={team.logo} teamName={team.name} size={40} />
+                  <TeamLogo uri={team.logo} teamName={team.name} size={48} />
                   <Text style={styles.teamCardName} numberOfLines={2}>{team.name}</Text>
                   {team.abbreviation ? <Text style={styles.teamCardAbbr}>{team.abbreviation}</Text> : null}
                 </TouchableOpacity>
@@ -526,7 +526,7 @@ function StandingsRow({ team, rank, league, espnLeague }: { team: any; rank: num
       </View>
 
       <View style={styles.teamCell}>
-        <TeamLogo uri={team?.logo || null} teamName={String(team?.team || "")} size={24} />
+        <TeamLogo uri={team?.logo || null} teamName={String(team?.team || "")} size={28} />
         <Text style={styles.standingsTeamName} numberOfLines={1}>{team.team}</Text>
       </View>
 
@@ -574,7 +574,7 @@ function ScorerRow({ scorer, rank, league, espnLeague }: { scorer: any; rank: nu
       <View style={styles.scorerInfo}>
         <Text style={styles.scorerName} numberOfLines={1}>{scorer.name}</Text>
         <View style={styles.scorerTeamRow}>
-          <TeamLogo uri={scorer?.teamLogo || null} teamName={String(scorer?.team || "")} size={22} />
+          <TeamLogo uri={scorer?.teamLogo || null} teamName={String(scorer?.team || "")} size={18} />
           <Text style={styles.scorerTeam} numberOfLines={1}>{scorer.team}</Text>
         </View>
         {scorer.marketValue ? (
@@ -644,7 +644,7 @@ const styles = StyleSheet.create({
   rankIndicator: { width: 24, height: 24, borderRadius: 6, alignItems: "center", justifyContent: "center" },
   rankText: { fontFamily: "Inter_700Bold", fontSize: 12 },
   teamCell: { flex: 1, flexDirection: "row", alignItems: "center", gap: 8, paddingLeft: 4 },
-  standingsLogo: { width: 24, height: 24, borderRadius: 12 },
+  standingsLogo: { width: 28, height: 28, borderRadius: 6 },
   logoPlaceholder: { backgroundColor: COLORS.card, alignItems: "center", justifyContent: "center" },
   standingsTeamName: { fontFamily: "Inter_600SemiBold", fontSize: 12, color: COLORS.text, flex: 1 },
   standingsCell: { width: 26, textAlign: "center", fontFamily: "Inter_400Regular", fontSize: 12, color: COLORS.textSecondary },
@@ -667,7 +667,7 @@ const styles = StyleSheet.create({
   matchTime: { fontFamily: "Inter_700Bold", fontSize: 13, color: COLORS.text },
   matchTeams: { flex: 1, gap: 6 },
   matchTeamRow: { flexDirection: "row", alignItems: "center", gap: 8 },
-  matchTeamLogo: { width: 18, height: 18, borderRadius: 9 },
+  matchTeamLogo: { width: 22, height: 22, borderRadius: 4 },
   matchTeamName: { fontFamily: "Inter_500Medium", fontSize: 13, color: COLORS.textSecondary, flex: 1 },
   winnerName: { fontFamily: "Inter_700Bold", color: COLORS.text },
   matchScoreCol: { alignItems: "center", gap: 2, minWidth: 36 },
@@ -685,11 +685,11 @@ const styles = StyleSheet.create({
     borderRadius: 14, backgroundColor: COLORS.cardElevated,
   },
   scorerRank: { fontFamily: "Inter_700Bold", fontSize: 16, width: 24, textAlign: "center" },
-  scorerPhoto: { width: 44, height: 44, borderRadius: 22 },
+  scorerPhoto: { width: 52, height: 52, borderRadius: 10 },
   scorerInfo: { flex: 1, gap: 3 },
   scorerName: { fontFamily: "Inter_600SemiBold", fontSize: 14, color: COLORS.text, flexShrink: 1 },
   scorerTeamRow: { flexDirection: "row", alignItems: "center", gap: 6 },
-  scorerTeamLogo: { width: 16, height: 16, borderRadius: 8 },
+  scorerTeamLogo: { width: 18, height: 18, borderRadius: 4 },
   scorerTeam: { fontFamily: "Inter_400Regular", fontSize: 12, color: COLORS.textMuted, flex: 1 },
   scorerMarketValue: { fontFamily: "Inter_600SemiBold", fontSize: 11 },
   scorerRight: { alignItems: "center" },

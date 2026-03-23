@@ -599,7 +599,7 @@ const styles = StyleSheet.create({
     alignItems: "center", justifyContent: "center", flexShrink: 0,
   },
   jerseyNum: { fontFamily: "Inter_700Bold", fontSize: 12 },
-  playerPhoto: { width: 44, height: 44, borderRadius: 22, flexShrink: 0 },
+  playerPhoto: { width: 50, height: 50, borderRadius: 10, flexShrink: 0 },
   photoPlaceholder: { backgroundColor: COLORS.card, alignItems: "center", justifyContent: "center" },
   playerInitials: { fontFamily: "Inter_700Bold", fontSize: 13, color: COLORS.text },
   playerMain: { flex: 1, gap: 4 },
