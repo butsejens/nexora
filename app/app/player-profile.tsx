@@ -1,8 +1,8 @@
-import React, { useEffect, useMemo, useState, useRef, useCallback } from "react";
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Image, ActivityIndicator, Animated } from "react-native";
+import React, { useEffect, useMemo, useState, useRef } from "react";
+import { View, Text, StyleSheet, TouchableOpacity, Image, ActivityIndicator, Animated } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
+import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { useQuery } from "@tanstack/react-query";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -89,6 +89,7 @@ function normalizePlayerDto(raw: any, params: {
     id: normalizeText(raw?.id, ""),
     name: baseName,
     photo: raw?.photo || null,
+    theSportsDbPhoto: raw?.theSportsDbPhoto || null,
     age: toAgeNumber(raw?.age) ?? toAgeNumber(params.age),
     birthDate: raw?.birthDate || null,
     nationality: normalizeText(raw?.nationality || params.nationality, ""),
@@ -177,29 +178,6 @@ export default function PlayerProfileScreen() {
 
       await AsyncStorage.setItem(cacheKey, JSON.stringify(instant));
       return instant;
-
-      // Legacy network path intentionally skipped in foreground to keep UX instant.
-      // The background preload updates query cache when finished.
-      /*
-      try {
-        const playerId = encodeURIComponent(String(params.playerId || ""));
-        const name = encodeURIComponent(String(params.name || ""));
-        const team = encodeURIComponent(String(params.team || ""));
-        const league = encodeURIComponent(String(params.league || "eng.1"));
-        const res = await apiRequest("GET", `/api/sports/player/${playerId}?name=${name}&team=${team}&league=${league}`);
-        const json = await res.json();
-        const normalized = normalizePlayerDto(json, params);
-        await AsyncStorage.setItem(cacheKey, JSON.stringify(normalized));
-        return normalized;
-      } catch (error) {
-        const cached = await AsyncStorage.getItem(cacheKey);
-        if (cached) {
-          const parsed = JSON.parse(cached);
-          return normalizePlayerDto({ ...parsed, offlineData: true }, params);
-        }
-        throw error;
-      }
-      */
     },
     staleTime: 24 * 60 * 60_000,
     gcTime: 30 * 60_000,
@@ -218,10 +196,11 @@ export default function PlayerProfileScreen() {
 
   const [photoIdx, setPhotoIdx] = useState(0);
   const photoUri = photoCandidates[photoIdx] || null;
+  const photoCandidatesKey = photoCandidates.join(",");
 
   useEffect(() => {
     setPhotoIdx(0);
-  }, [photoCandidates.join(",")]);
+  }, [photoCandidatesKey]);
 
   const badgeColor = colorFromSeed(`${data?.currentClub || params.team || "nexora"}`);
   const initials = initialsFromName(String(data?.name || params.name || "?"));

@@ -1,14 +1,13 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   View, Text, StyleSheet, TouchableOpacity, ScrollView,
-  Image, Platform, ActivityIndicator, FlatList, Animated,
+  Image, Platform, ActivityIndicator, Animated,
 } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
-import { useQuery } from "@tanstack/react-query";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { COLORS } from "@/constants/colors";
 import { apiRequest } from "@/lib/query-client";
@@ -49,6 +48,25 @@ const POSITION_KEY_MAP: Record<string, string> = {
 const POSITION_LABELS_FALLBACK: Record<string, string> = {
   PG: "Point Guard", SG: "Shooting Guard", SF: "Small Forward",
   PF: "Power Forward", C: "Center", G: "Guard", F: "Forward",
+};
+
+type TeamDetailData = {
+  id: string;
+  name: string;
+  shortName?: string;
+  logo?: string | null;
+  color?: string;
+  leagueName?: string;
+  leagueRank?: number;
+  leaguePoints?: number;
+  leaguePlayed?: number;
+  venue?: string;
+  coach?: string;
+  record?: string;
+  squadMarketValue?: string | null;
+  players: any[];
+  source?: string;
+  error?: string;
 };
 
 function positionLabel(pos: string, positionName?: string): string {
@@ -107,7 +125,7 @@ export default function TeamDetailScreen() {
         lastScrollY.current = currentY;
       },
     },
-  ), []);
+  ), [filterTranslateY, scrollY]);
 
   const prefsKey = useMemo(
     () => `team_ui_prefs_${encodeURIComponent(String(teamIdParam || teamNameParam || "unknown"))}`,
@@ -140,20 +158,20 @@ export default function TeamDetailScreen() {
   const sport = sportParam || "soccer";
   const league = espnLeagueParam || leagueParam || "eng.1";
 
-  const { data, isLoading, error, refetch } = useQuery({
+  const { data, isLoading, error, refetch } = useQuery<TeamDetailData>({
     queryKey: ["team-detail", teamIdParam, sport, league],
     queryFn: async () => {
       if (!teamIdParam) throw new Error("Team ID ontbreekt");
       const key = ["team-detail", teamIdParam, sport, league] as const;
-      const cached = queryClient.getQueryData(key as any);
+      const cached = queryClient.getQueryData<TeamDetailData>(key);
       if (cached) return cached;
 
       const backgroundFetch = async () => {
         try {
           const tn = encodeURIComponent(String(teamNameParam || ""));
           const res = await apiRequest("GET", `/api/sports/team/${encodeURIComponent(teamIdParam)}?sport=${encodeURIComponent(sport)}&league=${encodeURIComponent(league)}&teamName=${tn}`);
-          const json = await res.json();
-          queryClient.setQueryData(key as any, json);
+          const json = (await res.json()) as TeamDetailData;
+          queryClient.setQueryData<TeamDetailData>(key, json);
         } catch {
           // keep placeholder; user can retry manually
         }
@@ -168,12 +186,6 @@ export default function TeamDetailScreen() {
         players: [],
         source: "startup-preload-placeholder",
       };
-
-      /*
-      const tn = encodeURIComponent(String(teamNameParam || ""));
-      const res = await apiRequest("GET", `/api/sports/team/${encodeURIComponent(teamIdParam)}?sport=${encodeURIComponent(sport)}&league=${encodeURIComponent(league)}&teamName=${tn}`);
-      return res.json();
-      */
     },
     staleTime: 24 * 60 * 60 * 1000,
     gcTime: 30 * 60 * 1000,
@@ -254,10 +266,6 @@ export default function TeamDetailScreen() {
     const current = String(data?.name || teamNameParam || "").toLowerCase();
     return team && current && (team.includes(current) || current.includes(team));
   });
-
-  const heroOpacity = useMemo(() => scrollY.interpolate({ inputRange: [0, 100], outputRange: [1, 0], extrapolate: "clamp" }), []);
-  const heroTranslateY = useMemo(() => scrollY.interpolate({ inputRange: [0, 100], outputRange: [0, -40], extrapolate: "clamp" }), []);
-  const heroScale = useMemo(() => scrollY.interpolate({ inputRange: [0, 100], outputRange: [1, 0.92], extrapolate: "clamp" }), []);
 
   return (
     <View style={styles.container}>

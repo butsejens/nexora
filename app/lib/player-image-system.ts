@@ -1,6 +1,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Image } from "react-native";
 import * as FileSystem from "expo-file-system";
+import * as LegacyFileSystem from "expo-file-system/legacy";
 import type { QueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/query-client";
 
@@ -47,7 +48,7 @@ const PRELOAD_META_KEY = "nexora_player_preload_meta_v1";
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 const MAX_IMAGE_ENTRIES = 4500;
 const MAX_PROFILE_ENTRIES = 2500;
-const PLAYER_IMAGE_DIR = `${FileSystem.documentDirectory || FileSystem.cacheDirectory || ""}player-images/`;
+const PLAYER_IMAGE_DIR = `${LegacyFileSystem.documentDirectory || LegacyFileSystem.cacheDirectory || ""}player-images/`;
 const PRELOAD_LEAGUES = ["bel.1", "eng.1", "esp.1", "ger.1", "ita.1", "fra.1", "ned.1", "uefa.champions"];
 
 const imageCache = new Map<string, PlayerImageEntry>();
@@ -177,7 +178,7 @@ async function cacheRemoteImageLocally(cacheKey: string, photoUrl: string): Prom
     const existing = await FileSystem.getInfoAsync(destination);
     if (existing.exists) return destination;
 
-    const result = await FileSystem.downloadAsync(photoUrl, destination);
+    const result = await LegacyFileSystem.downloadAsync(photoUrl, destination);
     if (result.status >= 200 && result.status < 300) return result.uri;
   } catch {
     // ignore
