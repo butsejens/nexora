@@ -1523,16 +1523,18 @@ async function resolvePlayerPhotosViaAI(players, teamName) {
     }).join("\n");
 
     try {
-      const prompt = `For each football/soccer player below (team: ${teamName || "unknown"}), give me their EXACT English Wikipedia article title so I can fetch their photo. Return ONLY a JSON object mapping each player name to their Wikipedia title. Use null if you don't know.
+      const prompt = `You must identify each football/soccer player below. They ALL play for team: "${teamName || "unknown"}".
+IMPORTANT: Only return a Wikipedia title if you are CERTAIN the player currently plays (or recently played) for ${teamName || "this team"}. If a common name could refer to multiple players, pick the one who plays for ${teamName || "this team"}. Use null if unsure.
 
 Players:
 ${playerList}
 
+Return a JSON object mapping each player name to their EXACT English Wikipedia article title. Use null if unknown or uncertain.
 Return ONLY valid JSON. No markdown, no explanation.`;
 
       const response = await groqChat(
         [
-          { role: "system", content: "You are a sports encyclopedia. Return only valid JSON mapping player names to their exact English Wikipedia article titles." },
+          { role: "system", content: `You are a football/soccer expert who identifies players accurately. You know current squad rosters. When a player name is ambiguous, always pick the player who plays for the specified team. Never guess — use null when unsure.` },
           { role: "user", content: prompt },
         ],
         { temperature: 0 }
@@ -2743,7 +2745,7 @@ async function enrichRosterPhotos(players, teamName) {
           const score = similarityScore(normName, entry.normed);
           if (score > bestTmScore) { bestTmScore = score; bestTmPhoto = entry.photo; }
         }
-        if (bestTmScore >= 0.35 && bestTmPhoto) bestPhoto = bestTmPhoto;
+        if (bestTmScore >= 0.45 && bestTmPhoto) bestPhoto = bestTmPhoto;
       }
     }
 
@@ -2759,7 +2761,7 @@ async function enrichRosterPhotos(players, teamName) {
         const score = similarityScore(normName, entry.name);
         if (score > bestDbScore) { bestDbScore = score; bestDbPhoto = entry.photo; }
       }
-      if (bestDbScore >= 0.35 && bestDbPhoto) {
+      if (bestDbScore >= 0.45 && bestDbPhoto) {
         sportsDbPhoto = bestDbPhoto;
         if (!bestPhoto) bestPhoto = bestDbPhoto;
       } else {
@@ -2796,7 +2798,9 @@ async function enrichRosterPhotos(players, teamName) {
       const results = await Promise.all(
         batch.map(async (player) => {
           const normName = normalizePersonName(player.name || "");
+          const normTeam = normalizePersonName(teamName || "");
           // Try TheSportsDB search first (full name, last name, first name)
+          // Uses team-aware matching: prefer players from same team, require higher similarity
           try {
             const queries = [String(player.name || "").trim()];
             const parts = String(player.name || "").trim().split(/\s+/);
@@ -2804,6 +2808,8 @@ async function enrichRosterPhotos(players, teamName) {
               queries.push(parts[parts.length - 1]);
               queries.push(parts[0]);
             }
+            let bestResult = null;
+            let bestScore = 0;
             for (const rawQ of queries) {
               const q = encodeURIComponent(rawQ);
               if (!q) continue;
@@ -2816,11 +2822,18 @@ async function enrichRosterPhotos(players, teamName) {
               for (const r of (data?.player || [])) {
                 const rName = normalizePersonName(r?.strPlayer || "");
                 const photo = r?.strCutout || r?.strThumb || r?.strRender || null;
-                if (photo && /^https?:\/\//i.test(photo) && similarityScore(normName, rName) >= 0.35) {
-                  return [player.name, photo];
-                }
+                if (!photo || !/^https?:\/\//i.test(photo)) continue;
+                const nameScore = similarityScore(normName, rName);
+                if (nameScore < 0.50) continue;
+                // Boost score if team matches (strTeam or strTeam2)
+                const rTeam = normalizePersonName(r?.strTeam || "");
+                const rTeam2 = normalizePersonName(r?.strTeam2 || "");
+                const teamMatch = normTeam && (similarityScore(normTeam, rTeam) >= 0.50 || similarityScore(normTeam, rTeam2) >= 0.50);
+                const finalScore = teamMatch ? nameScore + 0.3 : nameScore;
+                if (finalScore > bestScore) { bestScore = finalScore; bestResult = photo; }
               }
             }
+            if (bestResult) return [player.name, bestResult];
           } catch { /* ignore */ }
           // Try Transfermarkt direct player search
           try {
@@ -5346,6 +5359,38 @@ app.get("/api/sports/highlights", async (req, res) => {
   } catch (e) {
     console.error("[highlights] Error:", e?.message);
     return res.json({ highlights: [], error: String(e?.message || "Unknown") });
+  }
+});
+
+// Prefetch endpoint — warms caches for key leagues (standings + top scorers)
+// Called by the app at boot so data is ready when user navigates
+app.get("/api/sports/prefetch-home", async (_req, res) => {
+  const KEY_LEAGUES = ["bel.1", "eng.1", "esp.1", "ger.1", "ita.1", "fra.1", "ned.1", "uefa.champions"];
+  const started = Date.now();
+  try {
+    // Fire all prefetches in parallel with 20s timeout per item
+    const results = await Promise.allSettled(
+      KEY_LEAGUES.flatMap((slug) => {
+        const leagueName = slug; // getOrFetch inside these endpoints will normalize
+        return [
+          Promise.race([
+            getOrFetch(`standings_${leagueName}`, 5 * 60_000, () => espnStandings(leagueName)),
+            new Promise((r) => setTimeout(r, 20_000)),
+          ]).catch(() => null),
+          Promise.race([
+            getOrFetch(`topscorers_${leagueName}_${seasonForDate(new Date())}`, 6 * 60_000, () =>
+              espnTopScorers(leagueName).then((d) => mapEspnTopScorers(d))
+            ),
+            new Promise((r) => setTimeout(r, 20_000)),
+          ]).catch(() => null),
+        ];
+      })
+    );
+    const fulfilled = results.filter((r) => r.status === "fulfilled").length;
+    console.log(`[prefetch] Warmed ${fulfilled}/${results.length} caches in ${Date.now() - started}ms`);
+    res.json({ ok: true, warmed: fulfilled, total: results.length, ms: Date.now() - started });
+  } catch (e) {
+    res.json({ ok: false, error: String(e?.message || e) });
   }
 });
 

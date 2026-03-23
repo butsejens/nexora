@@ -31,6 +31,11 @@ function prefetchHomeData() {
   queryClient.prefetchQuery({ queryKey: ["sports", "today", today], queryFn: () => fetcher(`/api/sports/by-date?date=${date}`), staleTime: 30_000 });
   queryClient.prefetchQuery({ queryKey: ["sports", "menu-tools", today, "all"], queryFn: () => fetcher(`/api/sports/menu-tools?date=${date}&league=all`), staleTime: 20_000 });
   queryClient.prefetchQuery({ queryKey: ["sports", "highlights"], queryFn: () => fetcher("/api/sports/highlights"), staleTime: 10 * 60 * 1000 });
+  // Warm server-side caches for standings + top scorers of key leagues (non-blocking)
+  fetcher("/api/sports/prefetch-home").catch(() => {});
+  // Prefetch standings + top scorers for Jupiler Pro League (most viewed)
+  queryClient.prefetchQuery({ queryKey: ["standings", "bel.1"], queryFn: () => fetcher("/api/sports/standings/bel.1"), staleTime: 5 * 60 * 1000 });
+  queryClient.prefetchQuery({ queryKey: ["topscorers", "bel.1"], queryFn: () => fetcher("/api/sports/topscorers/bel.1"), staleTime: 5 * 60 * 1000 });
 }
 import {
   useFonts,
