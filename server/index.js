@@ -4669,7 +4669,7 @@ function sortMatchByKickoff(a, b) {
 function filterMatchesByLeague(matches, league) {
   if (!Array.isArray(matches)) return [];
   const selected = String(league || "Alle").trim().toLowerCase();
-  if (!selected || selected === "alle") return matches;
+  if (!selected || selected === "alle" || selected === "all") return matches;
   return matches.filter((m) => {
     const leagueName = String(m?.league || "").toLowerCase();
     return leagueName === selected || leagueName.includes(selected) || selected.includes(leagueName);
