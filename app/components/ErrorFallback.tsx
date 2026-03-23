@@ -87,6 +87,14 @@ export function ErrorFallback({ error, resetError }: ErrorFallbackProps) {
           {t("errors.reloadApp")}
         </Text>
 
+        {/* DEBUG: show error in release to diagnose crash */}
+        <ScrollView style={{ maxHeight: 200, marginTop: 12 }}>
+          <Text selectable style={{ color: "#FF6B6B", fontSize: 11, fontFamily: Platform.OS === "android" ? "monospace" : "Menlo" }}>
+            {error.message}
+            {error.stack ? `\n\n${error.stack}` : ""}
+          </Text>
+        </ScrollView>
+
         <Pressable
           onPress={handleRestart}
           style={({ pressed }) => [
