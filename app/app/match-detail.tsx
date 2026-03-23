@@ -1842,11 +1842,14 @@ function StatsBarsInner({ homeTeam, awayTeam, homeStats, awayStats }: { homeTeam
 const StatsBars = React.memo(StatsBarsInner);
 
 function PlayerRow({ player, sport, compact = false, teamName = "" }: { player: any; sport: string; compact?: boolean; teamName?: string }) {
-  const photoCandidates = [
-    player?.photo,
-    player?.theSportsDbPhoto || null,
-    player?.id && /^\d+$/.test(String(player.id)) ? `https://a.espncdn.com/i/headshots/soccer/players/full/${encodeURIComponent(String(player.id))}.png` : null,
-  ].filter(Boolean) as string[];
+  const photoCandidates = (() => {
+    const raw = [
+      player?.photo,
+      player?.theSportsDbPhoto || null,
+      player?.id && /^\d+$/.test(String(player.id)) ? `https://a.espncdn.com/i/headshots/soccer/players/full/${encodeURIComponent(String(player.id))}.png` : null,
+    ].filter(Boolean) as string[];
+    return [...new Set(raw)];
+  })();
   const [photoIndex, setPhotoIndex] = useState(0);
   const photoUri = photoCandidates[photoIndex] || null;
 
@@ -1931,7 +1934,8 @@ function PitchDot({ player, color }: { player: any; color: string }) {
     if (player?.headshot && player.headshot !== player?.photo) candidates.push(player.headshot);
     const eid = String(player?.id || "");
     if (/^\d+$/.test(eid)) {
-      candidates.push(`https://a.espncdn.com/i/headshots/soccer/players/full/${eid}.png`);
+      const espnUrl = `https://a.espncdn.com/i/headshots/soccer/players/full/${eid}.png`;
+      if (!candidates.includes(espnUrl)) candidates.push(espnUrl);
     }
     return candidates;
   }, [player?.photo, player?.theSportsDbPhoto, player?.headshot, player?.id]);
