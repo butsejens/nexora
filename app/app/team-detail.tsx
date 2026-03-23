@@ -7,7 +7,7 @@ import { router, useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { COLORS } from "@/constants/colors";
 import { apiRequest } from "@/lib/query-client";
@@ -90,7 +90,6 @@ export default function TeamDetailScreen() {
   const insets = useSafeAreaInsets();
   const { isFavorite, toggleFavorite } = useNexora();
   const { t } = useTranslation();
-  const queryClient = useQueryClient();
   const favKey = `sport_team:${teamIdParam || teamNameParam}`;
   const isFollowing = isFavorite(favKey);
   const [posFilter, setPosFilter] = useState<string>("all");
@@ -162,36 +161,15 @@ export default function TeamDetailScreen() {
     queryKey: ["team-detail", teamIdParam, sport, league],
     queryFn: async () => {
       if (!teamIdParam) throw new Error("Team ID ontbreekt");
-      const key = ["team-detail", teamIdParam, sport, league] as const;
-      const cached = queryClient.getQueryData<TeamDetailData>(key);
-      if (cached) return cached;
-
-      const backgroundFetch = async () => {
-        try {
-          const tn = encodeURIComponent(String(teamNameParam || ""));
-          const res = await apiRequest("GET", `/api/sports/team/${encodeURIComponent(teamIdParam)}?sport=${encodeURIComponent(sport)}&league=${encodeURIComponent(league)}&teamName=${tn}`);
-          const json = (await res.json()) as TeamDetailData;
-          queryClient.setQueryData<TeamDetailData>(key, json);
-        } catch {
-          // keep placeholder; user can retry manually
-        }
-      };
-      void backgroundFetch();
-
-      return {
-        id: String(teamIdParam || ""),
-        name: String(teamNameParam || "Team"),
-        logo: logoParam || null,
-        color: "#1a3a6b",
-        players: [],
-        source: "startup-preload-placeholder",
-      };
+      const tn = encodeURIComponent(String(teamNameParam || ""));
+      const res = await apiRequest("GET", `/api/sports/team/${encodeURIComponent(teamIdParam)}?sport=${encodeURIComponent(sport)}&league=${encodeURIComponent(league)}&teamName=${tn}`);
+      return (await res.json()) as TeamDetailData;
     },
-    staleTime: 24 * 60 * 60 * 1000,
+    staleTime: 5 * 60 * 1000,
     gcTime: 30 * 60 * 1000,
-    refetchOnMount: false,
+    refetchOnMount: true,
     refetchOnWindowFocus: false,
-    retry: 0,
+    retry: 1,
   });
 
   const isNationalTeam = league.includes("fifa");

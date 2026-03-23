@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import {
   View, Text, StyleSheet, TouchableOpacity, Platform,
   ScrollView, Image, ActivityIndicator, useWindowDimensions,
@@ -131,7 +131,7 @@ export default function MatchDetailScreen() {
     matchId: string; homeTeam: string; awayTeam: string;
     homeTeamLogo?: string; awayTeamLogo?: string;
     homeScore?: string; awayScore?: string;
-    league: string; minute?: string; status: string; sport: string;
+    league: string; espnLeague?: string; minute?: string; status: string; sport: string;
     initialTab?: string;
   }>();
 
@@ -159,22 +159,47 @@ export default function MatchDetailScreen() {
   const isFinished = params.status === "finished" || params.status === "ft" || params.status === "done";
   const isHalfTime = params.status === "ht" || params.status === "halftime" || params.status === "half";
   const isPostponed = params.status === "postponed" || params.status === "cancelled" || params.status === "abandoned";
+  const espnSport = "soccer";
+  const espnLeague = useMemo(() => {
+    const direct = String(params.espnLeague || "").trim();
+    if (direct) return direct;
+    const map: Record<string, string> = {
+      "Premier League": "eng.1",
+      "Championship": "eng.2",
+      "FA Cup": "eng.fa",
+      "UEFA Champions League": "uefa.champions",
+      "UEFA Europa League": "uefa.europa",
+      "UEFA Conference League": "uefa.europa.conf",
+      "La Liga": "esp.1",
+      "La Liga 2": "esp.2",
+      "Copa del Rey": "esp.copa_del_rey",
+      "Bundesliga": "ger.1",
+      "2. Bundesliga": "ger.2",
+      "DFB Pokal": "ger.dfb_pokal",
+      "Jupiler Pro League": "bel.1",
+      "Challenger Pro League": "bel.2",
+      "Belgian Cup": "bel.cup",
+      "Ligue 1": "fra.1",
+      "Ligue 2": "fra.2",
+      "Coupe de France": "fra.coupe_de_france",
+      "Serie A": "ita.1",
+      "Serie B": "ita.2",
+      "Coppa Italia": "ita.coppa_italia",
+      "Eredivisie": "ned.1",
+      "Eerste Divisie": "ned.2",
+      "KNVB Beker": "ned.knvb_beker",
+    };
+    return map[params.league] || "eng.1";
+  }, [params.espnLeague, params.league]);
   const {
     data: streamData,
     isLoading: _streamLoading,
     error: streamFetchError,
     refetch: refetchStream,
   } = useQuery({
-    queryKey: ["match-stream", params.matchId, params.league],
+    queryKey: ["match-stream", params.matchId, espnLeague],
     queryFn: async () => {
-      const map: Record<string, string> = {
-        "Premier League": "eng.1", "UEFA Champions League": "uefa.champions",
-        "UEFA Europa League": "uefa.europa", "UEFA Conference League": "uefa.europa.conf",
-        "Bundesliga": "ger.1", "La Liga": "esp.1",
-        "Jupiler Pro League": "bel.1", "Ligue 1": "fra.1", "Serie A": "ita.1",
-      };
-      const streamLeague = map[params.league] || "eng.1";
-      const res = await apiRequest("GET", `/api/sports/stream/${params.matchId}?league=${encodeURIComponent(streamLeague)}`);
+      const res = await apiRequest("GET", `/api/sports/stream/${params.matchId}?league=${encodeURIComponent(espnLeague)}`);
       return res.json();
     },
     enabled: !!params.matchId && isLive,
@@ -196,19 +221,8 @@ export default function MatchDetailScreen() {
   const hasStreamApiIssue = Boolean(streamFetchError || streamData?.error);
   const hasStreamPlayerIssue = Boolean(streamWebError);
 
-  const espnSport = "soccer";
-  const espnLeague = (() => {
-    const map: Record<string, string> = {
-      "Premier League": "eng.1", "UEFA Champions League": "uefa.champions",
-      "UEFA Europa League": "uefa.europa", "UEFA Conference League": "uefa.europa.conf",
-      "Bundesliga": "ger.1", "La Liga": "esp.1",
-      "Jupiler Pro League": "bel.1", "Ligue 1": "fra.1", "Serie A": "ita.1",
-    };
-    return map[params.league] || "eng.1";
-  })();
-
   const { data: matchDetail, isLoading: detailLoading } = useQuery({
-    queryKey: ["match-detail", params.matchId],
+    queryKey: ["match-detail", params.matchId, espnLeague],
     queryFn: async () => {
       const res = await apiRequest("GET", `/api/sports/match/${params.matchId}?sport=${espnSport}&league=${espnLeague}`);
       return res.json();
