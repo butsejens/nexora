@@ -955,7 +955,10 @@ function normalizeTeamLogo(teamName, logoUrl, ...fallbackCandidates) {
 function normalizePlayerPhoto(_playerId, ...candidates) {
   for (const c of candidates) {
     const v = normalizeRemoteMediaUrl(c);
-    if (v) return v;
+    if (!v) continue;
+    // Skip ESPN generic "nophoto" / "default" / "silhouette" placeholder images
+    if (/nophoto|default|silhouette|placeholder/i.test(v)) continue;
+    return v;
   }
   return null;
 }
@@ -2606,11 +2609,14 @@ async function enrichRosterMarketValues(players, teamName, _leagueName) {
 
 async function enrichRosterPhotos(players, teamName) {
   if (!Array.isArray(players) || players.length === 0) return players || [];
-  const needsPhoto = players.some((p) => p && !p.photo);
-  if (!needsPhoto) return players;
 
-  // Step 0: Transfermarkt community API – has player profile images (cached, already fetched for values)
-  const tmPlayers = teamName ? await fetchTransfermarktClubPlayers(teamName) : null;
+  // Build Transfermarkt photo map (Step 0) and TheSportsDB photo map (Steps 1-2) in parallel
+  const [tmPlayers, dbPlayers] = await Promise.all([
+    teamName ? fetchTransfermarktClubPlayers(teamName) : Promise.resolve(null),
+    fetchTheSportsDBTeamPlayers(teamName),
+  ]);
+
+  // ------ Transfermarkt photo lookup tables ------
   const tmPhotoMap = new Map();
   const tmPhotoEntries = [];
   if (Array.isArray(tmPlayers)) {
@@ -2622,91 +2628,105 @@ async function enrichRosterPhotos(players, teamName) {
       }
     }
   }
+
+  // ------ TheSportsDB photo lookup tables ------
+  const dbPhotoMap = new Map();
+  const dbPhotoEntries = [];
+  for (const dbp of dbPlayers) {
+    if (dbp.name && dbp.photo) {
+      dbPhotoMap.set(dbp.name, dbp.photo);
+      dbPhotoEntries.push({ name: dbp.name, photo: dbp.photo });
+    }
+  }
+
+  // ------ Step 0-2: Match each player against TM + TheSportsDB data ------
   let enriched = players.map((player) => {
-    if (!player || player.photo) return player;
-    const normName = normalizePersonName(player.name || "");
-    // Exact match first
-    const photo = tmPhotoMap.get(normName);
-    if (photo) return { ...player, photo };
-    // Fuzzy match via similarity score
-    let bestPhoto = null;
-    let bestScore = 0;
-    for (const entry of tmPhotoEntries) {
-      const score = similarityScore(normName, entry.normed);
-      if (score > bestScore) { bestScore = score; bestPhoto = entry.photo; }
-    }
-    if (bestScore >= 0.35 && bestPhoto) return { ...player, photo: bestPhoto };
-    return player;
-  });
-
-  // Step 1: TheSportsDB – exact normalized name matches only
-  const dbPlayers = await fetchTheSportsDBTeamPlayers(teamName);
-  enriched = enriched.map((player) => {
-    if (!player || player.photo) return player;
-    const normName = normalizePersonName(player.name || "");
-    if (!normName) return player;
-    let best = null;
-    for (const dbp of dbPlayers) {
-      if (dbp.name === normName) { best = dbp; break; }
-    }
-    if (best) return { ...player, photo: best.photo };
-    return player;
-  });
-
-  // Step 2: TheSportsDB fuzzy matching – similarity score + last-name match
-  enriched = enriched.map((player) => {
-    if (!player || player.photo) return player;
+    if (!player) return player;
     const normName = normalizePersonName(player.name || "");
     if (!normName) return player;
 
-    // Similarity-score matching against all TheSportsDB players
-    let bestDbPhoto = null;
-    let bestDbScore = 0;
-    for (const dbp of dbPlayers) {
-      if (!dbp.photo) continue;
-      const score = similarityScore(normName, dbp.name || "");
-      if (score > bestDbScore) { bestDbScore = score; bestDbPhoto = dbp.photo; }
-    }
-    if (bestDbScore >= 0.35 && bestDbPhoto) return { ...player, photo: bestDbPhoto };
+    let bestPhoto = player.photo || null; // keep existing real headshot if present
+    let sportsDbPhoto = null;
 
-    // Last-name fallback when only one candidate shares the last name
-    const lastNameParts = normName.split(" ");
-    const lastName = lastNameParts[lastNameParts.length - 1];
-    if (!lastName || lastName.length < 3) return player;
-    const candidates = dbPlayers.filter((dbp) => {
-      const dbParts = (dbp.name || "").split(" ");
-      return dbParts[dbParts.length - 1] === lastName;
-    });
-    if (candidates.length === 1 && candidates[0].photo) {
-      return { ...player, photo: candidates[0].photo };
+    // --- Transfermarkt: exact then fuzzy ---
+    if (!bestPhoto) {
+      const tmExact = tmPhotoMap.get(normName);
+      if (tmExact) {
+        bestPhoto = tmExact;
+      } else {
+        let bestTmScore = 0;
+        let bestTmPhoto = null;
+        for (const entry of tmPhotoEntries) {
+          const score = similarityScore(normName, entry.normed);
+          if (score > bestTmScore) { bestTmScore = score; bestTmPhoto = entry.photo; }
+        }
+        if (bestTmScore >= 0.35 && bestTmPhoto) bestPhoto = bestTmPhoto;
+      }
     }
-    return player;
+
+    // --- TheSportsDB: exact, fuzzy, last-name ---
+    const dbExact = dbPhotoMap.get(normName);
+    if (dbExact) {
+      sportsDbPhoto = dbExact;
+      if (!bestPhoto) bestPhoto = dbExact;
+    } else {
+      let bestDbScore = 0;
+      let bestDbPhoto = null;
+      for (const entry of dbPhotoEntries) {
+        const score = similarityScore(normName, entry.name);
+        if (score > bestDbScore) { bestDbScore = score; bestDbPhoto = entry.photo; }
+      }
+      if (bestDbScore >= 0.35 && bestDbPhoto) {
+        sportsDbPhoto = bestDbPhoto;
+        if (!bestPhoto) bestPhoto = bestDbPhoto;
+      } else {
+        // Last-name unique match
+        const lastNameParts = normName.split(" ");
+        const lastName = lastNameParts[lastNameParts.length - 1];
+        if (lastName && lastName.length >= 3) {
+          const candidates = dbPhotoEntries.filter((e) => {
+            const parts = (e.name || "").split(" ");
+            return parts[parts.length - 1] === lastName;
+          });
+          if (candidates.length === 1 && candidates[0].photo) {
+            sportsDbPhoto = candidates[0].photo;
+            if (!bestPhoto) bestPhoto = candidates[0].photo;
+          }
+        }
+      }
+    }
+
+    return {
+      ...player,
+      photo: bestPhoto,
+      theSportsDbPhoto: sportsDbPhoto,
+    };
   });
 
-  // Steps 3+4: TheSportsDB search + Wikipedia + Transfermarkt direct in parallel (batched, max 8 concurrent)
-  const stillNeedBoth = enriched.filter((p) => p && !p.photo && p.name && p.name !== "Onbekend");
-  if (stillNeedBoth.length > 0 && stillNeedBoth.length <= 80) {
-    const BATCH = 8;
+  // ------ Steps 3+4: TheSportsDB search + TM direct + Wikipedia (parallel, batched) ------
+  const stillNeed = enriched.filter((p) => p && !p.photo && p.name && p.name !== "Onbekend");
+  if (stillNeed.length > 0 && stillNeed.length <= 80) {
+    const BATCH = 10;
     const combinedMap = new Map();
-    for (let i = 0; i < stillNeedBoth.length; i += BATCH) {
-      const batch = stillNeedBoth.slice(i, i + BATCH);
+    for (let i = 0; i < stillNeed.length; i += BATCH) {
+      const batch = stillNeed.slice(i, i + BATCH);
       const results = await Promise.all(
         batch.map(async (player) => {
           const normName = normalizePersonName(player.name || "");
-          // Try TheSportsDB search first
+          // Try TheSportsDB search first (full name, last name, first name)
           try {
             const queries = [String(player.name || "").trim()];
             const parts = String(player.name || "").trim().split(/\s+/);
             if (parts.length >= 2) {
-              queries.push(parts[parts.length - 1]); // last name
-              queries.push(parts[0]); // first name
+              queries.push(parts[parts.length - 1]);
+              queries.push(parts[0]);
             }
             for (const rawQ of queries) {
               const q = encodeURIComponent(rawQ);
               if (!q) continue;
               const resp = await fetch(`https://www.thesportsdb.com/api/v1/json/3/searchplayers.php?p=${q}`, {
                 headers: { "user-agent": "Mozilla/5.0 (Nexora/1.0)" },
-                signal: AbortSignal.timeout(4000),
+                signal: AbortSignal.timeout(5000),
               });
               if (!resp.ok) continue;
               const data = await resp.json();
@@ -2745,7 +2765,7 @@ async function enrichRosterPhotos(players, teamName) {
     }
   }
 
-  // Step 5: ESPN CDN headshot fallback for players with ESPN IDs
+  // ------ Step 5: ESPN CDN headshot fallback for players with ESPN IDs ------
   enriched = enriched.map((player) => {
     if (!player || player.photo) return player;
     const espnId = String(player.id || "").trim();
@@ -2887,6 +2907,14 @@ function mapFormerClubs(transfers) {
 
 function mapEspnRosterPlayer(player) {
   const playerId = String(player?.id || "");
+  // Only use ESPN headshot if it's a REAL player photo (not generic nophoto/default silhouette)
+  const rawHeadshot = String(player?.headshot?.href || "").trim();
+  const isRealHeadshot = rawHeadshot &&
+    /^https?:\/\//i.test(rawHeadshot) &&
+    !/nophoto/i.test(rawHeadshot) &&
+    !/default/i.test(rawHeadshot) &&
+    !/silhouette/i.test(rawHeadshot) &&
+    !/placeholder/i.test(rawHeadshot);
   return {
     id: playerId,
     name: player?.displayName || player?.fullName || "Onbekend",
@@ -2899,11 +2927,7 @@ function mapEspnRosterPlayer(player) {
     weight: toKgStringFromAny(player?.displayWeight || player?.weight),
     marketValue: undefined,
     isRealValue: false,
-    photo: normalizePlayerPhoto(
-      playerId,
-      player?.headshot?.href,
-      /^\d+$/.test(playerId) ? `https://a.espncdn.com/i/headshots/soccer/players/full/${playerId}.png` : null,
-    ),
+    photo: isRealHeadshot ? normalizePlayerPhoto(playerId, rawHeadshot) : null,
   };
 }
 
@@ -5647,7 +5671,7 @@ function mapEspnTopScorers(data) {
         rank: idx + 1,
         id: athleteId,
         name: ath.displayName || ath.fullName || "",
-        photo: ath.headshot?.href || (athleteId ? `https://a.espncdn.com/i/headshots/soccer/players/full/${encodeURIComponent(athleteId)}.png` : null),
+        photo: normalizePlayerPhoto(athleteId, ath.headshot?.href, athleteId ? `https://a.espncdn.com/i/headshots/soccer/players/full/${encodeURIComponent(athleteId)}.png` : null),
         team: ath.team?.displayName || ath.team?.name || "",
         teamId: String(ath?.team?.id || ""),
         teamLogo: normalizeTeamLogo(
