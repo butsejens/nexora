@@ -1482,6 +1482,86 @@ async function fetchTheSportsDBTeamPlayers(teamName) {
   }
 }
 
+// Wikipedia page image – standalone helper (reusable for AI-resolved titles)
+async function fetchWikipediaPageImage(title) {
+  if (!title) return null;
+  try {
+    const url = `https://en.wikipedia.org/w/api.php?action=query&titles=${encodeURIComponent(title)}&prop=pageimages&pithumbsize=400&format=json&origin=*`;
+    const resp = await fetch(url, {
+      headers: { "User-Agent": "NexoraApp/1.0 (sports app)" },
+      signal: AbortSignal.timeout(4000),
+    });
+    if (!resp.ok) return null;
+    const data = await resp.json();
+    const pages = data?.query?.pages || {};
+    const page = Object.values(pages)[0];
+    if (!page || page.missing !== undefined) return null;
+    return page?.thumbnail?.source || null;
+  } catch {
+    return null;
+  }
+}
+
+// AI-assisted player photo resolution via Groq – asks LLM for correct Wikipedia titles
+async function resolvePlayerPhotosViaAI(players, teamName) {
+  const key = process.env.GROQ_API_KEY;
+  if (!key || !Array.isArray(players) || players.length === 0) return new Map();
+
+  const photoMap = new Map();
+  const BATCH = 15;
+
+  for (let i = 0; i < players.length; i += BATCH) {
+    const batch = players.slice(i, i + BATCH);
+    const playerList = batch.map((p) => {
+      const parts = [p.name];
+      if (p.nationality) parts.push(p.nationality);
+      if (p.position) parts.push(p.position);
+      return `- ${parts.join(", ")}`;
+    }).join("\n");
+
+    try {
+      const prompt = `For each football/soccer player below (team: ${teamName || "unknown"}), give me their EXACT English Wikipedia article title so I can fetch their photo. Return ONLY a JSON object mapping each player name to their Wikipedia title. Use null if you don't know.
+
+Players:
+${playerList}
+
+Return ONLY valid JSON. No markdown, no explanation.`;
+
+      const response = await groqChat(
+        [
+          { role: "system", content: "You are a sports encyclopedia. Return only valid JSON mapping player names to their exact English Wikipedia article titles." },
+          { role: "user", content: prompt },
+        ],
+        { temperature: 0 }
+      );
+
+      // Parse JSON – handle possible markdown fences
+      const cleaned = String(response || "").replace(/```json\s*|```\s*/g, "").trim();
+      const titleMap = JSON.parse(cleaned);
+
+      // Fetch Wikipedia photos in parallel for all resolved titles
+      const entries = Object.entries(titleMap).filter(([, v]) => v);
+      const results = await Promise.all(
+        entries.map(async ([name, title]) => {
+          const photo = await fetchWikipediaPageImage(title);
+          return [name, photo];
+        })
+      );
+
+      for (const [name, photo] of results) {
+        if (name && photo) photoMap.set(name, photo);
+      }
+    } catch (err) {
+      console.warn(`[photos][ai] Groq batch failed:`, err.message);
+    }
+  }
+
+  if (photoMap.size > 0) {
+    console.log(`[photos][ai] Groq resolved ${photoMap.size} Wikipedia photos for ${teamName}`);
+  }
+  return photoMap;
+}
+
 // Wikipedia/Wikimedia API – free player photo lookup by name (no API key, CC licensed)
 async function fetchWikipediaPlayerPhoto(playerName, hintContext = "") {
   if (!playerName) return null;
@@ -2765,7 +2845,24 @@ async function enrichRosterPhotos(players, teamName) {
     }
   }
 
-  // ------ Step 5: ESPN CDN headshot fallback for players with ESPN IDs ------
+  // ------ Step 5: AI-assisted photo resolution via Groq ------
+  const aiCandidates = enriched.filter((p) => p && !p.photo && p.name && p.name !== "Onbekend");
+  if (aiCandidates.length > 0 && aiCandidates.length <= 60) {
+    try {
+      const aiPhotoMap = await resolvePlayerPhotosViaAI(aiCandidates, teamName);
+      if (aiPhotoMap.size > 0) {
+        enriched = enriched.map((player) => {
+          if (!player || player.photo) return player;
+          const found = aiPhotoMap.get(player.name);
+          return found ? { ...player, photo: found } : player;
+        });
+      }
+    } catch (err) {
+      console.warn(`[photos][ai] AI photo step failed:`, err.message);
+    }
+  }
+
+  // ------ Step 6: ESPN CDN headshot fallback for players with ESPN IDs ------
   enriched = enriched.map((player) => {
     if (!player || player.photo) return player;
     const espnId = String(player.id || "").trim();
@@ -6317,6 +6414,16 @@ app.get("/api/sports/player/:playerId", async (req, res) => {
       // Final fallback: Wikipedia
       if (!resolvedPhoto && name && name !== "Onbekend") {
         resolvedPhoto = await fetchWikipediaPlayerPhoto(name) || null;
+      }
+      // AI-assisted Wikipedia title resolution via Groq
+      if (!resolvedPhoto && name && name !== "Onbekend") {
+        try {
+          const aiMap = await resolvePlayerPhotosViaAI(
+            [{ name, nationality: espnAthlete?.citizenship || "", position: position || "" }],
+            clubName || ""
+          );
+          if (aiMap.size > 0) resolvedPhoto = aiMap.values().next().value || null;
+        } catch { /* ignore */ }
       }
       // TheSportsDB individual search fallback
       if (!resolvedPhoto && name && name !== "Onbekend") {
