@@ -529,7 +529,7 @@ const styles = StyleSheet.create({
   },
   followBtnText: { fontFamily: "Inter_600SemiBold", fontSize: 12, color: COLORS.text },
   teamHeaderContent: { alignItems: "center", gap: 8 },
-  teamBigLogo: { width: 72, height: 72, borderRadius: 36 },
+  teamBigLogo: { width: 84, height: 84, borderRadius: 16 },
   logoPlaceholder: { backgroundColor: COLORS.card, alignItems: "center", justifyContent: "center" },
   logoPlaceholderText: { fontFamily: "Inter_700Bold", fontSize: 22, color: COLORS.text },
   teamTitle: { fontFamily: "Inter_800ExtraBold", fontSize: 22, color: COLORS.text, textAlign: "center" },
