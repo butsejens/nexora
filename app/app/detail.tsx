@@ -899,7 +899,7 @@ const styles = StyleSheet.create({
   networkValue: { fontFamily: "Inter_400Regular", fontSize: 13, color: COLORS.textSecondary },
   castRow: { flexDirection: "row", gap: 12, paddingVertical: 4 },
   castCard: { width: 80, alignItems: "center", gap: 6 },
-  castPhoto: { width: 70, height: 70, borderRadius: 35, backgroundColor: COLORS.card },
+  castPhoto: { width: 76, height: 76, borderRadius: 14, backgroundColor: COLORS.card },
   castPhotoPlaceholder: { alignItems: "center", justifyContent: "center" },
   castName: { fontFamily: "Inter_600SemiBold", fontSize: 11, color: COLORS.text, textAlign: "center" },
   castCharacter: { fontFamily: "Inter_400Regular", fontSize: 10, color: COLORS.textMuted, textAlign: "center" },

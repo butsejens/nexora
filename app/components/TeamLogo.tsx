@@ -38,7 +38,7 @@ export const TeamLogo = React.memo(function TeamLogo({
     <View
       style={[
         styles.container,
-        { width: size, height: size, borderRadius: size / 2 },
+        { width: size, height: size, borderRadius: size * 0.18 },
       ]}
     >
       <Text
@@ -53,7 +53,7 @@ export const TeamLogo = React.memo(function TeamLogo({
       {imageSource ? (
         <Image
           source={imageSource as any}
-          style={{ width: size, height: size, position: "absolute", borderRadius: size / 2 }}
+          style={{ width: size, height: size, position: "absolute", borderRadius: size * 0.18 }}
           resizeMode="contain"
           onLoad={() => setImageLoaded(true)}
           onError={() => {
