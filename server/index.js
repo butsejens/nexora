@@ -986,12 +986,36 @@ function keepIncomingPlayerPhoto(url) {
 // Validate ESPN CDN headshot — returns URL if real photo (>10KB), null if black placeholder
 async function validateEspnHeadshot(url) {
   if (!url) return null;
+  const MIN_REAL_HEADSHOT_BYTES = 2200;
   try {
-    const resp = await fetch(url, { method: "HEAD", signal: AbortSignal.timeout(4000) });
-    if (!resp.ok) return null;
-    const len = parseInt(resp.headers.get("content-length") || "0", 10);
-    // Real ESPN headshots are 8KB-200KB+; black placeholders are ~1-3KB
-    if (len > 0 && len < 4500) return null;
+    const headResp = await fetch(url, {
+      method: "HEAD",
+      headers: { "user-agent": "Mozilla/5.0 (Nexora/1.0)", accept: "image/*,*/*;q=0.8" },
+      signal: AbortSignal.timeout(4000),
+    });
+    if (headResp.ok) {
+      const headLen = parseInt(headResp.headers.get("content-length") || "0", 10);
+      if (headLen > 0) return headLen < MIN_REAL_HEADSHOT_BYTES ? null : url;
+    }
+
+    // Some ESPN/CDN edges omit content-length or reject HEAD. Use a tiny ranged GET as fallback.
+    const getResp = await fetch(url, {
+      method: "GET",
+      headers: {
+        "user-agent": "Mozilla/5.0 (Nexora/1.0)",
+        accept: "image/*,*/*;q=0.8",
+        range: "bytes=0-1023",
+      },
+      signal: AbortSignal.timeout(4500),
+    });
+    if (!getResp.ok) return null;
+
+    const rangeHeader = String(getResp.headers.get("content-range") || "");
+    const totalFromRange = Number((rangeHeader.match(/\/(\d+)$/)?.[1]) || 0);
+    const totalFromLength = parseInt(getResp.headers.get("content-length") || "0", 10);
+    const totalBytes = totalFromRange > 0 ? totalFromRange : totalFromLength;
+    if (totalBytes > 0 && totalBytes < MIN_REAL_HEADSHOT_BYTES) return null;
+
     return url;
   } catch {
     return null;

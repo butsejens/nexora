@@ -154,9 +154,12 @@ export default function PlayerProfileScreen() {
   });
 
   const photoCandidates = useMemo(() => {
-    const raw = [data?.photo, data?.theSportsDbPhoto || null].filter(Boolean) as string[];
+    const fallbackAvatar = (data?.name || params.name)
+      ? `https://ui-avatars.com/api/?name=${encodeURIComponent(String(data?.name || params.name || "Player"))}&size=256&background=1a1a2e&color=e0e0e0&bold=true&format=png`
+      : null;
+    const raw = [data?.photo, data?.theSportsDbPhoto || null, fallbackAvatar].filter(Boolean) as string[];
     return [...new Set(raw)];
-  }, [data?.photo, data?.theSportsDbPhoto]);
+  }, [data?.name, data?.photo, data?.theSportsDbPhoto, params.name]);
 
   const [photoIdx, setPhotoIdx] = useState(0);
   const photoUri = photoCandidates[photoIdx] || null;
