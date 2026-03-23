@@ -8,6 +8,7 @@ import { useQuery } from "@tanstack/react-query";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { COLORS } from "@/constants/colors";
 import { apiRequest } from "@/lib/query-client";
+import { normalizeApiError } from "@/lib/error-messages";
 import { useTranslation } from "@/lib/useTranslation";
 import { t as tFn, getLanguage } from "@/lib/i18n";
 import { TeamLogo } from "@/components/TeamLogo";
@@ -126,7 +127,7 @@ export default function PlayerProfileScreen() {
     return `player_profile_cache_${encodeURIComponent(keyRaw)}`;
   }, [params.playerId, params.name, params.team, params.league]);
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, error, refetch } = useQuery({
     queryKey: ["player-profile", params.playerId, params.name, params.team, params.league],
     queryFn: async () => {
       try {
@@ -210,6 +211,14 @@ export default function PlayerProfileScreen() {
         <View style={styles.loading}>
           <ActivityIndicator size="large" color={COLORS.accent} />
           <Text style={styles.loadingText}>{t("playerProfile.loading")}</Text>
+        </View>
+      ) : error || !data || (data as any)?.error ? (
+        <View style={styles.loading}>
+          <Ionicons name="alert-circle-outline" size={38} color={COLORS.textMuted} />
+          <Text style={styles.loadingText}>{normalizeApiError(error || (data as any)?.error).userMessage}</Text>
+          <TouchableOpacity style={styles.retryBtn} onPress={() => refetch()} activeOpacity={0.8}>
+            <Text style={styles.retryBtnText}>{t("teamDetail.retry") || "Opnieuw proberen"}</Text>
+          </TouchableOpacity>
         </View>
       ) : (
         <Animated.ScrollView
@@ -368,6 +377,8 @@ const styles = StyleSheet.create({
   offlineText: { fontFamily: "Inter_500Medium", fontSize: 11, color: COLORS.gold },
   loading: { flex: 1, alignItems: "center", justifyContent: "center", gap: 10 },
   loadingText: { fontFamily: "Inter_400Regular", fontSize: 13, color: COLORS.textMuted },
+  retryBtn: { marginTop: 8, paddingHorizontal: 20, paddingVertical: 10, borderRadius: 18, backgroundColor: COLORS.accent },
+  retryBtnText: { fontFamily: "Inter_600SemiBold", fontSize: 14, color: "#fff" },
   content: { padding: 16, gap: 10, paddingBottom: 40 },
   card: { backgroundColor: COLORS.overlayLight, borderRadius: 14, borderWidth: 1, borderColor: COLORS.borderLight, padding: 14, gap: 8 },
   cardTitle: { fontFamily: "Inter_700Bold", fontSize: 12, color: COLORS.accent, letterSpacing: 0.6, textTransform: "uppercase" },

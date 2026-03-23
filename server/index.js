@@ -6459,6 +6459,62 @@ app.get("/api/sports/team/:teamId", async (req, res) => {
 
       // Build basic team response first (fast) — enrichment runs with a deadline
       const teamDisplayName = team?.displayName || team?.name || teamNameFromQuery || "";
+      let basePlayers = players;
+      if (basePlayers.length === 0 && teamDisplayName) {
+        const [tmFallbackPlayers, dbFallbackPlayers] = await Promise.all([
+          Promise.race([
+            fetchTransfermarktClubPlayers(teamDisplayName),
+            new Promise((resolve) => setTimeout(() => resolve([]), 4000)),
+          ]),
+          Promise.race([
+            fetchTheSportsDBTeamPlayers(teamDisplayName),
+            new Promise((resolve) => setTimeout(() => resolve([]), 4000)),
+          ]),
+        ]);
+
+        const fallbackMap = new Map();
+        for (const player of Array.isArray(tmFallbackPlayers) ? tmFallbackPlayers : []) {
+          const key = normalizePersonName(player?.name || "");
+          if (!key) continue;
+          fallbackMap.set(key, {
+            id: "",
+            name: player?.name || "Onbekend",
+            nationality: undefined,
+            position: "",
+            positionName: "",
+            age: undefined,
+            height: undefined,
+            weight: undefined,
+            jersey: undefined,
+            marketValue: player?.marketValueEur ? formatEURShort(player.marketValueEur) : undefined,
+            isRealValue: Boolean(player?.marketValueEur),
+            photo: keepIncomingPlayerPhoto(player?.photo),
+          });
+        }
+        for (const player of Array.isArray(dbFallbackPlayers) ? dbFallbackPlayers : []) {
+          const key = normalizePersonName(player?.name || "");
+          if (!key) continue;
+          const existing = fallbackMap.get(key) || {
+            id: "",
+            name: player?.name || "Onbekend",
+            nationality: undefined,
+            position: "",
+            positionName: "",
+            age: undefined,
+            height: undefined,
+            weight: undefined,
+            jersey: undefined,
+            marketValue: undefined,
+            isRealValue: false,
+            photo: null,
+          };
+          fallbackMap.set(key, {
+            ...existing,
+            photo: existing.photo || keepIncomingPlayerPhoto(player?.photo),
+          });
+        }
+        basePlayers = Array.from(fallbackMap.values());
+      }
       const isNationalTeam = espnLeague.includes("fifa") || /teamlogos\/countries/i.test(String(team?.logos?.[0]?.href || ""));
       const espnLogo = team?.id ? `https://a.espncdn.com/i/teamlogos/soccer/500/${encodeURIComponent(String(team.id))}.png` : null;
       const rawTeamLogo = team?.logos?.[0]?.href || team?.logo || null;
@@ -6470,17 +6526,17 @@ app.get("/api/sports/team/:teamId", async (req, res) => {
         (async () => {
           const [valuedPlayers, photoPlayers, sportsDbLogo] = await Promise.all([
             Promise.race([
-              enrichRosterMarketValues(players, teamDisplayName, espnLeague),
-              new Promise((resolve) => setTimeout(() => resolve(players), 4000)),
+              enrichRosterMarketValues(basePlayers, teamDisplayName, espnLeague),
+              new Promise((resolve) => setTimeout(() => resolve(basePlayers), 4000)),
             ]),
             Promise.race([
-              enrichRosterPhotos(players, teamDisplayName),
-              new Promise((resolve) => setTimeout(() => resolve(players), 8000)),
+              enrichRosterPhotos(basePlayers, teamDisplayName),
+              new Promise((resolve) => setTimeout(() => resolve(basePlayers), 8000)),
             ]),
             fetchTheSportsDBTeamLogo(teamDisplayName),
           ]);
           const valueMap = new Map((valuedPlayers || []).map((player) => [String(player?.id || player?.name || ""), player]));
-          const enrichedPlayers = (photoPlayers || players).map((player) => {
+          const enrichedPlayers = (photoPlayers || basePlayers).map((player) => {
             const playerKey = String(player?.id || player?.name || "");
             const valued = valueMap.get(playerKey);
             return valued ? { ...valued, ...player, photo: player?.photo || valued?.photo || null } : player;
@@ -6497,7 +6553,7 @@ app.get("/api/sports/team/:teamId", async (req, res) => {
       ]);
 
       // If enrichment timed out, use basic player data and ESPN logo
-      const finalPlayers = enrichResult?.enrichedPlayers ?? players;
+      const finalPlayers = enrichResult?.enrichedPlayers ?? basePlayers;
       const squadValue = enrichResult?.squadMarketValue ?? null;
       const resolvedLogo = enrichResult?.resolvedLogo ?? (rawTeamLogo || espnLogo || footballLogosUrl || null);
 
@@ -6564,11 +6620,14 @@ app.get("/api/sports/player/:playerId", async (req, res) => {
       }
 
       const apiSports = null;
-      const apifyFallback = await fetchApifyPlayerFallback(
-        playerId,
-        playerName || espnAthlete?.displayName || espnAthlete?.fullName,
-        teamName || espnTeam?.displayName || espnTeam?.name
-      );
+      const apifyFallback = await Promise.race([
+        fetchApifyPlayerFallback(
+          playerId,
+          playerName || espnAthlete?.displayName || espnAthlete?.fullName,
+          teamName || espnTeam?.displayName || espnTeam?.name
+        ),
+        new Promise((resolve) => setTimeout(() => resolve(null), 3500)),
+      ]);
 
       const profile = apiSports?.profile?.player || {};
       const profileStats = apiSports?.profile?.statistics?.[0] || {};
@@ -6593,10 +6652,16 @@ app.get("/api/sports/player/:playerId", async (req, res) => {
           "",
       };
 
-      const valuedFromModel = (await enrichRosterMarketValues([normalizedPlayer], teamName || profileStats?.team?.name || espnTeam?.displayName || "", espnLeague))[0] || normalizedPlayer;
+      const valuedFromModel = (await Promise.race([
+        enrichRosterMarketValues([normalizedPlayer], teamName || profileStats?.team?.name || espnTeam?.displayName || "", espnLeague),
+        new Promise((resolve) => setTimeout(() => resolve([normalizedPlayer]), 3500)),
+      ]))[0] || normalizedPlayer;
 
       // Direct Transfermarkt player search – better accuracy for individual profiles
-      const tmDirect = await fetchTransfermarktPlayerDirect(name, teamName || espnTeam?.displayName || "");
+      const tmDirect = await Promise.race([
+        fetchTransfermarktPlayerDirect(name, teamName || espnTeam?.displayName || ""),
+        new Promise((resolve) => setTimeout(() => resolve(null), 3500)),
+      ]);
 
       let valued = valuedFromModel;
       // Prefer direct Transfermarkt value over club-based fuzzy or estimated
@@ -6624,17 +6689,20 @@ app.get("/api/sports/player/:playerId", async (req, res) => {
       const apifyTransfers = apifyFallback?.formerClubs || [];
       const formerClubs = tmTransfers.length ? tmTransfers : (apiSportsTransfers.length ? apiSportsTransfers : apifyTransfers);
 
-      const aiInsights = await aiAnalyzePlayerProfile(
-        {
-          ...valued,
-          currentClub: profileStats?.team?.name || espnTeam?.displayName || espnTeam?.name || teamName || apifyFallback?.team || null,
-          formerClubs,
-        },
-        {
-          league: espnLeague,
-          source: apifyFallback?.source || apiSports?.source || "espn",
-        }
-      );
+      const aiInsights = await Promise.race([
+        aiAnalyzePlayerProfile(
+          {
+            ...valued,
+            currentClub: profileStats?.team?.name || espnTeam?.displayName || espnTeam?.name || teamName || apifyFallback?.team || null,
+            formerClubs,
+          },
+          {
+            league: espnLeague,
+            source: apifyFallback?.source || apiSports?.source || "espn",
+          }
+        ),
+        new Promise((resolve) => setTimeout(() => resolve(null), 3500)),
+      ]);
 
       const sourceTag = apifyFallback?.source || apiSports?.source || "espn";
 
@@ -6649,7 +6717,10 @@ app.get("/api/sports/player/:playerId", async (req, res) => {
       let resolvedPhoto = basePhoto || (tmDirect?.photo || null);
       // Transfermarkt club-based photo lookup
       if (!resolvedPhoto && clubName) {
-        const tmPlayers = await fetchTransfermarktClubPlayers(clubName);
+        const tmPlayers = await Promise.race([
+          fetchTransfermarktClubPlayers(clubName),
+          new Promise((resolve) => setTimeout(() => resolve([]), 2500)),
+        ]);
         if (Array.isArray(tmPlayers)) {
           const normName = normalizePersonName(name || "");
           for (const p of tmPlayers) {
@@ -6661,7 +6732,10 @@ app.get("/api/sports/player/:playerId", async (req, res) => {
         }
       }
       if (!resolvedPhoto && clubName) {
-        const dbPlayers = await fetchTheSportsDBTeamPlayers(clubName);
+        const dbPlayers = await Promise.race([
+          fetchTheSportsDBTeamPlayers(clubName),
+          new Promise((resolve) => setTimeout(() => resolve([]), 2500)),
+        ]);
         const normName = normalizePersonName(name || "");
         for (const dbp of dbPlayers) {
           if (dbp.name === normName || similarityScore(normName, dbp.name) >= 0.5) {
@@ -6672,15 +6746,21 @@ app.get("/api/sports/player/:playerId", async (req, res) => {
       }
       // Final fallback: Wikipedia
       if (!resolvedPhoto && name && name !== "Onbekend") {
-        resolvedPhoto = await fetchWikipediaPlayerPhoto(name) || null;
+        resolvedPhoto = await Promise.race([
+          fetchWikipediaPlayerPhoto(name),
+          new Promise((resolve) => setTimeout(() => resolve(null), 2500)),
+        ]) || null;
       }
       // AI-assisted Wikipedia title resolution via Gemini
       if (!resolvedPhoto && name && name !== "Onbekend") {
         try {
-          const aiMap = await resolvePlayerPhotosViaAI(
-            [{ name, nationality: espnAthlete?.citizenship || "", position: position || "" }],
-            clubName || ""
-          );
+          const aiMap = await Promise.race([
+            resolvePlayerPhotosViaAI(
+              [{ name, nationality: espnAthlete?.citizenship || "", position: valued?.position || "" }],
+              clubName || ""
+            ),
+            new Promise((resolve) => setTimeout(() => resolve(new Map()), 4000)),
+          ]);
           if (aiMap.size > 0) resolvedPhoto = aiMap.values().next().value || null;
         } catch { /* ignore */ }
       }
@@ -6728,7 +6808,10 @@ app.get("/api/sports/player/:playerId", async (req, res) => {
       // Gemini AI Wikipedia photo lookup
       if (!resolvedPhoto && name && name !== "Onbekend") {
         try {
-          const aiMap = await resolvePlayerPhotosViaAI([{ name, nationality: valued?.nationality, position: valued?.position }], clubName);
+          const aiMap = await Promise.race([
+            resolvePlayerPhotosViaAI([{ name, nationality: valued?.nationality, position: valued?.position }], clubName),
+            new Promise((resolve) => setTimeout(() => resolve(new Map()), 4000)),
+          ]);
           const aiPhoto = aiMap.get(name);
           if (aiPhoto) resolvedPhoto = aiPhoto;
         } catch { /* ignore */ }
@@ -6741,7 +6824,10 @@ app.get("/api/sports/player/:playerId", async (req, res) => {
         clubName,
         profileStats?.team?.logo || espnTeam?.logo || espnTeam?.logos?.[0]?.href || apifyFallback?.teamLogo || null
       );
-      const resolvedClubLogo = baseClubLogo || await fetchTheSportsDBTeamLogo(clubName) || await fetchWikipediaTeamLogo(clubName) || null;
+      const resolvedClubLogo = baseClubLogo || await Promise.race([
+        fetchTheSportsDBTeamLogo(clubName),
+        new Promise((resolve) => setTimeout(() => resolve(null), 2500)),
+      ]) || null;
 
       return {
         id: String(valued?.id || ""),
