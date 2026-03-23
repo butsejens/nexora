@@ -7,11 +7,15 @@ import { LinearGradient } from "expo-linear-gradient";
 import { useQuery } from "@tanstack/react-query";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { COLORS } from "@/constants/colors";
-import { apiRequest } from "@/lib/query-client";
 import { normalizeApiError } from "@/lib/error-messages";
 import { useTranslation } from "@/lib/useTranslation";
 import { t as tFn, getLanguage } from "@/lib/i18n";
 import { TeamLogo } from "@/components/TeamLogo";
+import {
+  getCachedPlayerImage,
+  getCachedPlayerProfile,
+  preloadPlayerProfileInBackground,
+} from "@/lib/player-image-system";
 
 const UNKNOWN = "Unknown";
 
@@ -130,6 +134,53 @@ export default function PlayerProfileScreen() {
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ["player-profile", params.playerId, params.name, params.team, params.league],
     queryFn: async () => {
+      const seed = {
+        id: String(params.playerId || ""),
+        name: String(params.name || ""),
+        team: String(params.team || ""),
+        league: String(params.league || "eng.1"),
+        sport: "soccer",
+      };
+      const cachedProfile = getCachedPlayerProfile(seed);
+      const cachedImage = getCachedPlayerImage(seed);
+      if (cachedProfile) {
+        const merged = {
+          ...cachedProfile,
+          photo: cachedImage || cachedProfile?.photo || null,
+        };
+        const normalized = normalizePlayerDto(merged, params);
+        await AsyncStorage.setItem(cacheKey, JSON.stringify(normalized));
+        return normalized;
+      }
+
+      // Never block profile navigation on network; load richer data in background.
+      preloadPlayerProfileInBackground(seed);
+
+      const instant = normalizePlayerDto(
+        {
+          id: seed.id,
+          name: seed.name,
+          currentClub: seed.team,
+          photo: cachedImage || null,
+          marketValue: params.marketValue || null,
+          age: params.age ? Number(params.age) : undefined,
+          position: params.position || null,
+          nationality: params.nationality || null,
+          height: params.height || null,
+          weight: params.weight || null,
+          source: "startup-preload",
+          offlineData: true,
+          updatedAt: new Date().toISOString(),
+        },
+        params
+      );
+
+      await AsyncStorage.setItem(cacheKey, JSON.stringify(instant));
+      return instant;
+
+      // Legacy network path intentionally skipped in foreground to keep UX instant.
+      // The background preload updates query cache when finished.
+      /*
       try {
         const playerId = encodeURIComponent(String(params.playerId || ""));
         const name = encodeURIComponent(String(params.name || ""));
@@ -148,9 +199,13 @@ export default function PlayerProfileScreen() {
         }
         throw error;
       }
+      */
     },
-    staleTime: 10 * 60_000,
+    staleTime: 24 * 60 * 60_000,
     gcTime: 30 * 60_000,
+    refetchOnMount: false,
+    refetchOnWindowFocus: false,
+    retry: 0,
   });
 
   const photoCandidates = useMemo(() => {

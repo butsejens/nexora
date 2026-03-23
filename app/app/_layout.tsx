@@ -7,6 +7,7 @@ import { Alert, Platform, Linking } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { queryClient, getApiBaseCandidates, apiRequest } from "@/lib/query-client";
+import { startPlayerImageWarmup } from "@/lib/player-image-system";
 import { NexoraProvider } from "@/context/NexoraContext";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { NexoraIntro } from "@/components/NexoraIntro";
@@ -193,6 +194,8 @@ export default function RootLayout() {
             ]);
             // Server is reachable — start prefetching data in the background
             prefetchHomeData();
+            // Warmup player images + profiles globally so team/player navigation stays instant.
+            startPlayerImageWarmup(queryClient).catch(() => undefined);
           } else {
             await new Promise((resolve) => setTimeout(resolve, 900));
           }
