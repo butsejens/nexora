@@ -966,6 +966,21 @@ function normalizePlayerPhoto(_playerId, ...candidates) {
   return null;
 }
 
+// Validate ESPN CDN headshot — returns URL if real photo (>10KB), null if black placeholder
+async function validateEspnHeadshot(url) {
+  if (!url) return null;
+  try {
+    const resp = await fetch(url, { method: "HEAD", signal: AbortSignal.timeout(4000) });
+    if (!resp.ok) return null;
+    const len = parseInt(resp.headers.get("content-length") || "0", 10);
+    // Real ESPN headshots are 15KB-200KB+; black placeholders are ~1-5KB
+    if (len > 0 && len < 10000) return null;
+    return url;
+  } catch {
+    return null;
+  }
+}
+
 // =============================================================
 // ZILLIZ VECTOR DATABASE – persistente semantische AI-cache
 // ZILLIZ_URI  = cluster Public Endpoint (van cloud.zilliz.com)
@@ -1858,12 +1873,20 @@ async function enrichScorersPhotos(scorers, leagueName) {
           const wiki = await fetchWikipediaPlayerPhoto(name);
           if (wiki) return [name, wiki];
         } catch { /* ignore */ }
-        // 4. ESPN CDN fallback
+        // 4. ESPN CDN fallback (validated — skip black placeholders)
         const espnId = String(scorer.id || "").trim();
         if (espnId && /^\d+$/.test(espnId)) {
-          return [name, `https://a.espncdn.com/i/headshots/soccer/players/full/${espnId}.png`];
+          const espnUrl = `https://a.espncdn.com/i/headshots/soccer/players/full/${espnId}.png`;
+          const validated = await validateEspnHeadshot(espnUrl);
+          if (validated) return [name, validated];
         }
-        // 5. UI Avatars guaranteed fallback
+        // 5. Groq AI Wikipedia photo lookup
+        try {
+          const aiMap = await resolvePlayerPhotosViaAI([{ name, team }], leagueName);
+          const aiPhoto = aiMap.get(name);
+          if (aiPhoto) return [name, aiPhoto];
+        } catch { /* ignore */ }
+        // 6. UI Avatars guaranteed fallback
         return [name, `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&size=256&background=1a1a2e&color=e0e0e0&bold=true&format=png`];
       })
     );
@@ -2955,15 +2978,27 @@ async function enrichRosterPhotos(players, teamName) {
     }
   }
 
-  // ------ Step 6: ESPN CDN headshot fallback (direct, client handles 404) ------
-  enriched = enriched.map((player) => {
-    if (!player || player.photo) return player;
-    const espnId = String(player.id || "").trim();
-    if (espnId && /^\d+$/.test(espnId)) {
-      return { ...player, photo: `https://a.espncdn.com/i/headshots/soccer/players/full/${espnId}.png` };
+  // ------ Step 6: ESPN CDN headshot fallback (validated — skip black placeholders) ------
+  const espnCandidates = enriched.filter((p) => p && !p.photo && /^\d+$/.test(String(p.id || "").trim()));
+  if (espnCandidates.length > 0) {
+    const espnResults = await Promise.all(
+      espnCandidates.map(async (player) => {
+        const espnId = String(player.id || "").trim();
+        const url = `https://a.espncdn.com/i/headshots/soccer/players/full/${espnId}.png`;
+        const validated = await validateEspnHeadshot(url);
+        return [player.name, validated];
+      })
+    );
+    const espnMap = new Map(espnResults.filter(([, v]) => v));
+    if (espnMap.size > 0) {
+      enriched = enriched.map((player) => {
+        if (!player || player.photo) return player;
+        const found = espnMap.get(player.name);
+        return found ? { ...player, photo: found } : player;
+      });
     }
-    return player;
-  });
+    console.log(`[photos][espn] ${teamName}: ${espnMap.size}/${espnCandidates.length} ESPN headshots validated`);
+  }
 
   // ------ Step 7: UI Avatars guaranteed fallback (generates avatar from initials) ------
   enriched = enriched.map((player) => {
@@ -6600,10 +6635,20 @@ app.get("/api/sports/player/:playerId", async (req, res) => {
           if (tsdbPhoto) resolvedPhoto = tsdbPhoto;
         } catch { /* ignore */ }
       }
-      // ESPN CDN headshot fallback (direct, client handles 404)
+      // ESPN CDN headshot fallback (validated — skip black placeholders)
       const espnPlayerId = String(espnAthlete?.id || valued?.id || "");
       if (!resolvedPhoto && espnPlayerId && /^\d+$/.test(espnPlayerId)) {
-        resolvedPhoto = `https://a.espncdn.com/i/headshots/soccer/players/full/${encodeURIComponent(espnPlayerId)}.png`;
+        const espnUrl = `https://a.espncdn.com/i/headshots/soccer/players/full/${encodeURIComponent(espnPlayerId)}.png`;
+        const validated = await validateEspnHeadshot(espnUrl);
+        if (validated) resolvedPhoto = validated;
+      }
+      // Groq AI Wikipedia photo lookup
+      if (!resolvedPhoto && name && name !== "Onbekend") {
+        try {
+          const aiMap = await resolvePlayerPhotosViaAI([{ name, nationality: valued?.nationality, position: valued?.position }], clubName);
+          const aiPhoto = aiMap.get(name);
+          if (aiPhoto) resolvedPhoto = aiPhoto;
+        } catch { /* ignore */ }
       }
       // UI Avatars guaranteed fallback
       if (!resolvedPhoto && name && name !== "Onbekend") {
