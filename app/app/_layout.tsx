@@ -1,8 +1,16 @@
 import { QueryClientProvider } from "@tanstack/react-query";
+import {
+  useFonts,
+  Inter_400Regular,
+  Inter_500Medium,
+  Inter_600SemiBold,
+  Inter_700Bold,
+  Inter_800ExtraBold,
+} from "@expo-google-fonts/inter";
 import { Stack, router } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import React, { useEffect, useRef, useState } from "react";
-import { Alert, Platform, Linking } from "react-native";
+import { Platform, Linking } from "react-native";
 
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
@@ -18,6 +26,7 @@ import * as Application from "expo-application";
 import * as FileSystem from "expo-file-system/legacy";
 import * as IntentLauncher from "expo-intent-launcher";
 import Constants from "expo-constants";
+import { COLORS } from "@/constants/colors";
 
 // Prefetch key API data into React Query cache so screens load instantly
 function prefetchHomeData() {
@@ -44,16 +53,6 @@ function prefetchHomeData() {
   queryClient.prefetchQuery({ queryKey: ["series", "trending"], queryFn: () => fetcher("/api/series/trending"), staleTime: 5 * 60 * 1000 });
   queryClient.prefetchQuery({ queryKey: ["series", "genres"], queryFn: () => fetcher("/api/series/genres-catalog?page=1"), staleTime: 10 * 60 * 1000 });
 }
-import {
-  useFonts,
-  Inter_400Regular,
-  Inter_500Medium,
-  Inter_600SemiBold,
-  Inter_700Bold,
-  Inter_800ExtraBold,
-} from "@expo-google-fonts/inter";
-import { COLORS } from "@/constants/colors";
-
 SplashScreen.preventAutoHideAsync();
 
 let hasCompletedBootOnce = false;

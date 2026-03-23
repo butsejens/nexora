@@ -26,6 +26,7 @@ module.exports = function (api) {
         },
       ],
       // Required by expo-router
-      ],
+      "expo-router/babel",
+    ],
   };
 };

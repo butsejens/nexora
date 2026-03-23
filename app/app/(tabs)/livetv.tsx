@@ -204,7 +204,7 @@ export default function LiveTVScreen() {
   const filtered = useMemo(() => {
     let list = selectedGroup === "All" ? currentData : currentData.filter(c => c.group === selectedGroup);
     if (search.trim()) {
-      const results = searchIPTV(search, list);
+      const results = searchIPTV(list, search);
       const matchedIds = new Set(results.map(r => r.id));
       list = list.filter(c => matchedIds.has(c.id));
     }

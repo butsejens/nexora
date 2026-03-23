@@ -55,12 +55,11 @@ export function NexoraIntro({ onFinish }: Props) {
       />
 
       {/* Radial glow */}
-      <Animated.View
-        style={[styles.glow, { opacity: glowOpacity }]}
-        {...(Platform.OS === "web"
-          ? { style: [styles.glow, { opacity: glowOpacity, background: "radial-gradient(circle, rgba(229,9,20,0.24) 0%, rgba(229,9,20,0) 72%)" }] }
-          : {})}
-      />
+      {Platform.OS === "web" ? (
+        <Animated.View style={[styles.glow, styles.webGlow, { opacity: glowOpacity }]} />
+      ) : (
+        <Animated.View style={[styles.glow, { opacity: glowOpacity }]} />
+      )}
 
       {/* Center content */}
       <View style={styles.contentWrap}>
@@ -99,6 +98,10 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 0 },
     shadowOpacity: 0.6,
     shadowRadius: 80,
+  },
+  webGlow: {
+    // Cast to avoid React Native style typing mismatch for CSS radial gradient on web.
+    ...(Platform.OS === "web" ? ({ background: "radial-gradient(circle, rgba(229,9,20,0.24) 0%, rgba(229,9,20,0) 72%)" } as any) : {}),
   },
   contentWrap: {
     ...StyleSheet.absoluteFillObject,
