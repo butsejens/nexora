@@ -1829,20 +1829,9 @@ async function enrichStandingsLogos(standings, leagueName) {
     for (const [name, logo] of results) tsdbMap[name] = logo;
   }
 
-  // 3. Wikipedia fallback for teams still without logos
-  const needsWikiS = teamNames.filter((name) => !flMap[name] && !tsdbMap[name] && !standings.find((t) => t.team === name)?.logo);
-  const wikiMapS = {};
-  if (needsWikiS.length > 0) {
-    for (let i = 0; i < needsWikiS.length; i += 5) {
-      const batch = needsWikiS.slice(i, i + 5);
-      const results = await Promise.all(batch.map(async (name) => [name, await fetchWikipediaTeamLogo(name)]));
-      for (const [name, logo] of results) wikiMapS[name] = logo;
-    }
-  }
-
   return standings.map((t) => ({
     ...t,
-    logo: flMap[t.team] || tsdbMap[t.team] || t.logo || wikiMapS[t.team] || null,
+    logo: flMap[t.team] || tsdbMap[t.team] || t.logo || null,
   }));
 }
 
@@ -2020,20 +2009,9 @@ async function enrichScorersLogos(scorers, leagueName) {
     for (const [name, logo] of results) tsdbMap[name] = logo;
   }
 
-  // 3. Wikipedia fallback for teams still without logos
-  const needsWikiSc = teamNames.filter((name) => !flMap[name] && !tsdbMap[name] && !scorers.find((s) => s.team === name)?.teamLogo);
-  const wikiMapSc = {};
-  if (needsWikiSc.length > 0) {
-    for (let i = 0; i < needsWikiSc.length; i += 5) {
-      const batch = needsWikiSc.slice(i, i + 5);
-      const results = await Promise.all(batch.map(async (name) => [name, await fetchWikipediaTeamLogo(name)]));
-      for (const [name, logo] of results) wikiMapSc[name] = logo;
-    }
-  }
-
   return scorers.map((s) => ({
     ...s,
-    teamLogo: flMap[s.team] || tsdbMap[s.team] || s.teamLogo || wikiMapSc[s.team] || null,
+    teamLogo: flMap[s.team] || tsdbMap[s.team] || s.teamLogo || null,
   }));
 }
 
@@ -3846,29 +3824,43 @@ async function geminiChat(messages, { temperature = 0.4, model } = {}) {
   }
 
   const useModel = model || process.env.GEMINI_MODEL || "gemini-2.0-flash";
-  // Use Gemini's OpenAI-compatible endpoint for easy integration
-  const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/openai/chat/completions`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${key}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model: useModel,
-      temperature,
-      messages,
-    }),
-  });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 3500);
+  try {
+    // Use Gemini's OpenAI-compatible endpoint for easy integration
+    const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/openai/chat/completions`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${key}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: useModel,
+        temperature,
+        messages,
+      }),
+      signal: controller.signal,
+    });
 
-  const data = await r.json();
-  if (!r.ok) {
-    const e = new Error(`Gemini error (${r.status})`);
-    e.statusCode = r.status;
-    e.details = data;
-    throw e;
+    const data = await r.json();
+    if (!r.ok) {
+      const e = new Error(`Gemini error (${r.status})`);
+      e.statusCode = r.status;
+      e.details = data;
+      throw e;
+    }
+
+    return data?.choices?.[0]?.message?.content ?? "";
+  } catch (err) {
+    if (err?.name === "AbortError") {
+      const e = new Error("Gemini timeout");
+      e.statusCode = 504;
+      throw e;
+    }
+    throw err;
+  } finally {
+    clearTimeout(timeout);
   }
-
-  return data?.choices?.[0]?.message?.content ?? "";
 }
 
 // xAI Grok – API-compatible with OpenAI (XAI_API_KEY env)
@@ -6201,25 +6193,7 @@ app.get("/api/sports/topscorers/:league", async (req, res) => {
         if (scorers.length > 0) {
           // Enrich team logos via Football-logos + TheSportsDB
           scorers = await enrichScorersLogos(scorers, leagueName);
-          // Enrich with market values per team (best-effort, cached by enrichRosterMarketValues)
-          const teams = [...new Set(scorers.map(s => s.team).filter(Boolean))];
-          await Promise.allSettled(
-            teams.map(teamName =>
-              Promise.race([
-                (async () => {
-                  const teamScorers = scorers.filter(s => s.team === teamName);
-                  const minimal = teamScorers.map(s => ({ id: s.id, name: s.name }));
-                  const enriched = await enrichRosterMarketValues(minimal, teamName, leagueName);
-                  for (const s of teamScorers) {
-                    const e = enriched.find(p => p.id === s.id || p.name === s.name);
-                    if (e?.marketValue) { s.marketValue = e.marketValue; s.isRealValue = e.isRealValue; }
-                  }
-                })(),
-                new Promise(r => setTimeout(r, 12000)),
-              ])
-            )
-          );
-          console.log(`[topscorers] ${leagueName}: ESPN → ${scorers.length} scorers (enriched)`);
+          console.log(`[topscorers] ${leagueName}: ESPN → ${scorers.length} scorers`);
           // Enrich scorer photos (Transfermarkt + TheSportsDB + Wikipedia + fallbacks)
           scorers = await enrichScorersPhotos(scorers, leagueName);
           return { league: leagueName, season, seasonLabel, scorers, source: "espn" };
@@ -6490,22 +6464,33 @@ app.get("/api/sports/team/:teamId", async (req, res) => {
       const rawTeamLogo = team?.logos?.[0]?.href || team?.logo || null;
       const footballLogosUrl = resolveFootballLogosUrl(teamDisplayName, normalizeLeagueName(espnLeague) || "");
 
-      // Run enrichment + logo resolution with a 20-second deadline
-      const ENRICH_DEADLINE = 20_000;
+      // Run enrichment + logo resolution with a shorter deadline so screens render fast.
+      const ENRICH_DEADLINE = 12_000;
       const enrichResult = await Promise.race([
         (async () => {
-          const valuedPlayers = await enrichRosterMarketValues(players, teamDisplayName, espnLeague);
-          const enrichedPlayers = await enrichRosterPhotos(valuedPlayers, teamDisplayName);
+          const [valuedPlayers, photoPlayers, sportsDbLogo] = await Promise.all([
+            Promise.race([
+              enrichRosterMarketValues(players, teamDisplayName, espnLeague),
+              new Promise((resolve) => setTimeout(() => resolve(players), 4000)),
+            ]),
+            Promise.race([
+              enrichRosterPhotos(players, teamDisplayName),
+              new Promise((resolve) => setTimeout(() => resolve(players), 8000)),
+            ]),
+            fetchTheSportsDBTeamLogo(teamDisplayName),
+          ]);
+          const valueMap = new Map((valuedPlayers || []).map((player) => [String(player?.id || player?.name || ""), player]));
+          const enrichedPlayers = (photoPlayers || players).map((player) => {
+            const playerKey = String(player?.id || player?.name || "");
+            const valued = valueMap.get(playerKey);
+            return valued ? { ...valued, ...player, photo: player?.photo || valued?.photo || null } : player;
+          });
           // Reuse TM data from enrichRosterMarketValues cache (already fetched and cached during enrichment)
           const tmClubData = cacheGet(`transfermarkt_club_${normalizePersonName(teamDisplayName)}`);
           const clubMarketValue = tmClubData?._clubMarketValue || null;
-          const [sportsDbLogo, wikipediaLogo] = await Promise.all([
-            fetchTheSportsDBTeamLogo(teamDisplayName),
-            fetchWikipediaTeamLogo(teamDisplayName),
-          ]);
           const resolvedLogo = isNationalTeam
-            ? normalizeTeamLogo(teamDisplayName, footballLogosUrl, sportsDbLogo, wikipediaLogo, rawTeamLogo, espnLogo)
-            : normalizeTeamLogo(teamDisplayName, footballLogosUrl, rawTeamLogo, espnLogo, sportsDbLogo, wikipediaLogo);
+            ? normalizeTeamLogo(teamDisplayName, footballLogosUrl, sportsDbLogo, rawTeamLogo, espnLogo)
+            : normalizeTeamLogo(teamDisplayName, footballLogosUrl, rawTeamLogo, espnLogo, sportsDbLogo);
           return { enrichedPlayers, squadMarketValue: clubMarketValue ? formatEURShort(clubMarketValue) : null, resolvedLogo };
         })(),
         new Promise((resolve) => setTimeout(() => resolve(null), ENRICH_DEADLINE)),
