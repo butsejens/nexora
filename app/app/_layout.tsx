@@ -34,8 +34,8 @@ function prefetchHomeData() {
   // — Standings + top scorers for key leagues (with full photo enrichment) —
   const leagues = ["bel.1", "eng.1", "esp.1", "ger.1", "ita.1", "fra.1", "ned.1", "uefa.champions"];
   for (const league of leagues) {
-    queryClient.prefetchQuery({ queryKey: ["standings", league], queryFn: () => fetcher(`/api/sports/standings/${league}`), staleTime: 5 * 60 * 1000 });
-    queryClient.prefetchQuery({ queryKey: ["topscorers", league], queryFn: () => fetcher(`/api/sports/topscorers/${league}`), staleTime: 5 * 60 * 1000 });
+    queryClient.prefetchQuery({ queryKey: ["standings", league], queryFn: () => fetcher(`/api/sports/standings/${league}`), staleTime: 90_000 });
+    queryClient.prefetchQuery({ queryKey: ["topscorers", league], queryFn: () => fetcher(`/api/sports/topscorers/${league}`), staleTime: 90_000 });
   }
   // — Movies & Series (trending + genres for instant tab loading) —
   queryClient.prefetchQuery({ queryKey: ["movies", "trending"], queryFn: () => fetcher("/api/movies/trending"), staleTime: 5 * 60 * 1000 });
