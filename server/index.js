@@ -3230,7 +3230,7 @@ function mapEspnRosterPlayer(player) {
     weight: toKgStringFromAny(player?.displayWeight || player?.weight),
     marketValue: undefined,
     isRealValue: false,
-    photo: normalizePlayerPhoto(playerId, player?.headshot?.href, espnCdnUrl),
+    photo: keepIncomingPlayerPhoto(normalizePlayerPhoto(playerId, player?.headshot?.href, espnCdnUrl)),
   };
 }
 
@@ -6103,7 +6103,13 @@ function mapEspnTopScorers(data) {
         rank: idx + 1,
         id: athleteId,
         name: ath.displayName || ath.fullName || "",
-        photo: normalizePlayerPhoto(athleteId, ath.headshot?.href, athleteId ? `https://a.espncdn.com/i/headshots/soccer/players/full/${encodeURIComponent(athleteId)}.png` : null),
+        photo: keepIncomingPlayerPhoto(
+          normalizePlayerPhoto(
+            athleteId,
+            ath.headshot?.href,
+            athleteId ? `https://a.espncdn.com/i/headshots/soccer/players/full/${encodeURIComponent(athleteId)}.png` : null
+          )
+        ),
         team: ath.team?.displayName || ath.team?.name || "",
         teamId: String(ath?.team?.id || ""),
         teamLogo: normalizeTeamLogo(
@@ -6201,7 +6207,9 @@ async function espnTopScorersFromHtml(leagueName) {
     rows.push({
       rank,
       name,
-      photo: athleteId ? `https://a.espncdn.com/i/headshots/soccer/players/full/${encodeURIComponent(athleteId)}.png` : null,
+      photo: keepIncomingPlayerPhoto(
+        athleteId ? `https://a.espncdn.com/i/headshots/soccer/players/full/${encodeURIComponent(athleteId)}.png` : null
+      ),
       team: teamName,
       teamLogo: null,
       goals,
