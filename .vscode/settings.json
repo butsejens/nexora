@@ -7,5 +7,6 @@
         "**/build/**",
         "**/.gradle/**",
         "**/oracleJdk-26.jdk/**"
-    ]
+    ],
+    "java.compile.nullAnalysis.mode": "automatic"
 }

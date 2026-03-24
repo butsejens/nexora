@@ -24,6 +24,15 @@ const CATEGORY_SORT: Record<string, string> = {
   upcoming: "primary_release_date.asc",
 };
 
+const MOOD_OPTIONS = [
+  { id: "fun", emoji: "🎉", label: "Fun" },
+  { id: "thrilling", emoji: "😱", label: "Thrilling" },
+  { id: "emotional", emoji: "😢", label: "Emotional" },
+  { id: "smart", emoji: "🧠", label: "Smart" },
+] as const;
+
+type MoodId = typeof MOOD_OPTIONS[number]["id"];
+
 const IPTV_PALETTE = ["#1B2B4B","#2B1B4B","#1B4B2B","#4B1B2B","#4B2B1B","#1B3B4B","#2B4B1B","#3B1B4B","#1B4B3B","#2B3B1B"];
 function iptvColor(title: string): string {
   let h = 0; for (const c of String(title || "")) h = (h * 31 + c.charCodeAt(0)) & 0xffff;
@@ -85,6 +94,7 @@ export default function MoviesScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [loadingGuardReached, setLoadingGuardReached] = useState(false);
   const [heroIndex, setHeroIndex] = useState(0);
+  const [selectedMood, setSelectedMood] = useState<MoodId>("fun");
 
   // Server-side search
   const [serverResults, setServerResults] = useState<any[]>([]);
@@ -221,6 +231,40 @@ export default function MoviesScreen() {
   const genreDiscoverRows: any[] = useMemo(() => genreDiscoverData?.rows || [], [genreDiscoverData]);
   const recommendedForYou: any[] = useMemo(() => recForYouData?.movies || [], [recForYouData]);
   const becauseYouWatched: any[] = useMemo(() => becauseYouWatchedData?.items || [], [becauseYouWatchedData]);
+
+  const moodPicks = useMemo(() => {
+    const pool = [...recommendedForYou, ...hiddenGems, ...topRated, ...popular, ...trending, ...newReleases];
+    const genreMap: Record<MoodId, number[]> = {
+      fun: [35, 10751, 16, 12],
+      thrilling: [53, 27, 80, 9648, 28],
+      emotional: [18, 10749],
+      smart: [99, 36, 10752, 878],
+    };
+    const keywordMap: Record<MoodId, string[]> = {
+      fun: ["fun", "comedy", "family", "adventure"],
+      thrilling: ["thriller", "crime", "murder", "suspense", "horror"],
+      emotional: ["love", "drama", "heart", "life"],
+      smart: ["documentary", "biography", "history", "science", "politics"],
+    };
+    const seen = new Set<string>();
+    const out: any[] = [];
+    for (const item of pool) {
+      const id = String(item?.id || "");
+      if (!id || seen.has(id)) continue;
+      seen.add(id);
+      const genres = Array.isArray(item?.genre_ids)
+        ? item.genre_ids.map((g: any) => Number(g)).filter((g: number) => Number.isFinite(g))
+        : [];
+      const text = `${String(item?.title || "")} ${String(item?.synopsis || "")} ${String(item?.overview || "")}`.toLowerCase();
+      const moodGenre = genreMap[selectedMood];
+      const moodWords = keywordMap[selectedMood];
+      const matchByGenre = genres.some((g: number) => moodGenre.includes(g));
+      const matchByText = moodWords.some((w) => text.includes(w));
+      if (matchByGenre || matchByText) out.push(item);
+      if (out.length >= 20) break;
+    }
+    return out;
+  }, [hiddenGems, newReleases, popular, recommendedForYou, selectedMood, topRated, trending]);
 
   // Continue Watching — movies from watch history
   const continueWatching = useMemo(() => {
@@ -755,6 +799,32 @@ export default function MoviesScreen() {
                 {renderSimpleRow("Recommended For You", recommendedForYou, "rec-for-you")}
               </View>
 
+              {/* Mood-based smart picks */}
+              <View style={styles.section}>
+                <Text style={styles.sectionTitle}>Perfect for Tonight</Text>
+                <FlatList
+                  horizontal
+                  data={MOOD_OPTIONS as readonly any[]}
+                  keyExtractor={(item: any) => item.id}
+                  renderItem={({ item }: any) => {
+                    const active = selectedMood === item.id;
+                    return (
+                      <TouchableOpacity
+                        style={[styles.moodChip, active && styles.moodChipActive]}
+                        onPress={() => setSelectedMood(item.id)}
+                        activeOpacity={0.85}
+                      >
+                        <Text style={styles.moodEmoji}>{item.emoji}</Text>
+                        <Text style={[styles.moodText, active && styles.moodTextActive]}>{item.label}</Text>
+                      </TouchableOpacity>
+                    );
+                  }}
+                  contentContainerStyle={styles.moodRow}
+                  showsHorizontalScrollIndicator={false}
+                />
+                {renderSimpleRow(`${MOOD_OPTIONS.find((m) => m.id === selectedMood)?.emoji || ""} ${MOOD_OPTIONS.find((m) => m.id === selectedMood)?.label || "Mood"} Picks`, moodPicks, `mood-${selectedMood}`)}
+              </View>
+
               {/* IPTV Playlist - always mounted */}
               <View style={iptvMovies.length > 0 ? undefined : { display: "none" }}>
                 <View style={styles.section}>
@@ -891,6 +961,22 @@ const styles = StyleSheet.create({
   chipActive: { backgroundColor: COLORS.accentGlow, borderColor: COLORS.accent },
   chipText: { fontFamily: "Inter_500Medium", fontSize: 12, color: COLORS.textMuted },
   chipTextActive: { color: COLORS.accent },
+  moodRow: { paddingHorizontal: 16, paddingBottom: 10, gap: 8, flexDirection: "row" },
+  moodChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 18,
+    backgroundColor: COLORS.cardElevated,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  moodChipActive: { borderColor: COLORS.accent, backgroundColor: COLORS.accentGlow },
+  moodEmoji: { fontSize: 14 },
+  moodText: { fontFamily: "Inter_500Medium", fontSize: 12, color: COLORS.textMuted },
+  moodTextActive: { color: COLORS.accent, fontFamily: "Inter_600SemiBold" },
   loadingBanner: { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 16, paddingVertical: 8 },
   loadingText: { fontFamily: "Inter_400Regular", fontSize: 13, color: COLORS.textMuted },
   watchdogBanner: {
