@@ -116,6 +116,27 @@ async function getOrFetch(key, ttlMs, fetcher) {
   return p;
 }
 
+function countSportsItems(payload) {
+  const p = payload && typeof payload === "object" ? payload : {};
+  if (Array.isArray(p.live) || Array.isArray(p.upcoming) || Array.isArray(p.finished)) {
+    return (Array.isArray(p.live) ? p.live.length : 0)
+      + (Array.isArray(p.upcoming) ? p.upcoming.length : 0)
+      + (Array.isArray(p.finished) ? p.finished.length : 0);
+  }
+  if (p?.id && p?.homeTeam && p?.awayTeam) return 1;
+  return 0;
+}
+
+function rememberLastGoodSportsPayload(cacheKey, payload, ttlMs = 6 * 60 * 60 * 1000) {
+  if (countSportsItems(payload) > 0) {
+    cacheSet(`${cacheKey}__last_good`, payload, ttlMs);
+  }
+}
+
+function getLastGoodSportsPayload(cacheKey) {
+  return cacheGet(`${cacheKey}__last_good`) || cacheGetStale(`${cacheKey}__last_good`) || null;
+}
+
 // -----------------------------
 // Football fallback data source selection
 // Primary is ESPN (keyless). APISPORTS/RapidAPI/SportSRC are optional fallbacks.
@@ -4538,17 +4559,46 @@ async function aiPredictMatch(payload) {
 
   // Zilliz cache check – skip for live matches (status=live) as they change rapidly
   const isLive = String(enrichedPayload?.status || "").toLowerCase() === "live";
+  const liveMinuteBucket = isLive ? Math.floor(Number(enrichedPayload?.minute || 0) / 2) : 0;
+  const predSnapshot = {
+    homeTeam: String(enrichedPayload?.homeTeam || "").trim().toLowerCase(),
+    awayTeam: String(enrichedPayload?.awayTeam || "").trim().toLowerCase(),
+    league: String(enrichedPayload?.league || "").trim().toLowerCase(),
+    status: String(enrichedPayload?.status || "").trim().toLowerCase(),
+    homeScore: Number(enrichedPayload?.homeScore || 0),
+    awayScore: Number(enrichedPayload?.awayScore || 0),
+    minuteBucket: liveMinuteBucket,
+    context: enrichedPayload?.context || {},
+  };
+  const predHash = crypto.createHash("sha1").update(JSON.stringify(predSnapshot)).digest("hex");
+  const predCacheKey = `ai_predict_${predHash}`;
+  const predInflightKey = `inflight_${predCacheKey}`;
+  const localTtlMs = isLive ? 15_000 : 5 * 60_000;
+
+  const localCached = cacheGet(predCacheKey);
+  if (localCached) {
+    return { ...localCached, fromCache: true };
+  }
+
+  const existingPrediction = __inflight.get(predInflightKey);
+  if (existingPrediction) return existingPrediction;
+
   const homeTeam = String(enrichedPayload?.homeTeam || "");
   const awayTeam = String(enrichedPayload?.awayTeam || "");
   const league = String(enrichedPayload?.league || "");
   const zPredKey = `${homeTeam}_vs_${awayTeam}_${league}`;
   if (!isLive && _zillizReady) {
     const zCached = await zillizGet("match_prediction", zPredKey);
-    if (zCached?.prediction) return { ...zCached, fromCache: true };
+    if (zCached?.prediction) {
+      cacheSet(predCacheKey, zCached, localTtlMs);
+      return { ...zCached, fromCache: true };
+    }
   }
 
   if (!hasAnyProvider) {
-    return deterministicPrediction(enrichedPayload);
+    const fallback = deterministicPrediction(enrichedPayload);
+    cacheSet(predCacheKey, fallback, isLive ? 8_000 : 90_000);
+    return fallback;
   }
 
   const sys = {
@@ -4564,54 +4614,70 @@ async function aiPredictMatch(payload) {
   };
 
   const providers = [];
-  if (process.env.OLLAMA_MODEL) {
-    providers.push({ name: "ollama", run: () => ollamaChat([sys, user], { temperature: 0.35 }) });
-  }
-  if (process.env.DEEPSEEK_API_KEY) {
-    providers.push({ name: "deepseek", run: () => deepseekChat([sys, user], { temperature: 0.35 }) });
+  if (process.env.GROQ_API_KEY) {
+    providers.push({ name: "groq", run: () => groqChat([sys, user], { temperature: 0.35 }) });
   }
   if (process.env.OPENROUTER_API_KEY) {
     providers.push({ name: "openrouter", run: () => openrouterChat([sys, user], { temperature: 0.35 }) });
   }
-  if (process.env.GROQ_API_KEY) {
-    providers.push({ name: "groq", run: () => groqChat([sys, user], { temperature: 0.35 }) });
-  }
-  if (process.env.XAI_API_KEY) {
-    providers.push({ name: "grok", run: () => xaiChat([sys, user], { temperature: 0.35 }) });
-  }
   if (process.env.OPENAI_API_KEY) {
     providers.push({ name: "openai", run: () => openaiChat([sys, user], { temperature: 0.35 }) });
+  }
+  if (process.env.DEEPSEEK_API_KEY) {
+    providers.push({ name: "deepseek", run: () => deepseekChat([sys, user], { temperature: 0.35 }) });
   }
   if (process.env.GEMINI_API_KEY) {
     providers.push({ name: "gemini", run: () => geminiChat([sys, user], { temperature: 0.35 }) });
   }
-
-  let lastError = null;
-  for (const provider of providers) {
-    try {
-      const raw = await provider.run();
-      const parsed = parseAiPredictionToUiShape(raw);
-      const result = {
-        ...parsed,
-        source: `ai-${provider.name}`,
-        updatedAt: new Date().toISOString(),
-      };
-      // Cache AI prediction in Zilliz (only for non-live, finished/upcoming matches)
-      if (!isLive) {
-        zillizPut("match_prediction", zPredKey, result); // async, best-effort
-      }
-      return result;
-    } catch (e) {
-      lastError = e;
-    }
+  if (process.env.XAI_API_KEY) {
+    providers.push({ name: "grok", run: () => xaiChat([sys, user], { temperature: 0.35 }) });
   }
-  const normalized = normalizeAiProviderError(lastError);
-  console.warn(`[ai] all providers failed: ${normalized.message}`);
-  return {
-    ...deterministicPrediction(enrichedPayload),
-    source: "fallback-stats",
-    providerError: normalized.message,
-  };
+  if (process.env.OLLAMA_MODEL) {
+    providers.push({ name: "ollama", run: () => ollamaChat([sys, user], { temperature: 0.35 }) });
+  }
+
+  const predictionTask = (async () => {
+    let lastError = null;
+    for (const provider of providers) {
+      try {
+        const raw = await Promise.race([
+          provider.run(),
+          new Promise((_, reject) => setTimeout(() => reject(new Error(`Provider timeout: ${provider.name}`)), 4500)),
+        ]);
+        const parsed = parseAiPredictionToUiShape(raw);
+        const result = {
+          ...parsed,
+          source: `ai-${provider.name}`,
+          updatedAt: new Date().toISOString(),
+        };
+        cacheSet(predCacheKey, result, localTtlMs);
+        // Cache AI prediction in Zilliz (only for non-live, finished/upcoming matches)
+        if (!isLive) {
+          zillizPut("match_prediction", zPredKey, result); // async, best-effort
+        }
+        return result;
+      } catch (e) {
+        lastError = e;
+      }
+    }
+
+    const normalized = normalizeAiProviderError(lastError);
+    console.warn(`[ai] all providers failed: ${normalized.message}`);
+    const fallback = {
+      ...deterministicPrediction(enrichedPayload),
+      source: "fallback-stats",
+      providerError: normalized.message,
+    };
+    cacheSet(predCacheKey, fallback, isLive ? 8_000 : 90_000);
+    return fallback;
+  })();
+
+  __inflight.set(predInflightKey, predictionTask);
+  try {
+    return await predictionTask;
+  } finally {
+    __inflight.delete(predInflightKey);
+  }
 }
 
 // -----------------------------
@@ -5599,8 +5665,22 @@ app.get("/api/sports/live", async (req, res) => {
       return { timezone: TZ, live: [], source: "espn" };
     });
 
+    if (countSportsItems(payload) > 0) {
+      rememberLastGoodSportsPayload(CACHE_KEY, payload);
+      return res.json(payload);
+    }
+
+    const lastGood = getLastGoodSportsPayload(CACHE_KEY);
+    if (lastGood) {
+      return res.json({ ...lastGood, stale: true, source: `${lastGood.source || "espn"}-last-good` });
+    }
+
     res.json(payload);
   } catch (e) {
+    const lastGood = getLastGoodSportsPayload(CACHE_KEY);
+    if (lastGood) {
+      return res.status(200).json({ ...lastGood, stale: true, source: `${lastGood.source || "espn"}-last-good` });
+    }
     if (e?.statusCode === 429) {
       const stale = cacheGetStale(CACHE_KEY);
       if (stale) return res.status(200).json(stale);
@@ -5665,8 +5745,22 @@ for (let i = 0; i <= ESPN_LOOKAHEAD_DAYS; i++) {
       return { date, timezone: TZ, live: [], upcoming: [], finished: [], source: "espn" };
     });
 
+    if (countSportsItems(payload) > 0) {
+      rememberLastGoodSportsPayload(CACHE_KEY, payload);
+      return res.json(payload);
+    }
+
+    const lastGood = getLastGoodSportsPayload(CACHE_KEY);
+    if (lastGood) {
+      return res.json({ ...lastGood, stale: true, source: `${lastGood.source || "espn"}-last-good` });
+    }
+
     res.json(payload);
   } catch (e) {
+    const lastGood = getLastGoodSportsPayload(CACHE_KEY);
+    if (lastGood) {
+      return res.status(200).json({ ...lastGood, stale: true, source: `${lastGood.source || "espn"}-last-good` });
+    }
     if (e?.statusCode === 429) {
       const stale = cacheGetStale(CACHE_KEY) || cacheGetStale("sports_live");
       if (stale) return res.status(200).json(stale);
@@ -5681,9 +5775,10 @@ app.get("/api/sports/by-date", async (req, res) => {
   const todayYmd = new Date().toISOString().slice(0, 10);
   const isToday = date === todayYmd;
   const ttlMs = isToday ? 45_000 : 10 * 60_000;
+  const CACHE_KEY = `sports_by_date_${date}`;
   // Reuse today logic but avoid cache collision by using dedicated key
   try {
-    const payload = await getOrFetch(`sports_by_date_${date}`, ttlMs, async () => {
+    const payload = await getOrFetch(CACHE_KEY, ttlMs, async () => {
       // ESPN with limited lookahead for reliability + responsiveness
       let espnDate = date;
       for (let i = 0; i <= ESPN_LOOKAHEAD_DAYS; i++) {
@@ -5720,8 +5815,22 @@ app.get("/api/sports/by-date", async (req, res) => {
         source: "espn",
       };
     });
+    if (countSportsItems(payload) > 0) {
+      rememberLastGoodSportsPayload(CACHE_KEY, payload);
+      return res.json(payload);
+    }
+
+    const lastGood = getLastGoodSportsPayload(CACHE_KEY);
+    if (lastGood) {
+      return res.json({ ...lastGood, stale: true, source: `${lastGood.source || "espn"}-last-good` });
+    }
+
     return res.json(payload);
   } catch (e) {
+    const lastGood = getLastGoodSportsPayload(CACHE_KEY);
+    if (lastGood) {
+      return res.status(200).json({ ...lastGood, stale: true, source: `${lastGood.source || "espn"}-last-good` });
+    }
     return res.status(200).json({ date, timezone: TZ, live: [], upcoming: [], finished: [], error: String(e?.message || e) });
   }
 });
@@ -6090,8 +6199,22 @@ app.get("/api/sports/match/:matchId", async (req, res) => {
       });
     });
 
+    if (countSportsItems(payload) > 0) {
+      rememberLastGoodSportsPayload(CACHE_KEY, payload, 3 * 60 * 60 * 1000);
+      return res.json(payload);
+    }
+
+    const lastGood = getLastGoodSportsPayload(CACHE_KEY);
+    if (lastGood) {
+      return res.json({ ...lastGood, stale: true, source: `${lastGood.source || "espn"}-last-good` });
+    }
+
     res.json(payload);
   } catch (e) {
+    const lastGood = getLastGoodSportsPayload(CACHE_KEY);
+    if (lastGood) {
+      return res.status(200).json({ ...lastGood, stale: true, source: `${lastGood.source || "espn"}-last-good` });
+    }
     if (e?.statusCode === 429) {
       const stale = cacheGetStale(CACHE_KEY);
       if (stale) return res.status(200).json(stale);
