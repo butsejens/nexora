@@ -281,6 +281,23 @@ export default function MoviesScreen() {
   const rawCatalogError =
     (data as any)?.error ||
     (isError ? "Movie catalog not available" : "");
+  const hasCatalogContent = [
+    trending.length,
+    newReleases.length,
+    topRated.length,
+    popular.length,
+    upcoming.length,
+    hiddenGems.length,
+    acclaimed.length,
+    movieGenres.length,
+    movieDecades.length,
+    genreDiscoverRows.length,
+    recommendedForYou.length,
+    becauseYouWatched.length,
+    continueWatching.length,
+    recentlyWatched.length,
+    filteredIptv.length,
+  ].some((count) => count > 0);
   const normalizedCatalogError = rawCatalogError ? normalizeApiError(rawCatalogError) : null;
   const catalogErrorRef = useMemo(() => (rawCatalogError ? buildErrorReference("NX-MOV") : ""), [rawCatalogError]);
 
@@ -624,7 +641,7 @@ export default function MoviesScreen() {
         </View>
       )}
 
-      {normalizedCatalogError ? (
+      {normalizedCatalogError && !hasCatalogContent ? (
         <View style={styles.errorBanner}>
           <Ionicons name="warning-outline" size={14} color={COLORS.live} />
           <View style={{ flex: 1, gap: 2 }}>
