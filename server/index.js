@@ -65,6 +65,11 @@ function proxyPhotoUrl(url) {
 }
 const TZ = process.env.APP_TZ || "Europe/Brussels";
 
+// Health endpoint used by app diagnostics.
+app.get("/api/sports/health", (_req, res) => {
+  res.json({ ok: true, source: "espn", tz: TZ, uptime: Math.round(process.uptime()) });
+});
+
 // -----------------------------
 // Cache (in-memory)
 // -----------------------------
@@ -5602,6 +5607,13 @@ app.get("/api/sports/live", async (req, res) => {
     }
     res.status(200).json({ timezone: TZ, live: [], error: String(e?.message || e) });
   }
+});
+
+// Backward-compatible alias used by existing app builds.
+app.get("/api/sports/live/by-date", (req, res) => {
+  const date = String(req.query?.date || "").trim();
+  const suffix = date ? `?date=${encodeURIComponent(date)}` : "";
+  res.redirect(307, `/api/sports/by-date${suffix}`);
 });
 
 app.get("/api/sports/today", async (req, res) => {
