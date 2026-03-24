@@ -50,10 +50,35 @@ const LEAGUE_LOGO_MAP: Record<string, string | number> = {
 
   "Primeira Liga":           ESPN(24),
   "Liga Portugal":           ESPN(24),
+  "Liga Portugal 2":         ESPN(14),
+  "Taça de Portugal":        ESPN(14),
+  "Taca de Portugal":        ESPN(14),
 
+  "Süper Lig":               ESPN(18),
+  "Super Lig":               ESPN(18),
+  "Turkish Cup":             ESPN(18),
+  "1. Lig":                  ESPN(18),
   "Super League":            ESPN(53),
   "Scottish Premiership":    ESPN(54),
   "Premiership":             ESPN(54),
+  "Scottish Championship":   ESPN(45),
+  "Scottish FA Cup":         ESPN(45),
+  "Austrian Bundesliga":     ESPN(5),
+  "Austrian Football Bundesliga": ESPN(5),
+  "Austrian Cup":            ESPN(5),
+  "Swiss Super League":      ESPN(17),
+  "Swiss Challenge League":  ESPN(17),
+  "Swiss Cup":               ESPN(17),
+  "Super League Greece":     ESPN(98),
+  "Greek Cup":               ESPN(98),
+  "Ekstraklasa":             ESPN(53),
+  "Polish Cup":              ESPN(53),
+  "Czech First League":      ESPN(10),
+  "Czech Cup":               ESPN(10),
+  "Romanian Liga 1":         ESPN(53),
+  "Danish Superliga":        ESPN(53),
+  "Allsvenskan":             ESPN(16),
+  "Eliteserien":             ESPN(53),
 
   // ── UEFA Competitions ─────────────────────────────────────────────────────
   "UEFA Champions League":   LOCAL_LOGOS.championsLeague,
@@ -180,6 +205,16 @@ const ESPN_TEAM_LOGO_IDS: Record<string, number> = {
   "arouca": 15784, "casa pia": 21581, "estoril": 12216, "famalicao": 12698,
   "gil vicente": 3699, "moreirense": 3696, "rio ave": 3822, "santa clara": 12215,
   "vitoria guimaraes": 5309, "nacional": 3472, "tondela": 12706,
+  // Turkey / Scotland / Austria / Switzerland / Greece / Nordics / East Europe
+  "galatasaray": 432, "fenerbahce": 436, "fenerbahçe": 436, "besiktas": 435, "trabzonspor": 1267,
+  "basaksehir": 10113, "istanbul basaksehir": 10113, "samsunspor": 11834, "goztepe": 1269,
+  "celtic": 256, "rangers": 257, "aberdeen": 259, "hibernian": 261, "heart of midlothian": 2736,
+  "rapid vienna": 452, "rapid wien": 452, "red bull salzburg": 2790, "salzburg": 2790, "sturm graz": 453, "austria vienna": 454,
+  "young boys": 465, "basel": 467, "zurich": 468, "servette": 6491,
+  "olympiacos": 219, "panathinaikos": 2683, "aek athens": 2429, "paok": 2428,
+  "legia warsaw": 669, "lech poznan": 2252, "sparta prague": 478, "slavia prague": 471,
+  "fcsb": 487, "cfr cluj": 6139, "malmo": 555, "malmo ff": 555, "aik": 4606,
+  "rosenborg": 480, "bodo glimt": 6992, "bodo/glimt": 6992, "fc copenhagen": 909, "copenhagen": 909, "brondby": 898,
 };
 
 // National team logos via ESPN country codes

@@ -1054,10 +1054,10 @@ export default function SportsScreen() {
   const allLive: any[] = mergedLive.filter(isFootballMatch);
   const allUpcoming: any[] = remoteUpcoming.filter(isFootballMatch);
   const allFinished: any[] = remoteFinished.filter(isFootballMatch);
-  const noRemoteData = !hasRemoteData;
   const rawApiError =
     todayQuery.data?.error || liveQuery.data?.error ||
     (todayQuery.error as any)?.message || (liveQuery.error as any)?.message || "";
+  const noRemoteData = !liveFirstLoad && !todayFirstLoad && !hasRemoteData && Boolean(rawApiError);
   const normalizedApiError = rawApiError ? normalizeApiError(rawApiError) : null;
   const apiErrorRef = useMemo(() => (rawApiError ? buildErrorReference("NX-SPR") : ""), [rawApiError]);
   const shouldShowApiErrorBanner = Boolean(normalizedApiError) && !hasRemoteData;
