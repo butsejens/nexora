@@ -155,7 +155,7 @@ const storyStyles = StyleSheet.create({
 export default function CompetitionScreen() {
     const fetchLeaguePayloadWithFallback = async (kind: "standings" | "topscorers" | "topassists" | "competition-stats") => {
       const candidates = Array.from(new Set([leagueName, espnLeague].filter(Boolean)));
-      const responses = await Promise.all(candidates.map(async (candidate) => {
+      const fetchCandidate = async (candidate: string) => {
         try {
           const res = await apiRequest("GET", `/api/sports/${kind}/${encodeURIComponent(candidate)}`);
           const json = await res.json();
@@ -168,7 +168,23 @@ export default function CompetitionScreen() {
         } catch {
           return { json: null as any, count: 0, candidate };
         }
-      }));
+      };
+
+      if (kind === "topscorers" || kind === "topassists") {
+        let best: { json: any; count: number; candidate: string } = { json: {}, count: 0, candidate: candidates[0] || "" };
+        for (const candidate of candidates) {
+          const result = await fetchCandidate(candidate);
+          if (result.count > best.count || (result.count === best.count && !result.json?.error && best.json?.error)) {
+            best = result;
+          }
+          if (result.count > 0 && !result.json?.error) {
+            return result.json;
+          }
+        }
+        return best?.json || {};
+      }
+
+      const responses = await Promise.all(candidates.map(fetchCandidate));
 
       const best = responses.sort((a, b) => {
         if (a.count !== b.count) return b.count - a.count;
