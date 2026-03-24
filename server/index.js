@@ -5230,7 +5230,8 @@ function buildNormalizedTimeline(events, homeTeam, awayTeam, status, minute, hom
 
   // Synthetic halftime marker when missing and match is at half or finished
   const statusLower = String(status || "").toLowerCase();
-  if ((statusLower === "finished" || (statusLower === "live" && toNum(currentMinute) >= 45)) && !normalized.some((e) => e.kind === "halftime")) {
+  const minuteNow = toNum(minute);
+  if ((statusLower === "finished" || (statusLower === "live" && minuteNow >= 45)) && !normalized.some((e) => e.kind === "halftime")) {
     normalized.push({
       id: "halftime_synth",
       kind: "halftime",
@@ -5521,9 +5522,12 @@ app.get("/api/sports/today", async (req, res) => {
   const now = new Date(date + "T12:00:00Z");
   const season = seasonForDate(now);
   const CACHE_KEY = `sports_today_${date}_s${season}`;
+  const todayYmd = new Date().toISOString().slice(0, 10);
+  const isToday = date === todayYmd;
+  const ttlMs = isToday ? 45_000 : 10 * 60_000;
 
   try {
-    const payload = await getOrFetch(CACHE_KEY, 6 * 60 * 60_000, async () => {
+    const payload = await getOrFetch(CACHE_KEY, ttlMs, async () => {
 
 // ESPN (no key, most reliable)
 // Returns matches for the given date. If no matches that day, look ahead a few days.
@@ -5575,9 +5579,12 @@ for (let i = 0; i <= ESPN_LOOKAHEAD_DAYS; i++) {
 // Convenience endpoint: by-date (YYYY-MM-DD)
 app.get("/api/sports/by-date", async (req, res) => {
   const date = getDateParam(req);
+  const todayYmd = new Date().toISOString().slice(0, 10);
+  const isToday = date === todayYmd;
+  const ttlMs = isToday ? 45_000 : 10 * 60_000;
   // Reuse today logic but avoid cache collision by using dedicated key
   try {
-    const payload = await getOrFetch(`sports_by_date_${date}`, 6 * 60 * 60_000, async () => {
+    const payload = await getOrFetch(`sports_by_date_${date}`, ttlMs, async () => {
       // ESPN with limited lookahead for reliability + responsiveness
       let espnDate = date;
       for (let i = 0; i <= ESPN_LOOKAHEAD_DAYS; i++) {
@@ -5594,9 +5601,9 @@ app.get("/api/sports/by-date", async (req, res) => {
           const finishedRaw = filtered.filter((m) => m.status === "finished");
           if (liveRaw.length || upcomingRaw.length || finishedRaw.length) {
             const [live, upcoming, finished] = await Promise.all([
-              enrichMatchLogos(liveRaw),
-              enrichMatchLogos(upcomingRaw),
-              enrichMatchLogos(finishedRaw),
+              (async () => enrichMatchesWithSofaData(await enrichMatchLogos(liveRaw), espnDate))(),
+              (async () => enrichMatchesWithSofaData(await enrichMatchLogos(upcomingRaw), espnDate))(),
+              (async () => enrichMatchesWithSofaData(await enrichMatchLogos(finishedRaw), espnDate))(),
             ]);
             return { date: espnDate, timezone: TZ, live, upcoming, finished, source: "espn" };
           }
@@ -5703,7 +5710,7 @@ app.get("/api/sports/prefetch-home", async (req, res) => {
 app.get("/api/sports/match/:matchId", async (req, res) => {
   const matchId = req.params.matchId;
   const espnLeague = String(req.query?.league || "eng.1");
-  const CACHE_KEY = `sports_match_${matchId}`;
+  const CACHE_KEY = `sports_match_${matchId}_${espnLeague}`;
 
   try {
     const payload = await getOrFetch(CACHE_KEY, 10_000, async () => {

@@ -16,7 +16,7 @@ import { TeamLogo } from "@/components/TeamLogo";
 import { useNexora } from "@/context/NexoraContext";
 import { useTranslation } from "@/lib/useTranslation";
 import { t as tFn } from "@/lib/i18n";
-import { getCachedPlayerImage } from "@/lib/player-image-system";
+import { getCachedPlayerImage, getPlayerImage } from "@/lib/player-image-system";
 
 function asParam(value: string | string[] | undefined, fallback = ""): string {
   if (Array.isArray(value)) return String(value[0] || fallback);
@@ -458,14 +458,42 @@ const PlayerCard = React.memo(function PlayerCard({ player }: { player: any }) {
     espnCdn,
   ].filter(Boolean) as string[];
   const [photoIndex, setPhotoIndex] = useState(0);
+  const [resolvedPhoto, setResolvedPhoto] = useState<string | null>(cachedPhoto || null);
   const playerKey = String(player?.id || player?.name || "");
 
   // Reset photo index when player changes (FlatList recycling)
   useEffect(() => {
     setPhotoIndex(0);
-  }, [playerKey]);
+    setResolvedPhoto(cachedPhoto || null);
+  }, [playerKey, cachedPhoto]);
 
-  const photoUri = photoCandidates[photoIndex];
+  useEffect(() => {
+    let cancelled = false;
+    if (resolvedPhoto) return () => { cancelled = true; };
+
+    const seed = {
+      id: String(player?.id || ""),
+      name: String(player?.name || ""),
+      team: String(player?.currentClub || player?.team || ""),
+      league: "",
+      sport: "soccer",
+      photo: player?.photo || null,
+      theSportsDbPhoto: player?.theSportsDbPhoto || null,
+      nationality: player?.nationality || undefined,
+      age: Number(player?.age || 0) || undefined,
+    };
+
+    void getPlayerImage(seed, { allowNetwork: true }).then((uri) => {
+      if (cancelled || !uri) return;
+      setResolvedPhoto(uri);
+      setPhotoIndex(0);
+    }).catch(() => undefined);
+
+    return () => { cancelled = true; };
+  }, [resolvedPhoto, player?.id, player?.name, player?.team, player?.currentClub, player?.photo, player?.theSportsDbPhoto, player?.nationality, player?.age]);
+
+  const mergedCandidates = [resolvedPhoto, ...photoCandidates].filter(Boolean) as string[];
+  const photoUri = mergedCandidates[photoIndex];
   const posColor = POSITION_COLORS[player.position] || COLORS.accent;
   const rawName = String(player?.name || "").trim();
   const safeName = rawName || tFn("teamDetail.unknown");
