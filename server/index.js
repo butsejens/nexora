@@ -3389,6 +3389,43 @@ function normalizeLeagueName(name) {
   if (/ligue.?1|french.?1|ligue1/i.test(n)) return "Ligue 1";
   // Serie A
   if (/serie.?a|italian.?1|serie.*italiana/i.test(n)) return "Serie A";
+  if (/championship|eng\.?2/i.test(n)) return "Championship";
+  if (/fa.?cup|eng\.?fa/i.test(n)) return "FA Cup";
+  if (/la.?liga.?2|segunda|esp\.?2/i.test(n)) return "La Liga 2";
+  if (/copa.*rey|esp\.copa/i.test(n)) return "Copa del Rey";
+  if (/2\.? ?bundesliga|ger\.?2/i.test(n)) return "2. Bundesliga";
+  if (/dfb.?pokal|ger\.dfb/i.test(n)) return "DFB Pokal";
+  if (/serie.?b|ita\.?2/i.test(n)) return "Serie B";
+  if (/coppa.*italia|ita\.coppa/i.test(n)) return "Coppa Italia";
+  if (/ligue.?2|fra\.?2/i.test(n)) return "Ligue 2";
+  if (/coupe.*france|fra\.coupe/i.test(n)) return "Coupe de France";
+  if (/eredivisie|ned\.?1/i.test(n)) return "Eredivisie";
+  if (/eerste.*divisie|ned\.?2/i.test(n)) return "Eerste Divisie";
+  if (/knvb|beker/i.test(n) && /ned|knvb|holland|nether/i.test(n)) return "KNVB Beker";
+  if (/primeira|liga portugal|por\.?1/i.test(n)) return "Primeira Liga";
+  if (/portugal 2|por\.?2/i.test(n)) return "Liga Portugal 2";
+  if (/taca.*portugal|taça.*portugal|por\.taca/i.test(n)) return "Taça de Portugal";
+  if (/super lig|süper lig|tur\.?1/i.test(n)) return "Süper Lig";
+  if (/1\. lig|tur\.?2/i.test(n)) return "1. Lig";
+  if (/turkish cup|tur\.turkish/i.test(n)) return "Turkish Cup";
+  if (/scottish premiership|premiership|sco\.?1/i.test(n)) return "Scottish Premiership";
+  if (/scottish championship|sco\.?2/i.test(n)) return "Scottish Championship";
+  if (/scottish.*fa.*cup|sco\.fa/i.test(n)) return "Scottish FA Cup";
+  if (/austrian bund(es)?liga|aut\.?1/i.test(n)) return "Austrian Bundesliga";
+  if (/austrian cup|aut\.cup/i.test(n)) return "Austrian Cup";
+  if (/swiss super league|sui\.?1/i.test(n)) return "Swiss Super League";
+  if (/swiss challenge league|sui\.?2/i.test(n)) return "Swiss Challenge League";
+  if (/swiss cup|sui\.cup/i.test(n)) return "Swiss Cup";
+  if (/super league greece|gre\.?1/i.test(n)) return "Super League Greece";
+  if (/greek cup|gre\.cup/i.test(n)) return "Greek Cup";
+  if (/ekstraklasa|pol\.?1/i.test(n)) return "Ekstraklasa";
+  if (/polish cup|pol\.cup/i.test(n)) return "Polish Cup";
+  if (/czech first league|chance liga|cze\.?1/i.test(n)) return "Czech First League";
+  if (/czech cup|cze\.cup/i.test(n)) return "Czech Cup";
+  if (/romanian liga 1|superliga|rou\.?1/i.test(n)) return "Romanian Liga 1";
+  if (/danish superliga|den\.?1/i.test(n)) return "Danish Superliga";
+  if (/allsvenskan|swe\.?1/i.test(n)) return "Allsvenskan";
+  if (/eliteserien|nor\.?1/i.test(n)) return "Eliteserien";
   return n;
 }
 
@@ -6411,6 +6448,75 @@ async function espnTopScorers(leagueName) {
   return resp.json();
 }
 
+function extractEspnRefId(ref) {
+  const text = String(ref || "");
+  const match = text.match(/\/(athletes|teams)\/(\d+)(?:\?|$)/i);
+  return match?.[2] || "";
+}
+
+async function fetchJsonWithTimeout(url, timeoutMs = 12000) {
+  const resp = await fetchWithTimeout(
+    fetch(url, { headers: { "user-agent": "Mozilla/5.0 (Nexora/1.0)", accept: "application/json" } }),
+    timeoutMs
+  );
+  if (!resp.ok) throw new Error(`Fetch ${resp.status}: ${url}`);
+  return resp.json();
+}
+
+async function espnSeasonLeaders(leagueName, season = seasonForDate(new Date())) {
+  const slug = ESPN_LEAGUE_SLUGS[leagueName] || ESPN_LEAGUE_SLUGS[normalizeLeagueName(leagueName)] || leagueName;
+  for (const type of [1, 2]) {
+    try {
+      const url = `https://sports.core.api.espn.com/v2/sports/soccer/leagues/${slug}/seasons/${season}/types/${type}/leaders?lang=en&region=us`;
+      const data = await fetchJsonWithTimeout(url, 12000);
+      if (Array.isArray(data?.categories) && data.categories.length > 0) return data;
+    } catch (e) {
+      console.warn(`[leaders] ${leagueName}: season=${season} type=${type} failed: ${e.message}`);
+    }
+  }
+  return null;
+}
+
+async function mapEspnCoreLeaders(data, kind) {
+  try {
+    const aliases = kind === "assists"
+      ? ["assistsLeaders", "assists"]
+      : ["goalsLeaders", "goals"];
+    const category = (data?.categories || []).find((c) => aliases.includes(c?.name) || aliases.includes(String(c?.displayName || "").toLowerCase()));
+    const leaders = Array.isArray(category?.leaders) ? category.leaders.slice(0, 30) : [];
+    if (!leaders.length) return [];
+
+    const mapped = await Promise.all(leaders.map(async (entry, idx) => {
+      const athleteId = extractEspnRefId(entry?.athlete?.$ref);
+      const teamId = extractEspnRefId(entry?.team?.$ref);
+      const [athlete, team] = await Promise.all([
+        entry?.athlete?.$ref ? fetchJsonWithTimeout(entry.athlete.$ref, 8000).catch(() => null) : Promise.resolve(null),
+        entry?.team?.$ref ? fetchJsonWithTimeout(entry.team.$ref, 8000).catch(() => null) : Promise.resolve(null),
+      ]);
+      const displayName = athlete?.displayName || athlete?.fullName || "";
+      const teamName = team?.displayName || team?.name || "";
+      const directPhoto = athleteId ? `https://a.espncdn.com/i/headshots/soccer/players/full/${encodeURIComponent(String(athleteId))}.png` : null;
+      const directLogo = teamId ? `https://a.espncdn.com/i/teamlogos/soccer/500/${encodeURIComponent(String(teamId))}.png` : null;
+      return {
+        rank: idx + 1,
+        id: String(athleteId || ""),
+        name: displayName,
+        photo: ensureValidPlayerPhoto(normalizePlayerPhoto(athleteId, athlete?.headshot?.href, directPhoto), displayName, athleteId),
+        team: teamName,
+        teamId: String(teamId || ""),
+        teamLogo: normalizeTeamLogo(teamName, team?.logos?.[0]?.href || team?.logo || null, directLogo),
+        [kind]: entry?.value ?? 0,
+        displayValue: String(entry?.value ?? entry?.displayValue ?? 0),
+        stat: kind === "assists" ? "Assists" : "Goals",
+      };
+    }));
+
+    return mapped.filter((row) => row.name);
+  } catch {
+    return [];
+  }
+}
+
 function mapEspnStandings(data) {
   try {
     const groups = data?.children || data?.standings?.entries || [];
@@ -6685,6 +6791,18 @@ async function espnTopScorersFromHtml(leagueName) {
   return rows.slice(0, 30);
 }
 
+async function espnTopAssistsFromCore(leagueName) {
+  const leadersData = await espnSeasonLeaders(leagueName);
+  if (!leadersData) return [];
+  return mapEspnCoreLeaders(leadersData, "assists");
+}
+
+async function espnTopScorersFromCore(leagueName) {
+  const leadersData = await espnSeasonLeaders(leagueName);
+  if (!leadersData) return [];
+  return mapEspnCoreLeaders(leadersData, "goals");
+}
+
 // Standings: app calls /api/sports/standings/:league (league is human string)
 app.get("/api/sports/standings/:league", async (req, res) => {
   const leagueName = normalizeLeagueName(decodeURIComponent(req.params.league));
@@ -6738,20 +6856,19 @@ app.get("/api/sports/topscorers/:league", async (req, res) => {
 
   try {
     const payload = await getOrFetch(key, 15 * 60_000, async () => {
-      // 1) ESPN first
+      // 1) ESPN core leaders first
       try {
-        const espnData = await espnTopScorers(leagueName);
-        let scorers = mapEspnTopScorers(espnData);
+        let scorers = await espnTopScorersFromCore(leagueName);
         if (scorers.length > 0) {
           // Enrich team logos via Football-logos + TheSportsDB
           scorers = await enrichScorersLogos(scorers, leagueName);
-          console.log(`[topscorers] ${leagueName}: ESPN → ${scorers.length} scorers`);
+          console.log(`[topscorers] ${leagueName}: ESPN core → ${scorers.length} scorers`);
           // Enrich scorer photos (Transfermarkt + TheSportsDB + Wikipedia + fallbacks)
           scorers = await enrichScorersPhotos(scorers, leagueName);
-          return { league: leagueName, season, seasonLabel, scorers, source: "espn" };
+          return { league: leagueName, season, seasonLabel, scorers, source: "espn-core" };
         }
       } catch (e) {
-        console.warn(`[topscorers] ESPN failed for ${leagueName}: ${e.message}`);
+        console.warn(`[topscorers] ESPN core failed for ${leagueName}: ${e.message}`);
       }
 
       // 1b) ESPN HTML fallback (no key)
@@ -6788,18 +6905,17 @@ app.get("/api/sports/topassists/:league", async (req, res) => {
   const key = `topassists_${leagueName}_${season}`;
   try {
     const payload = await getOrFetch(key, 15 * 60_000, async () => {
-      // ESPN leaders endpoint also contains assists
+      // ESPN core season leaders for assists
       try {
-        const espnData = await espnTopScorers(leagueName); // same endpoint
-        let assists = mapEspnTopAssists(espnData);
+        let assists = await espnTopAssistsFromCore(leagueName);
         if (assists.length > 0) {
           assists = await enrichScorersLogos(assists, leagueName);
-          console.log(`[topassists] ${leagueName}: ESPN → ${assists.length} assisters`);
+          console.log(`[topassists] ${leagueName}: ESPN core → ${assists.length} assisters`);
           assists = await enrichScorersPhotos(assists, leagueName);
-          return { league: leagueName, season, seasonLabel, assists, source: "espn" };
+          return { league: leagueName, season, seasonLabel, assists, source: "espn-core" };
         }
       } catch (e) {
-        console.warn(`[topassists] ESPN failed for ${leagueName}: ${e.message}`);
+        console.warn(`[topassists] ESPN core failed for ${leagueName}: ${e.message}`);
       }
       if (!leagueId) {
         return { league: leagueName, season, seasonLabel, assists: [], error: "League niet gevonden" };
