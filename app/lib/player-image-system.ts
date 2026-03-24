@@ -294,13 +294,15 @@ function mergeImageIntoCache(player: PlayerSeed, image: { photoUrl: string | nul
 }
 
 async function getPlayerProfileFromApi(player: PlayerSeed): Promise<any | null> {
-  const playerId = encodeURIComponent(normalizeText(player.id));
+  const rawId = normalizeText(player.id);
   const name = encodeURIComponent(normalizeText(player.name));
   const team = encodeURIComponent(normalizeText(player.team));
-  const league = encodeURIComponent(normalizeText(player.league || "eng.1"));
+  const leagueRaw = normalizeText(player.league || "eng.1") || "eng.1";
+  const league = encodeURIComponent(leagueRaw);
+  const routeId = encodeURIComponent(rawId || `lookup-${hashString(`${normalizeText(player.name)}|${normalizeText(player.team)}|${leagueRaw}`)}`);
   try {
     const response = await Promise.race([
-      apiRequest("GET", `/api/sports/player/${playerId}?name=${name}&team=${team}&league=${league}`),
+      apiRequest("GET", `/api/sports/player/${routeId}?name=${name}&team=${team}&league=${league}`),
       new Promise<Response>((_, reject) => setTimeout(() => reject(new Error("player profile timeout")), 7000)),
     ]);
     const json = await response.json();

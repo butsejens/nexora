@@ -380,7 +380,7 @@ export default function TeamDetailScreen() {
                   },
                 })}
               >
-                <PlayerCard player={item} />
+                <PlayerCard player={item} teamName={teamName} league={league} />
               </TouchableOpacity>
             )}
             ListHeaderComponent={positions.length > 1 ? (
@@ -439,14 +439,14 @@ export default function TeamDetailScreen() {
   );
 }
 
-const PlayerCard = React.memo(function PlayerCard({ player }: { player: any }) {
+const PlayerCard = React.memo(function PlayerCard({ player, teamName, league }: { player: any; teamName: string; league: string }) {
   const espnId = String(player?.id || "");
   const espnCdn = /^\d+$/.test(espnId) ? `https://a.espncdn.com/i/headshots/soccer/players/full/${espnId}.png` : null;
   const cachedPhoto = getCachedPlayerImage({
     id: String(player?.id || ""),
     name: String(player?.name || ""),
-    team: String(player?.currentClub || player?.team || ""),
-    league: "",
+    team: String(player?.currentClub || player?.team || teamName || ""),
+    league: String(league || "eng.1"),
     sport: "soccer",
     photo: player?.photo || null,
     theSportsDbPhoto: player?.theSportsDbPhoto || null,
@@ -474,8 +474,8 @@ const PlayerCard = React.memo(function PlayerCard({ player }: { player: any }) {
     const seed = {
       id: String(player?.id || ""),
       name: String(player?.name || ""),
-      team: String(player?.currentClub || player?.team || ""),
-      league: "",
+      team: String(player?.currentClub || player?.team || teamName || ""),
+      league: String(league || "eng.1"),
       sport: "soccer",
       photo: player?.photo || null,
       theSportsDbPhoto: player?.theSportsDbPhoto || null,
@@ -490,7 +490,7 @@ const PlayerCard = React.memo(function PlayerCard({ player }: { player: any }) {
     }).catch(() => undefined);
 
     return () => { cancelled = true; };
-  }, [resolvedPhoto, player?.id, player?.name, player?.team, player?.currentClub, player?.photo, player?.theSportsDbPhoto, player?.nationality, player?.age]);
+  }, [resolvedPhoto, player?.id, player?.name, player?.team, player?.currentClub, player?.photo, player?.theSportsDbPhoto, player?.nationality, player?.age, teamName, league]);
 
   const mergedCandidates = [resolvedPhoto, ...photoCandidates].filter(Boolean) as string[];
   const photoUri = mergedCandidates[photoIndex];

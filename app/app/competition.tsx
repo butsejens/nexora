@@ -147,6 +147,30 @@ const storyStyles = StyleSheet.create({
 });
 
 export default function CompetitionScreen() {
+    const fetchLeaguePayloadWithFallback = async (kind: "standings" | "topscorers") => {
+      const firstRes = await apiRequest("GET", `/api/sports/${kind}/${encodeURIComponent(leagueName)}`);
+      const firstJson = await firstRes.json();
+      const firstCount = kind === "standings"
+        ? (Array.isArray(firstJson?.standings) ? firstJson.standings.length : 0)
+        : (Array.isArray(firstJson?.scorers) ? firstJson.scorers.length : 0);
+
+      if (!espnLeague || espnLeague === leagueName) return firstJson;
+      if (firstCount > 0 && !firstJson?.error) return firstJson;
+
+      try {
+        const fallbackRes = await apiRequest("GET", `/api/sports/${kind}/${encodeURIComponent(espnLeague)}`);
+        const fallbackJson = await fallbackRes.json();
+        const fallbackCount = kind === "standings"
+          ? (Array.isArray(fallbackJson?.standings) ? fallbackJson.standings.length : 0)
+          : (Array.isArray(fallbackJson?.scorers) ? fallbackJson.scorers.length : 0);
+        if (fallbackCount > 0 || !firstJson) return fallbackJson;
+      } catch {
+        // keep first response
+      }
+
+      return firstJson;
+    };
+
   const params = useLocalSearchParams<{ league: string; sport?: string; espnLeague?: string }>();
   const leagueName = asParam(params.league, tFn("competition.unknownCompetition"));
   const espnLeague = asParam(params.espnLeague, "eng.1");
@@ -158,15 +182,15 @@ export default function CompetitionScreen() {
   const [activeTab, setActiveTab] = useState<TabId>(isCup ? "matches" : "standings");
 
 
-  const { data: standingsData, isLoading: standingsLoading } = useQuery({
+  const { data: standingsData, isLoading: standingsLoading, error: standingsQueryError } = useQuery({
     queryKey: ["standings", leagueName],
     queryFn: async () => {
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 15000);
       try {
-        const res = await apiRequest("GET", `/api/sports/standings/${encodeURIComponent(leagueName)}`);
+        const payload = await fetchLeaguePayloadWithFallback("standings");
         clearTimeout(timeout);
-        return res.json();
+        return payload;
       } catch (e) { clearTimeout(timeout); throw e; }
     },
     enabled: activeTab === "standings",
@@ -174,15 +198,15 @@ export default function CompetitionScreen() {
     retry: 1,
   });
 
-  const { data: scorersData, isLoading: scorersLoading } = useQuery({
+  const { data: scorersData, isLoading: scorersLoading, error: scorersQueryError } = useQuery({
     queryKey: ["topscorers", leagueName],
     queryFn: async () => {
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 20000);
       try {
-        const res = await apiRequest("GET", `/api/sports/topscorers/${encodeURIComponent(leagueName)}`);
+        const payload = await fetchLeaguePayloadWithFallback("topscorers");
         clearTimeout(timeout);
-        return res.json();
+        return payload;
       } catch (e) { clearTimeout(timeout); throw e; }
     },
     enabled: activeTab === "scorers",
@@ -228,6 +252,8 @@ export default function CompetitionScreen() {
   const competitionTeams: any[] = teamsData?.teams || [];
   const standingsError = normalizeApiError((standingsData as any)?.error || null);
   const scorersError = normalizeApiError((scorersData as any)?.error || null);
+  const standingsQueryErrorMsg = standingsQueryError ? normalizeApiError(standingsQueryError).userMessage : "";
+  const scorersQueryErrorMsg = scorersQueryError ? normalizeApiError(scorersQueryError).userMessage : "";
   const storylines = useMemo(() => buildStorylines(standings, scorers), [standings, scorers]);
 
   const seasonLabel: string =
@@ -322,6 +348,7 @@ export default function CompetitionScreen() {
             <Ionicons name="list-outline" size={40} color={COLORS.textMuted} />
             <Text style={styles.emptyText}>{t("competition.standingsUnavailable")}</Text>
             {(standingsData as any)?.error ? <Text style={styles.errorDetail}>{standingsError.userMessage}</Text> : null}
+            {standingsQueryErrorMsg ? <Text style={styles.errorDetail}>{standingsQueryErrorMsg}</Text> : null}
           </View>
         ) : (
           <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}>
@@ -469,6 +496,7 @@ export default function CompetitionScreen() {
             <Ionicons name="trophy-outline" size={40} color={COLORS.textMuted} />
             <Text style={styles.emptyText}>{t("competition.scorersUnavailable")}</Text>
             {(scorersData as any)?.error ? <Text style={styles.errorDetail}>{scorersError.userMessage}</Text> : null}
+            {scorersQueryErrorMsg ? <Text style={styles.errorDetail}>{scorersQueryErrorMsg}</Text> : null}
           </View>
         ) : (
           <FlatList
