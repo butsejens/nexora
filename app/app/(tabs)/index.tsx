@@ -253,6 +253,111 @@ const COUNTRY_COMPETITIONS: CountryCatalog[] = [
       { id: "nl_nt", tier: "national", title: "countries.nationalTeam", league: "Netherlands National Team", espn: "fifa.world", color: "#ffc39a", nationalTeamName: "Netherlands" },
     ],
   },
+  {
+    countryCode: "PT",
+    countryName: "countries.portugal",
+    competitions: [
+      { id: "pt_d1", tier: "division1", title: "countries.tier1", league: "Primeira Liga", espn: "por.1", color: "#006600" },
+      { id: "pt_d2", tier: "division2", title: "countries.tier2", league: "Liga Portugal 2", espn: "por.2", color: "#228b22" },
+      { id: "pt_cup", tier: "cup", title: "countries.cup", league: "Taça de Portugal", espn: "por.taca_de_portugal", color: "#4a9e4a" },
+      { id: "pt_nt", tier: "national", title: "countries.nationalTeam", league: "Portugal National Team", espn: "fifa.world", color: "#80c080", nationalTeamName: "Portugal" },
+    ],
+  },
+  {
+    countryCode: "TR",
+    countryName: "countries.turkey",
+    competitions: [
+      { id: "tr_d1", tier: "division1", title: "countries.tier1", league: "Süper Lig", espn: "tur.1", color: "#cc0000" },
+      { id: "tr_d2", tier: "division2", title: "countries.tier2", league: "1. Lig", espn: "tur.2", color: "#d94040" },
+      { id: "tr_cup", tier: "cup", title: "countries.cup", league: "Turkish Cup", espn: "tur.turkish_cup", color: "#e06a6a" },
+      { id: "tr_nt", tier: "national", title: "countries.nationalTeam", league: "Turkey National Team", espn: "fifa.world", color: "#e89090", nationalTeamName: "Turkey" },
+    ],
+  },
+  {
+    countryCode: "SCO",
+    countryName: "countries.scotland",
+    competitions: [
+      { id: "sco_d1", tier: "division1", title: "countries.tier1", league: "Scottish Premiership", espn: "sco.1", color: "#003399" },
+      { id: "sco_d2", tier: "division2", title: "countries.tier2", league: "Scottish Championship", espn: "sco.2", color: "#2255bb" },
+      { id: "sco_cup", tier: "cup", title: "countries.cup", league: "Scottish FA Cup", espn: "sco.fa_cup", color: "#4477cc" },
+      { id: "sco_nt", tier: "national", title: "countries.nationalTeam", league: "Scotland National Team", espn: "fifa.world", color: "#6699dd", nationalTeamName: "Scotland" },
+    ],
+  },
+  {
+    countryCode: "AT",
+    countryName: "countries.austria",
+    competitions: [
+      { id: "at_d1", tier: "division1", title: "countries.tier1", league: "Austrian Bundesliga", espn: "aut.1", color: "#cc0000" },
+      { id: "at_cup", tier: "cup", title: "countries.cup", league: "Austrian Cup", espn: "aut.cup", color: "#e05050" },
+      { id: "at_nt", tier: "national", title: "countries.nationalTeam", league: "Austria National Team", espn: "fifa.world", color: "#e88080", nationalTeamName: "Austria" },
+    ],
+  },
+  {
+    countryCode: "CH",
+    countryName: "countries.switzerland",
+    competitions: [
+      { id: "ch_d1", tier: "division1", title: "countries.tier1", league: "Swiss Super League", espn: "sui.1", color: "#cc0011" },
+      { id: "ch_d2", tier: "division2", title: "countries.tier2", league: "Swiss Challenge League", espn: "sui.2", color: "#d93344" },
+      { id: "ch_nt", tier: "national", title: "countries.nationalTeam", league: "Switzerland National Team", espn: "fifa.world", color: "#e26677", nationalTeamName: "Switzerland" },
+    ],
+  },
+  {
+    countryCode: "GR",
+    countryName: "countries.greece",
+    competitions: [
+      { id: "gr_d1", tier: "division1", title: "countries.tier1", league: "Super League Greece", espn: "gre.1", color: "#003399" },
+      { id: "gr_cup", tier: "cup", title: "countries.cup", league: "Greek Cup", espn: "gre.cup", color: "#3366cc" },
+      { id: "gr_nt", tier: "national", title: "countries.nationalTeam", league: "Greece National Team", espn: "fifa.world", color: "#668edd", nationalTeamName: "Greece" },
+    ],
+  },
+  {
+    countryCode: "PL",
+    countryName: "countries.poland",
+    competitions: [
+      { id: "pl_d1", tier: "division1", title: "countries.tier1", league: "Ekstraklasa", espn: "pol.1", color: "#cc0022" },
+      { id: "pl_nt", tier: "national", title: "countries.nationalTeam", league: "Poland National Team", espn: "fifa.world", color: "#e05555", nationalTeamName: "Poland" },
+    ],
+  },
+  {
+    countryCode: "DK",
+    countryName: "countries.denmark",
+    competitions: [
+      { id: "dk_d1", tier: "division1", title: "countries.tier1", league: "Danish Superliga", espn: "den.1", color: "#cc0011" },
+      { id: "dk_nt", tier: "national", title: "countries.nationalTeam", league: "Denmark National Team", espn: "fifa.world", color: "#dd4444", nationalTeamName: "Denmark" },
+    ],
+  },
+  {
+    countryCode: "SE",
+    countryName: "countries.sweden",
+    competitions: [
+      { id: "se_d1", tier: "division1", title: "countries.tier1", league: "Allsvenskan", espn: "swe.1", color: "#004499" },
+      { id: "se_nt", tier: "national", title: "countries.nationalTeam", league: "Sweden National Team", espn: "fifa.world", color: "#3366bb", nationalTeamName: "Sweden" },
+    ],
+  },
+  {
+    countryCode: "NO",
+    countryName: "countries.norway",
+    competitions: [
+      { id: "no_d1", tier: "division1", title: "countries.tier1", league: "Eliteserien", espn: "nor.1", color: "#cc0000" },
+      { id: "no_nt", tier: "national", title: "countries.nationalTeam", league: "Norway National Team", espn: "fifa.world", color: "#dd4444", nationalTeamName: "Norway" },
+    ],
+  },
+  {
+    countryCode: "CZ",
+    countryName: "countries.czechrepublic",
+    competitions: [
+      { id: "cz_d1", tier: "division1", title: "countries.tier1", league: "Czech First League", espn: "cze.1", color: "#003399" },
+      { id: "cz_nt", tier: "national", title: "countries.nationalTeam", league: "Czech Republic National Team", espn: "fifa.world", color: "#3366cc", nationalTeamName: "Czech Republic" },
+    ],
+  },
+  {
+    countryCode: "RO",
+    countryName: "countries.romania",
+    competitions: [
+      { id: "ro_d1", tier: "division1", title: "countries.tier1", league: "Romanian Liga 1", espn: "rou.1", color: "#cc8800" },
+      { id: "ro_nt", tier: "national", title: "countries.nationalTeam", league: "Romania National Team", espn: "fifa.world", color: "#ddaa22", nationalTeamName: "Romania" },
+    ],
+  },
 ];
 
 const tierPriority: Record<CompetitionTier, number> = {
@@ -289,7 +394,12 @@ const espnLeagueByName = COUNTRY_COMPETITIONS
     [normalizeLeagueKey("UEFA Champions League")]: "uefa.champions",
     [normalizeLeagueKey("UEFA Europa League")]: "uefa.europa",
     [normalizeLeagueKey("UEFA Conference League")]: "uefa.europa.conf",
+    [normalizeLeagueKey("UEFA Europa Conference League")]: "uefa.europa.conf",
     [normalizeLeagueKey("Premier League")]: "eng.1",
+    [normalizeLeagueKey("Scottish Premiership")]: "sco.1",
+    [normalizeLeagueKey("Premiership")]: "sco.1",
+    [normalizeLeagueKey("Süper Lig")]: "tur.1",
+    [normalizeLeagueKey("Super Lig")]: "tur.1",
   });
 
 function resolveEspnLeagueForMatch(match: any): string {

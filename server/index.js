@@ -6253,28 +6253,115 @@ const ESPN_STANDINGS_BASE = "https://site.web.api.espn.com/apis/v2/sports/soccer
 const ESPN_SCORERS_BASE = "https://site.web.api.espn.com/apis/v2/sports/soccer";
 
 const ESPN_LEAGUE_SLUGS = {
+  // England
   "Premier League": "eng.1",
   Championship: "eng.2",
+  "League One": "eng.3",
+  "League Two": "eng.4",
+  "FA Cup": "eng.fa",
+  "EFL Cup": "eng.league_cup",
+  "Community Shield": "eng.community_shield",
+  // Spain
+  "La Liga": "esp.1",
+  "La Liga 2": "esp.2",
+  "Copa del Rey": "esp.copa_del_rey",
+  "Supercopa de España": "esp.super_cup",
+  // Germany
+  "Bundesliga": "ger.1",
+  "2. Bundesliga": "ger.2",
+  "3. Liga": "ger.3",
+  "DFB Pokal": "ger.dfb_pokal",
+  "DFL Supercup": "ger.super_cup",
+  // Italy
+  "Serie A": "ita.1",
+  "Serie B": "ita.2",
+  "Serie C": "ita.3",
+  "Coppa Italia": "ita.coppa_italia",
+  "Supercoppa Italiana": "ita.super_cup",
+  // France
+  "Ligue 1": "fra.1",
+  "Ligue 2": "fra.2",
+  "National": "fra.3",
+  "Coupe de France": "fra.coupe_de_france",
+  "Trophée des Champions": "fra.trophee_champions",
+  // Netherlands
+  "Eredivisie": "ned.1",
+  "Eerste Divisie": "ned.2",
+  "KNVB Beker": "ned.knvb_beker",
+  // Belgium
+  "Jupiler Pro League": "bel.1",
+  "Challenger Pro League": "bel.2",
+  "Belgian Cup": "bel.cup",
+  // Portugal
+  "Primeira Liga": "por.1",
+  "Liga Portugal 2": "por.2",
+  "Taça de Portugal": "por.taca_de_portugal",
+  "Taca de Portugal": "por.taca_de_portugal",
+  "Taça da Liga": "por.taca_da_liga",
+  // Turkey
+  "Süper Lig": "tur.1",
+  "Super Lig": "tur.1",
+  "1. Lig": "tur.2",
+  "Turkish Cup": "tur.turkish_cup",
+  // Scotland
+  "Scottish Premiership": "sco.1",
+  "Scottish Championship": "sco.2",
+  "Scottish FA Cup": "sco.fa_cup",
+  "Scottish League Cup": "sco.league_cup",
+  // Scotland (alternate names)
+  "Premiership": "sco.1",
+  // Greece
+  "Super League Greece": "gre.1",
+  "Super League 2": "gre.2",
+  "Greek Cup": "gre.cup",
+  // Russia
+  "Russian Premier League": "rus.1",
+  // Ukraine
+  "Ukrainian Premier League": "ukr.1",
+  // Austria
+  "Austrian Bundesliga": "aut.1",
+  "Austrian Football Bundesliga": "aut.1",
+  "Austrian Cup": "aut.cup",
+  // Switzerland
+  "Swiss Super League": "sui.1",
+  "Swiss Challenge League": "sui.2",
+  "Swiss Cup": "sui.cup",
+  // Czech Republic
+  "Czech First League": "cze.1",
+  "Czech Cup": "cze.cup",
+  // Poland
+  "Ekstraklasa": "pol.1",
+  "Polish Cup": "pol.cup",
+  // Romania
+  "Romanian Liga 1": "rou.1",
+  // Croatia
+  "Croatian Football League": "cro.1",
+  // Serbia
+  "Serbian SuperLiga": "srb.1",
+  // Hungary
+  "OTP Bank Liga": "hun.1",
+  // Slovakia
+  "Fortuna Liga": "svk.1",
+  // Denmark
+  "Danish Superliga": "den.1",
+  // Sweden
+  "Allsvenskan": "swe.1",
+  // Norway
+  "Eliteserien": "nor.1",
+  // Finland
+  "Veikkausliiga": "fin.1",
+  // Ireland
+  "League of Ireland Premier Division": "irl.1",
+  "League of Ireland": "irl.1",
+  // UEFA
   "UEFA Champions League": "uefa.champions",
   "Champions League": "uefa.champions",
   "UEFA Europa League": "uefa.europa",
+  "UEFA Europa Conference League": "uefa.europa.conf",
   "UEFA Conference League": "uefa.europa.conf",
-  "La Liga": "esp.1",
-  "La Liga 2": "esp.2",
-  "Bundesliga": "ger.1",
-  "2. Bundesliga": "ger.2",
-  "Jupiler Pro League": "bel.1",
-  "Challenger Pro League": "bel.2",
-  "Ligue 1": "fra.1",
-  "Ligue 2": "fra.2",
-  "Serie A": "ita.1",
-  "Serie B": "ita.2",
-  Eredivisie: "ned.1",
-  "Eerste Divisie": "ned.2",
-  "Primeira Liga": "por.1",
-  "Liga Portugal 2": "por.2",
-  "Super Lig": "tur.1",
-  "1. Lig": "tur.2",
+  "UEFA Nations League": "uefa.nations",
+  "UEFA Euro": "uefa.euro",
+  "FIFA World Cup": "fifa.world",
 };
 
 async function fetchWithTimeout(fetchPromise, timeoutMs = 12000) {
@@ -6327,44 +6414,56 @@ async function espnTopScorers(leagueName) {
 function mapEspnStandings(data) {
   try {
     const groups = data?.children || data?.standings?.entries || [];
-    // ESPN standings can have nested groups (e.g. for Champions League)
-    let entries = [];
+    // Multi-group standings (play-offs, group stages, etc.)
     if (Array.isArray(groups) && groups[0]?.standings?.entries) {
-      // Multiple groups (group stage etc.)
-      for (const g of groups) {
-        entries.push(...(g?.standings?.entries || []));
-      }
+      // Return phases: each group becomes a named phase
+      const phases = groups.map((g, gIdx) => {
+        const phaseName = g?.name || g?.abbreviation || (gIdx === 0 ? "Regular Season" : `Group ${gIdx + 1}`);
+        const entries = (g?.standings?.entries || []).map((entry, idx) => mapStandingsEntry(entry, idx));
+        return { phase: phaseName, standings: entries };
+      }).filter(p => p.standings.length > 0);
+      // Flat list for backward compat: merge all phases, but also return phases array
+      const allEntries = phases.flatMap(p => p.standings);
+      return { entries: allEntries, phases, isMultiPhase: phases.length > 1 };
     } else if (Array.isArray(data?.standings?.entries)) {
-      entries = data.standings.entries;
+      const entries = data.standings.entries.map((entry, idx) => mapStandingsEntry(entry, idx));
+      return { entries, phases: [{ phase: "Regular Season", standings: entries }], isMultiPhase: false };
     }
-    return entries.map((entry, idx) => {
-      const team = entry?.team || {};
-      const stats = {};
-      for (const s of entry?.stats || []) {
-        stats[s.name] = s.value;
-      }
-      return {
-        rank: entry?.rank ?? idx + 1,
-        team: team.displayName || team.name || "",
-        logo: normalizeTeamLogo(
-          team.displayName || team.name || "",
-          team.logos?.[0]?.href || team.logo || null,
-          team.id ? `https://a.espncdn.com/i/teamlogos/soccer/500/${encodeURIComponent(String(team.id))}.png` : null,
-        ),
-        teamId: String(team.id || ""),
-        played: stats.gamesPlayed ?? stats.played ?? 0,
-        wins: stats.wins ?? 0,
-        draws: stats.ties ?? stats.draws ?? 0,
-        losses: stats.losses ?? 0,
-        goalsFor: stats.pointsFor ?? stats.goalsFor ?? 0,
-        goalsAgainst: stats.pointsAgainst ?? stats.goalsAgainst ?? 0,
-        goalDiff: stats.pointDifferential ?? stats.goalDiff ?? 0,
-        points: stats.points ?? 0,
-      };
-    });
+    return { entries: [], phases: [], isMultiPhase: false };
   } catch {
-    return [];
+    return { entries: [], phases: [], isMultiPhase: false };
   }
+}
+
+function mapStandingsEntry(entry, idx) {
+  const team = entry?.team || {};
+  const stats = {};
+  for (const s of entry?.stats || []) {
+    stats[s.name] = s.value;
+  }
+  return {
+    rank: entry?.rank ?? idx + 1,
+    team: team.displayName || team.name || "",
+    logo: normalizeTeamLogo(
+      team.displayName || team.name || "",
+      team.logos?.[0]?.href || team.logo || null,
+      team.id ? `https://a.espncdn.com/i/teamlogos/soccer/500/${encodeURIComponent(String(team.id))}.png` : null,
+    ),
+    teamId: String(team.id || ""),
+    played: stats.gamesPlayed ?? stats.played ?? 0,
+    wins: stats.wins ?? 0,
+    draws: stats.ties ?? stats.draws ?? 0,
+    losses: stats.losses ?? 0,
+    goalsFor: stats.pointsFor ?? stats.goalsFor ?? 0,
+    goalsAgainst: stats.pointsAgainst ?? stats.goalsAgainst ?? 0,
+    goalDiff: stats.pointDifferential ?? stats.goalDiff ?? 0,
+    points: stats.points ?? 0,
+    // Extra discipline/form stats when available
+    yellowCards: stats.yellowCards ?? null,
+    redCards: stats.redCards ?? null,
+    cleanSheets: stats.cleanSheets ?? null,
+    form: entry?.note?.text || null,
+  };
 }
 
 function mapEspnTopScorers(data) {
@@ -6408,38 +6507,119 @@ function mapEspnTopScorers(data) {
   }
 }
 
+function mapEspnTopAssists(data) {
+  try {
+    const assistLeaders = (data?.leaders || []).find(
+      l => l.name === "assists" || l.displayName?.toLowerCase().includes("assist") || l.abbreviation === "A"
+    );
+    if (!assistLeaders) return [];
+    return (assistLeaders.leaders || []).map((entry, idx) => {
+      const ath = entry?.athlete || {};
+      const athleteId = String(ath?.id || "");
+      const displayName = ath.displayName || ath.fullName || "";
+      return {
+        rank: idx + 1,
+        id: athleteId,
+        name: displayName,
+        photo: ensureValidPlayerPhoto(
+          normalizePlayerPhoto(
+            athleteId,
+            ath.headshot?.href,
+            athleteId ? `https://a.espncdn.com/i/headshots/soccer/players/full/${encodeURIComponent(athleteId)}.png` : null
+          ),
+          displayName,
+          athleteId,
+        ),
+        team: ath.team?.displayName || ath.team?.name || "",
+        teamId: String(ath?.team?.id || ""),
+        teamLogo: normalizeTeamLogo(
+          ath.team?.displayName || ath.team?.name || "",
+          ath.team?.logos?.[0]?.href || ath.team?.logo || null,
+          ath.team?.id ? `https://a.espncdn.com/i/teamlogos/soccer/500/${encodeURIComponent(String(ath.team.id))}.png` : null,
+        ),
+        assists: entry?.value ?? 0,
+        displayValue: String(entry?.displayValue ?? entry?.value ?? 0),
+        stat: "Assists",
+      };
+    });
+  } catch {
+    return [];
+  }
+}
+
 const ESPN_STATS_LEAGUE_CODES = {
+  // England
   "Premier League": "ENG.1",
   Championship: "ENG.2",
+  "League One": "ENG.3",
+  "League Two": "ENG.4",
   "FA Cup": "ENG.FA",
-  "UEFA Champions League": "UEFA.CHAMPIONS",
-  "Champions League": "UEFA.CHAMPIONS",
-  "UEFA Europa League": "UEFA.EUROPA",
-  "UEFA Conference League": "UEFA.EUROPA.CONF",
+  "EFL Cup": "ENG.LEAGUE_CUP",
+  // Spain
   "La Liga": "ESP.1",
   "La Liga 2": "ESP.2",
   "Copa del Rey": "ESP.COPA_DEL_REY",
+  // Germany
   "Bundesliga": "GER.1",
   "2. Bundesliga": "GER.2",
+  "3. Liga": "GER.3",
   "DFB Pokal": "GER.DFB_POKAL",
-  "Jupiler Pro League": "BEL.1",
-  "Challenger Pro League": "BEL.2",
-  "Belgian Cup": "BEL.CUP",
-  "Ligue 1": "FRA.1",
-  "Ligue 2": "FRA.2",
-  "Coupe de France": "FRA.COUPE_DE_FRANCE",
+  // Italy
   "Serie A": "ITA.1",
   "Serie B": "ITA.2",
   "Coppa Italia": "ITA.COPPA_ITALIA",
-  Eredivisie: "NED.1",
+  // France
+  "Ligue 1": "FRA.1",
+  "Ligue 2": "FRA.2",
+  "Coupe de France": "FRA.COUPE_DE_FRANCE",
+  // Netherlands
+  "Eredivisie": "NED.1",
   "Eerste Divisie": "NED.2",
   "KNVB Beker": "NED.KNVB_BEKER",
+  // Belgium
+  "Jupiler Pro League": "BEL.1",
+  "Challenger Pro League": "BEL.2",
+  "Belgian Cup": "BEL.CUP",
+  // Portugal
   "Primeira Liga": "POR.1",
   "Liga Portugal 2": "POR.2",
+  "Taça de Portugal": "POR.TACA_DE_PORTUGAL",
   "Taca de Portugal": "POR.TACA_DE_PORTUGAL",
+  // Turkey
+  "Süper Lig": "TUR.1",
   "Super Lig": "TUR.1",
   "1. Lig": "TUR.2",
   "Turkish Cup": "TUR.TURKISH_CUP",
+  // Scotland
+  "Scottish Premiership": "SCO.1",
+  "Scottish Championship": "SCO.2",
+  "Scottish FA Cup": "SCO.FA_CUP",
+  "Premiership": "SCO.1",
+  // Greece
+  "Super League Greece": "GRE.1",
+  // Austria
+  "Austrian Bundesliga": "AUT.1",
+  "Austrian Football Bundesliga": "AUT.1",
+  // Switzerland
+  "Swiss Super League": "SUI.1",
+  // Czech Republic
+  "Czech First League": "CZE.1",
+  // Poland
+  "Ekstraklasa": "POL.1",
+  // Romania
+  "Romanian Liga 1": "ROU.1",
+  // Denmark
+  "Danish Superliga": "DEN.1",
+  // Sweden
+  "Allsvenskan": "SWE.1",
+  // Norway
+  "Eliteserien": "NOR.1",
+  // UEFA
+  "UEFA Champions League": "UEFA.CHAMPIONS",
+  "Champions League": "UEFA.CHAMPIONS",
+  "UEFA Europa League": "UEFA.EUROPA",
+  "UEFA Europa Conference League": "UEFA.EUROPA.CONF",
+  "UEFA Conference League": "UEFA.EUROPA.CONF",
 };
 
 function decodeHtml(value) {
@@ -6518,11 +6698,19 @@ app.get("/api/sports/standings/:league", async (req, res) => {
       // 1) Try ESPN first (no key needed)
       try {
         const espnData = await espnStandings(leagueName);
-        let standings = mapEspnStandings(espnData);
+        let result = mapEspnStandings(espnData);
+        let standings = result.entries || result; // backward compat if result is array
+        if (!Array.isArray(standings)) standings = result.entries || [];
         if (standings.length > 0) {
           standings = await enrichStandingsLogos(standings, leagueName);
-          console.log(`[standings] ${leagueName}: ESPN → ${standings.length} teams (logos enriched)`);
-          return { league: leagueName, season, seasonLabel, standings, source: "espn" };
+          // Re-inject enriched logos into phases
+          const enrichedById = new Map(standings.map(t => [t.teamId, t]));
+          const phases = (result.phases || []).map(p => ({
+            ...p,
+            standings: p.standings.map(t => enrichedById.get(t.teamId) || t),
+          }));
+          console.log(`[standings] ${leagueName}: ESPN → ${standings.length} teams (logos enriched, phases=${phases.length})`);
+          return { league: leagueName, season, seasonLabel, standings, phases, isMultiPhase: result.isMultiPhase || false, source: "espn" };
         }
       } catch (e) {
         console.warn(`[standings] ESPN failed for ${leagueName}: ${e.message}`);
@@ -6588,6 +6776,87 @@ app.get("/api/sports/topscorers/:league", async (req, res) => {
   } catch (e) {
     console.error(`[topscorers] Error for ${leagueName}:`, e.message);
     res.status(200).json({ league: leagueName, season, seasonLabel, scorers: [], error: String(e?.message || e) });
+  }
+});
+
+// Top assists
+app.get("/api/sports/topassists/:league", async (req, res) => {
+  const leagueName = normalizeLeagueName(decodeURIComponent(req.params.league));
+  const leagueId = LEAGUE_IDS[leagueName];
+  const season = seasonForDate(new Date());
+  const seasonLabel = formatSeasonLabel(season);
+  const key = `topassists_${leagueName}_${season}`;
+  try {
+    const payload = await getOrFetch(key, 15 * 60_000, async () => {
+      // ESPN leaders endpoint also contains assists
+      try {
+        const espnData = await espnTopScorers(leagueName); // same endpoint
+        let assists = mapEspnTopAssists(espnData);
+        if (assists.length > 0) {
+          assists = await enrichScorersLogos(assists, leagueName);
+          console.log(`[topassists] ${leagueName}: ESPN → ${assists.length} assisters`);
+          assists = await enrichScorersPhotos(assists, leagueName);
+          return { league: leagueName, season, seasonLabel, assists, source: "espn" };
+        }
+      } catch (e) {
+        console.warn(`[topassists] ESPN failed for ${leagueName}: ${e.message}`);
+      }
+      if (!leagueId) {
+        return { league: leagueName, season, seasonLabel, assists: [], error: "League niet gevonden" };
+      }
+      return { league: leagueName, season, seasonLabel, assists: [], source: "espn", error: "Top assists tijdelijk niet beschikbaar" };
+    });
+    res.json(payload);
+  } catch (e) {
+    console.error(`[topassists] Error for ${leagueName}:`, e.message);
+    res.status(200).json({ league: leagueName, season, seasonLabel: "", assists: [], error: String(e?.message || e) });
+  }
+});
+
+// Competition stats (discipline, goal stats, form)
+app.get("/api/sports/competition-stats/:league", async (req, res) => {
+  const leagueName = normalizeLeagueName(decodeURIComponent(req.params.league));
+  const season = seasonForDate(new Date());
+  const key = `comp_stats_${leagueName}_${season}`;
+  try {
+    const payload = await getOrFetch(key, 20 * 60_000, async () => {
+      const slug = ESPN_LEAGUE_SLUGS[leagueName] || leagueName;
+      // Fetch standings to calculate stats from team data
+      let standings = [];
+      try {
+        const espnData = await espnStandings(leagueName);
+        const result = mapEspnStandings(espnData);
+        standings = result.entries || [];
+      } catch {}
+
+      // Compute derived stats from standings
+      const totalGoals = standings.reduce((s, t) => s + (t.goalsFor || 0), 0);
+      const totalMatches = standings.reduce((s, t) => s + (t.played || 0), 0) / 2;
+      const avgGoalsPerMatch = totalMatches > 0 ? (totalGoals / totalMatches).toFixed(2) : null;
+      const bestAttack = [...standings].sort((a, b) => (b.goalsFor || 0) - (a.goalsFor || 0)).slice(0, 5);
+      const bestDefense = [...standings].sort((a, b) => (a.goalsAgainst || 0) - (b.goalsAgainst || 0)).slice(0, 5);
+      const homeTable = [...standings].sort((a, b) => (b.points || 0) - (a.points || 0)).slice(0, 5);
+      const mostWins = [...standings].sort((a, b) => (b.wins || 0) - (a.wins || 0)).slice(0, 5);
+      const mostDraws = [...standings].sort((a, b) => (b.draws || 0) - (a.draws || 0)).slice(0, 5);
+
+      return {
+        league: leagueName,
+        season,
+        totalGoals,
+        totalMatches: Math.round(totalMatches),
+        avgGoalsPerMatch,
+        bestAttack: bestAttack.map(t => ({ team: t.team, logo: t.logo, teamId: t.teamId, goalsFor: t.goalsFor })),
+        bestDefense: bestDefense.map(t => ({ team: t.team, logo: t.logo, teamId: t.teamId, goalsAgainst: t.goalsAgainst })),
+        mostWins: mostWins.map(t => ({ team: t.team, logo: t.logo, teamId: t.teamId, wins: t.wins })),
+        mostDraws: mostDraws.map(t => ({ team: t.team, logo: t.logo, teamId: t.teamId, draws: t.draws })),
+        leaderTable: homeTable.map(t => ({ team: t.team, logo: t.logo, teamId: t.teamId, points: t.points })),
+        source: "derived",
+      };
+    });
+    res.json(payload);
+  } catch (e) {
+    console.error(`[comp-stats] Error for ${leagueName}:`, e.message);
+    res.status(200).json({ league: leagueName, error: String(e?.message || e) });
   }
 });
 

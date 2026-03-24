@@ -39,7 +39,7 @@ function formatMatchTime(dateStr?: string | null): string {
   } catch { return ""; }
 }
 
-type TabId = "standings" | "scorers" | "matches" | "teams";
+type TabId = "standings" | "scorers" | "assists" | "stats" | "matches" | "teams";
 
 const LEAGUE_COLORS: Record<string, string[]> = {
   "Premier League": ["#3d0099", "#1a0044"],
@@ -63,7 +63,7 @@ function detectCup(espnLeague: string, leagueName: string): boolean {
 
 type Storyline = { icon: string; label: string; text: string; color: string };
 
-function buildStorylines(standings: any[], scorers: any[]): Storyline[] {
+function buildStorylines(standings: any[], scorers: any[], assists: any[]): Storyline[] {
   if (!standings.length) return [];
   const stories: Storyline[] = [];
   const sorted = [...standings].sort((a, b) => (a.rank || 99) - (b.rank || 99));
@@ -84,6 +84,12 @@ function buildStorylines(standings: any[], scorers: any[]): Storyline[] {
   if (scorers.length > 0) {
     const top = scorers[0];
     stories.push({ icon: "⚽", label: tFn("storyline.topScorer"), text: tFn("storyline.topScorerText", { name: top.name || top.player, team: top.team, goals: String(top.goals) }), color: "#4CAF82" });
+  }
+
+  // Top assister
+  if (assists.length > 0) {
+    const topA = assists[0];
+    stories.push({ icon: "🎯", label: "Top Assist", text: `${topA.name} (${topA.team}) — ${topA.displayValue} assists`, color: "#00BFFF" });
   }
 
   // Relegation zone
@@ -147,15 +153,17 @@ const storyStyles = StyleSheet.create({
 });
 
 export default function CompetitionScreen() {
-    const fetchLeaguePayloadWithFallback = async (kind: "standings" | "topscorers") => {
+    const fetchLeaguePayloadWithFallback = async (kind: "standings" | "topscorers" | "topassists" | "competition-stats") => {
       const candidates = Array.from(new Set([leagueName, espnLeague].filter(Boolean)));
       const responses = await Promise.all(candidates.map(async (candidate) => {
         try {
           const res = await apiRequest("GET", `/api/sports/${kind}/${encodeURIComponent(candidate)}`);
           const json = await res.json();
-          const count = kind === "standings"
-            ? (Array.isArray(json?.standings) ? json.standings.length : 0)
-            : (Array.isArray(json?.scorers) ? json.scorers.length : 0);
+          let count = 0;
+          if (kind === "standings") count = Array.isArray(json?.standings) ? json.standings.length : 0;
+          else if (kind === "topscorers") count = Array.isArray(json?.scorers) ? json.scorers.length : 0;
+          else if (kind === "topassists") count = Array.isArray(json?.assists) ? json.assists.length : 0;
+          else if (kind === "competition-stats") count = json?.totalGoals != null ? 1 : 0;
           return { json, count, candidate };
         } catch {
           return { json: null as any, count: 0, candidate };
@@ -215,6 +223,38 @@ export default function CompetitionScreen() {
     retry: 1,
   });
 
+  const { data: assistsData, isLoading: assistsLoading } = useQuery({
+    queryKey: ["topassists", leagueName, espnLeague],
+    queryFn: async () => {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 20000);
+      try {
+        const payload = await fetchLeaguePayloadWithFallback("topassists");
+        clearTimeout(timeout);
+        return payload;
+      } catch (e) { clearTimeout(timeout); throw e; }
+    },
+    enabled: activeTab === "assists",
+    staleTime: 5 * 60 * 1000,
+    retry: 1,
+  });
+
+  const { data: compStatsData, isLoading: compStatsLoading } = useQuery({
+    queryKey: ["competition-stats", leagueName],
+    queryFn: async () => {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 20000);
+      try {
+        const payload = await fetchLeaguePayloadWithFallback("competition-stats");
+        clearTimeout(timeout);
+        return payload;
+      } catch (e) { clearTimeout(timeout); throw e; }
+    },
+    enabled: activeTab === "stats",
+    staleTime: 10 * 60 * 1000,
+    retry: 1,
+  });
+
   const { data: matchesData, isLoading: matchesLoading } = useQuery({
     queryKey: ["competition-matches", leagueName],
     queryFn: async () => {
@@ -248,14 +288,17 @@ export default function CompetitionScreen() {
   });
 
   const standings: any[] = useMemo(() => standingsData?.standings || [], [standingsData]);
+  const standingsPhases: any[] = useMemo(() => standingsData?.phases || [], [standingsData]);
+  const isMultiPhase: boolean = standingsData?.isMultiPhase || false;
   const scorers: any[] = useMemo(() => scorersData?.scorers || [], [scorersData]);
+  const assists: any[] = useMemo(() => assistsData?.assists || [], [assistsData]);
   const competitionMatches: any[] = matchesData?.matches || [];
   const competitionTeams: any[] = teamsData?.teams || [];
   const standingsError = normalizeApiError((standingsData as any)?.error || null);
   const scorersError = normalizeApiError((scorersData as any)?.error || null);
   const standingsQueryErrorMsg = standingsQueryError ? normalizeApiError(standingsQueryError).userMessage : "";
   const scorersQueryErrorMsg = scorersQueryError ? normalizeApiError(scorersQueryError).userMessage : "";
-  const storylines = useMemo(() => buildStorylines(standings, scorers), [standings, scorers]);
+  const storylines = useMemo(() => buildStorylines(standings, scorers, assists), [standings, scorers, assists]);
 
   const seasonLabel: string =
     (standingsData as any)?.seasonLabel ||
@@ -269,6 +312,8 @@ export default function CompetitionScreen() {
     { id: "matches" as TabId, label: t("competition.matches"), icon: "football-outline" },
     { id: "teams" as TabId, label: t("competition.teams") || "Teams", icon: "people-outline" },
     { id: "scorers" as TabId, label: t("competition.topScorers"), icon: "trophy-outline" },
+    { id: "assists" as TabId, label: t("competition.topAssists") || "Assists", icon: "arrow-redo-outline" },
+    ...(!isCup ? [{ id: "stats" as TabId, label: t("competition.stats") || "Stats", icon: "stats-chart-outline" }] : []),
   ];
 
   return (
@@ -351,6 +396,33 @@ export default function CompetitionScreen() {
             {(standingsData as any)?.error ? <Text style={styles.errorDetail}>{standingsError.userMessage}</Text> : null}
             {standingsQueryErrorMsg ? <Text style={styles.errorDetail}>{standingsQueryErrorMsg}</Text> : null}
           </View>
+        ) : isMultiPhase && standingsPhases.length > 1 ? (
+          // Multi-phase standings (Belgian play-offs, group stages, etc.)
+          <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}>
+            {standingsPhases.map((phase: any, phaseIdx: number) => (
+              <View key={phaseIdx} style={{ marginBottom: 16 }}>
+                <View style={styles.phaseHeader}>
+                  <Text style={styles.phaseHeaderText}>{phase.phase}</Text>
+                  {phaseIdx === 0 && <Text style={styles.phaseBadge}>Regular Season</Text>}
+                  {phaseIdx > 0 && <Text style={[styles.phaseBadge, styles.phaseBadgePlayoff]}>Play-off</Text>}
+                </View>
+                <View style={styles.standingsHeaderRow}>
+                  <Text style={[styles.standingsHeaderCell, { width: 24 }]}>#</Text>
+                  <Text style={[styles.standingsHeaderCell, { flex: 1, textAlign: "left" }]}>{t("competition.club")}</Text>
+                  <Text style={styles.standingsHeaderCell}>{t("competition.mp")}</Text>
+                  <Text style={styles.standingsHeaderCell}>{t("competition.w")}</Text>
+                  <Text style={styles.standingsHeaderCell}>{t("competition.d")}</Text>
+                  <Text style={styles.standingsHeaderCell}>{t("competition.l")}</Text>
+                  <Text style={styles.standingsHeaderCell}>{t("competition.gd")}</Text>
+                  <Text style={[styles.standingsHeaderCell, { color: COLORS.accent }]}>{t("competition.pts")}</Text>
+                </View>
+                {(phase.standings || []).map((team: any, idx: number) => (
+                  <StandingsRow key={team.teamId || idx} team={team} rank={team.rank || idx + 1} league={leagueName} espnLeague={espnLeague} />
+                ))}
+              </View>
+            ))}
+            <View style={{ height: 40 }} />
+          </ScrollView>
         ) : (
           <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}>
             <View style={styles.standingsHeaderRow}>
@@ -519,6 +591,54 @@ export default function CompetitionScreen() {
             windowSize={5}
           />
         )
+      )}
+
+      {/* Top Assists */}
+      {activeTab === "assists" && (
+        assistsLoading ? (
+          <View style={styles.loadingState}>
+            <ActivityIndicator size="large" color={COLORS.accent} />
+            <Text style={styles.loadingText}>{t("competition.loadingAssists") || "Loading top assists..."}</Text>
+          </View>
+        ) : assists.length === 0 ? (
+          <View style={styles.emptyState}>
+            <Ionicons name="arrow-redo-outline" size={40} color={COLORS.textMuted} />
+            <Text style={styles.emptyText}>{t("competition.assistsUnavailable") || "Top assists not available"}</Text>
+          </View>
+        ) : (
+          <FlatList
+            style={{ flex: 1 }}
+            data={assists}
+            keyExtractor={(item, idx) => String((item as any).id || (item as any).name || idx)}
+            renderItem={({ item, index }) => (
+              <ScorerRow
+                scorer={item}
+                rank={(item as any).rank || index + 1}
+                league={leagueName}
+                espnLeague={espnLeague}
+                statLabel="Assists"
+                accentColor="#00BFFF"
+              />
+            )}
+            contentContainerStyle={styles.listContent}
+            showsVerticalScrollIndicator={false}
+            initialNumToRender={10}
+            maxToRenderPerBatch={6}
+            windowSize={5}
+          />
+        )
+      )}
+
+      {/* Competition Stats */}
+      {activeTab === "stats" && (
+        compStatsLoading ? (
+          <View style={styles.loadingState}>
+            <ActivityIndicator size="large" color={COLORS.accent} />
+            <Text style={styles.loadingText}>{t("competition.loadingStats") || "Loading stats..."}</Text>
+          </View>
+        ) : (
+          <CompetitionStatsView data={compStatsData} league={leagueName} espnLeague={espnLeague} />
+        )
       )}      </View>    </View>
   );
 }
@@ -573,7 +693,67 @@ function StandingsRow({ team, rank, league, espnLeague }: { team: any; rank: num
   );
 }
 
-function ScorerRow({ scorer, rank, league, espnLeague }: { scorer: any; rank: number; league: string; espnLeague: string }) {
+function CompetitionStatsView({ data, league, espnLeague }: { data: any; league: string; espnLeague: string }) {
+  if (!data || data.error) {
+    return (
+      <View style={styles.emptyState}>
+        <Ionicons name="stats-chart-outline" size={40} color={COLORS.textMuted} />
+        <Text style={styles.emptyText}>{"Competition stats not available"}</Text>
+      </View>
+    );
+  }
+  const { totalGoals, totalMatches, avgGoalsPerMatch, bestAttack = [], bestDefense = [], mostWins = [] } = data;
+  const renderTeamStat = (item: any, idx: number, valueProp: string, accentClr: string) => (
+    <View key={item.teamId || idx} style={styles.compStatRow}>
+      <Text style={styles.compStatRank}>{idx + 1}</Text>
+      <TeamLogo uri={item.logo || null} teamName={String(item.team || "")} size={24} />
+      <Text style={styles.compStatTeam} numberOfLines={1}>{item.team}</Text>
+      <Text style={[styles.compStatValue, { color: accentClr }]}>{item[valueProp]}</Text>
+    </View>
+  );
+  return (
+    <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false} contentContainerStyle={{ padding: 14, paddingBottom: 40, gap: 16 }}>
+      {/* Summary row */}
+      <View style={styles.compStatSummaryRow}>
+        <View style={styles.compStatSummaryCard}>
+          <Text style={styles.compStatSummaryValue}>{totalGoals ?? "—"}</Text>
+          <Text style={styles.compStatSummaryLabel}>{"Total Goals"}</Text>
+        </View>
+        <View style={styles.compStatSummaryCard}>
+          <Text style={styles.compStatSummaryValue}>{totalMatches ?? "—"}</Text>
+          <Text style={styles.compStatSummaryLabel}>{"Matches"}</Text>
+        </View>
+        <View style={styles.compStatSummaryCard}>
+          <Text style={styles.compStatSummaryValue}>{avgGoalsPerMatch != null ? Number(avgGoalsPerMatch).toFixed(2) : "—"}</Text>
+          <Text style={styles.compStatSummaryLabel}>{"Goals/Match"}</Text>
+        </View>
+      </View>
+      {/* Best Attack */}
+      {bestAttack.length > 0 && (
+        <View style={styles.compStatSection}>
+          <Text style={styles.compStatSectionTitle}>{"🔥 Best Attack"}</Text>
+          {bestAttack.slice(0, 5).map((item: any, idx: number) => renderTeamStat(item, idx, "scored", COLORS.accent))}
+        </View>
+      )}
+      {/* Best Defense */}
+      {bestDefense.length > 0 && (
+        <View style={styles.compStatSection}>
+          <Text style={styles.compStatSectionTitle}>{"🛡️ Best Defense"}</Text>
+          {bestDefense.slice(0, 5).map((item: any, idx: number) => renderTeamStat(item, idx, "conceded", "#4ade80"))}
+        </View>
+      )}
+      {/* Most Wins */}
+      {mostWins.length > 0 && (
+        <View style={styles.compStatSection}>
+          <Text style={styles.compStatSectionTitle}>{"🏆 Most Wins"}</Text>
+          {mostWins.slice(0, 5).map((item: any, idx: number) => renderTeamStat(item, idx, "wins", "#fbbf24"))}
+        </View>
+      )}
+    </ScrollView>
+  );
+}
+
+function ScorerRow({ scorer, rank, league, espnLeague, statLabel, accentColor }: { scorer: any; rank: number; league: string; espnLeague: string; statLabel?: string; accentColor?: string }) {
   const rankColor = rank === 1 ? COLORS.gold : rank === 2 ? "#C0C0C0" : rank === 3 ? "#CD7F32" : COLORS.textMuted;
 
   const handlePress = () => {
@@ -614,8 +794,8 @@ function ScorerRow({ scorer, rank, league, espnLeague }: { scorer: any; rank: nu
       </View>
       <View style={styles.scorerRight}>
         <View style={styles.scorerValueBadge}>
-          <Text style={styles.scorerValue}>{scorer.displayValue}</Text>
-          <Text style={styles.scorerStat}>{scorer.stat || "Goals"}</Text>
+          <Text style={[styles.scorerValue, accentColor ? { color: accentColor } : {}]}>{scorer.displayValue}</Text>
+          <Text style={styles.scorerStat}>{statLabel || scorer.stat || "Goals"}</Text>
         </View>
         {scorer.id ? <Ionicons name="chevron-forward" size={13} color={COLORS.textMuted} style={{ marginTop: 4 }} /> : null}
       </View>
@@ -725,6 +905,48 @@ const styles = StyleSheet.create({
   scorerValueBadge: { alignItems: "center", gap: 2 },
   scorerValue: { fontFamily: "Inter_800ExtraBold", fontSize: 22, color: COLORS.accent },
   scorerStat: { fontFamily: "Inter_400Regular", fontSize: 10, color: COLORS.textMuted },
+
+  // Teams
+  // Phase headers (play-offs / multi-phase standings)
+  phaseHeader: {
+    flexDirection: "row", alignItems: "center", justifyContent: "space-between",
+    paddingHorizontal: 14, paddingVertical: 10, marginTop: 8, marginBottom: 4,
+    backgroundColor: "rgba(255,255,255,0.04)", borderRadius: 10,
+  },
+  phaseHeaderText: { fontFamily: "Inter_700Bold", fontSize: 14, color: COLORS.text },
+  phaseBadge: {
+    borderRadius: 12, paddingHorizontal: 10, paddingVertical: 3,
+    backgroundColor: "rgba(255,255,255,0.1)",
+    fontFamily: "Inter_600SemiBold", fontSize: 11, color: COLORS.textMuted,
+  } as any,
+  phaseBadgePlayoff: { backgroundColor: `${COLORS.accent}33`, color: COLORS.accent } as any,
+
+  // Competition stats view
+  compStatSummaryRow: { flexDirection: "row", gap: 10 },
+  compStatSummaryCard: {
+    flex: 1, alignItems: "center", paddingVertical: 14,
+    borderRadius: 14, backgroundColor: COLORS.cardElevated,
+    borderWidth: 1, borderColor: COLORS.border,
+  },
+  compStatSummaryValue: { fontFamily: "Inter_800ExtraBold", fontSize: 22, color: COLORS.accent },
+  compStatSummaryLabel: { fontFamily: "Inter_400Regular", fontSize: 11, color: COLORS.textMuted, marginTop: 2 },
+  compStatSection: {
+    borderRadius: 14, backgroundColor: COLORS.cardElevated,
+    borderWidth: 1, borderColor: COLORS.border, overflow: "hidden",
+  },
+  compStatSectionTitle: {
+    fontFamily: "Inter_700Bold", fontSize: 13, color: COLORS.text,
+    paddingHorizontal: 14, paddingVertical: 10,
+    borderBottomWidth: 1, borderBottomColor: COLORS.border,
+  },
+  compStatRow: {
+    flexDirection: "row", alignItems: "center", gap: 10,
+    paddingHorizontal: 14, paddingVertical: 10,
+    borderBottomWidth: 1, borderBottomColor: COLORS.border,
+  },
+  compStatRank: { fontFamily: "Inter_700Bold", fontSize: 13, color: COLORS.textMuted, width: 18, textAlign: "center" },
+  compStatTeam: { flex: 1, fontFamily: "Inter_500Medium", fontSize: 13, color: COLORS.text },
+  compStatValue: { fontFamily: "Inter_800ExtraBold", fontSize: 20 },
 
   // Teams
   teamsColumnWrapper: { paddingHorizontal: 12, gap: 10 },

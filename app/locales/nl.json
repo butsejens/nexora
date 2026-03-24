@@ -81,7 +81,14 @@
     "tier1": "1e Klasse",
     "tier2": "2e Klasse",
     "cup": "Beker",
-    "nationalTeam": "Nationaal Team"
+    "nationalTeam": "Nationaal Team",
+    "turkey": "Turkije",
+    "scotland": "Schotland",
+    "austria": "Oostenrijk",
+    "switzerland": "Zwitserland",
+    "greece": "Griekenland",
+    "czechrepublic": "Tsjechië",
+    "romania": "Roemenië"
   },
 
   "settings": {
@@ -495,7 +502,18 @@
     "d": "G",
     "l": "V",
     "gd": "+/-",
-    "unknownCompetition": "Onbekende competitie"
+    "unknownCompetition": "Onbekende competitie",
+    "topAssists": "Topassistgevers",
+    "assists": "Assists",
+    "loadingAssists": "Topassistgevers laden...",
+    "assistsUnavailable": "Topassistgevers niet beschikbaar",
+    "stats": "Statistieken",
+    "loadingStats": "Statistieken laden...",
+    "bestAttack": "Beste Aanval",
+    "bestDefense": "Beste Verdediging",
+    "avgGoals": "Gem. Goals/Wedstrijd",
+    "totalGoals": "Totaal Goals",
+    "playoffRound": "Play-off Ronde"
   },
 
   "premium": {

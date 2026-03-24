@@ -81,7 +81,14 @@
     "tier1": "1st Division",
     "tier2": "2nd Division",
     "cup": "Cup",
-    "nationalTeam": "National Team"
+    "nationalTeam": "National Team",
+    "turkey": "Turkey",
+    "scotland": "Scotland",
+    "austria": "Austria",
+    "switzerland": "Switzerland",
+    "greece": "Greece",
+    "czechrepublic": "Czech Republic",
+    "romania": "Romania"
   },
 
   "settings": {
@@ -495,7 +502,18 @@
     "d": "D",
     "l": "L",
     "gd": "+/-",
-    "unknownCompetition": "Unknown competition"
+    "unknownCompetition": "Unknown competition",
+    "topAssists": "Top Assists",
+    "assists": "Assists",
+    "loadingAssists": "Loading top assists...",
+    "assistsUnavailable": "Top assists not available",
+    "stats": "Stats",
+    "loadingStats": "Loading stats...",
+    "bestAttack": "Best Attack",
+    "bestDefense": "Best Defense",
+    "avgGoals": "Avg Goals/Match",
+    "totalGoals": "Total Goals",
+    "playoffRound": "Play-off Round"
   },
 
   "premium": {
