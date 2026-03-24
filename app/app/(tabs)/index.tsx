@@ -1210,6 +1210,102 @@ export default function SportsScreen() {
     [activeSportTool]
   );
 
+  const nextLevelInsights = useMemo(() => {
+    const parseScore = (m: any) => ({
+      home: Number(m?.homeScore ?? 0),
+      away: Number(m?.awayScore ?? 0),
+    });
+    const topPred = [...backendPredictions]
+      .sort((a: any, b: any) => Number(b?.confidence || 0) - Number(a?.confidence || 0))[0];
+
+    const spotlight = topPred
+      ? {
+          type: "match-of-day",
+          title: "Match of the Day",
+          subtitle: `${safeStr(topPred.homeTeam)} vs ${safeStr(topPred.awayTeam)}`,
+          detail: `${safeStr(topPred.confidence)}% confidence · ${safeStr(topPred.prediction)}`,
+          matchId: String(topPred.matchId || ""),
+          item: {
+            ...topPred,
+            id: String(topPred.matchId || ""),
+            status: topPred?.status || "upcoming",
+            sport: "football",
+          },
+        }
+      : null;
+
+    const underdog = [...backendPredictions]
+      .filter((p: any) => {
+        const hp = Number(p?.homePct || 0);
+        const ap = Number(p?.awayPct || 0);
+        const pick = String(p?.prediction || "");
+        if (pick === "Home Win") return hp <= 42;
+        if (pick === "Away Win") return ap <= 42;
+        return false;
+      })
+      .sort((a: any, b: any) => Number(b?.confidence || 0) - Number(a?.confidence || 0))[0];
+
+    const upset = [...sortedFinished].find((m: any) => {
+      const split = predictionSplit(m);
+      const fav = split.home >= split.away ? "home" : "away";
+      const s = parseScore(m);
+      const winner = s.home === s.away ? "draw" : s.home > s.away ? "home" : "away";
+      return winner !== "draw" && winner !== fav;
+    });
+
+    const formByTeam = new Map<string, { points: number; wins: number; gd: number; played: number }>();
+    for (const m of sortedFinished.slice(0, 80)) {
+      const home = safeStr(m?.homeTeam);
+      const away = safeStr(m?.awayTeam);
+      if (!home || !away) continue;
+      const hs = Number(m?.homeScore ?? 0);
+      const as = Number(m?.awayScore ?? 0);
+      const homeState = formByTeam.get(home) || { points: 0, wins: 0, gd: 0, played: 0 };
+      const awayState = formByTeam.get(away) || { points: 0, wins: 0, gd: 0, played: 0 };
+      homeState.played += 1;
+      awayState.played += 1;
+      homeState.gd += hs - as;
+      awayState.gd += as - hs;
+      if (hs > as) {
+        homeState.points += 3;
+        homeState.wins += 1;
+      } else if (as > hs) {
+        awayState.points += 3;
+        awayState.wins += 1;
+      } else {
+        homeState.points += 1;
+        awayState.points += 1;
+      }
+      formByTeam.set(home, homeState);
+      formByTeam.set(away, awayState);
+    }
+    const hotStreak = [...formByTeam.entries()]
+      .filter(([, v]) => v.played >= 2)
+      .sort((a, b) => (b[1].points - a[1].points) || (b[1].wins - a[1].wins) || (b[1].gd - a[1].gd))[0];
+
+    const bigMatches = [...sortedUpcoming]
+      .map((m: any) => {
+        const league = String(m?.league || "").toLowerCase();
+        const teams = `${String(m?.homeTeam || "")} ${String(m?.awayTeam || "")}`.toLowerCase();
+        let score = 0;
+        if (league.includes("champions") || league.includes("europa")) score += 5;
+        if (league.includes("premier") || league.includes("laliga") || league.includes("bundesliga") || league.includes("serie a")) score += 3;
+        if (teams.includes("real") || teams.includes("barcelona") || teams.includes("city") || teams.includes("united") || teams.includes("bayern") || teams.includes("juventus") || teams.includes("arsenal") || teams.includes("liverpool")) score += 2;
+        return { match: m, score };
+      })
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 4)
+      .map((x) => x.match);
+
+    return {
+      spotlight,
+      underdog,
+      upset,
+      hotStreak,
+      bigMatches,
+    };
+  }, [backendPredictions, sortedFinished, sortedUpcoming]);
+
   const resolveEspnLeague = useCallback((match: any): string => {
     return resolveEspnLeagueForMatch(match);
   }, []);
@@ -1262,6 +1358,32 @@ export default function SportsScreen() {
     return true;
   }, []);
 
+  const buildSmartScoreNotification = useCallback((sub: MatchSubscription, prevHome: number, prevAway: number, homeNow: number, awayNow: number) => {
+    const home = safeStr(sub.homeTeam) || "Home";
+    const away = safeStr(sub.awayTeam) || "Away";
+    const scoreLine = `${home} ${homeNow}-${awayNow} ${away}`;
+
+    if (homeNow > prevHome && awayNow === prevAway) {
+      const tookLead = homeNow > awayNow && prevHome <= prevAway;
+      const equalized = homeNow === awayNow && prevHome < prevAway;
+      const title = tookLead ? `${home} takes the lead 🔥` : equalized ? "Equalizer ⚡" : "Goal update";
+      return { title, body: scoreLine };
+    }
+    if (awayNow > prevAway && homeNow === prevHome) {
+      const tookLead = awayNow > homeNow && prevAway <= prevHome;
+      const equalized = awayNow === homeNow && prevAway < prevHome;
+      const title = tookLead ? `${away} takes the lead 🔥` : equalized ? "Equalizer ⚡" : "Goal update";
+      return { title, body: scoreLine };
+    }
+
+    const margin = Math.abs(homeNow - awayNow);
+    if (margin >= 2) {
+      const dominant = homeNow > awayNow ? home : away;
+      return { title: `${dominant} in control 📈`, body: scoreLine };
+    }
+    return { title: "Goal update", body: scoreLine };
+  }, []);
+
   const toggleMatchNotification = useCallback(async (match: any) => {
     const id = String(match?.id || "");
     if (!id) return;
@@ -1306,8 +1428,10 @@ export default function SportsScreen() {
                 await pushMatchNotification("Match started", `${sub.homeTeam} - ${sub.awayTeam} has kicked off`, { matchId: sub.id });
               if (prev.status !== "finished" && currentStatus === "finished" && shouldNotify(`${sub.id}:finished`, 20_000))
                 await pushMatchNotification("Match finished", `${sub.homeTeam} ${currentHomeScore}-${currentAwayScore} ${sub.awayTeam}`, { matchId: sub.id });
-              if (currentStatus === "live" && (prev.homeScore !== currentHomeScore || prev.awayScore !== currentAwayScore) && shouldNotify(`${sub.id}:score`, 10_000))
-                await pushMatchNotification("Goal update", `${sub.homeTeam} ${currentHomeScore}-${currentAwayScore} ${sub.awayTeam}`, { matchId: sub.id });
+              if (currentStatus === "live" && (prev.homeScore !== currentHomeScore || prev.awayScore !== currentAwayScore) && shouldNotify(`${sub.id}:score`, 10_000)) {
+                const msg = buildSmartScoreNotification(sub, Number(prev.homeScore || 0), Number(prev.awayScore || 0), currentHomeScore, currentAwayScore);
+                await pushMatchNotification(msg.title, msg.body, { matchId: sub.id });
+              }
             }
             nextSnapshots[sub.id] = { status: currentStatus, homeScore: currentHomeScore, awayScore: currentAwayScore, eventHashes: prev?.eventHashes || [] };
             changed = true;
@@ -1328,8 +1452,10 @@ export default function SportsScreen() {
               await pushMatchNotification("Match started", `${safeStr(sub.homeTeam)} - ${safeStr(sub.awayTeam)} has kicked off`, { matchId: sub.id });
             if (prev.status !== "finished" && currentStatus === "finished" && shouldNotify(`${sub.id}:finished`, 20_000))
               await pushMatchNotification("Match finished", `${safeStr(sub.homeTeam)} ${currentHomeScore}-${currentAwayScore} ${safeStr(sub.awayTeam)}`, { matchId: sub.id });
-            if (currentStatus === "live" && (prev.homeScore !== currentHomeScore || prev.awayScore !== currentAwayScore) && shouldNotify(`${sub.id}:score`, 10_000))
-              await pushMatchNotification("Goal update", `${safeStr(sub.homeTeam)} ${currentHomeScore}-${currentAwayScore} ${safeStr(sub.awayTeam)}`, { matchId: sub.id });
+            if (currentStatus === "live" && (prev.homeScore !== currentHomeScore || prev.awayScore !== currentAwayScore) && shouldNotify(`${sub.id}:score`, 10_000)) {
+              const msg = buildSmartScoreNotification(sub, Number(prev.homeScore || 0), Number(prev.awayScore || 0), currentHomeScore, currentAwayScore);
+              await pushMatchNotification(msg.title, msg.body, { matchId: sub.id });
+            }
             const seen = new Set(prev.eventHashes || []);
             const newInterestingEvents = keyEvents.filter((event: any) => {
               const hash = toEventHash(event);
@@ -1359,7 +1485,7 @@ export default function SportsScreen() {
     void poll();
     const timer = setInterval(() => void poll(), 20_000);
     return () => { alive = false; clearInterval(timer); };
-  }, [currentMatchesById, matchSubscriptions, shouldNotify]);
+  }, [buildSmartScoreNotification, currentMatchesById, matchSubscriptions, shouldNotify]);
 
   const handleCompetitionPress = (comp: CountryCompetition) => {
     router.push({ pathname: "/competition", params: { league: comp.league, sport: "soccer", espnLeague: comp.espn } });
@@ -1904,6 +2030,67 @@ export default function SportsScreen() {
                 <Text style={styles.toolEmpty}>{t("sportsHome.noDataYet")}</Text>
               )}
             </LinearGradient>
+
+            <LinearGradient colors={["#121826", "#0C0F18"]} style={styles.nextLevelPanel}>
+              <View style={styles.nextLevelHead}>
+                <Text style={styles.nextLevelTitle}>Next Level Intelligence</Text>
+                <Text style={styles.nextLevelSub}>Smart picks, momentum and hidden edges</Text>
+              </View>
+
+              {nextLevelInsights.spotlight ? (
+                <TouchableOpacity
+                  style={styles.spotlightCard}
+                  onPress={() => {
+                    const item = nextLevelInsights.spotlight?.item;
+                    if (!item) return;
+                    handleToolMatchPress(item);
+                  }}
+                  activeOpacity={0.85}
+                >
+                  <View style={styles.spotlightTopRow}>
+                    <View style={styles.nextChip}><Text style={styles.nextChipText}>MATCH OF THE DAY</Text></View>
+                    <Ionicons name="flash" size={14} color="#FFD166" />
+                  </View>
+                  <Text style={styles.spotlightMain}>{nextLevelInsights.spotlight.subtitle}</Text>
+                  <Text style={styles.spotlightMeta}>{nextLevelInsights.spotlight.detail}</Text>
+                </TouchableOpacity>
+              ) : null}
+
+              <View style={styles.nextGrid}>
+                {nextLevelInsights.underdog ? (
+                  <TouchableOpacity style={styles.nextGridCard} onPress={() => handleToolMatchPress({ ...nextLevelInsights.underdog, id: nextLevelInsights.underdog.matchId })}>
+                    <Text style={styles.nextGridLabel}>Underdog Alert 😲</Text>
+                    <Text style={styles.nextGridValue} numberOfLines={2}>{safeStr(nextLevelInsights.underdog.homeTeam)} vs {safeStr(nextLevelInsights.underdog.awayTeam)}</Text>
+                  </TouchableOpacity>
+                ) : null}
+
+                {nextLevelInsights.hotStreak ? (
+                  <View style={styles.nextGridCard}>
+                    <Text style={styles.nextGridLabel}>Hot Streak Player/Team 🔥</Text>
+                    <Text style={styles.nextGridValue} numberOfLines={2}>{nextLevelInsights.hotStreak[0]} · {nextLevelInsights.hotStreak[1].points} pts</Text>
+                  </View>
+                ) : null}
+
+                {nextLevelInsights.upset ? (
+                  <TouchableOpacity style={styles.nextGridCard} onPress={() => handleMatchPress(nextLevelInsights.upset)}>
+                    <Text style={styles.nextGridLabel}>Biggest Upset</Text>
+                    <Text style={styles.nextGridValue} numberOfLines={2}>{safeStr(nextLevelInsights.upset.homeTeam)} {Number(nextLevelInsights.upset.homeScore ?? 0)}-{Number(nextLevelInsights.upset.awayScore ?? 0)} {safeStr(nextLevelInsights.upset.awayTeam)}</Text>
+                  </TouchableOpacity>
+                ) : null}
+              </View>
+
+              {nextLevelInsights.bigMatches.length > 0 ? (
+                <View style={{ marginTop: 8, gap: 8 }}>
+                  <Text style={styles.nextUpcomingTitle}>Upcoming Big Matches</Text>
+                  {nextLevelInsights.bigMatches.map((m: any, idx: number) => (
+                    <TouchableOpacity key={`${m.id}_${idx}`} style={styles.nextUpcomingRow} onPress={() => handleMatchPress(m)}>
+                      <Text style={styles.nextUpcomingText} numberOfLines={1}>{safeStr(m.homeTeam)} vs {safeStr(m.awayTeam)}</Text>
+                      <Ionicons name="chevron-forward" size={13} color={COLORS.textMuted} />
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              ) : null}
+            </LinearGradient>
           </View>
         )}
 
@@ -2090,6 +2277,59 @@ const styles = StyleSheet.create({
   toolBadgeNeg: { backgroundColor: "rgba(255,45,85,0.12)", borderColor: "rgba(255,45,85,0.28)" },
   toolBadgeText: { color: P.muted, fontSize: 9, fontWeight: "700", letterSpacing: 0.5 },
   toolEmpty: { color: P.muted, fontSize: 13, textAlign: "center", paddingVertical: 16 },
+
+  nextLevelPanel: {
+    marginHorizontal: 16,
+    marginTop: 10,
+    borderRadius: 16,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: "rgba(130,170,255,0.22)",
+    gap: 10,
+  },
+  nextLevelHead: { gap: 2 },
+  nextLevelTitle: { color: "#DCE7FF", fontSize: 15, fontWeight: "800", letterSpacing: 0.2 },
+  nextLevelSub: { color: "#9FB0D9", fontSize: 11, fontWeight: "500" },
+  spotlightCard: {
+    borderRadius: 14,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.16)",
+    backgroundColor: "rgba(255,255,255,0.04)",
+    gap: 6,
+  },
+  spotlightTopRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  nextChip: { backgroundColor: "rgba(255,209,102,0.16)", borderRadius: 8, paddingHorizontal: 8, paddingVertical: 4 },
+  nextChipText: { color: "#FFD166", fontSize: 10, fontWeight: "800", letterSpacing: 0.3 },
+  spotlightMain: { color: P.text, fontSize: 14, fontWeight: "700" },
+  spotlightMeta: { color: "#B7C2DF", fontSize: 12, fontWeight: "500" },
+  nextGrid: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  nextGridCard: {
+    flex: 1,
+    minWidth: 140,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.12)",
+    backgroundColor: "rgba(255,255,255,0.03)",
+    paddingHorizontal: 10,
+    paddingVertical: 9,
+    gap: 4,
+  },
+  nextGridLabel: { color: "#A9B7D8", fontSize: 10, fontWeight: "700", letterSpacing: 0.4 },
+  nextGridValue: { color: P.text, fontSize: 12, fontWeight: "600", lineHeight: 16 },
+  nextUpcomingTitle: { color: "#C7D3EF", fontSize: 12, fontWeight: "700", letterSpacing: 0.2 },
+  nextUpcomingRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.12)",
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    backgroundColor: "rgba(255,255,255,0.03)",
+  },
+  nextUpcomingText: { color: P.text, fontSize: 12, fontWeight: "600", flex: 1, marginRight: 8 },
 
   /* ── Sport category filter ── */
   sportCatPill: {

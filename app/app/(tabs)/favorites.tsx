@@ -4,11 +4,28 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useQuery } from "@tanstack/react-query";
 import { router } from "expo-router";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import { COLORS } from "@/constants/colors";
 import { NexoraHeader } from "@/components/NexoraHeader";
 import { useNexora } from "@/context/NexoraContext";
 import { apiRequest } from "@/lib/query-client";
+
+type WatchPriority = "must" | "top" | "later";
+
+const PRIORITY_META: Record<WatchPriority, { label: string; color: string; icon: keyof typeof Ionicons.glyphMap }> = {
+  must: { label: "Must Watch", color: "#FFB703", icon: "flame" },
+  top: { label: "Top Pick", color: "#00D4FF", icon: "sparkles" },
+  later: { label: "Later", color: "#9CA3AF", icon: "time" },
+};
+
+const PRIORITY_ORDER: WatchPriority[] = ["must", "top", "later"];
+
+function nextPriority(current?: WatchPriority): WatchPriority {
+  if (!current) return "must";
+  const idx = PRIORITY_ORDER.indexOf(current);
+  return PRIORITY_ORDER[(idx + 1) % PRIORITY_ORDER.length];
+}
 
 async function fetchMovieFull(id: string) {
   const res = await apiRequest("GET", `/api/movies/${id}/full`);
@@ -42,6 +59,28 @@ export default function FavoritesScreen() {
   const contentWidth = Math.min(width, 1100);
 
   const { favorites, toggleFavorite, iptvChannels } = useNexora();
+  const [priorityMap, setPriorityMap] = React.useState<Record<string, WatchPriority>>({});
+
+  React.useEffect(() => {
+    let alive = true;
+    AsyncStorage.getItem("nexora_watch_priority")
+      .then((raw) => {
+        if (!alive) return;
+        if (!raw) return;
+        try {
+          const parsed = JSON.parse(raw);
+          if (parsed && typeof parsed === "object") setPriorityMap(parsed);
+        } catch {}
+      })
+      .catch(() => undefined);
+    return () => { alive = false; };
+  }, []);
+
+  const setPriority = React.useCallback(async (id: string, value: WatchPriority) => {
+    const next = { ...priorityMap, [id]: value };
+    setPriorityMap(next);
+    try { await AsyncStorage.setItem("nexora_watch_priority", JSON.stringify(next)); } catch {}
+  }, [priorityMap]);
 
   const { iptvFavs, tmdbFavs } = useMemo(() => {
     const iptv = [] as any[];
@@ -57,8 +96,15 @@ export default function FavoritesScreen() {
 
   const iptvItems = useMemo(() => {
     const map = new Map(iptvChannels.map((c) => [c.id, c]));
-    return iptvFavs.map((id) => map.get(id)).filter(Boolean);
-  }, [iptvFavs, iptvChannels]);
+    const rows = iptvFavs.map((id) => map.get(id)).filter(Boolean) as any[];
+    return [...rows].sort((a, b) => {
+      const pa = priorityMap[String(a?.id || "")];
+      const pb = priorityMap[String(b?.id || "")];
+      const ai = pa ? PRIORITY_ORDER.indexOf(pa) : 99;
+      const bi = pb ? PRIORITY_ORDER.indexOf(pb) : 99;
+      return ai - bi;
+    });
+  }, [iptvFavs, iptvChannels, priorityMap]);
 
   // Fetch TMDB favorites (best-effort: try movie then series)
   const { data: tmdbData } = useQuery({
@@ -84,6 +130,19 @@ export default function FavoritesScreen() {
     enabled: tmdbFavs.length > 0,
     staleTime: 60_000,
   });
+
+  const tmdbSorted = useMemo(() => {
+    const list = Array.isArray(tmdbData) ? tmdbData : [];
+    return [...list].sort((a: any, b: any) => {
+      const ida = `${a?._type || ""}_${String(a?.id || "")}`;
+      const idb = `${b?._type || ""}_${String(b?.id || "")}`;
+      const pa = priorityMap[ida] || priorityMap[String(a?.id || "")];
+      const pb = priorityMap[idb] || priorityMap[String(b?.id || "")];
+      const ai = pa ? PRIORITY_ORDER.indexOf(pa) : 99;
+      const bi = pb ? PRIORITY_ORDER.indexOf(pb) : 99;
+      return ai - bi;
+    });
+  }, [priorityMap, tmdbData]);
 
   const bottomPad = Platform.OS === "web" ? 34 : insets.bottom + 90;
 
@@ -140,12 +199,27 @@ export default function FavoritesScreen() {
                 <Text style={styles.rowTitle} numberOfLines={1}>
                   {ch.title || ch.name}
                 </Text>
+                {priorityMap[String(ch.id)] ? (
+                  <View style={[styles.priorityBadge, { borderColor: `${PRIORITY_META[priorityMap[String(ch.id)]].color}77`, backgroundColor: `${PRIORITY_META[priorityMap[String(ch.id)]].color}22` }]}>
+                    <Ionicons name={PRIORITY_META[priorityMap[String(ch.id)]].icon} size={11} color={PRIORITY_META[priorityMap[String(ch.id)]].color} />
+                    <Text style={[styles.priorityText, { color: PRIORITY_META[priorityMap[String(ch.id)]].color }]}>{PRIORITY_META[priorityMap[String(ch.id)]].label}</Text>
+                  </View>
+                ) : null}
                 <Text style={styles.rowSub} numberOfLines={1}>
                   {ch.group} · {ch.category.toUpperCase()}
                 </Text>
               </TouchableOpacity>
               <TouchableOpacity onPress={() => toggleFavorite(ch.id)} style={styles.iconBtn}>
                 <Ionicons name="trash-outline" size={18} color={COLORS.live} />
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => {
+                  const id = String(ch.id);
+                  void setPriority(id, nextPriority(priorityMap[id]));
+                }}
+                style={styles.iconBtn}
+              >
+                <Ionicons name="funnel-outline" size={18} color={COLORS.accent} />
               </TouchableOpacity>
             </View>
           ))
@@ -154,10 +228,10 @@ export default function FavoritesScreen() {
         <View style={styles.divider} />
 
         <Text style={styles.sectionTitle}>Movies / Series</Text>
-        {!tmdbData || tmdbData.length === 0 ? (
+        {tmdbSorted.length === 0 ? (
           <Text style={styles.empty}>Geen Movie/Series favorieten.</Text>
         ) : (
-          tmdbData.map((it: any) => (
+          tmdbSorted.map((it: any) => (
             <View key={`${it._type}_${it.id}`} style={styles.row}>
               <Poster uri={it.poster || null} />
               <TouchableOpacity
@@ -172,6 +246,16 @@ export default function FavoritesScreen() {
                 <Text style={styles.rowTitle} numberOfLines={1}>
                   {it.title}
                 </Text>
+                {(() => {
+                  const key = `${it._type}_${String(it.id)}`;
+                  const prio = priorityMap[key] || priorityMap[String(it.id)];
+                  return prio ? (
+                    <View style={[styles.priorityBadge, { borderColor: `${PRIORITY_META[prio].color}77`, backgroundColor: `${PRIORITY_META[prio].color}22` }]}>
+                      <Ionicons name={PRIORITY_META[prio].icon} size={11} color={PRIORITY_META[prio].color} />
+                      <Text style={[styles.priorityText, { color: PRIORITY_META[prio].color }]}>{PRIORITY_META[prio].label}</Text>
+                    </View>
+                  ) : null;
+                })()}
                 <Text style={styles.rowSub} numberOfLines={1}>
                   {(it._type === "movie" ? "Movie" : "Series")}
                   {it.year ? ` · ${it.year}` : ""}
@@ -180,6 +264,18 @@ export default function FavoritesScreen() {
               </TouchableOpacity>
               <TouchableOpacity onPress={() => toggleFavorite(String(it.id))} style={styles.iconBtn}>
                 <Ionicons name="trash-outline" size={18} color={COLORS.live} />
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => {
+                  const compoundId = `${it._type}_${String(it.id)}`;
+                  const current = priorityMap[compoundId] || priorityMap[String(it.id)];
+                  const next = nextPriority(current);
+                  void setPriority(compoundId, next);
+                  void setPriority(String(it.id), next);
+                }}
+                style={styles.iconBtn}
+              >
+                <Ionicons name="funnel-outline" size={18} color={COLORS.accent} />
               </TouchableOpacity>
             </View>
           ))
@@ -234,6 +330,19 @@ const styles = StyleSheet.create({
   },
   rowBody: { flex: 1 },
   rowTitle: { color: COLORS.text, fontFamily: "Inter_600SemiBold", fontSize: 14 },
+  priorityBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    alignSelf: "flex-start",
+    gap: 4,
+    marginTop: 4,
+    marginBottom: 2,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 999,
+    borderWidth: 1,
+  },
+  priorityText: { fontFamily: "Inter_600SemiBold", fontSize: 10 },
   rowSub: { color: COLORS.textMuted, fontFamily: "Inter_500Medium", fontSize: 12, marginTop: 2 },
   iconBtn: { padding: 8 },
   divider: { height: 1, backgroundColor: COLORS.border, marginVertical: 14, marginHorizontal: 8 },
