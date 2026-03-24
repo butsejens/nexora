@@ -6852,7 +6852,7 @@ app.get("/api/sports/topscorers/:league", async (req, res) => {
   const leagueId = LEAGUE_IDS[leagueName];
   const season = seasonForDate(new Date());
   const seasonLabel = formatSeasonLabel(season);
-  const key = `topscorers_${leagueName}_${season}`;
+  const key = `topscorers_${leagueName}_${season}_v2`;
 
   try {
     const payload = await getOrFetch(key, 15 * 60_000, async () => {
@@ -6863,8 +6863,8 @@ app.get("/api/sports/topscorers/:league", async (req, res) => {
           // Enrich team logos via Football-logos + TheSportsDB
           scorers = await enrichScorersLogos(scorers, leagueName);
           console.log(`[topscorers] ${leagueName}: ESPN core → ${scorers.length} scorers`);
-          // Enrich scorer photos (Transfermarkt + TheSportsDB + Wikipedia + fallbacks)
-          scorers = await enrichScorersPhotos(scorers, leagueName);
+          // Keep response fast for mobile timeouts; always return at least a valid fallback avatar.
+          scorers = ensurePlayersHaveValidPhotos(scorers);
           return { league: leagueName, season, seasonLabel, scorers, source: "espn-core" };
         }
       } catch (e) {
@@ -6877,7 +6877,7 @@ app.get("/api/sports/topscorers/:league", async (req, res) => {
         if (htmlScorers.length > 0) {
           htmlScorers = await enrichScorersLogos(htmlScorers, leagueName);
           console.log(`[topscorers] ${leagueName}: ESPN HTML → ${htmlScorers.length} scorers`);
-          htmlScorers = await enrichScorersPhotos(htmlScorers, leagueName);
+          htmlScorers = ensurePlayersHaveValidPhotos(htmlScorers);
           return { league: leagueName, season, seasonLabel, scorers: htmlScorers, source: "espn-html" };
         }
       } catch (e) {
@@ -6902,7 +6902,7 @@ app.get("/api/sports/topassists/:league", async (req, res) => {
   const leagueId = LEAGUE_IDS[leagueName];
   const season = seasonForDate(new Date());
   const seasonLabel = formatSeasonLabel(season);
-  const key = `topassists_${leagueName}_${season}`;
+  const key = `topassists_${leagueName}_${season}_v2`;
   try {
     const payload = await getOrFetch(key, 15 * 60_000, async () => {
       // ESPN core season leaders for assists
@@ -6911,7 +6911,7 @@ app.get("/api/sports/topassists/:league", async (req, res) => {
         if (assists.length > 0) {
           assists = await enrichScorersLogos(assists, leagueName);
           console.log(`[topassists] ${leagueName}: ESPN core → ${assists.length} assisters`);
-          assists = await enrichScorersPhotos(assists, leagueName);
+          assists = ensurePlayersHaveValidPhotos(assists);
           return { league: leagueName, season, seasonLabel, assists, source: "espn-core" };
         }
       } catch (e) {
