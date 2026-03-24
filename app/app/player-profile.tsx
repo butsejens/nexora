@@ -11,6 +11,7 @@ import { normalizeApiError } from "@/lib/error-messages";
 import { useTranslation } from "@/lib/useTranslation";
 import { t as tFn, getLanguage } from "@/lib/i18n";
 import { TeamLogo } from "@/components/TeamLogo";
+import { resolveClubHistoryLogoUri } from "@/lib/logo-manager";
 import {
   getCachedPlayerImage,
   getCachedPlayerProfile,
@@ -22,7 +23,7 @@ const UNKNOWN = "Unknown";
 
 function normalizeText(value: unknown, fallback = UNKNOWN): string {
   const text = String(value ?? "").trim();
-  if (!text || text === "-") return fallback;
+  if (!text || text === "-" || text.toLowerCase() === "offline data") return fallback;
   return text;
 }
 
@@ -100,13 +101,13 @@ function normalizePlayerDto(raw: any, params: {
     currentClub: normalizeText(raw?.currentClub || params.team),
     currentClubLogo: raw?.currentClubLogo || null,
     formerClubs: Array.isArray(raw?.formerClubs) ? raw.formerClubs : [],
-    marketValue: normalizeText(raw?.marketValue || params.marketValue, tFn("playerProfile.valueUnknown")),
+    marketValue: normalizeText(raw?.marketValue || params.marketValue, tFn("common.notAvailable") || "Niet beschikbaar"),
     isRealValue: Boolean(raw?.isRealValue),
     valueMethod: normalizeText(raw?.valueMethod),
     strengths: Array.isArray(raw?.strengths) ? raw.strengths : [],
     weaknesses: Array.isArray(raw?.weaknesses) ? raw.weaknesses : [],
     analysis: normalizeText(raw?.analysis, tFn("playerProfile.analysisTempUnavailable")),
-    source: normalizeText(raw?.source, "real-data"),
+    source: normalizeText(raw?.source, "live-data"),
     updatedAt: raw?.updatedAt || null,
     offlineData: Boolean(raw?.offlineData),
   };
@@ -193,7 +194,7 @@ export default function PlayerProfileScreen() {
           height: params.height || null,
           weight: params.weight || null,
           source: "startup-preload",
-          offlineData: true,
+          offlineData: false,
           updatedAt: new Date().toISOString(),
         },
         params
@@ -255,12 +256,6 @@ export default function PlayerProfileScreen() {
           <Text style={[styles.value, data?.isRealValue ? styles.valueReal : null]}>
             {normalizeText(data?.marketValue || params.marketValue, t("playerProfile.valueUnknown"))}
           </Text>
-          {data?.offlineData ? (
-            <View style={styles.offlineBadge}>
-              <Ionicons name="cloud-offline-outline" size={12} color={COLORS.gold} />
-              <Text style={styles.offlineText}>{t("playerProfile.offlineData")}</Text>
-            </View>
-          ) : null}
         </View>
         </Animated.View>
       </LinearGradient>
@@ -343,9 +338,14 @@ export default function PlayerProfileScreen() {
                       {/* Content */}
                       <View style={styles.timelineContent}>
                         <View style={styles.timelineRow}>
-                          <TeamLogo uri={club?.logo} teamName={club?.name || "Unknown"} size={32} />
+                          <TeamLogo
+                            uri={club?.logo}
+                            resolvedLogo={resolveClubHistoryLogoUri(club?.name || "", club?.logo || null)}
+                            teamName={club?.name || "Unknown"}
+                            size={32}
+                          />
                           <View style={styles.timelineInfo}>
-                            <Text style={styles.timelineClub} numberOfLines={1}>{club?.name || "Unknown"}</Text>
+                            <Text style={styles.timelineClub} numberOfLines={1}>{club?.name || (t("common.notAvailable") || "Niet beschikbaar")}</Text>
                             <View style={styles.timelineMetaRow}>
                               <Text style={styles.timelineLabel}>{isJoin ? "Joined" : "Left"}</Text>
                               {club?.date ? <Text style={styles.timelineDate}>{club.date}</Text> : null}
@@ -421,18 +421,6 @@ const styles = StyleSheet.create({
   meta: { fontFamily: "Inter_400Regular", fontSize: 13, color: COLORS.textMuted, textAlign: "center", paddingHorizontal: 24, maxWidth: "100%" },
   value: { fontFamily: "Inter_700Bold", fontSize: 14, color: COLORS.textMuted },
   valueReal: { color: "#00C896" },
-  offlineBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    backgroundColor: "rgba(250,204,21,0.12)",
-    borderColor: "rgba(250,204,21,0.35)",
-    borderWidth: 1,
-    borderRadius: 10,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-  },
-  offlineText: { fontFamily: "Inter_500Medium", fontSize: 11, color: COLORS.gold },
   loading: { flex: 1, alignItems: "center", justifyContent: "center", gap: 10 },
   loadingText: { fontFamily: "Inter_400Regular", fontSize: 13, color: COLORS.textMuted },
   retryBtn: { marginTop: 8, paddingHorizontal: 20, paddingVertical: 10, borderRadius: 18, backgroundColor: COLORS.accent },

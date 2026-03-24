@@ -5201,6 +5201,7 @@ function buildNormalizedTimeline(events, homeTeam, awayTeam, status, minute, hom
       title: meta.title,
       icon: meta.icon,
       importance: meta.importance,
+      sequence: Number(ev?.order ?? ev?.sequence ?? ev?.index ?? index),
       side,
       minute: minuteLabel,
       minuteValue: eventMinuteValue(ev?.time, ev?.extra, index),
@@ -5210,6 +5211,29 @@ function buildNormalizedTimeline(events, homeTeam, awayTeam, status, minute, hom
       rawType: String(ev?.type || ""),
     };
   });
+
+  // Correct malformed system event minutes from upstream feeds.
+  for (const event of normalized) {
+    if (!event || !event.kind) continue;
+    if (event.kind === "kickoff") {
+      event.minuteValue = 0;
+      event.minute = "0'";
+      event.side = "center";
+      continue;
+    }
+    if (event.kind === "halftime") {
+      if (event.minuteValue < 44) event.minuteValue = 45;
+      event.minute = "45'";
+      event.side = "center";
+      continue;
+    }
+    if (event.kind === "fulltime") {
+      if (event.minuteValue < 89) event.minuteValue = 90;
+      event.minute = "90'";
+      event.side = "center";
+      continue;
+    }
+  }
 
   if (!normalized.some((event) => event.kind === "kickoff")) {
     normalized.unshift({
@@ -5265,6 +5289,15 @@ function buildNormalizedTimeline(events, homeTeam, awayTeam, status, minute, hom
     });
   }
 
+  // Keep at most one explicit marker per phase to avoid duplicates.
+  const seenMarkers = new Set();
+  const deduped = normalized.filter((event) => {
+    if (!["kickoff", "halftime", "fulltime"].includes(event.kind)) return true;
+    if (seenMarkers.has(event.kind)) return false;
+    seenMarkers.add(event.kind);
+    return true;
+  });
+
   // Synthesize goal events from score when timeline has no goal events but score > 0
   const goalKinds = new Set(["goal", "penalty_goal", "own_goal"]);
   const hasGoalEvents = normalized.some((e) => goalKinds.has(e.kind));
@@ -5313,8 +5346,27 @@ function buildNormalizedTimeline(events, homeTeam, awayTeam, status, minute, hom
     }
   }
 
-  return normalized.sort((a, b) => {
+  const phaseWeight = (kind) => {
+    if (kind === "kickoff") return 0;
+    if (kind === "halftime") return 1;
+    if (kind === "second_half" || kind === "secondhalf") return 2;
+    if (kind === "fulltime") return 3;
+    if (kind === "extra_time") return 4;
+    if (kind === "penalties") return 5;
+    return 10;
+  };
+
+  return deduped.sort((a, b) => {
     if (a.minuteValue !== b.minuteValue) return a.minuteValue - b.minuteValue;
+
+    const aPhase = phaseWeight(a.kind);
+    const bPhase = phaseWeight(b.kind);
+    if (aPhase !== bPhase) return aPhase - bPhase;
+
+    const aSeq = Number(a.sequence || 0);
+    const bSeq = Number(b.sequence || 0);
+    if (Number.isFinite(aSeq) && Number.isFinite(bSeq) && aSeq !== bSeq) return aSeq - bSeq;
+
     return a.importance - b.importance;
   });
 }

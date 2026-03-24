@@ -302,6 +302,57 @@ export function resolveTeamLogoUri(teamName?: string, logoUri?: string | null): 
   return null;
 }
 
+const clubHistoryLogoCache = new Map<string, string | number | null>();
+
+function normalizeClubAlias(value: string): string {
+  return normalizeName(value)
+    .replace(/\b(fc|cf|afc|sc|ac|kv|krc|rc|sv|vv|as)\b/g, " ")
+    .replace(/\b(u\s?17|u\s?18|u\s?19|u\s?20|u\s?21|u\s?23|b team|b-team|reserve(s)?|ii|jong)\b/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function clubAliasCandidates(teamName: string): string[] {
+  const base = normalizeName(teamName);
+  const alias = normalizeClubAlias(teamName);
+  const out = new Set<string>();
+  if (base) out.add(base);
+  if (alias) out.add(alias);
+
+  // Handle common short-name families.
+  if (alias === "man city") out.add("manchester city");
+  if (alias === "man utd") out.add("manchester united");
+  if (alias === "arsenal") out.add("arsenal fc");
+  if (alias === "psg") out.add("paris saint germain");
+
+  return [...out].filter(Boolean);
+}
+
+export function resolveClubHistoryLogoUri(teamName?: string, logoUri?: string | null): string | number | null {
+  const rawName = String(teamName || "").trim();
+  if (!rawName && !logoUri) return null;
+
+  const cacheKey = `${normalizeName(rawName)}|${String(logoUri || "").trim()}`;
+  if (clubHistoryLogoCache.has(cacheKey)) return clubHistoryLogoCache.get(cacheKey) || null;
+
+  const direct = resolveTeamLogoUri(rawName, logoUri);
+  if (direct) {
+    clubHistoryLogoCache.set(cacheKey, direct);
+    return direct;
+  }
+
+  for (const candidate of clubAliasCandidates(rawName)) {
+    const resolved = resolveTeamLogoUri(candidate, null);
+    if (resolved) {
+      clubHistoryLogoCache.set(cacheKey, resolved);
+      return resolved;
+    }
+  }
+
+  clubHistoryLogoCache.set(cacheKey, null);
+  return null;
+}
+
 export function getInitials(value?: string, max = 2): string {
   const initials = String(value || "")
     .split(/\s+/)
