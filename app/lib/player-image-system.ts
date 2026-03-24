@@ -53,6 +53,7 @@ const PRELOAD_LEAGUES = ["bel.1", "eng.1", "esp.1", "ger.1", "ita.1", "fra.1", "
 
 const imageCache = new Map<string, PlayerImageEntry>();
 const profileCache = new Map<string, PlayerProfileEntry>();
+const inflightImageRequests = new Map<string, Promise<string | null>>();
 let loadedFromDisk = false;
 let persistTimer: ReturnType<typeof setTimeout> | null = null;
 let warmupPromise: Promise<void> | null = null;
@@ -363,35 +364,47 @@ export async function getPlayerImage(player: PlayerSeed, options?: { allowNetwor
     return cached.localUri || cached.photoUrl || null;
   }
 
-  let profile = getCachedPlayerProfile(player);
-  const allowNetwork = options?.allowNetwork !== false;
+  const inflight = inflightImageRequests.get(key);
+  if (inflight) return inflight;
 
-  if (!profile && allowNetwork) {
-    profile = await getPlayerProfileFromApi(player);
-    if (profile) mergeProfileIntoCache(player, profile);
+  const task = (async () => {
+    let profile = getCachedPlayerProfile(player);
+    const allowNetwork = options?.allowNetwork !== false;
+
+    if (!profile && allowNetwork) {
+      profile = await getPlayerProfileFromApi(player);
+      if (profile) mergeProfileIntoCache(player, profile);
+    }
+
+    const candidates = collectCandidates(player, profile);
+    const winner = chooseBestCandidate(player, candidates);
+    if (!winner.url) {
+      mergeImageIntoCache(player, { photoUrl: null, localUri: null, confidence: 0, source: "none" });
+      return null;
+    }
+
+    await prefetchRuntimeImage(winner.url);
+    const localUri = await cacheRemoteImageLocally(key, winner.url);
+    mergeImageIntoCache(player, {
+      photoUrl: winner.url,
+      localUri,
+      confidence: winner.confidence,
+      source: winner.source,
+    });
+
+    if (options?.preloadProfile && profile && globalQueryClient) {
+      globalQueryClient.setQueryData(["player-profile", player.id, player.name, player.team, player.league], profile);
+    }
+
+    return localUri || winner.url;
+  })();
+
+  inflightImageRequests.set(key, task);
+  try {
+    return await task;
+  } finally {
+    inflightImageRequests.delete(key);
   }
-
-  const candidates = collectCandidates(player, profile);
-  const winner = chooseBestCandidate(player, candidates);
-  if (!winner.url) {
-    mergeImageIntoCache(player, { photoUrl: null, localUri: null, confidence: 0, source: "none" });
-    return null;
-  }
-
-  await prefetchRuntimeImage(winner.url);
-  const localUri = await cacheRemoteImageLocally(key, winner.url);
-  mergeImageIntoCache(player, {
-    photoUrl: winner.url,
-    localUri,
-    confidence: winner.confidence,
-    source: winner.source,
-  });
-
-  if (options?.preloadProfile && profile && globalQueryClient) {
-    globalQueryClient.setQueryData(["player-profile", player.id, player.name, player.team, player.league], profile);
-  }
-
-  return localUri || winner.url;
 }
 
 function dedupePlayers(players: PlayerSeed[]): PlayerSeed[] {
@@ -463,7 +476,9 @@ async function fetchStandings(league: string): Promise<any[]> {
       new Promise<Response>((_, reject) => setTimeout(() => reject(new Error("standings timeout")), 7000)),
     ]);
     const json = await response.json();
-    return Array.isArray(json?.teams) ? json.teams : [];
+    if (Array.isArray(json?.standings)) return json.standings;
+    if (Array.isArray(json?.teams)) return json.teams;
+    return [];
   } catch {
     return [];
   }
@@ -472,9 +487,9 @@ async function fetchStandings(league: string): Promise<any[]> {
 async function collectStartupPlayers(queryClient: QueryClient): Promise<PlayerSeed[]> {
   const allPlayers: PlayerSeed[] = [];
 
-  for (const league of PRELOAD_LEAGUES) {
+  await runBatches(PRELOAD_LEAGUES, 3, async (league) => {
     const standings = await fetchStandings(league);
-    queryClient.setQueryData(["standings", league], { teams: standings });
+    queryClient.setQueryData(["standings", league], { standings, teams: standings });
 
     const topTeams = standings.slice(0, 12);
     await runBatches(topTeams, 4, async (team: any) => {
@@ -488,7 +503,7 @@ async function collectStartupPlayers(queryClient: QueryClient): Promise<PlayerSe
       queryClient.setQueryData(["team-detail", teamId, "soccer", league], detail);
       allPlayers.push(...mapTeamPlayers(detail, league));
     });
-  }
+  });
 
   return dedupePlayers(allPlayers);
 }

@@ -14,6 +14,7 @@ import { TeamLogo } from "@/components/TeamLogo";
 import {
   getCachedPlayerImage,
   getCachedPlayerProfile,
+  getPlayerImage,
   preloadPlayerProfileInBackground,
 } from "@/lib/player-image-system";
 
@@ -148,6 +149,28 @@ export default function PlayerProfileScreen() {
         const merged = {
           ...cachedProfile,
           photo: cachedImage || cachedProfile?.photo || null,
+        };
+        const normalized = normalizePlayerDto(merged, params);
+        await AsyncStorage.setItem(cacheKey, JSON.stringify(normalized));
+        return normalized;
+      }
+
+      // Try to resolve a validated image/profile once before falling back to instant skeleton data.
+      try {
+        await Promise.race([
+          getPlayerImage(seed, { allowNetwork: true, preloadProfile: true }),
+          new Promise<null>((resolve) => setTimeout(() => resolve(null), 3500)),
+        ]);
+      } catch {
+        // continue with safe fallback
+      }
+
+      const refreshedProfile = getCachedPlayerProfile(seed);
+      const refreshedImage = getCachedPlayerImage(seed);
+      if (refreshedProfile) {
+        const merged = {
+          ...refreshedProfile,
+          photo: refreshedImage || refreshedProfile?.photo || null,
         };
         const normalized = normalizePlayerDto(merged, params);
         await AsyncStorage.setItem(cacheKey, JSON.stringify(normalized));
