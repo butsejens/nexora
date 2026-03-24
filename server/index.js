@@ -1009,6 +1009,27 @@ function keepIncomingPlayerPhoto(url) {
   return normalized;
 }
 
+function generatedAvatarUrlForPlayer(name, playerId = "") {
+  const safeName = String(name || "").trim() || (playerId ? `Player ${playerId}` : "Player");
+  return `https://ui-avatars.com/api/?name=${encodeURIComponent(safeName)}&size=256&background=1a1a2e&color=e0e0e0&bold=true&format=png`;
+}
+
+function ensureValidPlayerPhoto(photo, name, playerId = "") {
+  const normalized = normalizePlayerPhoto(playerId, photo);
+  if (normalized) return normalized;
+  return generatedAvatarUrlForPlayer(name, playerId);
+}
+
+function ensurePlayersHaveValidPhotos(players) {
+  return (Array.isArray(players) ? players : []).map((player) => {
+    if (!player || typeof player !== "object") return player;
+    return {
+      ...player,
+      photo: ensureValidPlayerPhoto(player.photo, player.name, player.id),
+    };
+  });
+}
+
 // Validate ESPN CDN headshot — returns URL if real photo (>10KB), null if black placeholder
 async function validateEspnHeadshot(url) {
   if (!url) return null;
@@ -3315,7 +3336,11 @@ function mapEspnRosterPlayer(player) {
     weight: toKgStringFromAny(player?.displayWeight || player?.weight),
     marketValue: undefined,
     isRealValue: false,
-    photo: keepIncomingPlayerPhoto(normalizePlayerPhoto(playerId, player?.headshot?.href, espnCdnUrl)),
+    photo: ensureValidPlayerPhoto(
+      keepIncomingPlayerPhoto(normalizePlayerPhoto(playerId, player?.headshot?.href, espnCdnUrl)),
+      player?.displayName || player?.fullName || "Onbekend",
+      playerId,
+    ),
   };
 }
 
@@ -6352,16 +6377,19 @@ function mapEspnTopScorers(data) {
     return (goalLeaders.leaders || []).map((entry, idx) => {
       const ath = entry?.athlete || {};
       const athleteId = String(ath?.id || "");
+      const displayName = ath.displayName || ath.fullName || "";
       return {
         rank: idx + 1,
         id: athleteId,
-        name: ath.displayName || ath.fullName || "",
-        photo: keepIncomingPlayerPhoto(
+        name: displayName,
+        photo: ensureValidPlayerPhoto(
           normalizePlayerPhoto(
             athleteId,
             ath.headshot?.href,
             athleteId ? `https://a.espncdn.com/i/headshots/soccer/players/full/${encodeURIComponent(athleteId)}.png` : null
-          )
+          ),
+          displayName,
+          athleteId,
         ),
         team: ath.team?.displayName || ath.team?.name || "",
         teamId: String(ath?.team?.id || ""),
@@ -6459,9 +6487,12 @@ async function espnTopScorersFromHtml(leagueName) {
 
     rows.push({
       rank,
+      id: athleteId,
       name,
-      photo: keepIncomingPlayerPhoto(
-        athleteId ? `https://a.espncdn.com/i/headshots/soccer/players/full/${encodeURIComponent(athleteId)}.png` : null
+      photo: ensureValidPlayerPhoto(
+        athleteId ? `https://a.espncdn.com/i/headshots/soccer/players/full/${encodeURIComponent(athleteId)}.png` : null,
+        name,
+        athleteId,
       ),
       team: teamName,
       teamLogo: null,
@@ -6872,7 +6903,21 @@ app.get("/api/sports/team/:teamId", async (req, res) => {
           const enrichedPlayers = (photoPlayers || basePlayers).map((player) => {
             const playerKey = String(player?.id || player?.name || "");
             const valued = valueMap.get(playerKey);
-            return valued ? { ...valued, ...player, photo: player?.photo || valued?.photo || null } : player;
+            if (valued) {
+              return {
+                ...valued,
+                ...player,
+                photo: ensureValidPlayerPhoto(
+                  player?.photo || valued?.photo || null,
+                  player?.name || valued?.name || "Onbekend",
+                  player?.id || valued?.id || "",
+                ),
+              };
+            }
+            return {
+              ...player,
+              photo: ensureValidPlayerPhoto(player?.photo || null, player?.name || "Onbekend", player?.id || ""),
+            };
           });
           // Reuse TM data from enrichRosterMarketValues cache (already fetched and cached during enrichment)
           const tmClubData = cacheGet(`transfermarkt_club_${normalizePersonName(teamDisplayName)}`);
@@ -6886,7 +6931,7 @@ app.get("/api/sports/team/:teamId", async (req, res) => {
       ]);
 
       // If enrichment timed out, use basic player data and ESPN logo
-      const finalPlayers = enrichResult?.enrichedPlayers ?? basePlayers;
+      const finalPlayers = ensurePlayersHaveValidPhotos(enrichResult?.enrichedPlayers ?? basePlayers);
       const squadValue = enrichResult?.squadMarketValue ?? null;
       const resolvedLogo = enrichResult?.resolvedLogo ?? (rawTeamLogo || espnLogo || footballLogosUrl || null);
 
