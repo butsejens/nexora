@@ -1561,26 +1561,38 @@ async function fetchWikipediaPageImage(title) {
   }
 }
 
-// AI-assisted player photo resolution via Gemini – asks LLM for correct Wikipedia titles
-async function resolvePlayerPhotosViaAI(players, teamName) {
-  const key = process.env.GEMINI_API_KEY;
-  if (!key || !Array.isArray(players) || players.length === 0) return new Map();
+// AI-assisted player photo resolution via LLM providers – asks for correct Wikipedia titles.
+async function resolvePlayerPhotosViaAI(players, teamName, leagueName = "") {
+  const hasAnyProvider = Boolean(
+    process.env.OLLAMA_MODEL ||
+    process.env.DEEPSEEK_API_KEY ||
+    process.env.OPENROUTER_API_KEY ||
+    process.env.GROQ_API_KEY ||
+    process.env.OPENAI_API_KEY ||
+    process.env.GEMINI_API_KEY
+  );
+  if (!hasAnyProvider || !Array.isArray(players) || players.length === 0) return new Map();
 
   const photoMap = new Map();
   const BATCH = 15;
+  const normalizedLookup = new Map((players || []).map((p) => [normalizePersonName(p?.name || ""), String(p?.name || "")]).filter(([k, v]) => k && v));
+
+  const isBelgianLeague = /bel\.1|bel\.2|jupiler|challenger|pro league|eerste klasse/i.test(String(leagueName || ""));
 
   for (let i = 0; i < players.length; i += BATCH) {
     const batch = players.slice(i, i + BATCH);
     const playerList = batch.map((p) => {
       const parts = [p.name];
+      if (p.team) parts.push(`team: ${p.team}`);
       if (p.nationality) parts.push(p.nationality);
       if (p.position) parts.push(p.position);
       return `- ${parts.join(", ")}`;
     }).join("\n");
 
     try {
-      const prompt = `You must identify each football/soccer player below. They ALL play for team: "${teamName || "unknown"}".
+      const prompt = `You must identify each football/soccer player below.${teamName ? ` They play for team: "${teamName}".` : ""}${leagueName ? ` League context: "${leagueName}".` : ""}
 IMPORTANT: Only return a Wikipedia title if you are CERTAIN the player currently plays (or recently played) for ${teamName || "this team"}. If a common name could refer to multiple players, pick the one who plays for ${teamName || "this team"}. Use null if unsure.
+${isBelgianLeague ? "Belgian league context is very important: prioritize Belgian Pro League / Challenger Pro League squad identity over famous players with same name." : ""}
 
 Players:
 ${playerList}
@@ -1588,37 +1600,60 @@ ${playerList}
 Return a JSON object mapping each player name to their EXACT English Wikipedia article title. Use null if unknown or uncertain.
 Return ONLY valid JSON. No markdown, no explanation.`;
 
-      const response = await geminiChat(
-        [
-          { role: "system", content: `You are a football/soccer expert who identifies players accurately. You know current squad rosters. When a player name is ambiguous, always pick the player who plays for the specified team. Never guess — use null when unsure.` },
-          { role: "user", content: prompt },
-        ],
-        { temperature: 0 }
-      );
+      const sys = {
+        role: "system",
+        content: "You are a football/soccer identity resolver. Always resolve ambiguous names to the player from the given team/league context. If uncertain, return null. Output valid JSON only.",
+      };
+      const user = { role: "user", content: prompt };
 
-      // Parse JSON – handle possible markdown fences
-      const cleaned = String(response || "").replace(/```json\s*|```\s*/g, "").trim();
-      const titleMap = JSON.parse(cleaned);
+      const providers = [];
+      if (process.env.OLLAMA_MODEL) providers.push(() => ollamaChat([sys, user], { temperature: 0 }));
+      if (process.env.DEEPSEEK_API_KEY) providers.push(() => deepseekChat([sys, user], { temperature: 0 }));
+      if (process.env.OPENROUTER_API_KEY) providers.push(() => openrouterChat([sys, user], { temperature: 0 }));
+      if (process.env.GROQ_API_KEY) providers.push(() => groqChat([sys, user], { temperature: 0 }));
+      if (process.env.OPENAI_API_KEY) providers.push(() => openaiChat([sys, user], { temperature: 0, model: "gpt-4o-mini" }));
+      if (process.env.GEMINI_API_KEY) providers.push(() => geminiChat([sys, user], { temperature: 0 }));
 
-      // Fetch Wikipedia photos in parallel for all resolved titles
-      const entries = Object.entries(titleMap).filter(([, v]) => v);
+      let parsedMap = null;
+      for (const run of providers) {
+        try {
+          const response = await run();
+          const titleMap = tryParseJSON(response);
+          if (titleMap && typeof titleMap === "object") {
+            parsedMap = titleMap;
+            break;
+          }
+        } catch {
+          // try next provider
+        }
+      }
+
+      if (!parsedMap || typeof parsedMap !== "object") continue;
+
+      // Fetch Wikipedia photos in parallel for all resolved titles.
+      const entries = Object.entries(parsedMap).filter(([, v]) => v);
       const results = await Promise.all(
         entries.map(async ([name, title]) => {
-          const photo = await fetchWikipediaPageImage(title);
-          return [name, photo];
+          const photo = await fetchWikipediaPageImage(String(title || ""));
+          return [String(name || ""), photo];
         })
       );
 
       for (const [name, photo] of results) {
-        if (name && photo) photoMap.set(name, photo);
+        if (!name || !photo) continue;
+        const exact = String(name).trim();
+        const normalized = normalizePersonName(exact);
+        const preferredKey = normalizedLookup.get(normalized) || exact;
+        photoMap.set(preferredKey, photo);
+        photoMap.set(normalized, photo);
       }
     } catch (err) {
-      console.warn(`[photos][ai] Gemini batch failed:`, err.message);
+      console.warn(`[photos][ai] LLM batch failed:`, err.message);
     }
   }
 
   if (photoMap.size > 0) {
-    console.log(`[photos][ai] Gemini resolved ${photoMap.size} Wikipedia photos for ${teamName}`);
+    console.log(`[photos][ai] LLM resolved ${photoMap.size} Wikipedia photos for ${teamName || leagueName || "unknown"}`);
   }
   return photoMap;
 }
@@ -1976,7 +2011,7 @@ async function enrichScorersPhotos(scorers, leagueName) {
 
         // -- STEP 5: Gemini AI (BEFORE ESPN validation) --
         try {
-          const aiMap = await resolvePlayerPhotosViaAI([{ name, team }], leagueName);
+          const aiMap = await resolvePlayerPhotosViaAI([{ name, team, league: leagueName }], team, leagueName);
           const aiPhoto = aiMap.get(name);
           if (aiPhoto) return [name, aiPhoto];
         } catch (err) {
@@ -2888,7 +2923,7 @@ async function enrichRosterMarketValues(players, teamName, _leagueName) {
   });
 }
 
-async function enrichRosterPhotos(players, teamName) {
+async function enrichRosterPhotos(players, teamName, leagueName = "") {
   if (!Array.isArray(players) || players.length === 0) return players || [];
 
   // Build Transfermarkt photo map (Step 0) and TheSportsDB photo map (Steps 1-2) in parallel
@@ -3059,15 +3094,15 @@ async function enrichRosterPhotos(players, teamName) {
 
   // ------ Step 5: AI-assisted photo resolution via Gemini ------
   const aiCandidates = enriched.filter((p) => p && !p.photo && p.name && p.name !== "Onbekend");
-  console.log(`[photos][ai] ${teamName}: ${aiCandidates.length} players without photo, attempting Gemini AI...`);
-  if (aiCandidates.length > 0 && aiCandidates.length <= 60) {
+  console.log(`[photos][ai] ${teamName}: ${aiCandidates.length} players without photo, attempting LLM AI...`);
+  if (aiCandidates.length > 0 && aiCandidates.length <= 140) {
     try {
-      const aiPhotoMap = await resolvePlayerPhotosViaAI(aiCandidates, teamName);
-      console.log(`[photos][ai] ${teamName}: Gemini returned ${aiPhotoMap.size} photos`);
+      const aiPhotoMap = await resolvePlayerPhotosViaAI(aiCandidates, teamName, leagueName);
+      console.log(`[photos][ai] ${teamName}: LLM returned ${aiPhotoMap.size} photos`);
       if (aiPhotoMap.size > 0) {
         enriched = enriched.map((player) => {
           if (!player || player.photo) return player;
-          const found = aiPhotoMap.get(player.name);
+          const found = aiPhotoMap.get(player.name) || aiPhotoMap.get(normalizePersonName(player.name || ""));
           return found ? { ...player, photo: found } : player;
         });
       }
@@ -6693,7 +6728,7 @@ app.get("/api/sports/team/:teamId", async (req, res) => {
               new Promise((resolve) => setTimeout(() => resolve(basePlayers), 4000)),
             ]),
             Promise.race([
-              enrichRosterPhotos(basePlayers, teamDisplayName),
+              enrichRosterPhotos(basePlayers, teamDisplayName, espnLeague),
               new Promise((resolve) => setTimeout(() => resolve(basePlayers), 8000)),
             ]),
             fetchTheSportsDBTeamLogo(teamDisplayName),
@@ -6919,12 +6954,13 @@ app.get("/api/sports/player/:playerId", async (req, res) => {
         try {
           const aiMap = await Promise.race([
             resolvePlayerPhotosViaAI(
-              [{ name, nationality: espnAthlete?.citizenship || "", position: valued?.position || "" }],
-              clubName || ""
+              [{ name, nationality: espnAthlete?.citizenship || "", position: valued?.position || "", team: clubName || "", league: espnLeague }],
+              clubName || "",
+              espnLeague
             ),
             new Promise((resolve) => setTimeout(() => resolve(new Map()), 4000)),
           ]);
-          if (aiMap.size > 0) resolvedPhoto = aiMap.values().next().value || null;
+          if (aiMap.size > 0) resolvedPhoto = aiMap.get(name) || aiMap.get(normalizePersonName(name)) || aiMap.values().next().value || null;
         } catch { /* ignore */ }
       }
       // TheSportsDB individual search fallback
@@ -6972,10 +7008,10 @@ app.get("/api/sports/player/:playerId", async (req, res) => {
       if (!resolvedPhoto && name && name !== "Onbekend") {
         try {
           const aiMap = await Promise.race([
-            resolvePlayerPhotosViaAI([{ name, nationality: valued?.nationality, position: valued?.position }], clubName),
+            resolvePlayerPhotosViaAI([{ name, nationality: valued?.nationality, position: valued?.position, team: clubName || "", league: espnLeague }], clubName, espnLeague),
             new Promise((resolve) => setTimeout(() => resolve(new Map()), 4000)),
           ]);
-          const aiPhoto = aiMap.get(name);
+          const aiPhoto = aiMap.get(name) || aiMap.get(normalizePersonName(name));
           if (aiPhoto) resolvedPhoto = aiPhoto;
         } catch { /* ignore */ }
       }
