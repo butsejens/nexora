@@ -17,6 +17,7 @@ export type PlayerSeed = {
   nationality?: string;
   birthDate?: string;
   age?: number;
+  position?: string;
   photo?: string | null;
   theSportsDbPhoto?: string | null;
 };
@@ -97,6 +98,60 @@ function scoreNameSimilarity(a: string, b: string): number {
   return Math.min(1, jaccard + starts);
 }
 
+function readAge(value: unknown): number | null {
+  const n = Number(value);
+  if (Number.isFinite(n) && n > 0) return n;
+  const text = String(value ?? "").trim();
+  if (!text) return null;
+  const parsed = parseInt(text.replace(/[^\d]/g, ""), 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
+function normalizePosition(value: Nullable<string>): string {
+  const v = normalizeName(value);
+  if (!v) return "";
+  if (["cf", "st", "fw", "striker", "forward", "attacker"].includes(v)) return "forward";
+  if (["rw", "lw", "winger", "rf", "lf"].includes(v)) return "wing";
+  if (["am", "cm", "dm", "midfielder", "midfield", "cam", "cdm", "lm", "rm"].includes(v)) return "midfield";
+  if (["cb", "lb", "rb", "lwb", "rwb", "defender", "defence", "defense", "back"].includes(v)) return "defense";
+  if (["gk", "goalkeeper", "keeper"].includes(v)) return "goalkeeper";
+  return v;
+}
+
+function normalizeNationality(value: Nullable<string>): string {
+  return normalizeName(value);
+}
+
+function profileMatchesSeed(player: PlayerSeed, profile: any): boolean {
+  if (!profile) return false;
+
+  const seedName = normalizeName(player.name);
+  const profileName = normalizeName(profile?.name || profile?.fullName || profile?.displayName);
+  const nameScore = scoreNameSimilarity(seedName, profileName);
+  if (seedName && profileName && nameScore < 0.72) return false;
+
+  const seedTeam = normalizeName(player.team);
+  const profileTeam = normalizeName(profile?.currentClub || profile?.team || profile?.club?.name);
+  if (seedTeam && profileTeam) {
+    const teamScore = scoreNameSimilarity(seedTeam, profileTeam);
+    if (teamScore < 0.45) return false;
+  }
+
+  const seedNat = normalizeNationality(player.nationality);
+  const profileNat = normalizeNationality(profile?.nationality || profile?.citizenship);
+  if (seedNat && profileNat && seedNat !== profileNat) return false;
+
+  const seedPos = normalizePosition(player.position);
+  const profilePos = normalizePosition(profile?.position);
+  if (seedPos && profilePos && seedPos !== profilePos) return false;
+
+  const seedAge = readAge(player.age);
+  const profileAge = readAge(profile?.age);
+  if (seedAge && profileAge && Math.abs(seedAge - profileAge) > 4) return false;
+
+  return true;
+}
+
 export function makePlayerCacheKey(player: PlayerSeed): string {
   const id = normalizeText(player.id);
   if (/^\d+$/.test(id)) return `id:${id}`;
@@ -150,8 +205,8 @@ function scoreCandidate(url: string, player: PlayerSeed, meta?: { candidateName?
     score += teamSimilarity * 0.14;
   }
 
-  if (normalizeText(player.gender) && normalizeText(player.gender) === normalizeText(meta?.candidateTeam)) {
-    score += 0.02;
+  if (normalizeText(player.id) && /^\d+$/.test(normalizeText(player.id))) {
+    score += 0.06;
   }
 
   return Math.max(0, Math.min(1, score));
@@ -307,6 +362,7 @@ async function getPlayerProfileFromApi(player: PlayerSeed): Promise<any | null> 
     ]);
     const json = await response.json();
     if (!json || json?.error) return null;
+    if (!profileMatchesSeed(player, json)) return null;
     return json;
   } catch {
     return null;
@@ -316,7 +372,14 @@ async function getPlayerProfileFromApi(player: PlayerSeed): Promise<any | null> 
 function collectCandidates(player: PlayerSeed, profile: any | null): Array<{ url: string; source: PlayerImageEntry["source"]; confidence: number }> {
   const candidates: Array<{ url: string; source: PlayerImageEntry["source"]; confidence: number }> = [];
 
-  const direct = [player.photo, player.theSportsDbPhoto, profile?.photo, profile?.theSportsDbPhoto]
+  const direct = [
+    player.photo,
+    player.theSportsDbPhoto,
+    profile?.photo,
+    profile?.theSportsDbPhoto,
+    profile?.headshot,
+    profile?.headshotUrl,
+  ]
     .map((x) => normalizeText(x || ""))
     .filter((x) => isValidHttpUrl(x));
 
@@ -351,7 +414,9 @@ function chooseBestCandidate(player: PlayerSeed, candidates: Array<{ url: string
     return { url: null, source: "none", confidence: 0 };
   }
 
-  if (winner.source !== "fallback" && winner.confidence < 0.58) {
+  const hasId = /^\d+$/.test(normalizeText(player.id));
+  const minConfidence = hasId ? 0.56 : 0.66;
+  if (winner.source !== "fallback" && winner.confidence < minConfidence) {
     return { url: null, source: "none", confidence: winner.confidence };
   }
 

@@ -6,23 +6,26 @@ import { getInitials, resolveTeamLogoUri, sanitizeRemoteLogoUri } from "@/lib/lo
 export const TeamLogo = React.memo(function TeamLogo({
   uri,
   teamName,
+  resolvedLogo,
   size = 48,
 }: {
   uri?: string | null;
   teamName: string;
+  resolvedLogo?: string | number | null;
   size?: number;
 }) {
   const [failCount, setFailCount] = useState(0);
   const [imageLoaded, setImageLoaded] = useState(false);
   const maxFails = 3;
   const resolved = useMemo(() => {
+    if (resolvedLogo != null) return resolvedLogo;
     if (failCount >= maxFails) return null;
     // First try: server URI preferred, ESPN fallback
     if (failCount === 0) return resolveTeamLogoUri(teamName, uri);
     // Second try: ESPN-only fallback (skip possibly-broken server URI)
     if (failCount === 1) return resolveTeamLogoUri(teamName, null);
     return null;
-  }, [teamName, uri, failCount]);
+  }, [teamName, uri, failCount, resolvedLogo]);
   const initials = useMemo(() => getInitials(teamName, 2), [teamName]);
 
   const imageSource =
