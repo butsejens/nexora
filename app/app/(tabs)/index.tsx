@@ -950,6 +950,7 @@ export default function SportsScreen() {
     (todayQuery.error as any)?.message || (liveQuery.error as any)?.message || "";
   const normalizedApiError = rawApiError ? normalizeApiError(rawApiError) : null;
   const apiErrorRef = useMemo(() => (rawApiError ? buildErrorReference("NX-SPR") : ""), [rawApiError]);
+  const shouldShowApiErrorBanner = Boolean(normalizedApiError) && !hasRemoteData;
 
   const filterBySport = (matches: any[]) => {
     if (sportCategory === "all") return matches;
@@ -1438,7 +1439,7 @@ export default function SportsScreen() {
             <Text style={styles.bannerText}>{t("sportsHome.noMatchesFilter", { filter: SPORT_CATEGORIES.find(c => c.id === sportCategory)?.labelKey ? tFn(SPORT_CATEGORIES.find(c => c.id === sportCategory)!.labelKey) : "" })}</Text>
           </View>
         )}
-        {normalizedApiError && (
+        {shouldShowApiErrorBanner && normalizedApiError && (
           <View style={[styles.banner, styles.bannerError]}>
             <Ionicons name="warning-outline" size={14} color="#ff6b6b" />
             <View style={{ flex: 1, gap: 2 }}>

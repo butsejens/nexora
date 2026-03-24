@@ -261,6 +261,22 @@ export default function SeriesScreen() {
   const rawCatalogError =
     (data as any)?.error ||
     (isError ? "Series catalog not available" : "");
+  const hasCatalogContent = [
+    trending.length,
+    airingToday.length,
+    newReleases.length,
+    topRated.length,
+    popular.length,
+    hiddenGems.length,
+    seriesGenres.length,
+    seriesDecades.length,
+    genreDiscoverRows.length,
+    recommendedForYou.length,
+    becauseYouWatched.length,
+    continueWatching.length,
+    recentlyWatched.length,
+    filteredIptv.length,
+  ].some((count) => count > 0);
   const normalizedCatalogError = rawCatalogError ? normalizeApiError(rawCatalogError) : null;
   const catalogErrorRef = useMemo(() => (rawCatalogError ? buildErrorReference("NX-SER") : ""), [rawCatalogError]);
 
@@ -598,7 +614,7 @@ export default function SeriesScreen() {
         </View>
       )}
 
-      {normalizedCatalogError ? (
+      {normalizedCatalogError && !hasCatalogContent ? (
         <View style={styles.errorBanner}>
           <Ionicons name="warning-outline" size={14} color={COLORS.live} />
           <View style={{ flex: 1, gap: 2 }}>

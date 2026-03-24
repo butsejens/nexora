@@ -148,27 +148,28 @@ const storyStyles = StyleSheet.create({
 
 export default function CompetitionScreen() {
     const fetchLeaguePayloadWithFallback = async (kind: "standings" | "topscorers") => {
-      const firstRes = await apiRequest("GET", `/api/sports/${kind}/${encodeURIComponent(leagueName)}`);
-      const firstJson = await firstRes.json();
-      const firstCount = kind === "standings"
-        ? (Array.isArray(firstJson?.standings) ? firstJson.standings.length : 0)
-        : (Array.isArray(firstJson?.scorers) ? firstJson.scorers.length : 0);
+      const candidates = Array.from(new Set([leagueName, espnLeague].filter(Boolean)));
+      const responses = await Promise.all(candidates.map(async (candidate) => {
+        try {
+          const res = await apiRequest("GET", `/api/sports/${kind}/${encodeURIComponent(candidate)}`);
+          const json = await res.json();
+          const count = kind === "standings"
+            ? (Array.isArray(json?.standings) ? json.standings.length : 0)
+            : (Array.isArray(json?.scorers) ? json.scorers.length : 0);
+          return { json, count, candidate };
+        } catch {
+          return { json: null as any, count: 0, candidate };
+        }
+      }));
 
-      if (!espnLeague || espnLeague === leagueName) return firstJson;
-      if (firstCount > 0 && !firstJson?.error) return firstJson;
+      const best = responses.sort((a, b) => {
+        if (a.count !== b.count) return b.count - a.count;
+        const aPenalty = a.json?.error ? 1 : 0;
+        const bPenalty = b.json?.error ? 1 : 0;
+        return aPenalty - bPenalty;
+      })[0];
 
-      try {
-        const fallbackRes = await apiRequest("GET", `/api/sports/${kind}/${encodeURIComponent(espnLeague)}`);
-        const fallbackJson = await fallbackRes.json();
-        const fallbackCount = kind === "standings"
-          ? (Array.isArray(fallbackJson?.standings) ? fallbackJson.standings.length : 0)
-          : (Array.isArray(fallbackJson?.scorers) ? fallbackJson.scorers.length : 0);
-        if (fallbackCount > 0 || !firstJson) return fallbackJson;
-      } catch {
-        // keep first response
-      }
-
-      return firstJson;
+      return best?.json || {};
     };
 
   const params = useLocalSearchParams<{ league: string; sport?: string; espnLeague?: string }>();
@@ -183,7 +184,7 @@ export default function CompetitionScreen() {
 
 
   const { data: standingsData, isLoading: standingsLoading, error: standingsQueryError } = useQuery({
-    queryKey: ["standings", leagueName],
+    queryKey: ["standings", leagueName, espnLeague],
     queryFn: async () => {
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 15000);
@@ -199,7 +200,7 @@ export default function CompetitionScreen() {
   });
 
   const { data: scorersData, isLoading: scorersLoading, error: scorersQueryError } = useQuery({
-    queryKey: ["topscorers", leagueName],
+    queryKey: ["topscorers", leagueName, espnLeague],
     queryFn: async () => {
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 20000);
