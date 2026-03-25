@@ -62,6 +62,22 @@ npm run app
 
 Result: app works without running `npm run server` locally.
 
+## Cloudflare Worker deploy (monorepo-safe)
+If Cloudflare Build Logs show:
+"The Wrangler application detection logic has been run in the root of a workspace..."
+
+Use this deploy command in Cloudflare Worker settings:
+```bash
+npm run cloudflare:deploy
+```
+
+This command always points Wrangler to the worker config in `cloudflare/sports-worker/wrangler.toml`, even when the repository root is used as working directory.
+
+Optional local check:
+```bash
+npm run cloudflare:deploy:dry-run
+```
+
 ## Java (Android)
 - For Android builds/emulator support, install JDK 17+.
 - Verify with:
