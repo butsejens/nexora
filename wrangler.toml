@@ -1,0 +1,14 @@
+name = "nexora"
+main = "cloudflare/sports-worker/src/index.js"
+compatibility_date = "2026-03-25"
+workers_dev = true
+
+[vars]
+RENDER_SPORTS_ORIGIN = "https://nexora-api-8xxb.onrender.com"
+CACHE_MODE = "hybrid"
+CACHE_STALE_UNTIL_REVALIDATE = "true"
+LOG_ANALYTICS = "false"
+MAX_CACHE_SIZE_MB = "100"
+
+[observability]
+enabled = true
