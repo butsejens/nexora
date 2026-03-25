@@ -8,6 +8,7 @@
   "scripts": {
     "setup": "cp app/.env.example app/.env 2>/dev/null || true && cp server/.env.example server/.env 2>/dev/null || true",
     "doctor": "node scripts/doctor.mjs",
+    "sports:standings:smoke": "node scripts/sports-standings-smoke.mjs",
     "security:host-check": "node scripts/require-macbook.mjs",
     "security:env-check": "node scripts/enforce-env-policy.mjs dev",
     "security:env-check:release": "node scripts/enforce-env-policy.mjs release",

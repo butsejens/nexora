@@ -11,8 +11,7 @@ import { LinearGradient } from "expo-linear-gradient";
 
 import { useQuery } from "@tanstack/react-query";
 import { COLORS } from "@/constants/colors";
-import { apiRequest } from "@/lib/query-client";
-import { fetchSportsLeagueResourceWithFallback } from "@/lib/sports-data";
+import { fetchSportsLeagueResourceWithFallback, getLeaderboardRows } from "@/lib/sports-data";
 import { normalizeApiError } from "@/lib/error-messages";
 import { getLeagueLogo } from "@/lib/logo-manager";
 import { TeamLogo } from "@/components/TeamLogo";
@@ -154,15 +153,6 @@ const storyStyles = StyleSheet.create({
 });
 
 export default function CompetitionScreen() {
-    const fetchLeaguePayloadWithFallback = async (kind: "standings" | "topscorers" | "topassists" | "competition-stats") => {
-      return fetchSportsLeagueResourceWithFallback(kind, {
-        leagueName,
-        espnLeague,
-        // leaderboards are more latency-sensitive; sequential prevents duplicate heavy calls.
-        sequential: kind === "topscorers" || kind === "topassists",
-      });
-    };
-
   const params = useLocalSearchParams<{ league: string; sport?: string; espnLeague?: string }>();
   const leagueName = asParam(params.league, tFn("competition.unknownCompetition"));
   const espnLeague = asParam(params.espnLeague, "eng.1");
@@ -172,6 +162,14 @@ export default function CompetitionScreen() {
 
   const isCup = detectCup(espnLeague, leagueName);
   const [activeTab, setActiveTab] = useState<TabId>(isCup ? "matches" : "standings");
+
+  const fetchLeaguePayloadWithFallback = async (kind: "standings" | "topscorers" | "topassists" | "competition-stats" | "competition-teams" | "competition-matches") => {
+    return fetchSportsLeagueResourceWithFallback(kind, {
+      leagueName,
+      espnLeague,
+      sequential: kind === "topscorers" || kind === "topassists",
+    });
+  };
 
 
   const { data: standingsData, isLoading: standingsLoading, error: standingsQueryError } = useQuery({
@@ -217,13 +215,7 @@ export default function CompetitionScreen() {
   const { data: matchesData, isLoading: matchesLoading } = useQuery({
     queryKey: ["competition-matches", leagueName],
     queryFn: async () => {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 20000);
-      try {
-        const res = await apiRequest("GET", `/api/sports/competition-matches/${encodeURIComponent(leagueName)}`);
-        clearTimeout(timeout);
-        return res.json();
-      } catch (e) { clearTimeout(timeout); throw e; }
+      return fetchLeaguePayloadWithFallback("competition-matches");
     },
     enabled: activeTab === "matches",
     staleTime: 5 * 60 * 1000,
@@ -233,13 +225,7 @@ export default function CompetitionScreen() {
   const { data: teamsData, isLoading: teamsLoading } = useQuery({
     queryKey: ["competition-teams", leagueName],
     queryFn: async () => {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 15000);
-      try {
-        const res = await apiRequest("GET", `/api/sports/competition-teams/${encodeURIComponent(leagueName)}`);
-        clearTimeout(timeout);
-        return res.json();
-      } catch (e) { clearTimeout(timeout); throw e; }
+      return fetchLeaguePayloadWithFallback("competition-teams");
     },
     enabled: activeTab === "teams",
     staleTime: 10 * 60 * 1000,
@@ -249,8 +235,8 @@ export default function CompetitionScreen() {
   const standings: any[] = useMemo(() => standingsData?.standings || [], [standingsData]);
   const standingsPhases: any[] = useMemo(() => standingsData?.phases || [], [standingsData]);
   const isMultiPhase: boolean = standingsData?.isMultiPhase || false;
-  const scorers: any[] = useMemo(() => scorersData?.scorers || [], [scorersData]);
-  const assists: any[] = useMemo(() => assistsData?.assists || [], [assistsData]);
+  const scorers: any[] = useMemo(() => getLeaderboardRows("topscorers", scorersData), [scorersData]);
+  const assists: any[] = useMemo(() => getLeaderboardRows("topassists", assistsData), [assistsData]);
   const competitionMatches: any[] = matchesData?.matches || [];
   const competitionTeams: any[] = teamsData?.teams || [];
   const standingsError = normalizeApiError((standingsData as any)?.error || null);

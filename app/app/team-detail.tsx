@@ -11,7 +11,7 @@ import { useQuery } from "@tanstack/react-query";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { COLORS } from "@/constants/colors";
 import { apiRequest } from "@/lib/query-client";
-import { fetchSportsLeagueResourceWithFallback } from "@/lib/sports-data";
+import { fetchSportsLeagueResourceWithFallback, getLeaderboardRows } from "@/lib/sports-data";
 import { normalizeApiError } from "@/lib/error-messages";
 import { TeamLogo } from "@/components/TeamLogo";
 import { useNexora } from "@/context/NexoraContext";
@@ -256,13 +256,13 @@ export default function TeamDetailScreen() {
   }, [players, posFilter, sortKey]);
 
   const realValueCount = players.filter(p => p.isRealValue).length;
-  const topScorerForTeam = ((scorersData?.scorers || []) as any[]).find((s) => {
+  const topScorerForTeam = (getLeaderboardRows("topscorers", scorersData) as any[]).find((s) => {
     const team = String(s?.team || "").toLowerCase();
     const current = String(data?.name || teamNameParam || "").toLowerCase();
     return team && current && (team.includes(current) || current.includes(team));
   });
 
-  const topAssistForTeam = ((assistsData?.assists || []) as any[]).find((s) => {
+  const topAssistForTeam = (getLeaderboardRows("topassists", assistsData) as any[]).find((s) => {
     const team = String(s?.team || "").toLowerCase();
     const current = String(data?.name || teamNameParam || "").toLowerCase();
     return team && current && (team.includes(current) || current.includes(team));

@@ -16,12 +16,24 @@ type CandidateResult = {
 
 function countForKind(kind: SportsLeagueResourceKind, json: any): number {
   if (kind === "standings") return Array.isArray(json?.standings) ? json.standings.length : 0;
-  if (kind === "topscorers") return Array.isArray(json?.scorers) ? json.scorers.length : 0;
-  if (kind === "topassists") return Array.isArray(json?.assists) ? json.assists.length : 0;
+  if (kind === "topscorers") return getLeaderboardRows("topscorers", json).length;
+  if (kind === "topassists") return getLeaderboardRows("topassists", json).length;
   if (kind === "competition-stats") return json?.totalGoals != null ? 1 : 0;
   if (kind === "competition-teams") return Array.isArray(json?.teams) ? json.teams.length : 0;
   if (kind === "competition-matches") return Array.isArray(json?.matches) ? json.matches.length : 0;
   return 0;
+}
+
+export function getLeaderboardRows(kind: "topscorers" | "topassists", json: any): any[] {
+  if (kind === "topscorers") {
+    if (Array.isArray(json?.scorers)) return json.scorers;
+    if (Array.isArray(json?.players)) return json.players;
+    return [];
+  }
+
+  if (Array.isArray(json?.assists)) return json.assists;
+  if (Array.isArray(json?.players)) return json.players;
+  return [];
 }
 
 async function fetchCandidate(kind: SportsLeagueResourceKind, candidate: string): Promise<CandidateResult> {
