@@ -398,8 +398,8 @@ export default function MatchDetailScreen() {
           awayTopScorerGoals: awayTopScorer?.goals ?? null,
           homeTopAssist: homeTopAssist?.name || null,
           awayTopAssist: awayTopAssist?.name || null,
-          homeTopAssistCount: homeTopAssist?.assists ?? Number(homeTopAssist?.displayValue || 0) || null,
-          awayTopAssistCount: awayTopAssist?.assists ?? Number(awayTopAssist?.displayValue || 0) || null,
+          homeTopAssistCount: (homeTopAssist?.assists ?? Number(homeTopAssist?.displayValue || 0)) || null,
+          awayTopAssistCount: (awayTopAssist?.assists ?? Number(awayTopAssist?.displayValue || 0)) || null,
         },
       });
       const json = await res.json();
