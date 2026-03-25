@@ -81,8 +81,8 @@ export function NexoraHeader({
           </TouchableOpacity>
         )}
         {showProfile && (
-          <TouchableOpacity style={styles.iconBtnCompact} onPress={handleProfile} activeOpacity={0.7}>
-            <Ionicons name="person" size={14} color={COLORS.accent} />
+          <TouchableOpacity style={styles.profileBtnCompact} onPress={handleProfile} activeOpacity={0.7}>
+            <Ionicons name="person" size={15} color={COLORS.accent} />
           </TouchableOpacity>
         )}
       </View>
@@ -235,7 +235,7 @@ const styles = StyleSheet.create({
   actions: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 10,
+    gap: 8,
   },
   iconBtn: {
     width: 40,
@@ -253,19 +253,19 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   profileBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: "rgba(229,9,20,0.12)",
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: "rgba(229,9,20,0.10)",
     borderWidth: 1,
-    borderColor: `${COLORS.accent}88`,
+    borderColor: `${COLORS.accent}66`,
     alignItems: "center",
     justifyContent: "center",
     shadowColor: COLORS.accent,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.25,
-    shadowRadius: 8,
-    elevation: 5,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.18,
+    shadowRadius: 5,
+    elevation: 3,
   },
   containerCompact: {
     paddingBottom: 4,
@@ -294,6 +294,16 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.cardElevated,
     borderWidth: 1,
     borderColor: COLORS.border,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  profileBtnCompact: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: "rgba(229,9,20,0.11)",
+    borderWidth: 1,
+    borderColor: `${COLORS.accent}66`,
     alignItems: "center",
     justifyContent: "center",
   },
