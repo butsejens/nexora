@@ -1352,14 +1352,21 @@ function TeamSide({ name, logo, onPress, followed, onToggleFollow, align = "left
   return (
     <View style={styles.teamSideWrap}>
       <TouchableOpacity
-        style={styles.teamSide}
+        style={styles.teamSideCard}
         onPress={onPress}
         activeOpacity={onPress ? 0.7 : 1}
       >
         <TeamLogo uri={logo} teamName={name} size={logoSize} />
-        <Text style={[styles.teamName, width < 360 && { fontSize: 10, maxWidth: 80 }]} numberOfLines={2}>{name}</Text>
+        <Text style={[styles.teamName, width < 360 && { fontSize: 10, maxWidth: 84 }]} numberOfLines={2}>{name}</Text>
       </TouchableOpacity>
-      <TouchableOpacity style={[styles.teamFollowBtn, followed ? styles.teamFollowBtnActive : null]} onPress={onToggleFollow}>
+      <TouchableOpacity
+        style={[
+          styles.teamFollowBtnFloating,
+          align === "left" ? { right: 8 } : { left: 8 },
+          followed ? styles.teamFollowBtnActive : null,
+        ]}
+        onPress={onToggleFollow}
+      >
         <Ionicons name={followed ? "heart" : "heart-outline"} size={14} color={followed ? "#fff" : COLORS.textMuted} />
       </TouchableOpacity>
     </View>
@@ -2366,7 +2373,7 @@ function initialsFrom(name: string): string {
   return (name || "?").trim().split(/\s+/).filter(Boolean).slice(0, 2).map((p) => p[0]).join("").toUpperCase() || "?";
 }
 
-function PitchDot({ player, color, teamName, league }: { player: any; color: string; teamName?: string; league?: string }) {
+function PitchDot({ player, color, teamName, league, rowSize = 4 }: { player: any; color: string; teamName?: string; league?: string; rowSize?: number }) {
   const seed = useMemo(() => ({
     id: String(player?.id || ""),
     name: String(player?.name || ""),
@@ -2384,6 +2391,9 @@ function PitchDot({ player, color, teamName, league }: { player: any; color: str
   const [imageFailed, setImageFailed] = React.useState(false);
   const currentPhoto = !imageFailed ? resolvedPhoto : null;
   const showPhoto = Boolean(currentPhoto);
+  const tightRow = rowSize >= 5;
+  const circleSize = tightRow ? 32 : 38;
+  const wrapSize = tightRow ? 52 : 62;
 
   useEffect(() => {
     setResolvedPhoto(getBestCachedOrSeedPlayerImage(seed));
@@ -2401,22 +2411,22 @@ function PitchDot({ player, color, teamName, league }: { player: any; color: str
   }, [seed]);
 
   return (
-    <View style={styles.pitchDotWrap}>
-      <View style={[styles.pitchDotCircle, { borderColor: color }]}>
+    <View style={[styles.pitchDotWrap, { width: wrapSize, maxWidth: wrapSize }]}>
+      <View style={[styles.pitchDotCircle, { borderColor: color, width: circleSize, height: circleSize, borderRadius: tightRow ? 7 : 8 }]}>
         {showPhoto ? (
           <Image
             source={{ uri: currentPhoto! }}
-            style={styles.pitchDotPhoto}
+            style={[styles.pitchDotPhoto, { width: circleSize - 3, height: circleSize - 3, borderRadius: tightRow ? 6 : 7 }]}
             onError={() => {
               setImageFailed(true);
             }}
           />
         ) : null}
         {!showPhoto ? (
-          <Text style={[styles.pitchDotNum, { color }]}>{player.jersey || "—"}</Text>
+          <Text style={[styles.pitchDotNum, { color, fontSize: tightRow ? 10 : 12 }]}>{player.jersey || "—"}</Text>
         ) : null}
       </View>
-      <Text style={styles.pitchDotName} numberOfLines={1}>{shortPlayerName(player.name)}</Text>
+      <Text style={[styles.pitchDotName, tightRow ? { fontSize: 7 } : null]} numberOfLines={1}>{shortPlayerName(player.name)}</Text>
     </View>
   );
 }
@@ -2450,7 +2460,7 @@ function CombinedPitchViewInner({ homeTeamData, awayTeamData, league }: { homeTe
       {homeRows.map((row, ri) => (
         <View key={`home_${ri}`} style={styles.combinedPitchRow}>
           {row.map((p: any, pi: number) => (
-            <PitchDot key={`h_${p?.id || p?.name || pi}`} player={p} color={COLORS.accent} teamName={homeTeamData?.team} league={league} />
+            <PitchDot key={`h_${p?.id || p?.name || pi}`} player={p} color={COLORS.accent} teamName={homeTeamData?.team} league={league} rowSize={row.length} />
           ))}
         </View>
       ))}
@@ -2462,7 +2472,7 @@ function CombinedPitchViewInner({ homeTeamData, awayTeamData, league }: { homeTe
       {awayRows.map((row, ri) => (
         <View key={`away_${ri}`} style={styles.combinedPitchRow}>
           {row.map((p: any, pi: number) => (
-            <PitchDot key={`a_${p?.id || p?.name || pi}`} player={p} color="#5D9EFF" teamName={awayTeamData?.team} league={league} />
+            <PitchDot key={`a_${p?.id || p?.name || pi}`} player={p} color="#5D9EFF" teamName={awayTeamData?.team} league={league} rowSize={row.length} />
           ))}
         </View>
       ))}
@@ -3018,14 +3028,14 @@ const styles = StyleSheet.create({
   matchHeader: {
     width: "100%",
     alignItems: "center",
-    gap: 14,
+    gap: 12,
     borderRadius: 18,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.10)",
-    backgroundColor: "rgba(255,255,255,0.03)",
-    paddingHorizontal: 12,
+    borderColor: "rgba(255,255,255,0.12)",
+    backgroundColor: "rgba(18,18,30,0.78)",
+    paddingHorizontal: 10,
     paddingTop: 12,
-    paddingBottom: 14,
+    paddingBottom: 12,
   },
   competitionRow: {
     width: "100%",
@@ -3120,18 +3130,30 @@ const styles = StyleSheet.create({
     fontSize: 10,
     textTransform: "capitalize",
   },
-  scoreRow: { flexDirection: "row", alignItems: "center", width: "100%", paddingHorizontal: 4, justifyContent: "center" },
-  teamSideWrap: { flex: 1, alignItems: "center", gap: 8 },
-  teamSide: { alignItems: "center", gap: 8 },
-  teamFollowBtn: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
+  scoreRow: { flexDirection: "row", alignItems: "center", width: "100%", paddingHorizontal: 2, justifyContent: "center", gap: 8 },
+  teamSideWrap: { flex: 1, alignItems: "center", position: "relative" },
+  teamSideCard: {
+    width: "100%",
+    alignItems: "center",
+    gap: 7,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.1)",
+    backgroundColor: "rgba(255,255,255,0.04)",
+    paddingVertical: 9,
+    paddingHorizontal: 6,
+  },
+  teamFollowBtnFloating: {
+    position: "absolute",
+    top: -6,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "rgba(255,255,255,0.07)",
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.12)",
+    borderColor: "rgba(255,255,255,0.18)",
   },
   teamFollowBtnActive: {
     backgroundColor: COLORS.accent,
@@ -3145,13 +3167,13 @@ const styles = StyleSheet.create({
   },
   teamName: {
     fontFamily: "Inter_700Bold",
-    fontSize: 13,
+    fontSize: 12,
     color: COLORS.text,
-    lineHeight: 17,
+    lineHeight: 16,
     textAlign: "center",
-    maxWidth: 112,
+    maxWidth: 120,
   },
-  scoreCenter: { minWidth: 92, alignItems: "center", gap: 5 },
+  scoreCenter: { minWidth: 104, alignItems: "center", gap: 5 },
   score: {
     fontFamily: "Inter_800ExtraBold",
     fontSize: 44,
@@ -3195,8 +3217,8 @@ const styles = StyleSheet.create({
     gap: 6,
     borderRadius: 999,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.16)",
-    paddingHorizontal: 14,
+    borderColor: "rgba(255,255,255,0.22)",
+    paddingHorizontal: 16,
     paddingVertical: 9,
     backgroundColor: "rgba(255,255,255,0.06)",
     minHeight: 36,
@@ -3839,12 +3861,12 @@ const styles = StyleSheet.create({
   },
   pitchRow: {
     flexDirection: "row",
-    justifyContent: "space-evenly",
+    justifyContent: "center",
     alignItems: "center",
-    gap: 8,
+    gap: 4,
     zIndex: 2,
   },
-  pitchPlayerWrap: { minWidth: 72, flex: 1, maxWidth: 120 },
+  pitchPlayerWrap: { minWidth: 56, flex: 1, maxWidth: 92 },
   lineupListCard: {
     backgroundColor: COLORS.card,
     borderWidth: 1,
@@ -4013,26 +4035,26 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.15)",
-    paddingVertical: 16,
-    paddingHorizontal: 16,
-    gap: 6,
+    paddingVertical: 12,
+    paddingHorizontal: 10,
+    gap: 4,
     overflow: "hidden",
     position: "relative",
     alignItems: "center",
     alignSelf: "center",
     width: "100%",
     maxWidth: 460,
-    minHeight: 560,
+    minHeight: 520,
   },
   combinedPitchRow: {
     flexDirection: "row",
-    justifyContent: "space-evenly",
+    justifyContent: "center",
     alignItems: "center",
     alignSelf: "stretch",
     zIndex: 2,
-    paddingHorizontal: 2,
-    minHeight: 58,
-    gap: 6,
+    paddingHorizontal: 0,
+    minHeight: 52,
+    gap: 4,
   },
   pitchDivider: {
     height: 1,

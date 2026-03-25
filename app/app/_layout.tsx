@@ -75,17 +75,22 @@ function prefetchHomeData() {
     }
   };
 
-  // — Sports home —
-  fetchAndCache(`/api/sports/live?date=${date}`,         "sports:live:" + today,            TTL.LIVE,         ["sports", "live", today]);
-  fetchAndCache(`/api/sports/by-date?date=${date}`,      `sports:today:${today}`,           TTL.SPORTS_TODAY, ["sports", "today", today]);
-  fetchAndCache(`/api/sports/menu-tools?date=${date}&league=all`, `sports:menu-tools:${today}`, TTL.HIGHLIGHTS, ["sports", "menu-tools", today, "all"]);
-  fetchAndCache("/api/sports/highlights",                "sports:highlights",               TTL.HIGHLIGHTS,   ["sports", "highlights"]);
+  // Phase A (critical): first paint data for sports + home rails.
+  void Promise.allSettled([
+    fetchAndCache(`/api/sports/live?date=${date}`, "sports:live:" + today, TTL.LIVE, ["sports", "live", today]),
+    fetchAndCache(`/api/sports/by-date?date=${date}`, `sports:today:${today}`, TTL.SPORTS_TODAY, ["sports", "today", today]),
+    fetchAndCache("/api/sports/highlights", "sports:highlights", TTL.HIGHLIGHTS, ["sports", "highlights"]),
+    fetchAndCache("/api/movies/trending", "movies:trending", TTL.TRENDING, ["movies", "trending"]),
+    fetchAndCache("/api/series/trending", "series:trending", TTL.TRENDING, ["series", "trending"]),
+  ]);
 
-  // — Movies & Series —
-  fetchAndCache("/api/movies/trending",          "movies:trending", TTL.TRENDING, ["movies", "trending"]);
-  fetchAndCache("/api/movies/genres-catalog?page=1", "movies:genres", TTL.GENRES, ["movies", "genres"]);
-  fetchAndCache("/api/series/trending",          "series:trending", TTL.TRENDING, ["series", "trending"]);
-  fetchAndCache("/api/series/genres-catalog?page=1", "series:genres", TTL.GENRES, ["series", "genres"]);
+  // Phase B (background): enrich secondary tabs and warm server-side sports caches.
+  setTimeout(() => {
+    void fetchAndCache(`/api/sports/menu-tools?date=${date}&league=all`, `sports:menu-tools:${today}`, TTL.HIGHLIGHTS, ["sports", "menu-tools", today, "all"]);
+    void fetchAndCache("/api/movies/genres-catalog?page=1", "movies:genres", TTL.GENRES, ["movies", "genres"]);
+    void fetchAndCache("/api/series/genres-catalog?page=1", "series:genres", TTL.GENRES, ["series", "genres"]);
+    void apiRequest("GET", "/api/sports/prefetch-home").catch(() => undefined);
+  }, 1200);
 }
 
 SplashScreen.preventAutoHideAsync();

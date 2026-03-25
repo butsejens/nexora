@@ -1271,6 +1271,20 @@ export default function SportsScreen() {
     return resolveEspnLeagueForMatch(match);
   }, []);
 
+  const openReplay = useCallback((item: any, fallbackId: string) => {
+    const rawUrl = safeStr(item?.embedUrl || item?.matchUrl || item?.url || "");
+    if (!rawUrl) return;
+    router.push({
+      pathname: "/player",
+      params: {
+        embedUrl: rawUrl,
+        title: safeStr(item?.title) || `${safeStr(item?.homeTeam)} vs ${safeStr(item?.awayTeam)}`,
+        type: "sport",
+        contentId: `sport_replay_${fallbackId}`,
+      },
+    });
+  }, []);
+
   const handleMatchPress = useCallback((match: any) => {
     router.push({
       pathname: "/match-detail",
@@ -1495,7 +1509,7 @@ export default function SportsScreen() {
     (Platform.OS === "web" ? 0 : insets.top) + (compactHeader ? 55 : 81) + 59
   );
   const [catBarMeasuredHeight, setCatBarMeasuredHeight] = useState(showCompetitionsSection ? 57 : 0);
-  const headerAreaHeight = headerContainerHeight + catBarMeasuredHeight;
+  const headerAreaHeight = headerContainerHeight + (showCompetitionsSection ? catBarMeasuredHeight : 0);
 
   return (
     <View style={styles.container}>
@@ -1777,57 +1791,17 @@ export default function SportsScreen() {
             </ScrollView>
 
             {/* ── HIGHLIGHTS & REPLAYS ── */}
-            {(realHighlights.length > 0 || sortedFinished.length > 0) && (
+            {realHighlights.length > 0 && (
               <>
                 <SectionTitle title={t("sportsHome.highlightsReplays")} accent />
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.carouselContent}>
-                  {realHighlights.length > 0 ? (
-                    realHighlights.slice(0, 15).map((hl: any, idx: number) => (
-                      <HighlightCard key={hl.id || idx} match={hl} onPress={() => {
-                        const url = hl.embedUrl || hl.matchUrl;
-                        if (url) {
-                          router.push({
-                            pathname: "/player",
-                            params: {
-                              embedUrl: url,
-                              title: hl.title || `${hl.homeTeam || ""} vs ${hl.awayTeam || ""}`,
-                              type: "sport",
-                              contentId: `sport_${hl.id || idx}`,
-                            },
-                          });
-                        }
-                      }} />
-                    ))
-                  ) : (
-                    sortedFinished.slice(0, 10).map((match: any) => (
-                      <HighlightCard key={match.id} match={match} onPress={() => {
-                        router.push({
-                          pathname: "/match-detail",
-                          params: {
-                            matchId: match.id,
-                            homeTeam: match.homeTeam,
-                            awayTeam: match.awayTeam,
-                            homeTeamLogo: match.homeTeamLogo || "",
-                            awayTeamLogo: match.awayTeamLogo || "",
-                            homeScore: String(match.homeScore ?? 0),
-                            awayScore: String(match.awayScore ?? 0),
-                            league: match.league,
-                            espnLeague: resolveEspnLeague(match),
-                            minute: match.minute !== undefined ? String(match.minute) : "",
-                            status: resolveMatchBucket({
-                              status: match.status,
-                              minute: match.minute,
-                              homeScore: match.homeScore,
-                              awayScore: match.awayScore,
-                              startDate: match.startDate,
-                            }),
-                            sport: match.sport,
-                            initialTab: "highlights",
-                          },
-                        });
-                      }} />
-                    ))
-                  )}
+                  {realHighlights.slice(0, 15).map((hl: any, idx: number) => (
+                    <HighlightCard
+                      key={hl.id || idx}
+                      match={hl}
+                      onPress={() => openReplay(hl, String(hl.id || idx))}
+                    />
+                  ))}
                 </ScrollView>
               </>
             )}
