@@ -72,10 +72,9 @@ export function getApiBaseCandidates(): string[] {
     if (!__DEV__) {
       return unique([
         lastWorkingApiBase,
+        DEFAULT_CLOUD_API_BASE,
         ...explicitList,
         explicit,
-        DEFAULT_CLOUD_API_BASE,
-        inferredNative,
       ]);
     }
 
