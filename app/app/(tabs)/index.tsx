@@ -99,7 +99,7 @@ async function fetchSportsMenuTools(path: string): Promise<SportsMenuToolsPayloa
   };
 }
 
-async function fetchSportsPayloadWithTimeout(path: string, timeoutMs = 6500): Promise<SportsPayload> {
+async function fetchSportsPayloadWithTimeout(path: string, timeoutMs = 18000): Promise<SportsPayload> {
   return await Promise.race([
     fetchSportsPayload(path),
     new Promise<SportsPayload>((_, reject) => setTimeout(() => reject(new Error("Sports request timeout")), timeoutMs)),
@@ -866,7 +866,7 @@ export default function SportsScreen() {
       let best: SportsPayload = { live: [], upcoming: [], finished: [] };
       for (const path of candidates) {
         try {
-          const payload = await fetchSportsPayloadWithTimeout(path, 6000);
+          const payload = await fetchSportsPayloadWithTimeout(path, 16000);
           const liveCount = Array.isArray(payload?.live) ? payload.live.length : 0;
           const total = liveCount + (payload?.upcoming?.length || 0) + (payload?.finished?.length || 0);
           if (liveCount > 0) return payload;
@@ -892,12 +892,12 @@ export default function SportsScreen() {
     queryFn: async () => {
       const date = encodeURIComponent(selectedDate);
       try {
-        const byDate = await fetchSportsPayloadWithTimeout(`/api/sports/by-date?date=${date}`);
+        const byDate = await fetchSportsPayloadWithTimeout(`/api/sports/by-date?date=${date}`, 18000);
         const hasByDateData = (byDate.live?.length || 0) + (byDate.upcoming?.length || 0) + (byDate.finished?.length || 0) > 0;
         if (hasByDateData || byDate.error) return byDate;
       } catch { /* fallback below */ }
       try {
-        const today = await fetchSportsPayloadWithTimeout(`/api/sports/today?date=${date}`);
+        const today = await fetchSportsPayloadWithTimeout(`/api/sports/today?date=${date}`, 18000);
         const hasData = (today.live?.length || 0) + (today.upcoming?.length || 0) + (today.finished?.length || 0) > 0;
         if (hasData || today.error) return today;
       } catch { /* no fallback data */ }
