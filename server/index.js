@@ -3450,6 +3450,21 @@ function normalizeLeagueName(name) {
   return n;
 }
 
+function leagueParamFromRequest(rawValue) {
+  const safeRaw = String(rawValue || "").slice(0, 120);
+  return normalizeLeagueName(decodeURIComponent(safeRaw));
+}
+
+function withScorersCompat(payload) {
+  const scorers = Array.isArray(payload?.scorers) ? payload.scorers : [];
+  return { ...payload, scorers, players: scorers };
+}
+
+function withAssistsCompat(payload) {
+  const assists = Array.isArray(payload?.assists) ? payload.assists : [];
+  return { ...payload, assists, players: assists };
+}
+
 function seasonForDate(d = new Date()) {
   // Season 2025/26 starts in July 2025 → return 2025
   // Season 2024/25 starts in July 2024 → return 2024
@@ -4786,6 +4801,7 @@ app.get("/health", (req, res) => {
     process.env.XAI_API_KEY
   );
   // Do not expose which secret-backed providers are configured.
+  res.set("Cache-Control", "no-store");
   res.json({ ok: true, time: new Date().toISOString(), source: footballSource(), tz: TZ, aiReady, integrationsReady: { zilliz: _zillizReady } });
 });
 
@@ -6869,7 +6885,7 @@ app.get("/api/sports/standings/:league", async (req, res) => {
 
 // Top scorers
 app.get("/api/sports/topscorers/:league", async (req, res) => {
-  const leagueName = normalizeLeagueName(decodeURIComponent(req.params.league));
+  const leagueName = leagueParamFromRequest(req.params.league);
   const leagueId = LEAGUE_IDS[leagueName];
   const season = seasonForDate(new Date());
   const seasonLabel = formatSeasonLabel(season);
@@ -6886,7 +6902,7 @@ app.get("/api/sports/topscorers/:league", async (req, res) => {
           console.log(`[topscorers] ${leagueName}: ESPN core → ${scorers.length} scorers`);
           // Keep response fast for mobile timeouts; always return at least a valid fallback avatar.
           scorers = ensurePlayersHaveValidPhotos(scorers);
-          return { league: leagueName, season, seasonLabel, scorers, source: "espn-core" };
+          return withScorersCompat({ league: leagueName, season, seasonLabel, scorers, source: "espn-core" });
         }
       } catch (e) {
         console.warn(`[topscorers] ESPN core failed for ${leagueName}: ${e.message}`);
@@ -6899,27 +6915,27 @@ app.get("/api/sports/topscorers/:league", async (req, res) => {
           htmlScorers = await enrichScorersLogos(htmlScorers, leagueName);
           console.log(`[topscorers] ${leagueName}: ESPN HTML → ${htmlScorers.length} scorers`);
           htmlScorers = ensurePlayersHaveValidPhotos(htmlScorers);
-          return { league: leagueName, season, seasonLabel, scorers: htmlScorers, source: "espn-html" };
+          return withScorersCompat({ league: leagueName, season, seasonLabel, scorers: htmlScorers, source: "espn-html" });
         }
       } catch (e) {
         console.warn(`[topscorers] ESPN HTML failed for ${leagueName}: ${e.message}`);
       }
 
       if (!leagueId) {
-        return { league: leagueName, season, seasonLabel, scorers: [], error: "League niet gevonden" };
+        return withScorersCompat({ league: leagueName, season, seasonLabel, scorers: [], error: "League niet gevonden" });
       }
-      return { league: leagueName, season, seasonLabel, scorers: [], source: "espn", error: "Topscorers tijdelijk niet beschikbaar via ESPN" };
+      return withScorersCompat({ league: leagueName, season, seasonLabel, scorers: [], source: "espn", error: "Topscorers tijdelijk niet beschikbaar via ESPN" });
     });
-    res.json(payload);
+    res.json(withScorersCompat(payload));
   } catch (e) {
     console.error(`[topscorers] Error for ${leagueName}:`, e.message);
-    res.status(200).json({ league: leagueName, season, seasonLabel, scorers: [], error: String(e?.message || e) });
+    res.status(200).json(withScorersCompat({ league: leagueName, season, seasonLabel, scorers: [], error: String(e?.message || e) }));
   }
 });
 
 // Top assists
 app.get("/api/sports/topassists/:league", async (req, res) => {
-  const leagueName = normalizeLeagueName(decodeURIComponent(req.params.league));
+  const leagueName = leagueParamFromRequest(req.params.league);
   const leagueId = LEAGUE_IDS[leagueName];
   const season = seasonForDate(new Date());
   const seasonLabel = formatSeasonLabel(season);
@@ -6933,20 +6949,20 @@ app.get("/api/sports/topassists/:league", async (req, res) => {
           assists = await enrichScorersLogos(assists, leagueName);
           console.log(`[topassists] ${leagueName}: ESPN core → ${assists.length} assisters`);
           assists = ensurePlayersHaveValidPhotos(assists);
-          return { league: leagueName, season, seasonLabel, assists, source: "espn-core" };
+          return withAssistsCompat({ league: leagueName, season, seasonLabel, assists, source: "espn-core" });
         }
       } catch (e) {
         console.warn(`[topassists] ESPN core failed for ${leagueName}: ${e.message}`);
       }
       if (!leagueId) {
-        return { league: leagueName, season, seasonLabel, assists: [], error: "League niet gevonden" };
+        return withAssistsCompat({ league: leagueName, season, seasonLabel, assists: [], error: "League niet gevonden" });
       }
-      return { league: leagueName, season, seasonLabel, assists: [], source: "espn", error: "Top assists tijdelijk niet beschikbaar" };
+      return withAssistsCompat({ league: leagueName, season, seasonLabel, assists: [], source: "espn", error: "Top assists tijdelijk niet beschikbaar" });
     });
-    res.json(payload);
+    res.json(withAssistsCompat(payload));
   } catch (e) {
     console.error(`[topassists] Error for ${leagueName}:`, e.message);
-    res.status(200).json({ league: leagueName, season, seasonLabel: "", assists: [], error: String(e?.message || e) });
+    res.status(200).json(withAssistsCompat({ league: leagueName, season, seasonLabel: "", assists: [], error: String(e?.message || e) }));
   }
 });
 

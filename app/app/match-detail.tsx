@@ -16,6 +16,7 @@ import { apiRequest } from "@/lib/query-client";
 import { openInVlc } from "@/lib/vlc";
 import { TeamLogo } from "@/components/TeamLogo";
 import { buildErrorReference, normalizeApiError } from "@/lib/error-messages";
+import { getLeaderboardRows } from "@/lib/sports-data";
 import { safeStr } from "@/lib/utils";
 import { SilentResetBoundary } from "@/components/SilentResetBoundary";
 import { useNexora } from "@/context/NexoraContext";
@@ -271,7 +272,7 @@ export default function MatchDetailScreen() {
       ]);
 
       const standings = Array.isArray(standingsData?.standings) ? standingsData.standings : [];
-      const scorers = Array.isArray(scorersData?.scorers) ? scorersData.scorers : [];
+      const scorers = getLeaderboardRows("topscorers", scorersData);
 
       const matchStanding = (teamName?: string) => {
         const teamKey = normalizeTeam(teamName);

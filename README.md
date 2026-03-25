@@ -94,3 +94,16 @@ Wanneer is toch een nieuwe APK nodig?
 ## Common error: ENOENT package.json
 If you see `Could not read package.json`, you opened the wrong folder.
 Open the **root** folder (this one), not the subfolders.
+
+## Quick sports standings smoke test
+To quickly verify ESPN standings coverage for the main leagues:
+
+```bash
+npm run sports:standings:smoke
+```
+
+Optional custom league set:
+
+```bash
+node scripts/sports-standings-smoke.mjs --leagues=eng.1,bel.1,uefa.champions
+```
