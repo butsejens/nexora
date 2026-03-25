@@ -53,7 +53,11 @@ ensure_account_id() {
     return 0
   fi
 
-  perl -0777 -i -pe 's/^account_id\s*=\s*"[^"]*"/account_id = "'"$detected"'"/m' "$WRANGLER_TOML"
+  if grep -q '^account_id\s*=\s*"' "$WRANGLER_TOML"; then
+    perl -0777 -i -pe 's/^account_id\s*=\s*"[^"]*"/account_id = "'"$detected"'"/m' "$WRANGLER_TOML"
+  else
+    perl -0777 -i -pe 's/workers_dev\s*=\s*true/workers_dev = true\naccount_id = "'"$detected"'"/m' "$WRANGLER_TOML"
+  fi
   echo "OK: Updated account_id in wrangler.toml"
 }
 
@@ -110,8 +114,39 @@ tail -n 6 /tmp/nexora-r2-preview.log || true
 tail -n 6 /tmp/nexora-r2-prod.log || true
 
 echo "5) Writing IDs into wrangler.toml"
-perl -0777 -i -pe 's/database_id\s*=\s*"[^"]*"/database_id = "'"$d1_id"'"/g' "$WRANGLER_TOML"
-perl -0777 -i -pe 's/id\s*=\s*"[^"]*"\npreview_id\s*=\s*"[^"]*"/id = "'"$kv_prod_id"'"\npreview_id = "'"$kv_preview_id"'"/g' "$WRANGLER_TOML"
+if grep -q '^\[\[d1_databases\]\]' "$WRANGLER_TOML"; then
+  perl -0777 -i -pe 's/database_id\s*=\s*"[^"]*"/database_id = "'"$d1_id"'"/g' "$WRANGLER_TOML"
+else
+  cat >> "$WRANGLER_TOML" <<EOF
+
+[[d1_databases]]
+binding = "SPORTS_DB"
+database_name = "nexora-sports"
+database_id = "$d1_id"
+EOF
+fi
+
+if grep -q '^\[\[kv_namespaces\]\]' "$WRANGLER_TOML"; then
+  perl -0777 -i -pe 's/id\s*=\s*"[^"]*"\npreview_id\s*=\s*"[^"]*"/id = "'"$kv_prod_id"'"\npreview_id = "'"$kv_preview_id"'"/g' "$WRANGLER_TOML"
+else
+  cat >> "$WRANGLER_TOML" <<EOF
+
+[[kv_namespaces]]
+binding = "SPORTS_CACHE_KV"
+id = "$kv_prod_id"
+preview_id = "$kv_preview_id"
+EOF
+fi
+
+if ! grep -q '^\[\[r2_buckets\]\]' "$WRANGLER_TOML"; then
+  cat >> "$WRANGLER_TOML" <<'EOF'
+
+[[r2_buckets]]
+binding = "ASSETS_R2"
+bucket_name = "nexora-assets"
+preview_bucket_name = "nexora-assets-preview"
+EOF
+fi
 
 echo "6) Applying remote migrations"
 npx wrangler d1 migrations apply SPORTS_DB --remote
