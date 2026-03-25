@@ -386,6 +386,10 @@ async function getPlayerProfileFromApi(player: PlayerSeed): Promise<any | null> 
 
 function collectCandidates(player: PlayerSeed, profile: any | null): Array<{ url: string; source: PlayerImageEntry["source"]; confidence: number }> {
   const candidates: Array<{ url: string; source: PlayerImageEntry["source"]; confidence: number }> = [];
+  const playerId = normalizeText(player.id);
+  const espnHeadshot = /^\d+$/.test(playerId)
+    ? `https://a.espncdn.com/i/headshots/soccer/players/full/${encodeURIComponent(playerId)}.png`
+    : "";
 
   const direct = [
     player.photo,
@@ -394,6 +398,7 @@ function collectCandidates(player: PlayerSeed, profile: any | null): Array<{ url
     profile?.theSportsDbPhoto,
     profile?.headshot,
     profile?.headshotUrl,
+    espnHeadshot,
   ]
     .map((x) => normalizeText(x || ""))
     .filter((x) => isValidHttpUrl(x));

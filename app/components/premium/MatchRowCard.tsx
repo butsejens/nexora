@@ -136,10 +136,25 @@ function MatchRowCardInner({
                 {sportIcon ? `${sportIcon} ` : ''}{match.league || 'Match'}
               </Text>
             </View>
-            <View style={[s.metaBadge, live ? s.metaBadgeLive : null]}>
-              <Text style={[s.metaBadgeText, live ? s.metaBadgeTextLive : null]}>
-                {live ? 'LIVE' : finished ? 'FT' : 'UPCOMING'}
-              </Text>
+            <View style={s.metaActions}>
+              {onNotificationToggle ? (
+                <TouchableOpacity
+                  style={[s.notifyQuickBtn, isNotificationOn ? s.notifyQuickBtnActive : null]}
+                  onPress={onNotificationToggle}
+                  activeOpacity={0.75}
+                >
+                  <Ionicons
+                    name={isNotificationOn ? 'notifications' : 'notifications-outline'}
+                    size={12}
+                    color={isNotificationOn ? '#fff' : COLORS.textMuted}
+                  />
+                </TouchableOpacity>
+              ) : null}
+              <View style={[s.metaBadge, live ? s.metaBadgeLive : null]}>
+                <Text style={[s.metaBadgeText, live ? s.metaBadgeTextLive : null]}>
+                  {live ? 'LIVE' : finished ? 'FT' : 'UPCOMING'}
+                </Text>
+              </View>
             </View>
           </View>
 
@@ -304,6 +319,25 @@ const s = StyleSheet.create({
   metaBadgeLive: {
     backgroundColor: 'rgba(255, 59, 92, 0.12)',
     borderColor: 'rgba(255, 59, 92, 0.34)',
+  },
+  metaActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  notifyQuickBtn: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.cardElevated,
+  },
+  notifyQuickBtnActive: {
+    borderColor: 'rgba(255, 59, 92, 0.36)',
+    backgroundColor: COLORS.live,
   },
   metaBadgeText: {
     fontSize: 9,

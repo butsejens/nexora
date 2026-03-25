@@ -513,6 +513,7 @@ const PlayerCard = React.memo(function PlayerCard({ player, teamName, league }: 
     player?.photo,
     player?.theSportsDbPhoto || null,
     espnCdn,
+    `https://ui-avatars.com/api/?name=${encodeURIComponent(String(player?.name || "Player"))}&size=256&background=1a1a2e&color=e0e0e0&bold=true&format=png`,
   ].filter(Boolean) as string[];
   const [photoIndex, setPhotoIndex] = useState(0);
   const [resolvedPhoto, setResolvedPhoto] = useState<string | null>(cachedPhoto || null);

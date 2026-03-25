@@ -855,6 +855,11 @@ export default function PlayerScreen() {
   // ── Premium gate — block playback if user lacks entitlement ─────────────
   const contentCategory = type === "movie" ? "movies" : type === "series" ? "series" : null;
   const premiumBlocked = contentCategory && !hasPremium(contentCategory as any);
+  const normalizedSeason = Number(season || "1") || 1;
+  const normalizedEpisode = Number(episode || "1") || 1;
+  const playbackHistoryId = type === "series"
+    ? `${String(contentId || tmdbId || title || "series")}::s${normalizedSeason}e${normalizedEpisode}`
+    : String(contentId || tmdbId || `${type || "movie"}_${Date.now()}`);
 
   // Embed provider state
   const [providerIndex, setProviderIndex]     = useState(0);
@@ -998,11 +1003,14 @@ export default function PlayerScreen() {
     const isSport = type === "sport" || (contentId || "").startsWith("sport_");
     if (!trailerKey && !isSport) {
       addToHistory({
-        id: contentId || `${type}_${Date.now()}`,
+        id: playbackHistoryId,
+        contentId: String(contentId || tmdbId || ""),
         type: (type as any) || "movie",
         title: String(title || ""),
         poster: poster || null,
         tmdbId: tmdbId ? Number(tmdbId) : undefined,
+        season: type === "series" ? normalizedSeason : undefined,
+        episode: type === "series" ? normalizedEpisode : undefined,
         lastWatched: new Date().toISOString(),
       });
     }
@@ -1011,8 +1019,7 @@ export default function PlayerScreen() {
       // Save final progress before unmount
       const { currentTime: ct, duration: dur } = lastProgressRef.current;
       if (ct > 0 && dur > 0) {
-        const id = contentId || `${type}_${Date.now()}`;
-        updateProgress(id, ct, dur);
+        updateProgress(playbackHistoryId, ct, dur);
       }
       if (progressSaveTimerRef.current) clearTimeout(progressSaveTimerRef.current);
       // Mark as disposed — all async callbacks will bail out
@@ -1030,7 +1037,7 @@ export default function PlayerScreen() {
       embedProgressTimerRef.current = null;
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [addToHistory, contentId, scheduleHide, title, type]);
+  }, [addToHistory, contentId, normalizedEpisode, normalizedSeason, playbackHistoryId, poster, scheduleHide, title, tmdbId, trailerKey, type]);
 
   // ── Embed progress tracking (for Continue Watching) ───────────────────────
   // Embed WebViews can't report currentTime, so we estimate progress with a timer.
@@ -1039,7 +1046,7 @@ export default function PlayerScreen() {
     const isEmbedMode = !effectiveStreamUrl || useFallbackEmbed;
     if (isLoading || !isEmbedMode) return;
     if (!contentId || trailerKey) return;
-    const id = contentId;
+    const id = playbackHistoryId;
     const estimatedDuration = (type === "series") ? 2700 : 7200; // 45min or 120min
     let elapsed = 0;
     embedProgressTimerRef.current = setInterval(() => {
@@ -1052,7 +1059,7 @@ export default function PlayerScreen() {
       embedProgressTimerRef.current = null;
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isLoading, effectiveStreamUrl, useFallbackEmbed, contentId, trailerKey, type]);
+  }, [isLoading, effectiveStreamUrl, useFallbackEmbed, playbackHistoryId, trailerKey, type, updateProgress]);
 
   useEffect(() => {
     // Clear lingering autoplay timers when provider/key changes
@@ -1097,7 +1104,8 @@ export default function PlayerScreen() {
         // Resume from saved position on first load
         if (!resumedRef.current && data.duration > 0 && !trailerKey) {
           resumedRef.current = true;
-          const saved = watchHistory.find(h => h.id === contentId);
+          const saved = watchHistory.find((h) => h.id === playbackHistoryId)
+            || watchHistory.find((h) => h.contentId === String(contentId || tmdbId || ""));
           if (saved?.currentTime && saved.currentTime > 10 && saved.progress && saved.progress < 0.95) {
             const seekTime = Math.max(0, saved.currentTime - 5);
             hlsWebviewRef.current?.injectJavaScript(
@@ -1112,14 +1120,13 @@ export default function PlayerScreen() {
             progressSaveTimerRef.current = null;
             const { currentTime: ct, duration: dur } = lastProgressRef.current;
             if (ct > 0 && dur > 0) {
-              const id = contentId || `${type}_${Date.now()}`;
-              updateProgress(id, ct, dur);
+              updateProgress(playbackHistoryId, ct, dur);
             }
           }, 10000);
         }
       }
     } catch {}
-  }, [contentId, type, updateProgress, watchHistory, trailerKey]);
+  }, [contentId, playbackHistoryId, tmdbId, updateProgress, watchHistory, trailerKey]);
 
   // ── Provider switching ────────────────────────────────────────────────────
   const tryNextProvider = useCallback(() => {

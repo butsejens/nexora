@@ -23,6 +23,17 @@ function Line({ label, value }: { label: string; value: string }) {
   );
 }
 
+function parseMarketValue(value: unknown): number {
+  const text = String(value || "").trim().toLowerCase().replace(/€/g, "").replace(/\s+/g, "");
+  if (!text) return 0;
+  const numeric = Number(text.replace(/,/g, ".").replace(/[^\d.]/g, ""));
+  if (!Number.isFinite(numeric)) return 0;
+  if (text.includes("bn") || text.includes("b")) return numeric * 1_000_000_000;
+  if (text.includes("m")) return numeric * 1_000_000;
+  if (text.includes("k")) return numeric * 1_000;
+  return numeric;
+}
+
 export default function TeamInfoScreen() {
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{ teamId?: string; teamName?: string; league?: string; sport?: string }>();
@@ -42,6 +53,10 @@ export default function TeamInfoScreen() {
 
   const recent = Array.isArray(data?.recentResults) ? data.recentResults : [];
   const upcoming = Array.isArray(data?.upcomingMatches) ? data.upcomingMatches : [];
+  const players = Array.isArray(data?.players) ? data.players : [];
+  const topPlayers = [...players]
+    .sort((a: any, b: any) => parseMarketValue(b?.marketValue) - parseMarketValue(a?.marketValue))
+    .slice(0, 6);
 
   return (
     <View style={styles.container}>
@@ -60,17 +75,52 @@ export default function TeamInfoScreen() {
         </View>
 
         <View style={styles.card}>
+          <Line label="League" value={String(data?.leagueName || league)} />
           <Line label="Country" value={String(data?.country || "")} />
           <Line label="Founded" value={data?.founded ? String(data.founded) : ""} />
           <Line label="Venue" value={String(data?.venue || "")} />
           <Line label="Stadium capacity" value={data?.stadiumCapacity ? Number(data.stadiumCapacity).toLocaleString() : ""} />
           <Line label="Coach" value={String(data?.coach || "")} />
           <Line label="League rank" value={data?.leagueRank ? `#${data.leagueRank}` : ""} />
+          <Line label="Matches played" value={data?.leaguePlayed ? String(data.leaguePlayed) : ""} />
           <Line label="League points" value={data?.leaguePoints ? String(data.leaguePoints) : ""} />
+          <Line label="Form" value={String(data?.form || "")} />
+          <Line label="Record" value={String(data?.record || "")} />
+          <Line label="Club value" value={String(data?.squadMarketValue || "")} />
           <Line label="Goals for / against" value={data?.goalsFor != null && data?.goalsAgainst != null ? `${data.goalsFor} / ${data.goalsAgainst}` : ""} />
           <Line label="Clean sheets" value={data?.cleanSheets != null ? String(data.cleanSheets) : ""} />
           <Line label="Discipline" value={data?.yellowCards != null || data?.redCards != null ? `${data?.yellowCards || 0}Y · ${data?.redCards || 0}R` : ""} />
         </View>
+
+        {(data?.goalsFor != null || data?.goalsAgainst != null || data?.cleanSheets != null) ? (
+          <View style={styles.statsRow}>
+            <View style={styles.statCard}>
+              <Text style={styles.statValue}>{data?.goalsFor ?? 0}</Text>
+              <Text style={styles.statLabel}>Goals For</Text>
+            </View>
+            <View style={styles.statCard}>
+              <Text style={styles.statValue}>{data?.goalsAgainst ?? 0}</Text>
+              <Text style={styles.statLabel}>Goals Against</Text>
+            </View>
+            <View style={styles.statCard}>
+              <Text style={styles.statValue}>{data?.cleanSheets ?? 0}</Text>
+              <Text style={styles.statLabel}>Clean Sheets</Text>
+            </View>
+          </View>
+        ) : null}
+
+        {topPlayers.length > 0 ? (
+          <View style={styles.card}>
+            <Text style={styles.sectionTitle}>Top players</Text>
+            {topPlayers.map((player: any, idx: number) => (
+              <View key={`top_player_${String(player?.id || idx)}`} style={styles.playerRow}>
+                <Text style={styles.playerName} numberOfLines={1}>{String(player?.name || "Unknown")}</Text>
+                <Text style={styles.playerMeta} numberOfLines={1}>{String(player?.positionName || player?.position || "")}</Text>
+                <Text style={styles.playerValue}>{String(player?.marketValue || "-")}</Text>
+              </View>
+            ))}
+          </View>
+        ) : null}
 
         {recent.length > 0 ? (
           <View style={styles.card}>
@@ -108,9 +158,26 @@ const styles = StyleSheet.create({
   teamName: { fontFamily: "Inter_700Bold", fontSize: 20, color: COLORS.text },
   league: { fontFamily: "Inter_500Medium", fontSize: 12, color: COLORS.textMuted },
   card: { backgroundColor: COLORS.card, borderRadius: 14, padding: 12, gap: 8, borderWidth: 1, borderColor: COLORS.border },
+  statsRow: { flexDirection: "row", gap: 8 },
+  statCard: {
+    flex: 1,
+    backgroundColor: COLORS.card,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    alignItems: "center",
+    paddingVertical: 12,
+    gap: 3,
+  },
+  statValue: { fontFamily: "Inter_700Bold", fontSize: 16, color: COLORS.text },
+  statLabel: { fontFamily: "Inter_500Medium", fontSize: 10, color: COLORS.textMuted },
   line: { flexDirection: "row", justifyContent: "space-between", gap: 10 },
   label: { fontFamily: "Inter_500Medium", fontSize: 12, color: COLORS.textMuted },
   value: { fontFamily: "Inter_600SemiBold", fontSize: 12, color: COLORS.text, flex: 1, textAlign: "right" },
   sectionTitle: { fontFamily: "Inter_700Bold", fontSize: 13, color: COLORS.text },
+  playerRow: { flexDirection: "row", alignItems: "center", gap: 8, paddingVertical: 4 },
+  playerName: { flex: 1, fontFamily: "Inter_600SemiBold", fontSize: 12, color: COLORS.text },
+  playerMeta: { fontFamily: "Inter_500Medium", fontSize: 11, color: COLORS.textMuted, maxWidth: 80 },
+  playerValue: { fontFamily: "Inter_700Bold", fontSize: 11, color: COLORS.accent },
   itemText: { fontFamily: "Inter_500Medium", fontSize: 12, color: COLORS.textSecondary },
 });

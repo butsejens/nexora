@@ -25,14 +25,53 @@ function countForKind(kind: SportsLeagueResourceKind, json: any): number {
 }
 
 export function getLeaderboardRows(kind: "topscorers" | "topassists", json: any): any[] {
+  const unwrapRows = (raw: any): any[] => {
+    if (Array.isArray(raw)) return raw;
+    if (Array.isArray(raw?.items)) return raw.items;
+    if (Array.isArray(raw?.entries)) return raw.entries;
+    if (Array.isArray(raw?.leaders)) return raw.leaders;
+    if (Array.isArray(raw?.leaderboard)) return raw.leaderboard;
+    return [];
+  };
+
+  const normalizeAssistShape = (rows: any[]): any[] => {
+    return rows.map((row: any) => {
+      const assists =
+        row?.assists ??
+        row?.displayValue ??
+        row?.value ??
+        row?.statValue ??
+        row?.stats?.assists ??
+        row?.stats?.assistsPerGame ??
+        null;
+      return {
+        ...row,
+        assists,
+        displayValue: row?.displayValue ?? assists,
+      };
+    });
+  };
+
   if (kind === "topscorers") {
-    if (Array.isArray(json?.scorers)) return json.scorers;
-    if (Array.isArray(json?.players)) return json.players;
+    const rows = [
+      ...unwrapRows(json?.scorers),
+      ...unwrapRows(json?.players),
+      ...unwrapRows(json?.topScorers),
+      ...unwrapRows(json?.data),
+    ];
+    if (rows.length > 0) return rows;
     return [];
   }
 
-  if (Array.isArray(json?.assists)) return json.assists;
-  if (Array.isArray(json?.players)) return json.players;
+  const assistsRows = [
+    ...unwrapRows(json?.assists),
+    ...unwrapRows(json?.topAssists),
+    ...unwrapRows(json?.players),
+    ...unwrapRows(json?.leaders),
+    ...unwrapRows(json?.data),
+  ];
+  if (assistsRows.length > 0) return normalizeAssistShape(assistsRows);
+
   return [];
 }
 

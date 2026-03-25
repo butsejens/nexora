@@ -1008,7 +1008,29 @@ export default function SportsScreen() {
 
   const liveQuery = useQuery({
     queryKey: ["sports", "live", selectedDate],
-    queryFn: () => fetchSportsPayload(`/api/sports/live?date=${encodeURIComponent(selectedDate)}`),
+    queryFn: async () => {
+      const date = encodeURIComponent(selectedDate);
+      const candidates = [
+        `/api/sports/live?date=${date}`,
+        `/api/sports/by-date?date=${date}`,
+        "/api/sports/live",
+      ];
+      let best: SportsPayload = { live: [], upcoming: [], finished: [] };
+      for (const path of candidates) {
+        try {
+          const payload = await fetchSportsPayloadWithTimeout(path, 6000);
+          const liveCount = Array.isArray(payload?.live) ? payload.live.length : 0;
+          const total = liveCount + (payload?.upcoming?.length || 0) + (payload?.finished?.length || 0);
+          if (liveCount > 0) return payload;
+          if (total > ((best?.live?.length || 0) + (best?.upcoming?.length || 0) + (best?.finished?.length || 0))) {
+            best = payload;
+          }
+        } catch {
+          // Continue to next fallback endpoint.
+        }
+      }
+      return best;
+    },
     refetchInterval: 8_000,
     refetchIntervalInBackground: true,
     staleTime: 4_000,
@@ -1112,10 +1134,9 @@ export default function SportsScreen() {
   const rawApiError =
     todayQuery.data?.error || liveQuery.data?.error ||
     (todayQuery.error as any)?.message || (liveQuery.error as any)?.message || "";
-  const noRemoteData = !liveFirstLoad && !todayFirstLoad && !hasRemoteData && Boolean(rawApiError);
+  const noRemoteData = !liveFirstLoad && !todayFirstLoad && !hasRemoteData;
   const normalizedApiError = rawApiError ? normalizeApiError(rawApiError) : null;
   const apiErrorRef = useMemo(() => (rawApiError ? buildErrorReference("NX-SPR") : ""), [rawApiError]);
-  const shouldShowApiErrorBanner = Boolean(normalizedApiError) && !hasRemoteData;
 
   const filterBySport = (matches: any[]) => {
     if (sportCategory === "all") return matches;
@@ -1147,6 +1168,12 @@ export default function SportsScreen() {
   const sortedLive = useMemo(() => sortMatchesByCompetitionAndTime(displayLive, selectedDate), [displayLive, selectedDate]);
   const sortedUpcoming = useMemo(() => sortMatchesByCompetitionAndTime(displayUpcoming, selectedDate), [displayUpcoming, selectedDate]);
   const sortedFinished = useMemo(() => sortMatchesByCompetitionAndTime(displayFinished, selectedDate), [displayFinished, selectedDate]);
+
+  const featuredFallbackMatches = useMemo(() => {
+    if (sortedUpcoming.length > 0) return sortedUpcoming.slice(0, 8);
+    if (sortedFinished.length > 0) return sortedFinished.slice(0, 8);
+    return [] as any[];
+  }, [sortedFinished, sortedUpcoming]);
 
   const myTeamMatches = useMemo(() => {
     const favTeams = new Set(
@@ -1565,6 +1592,14 @@ export default function SportsScreen() {
       .filter((x) => x.items.length > 0);
   }, [selectedCountry]);
 
+  const selectedCountryPrimaryCompetition = useMemo(() => {
+    return (selectedCountry?.competitions || []).find((comp) => comp.tier !== "national") || null;
+  }, [selectedCountry]);
+
+  const selectedCountryNationalTeam = useMemo(() => {
+    return (selectedCountry?.competitions || []).find((comp) => comp.tier === "national" && Boolean(comp.nationalTeamName)) || null;
+  }, [selectedCountry]);
+
   const tierLabel = (tier: CompetitionTier) => {
     if (tier === "division1") return tFn("countries.tier1");
     if (tier === "division2") return tFn("countries.tier2");
@@ -1744,19 +1779,26 @@ export default function SportsScreen() {
             <Text style={styles.bannerText}>{t("sportsHome.noMatchesFilter", { filter: SPORT_CATEGORIES.find(c => c.id === sportCategory)?.labelKey ? tFn(SPORT_CATEGORIES.find(c => c.id === sportCategory)!.labelKey) : "" })}</Text>
           </View>
         )}
-        {shouldShowApiErrorBanner && normalizedApiError && (
-          <View style={[styles.banner, styles.bannerError]}>
-            <Ionicons name="warning-outline" size={14} color="#ff6b6b" />
-            <View style={{ flex: 1, gap: 2 }}>
-              <Text style={[styles.bannerText, { color: "#ff6b6b" }]}>{normalizedApiError.userMessage}</Text>
-              <Text style={styles.bannerCode}>Error: {apiErrorRef || normalizedApiError.code}</Text>
-            </View>
-          </View>
-        )}
         {noRemoteData && (
-          <View style={styles.banner}>
-            <Ionicons name="cloud-offline-outline" size={14} color={P.accent} />
-            <Text style={styles.bannerText}>{t("sportsHome.noLiveData")}</Text>
+          <View style={styles.fallbackPanel}>
+            <View style={styles.fallbackHead}>
+              <Ionicons name="cloud-offline-outline" size={14} color={P.accent} />
+              <Text style={styles.fallbackTitle}>{t("sportsHome.noLiveData")}</Text>
+            </View>
+            <Text style={styles.fallbackText}>
+              {normalizedApiError?.userMessage || t("sportsHome.noMatchesToday")}
+            </Text>
+            <View style={styles.fallbackActions}>
+              <TouchableOpacity style={styles.fallbackActionBtn} onPress={() => setSportsView("upcoming")}>
+                <Ionicons name="calendar-outline" size={12} color={P.accent} />
+                <Text style={styles.fallbackActionText}>{t("sportsHome.matchday")}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.fallbackActionBtn} onPress={onRefresh}>
+                <Ionicons name="refresh-outline" size={12} color={P.accent} />
+                <Text style={styles.fallbackActionText}>{t("sportsHome.refresh") || "Refresh"}</Text>
+              </TouchableOpacity>
+            </View>
+            {apiErrorRef ? <Text style={styles.fallbackCode}>Ref: {apiErrorRef}</Text> : null}
           </View>
         )}
 
@@ -1778,7 +1820,7 @@ export default function SportsScreen() {
             )}
 
             {/* ── LIVE NOW ── */}
-            {(liveFirstLoad || sortedLive.length > 0) && (
+            {(liveFirstLoad || sortedLive.length > 0 || featuredFallbackMatches.length > 0) && (
               <>
                 <SectionTitle
                   title={`🔴 ${t("sportsHome.liveNow")}`}
@@ -1790,6 +1832,16 @@ export default function SportsScreen() {
                 {liveFirstLoad ? (
                   <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.carouselContent}>
                     {[1, 2].map(i => <View key={i} style={styles.liveSkeleton} />)}
+                  </ScrollView>
+                ) : sortedLive.length === 0 ? (
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={styles.carouselContent}
+                  >
+                    {featuredFallbackMatches.map((match: any) => (
+                      <TodayMatchCard key={`fallback_${match.id}`} match={match} onPress={() => handleMatchPress(match)} />
+                    ))}
                   </ScrollView>
                 ) : (
                   <ScrollView
@@ -1861,6 +1913,41 @@ export default function SportsScreen() {
                 />
               ))}
             </View>
+            {selectedCountry ? (
+              <View style={styles.countryQuickActions}>
+                {selectedCountryPrimaryCompetition ? (
+                  <TouchableOpacity
+                    style={styles.countryQuickBtn}
+                    onPress={() => handleCompetitionPress(selectedCountryPrimaryCompetition)}
+                    activeOpacity={0.82}
+                  >
+                    <Ionicons name="trophy-outline" size={12} color={P.accent} />
+                    <Text style={styles.countryQuickBtnText}>{t("sportsHome.openCompetitions") || "Open competitions"}</Text>
+                  </TouchableOpacity>
+                ) : null}
+                {selectedCountryNationalTeam?.nationalTeamName ? (
+                  <TouchableOpacity
+                    style={styles.countryQuickBtn}
+                    onPress={() => {
+                      router.push({
+                        pathname: "/team-detail",
+                        params: {
+                          teamId: `name:${encodeURIComponent(selectedCountryNationalTeam.nationalTeamName || "")}`,
+                          teamName: selectedCountryNationalTeam.nationalTeamName,
+                          sport: "soccer",
+                          league: selectedCountryNationalTeam.espn,
+                          espnLeague: selectedCountryNationalTeam.espn,
+                        },
+                      });
+                    }}
+                    activeOpacity={0.82}
+                  >
+                    <Ionicons name="flag-outline" size={12} color={P.accent} />
+                    <Text style={styles.countryQuickBtnText}>{t("sportsHome.openNationalTeam") || "Open national team"}</Text>
+                  </TouchableOpacity>
+                ) : null}
+              </View>
+            ) : null}
 
             {/* ── HIGHLIGHTS & REPLAYS ── */}
             {(realHighlights.length > 0 || sortedFinished.length > 0) && (
@@ -1977,6 +2064,7 @@ export default function SportsScreen() {
                   match={match}
                   onPress={() => handleMatchPress(match)}
                   onNotificationToggle={() => toggleMatchNotification(match)}
+                  isNotificationOn={Boolean(matchSubscriptions[String(match.id || "")])}
                 />
               ))
             )}
@@ -2015,6 +2103,7 @@ export default function SportsScreen() {
                         match={match}
                         onPress={() => handleMatchPress(match)}
                         onNotificationToggle={() => toggleMatchNotification(match)}
+                        isNotificationOn={Boolean(matchSubscriptions[String(match.id || "")])}
                       />
                     ))}
                   </>
@@ -2028,6 +2117,7 @@ export default function SportsScreen() {
                         match={match}
                         onPress={() => handleMatchPress(match)}
                         onNotificationToggle={() => toggleMatchNotification(match)}
+                        isNotificationOn={Boolean(matchSubscriptions[String(match.id || "")])}
                       />
                     ))}
                   </>
@@ -2298,6 +2388,33 @@ const styles = StyleSheet.create({
   bannerError: { backgroundColor: "rgba(255,107,107,0.12)", borderColor: "rgba(255,107,107,0.3)" },
   bannerText: { flex: 1, color: P.muted, fontSize: 12, fontWeight: "500" },
   bannerCode: { color: P.muted, fontSize: 10, marginTop: 2 },
+  fallbackPanel: {
+    marginHorizontal: 16,
+    marginTop: 10,
+    padding: 12,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: `${P.accent}44`,
+    backgroundColor: "rgba(229,9,20,0.09)",
+    gap: 8,
+  },
+  fallbackHead: { flexDirection: "row", alignItems: "center", gap: 8 },
+  fallbackTitle: { color: P.text, fontSize: 13, fontWeight: "700" },
+  fallbackText: { color: P.muted, fontSize: 12, lineHeight: 17 },
+  fallbackActions: { flexDirection: "row", gap: 8 },
+  fallbackActionBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    borderWidth: 1,
+    borderColor: `${P.accent}44`,
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    backgroundColor: "rgba(0,0,0,0.22)",
+  },
+  fallbackActionText: { color: P.accent, fontSize: 11, fontWeight: "700" },
+  fallbackCode: { color: P.muted, fontSize: 10 },
 
   /* ── Section titles ── */
   section: { marginTop: 4 },
@@ -2443,6 +2560,31 @@ const styles = StyleSheet.create({
   countryGrid: {
     flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between",
     paddingHorizontal: 16, gap: 10,
+  },
+  countryQuickActions: {
+    flexDirection: "row",
+    gap: 8,
+    paddingHorizontal: 16,
+    marginTop: 10,
+    marginBottom: 2,
+  },
+  countryQuickBtn: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    borderWidth: 1,
+    borderColor: `${P.accent}55`,
+    backgroundColor: "rgba(229,9,20,0.12)",
+    borderRadius: 12,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+  },
+  countryQuickBtnText: {
+    color: P.accent,
+    fontSize: 11,
+    fontWeight: "700",
   },
 
   /* ── Sport search ── */

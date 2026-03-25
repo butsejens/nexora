@@ -8833,6 +8833,39 @@ app.get("/api/series/:id/full", tmdbLimiter, async (req, res) => {
     res.status(200).json({ error: String(e?.message || e) });
   }
 });
+
+app.get("/api/series/:id/season/:seasonNumber", tmdbLimiter, async (req, res) => {
+  try {
+    if (!process.env.TMDB_API_KEY) return res.json({ episodes: [] });
+
+    const id = String(req.params.id || "").trim();
+    const seasonNumber = Math.max(1, Number(req.params.seasonNumber || 1) || 1);
+    const season = await tmdb(`/tv/${encodeURIComponent(id)}/season/${seasonNumber}`);
+
+    const episodes = (season?.episodes || []).map((ep) => ({
+      id: String(ep.id || `${seasonNumber}-${ep.episode_number || 0}`),
+      title: String(ep.name || `Episode ${ep.episode_number || ""}`).trim(),
+      number: Number(ep.episode_number || 0) || 0,
+      image: ep.still_path ? `${TMDB_IMG_780}${ep.still_path}` : null,
+      durationMinutes: Number(ep.runtime || 0) || null,
+      duration: minutesToDuration(Number(ep.runtime || 0) || 0),
+      overview: String(ep.overview || "").trim(),
+      airDate: ep.air_date || null,
+      seasonNumber,
+    }));
+
+    res.json({
+      id: String(season?.id || `${id}-s${seasonNumber}`),
+      seasonNumber,
+      name: String(season?.name || `Season ${seasonNumber}`),
+      overview: String(season?.overview || "").trim(),
+      poster: season?.poster_path ? `${TMDB_IMG_500}${season.poster_path}` : null,
+      episodes,
+    });
+  } catch (e) {
+    res.status(200).json({ episodes: [], error: String(e?.message || e) });
+  }
+});
 // ─── Genre catalog (discover) ─────────────────────────────────────────────────
 // Returns genre rows using TMDB /discover, from 2000 to now.
 // Supports ?page=N for infinite scroll — each TMDB genre has up to 500 pages.
@@ -9728,6 +9761,84 @@ app.get("/api/session/status", (req, res) => {
     });
   } catch (e) {
     res.json({ activeStreams: 0, maxStreams: MAX_CONCURRENT_STREAMS });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// User State — server-side follow/preference store (device-id keyed, ephemeral)
+// Kept in-memory; complements the client AsyncStorage-backed user-state-service.
+// Enables: cross-device sync foundation, server-side personalisation.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// { deviceId → { followedTeams: Set<string>, updatedAt: number } }
+const userStateStore = new Map();
+
+/** Prune entries not seen in 7 days to prevent unbounded growth */
+function cleanUserStateStore() {
+  const cutoff = Date.now() - 7 * 24 * 60 * 60 * 1000;
+  for (const [id, entry] of userStateStore) {
+    if (entry.updatedAt < cutoff) userStateStore.delete(id);
+  }
+}
+setInterval(cleanUserStateStore, 60 * 60 * 1000); // hourly
+
+function getDeviceId(req) {
+  const id = req.headers["x-device-id"] || req.query.deviceId || "";
+  // Validate: max 128 chars, alphanumeric/dash/underscore only
+  if (!id || !/^[\w-]{1,128}$/.test(id)) return null;
+  return id;
+}
+
+function getOrCreateUserState(deviceId) {
+  if (!userStateStore.has(deviceId)) {
+    userStateStore.set(deviceId, { followedTeams: new Set(), updatedAt: Date.now() });
+  }
+  return userStateStore.get(deviceId);
+}
+
+/** GET /api/user/followed-teams — returns followed team IDs for this device */
+app.get("/api/user/followed-teams", (req, res) => {
+  try {
+    const deviceId = getDeviceId(req);
+    if (!deviceId) return res.status(400).json({ error: "Missing or invalid X-Device-Id header" });
+    const state = getOrCreateUserState(deviceId);
+    res.json({ teams: [...state.followedTeams] });
+  } catch (e) {
+    res.status(500).json({ error: "Internal error" });
+  }
+});
+
+/** POST /api/user/followed-teams — body: { teamId: string } */
+app.post("/api/user/followed-teams", (req, res) => {
+  try {
+    const deviceId = getDeviceId(req);
+    if (!deviceId) return res.status(400).json({ error: "Missing or invalid X-Device-Id header" });
+    const { teamId } = req.body || {};
+    if (!teamId || typeof teamId !== "string" || teamId.length > 256) {
+      return res.status(400).json({ error: "Invalid teamId" });
+    }
+    const state = getOrCreateUserState(deviceId);
+    state.followedTeams.add(teamId.trim());
+    state.updatedAt = Date.now();
+    res.json({ ok: true, teams: [...state.followedTeams] });
+  } catch (e) {
+    res.status(500).json({ error: "Internal error" });
+  }
+});
+
+/** DELETE /api/user/followed-teams/:teamId — unfollow a team */
+app.delete("/api/user/followed-teams/:teamId", (req, res) => {
+  try {
+    const deviceId = getDeviceId(req);
+    if (!deviceId) return res.status(400).json({ error: "Missing or invalid X-Device-Id header" });
+    const teamId = decodeURIComponent(req.params.teamId || "");
+    if (!teamId || teamId.length > 256) return res.status(400).json({ error: "Invalid teamId" });
+    const state = getOrCreateUserState(deviceId);
+    state.followedTeams.delete(teamId);
+    state.updatedAt = Date.now();
+    res.json({ ok: true, teams: [...state.followedTeams] });
+  } catch (e) {
+    res.status(500).json({ error: "Internal error" });
   }
 });
 

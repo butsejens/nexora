@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from "react";
+import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import {
   View, Text, StyleSheet, TouchableOpacity, Platform,
   ScrollView, Image, ActivityIndicator, useWindowDimensions,
@@ -17,7 +17,7 @@ import { openInVlc } from "@/lib/vlc";
 import { TeamLogo } from "@/components/TeamLogo";
 import { PillTabs, StateBlock } from "@/components/ui/PremiumPrimitives";
 import { buildErrorReference, normalizeApiError } from "@/lib/error-messages";
-import { getLeaderboardRows } from "@/lib/sports-data";
+import { fetchSportsLeagueResourceWithFallback, getLeaderboardRows } from "@/lib/sports-data";
 import { safeStr } from "@/lib/utils";
 import { getLeagueLogo } from "@/lib/logo-manager";
 import { SilentResetBoundary } from "@/components/SilentResetBoundary";
@@ -321,8 +321,11 @@ export default function MatchDetailScreen() {
         })(),
         (async () => {
           try {
-            const res = await apiRequest("GET", `/api/sports/topassists/${encodeURIComponent(params.league)}`);
-            return await res.json();
+            return await fetchSportsLeagueResourceWithFallback("topassists", {
+              leagueName: params.league,
+              espnLeague,
+              sequential: true,
+            });
           } catch {
             return null;
           }
@@ -512,8 +515,11 @@ export default function MatchDetailScreen() {
 
         <View style={styles.matchHeader}>
           <View style={styles.competitionRow}>
-            <TeamLogo uri={getLeagueLogo(params.league)} teamName={params.league} size={24} />
-            <Text style={styles.leagueName}>{params.league}</Text>
+            <View style={styles.competitionSideSpacer} />
+            <View style={styles.competitionCenter}>
+              <TeamLogo uri={getLeagueLogo(String(params.league)) as string | null} teamName={String(params.league)} size={24} />
+              <Text style={styles.leagueName}>{params.league}</Text>
+            </View>
             <TouchableOpacity style={[styles.followChip, isMatchFollowed ? styles.followChipActive : null]} onPress={toggleMatchFollow}>
               <Ionicons name={isMatchFollowed ? "notifications" : "notifications-outline"} size={14} color={isMatchFollowed ? "#fff" : COLORS.textMuted} />
               <Text style={[styles.followChipText, isMatchFollowed ? styles.followChipTextActive : null]}>{isMatchFollowed ? "Following" : "Follow"}</Text>
@@ -1116,6 +1122,14 @@ function TeamSide({ name, logo, onPress, followed, onToggleFollow, align = "left
 }
 
 function timelineMinuteValue(event: any, index: number): number {
+  const kind = String(event?.kind || event?.type || "").toLowerCase();
+  if (kind === "kickoff") return 0;
+  if (kind === "halftime") return 45.99;
+  if (kind === "second_half" || kind === "secondhalf") return 46;
+  if (kind === "fulltime") return 90.99;
+  if (kind === "extra_time") return 105;
+  if (kind === "penalties") return 120;
+
   const provided = Number(event?.minuteValue);
   if (Number.isFinite(provided) && provided >= 0) return provided;
   const text = String(event?.minute || event?.time || "");
@@ -1375,7 +1389,7 @@ function MatchHeatmapInner({ homeTeam, awayTeam, homeStats, awayStats }: { homeT
     shotDots.push({ x: 15 + rng() * 70, y: 56 + rng() * 29, color: "#5B8DEF", onTarget });
   }
 
-  const LINE = "rgba(255,255,255,0.25)";
+  const LINE = "rgba(255,255,255,0.4)";
 
   return (
     <View style={heatmapStyles.card}>
@@ -2020,7 +2034,8 @@ function PlayerRow({ player, sport, compact = false, teamName = "", league = "en
     const espnCdn = player?.id && /^\d+$/.test(String(player.id))
       ? `https://a.espncdn.com/i/headshots/soccer/players/full/${encodeURIComponent(String(player.id))}.png`
       : null;
-    return [...new Set([cachedPhoto, player?.photo, player?.theSportsDbPhoto || null, espnCdn].filter(Boolean) as string[])];
+    const fallbackAvatar = `https://ui-avatars.com/api/?name=${encodeURIComponent(String(player?.name || "Player"))}&size=256&background=1a1a2e&color=e0e0e0&bold=true&format=png`;
+    return [...new Set([cachedPhoto, player?.photo, player?.theSportsDbPhoto || null, espnCdn, fallbackAvatar].filter(Boolean) as string[])];
   }, [cachedPhoto, player?.id, player?.photo, player?.theSportsDbPhoto]);
 
   const [photoIndex, setPhotoIndex] = useState(0);
@@ -2138,6 +2153,8 @@ function PitchDot({ player, color, teamName, league }: { player: any; color: str
       const espnUrl = `https://a.espncdn.com/i/headshots/soccer/players/full/${eid}.png`;
       if (!candidates.includes(espnUrl)) candidates.push(espnUrl);
     }
+    const fallbackAvatar = `https://ui-avatars.com/api/?name=${encodeURIComponent(String(player?.name || "Player"))}&size=128&background=1a1a2e&color=e0e0e0&bold=true&format=png`;
+    if (!candidates.includes(fallbackAvatar)) candidates.push(fallbackAvatar);
     return [...new Set(candidates)];
   }, [cachedPhoto, player?.photo, player?.theSportsDbPhoto, player?.headshot, player?.id]);
 
@@ -2780,6 +2797,17 @@ const styles = StyleSheet.create({
   matchHeader: { alignItems: "center", gap: 14 },
   competitionRow: {
     width: "100%",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
+  },
+  competitionSideSpacer: {
+    width: 74,
+    height: 1,
+  },
+  competitionCenter: {
+    flex: 1,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
