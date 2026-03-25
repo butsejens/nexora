@@ -15,6 +15,60 @@ type CandidateResult = {
   count: number;
 };
 
+const ESPN_TO_DISPLAY_LEAGUE: Record<string, string[]> = {
+  "eng.1": ["Premier League"],
+  "eng.2": ["Championship"],
+  "eng.fa": ["FA Cup"],
+  "esp.1": ["La Liga"],
+  "esp.2": ["La Liga 2"],
+  "esp.copa_del_rey": ["Copa del Rey"],
+  "ger.1": ["Bundesliga"],
+  "ger.2": ["2. Bundesliga"],
+  "ger.dfb_pokal": ["DFB Pokal"],
+  "bel.1": ["Jupiler Pro League", "Belgian Pro League"],
+  "bel.2": ["Challenger Pro League"],
+  "bel.cup": ["Belgian Cup", "Beker van Belgie", "Beker van België"],
+  "fra.1": ["Ligue 1"],
+  "fra.2": ["Ligue 2"],
+  "fra.coupe_de_france": ["Coupe de France"],
+  "ita.1": ["Serie A"],
+  "ita.2": ["Serie B"],
+  "ita.coppa_italia": ["Coppa Italia"],
+  "ned.1": ["Eredivisie"],
+  "ned.2": ["Eerste Divisie"],
+  "ned.knvb_beker": ["KNVB Beker"],
+  "uefa.champions": ["UEFA Champions League"],
+  "uefa.europa": ["UEFA Europa League"],
+  "uefa.europa.conf": ["UEFA Conference League"],
+};
+
+function normalizeLeagueToken(value: unknown): string {
+  return String(value || "").trim().toLowerCase();
+}
+
+function buildLeagueCandidates(params: { leagueName?: string; espnLeague?: string }): string[] {
+  const leagueName = String(params.leagueName || "").trim();
+  const espnLeague = String(params.espnLeague || "").trim();
+  const espnKey = normalizeLeagueToken(espnLeague);
+
+  const candidates = new Set<string>();
+  if (leagueName) candidates.add(leagueName);
+  if (espnLeague) candidates.add(espnLeague);
+
+  for (const alias of ESPN_TO_DISPLAY_LEAGUE[espnKey] || []) {
+    if (alias) candidates.add(alias);
+  }
+
+  // If leagueName was passed as an abbreviation (e.g. JP), still include ESPN aliases.
+  if (leagueName && leagueName.length <= 4 && ESPN_TO_DISPLAY_LEAGUE[espnKey]?.length) {
+    for (const alias of ESPN_TO_DISPLAY_LEAGUE[espnKey]) {
+      candidates.add(alias);
+    }
+  }
+
+  return [...candidates].filter(Boolean);
+}
+
 function countForKind(kind: SportsLeagueResourceKind, json: any): number {
   if (kind === "standings") {
     if (Array.isArray(json?.standings)) return json.standings.length;
@@ -137,7 +191,7 @@ export async function fetchSportsLeagueResourceWithFallback(
   kind: SportsLeagueResourceKind,
   params: { leagueName?: string; espnLeague?: string; sequential?: boolean }
 ): Promise<any> {
-  const candidates = Array.from(new Set([String(params.leagueName || ""), String(params.espnLeague || "")].filter(Boolean)));
+  const candidates = buildLeagueCandidates(params);
   if (candidates.length === 0) return {};
 
   const sequential = params.sequential !== false;
