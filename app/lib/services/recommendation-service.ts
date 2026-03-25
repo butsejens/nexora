@@ -16,11 +16,14 @@
  *   - Results are ranked by score descending
  */
 
-import { apiRequest } from "@/lib/query-client";
 import {
   normalizeMovieFromTmdb,
   normalizeSeriesFromTmdb,
 } from "@/lib/domain/normalizers";
+import {
+  safeFetch,
+  enforceMetadataOnly,
+} from "./media-service";
 import type {
   Movie, Series, RecommendationItem, MoodPreference, WatchHistoryItem,
 } from "@/lib/domain/models";
@@ -44,20 +47,7 @@ export interface RecommendationOutput {
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-
-function enforceMetadataOnly<T extends { isPlayable: boolean; isDownloadable: boolean }>(item: T): T {
-  return { ...item, isPlayable: false, isDownloadable: false };
-}
-
-async function safeFetch<T>(route: string, fallback: T): Promise<T> {
-  try {
-    const res = await apiRequest("GET", route);
-    if (!res.ok) return fallback;
-    return (await res.json()) as T;
-  } catch {
-    return fallback;
-  }
-}
+// safeFetch and enforceMetadataOnly are shared via media-service (no duplication)
 
 function dedupeByTmdbId(items: (Movie | Series)[], seen: Set<string>): (Movie | Series)[] {
   const out: (Movie | Series)[] = [];

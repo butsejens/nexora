@@ -4,6 +4,7 @@ import { Platform } from "react-native";
 import * as FileSystem from "expo-file-system";
 import { parseM3UContentAsync } from "@/lib/parseM3U";
 import { fetchM3UText } from "@/lib/fetchM3U";
+import { trackWatchProgress } from "@/lib/services/user-state-service";
 
 import { setLanguage as setI18nLanguage, type Language } from "@/lib/i18n";
 
@@ -24,6 +25,7 @@ export interface DownloadedItem {
 
 export interface WatchedItem {
   id: string;
+  contentId?: string;
   type: "movie" | "series" | "channel" | "sport";
   title: string;
   progress?: number;
@@ -35,6 +37,9 @@ export interface WatchedItem {
   year?: number | null;
   duration?: number;
   currentTime?: number;
+  season?: number;
+  episode?: number;
+  episodeTitle?: string;
 }
 
 export interface IPTVPlaylist {
@@ -206,7 +211,21 @@ export function NexoraProvider({ children }: { children: ReactNode }) {
           await AsyncStorage.multiGet(keys).then(r => r.map(([, v]) => v));
 
         if (favs) setFavorites(JSON.parse(favs));
-        if (hist) setWatchHistory(JSON.parse(hist));
+        if (hist) {
+          const parsed = JSON.parse(hist);
+          if (Array.isArray(parsed)) {
+            const normalized = parsed
+              .filter((entry) => entry && typeof entry === "object")
+              .map((entry) => ({
+                ...entry,
+                id: String(entry.id || "").trim(),
+                title: String(entry.title || "").trim(),
+                type: entry.type || "movie",
+              }))
+              .filter((entry) => entry.id && entry.title);
+            setWatchHistory(normalized);
+          }
+        }
         if (pls) setPlaylists(JSON.parse(pls));
         if (qual) setSelectedQualityState(qual as any);
         if (subs) setSubtitlesEnabledState(subs === "true");
@@ -273,17 +292,56 @@ export function NexoraProvider({ children }: { children: ReactNode }) {
     const next = [item, ...watchHistory.filter(h => h.id !== item.id)].slice(0, 50);
     setWatchHistory(next);
     await AsyncStorage.setItem("nexora_history", JSON.stringify(next));
+    // Bridge to user-state-service so mood derivation and continueWatching work
+    if (item.duration && item.duration > 0) {
+      trackWatchProgress({
+        contentId: item.contentId ?? item.id,
+        mediaType: item.type as "movie" | "series" | "channel" | "sport",
+        title: item.title,
+        posterUri: item.poster ?? null,
+        progress: item.progress ?? 0,
+        currentTime: item.currentTime ?? 0,
+        duration: item.duration,
+        season: item.season ?? null,
+        episode: item.episode ?? null,
+        episodeTitle: item.episodeTitle ?? null,
+        lastWatchedAt: item.lastWatched,
+        tmdbId: item.tmdbId ?? null,
+        year: item.year ?? null,
+        // Extra fields preserved by user-state-service spread
+        ...(item.backdrop ? { backdropUri: item.backdrop } : {}),
+        ...(item.genre_ids?.length ? { genreIds: item.genre_ids } : {}),
+      } as Parameters<typeof trackWatchProgress>[0]).catch(() => {/* non-fatal */});
+    }
   };
 
   const updateProgress = async (id: string, currentTime: number, duration: number) => {
     if (!id || !duration || duration <= 0) return;
     const progress = Math.min(1, Math.max(0, currentTime / duration));
-    const idx = watchHistory.findIndex(h => h.id === id);
+    const idx = watchHistory.findIndex(h => h.id === id || h.contentId === id);
     if (idx < 0) return;
     const updated = { ...watchHistory[idx], progress, currentTime, duration, lastWatched: new Date().toISOString() };
     const next = [updated, ...watchHistory.filter(h => h.id !== id)].slice(0, 50);
     setWatchHistory(next);
     await AsyncStorage.setItem("nexora_history", JSON.stringify(next));
+    // Bridge to user-state-service
+    trackWatchProgress({
+      contentId: updated.contentId ?? updated.id,
+      mediaType: updated.type as "movie" | "series" | "channel" | "sport",
+      title: updated.title,
+      posterUri: updated.poster ?? null,
+      progress,
+      currentTime,
+      duration,
+      season: updated.season ?? null,
+      episode: updated.episode ?? null,
+      episodeTitle: updated.episodeTitle ?? null,
+      lastWatchedAt: updated.lastWatched,
+      tmdbId: updated.tmdbId ?? null,
+      year: updated.year ?? null,
+      ...(updated.backdrop ? { backdropUri: updated.backdrop } : {}),
+      ...(updated.genre_ids?.length ? { genreIds: updated.genre_ids } : {}),
+    } as Parameters<typeof trackWatchProgress>[0]).catch(() => {/* non-fatal */});
   };
 
   const clearHistory = async () => {

@@ -18,6 +18,7 @@ import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { queryClient, getApiBaseCandidates, apiRequest } from "@/lib/query-client";
 import { startPlayerImageWarmup } from "@/lib/player-image-system";
 import { NexoraProvider } from "@/context/NexoraContext";
+import { UserStateProvider } from "@/context/UserStateContext";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { NexoraIntro } from "@/components/NexoraIntro";
 import { NexoraBootScreen } from "@/components/NexoraBootScreen";
@@ -34,6 +35,7 @@ import {
   cacheGet,
   TTL,
 } from "@/lib/app-cache";
+import { initializeMatchNotifications } from "@/lib/match-notifications";
 
 // ─── Persistent cache keys (must match what screens useQuery with) ────────────
 const PREFETCH_ENTRIES = (today: string) => [
@@ -78,13 +80,6 @@ function prefetchHomeData() {
   fetchAndCache(`/api/sports/by-date?date=${date}`,      `sports:today:${today}`,           TTL.SPORTS_TODAY, ["sports", "today", today]);
   fetchAndCache(`/api/sports/menu-tools?date=${date}&league=all`, `sports:menu-tools:${today}`, TTL.HIGHLIGHTS, ["sports", "menu-tools", today, "all"]);
   fetchAndCache("/api/sports/highlights",                "sports:highlights",               TTL.HIGHLIGHTS,   ["sports", "highlights"]);
-
-  // — Standings + top scorers for key leagues —
-  const leagues = ["bel.1", "eng.1", "esp.1", "ger.1", "ita.1", "fra.1", "ned.1", "uefa.champions"];
-  for (const league of leagues) {
-    fetchAndCache(`/api/sports/standings/${league}`,  `standings:${league}`,  TTL.STANDINGS, ["standings", league]);
-    fetchAndCache(`/api/sports/topscorers/${league}`, `topscorers:${league}`, TTL.STANDINGS, ["topscorers", league]);
-  }
 
   // — Movies & Series —
   fetchAndCache("/api/movies/trending",          "movies:trending", TTL.TRENDING, ["movies", "trending"]);
@@ -257,6 +252,8 @@ export default function RootLayout() {
           fetch(`${candidates[0]}/health`).catch(() => null);
           prefetchHomeData();
           startPlayerImageWarmup(queryClient).catch(() => undefined);
+          // Initialize notification channels early so they're ready before any screen uses them
+          initializeMatchNotifications().catch(() => undefined);
         }
 
         // Step 4: wait a minimal time so the boot screen briefly shows
@@ -411,7 +408,9 @@ export default function RootLayout() {
         <SafeAreaProvider>
           <GestureHandlerRootView style={{ flex: 1 }}>
             <NexoraProvider>
-              <RootLayoutNav />
+              <UserStateProvider>
+                <RootLayoutNav />
+              </UserStateProvider>
             </NexoraProvider>
           </GestureHandlerRootView>
         </SafeAreaProvider>

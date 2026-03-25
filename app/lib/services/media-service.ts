@@ -35,7 +35,7 @@ import type {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-async function safeFetch<T>(route: string, fallback: T): Promise<T> {
+export async function safeFetch<T>(route: string, fallback: T): Promise<T> {
   try {
     const res = await apiRequest("GET", route);
     if (!res.ok) return fallback;
@@ -46,7 +46,7 @@ async function safeFetch<T>(route: string, fallback: T): Promise<T> {
 }
 
 // TMDB is metadata only — this is the single place we enforce that contract.
-function enforceMetadataOnly<T extends { isPlayable: boolean; isDownloadable: boolean }>(item: T): T {
+export function enforceMetadataOnly<T extends { isPlayable: boolean; isDownloadable: boolean }>(item: T): T {
   return { ...item, isPlayable: false, isDownloadable: false };
 }
 
