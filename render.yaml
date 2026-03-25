@@ -15,15 +15,15 @@ services:
       - key: PORT
         value: 8080
       - key: ZILLIZ_URI
-        value: https://in03-17db1096462d89d.serverless.aws-eu-central-1.cloud.zilliz.com
+        sync: false
       - key: ZILLIZ_API_KEY
         sync: false
       - key: GEMINI_API_KEY
-        value: AIzaSyBTB0Bz1RmFKDXxXhUXdDpXcTcm1WSUC8A
+        sync: false
       - key: OPENROUTER_API_KEY
         sync: false
       - key: TMDB_API_KEY
-        value: 090a34f37141e9fab2e8007a1eb27465
+        sync: false
       - key: APIFY_TOKEN
         sync: false
       - key: APIFY_SOFASCORE_ACTOR
