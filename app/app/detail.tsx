@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState, useRef } from "react";
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  Image, Modal, Platform, Alert, ActivityIndicator,
+  Image, Modal, Platform, Alert, ActivityIndicator, Linking,
 } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -31,6 +31,11 @@ async function searchTmdb(title: string, type: string) {
   const endpoint = type === "series" ? "tv" : "movie";
   const res = await apiRequest("GET", `/api/tmdb/search?query=${q}&type=${endpoint}`);
   if (!res.ok) return null;
+  return res.json();
+}
+
+async function fetchSeasonEpisodes(seriesId: string, seasonNumber: number) {
+  const res = await apiRequest("GET", `/api/series/${encodeURIComponent(seriesId)}/season/${Math.max(1, seasonNumber)}`);
   return res.json();
 }
 
@@ -77,11 +82,15 @@ function DownloadModal({
   const alreadyDownloaded = isDownloaded(contentId);
   const existingDl = getDownload(contentId);
 
-  // Determine if we have a direct downloadable URL (not HLS/m3u8)
-  const canDownload = streamUrl &&
-    !streamUrl.includes(".m3u8") &&
-    !streamUrl.includes("m3u") &&
-    (streamUrl.startsWith("http://") || streamUrl.startsWith("https://"));
+  // Classify the stream source to give clear user messaging
+  const streamStatus: "direct" | "hls" | "no-stream" | "tmdb-only" = (() => {
+    if (!streamUrl) return "tmdb-only";
+    if (streamUrl.includes(".m3u8") || streamUrl.includes("m3u")) return "hls";
+    if (streamUrl.startsWith("http://") || streamUrl.startsWith("https://")) return "direct";
+    return "no-stream";
+  })();
+
+  const canDownload = streamStatus === "direct";
 
   const resetState = () => {
     setStep("select");
@@ -151,9 +160,9 @@ function DownloadModal({
 
   const handleRemove = () => {
     if (existingDl) {
-      Alert.alert("Remove download", "Do you want to remove this download?", [
-        { text: "Cancel", style: "cancel" },
-        { text: "Remove", style: "destructive", onPress: async () => {
+      Alert.alert(t("detail.removeDownload"), t("detail.removeConfirm"), [
+        { text: t("detail.cancel"), style: "cancel" },
+        { text: t("detail.remove"), style: "destructive", onPress: async () => {
           await removeDownload(existingDl.id);
           resetState();
           onClose();
@@ -161,6 +170,29 @@ function DownloadModal({
       ]);
     }
   };
+
+  // Human-readable explanation for why download is unavailable
+  const unavailableReason = (() => {
+    if (streamStatus === "tmdb-only") {
+      return {
+        icon: "library-outline" as const,
+        title: t("detail.noIptvSource"),
+        body: t("detail.noIptvSourceNote"),
+      };
+    }
+    if (streamStatus === "hls") {
+      return {
+        icon: "cellular-outline" as const,
+        title: t("detail.hlsTitle"),
+        body: t("detail.hlsExclusion"),
+      };
+    }
+    return {
+      icon: "alert-circle-outline" as const,
+      title: t("detail.noStreamTitle"),
+      body: t("detail.noStreamUrlNote"),
+    };
+  })();
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={handleCancel}>
@@ -184,17 +216,15 @@ function DownloadModal({
             </View>
           ) : step === "select" ? (
             <>
-              {!canDownload && (
+              {!canDownload ? (
                 <View style={styles.noDownloadNote}>
-                  <Ionicons name="information-circle-outline" size={16} color={COLORS.accent} />
-                  <Text style={styles.noDownloadText}>
-                    {streamUrl?.includes(".m3u8")
-                      ? t("detail.hlsExclusion")
-                      : t("detail.noStreamUrlNote")}
+                  <Ionicons name={unavailableReason.icon} size={32} color={COLORS.textMuted} style={{ marginBottom: 8 }} />
+                  <Text style={[styles.noDownloadText, { fontWeight: "600", marginBottom: 4 }]}>
+                    {unavailableReason.title}
                   </Text>
+                  <Text style={styles.noDownloadText}>{unavailableReason.body}</Text>
                 </View>
-              )}
-              {canDownload && (
+              ) : (
                 <>
                   <Text style={styles.downloadLabel}>{t("detail.qualityLabel")}</Text>
                   <View style={styles.qualityOptions}>
@@ -218,8 +248,9 @@ function DownloadModal({
             </>
           ) : step === "downloading" ? (
             <View style={styles.progressContainer}>
-              <ActivityIndicator color={COLORS.accent} size="small" />
-              <Text style={styles.downloadingText}>{t("detail.downloadProgress", { progress: Math.round(progress * 100) })}</Text>
+              <Text style={styles.downloadingText}>
+                {t("detail.downloadProgress", { progress: Math.round(progress * 100) })}
+              </Text>
               <View style={styles.progressTrack}>
                 <View style={[styles.progressFill, { width: `${Math.round(progress * 100)}%` as any }]} />
               </View>
@@ -227,7 +258,7 @@ function DownloadModal({
             </View>
           ) : step === "done" ? (
             <View style={styles.doneContainer}>
-              <View style={styles.doneIcon}><Ionicons name="checkmark" size={32} color={COLORS.accent} /></View>
+              <View style={styles.doneIcon}><Ionicons name="checkmark-circle" size={36} color={COLORS.accent} /></View>
               <Text style={styles.doneText}>{t("detail.savedOnDevice")}</Text>
               <Text style={styles.doneNote}>{t("detail.availableOffline")}</Text>
             </View>
@@ -273,8 +304,14 @@ export default function DetailScreen() {
   const [trailerIndex, setTrailerIndex] = useState(0);
   const [trailerLoading, setTrailerLoading] = useState(false);
   const [trailerUnavailable, setTrailerUnavailable] = useState(false);
+  const [trailerBlockedReason, setTrailerBlockedReason] = useState<"none" | "error153" | "blocked">("none");
+  const [openingExternalTrailer, setOpeningExternalTrailer] = useState(false);
   const trailerAdvancingRef = useRef(false);
   const [activeTab, setActiveTab] = useState<"overview" | "cast" | "seasons">("overview");
+  const [selectedSeasonNumber, setSelectedSeasonNumber] = useState<number | null>(null);
+  const [seasonEpisodes, setSeasonEpisodes] = useState<Record<number, any[]>>({});
+  const [seasonLoading, setSeasonLoading] = useState<Record<number, boolean>>({});
+  const [seasonError, setSeasonError] = useState<Record<number, string>>({});
 
   // ── For IPTV items: get channel data from context first ───────────────────
   const iptvChannel = isIptv === "true"
@@ -414,6 +451,8 @@ export default function DetailScreen() {
     setTrailerIndex(0);
     setTrailerLoading(true);
     setTrailerUnavailable(false);
+    setTrailerBlockedReason("none");
+    setOpeningExternalTrailer(false);
     trailerAdvancingRef.current = false;
     setShowTrailer(true);
   };
@@ -422,8 +461,29 @@ export default function DetailScreen() {
     setShowTrailer(false);
     setTrailerLoading(false);
     setTrailerUnavailable(false);
+    setTrailerBlockedReason("none");
+    setOpeningExternalTrailer(false);
     setTrailerIndex(0);
     trailerAdvancingRef.current = false;
+  };
+
+  const openTrailerOutsideApp = async (key?: string, reason: "error153" | "blocked" = "blocked") => {
+    const trailerKey = String(key || "").trim();
+    if (!trailerKey) return false;
+    setOpeningExternalTrailer(true);
+    setTrailerBlockedReason(reason);
+    try {
+      const appUrl = `youtube://watch?v=${encodeURIComponent(trailerKey)}`;
+      const webUrl = `https://www.youtube.com/watch?v=${encodeURIComponent(trailerKey)}`;
+      const canOpenApp = await Linking.canOpenURL(appUrl);
+      await Linking.openURL(canOpenApp ? appUrl : webUrl);
+      setShowTrailer(false);
+      return true;
+    } catch {
+      return false;
+    } finally {
+      setOpeningExternalTrailer(false);
+    }
   };
 
   const advanceTrailer = () => {
@@ -450,7 +510,42 @@ export default function DetailScreen() {
     }
     setTrailerLoading(false);
     setTrailerUnavailable(true);
+    setTrailerBlockedReason("blocked");
+    void openTrailerOutsideApp(activeTrailer?.key, "blocked");
     trailerAdvancingRef.current = false;
+  };
+
+  const resolvedSeriesId = String((data as any)?.tmdbId || tmdbId || id || "").trim();
+
+  const handleSeasonPress = async (seasonNumber: number) => {
+    const normalizedSeason = Math.max(1, Number(seasonNumber || 1));
+    setSelectedSeasonNumber((prev) => (prev === normalizedSeason ? null : normalizedSeason));
+    if (seasonEpisodes[normalizedSeason] || seasonLoading[normalizedSeason] || !resolvedSeriesId) return;
+
+    setSeasonLoading((prev) => ({ ...prev, [normalizedSeason]: true }));
+    setSeasonError((prev) => ({ ...prev, [normalizedSeason]: "" }));
+
+    try {
+      const payload = await fetchSeasonEpisodes(resolvedSeriesId, normalizedSeason);
+      const episodes = Array.isArray(payload?.episodes)
+        ? payload.episodes.map((episode: any, index: number) => ({
+            id: String(episode?.id || `${normalizedSeason}-${index + 1}`),
+            title: String(episode?.title || `${t("detail.episode")} ${episode?.number || index + 1}`),
+            number: Number(episode?.number || index + 1),
+            image: episode?.image || null,
+            duration: episode?.duration || null,
+            overview: String(episode?.overview || "").trim(),
+          }))
+        : [];
+      setSeasonEpisodes((prev) => ({ ...prev, [normalizedSeason]: episodes }));
+      if (!episodes.length) {
+        setSeasonError((prev) => ({ ...prev, [normalizedSeason]: t("detail.noEpisodes") }));
+      }
+    } catch (error: any) {
+      setSeasonError((prev) => ({ ...prev, [normalizedSeason]: String(error?.message || t("detail.loadError")) }));
+    } finally {
+      setSeasonLoading((prev) => ({ ...prev, [normalizedSeason]: false }));
+    }
   };
 
   const goToPlayer = (season = 1, episode = 1) => {
@@ -713,25 +808,67 @@ export default function DetailScreen() {
             <View style={styles.tabContent}>
               {(data.seasons || []).length > 0 ? (
                 (data.seasons || []).map((season: any, idx: number) => (
-                  <TouchableOpacity
-                    key={season.id || idx}
-                    style={styles.seasonRow}
-                    onPress={() => hasPremium("series") ? goToPlayer(season.seasonNumber || idx + 1, 1) : router.push("/premium")}
-                  >
-                    {season.poster ? (
-                      <Image source={{ uri: season.poster }} style={styles.seasonPoster} />
-                    ) : (
-                      <View style={[styles.seasonPoster, { backgroundColor: COLORS.card, alignItems: "center", justifyContent: "center" }]}>
-                        <Ionicons name="film-outline" size={20} color={COLORS.textMuted} />
+                  <View key={season.id || idx}>
+                    <TouchableOpacity
+                      style={styles.seasonRow}
+                      onPress={() => handleSeasonPress(season.seasonNumber || idx + 1)}
+                    >
+                      {season.poster ? (
+                        <Image source={{ uri: season.poster }} style={styles.seasonPoster} />
+                      ) : (
+                        <View style={[styles.seasonPoster, { backgroundColor: COLORS.card, alignItems: "center", justifyContent: "center" }]}>
+                          <Ionicons name="film-outline" size={20} color={COLORS.textMuted} />
+                        </View>
+                      )}
+                      <View style={styles.seasonInfo}>
+                        <Text style={styles.seasonName}>{season.name}</Text>
+                        <Text style={styles.seasonEpisodes}>{season.episodes} {t("detail.episodes")}</Text>
+                        {season.airDate && <Text style={styles.seasonDate}>{new Date(season.airDate).getFullYear()}</Text>}
                       </View>
-                    )}
-                    <View style={styles.seasonInfo}>
-                      <Text style={styles.seasonName}>{season.name}</Text>
-                      <Text style={styles.seasonEpisodes}>{season.episodes} {t("detail.episodes")}</Text>
-                      {season.airDate && <Text style={styles.seasonDate}>{new Date(season.airDate).getFullYear()}</Text>}
-                    </View>
-                    <Ionicons name={hasPremium("series") ? "play-circle-outline" : "lock-closed"} size={hasPremium("series") ? 28 : 20} color={hasPremium("series") ? COLORS.accent : COLORS.textMuted} />
-                  </TouchableOpacity>
+                      <Ionicons
+                        name={selectedSeasonNumber === (season.seasonNumber || idx + 1) ? "chevron-up" : "chevron-down"}
+                        size={20}
+                        color={COLORS.textMuted}
+                      />
+                    </TouchableOpacity>
+
+                    {selectedSeasonNumber === (season.seasonNumber || idx + 1) ? (
+                      <View style={styles.episodeList}>
+                        {seasonLoading[season.seasonNumber || idx + 1] ? (
+                          <View style={styles.episodeLoadingRow}>
+                            <ActivityIndicator size="small" color={COLORS.accent} />
+                            <Text style={styles.episodeLoadingText}>{t("detail.loadingDetails")}</Text>
+                          </View>
+                        ) : null}
+
+                        {(seasonEpisodes[season.seasonNumber || idx + 1] || []).map((episode: any) => (
+                          <TouchableOpacity
+                            key={episode.id}
+                            style={styles.episodeRow}
+                            onPress={() => hasPremium("series") ? goToPlayer(season.seasonNumber || idx + 1, episode.number || 1) : router.push("/premium")}
+                          >
+                            {episode.image ? (
+                              <Image source={{ uri: episode.image }} style={styles.episodeImage} />
+                            ) : (
+                              <View style={[styles.episodeImage, styles.episodeImageFallback]}>
+                                <Ionicons name="videocam-outline" size={18} color={COLORS.textMuted} />
+                              </View>
+                            )}
+                            <View style={styles.episodeInfo}>
+                              <Text style={styles.episodeName} numberOfLines={1}>{`E${episode.number} - ${episode.title}`}</Text>
+                              {episode.duration ? <Text style={styles.episodeMeta}>{episode.duration}</Text> : null}
+                              <Text style={styles.episodeOverview} numberOfLines={2}>{episode.overview || t("detail.noDescription")}</Text>
+                            </View>
+                            <Ionicons name={hasPremium("series") ? "play-circle-outline" : "lock-closed"} size={hasPremium("series") ? 24 : 18} color={hasPremium("series") ? COLORS.accent : COLORS.textMuted} />
+                          </TouchableOpacity>
+                        ))}
+
+                        {!seasonLoading[season.seasonNumber || idx + 1] && seasonError[season.seasonNumber || idx + 1] ? (
+                          <Text style={styles.episodeErrorText}>{seasonError[season.seasonNumber || idx + 1]}</Text>
+                        ) : null}
+                      </View>
+                    ) : null}
+                  </View>
                 ))
               ) : (
                 <TouchableOpacity style={styles.seasonRow} onPress={() => hasPremium("series") ? goToPlayer(1, 1) : router.push("/premium")}>
@@ -788,6 +925,12 @@ export default function DetailScreen() {
                         var check = setInterval(function() {
                           var err = document.querySelector('.ytp-error, .ytp-error-content-wrap, .ytp-error-content-wrap-reason');
                           var consent = document.querySelector('form[action*="consent"], .consent-page, #consent-bump');
+                          var bodyText = (document.body && document.body.innerText ? document.body.innerText : '').toLowerCase();
+                          if (bodyText.indexOf('error 153') >= 0 || bodyText.indexOf('playback on other websites has been disabled') >= 0) {
+                            clearInterval(check);
+                            window.ReactNativeWebView.postMessage(JSON.stringify({type:'yt-error-153'}));
+                            return;
+                          }
                           if ((err && err.offsetHeight > 0) || consent) {
                             clearInterval(check);
                             window.ReactNativeWebView.postMessage(JSON.stringify({type:'yt-error'}));
@@ -807,6 +950,13 @@ export default function DetailScreen() {
                     onMessage={(event: any) => {
                       try {
                         const msg = JSON.parse(event.nativeEvent.data);
+                        if (msg.type === 'yt-error-153') {
+                          setTrailerUnavailable(true);
+                          setTrailerLoading(false);
+                          setTrailerBlockedReason("error153");
+                          void openTrailerOutsideApp(activeTrailer?.key, "error153");
+                          return;
+                        }
                         if (msg.type === 'yt-error') advanceTrailer();
                       } catch {}
                     }}
@@ -836,6 +986,20 @@ export default function DetailScreen() {
                 <View style={styles.trailerFallbackState}>
                   <Ionicons name="videocam-off-outline" size={34} color={COLORS.textMuted} />
                   <Text style={styles.trailerFallbackTitle}>{t("detail.trailerUnavailable")}</Text>
+                  <TouchableOpacity
+                    style={styles.trailerOpenExternalBtn}
+                    onPress={() => void openTrailerOutsideApp(activeTrailer?.key, trailerBlockedReason === "error153" ? "error153" : "blocked")}
+                    disabled={openingExternalTrailer}
+                  >
+                    {openingExternalTrailer ? (
+                      <ActivityIndicator size="small" color={COLORS.background} />
+                    ) : (
+                      <Ionicons name="logo-youtube" size={16} color={COLORS.background} />
+                    )}
+                    <Text style={styles.trailerOpenExternalText}>
+                      {trailerBlockedReason === "error153" ? "Open in YouTube" : "Open trailer externally"}
+                    </Text>
+                  </TouchableOpacity>
                 </View>
               )}
             </View>
@@ -909,6 +1073,17 @@ const styles = StyleSheet.create({
   seasonName: { fontFamily: "Inter_600SemiBold", fontSize: 15, color: COLORS.text },
   seasonEpisodes: { fontFamily: "Inter_400Regular", fontSize: 12, color: COLORS.textMuted },
   seasonDate: { fontFamily: "Inter_400Regular", fontSize: 11, color: COLORS.textMuted },
+  episodeList: { marginTop: 2, marginBottom: 12, marginLeft: 10, borderLeftWidth: 1, borderLeftColor: "rgba(255,255,255,0.08)", paddingLeft: 12, gap: 10 },
+  episodeLoadingRow: { flexDirection: "row", alignItems: "center", gap: 8, paddingVertical: 6 },
+  episodeLoadingText: { fontFamily: "Inter_500Medium", fontSize: 12, color: COLORS.textMuted },
+  episodeRow: { flexDirection: "row", alignItems: "center", gap: 10, backgroundColor: "rgba(255,255,255,0.03)", borderRadius: 10, padding: 8, borderWidth: 1, borderColor: "rgba(255,255,255,0.06)" },
+  episodeImage: { width: 96, height: 54, borderRadius: 8, backgroundColor: COLORS.card },
+  episodeImageFallback: { alignItems: "center", justifyContent: "center" },
+  episodeInfo: { flex: 1, gap: 2 },
+  episodeName: { fontFamily: "Inter_600SemiBold", fontSize: 13, color: COLORS.text },
+  episodeMeta: { fontFamily: "Inter_500Medium", fontSize: 11, color: COLORS.accent },
+  episodeOverview: { fontFamily: "Inter_400Regular", fontSize: 11, color: COLORS.textMuted, lineHeight: 15 },
+  episodeErrorText: { fontFamily: "Inter_400Regular", fontSize: 12, color: COLORS.live, paddingVertical: 4 },
   modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.7)", justifyContent: "flex-end" },
   downloadModal: { backgroundColor: COLORS.cardElevated, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, paddingBottom: 40, alignItems: "center", gap: 12 },
   downloadHandle: { width: 36, height: 4, borderRadius: 2, backgroundColor: COLORS.border, marginBottom: 4 },
@@ -932,6 +1107,8 @@ const styles = StyleSheet.create({
   trailerStatusText: { fontFamily: "Inter_500Medium", fontSize: 13, color: COLORS.text },
   trailerFallbackState: { minHeight: 260, alignItems: "center", justifyContent: "center", gap: 12, padding: 24 },
   trailerFallbackTitle: { fontFamily: "Inter_600SemiBold", fontSize: 15, color: COLORS.text, textAlign: "center" },
+  trailerOpenExternalBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, marginTop: 4, backgroundColor: COLORS.accent, borderRadius: 10, paddingVertical: 10, paddingHorizontal: 14 },
+  trailerOpenExternalText: { fontFamily: "Inter_600SemiBold", fontSize: 13, color: COLORS.background },
   downloadingText: { fontFamily: "Inter_600SemiBold", fontSize: 14, color: COLORS.text },
   progressTrack: { width: "100%", height: 6, backgroundColor: COLORS.border, borderRadius: 3, overflow: "hidden" },
   progressFill: { height: "100%", backgroundColor: COLORS.accent, borderRadius: 3 },

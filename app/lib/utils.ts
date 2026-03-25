@@ -63,7 +63,7 @@ export function formatDuration(ms: number): string {
 export function flagFromIso2(code: string): string {
   const normalized = String(code || "").trim().toUpperCase();
   if (normalized === "SCO" || normalized === "SCOTLAND" || normalized === "GB-SCT" || normalized === "SCT") {
-    return "🏴";
+    return "\u{1F3F4}\u{E0067}\u{E0062}\u{E0073}\u{E0063}\u{E0074}\u{E007F}";
   }
   if (!/^[A-Z]{2}$/.test(normalized)) return "🏳️";
   return String.fromCodePoint(
@@ -80,4 +80,17 @@ export function normalizeKey(value: string): string {
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .replace(/[^a-z0-9]/g, "");
+}
+
+/**
+ * Race a promise against a timeout.
+ * Rejects with "Request timeout" if the promise does not resolve within `ms`.
+ */
+export function withTimeout<T>(promise: Promise<T>, ms = 8000): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) =>
+      setTimeout(() => reject(new Error("Request timeout")), ms)
+    ),
+  ]);
 }
