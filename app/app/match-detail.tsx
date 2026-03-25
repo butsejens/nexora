@@ -22,19 +22,12 @@ import { safeStr } from "@/lib/utils";
 import { getLeagueLogo } from "@/lib/logo-manager";
 import { SilentResetBoundary } from "@/components/SilentResetBoundary";
 import { useNexora } from "@/context/NexoraContext";
-import { useFollowState } from "@/context/UserStateContext";
 import { t as tFn } from "@/lib/i18n";
 import { getBestCachedOrSeedPlayerImage, resolvePlayerImageUri } from "@/lib/player-image-system";
 import { resolveMatchBucket } from "@/lib/match-state";
 import { buildGroundedMatchAnalysis } from "@/lib/match-analysis-engine";
 import { toCanonicalMatch } from "@/lib/canonical-match";
 import { normalizeTeamName, tokenOverlapScore } from "@/lib/entity-normalization";
-import {
-  MatchSubscription,
-  ensureMatchNotificationPermission,
-  loadMatchSubscriptions,
-  saveMatchSubscriptions,
-} from "@/lib/match-notifications";
 const BLOCK_POPUP_JS = `
 (function(){
   // Patch removeChild to never throw — prevents DOMException crashes
@@ -181,7 +174,6 @@ export default function MatchDetailScreen() {
   const insets = useSafeAreaInsets();
   const { width: screenWidth } = useWindowDimensions();
   const { hasPremium } = useNexora();
-  const { isFollowingTeam, followTeamAction, unfollowTeamAction, isFollowingMatch, followMatchAction, unfollowMatchAction } = useFollowState();
   const sportPremium = hasPremium("sport");
   const resolvedInitialTab = (params.initialTab && ["stream", "stats", "lineups", "timeline", "highlights", "ai"].includes(params.initialTab)) ? params.initialTab as TabId : "stream";
   const [activeTab, setActiveTab] = useState<TabId>(resolvedInitialTab);
@@ -318,52 +310,6 @@ export default function MatchDetailScreen() {
   const liveHomeScore = effectiveCanonical?.homeScore ?? Number(params.homeScore ?? 0);
   const liveAwayScore = effectiveCanonical?.awayScore ?? Number(params.awayScore ?? 0);
   const liveMinute = effectiveCanonical?.minute ?? (params.minute ? parseInt(params.minute) : undefined);
-  const matchId = String(params.matchId || "").trim();
-  const matchSubscriptionId = useMemo(() => matchId, [matchId]);
-  const isMatchFollowed = isFollowingMatch(matchSubscriptionId);
-  const homeTeamFollowId = useMemo(
-    () => String(matchDetail?.homeTeamId || params.homeTeam || "").trim().toLowerCase() || "team:home",
-    [matchDetail?.homeTeamId, params.homeTeam],
-  );
-  const awayTeamFollowId = useMemo(
-    () => String(matchDetail?.awayTeamId || params.awayTeam || "").trim().toLowerCase() || "team:away",
-    [matchDetail?.awayTeamId, params.awayTeam],
-  );
-
-  const toggleMatchFollow = useCallback(async () => {
-    if (!matchId) return;
-    const currentSubs = await loadMatchSubscriptions();
-    const exists = isFollowingMatch(matchSubscriptionId);
-
-    if (!exists) {
-      const permission = await ensureMatchNotificationPermission();
-      if (!permission) return;
-      const nextSub: MatchSubscription = {
-        id: matchSubscriptionId,
-        espnLeague,
-        homeTeam: String(params.homeTeam || "Home"),
-        awayTeam: String(params.awayTeam || "Away"),
-      };
-      const next = [...currentSubs, nextSub];
-      await saveMatchSubscriptions(next);
-      await followMatchAction({
-        matchId: matchSubscriptionId,
-        homeTeam: String(params.homeTeam || "Home"),
-        awayTeam: String(params.awayTeam || "Away"),
-        competition: String(params.league || "") || null,
-        startTime: null,
-        notificationsEnabled: true,
-      });
-      SafeHaptics.impactLight();
-      return;
-    }
-
-    const next = currentSubs.filter((sub) => sub?.id !== matchSubscriptionId);
-    await saveMatchSubscriptions(next);
-    await unfollowMatchAction(matchSubscriptionId);
-    SafeHaptics.impactLight();
-  }, [espnLeague, followMatchAction, isFollowingMatch, matchId, matchSubscriptionId, params.awayTeam, params.homeTeam, params.league, unfollowMatchAction]);
-
   // AI Prediction
   const requestPrediction = async (mode: "prematch" | "live") => {
       const normalizeTeam = (value: unknown) => String(value || "")
@@ -682,13 +628,6 @@ export default function MatchDetailScreen() {
       return tFn("matchDetail.kickoffTBD");
     }
   })();
-  const matchStatusLabel = (() => {
-    if (isHalfTime) return "HT";
-    if (isLive) return liveMinute != null ? `${liveMinute}'` : "LIVE";
-    if (isFinished) return "FT";
-    if (isPostponed) return "Postponed";
-    return "Scheduled";
-  })();
   const highlightSummary = matchDetail?.highlights || null;
   const highlightMoments = Array.isArray(highlightSummary?.topMoments) ? highlightSummary.topMoments : [];
   const highlightRecap = Array.isArray(highlightSummary?.recap) ? highlightSummary.recap : [];
@@ -702,7 +641,7 @@ export default function MatchDetailScreen() {
         </TouchableOpacity>
 
         <View style={styles.matchHeader}>
-          <View style={styles.competitionRow}>
+          <View style={styles.competitionRowCenterOnly}>
             <View style={styles.competitionCenter}>
               {leagueLogoUri ? (
                 <TeamLogo uri={leagueLogoUri} teamName={competitionName} size={24} />
@@ -713,43 +652,11 @@ export default function MatchDetailScreen() {
               )}
               <Text style={styles.leagueName} numberOfLines={1}>{competitionName}</Text>
             </View>
-            <View style={styles.competitionMetaRow}>
-              <View
-                style={[
-                  styles.matchStatusChip,
-                  isLive ? styles.matchStatusChipLive : null,
-                  isFinished ? styles.matchStatusChipFinished : null,
-                  isPostponed ? styles.matchStatusChipPostponed : null,
-                ]}
-              >
-                <Text style={styles.matchStatusText} numberOfLines={1}>{matchStatusLabel}</Text>
-              </View>
-              {(!isLive && !isFinished && kickoffDate) ? (
-                <View style={styles.kickoffDateChip}>
-                  <Ionicons name="calendar-outline" size={11} color={COLORS.textMuted} />
-                  <Text style={styles.kickoffDateChipText} numberOfLines={1}>{kickoffDate}</Text>
-                </View>
-              ) : null}
-            </View>
           </View>
           <View style={styles.scoreRow}>
             <TeamSide
-              align="left"
               name={homeTeamName}
               logo={matchDetail?.homeTeamLogo || params.homeTeamLogo}
-              followed={isFollowingTeam(homeTeamFollowId)}
-              onToggleFollow={() => {
-                if (isFollowingTeam(homeTeamFollowId)) {
-                  void unfollowTeamAction(homeTeamFollowId);
-                  return;
-                }
-                void followTeamAction({
-                  teamId: homeTeamFollowId,
-                  teamName: homeTeamName,
-                  logo: matchDetail?.homeTeamLogo || params.homeTeamLogo || null,
-                  competition: competitionName || null,
-                });
-              }}
               onPress={() => {
               const fallbackTeamId = `name:${encodeURIComponent(homeTeamName || "")}`;
               router.push({
@@ -784,6 +691,7 @@ export default function MatchDetailScreen() {
               ) : (
                 <>
                   <Text style={styles.vsText}>VS</Text>
+                  {kickoffDate ? <Text style={styles.kickoffDateInline}>{kickoffDate}</Text> : null}
                   <Text style={styles.upcomingTime} numberOfLines={1}>
                     {kickoffTime}
                   </Text>
@@ -791,22 +699,8 @@ export default function MatchDetailScreen() {
               )}
             </View>
             <TeamSide
-              align="right"
               name={awayTeamName}
               logo={matchDetail?.awayTeamLogo || params.awayTeamLogo}
-              followed={isFollowingTeam(awayTeamFollowId)}
-              onToggleFollow={() => {
-                if (isFollowingTeam(awayTeamFollowId)) {
-                  void unfollowTeamAction(awayTeamFollowId);
-                  return;
-                }
-                void followTeamAction({
-                  teamId: awayTeamFollowId,
-                  teamName: awayTeamName,
-                  logo: matchDetail?.awayTeamLogo || params.awayTeamLogo || null,
-                  competition: competitionName || null,
-                });
-              }}
               onPress={() => {
               const fallbackTeamId = `name:${encodeURIComponent(awayTeamName || "")}`;
               router.push({
@@ -830,13 +724,6 @@ export default function MatchDetailScreen() {
               <Text style={styles.venueText}>{matchDetail.venue}</Text>
             </View>
           )}
-
-          <View style={styles.heroActionRow}>
-            <TouchableOpacity style={[styles.followChip, isMatchFollowed ? styles.followChipActive : null]} onPress={toggleMatchFollow} activeOpacity={0.8}>
-              <Ionicons name={isMatchFollowed ? "notifications" : "notifications-outline"} size={14} color={isMatchFollowed ? "#fff" : COLORS.textMuted} />
-              <Text style={[styles.followChipText, isMatchFollowed ? styles.followChipTextActive : null]}>{isMatchFollowed ? "Following" : "Follow match"}</Text>
-            </TouchableOpacity>
-          </View>
         </View>
       </LinearGradient>
 
@@ -1346,7 +1233,7 @@ function MiniAIPill({ prediction, homeTeam, awayTeam, loading, onPress }: any) {
   );
 }
 
-function TeamSide({ name, logo, onPress, followed, onToggleFollow, align = "left" }: { name: string; logo?: string; onPress?: () => void; followed?: boolean; onToggleFollow?: () => void; align?: "left" | "right" }) {
+function TeamSide({ name, logo, onPress }: { name: string; logo?: string; onPress?: () => void }) {
   const { width } = useWindowDimensions();
   const logoSize = width < 360 ? 40 : width < 400 ? 46 : 52;
   return (
@@ -1358,16 +1245,6 @@ function TeamSide({ name, logo, onPress, followed, onToggleFollow, align = "left
       >
         <TeamLogo uri={logo} teamName={name} size={logoSize} />
         <Text style={[styles.teamName, width < 360 && { fontSize: 10, maxWidth: 84 }]} numberOfLines={2}>{name}</Text>
-      </TouchableOpacity>
-      <TouchableOpacity
-        style={[
-          styles.teamFollowBtnFloating,
-          align === "left" ? { right: 8 } : { left: 8 },
-          followed ? styles.teamFollowBtnActive : null,
-        ]}
-        onPress={onToggleFollow}
-      >
-        <Ionicons name={followed ? "heart" : "heart-outline"} size={14} color={followed ? "#fff" : COLORS.textMuted} />
       </TouchableOpacity>
     </View>
   );
@@ -2292,7 +2169,7 @@ function PlayerRow({ player, sport, compact = false, teamName = "", league = "en
 
   useEffect(() => {
     let disposed = false;
-    void resolvePlayerImageUri(seed, { allowNetwork: false }).then((uri) => {
+    void resolvePlayerImageUri(seed, { allowNetwork: true }).then((uri) => {
       if (disposed || !uri) return;
       setResolvedPhoto(uri);
       setImageFailed(false);
@@ -2334,7 +2211,7 @@ function PlayerRow({ player, sport, compact = false, teamName = "", league = "en
         />
       ) : (
         <View style={[styles.playerPhoto, styles.playerPhotoPlaceholder]}>
-          <Text style={{ fontFamily: "Inter_700Bold", fontSize: 12, color: COLORS.textMuted }}>{initialsFrom(player.name)}</Text>
+          <Ionicons name="person" size={16} color={COLORS.textMuted} />
         </View>
       )}
       <View style={styles.playerInfo}>
@@ -2369,10 +2246,6 @@ function shortPlayerName(name: string): string {
   return `${parts[0][0]}. ${parts[parts.length - 1]}`.slice(0, 12);
 }
 
-function initialsFrom(name: string): string {
-  return (name || "?").trim().split(/\s+/).filter(Boolean).slice(0, 2).map((p) => p[0]).join("").toUpperCase() || "?";
-}
-
 function PitchDot({ player, color, teamName, league, rowSize = 4 }: { player: any; color: string; teamName?: string; league?: string; rowSize?: number }) {
   const seed = useMemo(() => ({
     id: String(player?.id || ""),
@@ -2402,7 +2275,7 @@ function PitchDot({ player, color, teamName, league, rowSize = 4 }: { player: an
 
   useEffect(() => {
     let disposed = false;
-    void resolvePlayerImageUri(seed, { allowNetwork: false }).then((uri) => {
+    void resolvePlayerImageUri(seed, { allowNetwork: true }).then((uri) => {
       if (disposed || !uri) return;
       setResolvedPhoto(uri);
       setImageFailed(false);
@@ -3044,6 +2917,12 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     gap: 12,
   },
+  competitionRowCenterOnly: {
+    width: "100%",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingTop: 2,
+  },
   competitionMetaRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -3202,6 +3081,14 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.18)",
     letterSpacing: 0.3,
+  },
+  kickoffDateInline: {
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 11,
+    color: COLORS.textMuted,
+    textTransform: "capitalize",
+    marginBottom: 2,
+    letterSpacing: 0.2,
   },
   finishedLabel: {
     fontFamily: "Inter_700Bold",

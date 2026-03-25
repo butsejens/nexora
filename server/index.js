@@ -178,6 +178,15 @@ const ESPN_LEAGUE_SCOREBOARDS = {
   Eredivisie: "https://site.api.espn.com/apis/site/v2/sports/soccer/ned.1/scoreboard",
   "Eerste Divisie": "https://site.api.espn.com/apis/site/v2/sports/soccer/ned.2/scoreboard",
   "KNVB Beker": "https://site.api.espn.com/apis/site/v2/sports/soccer/ned.knvb_beker/scoreboard",
+  "FIFA World Cup": "https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.world/scoreboard",
+  "UEFA European Championship": "https://site.api.espn.com/apis/site/v2/sports/soccer/uefa.euro/scoreboard",
+  "UEFA Nations League": "https://site.api.espn.com/apis/site/v2/sports/soccer/uefa.nations/scoreboard",
+  "International Friendlies": "https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.friendly/scoreboard",
+  "World Cup Qualification UEFA": "https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.worldq.uefa/scoreboard",
+  "World Cup Qualification CONMEBOL": "https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.worldq.conmebol/scoreboard",
+  "World Cup Qualification CONCACAF": "https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.worldq.concacaf/scoreboard",
+  "World Cup Qualification CAF": "https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.worldq.caf/scoreboard",
+  "World Cup Qualification AFC": "https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.worldq.afc/scoreboard",
 };
 
 function ymdToEspnDate(ymd) {

@@ -14,11 +14,14 @@ import {
   Text,
   StyleSheet,
   TouchableOpacity,
+  Image,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { COLORS }  from '@/constants/colors';
 import { SPACING } from '@/constants/design-system';
 import { TeamLogo } from '@/components/TeamLogo';
+import { getLeagueLogo } from '@/lib/logo-manager';
 import { resolveMatchBucket } from '@/lib/match-state';
 import { t as tFn } from '@/lib/i18n';
 
@@ -130,6 +133,7 @@ function MatchRowCardInner({
 
   const homeWin = !upcoming && (match.homeScore > match.awayScore);
   const awayWin = !upcoming && (match.awayScore > match.homeScore);
+  const leagueLogo = getLeagueLogo(match.league || '');
 
   const timeLabel = live
     ? `${match.minute ?? 0}'`
@@ -140,18 +144,33 @@ function MatchRowCardInner({
     <View style={s.wrap}>
       <TouchableOpacity activeOpacity={0.88} onPress={onPress}>
         <View style={[s.card, live && s.cardLive]}>
+          <LinearGradient
+            colors={['rgba(255,255,255,0.06)', 'rgba(255,255,255,0.015)', 'rgba(0,0,0,0.14)']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={s.glowOverlay}
+          />
 
           {/* Top accent line */}
           <View style={[s.topBar, { backgroundColor: barColor }]} />
 
           <View style={s.metaRow}>
             <View style={s.metaLeagueWrap}>
+              {leagueLogo ? (
+                <Image
+                  source={typeof leagueLogo === 'number' ? leagueLogo : { uri: leagueLogo as string }}
+                  style={s.leagueLogoMini}
+                  resizeMode="contain"
+                />
+              ) : (
+                <Ionicons name="trophy-outline" size={12} color={COLORS.textMuted} />
+              )}
               <Text style={s.metaLeagueLabel} numberOfLines={1}>{match.league || 'Match'}</Text>
             </View>
             <View style={s.metaActions}>
               <View style={[s.metaStatusBadge, live ? s.metaStatusBadgeLive : null]}>
                 <Text style={[s.metaStatusText, live ? s.metaStatusTextLive : null]}>
-                  {live ? `${tFn('common.live')} ${timeLabel}` : finished ? tFn('common.ft') : timeLabel}
+                  {live ? tFn('common.live') : finished ? tFn('common.ft') : tFn('common.upcoming')}
                 </Text>
               </View>
               {onNotificationToggle ? (
@@ -192,6 +211,18 @@ function MatchRowCardInner({
 
             {/* Center */}
             <View style={s.center}>
+              <View style={s.centerCompetitionPill}>
+                {leagueLogo ? (
+                  <Image
+                    source={typeof leagueLogo === 'number' ? leagueLogo : { uri: leagueLogo as string }}
+                    style={s.leagueLogoCenter}
+                    resizeMode="contain"
+                  />
+                ) : (
+                  <Ionicons name="trophy-outline" size={12} color={COLORS.textMuted} />
+                )}
+                <Text style={s.centerCompetitionText} numberOfLines={1}>{match.league || 'Competition'}</Text>
+              </View>
               {live && <LivePulse />}
 
               {!upcoming ? (
@@ -283,6 +314,10 @@ const s = StyleSheet.create({
     shadowOpacity: 0.12,
     shadowRadius: 6,
     elevation: 3,
+    position: 'relative',
+  },
+  glowOverlay: {
+    ...StyleSheet.absoluteFillObject,
   },
   cardLive: {
     borderColor: 'rgba(255, 59, 92, 0.35)',
@@ -306,6 +341,9 @@ const s = StyleSheet.create({
   },
   metaLeagueWrap: {
     flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
     minWidth: 0,
     borderRadius: 999,
     borderWidth: 1,
@@ -315,11 +353,15 @@ const s = StyleSheet.create({
     paddingVertical: 5,
   },
   metaLeagueLabel: {
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: '700',
     color: COLORS.textSecondary,
     letterSpacing: 0.25,
     textTransform: 'uppercase',
+  },
+  leagueLogoMini: {
+    width: 14,
+    height: 14,
   },
   metaStatusBadge: {
     alignItems: 'center',
@@ -411,6 +453,31 @@ const s = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: 6,
     minWidth: 92,
+  },
+  centerCompetitionPill: {
+    maxWidth: '100%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.12)',
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    marginBottom: 5,
+  },
+  centerCompetitionText: {
+    color: COLORS.textMuted,
+    fontSize: 9,
+    fontWeight: '700',
+    letterSpacing: 0.25,
+    textTransform: 'uppercase',
+    flexShrink: 1,
+  },
+  leagueLogoCenter: {
+    width: 16,
+    height: 16,
   },
   score: {
     fontSize: 28,
