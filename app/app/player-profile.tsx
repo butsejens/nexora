@@ -143,6 +143,8 @@ export default function PlayerProfileScreen() {
     weight?: string;
     position?: string;
     nationality?: string;
+    photo?: string;
+    theSportsDbPhoto?: string;
   }>();
 
   const tx = (key: string, fallback: string, params?: Record<string, string | number>) => {
@@ -232,12 +234,14 @@ export default function PlayerProfileScreen() {
   });
 
   const photoCandidates = useMemo(() => {
+    const paramPhoto = params.photo ? String(params.photo) : null;
+    const paramSportsDb = params.theSportsDbPhoto ? String(params.theSportsDbPhoto) : null;
     const fallbackAvatar = (data?.name || params.name)
       ? `https://ui-avatars.com/api/?name=${encodeURIComponent(String(data?.name || params.name || "Player"))}&size=256&background=1a1a2e&color=e0e0e0&bold=true&format=png`
       : null;
-    const raw = [data?.photo, data?.theSportsDbPhoto || null, fallbackAvatar].filter(Boolean) as string[];
+    const raw = [data?.photo, data?.theSportsDbPhoto || null, paramPhoto, paramSportsDb, fallbackAvatar].filter(Boolean) as string[];
     return [...new Set(raw)];
-  }, [data?.name, data?.photo, data?.theSportsDbPhoto, params.name]);
+  }, [data?.name, data?.photo, data?.theSportsDbPhoto, params.name, params.photo, params.theSportsDbPhoto]);
 
   const [photoIdx, setPhotoIdx] = useState(0);
   const photoUri = photoCandidates[photoIdx] || null;
