@@ -47,6 +47,7 @@ export function NexoraHeader({
   const topPad = Platform.OS === "web" ? 0 : insets.top;
 
   // Fallbacks: always navigate even if prop is not passed
+  const handleNotification = onNotification ?? (() => router.push("/follow-center"));
   const handleFavorites = onFavorites ?? (() => router.push("/favorites"));
   const handleProfile = onProfile ?? (() => router.push("/profile"));
 
@@ -119,7 +120,7 @@ export function NexoraHeader({
           </TouchableOpacity>
         )}
         {showNotification && (
-          <TouchableOpacity style={styles.iconBtn} onPress={onNotification} activeOpacity={0.7}>
+          <TouchableOpacity style={styles.iconBtn} onPress={handleNotification} activeOpacity={0.7}>
             <Ionicons name="notifications-outline" size={22} color={COLORS.textSecondary} />
           </TouchableOpacity>
         )}

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   View, Text, StyleSheet, TouchableOpacity, ScrollView,
   Image, Platform, Animated,
@@ -16,7 +16,7 @@ import { enrichTeamDetailPayload } from "@/lib/sports-enrichment";
 import { normalizeApiError } from "@/lib/error-messages";
 import { TeamLogo } from "@/components/TeamLogo";
 import { StateBlock } from "@/components/ui/PremiumPrimitives";
-import { useNexora } from "@/context/NexoraContext";
+import { useFollowState } from "@/context/UserStateContext";
 import { useTranslation } from "@/lib/useTranslation";
 import { t as tFn } from "@/lib/i18n";
 import {
@@ -117,10 +117,13 @@ export default function TeamDetailScreen() {
   const espnLeagueParam = asParam(params.espnLeague, "");
   const leagueParam = asParam(params.league, "eng.1");
   const insets = useSafeAreaInsets();
-  const { isFavorite, toggleFavorite } = useNexora();
+  const { isFollowingTeam, followTeamAction, unfollowTeamAction } = useFollowState();
   const { t } = useTranslation();
-  const favKey = `sport_team:${teamIdParam || teamNameParam}`;
-  const isFollowing = isFavorite(favKey);
+  const teamFollowId = useMemo(() => {
+    const raw = String(teamIdParam || teamNameParam || "").trim().toLowerCase();
+    return raw || "team:unknown";
+  }, [teamIdParam, teamNameParam]);
+  const isFollowing = isFollowingTeam(teamFollowId);
   const [posFilter, setPosFilter] = useState<string>("all");
   const [sortKey, setSortKey] = useState<"value_desc" | "value_asc" | "age_desc" | "age_asc" | "name_asc" | "position_asc">("value_desc");
   const topPad = Platform.OS === "web" ? 67 : insets.top;
@@ -309,6 +312,19 @@ export default function TeamDetailScreen() {
   const topAssistStat = hasTopAssistFromPayload ? enrichedTopAssistValue : topAssistValue;
   const leagueLabel = cleanLeagueLabel(data?.leagueName || "") || cleanLeagueLabel(leagueParam);
 
+  const handleToggleFollow = useCallback(async () => {
+    if (isFollowing) {
+      await unfollowTeamAction(teamFollowId);
+      return;
+    }
+    await followTeamAction({
+      teamId: teamFollowId,
+      teamName: teamName,
+      logo: data?.logo || logoParam || null,
+      competition: data?.leagueName || leagueParam || null,
+    });
+  }, [data?.leagueName, data?.logo, followTeamAction, isFollowing, leagueParam, logoParam, teamFollowId, teamName, unfollowTeamAction]);
+
   return (
     <View style={styles.container}>
       {/* Header — always visible: back button + team name stay, hero details fade */}
@@ -344,7 +360,7 @@ export default function TeamDetailScreen() {
             >
               <Ionicons name="information-circle-outline" size={18} color={COLORS.text} />
             </TouchableOpacity>
-            <TouchableOpacity style={styles.followBtn} onPress={() => toggleFavorite(favKey)} activeOpacity={0.75}>
+            <TouchableOpacity style={styles.followBtn} onPress={() => void handleToggleFollow()} activeOpacity={0.75}>
               <Ionicons name={isFollowing ? "heart" : "heart-outline"} size={16} color={isFollowing ? COLORS.accent : COLORS.text} />
               <Text style={[styles.followBtnText, isFollowing && { color: COLORS.accent }]}>
                 {isFollowing ? t("teamDetail.following") : t("teamDetail.follow")}
