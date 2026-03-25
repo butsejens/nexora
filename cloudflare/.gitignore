@@ -1,0 +1,9 @@
+node_modules/
+*.local
+.wrangler/
+dist/
+build/
+.DS_Store
+*.env.local
+.wrangler/state
+wrangler-install
