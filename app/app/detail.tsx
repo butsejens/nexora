@@ -394,6 +394,10 @@ export default function DetailScreen() {
         seasons: (iptvChannel as any).seasons || null,
       };
     }
+    // Final fallback: show seed data from navigation params (title, poster, overview)
+    // so the page is never a blank error screen when a TMDB key is unconfigured or the
+    // server is temporarily unreachable.
+    if (routeSeedData) return routeSeedData;
     return null;
   })();
 
@@ -403,8 +407,8 @@ export default function DetailScreen() {
     (searchData as any)?.error ||
     (tmdbError as any)?.message ||
     (searchError as any)?.message ||
-    t("detail.detailMissing");
-  const normalizedDetailError = normalizeApiError(rawDetailError);
+    (!data ? t("detail.detailMissing") : "");
+  const normalizedDetailError = normalizeApiError(rawDetailError || t("detail.detailMissing"));
   const detailErrorRef = useMemo(() => buildErrorReference("NX-DTL"), []);
   const isMovie = type === "movie";
   const fav = isFavorite(id);

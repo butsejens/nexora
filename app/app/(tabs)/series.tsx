@@ -878,7 +878,7 @@ export default function SeriesScreen() {
                   <StateBlock loading title="Loading series..." message="Fetching the latest catalog." />
                 </View>
               )}
-              {isError && !iptvSeries.length && (
+              {!isLoading && !!rawCatalogError && !iptvSeries.length && (
                 <View style={{ paddingHorizontal: 20, paddingTop: 12 }}>
                   <StateBlock
                     icon="cloud-offline-outline"

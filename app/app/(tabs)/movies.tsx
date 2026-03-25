@@ -902,7 +902,7 @@ export default function MoviesScreen() {
                   <StateBlock loading title="Loading movies..." message="Fetching the latest catalog." />
                 </View>
               )}
-              {isError && !iptvMovies.length && (
+              {!isLoading && !!rawCatalogError && !iptvMovies.length && (
                 <View style={{ paddingHorizontal: 20, paddingTop: 12 }}>
                   <StateBlock
                     icon="cloud-offline-outline"

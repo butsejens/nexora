@@ -986,9 +986,9 @@ export default function SportsScreen() {
     return Array.from(byId.values());
   }, [canonicalRemote.liveNow, stickyLiveMap]);
 
-  const allLive: any[] = mergedLive.map(toLegacyMatchCard).filter(isFootballMatch);
-  const allUpcoming: any[] = canonicalRemote.today.map(toLegacyMatchCard).filter(isFootballMatch);
-  const allFinished: any[] = canonicalRemote.finished.map(toLegacyMatchCard).filter(isFootballMatch);
+  const allLive: any[] = mergedLive.map(toLegacyMatchCard);
+  const allUpcoming: any[] = canonicalRemote.today.map(toLegacyMatchCard);
+  const allFinished: any[] = canonicalRemote.finished.map(toLegacyMatchCard);
   const noRemoteData = !liveFirstLoad && !todayFirstLoad && !hasRemoteData;
 
   const filterBySport = (matches: any[]) => {
@@ -1490,17 +1490,20 @@ export default function SportsScreen() {
     ...sortedUpcoming.slice(0, 12),
   ], [sortedUpcoming]);
 
-  // Height of header + sub-nav (+ sport categories when visible) so ScrollView content starts below them
-  const sportCatBarHeight = showCompetitionsSection ? 48 : 0;
-  // NexoraHeader: padTop(4/8) + contentRow(paddingV8×2 + iconBtn 30/36 or logo ~46) + padBot(4/8) + border(1)
-  const nexoraHeaderHeight = compactHeader ? (4 + 46 + 5) : (8 + 64 + 9);
-  const subNavHeight = 42;
-  const headerAreaHeight = (Platform.OS === "web" ? 0 : insets.top) + nexoraHeaderHeight + subNavHeight + sportCatBarHeight;
+  // Measured heights from onLayout — eliminates hardcoded estimates that caused overlap
+  const [headerContainerHeight, setHeaderContainerHeight] = useState(
+    (Platform.OS === "web" ? 0 : insets.top) + (compactHeader ? 55 : 81) + 59
+  );
+  const [catBarMeasuredHeight, setCatBarMeasuredHeight] = useState(showCompetitionsSection ? 57 : 0);
+  const headerAreaHeight = headerContainerHeight + catBarMeasuredHeight;
 
   return (
     <View style={styles.container}>
       {/* Header — always visible */}
-      <View style={{ position: "absolute", top: 0, left: 0, right: 0, zIndex: 50 }}>
+      <View
+        style={{ position: "absolute", top: 0, left: 0, right: 0, zIndex: 50 }}
+        onLayout={(e) => setHeaderContainerHeight(e.nativeEvent.layout.height)}
+      >
         <NexoraHeader
           title="SPORT"
           titleColor={P.accent}
@@ -1554,7 +1557,10 @@ export default function SportsScreen() {
 
       {/* ── Sticky Sport Categories ── */}
       {showCompetitionsSection && (
-        <View style={{ position: "absolute", top: (Platform.OS === "web" ? 0 : insets.top) + nexoraHeaderHeight + subNavHeight, left: 0, right: 0, zIndex: 40, backgroundColor: COLORS.background }}>
+        <View
+          style={{ position: "absolute", top: headerContainerHeight, left: 0, right: 0, zIndex: 40, backgroundColor: COLORS.background }}
+          onLayout={(e) => setCatBarMeasuredHeight(e.nativeEvent.layout.height)}
+        >
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
