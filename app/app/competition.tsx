@@ -177,7 +177,7 @@ export default function CompetitionScreen() {
 
 
   const { data: standingsData, isLoading: standingsLoading, error: standingsQueryError } = useQuery({
-    queryKey: ["standings", leagueName, espnLeague],
+    queryKey: ["standings", "v2", leagueName, espnLeague],
     queryFn: async () => {
       return fetchLeaguePayloadWithFallback("standings");
     },
@@ -187,7 +187,7 @@ export default function CompetitionScreen() {
   });
 
   const { data: scorersData, isLoading: scorersLoading, error: scorersQueryError } = useQuery({
-    queryKey: ["topscorers", leagueName, espnLeague],
+    queryKey: ["topscorers", "v2", leagueName, espnLeague],
     queryFn: async () => {
       return fetchLeaguePayloadWithFallback("topscorers");
     },
@@ -197,7 +197,7 @@ export default function CompetitionScreen() {
   });
 
   const { data: assistsData, isLoading: assistsLoading } = useQuery({
-    queryKey: ["topassists", leagueName, espnLeague],
+    queryKey: ["topassists", "v2", leagueName, espnLeague],
     queryFn: async () => {
       return fetchLeaguePayloadWithFallback("topassists");
     },
@@ -207,7 +207,7 @@ export default function CompetitionScreen() {
   });
 
   const { data: compStatsData, isLoading: compStatsLoading } = useQuery({
-    queryKey: ["competition-stats", leagueName, espnLeague],
+    queryKey: ["competition-stats", "v2", leagueName, espnLeague],
     queryFn: async () => {
       return fetchLeaguePayloadWithFallback("competition-stats");
     },
@@ -217,7 +217,7 @@ export default function CompetitionScreen() {
   });
 
   const { data: matchesData, isLoading: matchesLoading } = useQuery({
-    queryKey: ["competition-matches", leagueName, espnLeague],
+    queryKey: ["competition-matches", "v2", leagueName, espnLeague],
     queryFn: async () => {
       return fetchLeaguePayloadWithFallback("competition-matches");
     },
@@ -227,7 +227,7 @@ export default function CompetitionScreen() {
   });
 
   const { data: teamsData, isLoading: teamsLoading } = useQuery({
-    queryKey: ["competition-teams", leagueName, espnLeague],
+    queryKey: ["competition-teams", "v2", leagueName, espnLeague],
     queryFn: async () => {
       return fetchLeaguePayloadWithFallback("competition-teams");
     },
