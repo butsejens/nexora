@@ -280,19 +280,6 @@ const s = StyleSheet.create({
     color: COLORS.textSecondary,
     letterSpacing: 1,
   },
-  statusBadgeTime: {
-    backgroundColor: 'rgba(255,45,85,0.12)',
-    borderRadius: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-  },
-  statusBadgeTimeText: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: COLORS.accent,
-    letterSpacing: 0.5,
-  },
-
   // Match row
   matchRow: {
     flexDirection: 'row',
