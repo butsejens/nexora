@@ -513,7 +513,7 @@ const PlayerCard = React.memo(function PlayerCard({ player, teamName, league }: 
 
   useEffect(() => {
     let cancelled = false;
-    void resolvePlayerImageUri(seed, { allowNetwork: true }).then((uri) => {
+    void resolvePlayerImageUri(seed, { allowNetwork: false }).then((uri) => {
       if (cancelled || !uri) return;
       setResolvedPhoto(uri);
       setImageFailed(false);

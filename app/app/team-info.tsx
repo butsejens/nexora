@@ -151,7 +151,7 @@ function TopPlayerRow({ player, teamName, league }: { player: any; teamName: str
 
   useEffect(() => {
     let disposed = false;
-    void resolvePlayerImageUri(seed, { allowNetwork: true }).then((imageUri) => {
+    void resolvePlayerImageUri(seed, { allowNetwork: false }).then((imageUri) => {
       if (disposed || !imageUri) return;
       setUri(imageUri);
       setFailed(false);

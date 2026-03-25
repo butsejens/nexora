@@ -575,13 +575,16 @@ export default function MatchDetailScreen() {
   const homeLineupTeam = orderedLineupTeams[0] || null;
   const awayLineupTeam = orderedLineupTeams[1] || null;
   const competitionName = safeStr(matchDetail?.competition || matchDetail?.league || params.league);
+  const leagueLogoUri = getLeagueLogo(competitionName) as string | null;
+  const homeTeamName = safeStr(matchDetail?.homeTeam || params.homeTeam || "Home");
+  const awayTeamName = safeStr(matchDetail?.awayTeam || params.awayTeam || "Away");
+  const kickoffLabel = safeStr(matchDetail?.date || matchDetail?.startDate);
   const matchStatusLabel = (() => {
     if (isHalfTime) return "HT";
     if (isLive) return liveMinute != null ? `${liveMinute}'` : "LIVE";
     if (isFinished) return "FT";
     if (isPostponed) return "Postponed";
-    if (matchDetail?.date) return safeStr(matchDetail.date);
-    return "Scheduled";
+    return "Upcoming";
   })();
   const highlightSummary = matchDetail?.highlights || null;
   const highlightMoments = Array.isArray(highlightSummary?.topMoments) ? highlightSummary.topMoments : [];
@@ -597,11 +600,24 @@ export default function MatchDetailScreen() {
 
         <View style={styles.matchHeader}>
           <View style={styles.competitionRow}>
-            <View style={styles.matchStatusChip}>
+            <View
+              style={[
+                styles.matchStatusChip,
+                isLive ? styles.matchStatusChipLive : null,
+                isFinished ? styles.matchStatusChipFinished : null,
+                isPostponed ? styles.matchStatusChipPostponed : null,
+              ]}
+            >
               <Text style={styles.matchStatusText} numberOfLines={1}>{matchStatusLabel}</Text>
             </View>
             <View style={styles.competitionCenter}>
-              <TeamLogo uri={getLeagueLogo(String(params.league)) as string | null} teamName={String(params.league)} size={24} />
+              {leagueLogoUri ? (
+                <TeamLogo uri={leagueLogoUri} teamName={competitionName} size={24} />
+              ) : (
+                <View style={styles.leagueFallbackIcon}>
+                  <Ionicons name="trophy-outline" size={14} color={COLORS.textMuted} />
+                </View>
+              )}
               <Text style={styles.leagueName} numberOfLines={1}>{competitionName}</Text>
             </View>
             <TouchableOpacity style={[styles.followChip, isMatchFollowed ? styles.followChipActive : null]} onPress={toggleMatchFollow}>
@@ -612,13 +628,13 @@ export default function MatchDetailScreen() {
             </TouchableOpacity>
           </View>
           <View style={styles.scoreRow}>
-            <TeamSide align="left" name={params.homeTeam} logo={matchDetail?.homeTeamLogo || params.homeTeamLogo} followed={isFavorite(homeTeamFavoriteId)} onToggleFollow={() => toggleFavorite(homeTeamFavoriteId)} onPress={() => {
-              const fallbackTeamId = `name:${encodeURIComponent(params.homeTeam || "")}`;
+            <TeamSide align="left" name={homeTeamName} logo={matchDetail?.homeTeamLogo || params.homeTeamLogo} followed={isFavorite(homeTeamFavoriteId)} onToggleFollow={() => toggleFavorite(homeTeamFavoriteId)} onPress={() => {
+              const fallbackTeamId = `name:${encodeURIComponent(homeTeamName || "")}`;
               router.push({
                 pathname: "/team-detail",
                 params: {
                   teamId: matchDetail?.homeTeamId || fallbackTeamId,
-                  teamName: params.homeTeam,
+                  teamName: homeTeamName,
                   logo: matchDetail?.homeTeamLogo || params.homeTeamLogo || "",
                   sport: espnSport,
                   league: espnLeague,
@@ -636,7 +652,6 @@ export default function MatchDetailScreen() {
               ) : isFinished ? (
                 <>
                   <Text style={[styles.score, { fontSize: scoreFontSize }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>{liveHomeScore} - {liveAwayScore}</Text>
-                  <Text style={styles.finishedLabel}>FT</Text>
                 </>
               ) : isPostponed ? (
                 <>
@@ -646,19 +661,19 @@ export default function MatchDetailScreen() {
               ) : (
                 <>
                   <Text style={styles.vsText}>VS</Text>
-                  <Text style={styles.upcomingTime}>
-                    {matchDetail?.date ? safeStr(matchDetail.date) : "Gepland"}
+                  <Text style={styles.upcomingTime} numberOfLines={1}>
+                    {kickoffLabel || "Kickoff TBD"}
                   </Text>
                 </>
               )}
             </View>
-            <TeamSide align="right" name={params.awayTeam} logo={matchDetail?.awayTeamLogo || params.awayTeamLogo} followed={isFavorite(awayTeamFavoriteId)} onToggleFollow={() => toggleFavorite(awayTeamFavoriteId)} onPress={() => {
-              const fallbackTeamId = `name:${encodeURIComponent(params.awayTeam || "")}`;
+            <TeamSide align="right" name={awayTeamName} logo={matchDetail?.awayTeamLogo || params.awayTeamLogo} followed={isFavorite(awayTeamFavoriteId)} onToggleFollow={() => toggleFavorite(awayTeamFavoriteId)} onPress={() => {
+              const fallbackTeamId = `name:${encodeURIComponent(awayTeamName || "")}`;
               router.push({
                 pathname: "/team-detail",
                 params: {
                   teamId: matchDetail?.awayTeamId || fallbackTeamId,
-                  teamName: params.awayTeam,
+                  teamName: awayTeamName,
                   logo: matchDetail?.awayTeamLogo || params.awayTeamLogo || "",
                   sport: espnSport,
                   league: espnLeague,
@@ -2122,7 +2137,7 @@ function PlayerRow({ player, sport, compact = false, teamName = "", league = "en
 
   useEffect(() => {
     let disposed = false;
-    void resolvePlayerImageUri(seed, { allowNetwork: true }).then((uri) => {
+    void resolvePlayerImageUri(seed, { allowNetwork: false }).then((uri) => {
       if (disposed || !uri) return;
       setResolvedPhoto(uri);
       setImageFailed(false);
@@ -2229,7 +2244,7 @@ function PitchDot({ player, color, teamName, league }: { player: any; color: str
 
   useEffect(() => {
     let disposed = false;
-    void resolvePlayerImageUri(seed, { allowNetwork: true }).then((uri) => {
+    void resolvePlayerImageUri(seed, { allowNetwork: false }).then((uri) => {
       if (disposed || !uri) return;
       setResolvedPhoto(uri);
       setImageFailed(false);
@@ -2868,6 +2883,18 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+  matchStatusChipLive: {
+    backgroundColor: `${COLORS.accent}22`,
+    borderColor: `${COLORS.accent}66`,
+  },
+  matchStatusChipFinished: {
+    backgroundColor: "rgba(255,255,255,0.1)",
+    borderColor: "rgba(255,255,255,0.2)",
+  },
+  matchStatusChipPostponed: {
+    backgroundColor: "rgba(255,82,82,0.18)",
+    borderColor: "rgba(255,82,82,0.35)",
+  },
   matchStatusText: {
     fontFamily: "Inter_700Bold",
     fontSize: 10,
@@ -2881,6 +2908,16 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     gap: 9,
+  },
+  leagueFallbackIcon: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.12)",
+    backgroundColor: "rgba(255,255,255,0.05)",
+    alignItems: "center",
+    justifyContent: "center",
   },
   leagueName: {
     fontFamily: "Inter_700Bold",
@@ -2940,15 +2977,15 @@ const styles = StyleSheet.create({
     letterSpacing: 3,
   },
   upcomingTime: {
-    fontFamily: "Inter_500Medium",
+    fontFamily: "Inter_600SemiBold",
     fontSize: 11,
-    color: COLORS.accent,
-    backgroundColor: COLORS.accentGlow,
+    color: COLORS.textMuted,
+    backgroundColor: "rgba(255,255,255,0.06)",
     borderRadius: 8,
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderWidth: 1,
-    borderColor: `${COLORS.accent}44`,
+    borderColor: "rgba(255,255,255,0.16)",
   },
   finishedLabel: {
     fontFamily: "Inter_700Bold",
