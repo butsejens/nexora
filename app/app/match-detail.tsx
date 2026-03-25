@@ -642,34 +642,35 @@ export default function MatchDetailScreen() {
   const homeTeamName = safeStr(matchDetail?.homeTeam || params.homeTeam || "Home");
   const awayTeamName = safeStr(matchDetail?.awayTeam || params.awayTeam || "Away");
   const kickoffRaw = safeStr(matchDetail?.startDate || matchDetail?.date || effectiveCanonical?.startDate || "");
+  const kickoffTs = Date.parse(kickoffRaw);
+  const hasKickoffDate = Number.isFinite(kickoffTs);
   const kickoffDate = (() => {
-    const parsed = Date.parse(kickoffRaw);
-    if (!Number.isFinite(parsed)) return kickoffRaw;
+    if (!hasKickoffDate) return "";
     try {
       return new Intl.DateTimeFormat("nl-BE", {
         weekday: "short",
         day: "numeric",
         month: "short",
-      }).format(new Date(parsed));
+      }).format(new Date(kickoffTs));
     } catch {
-      return kickoffRaw;
+      return "";
     }
   })();
   const kickoffTime = (() => {
-    const parsed = Date.parse(kickoffRaw);
-    if (!Number.isFinite(parsed)) {
+    if (!hasKickoffDate) {
       const hm = kickoffRaw.match(/(\d{1,2}:\d{2})/);
-      return hm?.[1] || tFn("matchDetail.kickoffTBD");
+      return hm?.[1] || "";
     }
     try {
       return new Intl.DateTimeFormat("nl-BE", {
         hour: "2-digit",
         minute: "2-digit",
-      }).format(new Date(parsed));
+      }).format(new Date(kickoffTs));
     } catch {
-      return tFn("matchDetail.kickoffTBD");
+      return "";
     }
   })();
+  const kickoffConfirmed = kickoffTime.length > 0;
   const highlightSummary = matchDetail?.highlights || null;
   const highlightMoments = Array.isArray(highlightSummary?.topMoments) ? highlightSummary.topMoments : [];
   const highlightRecap = Array.isArray(highlightSummary?.recap) ? highlightSummary.recap : [];
@@ -678,9 +679,20 @@ export default function MatchDetailScreen() {
     <View style={styles.container}>
       {/* Header */}
       <LinearGradient colors={[COLORS.cardElevated, COLORS.surface, COLORS.background]} style={[styles.header, { paddingTop: topPad + 8 }]}>
-        <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
-          <Ionicons name="chevron-back" size={24} color={COLORS.text} />
-        </TouchableOpacity>
+        <View style={styles.heroTopRow}>
+          <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
+            <Ionicons name="chevron-back" size={24} color={COLORS.text} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.heroActionBtn}
+            onPress={() => {
+              SafeHaptics.impactLight();
+              router.push("/follow-center");
+            }}
+          >
+            <Ionicons name="notifications-outline" size={20} color={COLORS.text} />
+          </TouchableOpacity>
+        </View>
 
         <View style={styles.matchHeader}>
           <View style={styles.competitionRowCenterOnly}>
@@ -732,11 +744,12 @@ export default function MatchDetailScreen() {
                 </>
               ) : (
                 <>
+                  <Text style={styles.scheduledDate} numberOfLines={1}>{kickoffDate || "Datum volgt"}</Text>
                   <Text style={styles.vsText}>VS</Text>
-                  {kickoffDate ? <Text style={styles.kickoffDateInline}>{kickoffDate}</Text> : null}
-                  <Text style={styles.upcomingTime} numberOfLines={1}>
-                    {kickoffTime}
+                  <Text style={styles.scheduledTime} numberOfLines={1}>
+                    {kickoffTime || "--:--"}
                   </Text>
+                  {!kickoffConfirmed ? <Text style={styles.kickoffPendingNote}>{tFn("matchDetail.kickoffTBD")}</Text> : null}
                 </>
               )}
             </View>
@@ -2927,9 +2940,15 @@ function EmptyState({ icon, text }: { icon: any; text: string }) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
-  header: { paddingHorizontal: 20, paddingBottom: 18 },
+  header: { paddingHorizontal: 20, paddingBottom: 10 },
+  heroTopRow: {
+    width: "100%",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 10,
+  },
   backBtn: {
-    marginBottom: 12,
     width: 44,
     height: 44,
     alignItems: "center",
@@ -2938,132 +2957,63 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.12)",
-    alignSelf: "flex-start",
+  },
+  heroActionBtn: {
+    width: 44,
+    height: 44,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(255,255,255,0.09)",
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.12)",
   },
   matchHeader: {
     width: "100%",
     alignItems: "center",
-    gap: 16,
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.18)",
-    backgroundColor: "rgba(18,18,30,0.88)",
-    paddingHorizontal: 16,
-    paddingTop: 18,
-    paddingBottom: 18,
-  },
-  competitionRow: {
-    width: "100%",
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 12,
+    gap: 14,
+    paddingHorizontal: 2,
+    paddingTop: 2,
+    paddingBottom: 10,
   },
   competitionRowCenterOnly: {
     width: "100%",
     alignItems: "center",
     justifyContent: "center",
-    paddingTop: 2,
-  },
-  competitionMetaRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    justifyContent: "flex-end",
-    flexShrink: 0,
-  },
-  matchStatusChip: {
-    minWidth: 78,
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 7,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.16)",
-    backgroundColor: "rgba(255,255,255,0.06)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  matchStatusChipLive: {
-    backgroundColor: `${COLORS.accent}22`,
-    borderColor: `${COLORS.accent}66`,
-  },
-  matchStatusChipFinished: {
-    backgroundColor: "rgba(255,255,255,0.1)",
-    borderColor: "rgba(255,255,255,0.2)",
-  },
-  matchStatusChipPostponed: {
-    backgroundColor: "rgba(255,82,82,0.18)",
-    borderColor: "rgba(255,82,82,0.35)",
-  },
-  matchStatusText: {
-    fontFamily: "Inter_700Bold",
-    fontSize: 10,
-    color: COLORS.text,
-    letterSpacing: 0.5,
-    textTransform: "uppercase",
+    paddingTop: 0,
   },
   competitionCenter: {
-    flex: 1,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 9,
+    gap: 10,
+    maxWidth: "100%",
   },
   leagueFallbackIcon: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.12)",
-    backgroundColor: "rgba(255,255,255,0.05)",
+    width: 22,
+    height: 22,
+    borderRadius: 11,
     alignItems: "center",
     justifyContent: "center",
   },
   leagueName: {
     fontFamily: "Inter_700Bold",
-    fontSize: 12,
+    fontSize: 13,
     color: "#FFFFFF",
-    letterSpacing: 0.4,
+    letterSpacing: 0.2,
     textTransform: "uppercase",
-    backgroundColor: "rgba(255,255,255,0.12)",
-    borderRadius: 20,
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.18)",
-    maxWidth: "92%",
+    maxWidth: "88%",
+    textAlign: "center",
   },
-  kickoffDateChip: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.15)",
-    backgroundColor: "rgba(255,255,255,0.06)",
-    paddingHorizontal: 8,
-    paddingVertical: 6,
-    maxWidth: 140,
-  },
-  kickoffDateChipText: {
-    color: COLORS.textMuted,
-    fontFamily: "Inter_600SemiBold",
-    fontSize: 10,
-    textTransform: "capitalize",
-  },
-  scoreRow: { flexDirection: "row", alignItems: "center", width: "100%", paddingHorizontal: 4, justifyContent: "center", gap: 12 },
-  teamSideWrap: { flex: 1, alignItems: "center", position: "relative", minWidth: 90 },
+  scoreRow: { flexDirection: "row", alignItems: "flex-start", width: "100%", paddingHorizontal: 0, justifyContent: "space-between", gap: 10 },
+  teamSideWrap: { flex: 1, alignItems: "center", justifyContent: "flex-start", position: "relative", minWidth: 86 },
   teamSideCard: {
     width: "100%",
     alignItems: "center",
-    gap: 10,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.16)",
-    backgroundColor: "rgba(255,255,255,0.08)",
-    paddingVertical: 16,
-    paddingHorizontal: 10,
-    minHeight: 120,
+    gap: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 4,
+    minHeight: 96,
     justifyContent: "center",
   },
   teamFollowBtnFloating: {
@@ -3090,14 +3040,13 @@ const styles = StyleSheet.create({
   },
   teamName: {
     fontFamily: "Inter_700Bold",
-    fontSize: 14,
+    fontSize: 13,
     color: "#FFFFFF",
-    lineHeight: 18,
+    lineHeight: 17,
     textAlign: "center",
-    maxWidth: 140,
-    fontWeight: "600",
+    maxWidth: 118,
   },
-  scoreCenter: { minWidth: 130, alignItems: "center", gap: 6, justifyContent: "center" },
+  scoreCenter: { minWidth: 106, alignItems: "center", gap: 6, justifyContent: "center", paddingTop: 2 },
   score: {
     fontFamily: "Inter_800ExtraBold",
     fontSize: 48,
@@ -3112,30 +3061,30 @@ const styles = StyleSheet.create({
   },
   vsText: {
     fontFamily: "Inter_800ExtraBold",
-    fontSize: 24,
-    color: "rgba(255,255,255,0.4)",
-    letterSpacing: 3,
+    fontSize: 23,
+    color: "rgba(255,255,255,0.48)",
+    letterSpacing: 2.6,
   },
-  upcomingTime: {
-    fontFamily: "Inter_700Bold",
-    fontSize: 16,
-    color: "#FFFFFF",
-    backgroundColor: "rgba(255,255,255,0.12)",
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.22)",
-    letterSpacing: 0.4,
-    fontWeight: "600",
-  },
-  kickoffDateInline: {
+  scheduledDate: {
     fontFamily: "Inter_600SemiBold",
     fontSize: 11,
     color: COLORS.textMuted,
     textTransform: "capitalize",
-    marginBottom: 2,
-    letterSpacing: 0.2,
+    letterSpacing: 0.3,
+  },
+  scheduledTime: {
+    fontFamily: "Inter_700Bold",
+    fontSize: 19,
+    color: "#FFFFFF",
+    lineHeight: 24,
+    letterSpacing: 0.4,
+  },
+  kickoffPendingNote: {
+    fontFamily: "Inter_500Medium",
+    fontSize: 10,
+    color: COLORS.textMuted,
+    textAlign: "center",
+    marginTop: 2,
   },
   finishedLabel: {
     fontFamily: "Inter_700Bold",
@@ -3145,47 +3094,19 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
     marginTop: 2,
   },
-  followChip: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.22)",
-    paddingHorizontal: 16,
-    paddingVertical: 9,
-    backgroundColor: "rgba(255,255,255,0.06)",
-    minHeight: 36,
-  },
-  followChipActive: {
-    backgroundColor: `${COLORS.accent}cc`,
-    borderColor: `${COLORS.accent}55`,
-  },
-  followChipText: {
-    fontFamily: "Inter_700Bold",
-    fontSize: 12,
-    color: COLORS.textMuted,
-    letterSpacing: 0.2,
-  },
-  followChipTextActive: {
-    color: "#fff",
-  },
   venueRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
-    marginTop: 2,
-    opacity: 0.9,
-    borderRadius: 999,
-    paddingHorizontal: 11,
-    paddingVertical: 5,
-    backgroundColor: "rgba(255,255,255,0.04)",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.10)",
+    gap: 5,
+    marginTop: 4,
+    opacity: 0.95,
+    paddingHorizontal: 2,
+    paddingVertical: 3,
   },
-  venueText: { fontFamily: "Inter_400Regular", fontSize: 12, color: COLORS.textMuted },
+  venueText: { fontFamily: "Inter_400Regular", fontSize: 12, color: COLORS.textMuted, textAlign: "center", maxWidth: 280 },
   tabBarScroll: {
     flexGrow: 0,
+    marginTop: 6,
     backgroundColor: COLORS.surface,
     borderBottomWidth: 1,
     borderBottomColor: COLORS.border,
