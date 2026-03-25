@@ -12,13 +12,17 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { COLORS } from "@/constants/colors";
 import { apiRequest } from "@/lib/query-client";
 import { fetchSportsLeagueResourceWithFallback, getLeaderboardRows } from "@/lib/sports-data";
+import { enrichTeamDetailPayload } from "@/lib/sports-enrichment";
 import { normalizeApiError } from "@/lib/error-messages";
 import { TeamLogo } from "@/components/TeamLogo";
 import { StateBlock } from "@/components/ui/PremiumPrimitives";
 import { useNexora } from "@/context/NexoraContext";
 import { useTranslation } from "@/lib/useTranslation";
 import { t as tFn } from "@/lib/i18n";
-import { getCachedPlayerImage, getPlayerImage } from "@/lib/player-image-system";
+import {
+  getBestCachedOrSeedPlayerImage,
+  resolvePlayerImageUri,
+} from "@/lib/player-image-system";
 
 function asParam(value: string | string[] | undefined, fallback = ""): string {
   if (Array.isArray(value)) return String(value[0] || fallback);
@@ -177,7 +181,8 @@ export default function TeamDetailScreen() {
       if (!teamIdParam) throw new Error("Team ID ontbreekt");
       const tn = encodeURIComponent(String(teamNameParam || ""));
       const res = await apiRequest("GET", `/api/sports/team/${encodeURIComponent(teamIdParam)}?sport=${encodeURIComponent(sport)}&league=${encodeURIComponent(league)}&teamName=${tn}`);
-      return (await res.json()) as TeamDetailData;
+      const json = (await res.json()) as TeamDetailData;
+      return enrichTeamDetailPayload(json) as TeamDetailData;
     },
     staleTime: 5 * 60 * 1000,
     gcTime: 30 * 60 * 1000,
@@ -272,14 +277,21 @@ export default function TeamDetailScreen() {
   const topScorerForTeam = (getLeaderboardRows("topscorers", scorersData) as any[]).find((s) => {
     const team = String(s?.team || "").toLowerCase();
     const current = String(data?.name || teamNameParam || "").toLowerCase();
-    return team && current && (team.includes(current) || current.includes(team));
+    const goals = Number(s?.goals ?? s?.displayValue ?? 0);
+    return team && current && (team.includes(current) || current.includes(team)) && Number.isFinite(goals) && goals > 0;
   });
 
   const topAssistForTeam = (getLeaderboardRows("topassists", assistsData) as any[]).find((s) => {
     const team = String(s?.team || "").toLowerCase();
     const current = String(data?.name || teamNameParam || "").toLowerCase();
-    return team && current && (team.includes(current) || current.includes(team));
+    const assists = Number(s?.assists ?? s?.displayValue ?? 0);
+    return team && current && (team.includes(current) || current.includes(team)) && Number.isFinite(assists) && assists > 0;
   });
+
+  const topScorerValue = Number(topScorerForTeam?.displayValue || topScorerForTeam?.goals || 0);
+  const hasTopScorer = Boolean(topScorerForTeam?.name) && Number.isFinite(topScorerValue) && topScorerValue > 0;
+  const topAssistValue = Number(topAssistForTeam?.displayValue || topAssistForTeam?.assists || 0);
+  const hasTopAssist = Boolean(topAssistForTeam?.name) && Number.isFinite(topAssistValue) && topAssistValue > 0;
 
   return (
     <View style={styles.container}>
@@ -346,43 +358,6 @@ export default function TeamDetailScreen() {
             </View>
           ) : null}
 
-          <View style={styles.teamMetaRow}>
-            {data.venue ? (
-              <View style={styles.metaBadge}>
-                <Ionicons name="location-outline" size={12} color={COLORS.textMuted} />
-                <Text style={styles.metaText}>{data.venue}</Text>
-              </View>
-            ) : null}
-            {data.record ? (
-              <View style={styles.metaBadge}>
-                <MaterialCommunityIcons name="scoreboard-outline" size={12} color={COLORS.textMuted} />
-                <Text style={styles.metaText}>{data.record}</Text>
-              </View>
-            ) : null}
-          </View>
-          {data.coach ? (
-            <View style={styles.coachRow}>
-              <Ionicons name="person-circle-outline" size={14} color={COLORS.textMuted} />
-              <Text style={styles.coachText}>{t("teamDetail.coach", { name: data.coach })}</Text>
-            </View>
-          ) : null}
-
-          {data.form ? (
-            <View style={styles.formRow}>
-              {String(data.form).split("").slice(0, 5).map((result, idx) => (
-                <View
-                  key={`form_${idx}`}
-                  style={[
-                    styles.formDot,
-                    result === "W" ? styles.formWin : result === "D" ? styles.formDraw : styles.formLoss,
-                  ]}
-                >
-                  <Text style={styles.formDotText}>{result}</Text>
-                </View>
-              ))}
-            </View>
-          ) : null}
-
           {(realValueCount > 0 || data.squadMarketValue) ? (
             <View style={styles.tmBadge}>
               <MaterialCommunityIcons name="currency-eur" size={11} color="#00C896" />
@@ -392,20 +367,20 @@ export default function TeamDetailScreen() {
             </View>
           ) : null}
 
-          {topScorerForTeam ? (
+          {hasTopScorer ? (
             <View style={styles.topScorerBadge}>
               <MaterialCommunityIcons name="trophy-outline" size={13} color={COLORS.gold} />
               <Text style={styles.topScorerText}>
-                {t("teamDetail.topScorerLabel", { name: topScorerForTeam.name, goals: String(topScorerForTeam.displayValue || topScorerForTeam.goals || 0) })}
+                {t("teamDetail.topScorerLabel", { name: topScorerForTeam.name, goals: String(topScorerValue) })}
               </Text>
             </View>
           ) : null}
 
-          {topAssistForTeam ? (
+          {hasTopAssist ? (
             <View style={styles.topAssistBadge}>
               <MaterialCommunityIcons name="target" size={13} color="#4FC3F7" />
               <Text style={styles.topAssistText}>
-                {t("teamDetail.topAssistLabel", { name: topAssistForTeam.name, assists: String(topAssistForTeam.displayValue || topAssistForTeam.assists || 0) }) || `${topAssistForTeam.name} · ${topAssistForTeam.displayValue || topAssistForTeam.assists || 0} assists`}
+                {`${topAssistForTeam.name} · ${topAssistValue} A`}
               </Text>
             </View>
           ) : null}
@@ -515,9 +490,7 @@ export default function TeamDetailScreen() {
 }
 
 const PlayerCard = React.memo(function PlayerCard({ player, teamName, league }: { player: any; teamName: string; league: string }) {
-  const espnId = String(player?.id || "");
-  const espnCdn = /^\d+$/.test(espnId) ? `https://a.espncdn.com/i/headshots/soccer/players/full/${espnId}.png` : null;
-  const cachedPhoto = getCachedPlayerImage({
+  const seed = useMemo(() => ({
     id: String(player?.id || ""),
     name: String(player?.name || ""),
     team: String(player?.currentClub || player?.team || teamName || ""),
@@ -525,51 +498,31 @@ const PlayerCard = React.memo(function PlayerCard({ player, teamName, league }: 
     sport: "soccer",
     photo: player?.photo || null,
     theSportsDbPhoto: player?.theSportsDbPhoto || null,
-  });
-  const photoCandidates = [
-    cachedPhoto,
-    player?.photo,
-    player?.theSportsDbPhoto || null,
-    espnCdn,
-    `https://ui-avatars.com/api/?name=${encodeURIComponent(String(player?.name || "Player"))}&size=256&background=1a1a2e&color=e0e0e0&bold=true&format=png`,
-  ].filter(Boolean) as string[];
-  const [photoIndex, setPhotoIndex] = useState(0);
-  const [resolvedPhoto, setResolvedPhoto] = useState<string | null>(cachedPhoto || null);
+    nationality: player?.nationality || undefined,
+    age: Number(player?.age || 0) || undefined,
+    position: String(player?.position || player?.positionName || ""),
+  }), [player?.id, player?.name, player?.currentClub, player?.team, player?.photo, player?.theSportsDbPhoto, player?.nationality, player?.age, player?.position, player?.positionName, teamName, league]);
+  const [resolvedPhoto, setResolvedPhoto] = useState<string | null>(getBestCachedOrSeedPlayerImage(seed));
+  const [imageFailed, setImageFailed] = useState(false);
   const playerKey = String(player?.id || player?.name || "");
 
-  // Reset photo index when player changes (FlatList recycling)
   useEffect(() => {
-    setPhotoIndex(0);
-    setResolvedPhoto(cachedPhoto || null);
-  }, [playerKey, cachedPhoto]);
+    setResolvedPhoto(getBestCachedOrSeedPlayerImage(seed));
+    setImageFailed(false);
+  }, [playerKey, seed]);
 
   useEffect(() => {
     let cancelled = false;
-    if (resolvedPhoto) return () => { cancelled = true; };
-
-    const seed = {
-      id: String(player?.id || ""),
-      name: String(player?.name || ""),
-      team: String(player?.currentClub || player?.team || teamName || ""),
-      league: String(league || "eng.1"),
-      sport: "soccer",
-      photo: player?.photo || null,
-      theSportsDbPhoto: player?.theSportsDbPhoto || null,
-      nationality: player?.nationality || undefined,
-      age: Number(player?.age || 0) || undefined,
-    };
-
-    void getPlayerImage(seed, { allowNetwork: true }).then((uri) => {
+    void resolvePlayerImageUri(seed, { allowNetwork: true }).then((uri) => {
       if (cancelled || !uri) return;
       setResolvedPhoto(uri);
-      setPhotoIndex(0);
+      setImageFailed(false);
     }).catch(() => undefined);
 
     return () => { cancelled = true; };
-  }, [resolvedPhoto, player?.id, player?.name, player?.team, player?.currentClub, player?.photo, player?.theSportsDbPhoto, player?.nationality, player?.age, teamName, league]);
+  }, [seed]);
 
-  const mergedCandidates = [resolvedPhoto, ...photoCandidates].filter(Boolean) as string[];
-  const photoUri = mergedCandidates[photoIndex];
+  const photoUri = !imageFailed ? resolvedPhoto : null;
   const posColor = POSITION_COLORS[player.position] || COLORS.accent;
   const rawName = String(player?.name || "").trim();
   const safeName = rawName || tFn("teamDetail.unknown");
@@ -588,7 +541,7 @@ const PlayerCard = React.memo(function PlayerCard({ player, teamName, league }: 
             style={[styles.playerPhoto, { backgroundColor: COLORS.card }]}
             resizeMode="cover"
             onError={() => {
-              setPhotoIndex((idx) => idx + 1);
+              setImageFailed(true);
             }}
           />
         ) : (
@@ -649,7 +602,7 @@ function StatPill({ label, value, color, real }: { label: string; value: string;
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
-  header: { paddingHorizontal: 16, paddingBottom: 20 },
+  header: { paddingHorizontal: 18, paddingBottom: 22 },
   backBtn: { width: 38, height: 38, alignItems: "center", justifyContent: "center", marginBottom: 8 },
   headerActions: { flexDirection: "row", alignItems: "center", gap: 8 },
   infoBtn: {
@@ -669,7 +622,7 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: "rgba(255,255,255,0.15)",
   },
   followBtnText: { fontFamily: "Inter_600SemiBold", fontSize: 12, color: COLORS.text },
-  teamHeaderContent: { alignItems: "center", gap: 8 },
+  teamHeaderContent: { alignItems: "center", gap: 10, paddingTop: 2 },
   teamBigLogo: { width: 84, height: 84, borderRadius: 16 },
   logoPlaceholder: { backgroundColor: COLORS.card, alignItems: "center", justifyContent: "center" },
   logoPlaceholderText: { fontFamily: "Inter_700Bold", fontSize: 22, color: COLORS.text },
@@ -677,43 +630,32 @@ const styles = StyleSheet.create({
   teamShort: { fontFamily: "Inter_400Regular", fontSize: 14, color: "rgba(255,255,255,0.5)" },
   rankBadge: {
     flexDirection: "row", alignItems: "center", gap: 5,
-    backgroundColor: "rgba(255,215,0,0.12)", borderRadius: 12,
-    paddingHorizontal: 12, paddingVertical: 5,
+    backgroundColor: "rgba(255,215,0,0.12)", borderRadius: 14,
+    paddingHorizontal: 12, paddingVertical: 6,
     borderWidth: 1, borderColor: "rgba(255,215,0,0.25)",
   },
   rankText: { fontFamily: "Inter_600SemiBold", fontSize: 12, color: "#FFD700" },
-  teamMetaRow: { flexDirection: "row", gap: 10, flexWrap: "wrap", justifyContent: "center" },
-  metaBadge: { flexDirection: "row", alignItems: "center", gap: 4, backgroundColor: "rgba(255,255,255,0.08)", borderRadius: 10, paddingHorizontal: 10, paddingVertical: 4 },
-  metaText: { fontFamily: "Inter_400Regular", fontSize: 12, color: "rgba(255,255,255,0.6)" },
-  coachRow: { flexDirection: "row", alignItems: "center", gap: 6 },
-  formRow: { flexDirection: "row", gap: 5, marginTop: 6 },
-  formDot: { width: 24, height: 24, borderRadius: 12, alignItems: "center", justifyContent: "center" },
-  formWin: { backgroundColor: "rgba(76,175,130,0.25)", borderWidth: 1, borderColor: "#4CAF82" },
-  formDraw: { backgroundColor: "rgba(255,180,0,0.25)", borderWidth: 1, borderColor: "#FFB400" },
-  formLoss: { backgroundColor: "rgba(255,82,82,0.18)", borderWidth: 1, borderColor: "#FF5252" },
-  formDotText: { fontFamily: "Inter_700Bold", fontSize: 9, color: COLORS.text },
-  coachText: { fontFamily: "Inter_500Medium", fontSize: 13, color: "rgba(255,255,255,0.6)" },
   tmBadge: {
     flexDirection: "row", alignItems: "center", gap: 4,
-    backgroundColor: "rgba(0,200,150,0.1)", borderRadius: 10,
-    paddingHorizontal: 10, paddingVertical: 4,
+    backgroundColor: "rgba(0,200,150,0.1)", borderRadius: 12,
+    paddingHorizontal: 11, paddingVertical: 5,
     borderWidth: 1, borderColor: "rgba(0,200,150,0.25)",
   },
-  tmBadgeText: { fontFamily: "Inter_500Medium", fontSize: 11, color: "#00C896" },
+  tmBadgeText: { fontFamily: "Inter_500Medium", fontSize: 11, color: "#00C896", lineHeight: 14 },
   topScorerBadge: {
     flexDirection: "row", alignItems: "center", gap: 5,
-    backgroundColor: "rgba(255,215,0,0.12)", borderRadius: 10,
-    paddingHorizontal: 10, paddingVertical: 4,
+    backgroundColor: "rgba(255,215,0,0.12)", borderRadius: 12,
+    paddingHorizontal: 11, paddingVertical: 5,
     borderWidth: 1, borderColor: "rgba(255,215,0,0.25)",
   },
-  topScorerText: { fontFamily: "Inter_500Medium", fontSize: 11, color: COLORS.gold },
+  topScorerText: { fontFamily: "Inter_500Medium", fontSize: 11, color: COLORS.gold, lineHeight: 14 },
   topAssistBadge: {
     flexDirection: "row", alignItems: "center", gap: 5,
-    backgroundColor: "rgba(79,195,247,0.12)", borderRadius: 10,
-    paddingHorizontal: 10, paddingVertical: 4,
+    backgroundColor: "rgba(79,195,247,0.12)", borderRadius: 12,
+    paddingHorizontal: 11, paddingVertical: 5,
     borderWidth: 1, borderColor: "rgba(79,195,247,0.28)",
   },
-  topAssistText: { fontFamily: "Inter_500Medium", fontSize: 11, color: "#7DD3FC" },
+  topAssistText: { fontFamily: "Inter_500Medium", fontSize: 11, color: "#7DD3FC", lineHeight: 14 },
   loadingState: { flex: 1, alignItems: "center", justifyContent: "center", gap: 12 },
   loadingText: { fontFamily: "Inter_400Regular", fontSize: 14, color: COLORS.textMuted },
   emptyState: { flex: 1, alignItems: "center", justifyContent: "center", gap: 12, paddingVertical: 40 },
@@ -722,7 +664,7 @@ const styles = StyleSheet.create({
   filterScroll: { flexGrow: 0, borderBottomWidth: 1, borderBottomColor: COLORS.border, backgroundColor: COLORS.overlayLight },
   filterHeaderWrap: { backgroundColor: COLORS.overlayLight },
   filterSticky: { zIndex: 5, elevation: 5 },
-  filterRow: { flexDirection: "row", gap: 8, paddingHorizontal: 16, paddingVertical: 10 },
+  filterRow: { flexDirection: "row", gap: 8, paddingHorizontal: 18, paddingVertical: 10 },
   sortScroll: { flexGrow: 0, borderBottomWidth: 1, borderBottomColor: COLORS.border, backgroundColor: COLORS.overlayLight },
   sortChip: {
     paddingHorizontal: 12,
@@ -742,23 +684,23 @@ const styles = StyleSheet.create({
   filterChipActive: { backgroundColor: COLORS.accentGlow, borderColor: COLORS.accent },
   filterChipText: { fontFamily: "Inter_500Medium", fontSize: 12, color: COLORS.textMuted },
   filterChipTextActive: { color: COLORS.accent },
-  playerList: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 40 },
+  playerList: { paddingHorizontal: 18, paddingTop: 14, paddingBottom: 44 },
   playerCard: {
-    paddingVertical: 14,
+    paddingVertical: 15,
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.12)",
-    gap: 12,
-    borderRadius: 16,
+    gap: 13,
+    borderRadius: 18,
     backgroundColor: COLORS.cardElevated,
-    paddingHorizontal: 12,
-    marginBottom: 10,
+    paddingHorizontal: 13,
+    marginBottom: 12,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.25,
     shadowRadius: 14,
     elevation: 4,
   },
-  playerTopRow: { flexDirection: "row", alignItems: "center", gap: 10 },
+  playerTopRow: { flexDirection: "row", alignItems: "center", gap: 11 },
   jerseyBadge: {
     width: 32, height: 32, borderRadius: 9, borderWidth: 1.5,
     alignItems: "center", justifyContent: "center", flexShrink: 0,
@@ -767,7 +709,7 @@ const styles = StyleSheet.create({
   playerPhoto: { width: 52, height: 52, borderRadius: 12, flexShrink: 0 },
   photoPlaceholder: { backgroundColor: COLORS.card, alignItems: "center", justifyContent: "center" },
   playerInitials: { fontFamily: "Inter_700Bold", fontSize: 13, color: COLORS.text },
-  playerMain: { flex: 1, gap: 4 },
+  playerMain: { flex: 1, gap: 5 },
   playerNameRow: { flexDirection: "row", alignItems: "center", gap: 6 },
   playerName: { fontFamily: "Inter_600SemiBold", fontSize: 14, color: COLORS.text, flex: 1 },
   playerNameValue: { fontFamily: "Inter_700Bold", fontSize: 11, color: COLORS.textMuted, flexShrink: 0 },
@@ -776,7 +718,7 @@ const styles = StyleSheet.create({
   posTag: { borderRadius: 6, borderWidth: 1, paddingHorizontal: 7, paddingVertical: 2 },
   posTagText: { fontFamily: "Inter_600SemiBold", fontSize: 10, maxWidth: 100 },
   playerNat: { fontFamily: "Inter_400Regular", fontSize: 12, color: COLORS.textMuted, flexShrink: 1 },
-  playerStats: { flexDirection: "row", gap: 8, flexWrap: "wrap", paddingLeft: 88 },
+  playerStats: { flexDirection: "row", gap: 8, flexWrap: "wrap", paddingLeft: 90 },
   statPill: {
     alignItems: "center",
     gap: 2,

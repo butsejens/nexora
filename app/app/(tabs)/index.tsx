@@ -13,12 +13,12 @@ import { TeamLogo } from "@/components/TeamLogo";
 import { LiveBadge } from "@/components/LiveBadge";
 import { MatchRowCard } from "@/components/premium";
 import { apiRequest } from "@/lib/query-client";
-import { buildErrorReference, normalizeApiError } from "@/lib/error-messages";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { getLeagueLogo } from "@/lib/logo-manager";
 import { safeStr, toPct, flagFromIso2 } from "@/lib/utils";
-import { COUNTRY_COMPETITIONS, CompetitionTier, CountryCatalog, CountryCompetition, tierPriority } from "@/lib/country-data";
+import { COUNTRY_COMPETITIONS, CountryCatalog, tierPriority } from "@/lib/country-data";
+import { partitionMatches, resolveMatchBucket } from "@/lib/match-state";
 import { useNexora } from "@/context/NexoraContext";
 import { t as tFn, getLanguage } from "@/lib/i18n";
 import { useTranslation } from "@/lib/useTranslation";
@@ -855,6 +855,14 @@ export default function SportsScreen() {
   );
   const remoteUpcoming: any[] = useMemo(() => todayQuery.data?.upcoming || [], [todayQuery.data?.upcoming]);
   const remoteFinished: any[] = useMemo(() => todayQuery.data?.finished || [], [todayQuery.data?.finished]);
+  const canonicalRemote = useMemo(
+    () => partitionMatches([
+      ...(Array.isArray(remoteLive) ? remoteLive : []),
+      ...(Array.isArray(remoteUpcoming) ? remoteUpcoming : []),
+      ...(Array.isArray(remoteFinished) ? remoteFinished : []),
+    ]),
+    [remoteFinished, remoteLive, remoteUpcoming],
+  );
   const hasRemoteData = remoteLive.length + remoteUpcoming.length + remoteFinished.length > 0;
 
   const [stickyLiveMap, setStickyLiveMap] = useState<Record<string, any>>({});
@@ -865,38 +873,33 @@ export default function SportsScreen() {
     const now = Date.now();
     setStickyLiveMap((prev) => {
       const next = { ...prev };
-      for (const match of remoteLive) {
+      for (const match of canonicalRemote.live) {
         if (!match?.id) continue;
         next[match.id] = { ...next[match.id], ...match, __lastSeenLiveAt: now };
       }
-      const finishedIds = new Set((remoteFinished || []).map((m: any) => String(m?.id || "")));
+      const finishedIds = new Set((canonicalRemote.finished || []).map((m: any) => String(m?.id || "")));
       const LIVE_STICKY_TTL_MS = 20 * 60 * 1000;
       for (const [id, match] of Object.entries(next)) {
         const seenAt = Number((match as any)?.__lastSeenLiveAt || 0);
         const expired = now - seenAt > LIVE_STICKY_TTL_MS;
-        const isFinished = String((match as any)?.status || "").toLowerCase() === "finished";
+        const isFinished = resolveMatchBucket(match as any) === "finished";
         if (finishedIds.has(id) || isFinished || expired) delete next[id];
       }
       return next;
     });
-  }, [remoteLive, remoteFinished]);
+  }, [canonicalRemote.finished, canonicalRemote.live]);
 
   const mergedLive = useMemo(() => {
     const byId = new Map<string, any>();
     Object.entries(stickyLiveMap).forEach(([id, m]) => byId.set(id, m));
-    remoteLive.forEach((m) => { if (m?.id) byId.set(String(m.id), m); });
+    canonicalRemote.live.forEach((m) => { if (m?.id) byId.set(String(m.id), m); });
     return Array.from(byId.values());
-  }, [remoteLive, stickyLiveMap]);
+  }, [canonicalRemote.live, stickyLiveMap]);
 
   const allLive: any[] = mergedLive.filter(isFootballMatch);
-  const allUpcoming: any[] = remoteUpcoming.filter(isFootballMatch);
-  const allFinished: any[] = remoteFinished.filter(isFootballMatch);
-  const rawApiError =
-    todayQuery.data?.error || liveQuery.data?.error ||
-    (todayQuery.error as any)?.message || (liveQuery.error as any)?.message || "";
+  const allUpcoming: any[] = canonicalRemote.upcoming.filter(isFootballMatch);
+  const allFinished: any[] = canonicalRemote.finished.filter(isFootballMatch);
   const noRemoteData = !liveFirstLoad && !todayFirstLoad && !hasRemoteData;
-  const normalizedApiError = rawApiError ? normalizeApiError(rawApiError) : null;
-  const apiErrorRef = useMemo(() => (rawApiError ? buildErrorReference("NX-SPR") : ""), [rawApiError]);
 
   const filterBySport = (matches: any[]) => {
     if (sportCategory === "all") return matches;
@@ -922,9 +925,9 @@ export default function SportsScreen() {
   const rawFinished = filterBySport(allFinished);
   const filterEmpty = sportCategory !== "all" && rawLive.length === 0 && rawUpcoming.length === 0 && rawFinished.length === 0;
 
-  const displayLive = filterEmpty ? allLive : rawLive;
-  const displayUpcoming = filterEmpty ? allUpcoming : rawUpcoming;
-  const displayFinished = filterEmpty ? allFinished : rawFinished;
+  const displayLive = rawLive;
+  const displayUpcoming = rawUpcoming;
+  const displayFinished = rawFinished;
   const sortedLive = useMemo(() => sortMatchesByCompetitionAndTime(displayLive, selectedDate), [displayLive, selectedDate]);
   const sortedUpcoming = useMemo(() => sortMatchesByCompetitionAndTime(displayUpcoming, selectedDate), [displayUpcoming, selectedDate]);
   const sortedFinished = useMemo(() => sortMatchesByCompetitionAndTime(displayFinished, selectedDate), [displayFinished, selectedDate]);
@@ -1262,7 +1265,13 @@ export default function SportsScreen() {
           const feedMatch = currentMatchesById.get(String(sub.id));
           if (feedMatch) {
             const prev = nextSnapshots[sub.id];
-            const currentStatus = String(feedMatch?.status || "");
+            const currentStatus = resolveMatchBucket({
+              status: feedMatch?.status,
+              minute: feedMatch?.minute,
+              homeScore: feedMatch?.homeScore,
+              awayScore: feedMatch?.awayScore,
+              startDate: feedMatch?.startDate,
+            });
             const currentHomeScore = Number(feedMatch?.homeScore ?? 0);
             const currentAwayScore = Number(feedMatch?.awayScore ?? 0);
             if (prev) {
@@ -1284,7 +1293,14 @@ export default function SportsScreen() {
           const detail = await res.json();
           if (!detail || !detail.id) continue;
           const prev = nextSnapshots[sub.id];
-          const currentStatus = String(detail?.status || "");
+          const currentStatus = resolveMatchBucket({
+            status: detail?.status,
+            detail: detail?.status,
+            minute: detail?.minute,
+            homeScore: detail?.homeScore,
+            awayScore: detail?.awayScore,
+            startDate: detail?.startDate,
+          });
           const currentHomeScore = Number(detail?.homeScore ?? 0);
           const currentAwayScore = Number(detail?.awayScore ?? 0);
           const keyEvents = Array.isArray(detail?.keyEvents) ? detail.keyEvents : [];
@@ -1346,9 +1362,8 @@ export default function SportsScreen() {
 
   // ── Today section matches ─────────────────────────────────────────────────
   const todayCombined = useMemo(() => [
-    ...sortedLive.slice(0, 8),
     ...sortedUpcoming.slice(0, 12),
-  ], [sortedLive, sortedUpcoming]);
+  ], [sortedUpcoming]);
 
   // Height of header + sub-nav (+ sport categories when visible) so ScrollView content starts below them
   const sportCatBarHeight = showCompetitionsSection ? 48 : 0;
@@ -1535,7 +1550,7 @@ export default function SportsScreen() {
             )}
 
             {/* ── LIVE NOW ── */}
-            {(liveFirstLoad || sortedLive.length > 0 || featuredFallbackMatches.length > 0) && (
+            {(liveFirstLoad || sortedLive.length > 0) && (
               <>
                 <SectionTitle
                   title={`🔴 ${t("sportsHome.liveNow")}`}
@@ -1547,16 +1562,6 @@ export default function SportsScreen() {
                 {liveFirstLoad ? (
                   <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.carouselContent}>
                     {[1, 2].map(i => <View key={i} style={styles.liveSkeleton} />)}
-                  </ScrollView>
-                ) : sortedLive.length === 0 ? (
-                  <ScrollView
-                    horizontal
-                    showsHorizontalScrollIndicator={false}
-                    contentContainerStyle={styles.carouselContent}
-                  >
-                    {featuredFallbackMatches.map((match: any) => (
-                      <TodayMatchCard key={`fallback_${match.id}`} match={match} onPress={() => handleMatchPress(match)} />
-                    ))}
                   </ScrollView>
                 ) : (
                   <ScrollView
@@ -1573,27 +1578,26 @@ export default function SportsScreen() {
             )}
 
             {/* ── VANDAAG ── */}
-            <SectionTitle
-              title={t("sportsHome.today")}
-              accent
-              action={todayCombined.length > 5 ? t("sportsHome.allMatches") : undefined}
-              onAction={() => setSportsView("upcoming")}
-            />
-            {todayFirstLoad ? (
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.carouselContent}>
-                {[1, 2, 3].map(i => <View key={i} style={styles.todaySkeleton} />)}
-              </ScrollView>
-            ) : todayCombined.length === 0 ? (
-              <View style={styles.emptyCarousel}>
-                <Ionicons name="calendar-outline" size={24} color={P.muted} />
-                <Text style={styles.emptyText}>{t("sportsHome.noMatchesToday")}</Text>
-              </View>
-            ) : (
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.carouselContent}>
-                {todayCombined.map((match: any) => (
-                  <TodayMatchCard key={match.id} match={match} onPress={() => handleMatchPress(match)} />
-                ))}
-              </ScrollView>
+            {(todayFirstLoad || todayCombined.length > 0) && (
+              <>
+                <SectionTitle
+                  title={t("sportsHome.today")}
+                  accent
+                  action={todayCombined.length > 5 ? t("sportsHome.allMatches") : undefined}
+                  onAction={() => setSportsView("upcoming")}
+                />
+                {todayFirstLoad ? (
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.carouselContent}>
+                    {[1, 2, 3].map(i => <View key={i} style={styles.todaySkeleton} />)}
+                  </ScrollView>
+                ) : (
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.carouselContent}>
+                    {todayCombined.map((match: any) => (
+                      <TodayMatchCard key={match.id} match={match} onPress={() => handleMatchPress(match)} />
+                    ))}
+                  </ScrollView>
+                )}
+              </>
             )}
 
             {/* ── POPULAR COMPETITIONS ── */}
@@ -1671,7 +1675,13 @@ export default function SportsScreen() {
                             league: match.league,
                             espnLeague: resolveEspnLeague(match),
                             minute: match.minute !== undefined ? String(match.minute) : "",
-                            status: match.status,
+                            status: resolveMatchBucket({
+                              status: match.status,
+                              minute: match.minute,
+                              homeScore: match.homeScore,
+                              awayScore: match.awayScore,
+                              startDate: match.startDate,
+                            }),
                             sport: match.sport,
                             initialTab: "highlights",
                           },

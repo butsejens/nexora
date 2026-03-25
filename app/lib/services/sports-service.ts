@@ -25,6 +25,9 @@ import {
   type NormalizedLeaderboardRow,
 } from "@/lib/domain/normalizers";
 import { deduplicateLeaderboard } from "@/lib/domain/identity-resolver";
+import { fetchSportsLeagueResourceWithFallback, getLeaderboardRows } from "@/lib/sports-data";
+import { enrichPlayerProfilePayload, enrichTeamDetailPayload } from "@/lib/sports-enrichment";
+import { partitionMatches, normalizeStatusLabel } from "@/lib/match-state";
 import type {
   Match,
   MatchDetail,
@@ -93,17 +96,40 @@ export async function getSportsLive(): Promise<SportsHomeData> {
 }
 
 function normalizeSportsHomePayload(raw: any): SportsHomeData {
-  const competitions = raw?.competitions as Record<string, CompetitionId> | undefined;
-
   const mapList = (list: any[]): Match[] => {
     if (!Array.isArray(list)) return [];
     return list.map(m => normalizeMatchFromServer(m));
   };
 
+  const merged = [
+    ...mapList(raw?.live),
+    ...mapList(raw?.upcoming),
+    ...mapList(raw?.finished),
+  ];
+
+  const byId = new Map(merged.map((match) => [match.id, match]));
+
+  const partitioned = partitionMatches(
+    merged.map((match) => ({
+      id: match.id,
+      status: normalizeStatusLabel(match.status),
+      detail: match.status,
+      homeScore: match.score?.home,
+      awayScore: match.score?.away,
+      startDate: match.startTime,
+    })),
+  );
+
+  const toMatches = (bucket: Array<{ id?: unknown }>): Match[] => {
+    return bucket
+      .map((row) => byId.get(String(row?.id || "")))
+      .filter(Boolean) as Match[];
+  };
+
   return {
-    live: mapList(raw?.live),
-    upcoming: mapList(raw?.upcoming),
-    finished: mapList(raw?.finished),
+    live: toMatches(partitioned.live),
+    upcoming: toMatches(partitioned.upcoming),
+    finished: toMatches(partitioned.finished),
   };
 }
 
@@ -130,8 +156,10 @@ export async function getCompetitionStandings(params: {
   leagueName?: string;
   espnLeague?: string;
 }): Promise<TeamStanding[]> {
-  const league = params.espnLeague ?? params.leagueName ?? "";
-  const raw = await safeFetch<any>(`/api/sports/standings/${encodeURIComponent(league)}`, {});
+  const raw = await fetchSportsLeagueResourceWithFallback("standings", {
+    leagueName: params.leagueName,
+    espnLeague: params.espnLeague,
+  });
   const compId = buildCompetitionId(params);
   return normalizeStandings(raw?.standings ?? [], compId);
 }
@@ -140,14 +168,13 @@ export async function getCompetitionTopScorers(params: {
   leagueName?: string;
   espnLeague?: string;
 }): Promise<NormalizedLeaderboardRow[]> {
-  const league = params.espnLeague ?? params.leagueName ?? "";
-  const raw = await safeFetch<any>(`/api/sports/topscorers/${encodeURIComponent(league)}`, { scorers: [] });
+  const raw = await fetchSportsLeagueResourceWithFallback("topscorers", {
+    leagueName: params.leagueName,
+    espnLeague: params.espnLeague,
+    sequential: true,
+  });
   const compId = buildCompetitionId(params);
-  const rows = [
-    ...(raw?.scorers ?? []),
-    ...(raw?.players ?? []),
-    ...(raw?.topScorers ?? []),
-  ].filter(Boolean);
+  const rows = getLeaderboardRows("topscorers", raw).filter(Boolean);
   const normalized = rows.map(r => normalizeLeaderboardRow(r, "topscorers", compId));
   return deduplicateLeaderboard(normalized);
 }
@@ -156,45 +183,73 @@ export async function getCompetitionTopAssists(params: {
   leagueName?: string;
   espnLeague?: string;
 }): Promise<NormalizedLeaderboardRow[]> {
-  const league = params.espnLeague ?? params.leagueName ?? "";
-  const raw = await safeFetch<any>(`/api/sports/topassists/${encodeURIComponent(league)}`, { assists: [] });
+  const raw = await fetchSportsLeagueResourceWithFallback("topassists", {
+    leagueName: params.leagueName,
+    espnLeague: params.espnLeague,
+    sequential: true,
+  });
   const compId = buildCompetitionId(params);
-  const rows = [
-    ...(raw?.assists ?? []),
-    ...(raw?.topAssists ?? []),
-    ...(raw?.players ?? []),
-  ].filter(Boolean);
+  const rows = getLeaderboardRows("topassists", raw).filter(Boolean);
   const normalized = rows.map(r => normalizeLeaderboardRow(r, "topassists", compId));
   return deduplicateLeaderboard(normalized);
 }
 
 export async function getCompetitionTeams(params: {
   espnLeague: string;
+  leagueName?: string;
 }): Promise<Team[]> {
-  const raw = await safeFetch<any>(`/api/sports/competition-teams/${encodeURIComponent(params.espnLeague)}`, {});
+  const raw = await fetchSportsLeagueResourceWithFallback("competition-teams", {
+    leagueName: params.leagueName,
+    espnLeague: params.espnLeague,
+  });
   if (!Array.isArray(raw?.teams)) return [];
   return raw.teams.map(normalizeTeam);
 }
 
 export async function getCompetitionMatches(params: {
   espnLeague: string;
+  leagueName?: string;
 }): Promise<Match[]> {
-  const raw = await safeFetch<any>(`/api/sports/competition-matches/${encodeURIComponent(params.espnLeague)}`, {});
+  const raw = await fetchSportsLeagueResourceWithFallback("competition-matches", {
+    leagueName: params.leagueName,
+    espnLeague: params.espnLeague,
+  });
   if (!Array.isArray(raw?.matches)) return [];
-  return raw.matches.map(normalizeMatchFromServer);
+  const normalized = raw.matches.map(normalizeMatchFromServer);
+  const byId = new Map(normalized.map((match) => [match.id, match]));
+  const partitioned = partitionMatches(
+    normalized.map((match) => ({
+      id: match.id,
+      status: normalizeStatusLabel(match.status),
+      detail: match.status,
+      homeScore: match.score?.home,
+      awayScore: match.score?.away,
+      startDate: match.startTime,
+    })),
+  );
+  const orderedIds = [...partitioned.live, ...partitioned.upcoming, ...partitioned.finished].map((row) => String((row as any)?.id || ""));
+  return orderedIds
+    .map((id) => byId.get(id))
+    .filter(Boolean) as Match[];
 }
 
 export async function getCompetitionStats(params: {
   espnLeague: string;
+  leagueName?: string;
 }): Promise<Record<string, unknown>> {
-  return safeFetch(`/api/sports/competition-stats/${encodeURIComponent(params.espnLeague)}`, {});
+  return fetchSportsLeagueResourceWithFallback("competition-stats", {
+    leagueName: params.leagueName,
+    espnLeague: params.espnLeague,
+  });
 }
 
 // ─── Team ─────────────────────────────────────────────────────────────────────
 
 export async function getTeamOverview(teamId: string): Promise<any> {
   // Server returns enriched Team shape including squad + recent results
-  return safeFetch(`/api/sports/team/${encodeURIComponent(teamId)}`, null);
+  const raw = await safeFetch(`/api/sports/team/${encodeURIComponent(teamId)}`, null);
+  if (!raw) return null;
+  return enrichTeamDetailPayload(raw);
 }
 
 // ─── Player ───────────────────────────────────────────────────────────────────
@@ -202,7 +257,8 @@ export async function getTeamOverview(teamId: string): Promise<any> {
 export async function getPlayerProfile(playerId: string): Promise<Player | null> {
   const raw = await safeFetch<any>(`/api/sports/player/${encodeURIComponent(playerId)}`, null);
   if (!raw) return null;
-  return normalizePlayer(raw);
+  const enriched = enrichPlayerProfilePayload(raw);
+  return normalizePlayer(enriched);
 }
 
 // ─── Match detail ─────────────────────────────────────────────────────────────

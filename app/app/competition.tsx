@@ -12,6 +12,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { useQuery } from "@tanstack/react-query";
 import { COLORS } from "@/constants/colors";
 import { fetchSportsLeagueResourceWithFallback, getLeaderboardRows } from "@/lib/sports-data";
+import { resolveMatchBucket } from "@/lib/match-state";
 import { normalizeApiError } from "@/lib/error-messages";
 import { getLeagueLogo } from "@/lib/logo-manager";
 import { TeamLogo } from "@/components/TeamLogo";
@@ -89,7 +90,10 @@ function buildStorylines(standings: any[], scorers: any[], assists: any[]): Stor
   // Top assister
   if (assists.length > 0) {
     const topA = assists[0];
-    stories.push({ icon: "🎯", label: "Top Assist", text: `${topA.name} (${topA.team}) — ${topA.displayValue} assists`, color: "#00BFFF" });
+    const assistValue = Number(topA?.assists ?? topA?.displayValue ?? 0);
+    if (Number.isFinite(assistValue) && assistValue > 0) {
+      stories.push({ icon: "🎯", label: "Top Assist", text: `${topA.name} (${topA.team}) — ${assistValue} assists`, color: "#00BFFF" });
+    }
   }
 
   // Relegation zone
@@ -203,7 +207,7 @@ export default function CompetitionScreen() {
   });
 
   const { data: compStatsData, isLoading: compStatsLoading } = useQuery({
-    queryKey: ["competition-stats", leagueName],
+    queryKey: ["competition-stats", leagueName, espnLeague],
     queryFn: async () => {
       return fetchLeaguePayloadWithFallback("competition-stats");
     },
@@ -213,7 +217,7 @@ export default function CompetitionScreen() {
   });
 
   const { data: matchesData, isLoading: matchesLoading } = useQuery({
-    queryKey: ["competition-matches", leagueName],
+    queryKey: ["competition-matches", leagueName, espnLeague],
     queryFn: async () => {
       return fetchLeaguePayloadWithFallback("competition-matches");
     },
@@ -223,7 +227,7 @@ export default function CompetitionScreen() {
   });
 
   const { data: teamsData, isLoading: teamsLoading } = useQuery({
-    queryKey: ["competition-teams", leagueName],
+    queryKey: ["competition-teams", leagueName, espnLeague],
     queryFn: async () => {
       return fetchLeaguePayloadWithFallback("competition-teams");
     },
@@ -235,9 +239,34 @@ export default function CompetitionScreen() {
   const standings: any[] = useMemo(() => standingsData?.standings || [], [standingsData]);
   const standingsPhases: any[] = useMemo(() => standingsData?.phases || [], [standingsData]);
   const isMultiPhase: boolean = standingsData?.isMultiPhase || false;
-  const scorers: any[] = useMemo(() => getLeaderboardRows("topscorers", scorersData), [scorersData]);
-  const assists: any[] = useMemo(() => getLeaderboardRows("topassists", assistsData), [assistsData]);
-  const competitionMatches: any[] = matchesData?.matches || [];
+  const scorers: any[] = useMemo(() => {
+    return getLeaderboardRows("topscorers", scorersData).filter((row) => {
+      const goals = Number((row as any)?.goals ?? (row as any)?.displayValue ?? 0);
+      return Boolean((row as any)?.name) && Number.isFinite(goals) && goals > 0;
+    });
+  }, [scorersData]);
+  const assists: any[] = useMemo(() => {
+    return getLeaderboardRows("topassists", assistsData).filter((row) => {
+      const assistsValue = Number((row as any)?.assists ?? (row as any)?.displayValue ?? 0);
+      return Boolean((row as any)?.name) && Number.isFinite(assistsValue) && assistsValue > 0;
+    });
+  }, [assistsData]);
+  const competitionMatches: any[] = useMemo(() => {
+    const rows = Array.isArray(matchesData?.matches) ? matchesData.matches : [];
+    return rows.map((m: any) => {
+      const bucket = resolveMatchBucket({
+        status: m?.status,
+        minute: m?.minute,
+        homeScore: m?.homeScore,
+        awayScore: m?.awayScore,
+        startDate: m?.startDate,
+      });
+      return {
+        ...m,
+        status: bucket === "live" ? "live" : bucket === "finished" ? "finished" : "upcoming",
+      };
+    });
+  }, [matchesData?.matches]);
   const competitionTeams: any[] = teamsData?.teams || [];
   const standingsError = normalizeApiError((standingsData as any)?.error || null);
   const scorersError = normalizeApiError((scorersData as any)?.error || null);
@@ -399,7 +428,6 @@ export default function CompetitionScreen() {
           <View style={styles.emptyState}>
             <Ionicons name="football-outline" size={40} color={COLORS.textMuted} />
             <Text style={styles.emptyText}>{t("competition.noMatches")}</Text>
-            {(matchesData as any)?.error ? <Text style={styles.errorDetail}>{(matchesData as any).error}</Text> : null}
           </View>
         ) : (
           <FlatList
@@ -431,6 +459,12 @@ export default function CompetitionScreen() {
                         matchId: m.id,
                         homeTeam: m.homeTeam,
                         awayTeam: m.awayTeam,
+                        homeTeamLogo: m.homeTeamLogo || "",
+                        awayTeamLogo: m.awayTeamLogo || "",
+                        homeScore: String(m.homeScore ?? 0),
+                        awayScore: String(m.awayScore ?? 0),
+                        minute: m.minute !== undefined ? String(m.minute) : "",
+                        status: m.status || "upcoming",
                         sport: "soccer",
                         league: leagueName,
                         espnLeague: espnLeague || m.espnLeague || "",
@@ -645,7 +679,17 @@ function StandingsRow({ team, rank, league, espnLeague }: { team: any; rank: num
 }
 
 function CompetitionStatsView({ data, league, espnLeague }: { data: any; league: string; espnLeague: string }) {
-  if (!data || data.error) {
+  const hasAnyStats = Boolean(
+    data && !data.error && (
+      data.totalGoals != null ||
+      data.totalMatches != null ||
+      data.avgGoalsPerMatch != null ||
+      (Array.isArray(data.bestAttack) && data.bestAttack.length > 0) ||
+      (Array.isArray(data.bestDefense) && data.bestDefense.length > 0) ||
+      (Array.isArray(data.mostWins) && data.mostWins.length > 0)
+    )
+  );
+  if (!hasAnyStats) {
     return (
       <View style={styles.emptyState}>
         <Ionicons name="stats-chart-outline" size={40} color={COLORS.textMuted} />
@@ -654,12 +698,18 @@ function CompetitionStatsView({ data, league, espnLeague }: { data: any; league:
     );
   }
   const { totalGoals, totalMatches, avgGoalsPerMatch, bestAttack = [], bestDefense = [], mostWins = [] } = data;
-  const renderTeamStat = (item: any, idx: number, valueProp: string, accentClr: string) => (
+  const pickValue = (item: any, keys: string[]) => {
+    for (const key of keys) {
+      if (item?.[key] != null) return item[key];
+    }
+    return "-";
+  };
+  const renderTeamStat = (item: any, idx: number, valueKeys: string[], accentClr: string) => (
     <View key={item.teamId || idx} style={styles.compStatRow}>
       <Text style={styles.compStatRank}>{idx + 1}</Text>
       <TeamLogo uri={item.logo || null} teamName={String(item.team || "")} size={24} />
       <Text style={styles.compStatTeam} numberOfLines={1}>{item.team}</Text>
-      <Text style={[styles.compStatValue, { color: accentClr }]}>{item[valueProp]}</Text>
+      <Text style={[styles.compStatValue, { color: accentClr }]}>{pickValue(item, valueKeys)}</Text>
     </View>
   );
   return (
@@ -683,21 +733,21 @@ function CompetitionStatsView({ data, league, espnLeague }: { data: any; league:
       {bestAttack.length > 0 && (
         <View style={styles.compStatSection}>
           <Text style={styles.compStatSectionTitle}>{"🔥 Best Attack"}</Text>
-          {bestAttack.slice(0, 5).map((item: any, idx: number) => renderTeamStat(item, idx, "scored", COLORS.accent))}
+          {bestAttack.slice(0, 5).map((item: any, idx: number) => renderTeamStat(item, idx, ["goalsFor", "scored"], COLORS.accent))}
         </View>
       )}
       {/* Best Defense */}
       {bestDefense.length > 0 && (
         <View style={styles.compStatSection}>
           <Text style={styles.compStatSectionTitle}>{"🛡️ Best Defense"}</Text>
-          {bestDefense.slice(0, 5).map((item: any, idx: number) => renderTeamStat(item, idx, "conceded", "#4ade80"))}
+          {bestDefense.slice(0, 5).map((item: any, idx: number) => renderTeamStat(item, idx, ["goalsAgainst", "conceded"], "#4ade80"))}
         </View>
       )}
       {/* Most Wins */}
       {mostWins.length > 0 && (
         <View style={styles.compStatSection}>
           <Text style={styles.compStatSectionTitle}>{"🏆 Most Wins"}</Text>
-          {mostWins.slice(0, 5).map((item: any, idx: number) => renderTeamStat(item, idx, "wins", "#fbbf24"))}
+          {mostWins.slice(0, 5).map((item: any, idx: number) => renderTeamStat(item, idx, ["wins"], "#fbbf24"))}
         </View>
       )}
     </ScrollView>

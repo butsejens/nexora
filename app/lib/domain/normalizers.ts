@@ -14,6 +14,7 @@ import type {
   WatchHistoryItem, WatchProgress,
   SourceName, SourceMeta, EntityId, ISODateString,
 } from "./models";
+import { normalizeDomainMatchStatus } from "@/lib/match-state";
 
 // ─── Shared helpers ───────────────────────────────────────────────────────────
 
@@ -175,7 +176,14 @@ export function normalizeMatchFromServer(raw: any): Match {
       logoSource: raw.awayTeam?.logoSource ?? "espn",
     },
     competition,
-    status: (raw.status ?? "scheduled") as MatchStatus,
+    status: normalizeDomainMatchStatus({
+      status: raw.status ?? "scheduled",
+      detail: raw.detail ?? raw.statusDetail,
+      minute: raw.minute,
+      homeScore: raw.score?.home ?? raw.homeScore,
+      awayScore: raw.score?.away ?? raw.awayScore,
+      startDate: raw.startTime ?? raw.date,
+    }) as MatchStatus,
     score: {
       home: ensureInt(raw.score?.home ?? raw.homeScore),
       away: ensureInt(raw.score?.away ?? raw.awayScore),

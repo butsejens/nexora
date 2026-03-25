@@ -1,4 +1,5 @@
 import { apiRequest } from "@/lib/query-client";
+import { enrichSportsLeagueResource } from "@/lib/sports-enrichment";
 
 export type SportsLeagueResourceKind =
   | "standings"
@@ -15,10 +16,27 @@ type CandidateResult = {
 };
 
 function countForKind(kind: SportsLeagueResourceKind, json: any): number {
-  if (kind === "standings") return Array.isArray(json?.standings) ? json.standings.length : 0;
+  if (kind === "standings") {
+    if (Array.isArray(json?.standings)) return json.standings.length;
+    if (Array.isArray(json?.teams)) return json.teams.length;
+    if (Array.isArray(json?.data)) return json.data.length;
+    return 0;
+  }
   if (kind === "topscorers") return getLeaderboardRows("topscorers", json).length;
   if (kind === "topassists") return getLeaderboardRows("topassists", json).length;
-  if (kind === "competition-stats") return json?.totalGoals != null ? 1 : 0;
+  if (kind === "competition-stats") {
+    const numericSignals = [json?.totalGoals, json?.totalMatches, json?.avgGoalsPerMatch]
+      .map((value) => Number(value))
+      .filter((value) => Number.isFinite(value)).length;
+    const listSignals = [
+      Array.isArray(json?.leaderTable) ? json.leaderTable.length : 0,
+      Array.isArray(json?.bestAttack) ? json.bestAttack.length : 0,
+      Array.isArray(json?.bestDefense) ? json.bestDefense.length : 0,
+      Array.isArray(json?.mostWins) ? json.mostWins.length : 0,
+      Array.isArray(json?.mostDraws) ? json.mostDraws.length : 0,
+    ].reduce((sum, n) => sum + n, 0);
+    return numericSignals + listSignals;
+  }
   if (kind === "competition-teams") return Array.isArray(json?.teams) ? json.teams.length : 0;
   if (kind === "competition-matches") return Array.isArray(json?.matches) ? json.matches.length : 0;
   return 0;
@@ -52,24 +70,54 @@ export function getLeaderboardRows(kind: "topscorers" | "topassists", json: any)
     });
   };
 
+  const extractMetric = (row: any): number => {
+    const raw = kind === "topassists"
+      ? row?.assists ?? row?.displayValue ?? row?.value ?? row?.statValue ?? row?.stats?.assists ?? row?.stats?.assistsPerGame
+      : row?.goals ?? row?.displayValue ?? row?.value ?? row?.statValue ?? row?.stats?.goals;
+    const parsed = Number(raw);
+    if (Number.isFinite(parsed)) return parsed;
+    const fallback = String(raw ?? "").replace(/,/g, ".").replace(/[^\d.-]/g, "");
+    const normalized = Number(fallback);
+    return Number.isFinite(normalized) ? normalized : -1;
+  };
+
+  const dedupeRows = (rows: any[]): any[] => {
+    const chosen = new Map<string, any>();
+    for (const row of rows) {
+      const name = String(row?.name || row?.player || row?.athlete?.displayName || "").trim().toLowerCase();
+      const team = String(row?.team || row?.teamName || row?.club?.name || "").trim().toLowerCase();
+      if (!name) continue;
+      const key = `${name}|${team}`;
+      const existing = chosen.get(key);
+      const currentMetric = extractMetric(row);
+      const existingMetric = existing ? extractMetric(existing) : -1;
+      const currentHasPhoto = Boolean(row?.photo || row?.image || row?.headshot || row?.theSportsDbPhoto);
+      const existingHasPhoto = Boolean(existing?.photo || existing?.image || existing?.headshot || existing?.theSportsDbPhoto);
+      if (!existing || currentMetric > existingMetric || (currentMetric === existingMetric && currentHasPhoto && !existingHasPhoto)) {
+        chosen.set(key, row);
+      }
+    }
+    return [...chosen.values()];
+  };
+
   if (kind === "topscorers") {
-    const rows = [
+    const rows = dedupeRows([
       ...unwrapRows(json?.scorers),
       ...unwrapRows(json?.players),
       ...unwrapRows(json?.topScorers),
       ...unwrapRows(json?.data),
-    ];
+    ]);
     if (rows.length > 0) return rows;
     return [];
   }
 
-  const assistsRows = [
+  const assistsRows = dedupeRows([
     ...unwrapRows(json?.assists),
     ...unwrapRows(json?.topAssists),
     ...unwrapRows(json?.players),
     ...unwrapRows(json?.leaders),
     ...unwrapRows(json?.data),
-  ];
+  ]);
   if (assistsRows.length > 0) return normalizeAssistShape(assistsRows);
 
   return [];
@@ -100,9 +148,15 @@ export async function fetchSportsLeagueResourceWithFallback(
       if (result.count > best.count || (result.count === best.count && !result?.json?.error && best?.json?.error)) {
         best = result;
       }
-      if (result.count > 0 && !result?.json?.error) return result.json;
+      if (result.count > 0 && !result?.json?.error) {
+        return enrichSportsLeagueResource(kind, result.json, {
+          leagueName: params.leagueName || params.espnLeague,
+        });
+      }
     }
-    return best.json || {};
+    return enrichSportsLeagueResource(kind, best.json || {}, {
+      leagueName: params.leagueName || params.espnLeague,
+    });
   }
 
   const results = await Promise.all(candidates.map((candidate) => fetchCandidate(kind, candidate)));
@@ -112,5 +166,7 @@ export async function fetchSportsLeagueResourceWithFallback(
     const bPenalty = b?.json?.error ? 1 : 0;
     return aPenalty - bPenalty;
   })[0];
-  return best?.json || {};
+  return enrichSportsLeagueResource(kind, best?.json || {}, {
+    leagueName: params.leagueName || params.espnLeague,
+  });
 }
