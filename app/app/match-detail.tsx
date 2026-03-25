@@ -15,6 +15,7 @@ import { SafeHaptics } from "@/lib/safeHaptics";
 import { apiRequest } from "@/lib/query-client";
 import { openInVlc } from "@/lib/vlc";
 import { TeamLogo } from "@/components/TeamLogo";
+import { PillTabs, StateBlock } from "@/components/ui/PremiumPrimitives";
 import { buildErrorReference, normalizeApiError } from "@/lib/error-messages";
 import { getLeaderboardRows } from "@/lib/sports-data";
 import { safeStr } from "@/lib/utils";
@@ -507,16 +508,11 @@ export default function MatchDetailScreen() {
 
       {/* Tab Bar */}
       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tabBarScroll} contentContainerStyle={styles.tabBar}>
-        {TABS.map(tab => (
-          <TouchableOpacity
-            key={tab.id}
-            style={[styles.tab, activeTab === tab.id && styles.tabActive]}
-            onPress={() => handleTabChange(tab.id)}
-          >
-            <Ionicons name={tab.icon as any} size={14} color={activeTab === tab.id ? "#fff" : COLORS.textMuted} />
-            <Text style={[styles.tabText, activeTab === tab.id && styles.tabTextActive]}>{tFn(tab.label)}</Text>
-          </TouchableOpacity>
-        ))}
+        <PillTabs
+          tabs={TABS.map((tab) => ({ id: tab.id, label: tFn(tab.label), icon: tab.icon as any }))}
+          active={activeTab}
+          onChange={handleTabChange}
+        />
       </ScrollView>
 
       {/* Mini AI strip — always visible below tab bar */}
@@ -2658,18 +2654,14 @@ function InfoRow({ label, value, highlight, icon }: { label: string; value: stri
 function LoadingState() {
   return (
     <View style={styles.loadingState}>
-      <ActivityIndicator size="large" color={COLORS.accent} />
-      <Text style={styles.loadingText}>{tFn("matchDetail.matchDataLoading")}</Text>
+      <StateBlock loading title={tFn("matchDetail.matchDataLoading")} message={tFn("common.loading") || "Loading..."} />
     </View>
   );
 }
 
 function EmptyState({ icon, text }: { icon: any; text: string }) {
   return (
-    <View style={styles.emptyState}>
-      <Ionicons name={icon} size={40} color={COLORS.textMuted} />
-      <Text style={styles.emptyText}>{text}</Text>
-    </View>
+    <StateBlock icon={icon} title={text} />
   );
 }
 
@@ -2759,29 +2751,10 @@ const styles = StyleSheet.create({
   },
   tabBar: {
     flexDirection: "row",
-    paddingHorizontal: 10,
-    paddingVertical: 7,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
     gap: 6,
   },
-  tab: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    paddingHorizontal: 13,
-    paddingVertical: 7,
-    borderRadius: 20,
-  },
-  tabActive: {
-    backgroundColor: COLORS.accent,
-    borderRadius: 20,
-    shadowColor: COLORS.accent,
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.5,
-    shadowRadius: 8,
-    elevation: 5,
-  },
-  tabText: { fontFamily: "Inter_600SemiBold", fontSize: 12, color: COLORS.textMuted, letterSpacing: 0.4 },
-  tabTextActive: { color: "#fff", fontFamily: "Inter_700Bold" },
   streamContainer: { flex: 1 },
   videoBox: { width: "100%", aspectRatio: 16 / 9, backgroundColor: "#000" },
   serverSection: {
@@ -3076,11 +3049,11 @@ const styles = StyleSheet.create({
   timelineWrapper: {
     backgroundColor: COLORS.card,
     borderRadius: 18,
-    paddingHorizontal: 12,
-    paddingVertical: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 16,
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.07)",
-    marginBottom: 8,
+    marginBottom: 12,
     gap: 2,
     position: "relative",
     overflow: "hidden",
@@ -3138,11 +3111,11 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 8,
     paddingHorizontal: 12,
-    paddingVertical: 10,
+    paddingVertical: 11,
     borderRadius: 12,
-    backgroundColor: "rgba(255,255,255,0.06)",
+    backgroundColor: "rgba(255,255,255,0.07)",
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.08)",
+    borderColor: "rgba(255,255,255,0.12)",
   },
   timelineEventHome: {
     flexDirection: "row",
@@ -3188,7 +3161,7 @@ const styles = StyleSheet.create({
   timelinePlayer: {
     fontFamily: "Inter_500Medium",
     fontSize: 12,
-    color: COLORS.text,
+    color: COLORS.textSecondary,
     flex: 1,
     textAlign: "right",
   },
@@ -3333,11 +3306,11 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 6,
     paddingHorizontal: 14,
-    paddingVertical: 9,
-    borderRadius: 12,
+    paddingVertical: 10,
+    borderRadius: 14,
     backgroundColor: COLORS.card,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.07)",
+    borderColor: "rgba(255,255,255,0.12)",
   },
   lineupViewBtnActive: { borderColor: COLORS.accent, backgroundColor: COLORS.accentGlow },
   lineupViewBtnText: { fontFamily: "Inter_600SemiBold", fontSize: 12, color: COLORS.textMuted },

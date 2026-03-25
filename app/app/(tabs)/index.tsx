@@ -814,8 +814,13 @@ const popCompStyles = StyleSheet.create({
 function CountryCard({ country, active, onPress }: { country: CountryCatalog; active: boolean; onPress: () => void }) {
   return (
     <TouchableOpacity onPress={onPress} activeOpacity={0.82} style={[countryCardStyles.card, active && countryCardStyles.cardActive]}>
-      <Text style={countryCardStyles.flag}>{flagFromIso2(country.countryCode)}</Text>
-      <Text style={[countryCardStyles.name, active && countryCardStyles.nameActive]} numberOfLines={1}>{tFn(country.countryName)}</Text>
+      <View style={[countryCardStyles.flagChip, active && countryCardStyles.flagChipActive]}>
+        <Text style={countryCardStyles.flag}>{flagFromIso2(country.countryCode)}</Text>
+      </View>
+      <View style={countryCardStyles.nameBlock}>
+        <Text style={[countryCardStyles.name, active && countryCardStyles.nameActive]} numberOfLines={1}>{tFn(country.countryName)}</Text>
+        <Text style={countryCardStyles.meta}>{country.competitions.length} {tFn("sportsHome.competitions")}</Text>
+      </View>
       {active && <Ionicons name="checkmark-circle" size={14} color={P.accent} />}
     </TouchableOpacity>
   );
@@ -823,16 +828,29 @@ function CountryCard({ country, active, onPress }: { country: CountryCatalog; ac
 
 const countryCardStyles = StyleSheet.create({
   card: {
-    width: "48%", height: 62, borderRadius: 12, backgroundColor: P.elevated,
+    flexBasis: "48%", height: 70, borderRadius: 14, backgroundColor: P.elevated,
     flexDirection: "row", alignItems: "center", gap: 10,
     paddingHorizontal: 12, paddingVertical: 10,
     borderWidth: 1, borderColor: P.border,
-    shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 4, elevation: 2,
+    shadowColor: "#000", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.24, shadowRadius: 8, elevation: 3,
   },
-  cardActive: { borderColor: P.accent, backgroundColor: `${P.accent}14` },
-  flag: { fontSize: 22 },
-  name: { color: P.muted, fontSize: 13, fontWeight: "600", flex: 1 },
+  cardActive: { borderColor: P.accent, backgroundColor: `${P.accent}14`, shadowColor: P.accent, shadowOpacity: 0.24 },
+  flagChip: {
+    width: 32,
+    height: 32,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(255,255,255,0.07)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.14)",
+  },
+  flagChipActive: { backgroundColor: `${P.accent}20`, borderColor: `${P.accent}55` },
+  flag: { fontSize: 18 },
+  nameBlock: { flex: 1, gap: 2 },
+  name: { color: P.muted, fontSize: 13, fontWeight: "700" },
   nameActive: { color: P.text },
+  meta: { color: P.muted, fontSize: 10, fontWeight: "500", opacity: 0.9 },
 });
 
 // ── Highlight Card ────────────────────────────────────────────────────────────
@@ -2133,12 +2151,13 @@ const styles = StyleSheet.create({
   subNavContent: {
     flexDirection: "row",
     paddingHorizontal: 16,
-    paddingTop: 2,
-    gap: 4,
+    paddingTop: 6,
+    paddingBottom: 4,
+    gap: 8,
   },
   subNavItem: {
     paddingHorizontal: 14,
-    paddingVertical: 10,
+    paddingVertical: 8,
     alignItems: "center",
     position: "relative",
   },
@@ -2182,7 +2201,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: P.border,
     backgroundColor: P.elevated,
-    marginBottom: 6,
+    marginBottom: 12,
   },
   compSectionHead: {
     flexDirection: "row",
@@ -2192,9 +2211,9 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     borderBottomWidth: 1,
     borderBottomColor: P.border,
-    backgroundColor: "rgba(255,255,255,0.03)",
+    backgroundColor: "rgba(255,255,255,0.04)",
   },
-  compSectionHeadText: { color: P.text, fontSize: 12, fontWeight: "700", flex: 1, letterSpacing: 0.3 },
+  compSectionHeadText: { color: P.text, fontSize: 12, fontWeight: "700", flex: 1, letterSpacing: 0.3, lineHeight: 18 },
   compSectionHeadCount: {
     color: P.muted,
     fontSize: 11,
@@ -2208,18 +2227,19 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     paddingVertical: 12,
+    paddingHorizontal: 10,
     paddingRight: 14,
     gap: 10,
     borderBottomWidth: 1,
     borderBottomColor: P.border,
   },
-  compListAccent: { width: 3, alignSelf: "stretch", borderRadius: 2, marginLeft: 0 },
+  compListAccent: { width: 3, alignSelf: "stretch", borderRadius: 2, marginLeft: 0, marginRight: 2 },
   compListIcon: {
     width: 36, height: 36, borderRadius: 10,
     alignItems: "center", justifyContent: "center", marginLeft: 8,
   },
-  compListName: { color: P.text, fontSize: 14, fontWeight: "700" },
-  compListTier: { fontSize: 11, fontWeight: "500", marginTop: 2 },
+  compListName: { color: P.text, fontSize: 14, fontWeight: "700", lineHeight: 20 },
+  compListTier: { fontSize: 11, fontWeight: "500", marginTop: 3, opacity: 0.95 },
 
   /* ── All countries ── */
   countrySection: { marginHorizontal: 16, marginBottom: 12 },
@@ -2385,7 +2405,7 @@ const styles = StyleSheet.create({
   /* ── Country grid ── */
   countryGrid: {
     flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between",
-    paddingHorizontal: 16, gap: 8,
+    paddingHorizontal: 16, gap: 10,
   },
 
   /* ── Sport search ── */

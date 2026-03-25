@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   View, Text, StyleSheet, TouchableOpacity, ScrollView,
-  Image, Platform, ActivityIndicator, Animated,
+  Image, Platform, Animated,
 } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -14,6 +14,7 @@ import { apiRequest } from "@/lib/query-client";
 import { fetchSportsLeagueResourceWithFallback, getLeaderboardRows } from "@/lib/sports-data";
 import { normalizeApiError } from "@/lib/error-messages";
 import { TeamLogo } from "@/components/TeamLogo";
+import { StateBlock } from "@/components/ui/PremiumPrimitives";
 import { useNexora } from "@/context/NexoraContext";
 import { useTranslation } from "@/lib/useTranslation";
 import { t as tFn } from "@/lib/i18n";
@@ -370,22 +371,17 @@ export default function TeamDetailScreen() {
 
       {isLoading ? (
         <View style={styles.loadingState}>
-          <ActivityIndicator size="large" color={COLORS.accent} />
-          <Text style={styles.loadingText}>{t("teamDetail.loadingPlayers")}</Text>
+          <StateBlock loading title={t("teamDetail.loadingPlayers")} message={t("common.loading") || "Loading..."} />
         </View>
       ) : error || !data || (data as any).error ? (
         <View style={styles.emptyState}>
-          <Ionicons name="alert-circle-outline" size={40} color={COLORS.textMuted} />
-          <Text style={styles.emptyText}>{t("teamDetail.dataUnavailable")}</Text>
-          {error ? <Text style={styles.emptyHintText}>{normalizeApiError(error).userMessage}</Text> : null}
-          {(data as any)?.error ? <Text style={styles.emptyHintText}>{String((data as any).error)}</Text> : null}
-          <TouchableOpacity
-            style={{ marginTop: 16, paddingHorizontal: 24, paddingVertical: 10, borderRadius: 20, backgroundColor: COLORS.accent }}
-            onPress={() => refetch()}
-            activeOpacity={0.75}
-          >
-            <Text style={{ fontFamily: "Inter_600SemiBold", fontSize: 14, color: "#fff" }}>{t("teamDetail.retry") || "Opnieuw proberen"}</Text>
-          </TouchableOpacity>
+          <StateBlock
+            icon="alert-circle-outline"
+            title={t("teamDetail.dataUnavailable")}
+            message={error ? normalizeApiError(error).userMessage : String((data as any)?.error || "")}
+            actionLabel={t("teamDetail.retry") || "Opnieuw proberen"}
+            onAction={() => refetch()}
+          />
         </View>
       ) : (
         <>
@@ -681,18 +677,29 @@ const styles = StyleSheet.create({
   filterChipActive: { backgroundColor: COLORS.accentGlow, borderColor: COLORS.accent },
   filterChipText: { fontFamily: "Inter_500Medium", fontSize: 12, color: COLORS.textMuted },
   filterChipTextActive: { color: COLORS.accent },
-  playerList: { paddingHorizontal: 16, paddingTop: 8, paddingBottom: 40 },
+  playerList: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 40 },
   playerCard: {
-    paddingVertical: 12, borderWidth: 1, borderColor: COLORS.border, gap: 10,
-    borderRadius: 14, backgroundColor: COLORS.cardElevated, paddingHorizontal: 10, marginBottom: 8,
+    paddingVertical: 14,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.12)",
+    gap: 12,
+    borderRadius: 16,
+    backgroundColor: COLORS.cardElevated,
+    paddingHorizontal: 12,
+    marginBottom: 10,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.25,
+    shadowRadius: 14,
+    elevation: 4,
   },
   playerTopRow: { flexDirection: "row", alignItems: "center", gap: 10 },
   jerseyBadge: {
-    width: 30, height: 30, borderRadius: 8, borderWidth: 1.5,
+    width: 32, height: 32, borderRadius: 9, borderWidth: 1.5,
     alignItems: "center", justifyContent: "center", flexShrink: 0,
   },
-  jerseyNum: { fontFamily: "Inter_700Bold", fontSize: 12 },
-  playerPhoto: { width: 50, height: 50, borderRadius: 10, flexShrink: 0 },
+  jerseyNum: { fontFamily: "Inter_700Bold", fontSize: 12, letterSpacing: 0.2 },
+  playerPhoto: { width: 52, height: 52, borderRadius: 12, flexShrink: 0 },
   photoPlaceholder: { backgroundColor: COLORS.card, alignItems: "center", justifyContent: "center" },
   playerInitials: { fontFamily: "Inter_700Bold", fontSize: 13, color: COLORS.text },
   playerMain: { flex: 1, gap: 4 },
@@ -704,8 +711,18 @@ const styles = StyleSheet.create({
   posTag: { borderRadius: 6, borderWidth: 1, paddingHorizontal: 7, paddingVertical: 2 },
   posTagText: { fontFamily: "Inter_600SemiBold", fontSize: 10, maxWidth: 100 },
   playerNat: { fontFamily: "Inter_400Regular", fontSize: 12, color: COLORS.textMuted, flexShrink: 1 },
-  playerStats: { flexDirection: "row", gap: 8, flexWrap: "wrap", paddingLeft: 84 },
-  statPill: { alignItems: "center", gap: 1, minWidth: 68, backgroundColor: COLORS.card, borderRadius: 8, paddingVertical: 5, paddingHorizontal: 8, borderWidth: 1, borderColor: COLORS.border },
+  playerStats: { flexDirection: "row", gap: 8, flexWrap: "wrap", paddingLeft: 88 },
+  statPill: {
+    alignItems: "center",
+    gap: 2,
+    minWidth: 68,
+    backgroundColor: COLORS.card,
+    borderRadius: 10,
+    paddingVertical: 6,
+    paddingHorizontal: 9,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.12)",
+  },
   statPillVal: { fontFamily: "Inter_700Bold", fontSize: 12, color: COLORS.text },
   statPillLabel: { fontFamily: "Inter_400Regular", fontSize: 10, color: COLORS.textMuted },
 });

@@ -12,6 +12,14 @@ import { COLORS } from './colors';
 // ═══════════════════════════════════════════════════════════════════════════
 
 export const TYPOGRAPHY = {
+  screenTitle: {
+    fontSize: 28,
+    fontWeight: '800' as const,
+    lineHeight: 32,
+    letterSpacing: -0.6,
+    fontFamily: 'Inter_800ExtraBold',
+  },
+
   // HERO / PRIMARY TITLES
   heroScore: {
     fontSize: 42,
@@ -83,6 +91,29 @@ export const TYPOGRAPHY = {
     letterSpacing: 0,
     fontFamily: 'Inter_500Medium',
   },
+  metadataLabel: {
+    fontSize: 11,
+    fontWeight: '600' as const,
+    lineHeight: 14,
+    letterSpacing: 0.4,
+    fontFamily: 'Inter_600SemiBold',
+  },
+
+  tabLabel: {
+    fontSize: 12,
+    fontWeight: '600' as const,
+    lineHeight: 16,
+    letterSpacing: 0.2,
+    fontFamily: 'Inter_600SemiBold',
+  },
+
+  tinyBadge: {
+    fontSize: 10,
+    fontWeight: '700' as const,
+    lineHeight: 12,
+    letterSpacing: 0.4,
+    fontFamily: 'Inter_700Bold',
+  },
 } as const;
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -98,6 +129,7 @@ export const SPACING = {
   xl: 20,
   xxl: 24,
   xxxl: 32,
+  xxxxl: 40,
 
   // Organized by purpose
   padding: {
