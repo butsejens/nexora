@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState, useRef } from "react";
-import { View, Text, StyleSheet, TouchableOpacity, Image, ActivityIndicator, Animated } from "react-native";
+import { View, Text, StyleSheet, TouchableOpacity, Image, Animated } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
@@ -11,6 +11,7 @@ import { normalizeApiError } from "@/lib/error-messages";
 import { useTranslation } from "@/lib/useTranslation";
 import { t as tFn, getLanguage } from "@/lib/i18n";
 import { TeamLogo } from "@/components/TeamLogo";
+import { SectionHeader, StateBlock, SurfaceCard } from "@/components/ui/PremiumPrimitives";
 import { resolveClubHistoryLogoUri } from "@/lib/logo-manager";
 import {
   getCachedPlayerImage,
@@ -267,16 +268,17 @@ export default function PlayerProfileScreen() {
 
       {isLoading ? (
         <View style={styles.loading}>
-          <ActivityIndicator size="large" color={COLORS.accent} />
-          <Text style={styles.loadingText}>{t("playerProfile.loading")}</Text>
+          <StateBlock loading title={t("playerProfile.loading")} message={t("playerProfile.analysisTempUnavailable")} />
         </View>
       ) : error || !data || (data as any)?.error ? (
         <View style={styles.loading}>
-          <Ionicons name="alert-circle-outline" size={38} color={COLORS.textMuted} />
-          <Text style={styles.loadingText}>{normalizeApiError(error || (data as any)?.error).userMessage}</Text>
-          <TouchableOpacity style={styles.retryBtn} onPress={() => refetch()} activeOpacity={0.8}>
-            <Text style={styles.retryBtnText}>{t("teamDetail.retry") || "Opnieuw proberen"}</Text>
-          </TouchableOpacity>
+          <StateBlock
+            icon="alert-circle-outline"
+            title={t("playerProfile.analysisUnavailable")}
+            message={normalizeApiError(error || (data as any)?.error).userMessage}
+            actionLabel={t("teamDetail.retry") || "Opnieuw proberen"}
+            onAction={() => refetch()}
+          />
         </View>
       ) : (
         <Animated.ScrollView
@@ -286,14 +288,17 @@ export default function PlayerProfileScreen() {
           scrollEventThrottle={16}
         >
           <Card title={t("playerProfile.overview")}>
-            <Row label={t("playerProfile.age")} value={data?.age ? t("playerProfile.years", { age: String(data.age) }) : UNKNOWN} />
+            <View style={styles.quickFactsGrid}>
+              <QuickFact icon="person-outline" label={t("playerProfile.age")} value={data?.age ? t("playerProfile.years", { age: String(data.age) }) : UNKNOWN} />
+              <QuickFact icon="shirt-outline" label={t("playerProfile.jerseyNumber") || "Rugnummer"} value={normalizeText(data?.jerseyNumber, t("common.notAvailable") || "Niet beschikbaar")} />
+              <QuickFact icon="body-outline" label={t("playerProfile.height")} value={normalizeText(data?.height)} />
+              <QuickFact icon="barbell-outline" label={t("playerProfile.weight")} value={normalizeText(data?.weight)} />
+            </View>
+            <View style={styles.infoDivider} />
             <Row label={t("playerProfile.birthDate")} value={data?.birthDate ? formatDisplayDate(data.birthDate) : UNKNOWN} />
             <Row label={t("playerProfile.nationality")} value={normalizeText(data?.nationality || params.nationality)} />
             <Row label={t("playerProfile.position")} value={normalizeText(data?.position || params.position)} />
-            <Row label={t("playerProfile.jerseyNumber") || "Rugnummer"} value={normalizeText(data?.jerseyNumber, t("common.notAvailable") || "Niet beschikbaar")} />
             <Row label={t("playerProfile.contractUntil") || "Contract"} value={normalizeText(data?.contractUntil, t("common.notAvailable") || "Niet beschikbaar")} />
-            <Row label={t("playerProfile.height")} value={normalizeText(data?.height)} />
-            <Row label={t("playerProfile.weight")} value={normalizeText(data?.weight)} />
             <ClubRow label={t("playerProfile.currentClub")} value={normalizeText(data?.currentClub || params.team)} logo={data?.currentClubLogo} />
             <Row label={t("playerProfile.marketValue")} value={normalizeText(data?.marketValue || params.marketValue, t("playerProfile.valueUnknown"))} />
             <Row label={t("playerProfile.lastUpdated")} value={formatUpdatedAt(data?.updatedAt)} />
@@ -394,10 +399,10 @@ export default function PlayerProfileScreen() {
 
 function Card({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <View style={styles.card}>
-      <Text style={styles.cardTitle}>{title}</Text>
+    <SurfaceCard style={styles.card} elevated>
+      <SectionHeader title={title} />
       {children}
-    </View>
+    </SurfaceCard>
   );
 }
 
@@ -452,6 +457,18 @@ function StatsGrid({ items }: { items: { label: string; value: any }[] }) {
   );
 }
 
+function QuickFact({ icon, label, value }: { icon: keyof typeof Ionicons.glyphMap; label: string; value: string }) {
+  return (
+    <View style={styles.quickFactCard}>
+      <View style={styles.quickFactIconWrap}>
+        <Ionicons name={icon} size={14} color={COLORS.accent} />
+      </View>
+      <Text style={styles.quickFactLabel} numberOfLines={1}>{label}</Text>
+      <Text style={styles.quickFactValue} numberOfLines={1}>{value}</Text>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
   header: { paddingHorizontal: 16, paddingBottom: 16 },
@@ -469,8 +486,7 @@ const styles = StyleSheet.create({
   retryBtn: { marginTop: 8, paddingHorizontal: 20, paddingVertical: 10, borderRadius: 18, backgroundColor: COLORS.accent },
   retryBtnText: { fontFamily: "Inter_600SemiBold", fontSize: 14, color: "#fff" },
   content: { padding: 16, gap: 10, paddingBottom: 40 },
-  card: { backgroundColor: COLORS.overlayLight, borderRadius: 14, borderWidth: 1, borderColor: COLORS.borderLight, padding: 14, gap: 8 },
-  cardTitle: { fontFamily: "Inter_700Bold", fontSize: 12, color: COLORS.accent, letterSpacing: 0.6, textTransform: "uppercase" },
+  card: { backgroundColor: COLORS.overlayLight, gap: 8 },
   row: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", borderBottomWidth: 1, borderBottomColor: COLORS.border, paddingVertical: 8 },
   rowLabel: { fontFamily: "Inter_400Regular", fontSize: 13, color: COLORS.textMuted },
   rowValue: { fontFamily: "Inter_600SemiBold", fontSize: 13, color: COLORS.text, flexShrink: 1, textAlign: "right", maxWidth: "60%" },
@@ -491,6 +507,28 @@ const styles = StyleSheet.create({
   bulletBad: { backgroundColor: COLORS.live },
   bulletText: { fontFamily: "Inter_500Medium", fontSize: 12, color: COLORS.text, flexShrink: 1 },
   placeholder: { fontFamily: "Inter_400Regular", fontSize: 13, color: COLORS.textMuted },
+  quickFactsGrid: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  quickFactCard: {
+    width: "48%",
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.12)",
+    backgroundColor: "rgba(255,255,255,0.03)",
+    paddingHorizontal: 10,
+    paddingVertical: 9,
+    gap: 3,
+  },
+  quickFactIconWrap: {
+    width: 22,
+    height: 22,
+    borderRadius: 7,
+    backgroundColor: "rgba(229,9,20,0.18)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  quickFactLabel: { fontFamily: "Inter_500Medium", fontSize: 10, color: COLORS.textMuted },
+  quickFactValue: { fontFamily: "Inter_700Bold", fontSize: 13, color: COLORS.text },
+  infoDivider: { height: 1, backgroundColor: "rgba(255,255,255,0.08)", marginTop: 6, marginBottom: 2 },
   statsGrid: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   statCard: {
     width: "48%",
