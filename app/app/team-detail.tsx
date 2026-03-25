@@ -367,6 +367,22 @@ export default function TeamDetailScreen() {
             </View>
           ) : null}
 
+          {data.form ? (
+            <View style={styles.formRow}>
+              {String(data.form).split("").slice(0, 5).map((result, idx) => (
+                <View
+                  key={`form_${idx}`}
+                  style={[
+                    styles.formDot,
+                    result === "W" ? styles.formWin : result === "D" ? styles.formDraw : styles.formLoss,
+                  ]}
+                >
+                  <Text style={styles.formDotText}>{result}</Text>
+                </View>
+              ))}
+            </View>
+          ) : null}
+
           {(realValueCount > 0 || data.squadMarketValue) ? (
             <View style={styles.tmBadge}>
               <MaterialCommunityIcons name="currency-eur" size={11} color="#00C896" />
@@ -434,6 +450,8 @@ export default function TeamDetailScreen() {
                     weight: String(item?.weight || ""),
                     position: String(item?.positionName || item?.position || ""),
                     nationality: String(item?.nationality || ""),
+                    photo: String(item?.photo || ""),
+                    theSportsDbPhoto: String(item?.theSportsDbPhoto || ""),
                   },
                 })}
               >
@@ -668,6 +686,12 @@ const styles = StyleSheet.create({
   metaBadge: { flexDirection: "row", alignItems: "center", gap: 4, backgroundColor: "rgba(255,255,255,0.08)", borderRadius: 10, paddingHorizontal: 10, paddingVertical: 4 },
   metaText: { fontFamily: "Inter_400Regular", fontSize: 12, color: "rgba(255,255,255,0.6)" },
   coachRow: { flexDirection: "row", alignItems: "center", gap: 6 },
+  formRow: { flexDirection: "row", gap: 5, marginTop: 6 },
+  formDot: { width: 24, height: 24, borderRadius: 12, alignItems: "center", justifyContent: "center" },
+  formWin: { backgroundColor: "rgba(76,175,130,0.25)", borderWidth: 1, borderColor: "#4CAF82" },
+  formDraw: { backgroundColor: "rgba(255,180,0,0.25)", borderWidth: 1, borderColor: "#FFB400" },
+  formLoss: { backgroundColor: "rgba(255,82,82,0.18)", borderWidth: 1, borderColor: "#FF5252" },
+  formDotText: { fontFamily: "Inter_700Bold", fontSize: 9, color: COLORS.text },
   coachText: { fontFamily: "Inter_500Medium", fontSize: 13, color: "rgba(255,255,255,0.6)" },
   tmBadge: {
     flexDirection: "row", alignItems: "center", gap: 4,
