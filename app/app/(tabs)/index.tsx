@@ -1,7 +1,7 @@
 import React, { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import {
   View, Text, StyleSheet, ScrollView,
-  RefreshControl, Platform, TouchableOpacity, TextInput, Alert,
+  RefreshControl, Platform, TouchableOpacity, TextInput, Alert, AppState,
   Image, useWindowDimensions } from "react-native";
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -958,30 +958,37 @@ export default function SportsScreen() {
     queryFn: async () => {
       const date = encodeURIComponent(selectedDate);
       const stale = cacheGetStale<SportsPayload>(sportsTodayCacheKey(selectedDate));
+      // Run both endpoints in parallel — halves cold-start wait vs sequential.
+      const countPayload = (p: SportsPayload | null) =>
+        p ? (p.live?.length || 0) + (p.upcoming?.length || 0) + (p.finished?.length || 0) : 0;
       try {
-        const byDate = await fetchSportsPayloadWithTimeout(`/api/sports/by-date?date=${date}`, 18000);
-        const hasByDateData = (byDate.live?.length || 0) + (byDate.upcoming?.length || 0) + (byDate.finished?.length || 0) > 0;
-        if (hasByDateData || byDate.error) {
-          cacheSet(sportsTodayCacheKey(selectedDate), byDate, TTL.SPORTS_TODAY);
-          return byDate;
+        const [byDateResult, todayResult] = await Promise.allSettled([
+          fetchSportsPayloadWithTimeout(`/api/sports/by-date?date=${date}`, 12000),
+          fetchSportsPayloadWithTimeout(`/api/sports/today?date=${date}`, 12000),
+        ]);
+        const byDate = byDateResult.status === "fulfilled" ? byDateResult.value : null;
+        const todayData = todayResult.status === "fulfilled" ? todayResult.value : null;
+        const best = countPayload(byDate) >= countPayload(todayData) ? byDate : todayData;
+        if (best && (countPayload(best) > 0 || best.error)) {
+          cacheSet(sportsTodayCacheKey(selectedDate), best, TTL.SPORTS_TODAY);
+          return best;
         }
       } catch { /* fallback below */ }
-      try {
-        const today = await fetchSportsPayloadWithTimeout(`/api/sports/today?date=${date}`, 18000);
-        const hasData = (today.live?.length || 0) + (today.upcoming?.length || 0) + (today.finished?.length || 0) > 0;
-        if (hasData || today.error) {
-          cacheSet(sportsTodayCacheKey(selectedDate), today, TTL.SPORTS_TODAY);
-          return today;
-        }
-      } catch { /* no fallback data */ }
       if (stale) return stale;
       return { date: selectedDate, source: "espn", timezone: "Europe/Brussels", live: [], upcoming: [], finished: [] };
     },
-    refetchInterval: 45_000,
+    // Retry aggressively (20 s) when empty so cold-Render wakeup delivers
+    // data as soon as server is up; back off to 60 s when data is present.
+    refetchInterval: (query: any) => {
+      const data = query?.state?.data;
+      const count = (data?.live?.length || 0) + (data?.upcoming?.length || 0) + (data?.finished?.length || 0);
+      return count > 0 ? 60_000 : 20_000;
+    },
     staleTime: 30_000,
     retry: shouldRetrySportsQuery,
     refetchOnReconnect: true,
     refetchOnMount: false,
+    refetchIntervalInBackground: true,
     notifyOnChangeProps: ["data", "error", "isLoading"],
   });
 
@@ -1000,6 +1007,7 @@ export default function SportsScreen() {
       }
     },
     refetchInterval: 30_000,
+    refetchIntervalInBackground: true,
     staleTime: 20_000,
     retry: shouldRetrySportsQuery,
     refetchOnReconnect: true,
@@ -1030,6 +1038,30 @@ export default function SportsScreen() {
   const replayAndHighlight = useMemo(() => splitReplayAndHighlightItems(realHighlights), [realHighlights]);
   const replayItems = replayAndHighlight.replays;
   const highlightItems = replayAndHighlight.highlights;
+
+  // ── Foreground resume: refetch immediately when user returns to app ──────────
+  // Fixes "data appears after phone screen unlock" — no more waiting for the
+  // next 20-60 s interval tick after the app comes back to foreground.
+  useEffect(() => {
+    const sub = AppState.addEventListener("change", (nextState) => {
+      if (nextState === "active") {
+        void liveQuery.refetch();
+        void todayQuery.refetch();
+      }
+    });
+    return () => sub.remove();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ── Mount: wake the Render backend if it is sleeping ─────────────────────────
+  // Fire a cheap /health ping the moment the sports tab mounts.
+  // This overlaps with the network data fetch so the server is already warm
+  // by the time the real sports queries hit it.
+  useEffect(() => {
+    void apiRequest("GET", "/health").catch(() => undefined);
+  // Only on mount
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const liveFirstLoad = liveQuery.isLoading && !liveQuery.data;
   const todayFirstLoad = todayQuery.isLoading && !todayQuery.data;

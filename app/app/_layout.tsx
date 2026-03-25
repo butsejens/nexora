@@ -33,6 +33,7 @@ import {
   preloadDiskCache,
   cacheSet,
   cacheGet,
+  cacheGetStale,
   TTL,
 } from "@/lib/app-cache";
 import { initializeMatchNotifications } from "@/lib/match-notifications";
@@ -46,6 +47,7 @@ const PREFETCH_ENTRIES = (today: string) => [
   { queryKey: ["series", "genres"],    cacheKey: "series:genres",     ttlMs: TTL.GENRES   },
   { queryKey: ["sports", "highlights"],cacheKey: "sports:highlights", ttlMs: TTL.HIGHLIGHTS},
   { queryKey: ["sports", "today", today], cacheKey: `sports:today:${today}`, ttlMs: TTL.SPORTS_TODAY },
+  { queryKey: ["sports", "live",  today], cacheKey: `sports:live:${today}`,  ttlMs: TTL.LIVE },
 ];
 
 const POPULAR_COMPETITIONS = [
@@ -151,7 +153,9 @@ async function prefetchPopularCompetitionBundles(): Promise<void> {
 function seedQueryClientFromCache() {
   const today = new Date().toISOString().slice(0, 10);
   for (const { queryKey, cacheKey } of PREFETCH_ENTRIES(today)) {
-    const cached = cacheGet(cacheKey);
+    // Use cacheGetStale so expired-but-present disk data seeds the
+    // QueryClient; React Query will treat it as placeholder and refetch.
+    const cached = cacheGetStale(cacheKey);
     if (cached != null) {
       queryClient.setQueryData(queryKey, cached);
     }
@@ -202,7 +206,7 @@ function prefetchHomeData() {
     void fetchAndCache("/api/series/genres-catalog?page=1", "series:genres", TTL.GENRES, ["series", "genres"]);
     void apiRequest("GET", "/api/sports/prefetch-home").catch(() => undefined);
     void prefetchPopularCompetitionBundles();
-  }, 1200);
+  }, 0);
 }
 
 SplashScreen.preventAutoHideAsync();
