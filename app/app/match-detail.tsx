@@ -23,7 +23,8 @@ import { getLeagueLogo } from "@/lib/logo-manager";
 import { SilentResetBoundary } from "@/components/SilentResetBoundary";
 import { useNexora } from "@/context/NexoraContext";
 import { t as tFn } from "@/lib/i18n";
-import { getCachedPlayerImage, getPlayerImage } from "@/lib/player-image-system";
+import { getBestCachedOrSeedPlayerImage, resolvePlayerImageUri } from "@/lib/player-image-system";
+import { resolveMatchBucket } from "@/lib/match-state";
 import {
   MatchSubscription,
   ensureMatchNotificationPermission,
@@ -135,6 +136,42 @@ function buildFormationRows(players: any[], formationRaw?: string) {
   return [...rows.reverse(), gk].filter((row) => row.length > 0);
 }
 
+function normalizeTeamIdentity(value: unknown): string {
+  return String(value || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9 ]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function orderLineupTeams(starters: any[], homeName: string, awayName: string): any[] {
+  const teams = Array.isArray(starters) ? [...starters] : [];
+  if (teams.length < 2) return teams;
+
+  const homeKey = normalizeTeamIdentity(homeName);
+  const awayKey = normalizeTeamIdentity(awayName);
+
+  const matchIndex = (target: string) => teams.findIndex((team) => {
+    const teamKey = normalizeTeamIdentity(team?.team || team?.name || "");
+    if (!teamKey || !target) return false;
+    return teamKey === target || teamKey.includes(target) || target.includes(teamKey);
+  });
+
+  const homeIdx = matchIndex(homeKey);
+  const awayIdx = matchIndex(awayKey);
+  if (homeIdx >= 0 && awayIdx >= 0 && homeIdx !== awayIdx) {
+    return [teams[homeIdx], teams[awayIdx], ...teams.filter((_, idx) => idx !== homeIdx && idx !== awayIdx)];
+  }
+  if (homeIdx > 0) {
+    const homeTeam = teams[homeIdx];
+    teams.splice(homeIdx, 1);
+    teams.unshift(homeTeam);
+  }
+  return teams;
+}
+
 export default function MatchDetailScreen() {
   const params = useLocalSearchParams<{
     matchId: string; homeTeam: string; awayTeam: string;
@@ -145,6 +182,7 @@ export default function MatchDetailScreen() {
   }>();
 
   const insets = useSafeAreaInsets();
+  const { width: screenWidth } = useWindowDimensions();
   const { hasPremium, toggleFavorite, isFavorite } = useNexora();
   const sportPremium = hasPremium("sport");
   const resolvedInitialTab = (params.initialTab && ["stream", "stats", "lineups", "timeline", "highlights", "ai"].includes(params.initialTab)) ? params.initialTab as TabId : "stream";
@@ -164,10 +202,13 @@ export default function MatchDetailScreen() {
   const [streamFinderActive, setStreamFinderActive] = useState(false);
   const [streamFinderDone, setStreamFinderDone] = useState(false);
   const streamFinderTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const isLive = params.status === "live";
-  const isFinished = params.status === "finished" || params.status === "ft" || params.status === "done";
-  const isHalfTime = params.status === "ht" || params.status === "halftime" || params.status === "half";
-  const isPostponed = params.status === "postponed" || params.status === "cancelled" || params.status === "abandoned";
+  const paramBucket = resolveMatchBucket({
+    status: params.status,
+    minute: params.minute,
+    homeScore: params.homeScore,
+    awayScore: params.awayScore,
+  });
+  const isPostponed = ["postponed", "cancelled", "abandoned"].includes(String(params.status || "").toLowerCase());
   const espnSport = "soccer";
   const espnLeague = useMemo(() => {
     const direct = String(params.espnLeague || "").trim();
@@ -211,7 +252,7 @@ export default function MatchDetailScreen() {
       const res = await apiRequest("GET", `/api/sports/stream/${params.matchId}?league=${encodeURIComponent(espnLeague)}`);
       return res.json();
     },
-    enabled: !!params.matchId && isLive,
+    enabled: !!params.matchId && paramBucket === "live",
     staleTime: 60_000,
   });
   const _rawStreamUrl = streamData?.url || ""; void _streamLoading;
@@ -237,11 +278,35 @@ export default function MatchDetailScreen() {
       return res.json();
     },
     enabled: true,
-    // Live matches: refresh every 10s so score/cards/etc stay up to date.
-    refetchInterval: isLive ? 10000 : false,
+    // Poll only while match is effectively live.
+    refetchInterval: (query: any) => {
+      const payload = query?.state?.data;
+      const bucket = resolveMatchBucket({
+        status: payload?.status ?? params.status,
+        detail: payload?.status,
+        minute: payload?.minute ?? params.minute,
+        homeScore: payload?.homeScore ?? params.homeScore,
+        awayScore: payload?.awayScore ?? params.awayScore,
+        startDate: payload?.startDate,
+      });
+      return bucket === "live" ? 10000 : false;
+    },
     refetchIntervalInBackground: true,
-    staleTime: isLive ? 4000 : 30000,
+    staleTime: paramBucket === "live" ? 4000 : 30000,
   });
+
+  const effectiveBucket = resolveMatchBucket({
+    status: matchDetail?.status ?? params.status,
+    detail: matchDetail?.status,
+    minute: matchDetail?.minute ?? params.minute,
+    homeScore: matchDetail?.homeScore ?? params.homeScore,
+    awayScore: matchDetail?.awayScore ?? params.awayScore,
+    startDate: matchDetail?.startDate,
+  });
+  const isLive = effectiveBucket === "live";
+  const isFinished = effectiveBucket === "finished";
+  const statusText = String(matchDetail?.status || params.status || "").toLowerCase();
+  const isHalfTime = isLive && (statusText.includes("ht") || statusText.includes("half"));
 
   const liveHomeScore = matchDetail?.homeScore ?? Number(params.homeScore ?? 0);
   const liveAwayScore = matchDetail?.awayScore ?? Number(params.awayScore ?? 0);
@@ -500,7 +565,24 @@ export default function MatchDetailScreen() {
   }, [isLive, detailLoading, liveMinute, liveHomeScore, liveAwayScore, fetchLivePrediction]);
 
   const topPad = Platform.OS === "web" ? 67 : insets.top;
+  const isSmallDevice = screenWidth < 365;
+  const scoreFontSize = screenWidth < 350 ? 40 : screenWidth < 385 ? 44 : 48;
   const timelineEvents = Array.isArray(matchDetail?.timeline) ? matchDetail.timeline : [];
+  const orderedLineupTeams = useMemo(
+    () => orderLineupTeams(matchDetail?.starters || [], String(params.homeTeam || ""), String(params.awayTeam || "")),
+    [matchDetail?.starters, params.homeTeam, params.awayTeam]
+  );
+  const homeLineupTeam = orderedLineupTeams[0] || null;
+  const awayLineupTeam = orderedLineupTeams[1] || null;
+  const competitionName = safeStr(matchDetail?.competition || matchDetail?.league || params.league);
+  const matchStatusLabel = (() => {
+    if (isHalfTime) return "HT";
+    if (isLive) return liveMinute != null ? `${liveMinute}'` : "LIVE";
+    if (isFinished) return "FT";
+    if (isPostponed) return "Postponed";
+    if (matchDetail?.date) return safeStr(matchDetail.date);
+    return "Scheduled";
+  })();
   const highlightSummary = matchDetail?.highlights || null;
   const highlightMoments = Array.isArray(highlightSummary?.topMoments) ? highlightSummary.topMoments : [];
   const highlightRecap = Array.isArray(highlightSummary?.recap) ? highlightSummary.recap : [];
@@ -515,14 +597,18 @@ export default function MatchDetailScreen() {
 
         <View style={styles.matchHeader}>
           <View style={styles.competitionRow}>
-            <View style={styles.competitionSideSpacer} />
+            <View style={styles.matchStatusChip}>
+              <Text style={styles.matchStatusText} numberOfLines={1}>{matchStatusLabel}</Text>
+            </View>
             <View style={styles.competitionCenter}>
               <TeamLogo uri={getLeagueLogo(String(params.league)) as string | null} teamName={String(params.league)} size={24} />
-              <Text style={styles.leagueName}>{params.league}</Text>
+              <Text style={styles.leagueName} numberOfLines={1}>{competitionName}</Text>
             </View>
             <TouchableOpacity style={[styles.followChip, isMatchFollowed ? styles.followChipActive : null]} onPress={toggleMatchFollow}>
               <Ionicons name={isMatchFollowed ? "notifications" : "notifications-outline"} size={14} color={isMatchFollowed ? "#fff" : COLORS.textMuted} />
-              <Text style={[styles.followChipText, isMatchFollowed ? styles.followChipTextActive : null]}>{isMatchFollowed ? "Following" : "Follow"}</Text>
+              {!isSmallDevice ? (
+                <Text style={[styles.followChipText, isMatchFollowed ? styles.followChipTextActive : null]}>{isMatchFollowed ? "Following" : "Follow"}</Text>
+              ) : null}
             </TouchableOpacity>
           </View>
           <View style={styles.scoreRow}>
@@ -542,14 +628,14 @@ export default function MatchDetailScreen() {
             <View style={styles.scoreCenter}>
               {(isLive || isHalfTime) ? (
                 <>
-                  <Text style={styles.score} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>{liveHomeScore} - {liveAwayScore}</Text>
+                  <Text style={[styles.score, { fontSize: scoreFontSize }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>{liveHomeScore} - {liveAwayScore}</Text>
                   {isHalfTime
                     ? <Text style={[styles.finishedLabel, { color: "#FFD700" }]}>HT</Text>
                     : <LiveBadge minute={liveMinute} small />}
                 </>
               ) : isFinished ? (
                 <>
-                  <Text style={styles.score} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>{liveHomeScore} - {liveAwayScore}</Text>
+                  <Text style={[styles.score, { fontSize: scoreFontSize }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>{liveHomeScore} - {liveAwayScore}</Text>
                   <Text style={styles.finishedLabel}>FT</Text>
                 </>
               ) : isPostponed ? (
@@ -774,43 +860,39 @@ export default function MatchDetailScreen() {
 
           {detailLoading ? (
             <LoadingState />
-          ) : matchDetail?.starters?.length > 0 ? (
+          ) : orderedLineupTeams.length > 0 ? (
             <>
-              {/* Combined team header: [Logo] [Naam] | [Naam] [Logo] */}
-              {matchDetail.starters.length >= 2 && (
+              {homeLineupTeam && awayLineupTeam && (
                 <View style={styles.lineupTeamHeader}>
                   <View style={styles.lineupTeamSide}>
-                    <TeamLogo uri={matchDetail?.homeTeamLogo || params.homeTeamLogo} teamName={matchDetail.starters[0]?.team} size={36} />
+                    <TeamLogo uri={matchDetail?.homeTeamLogo || params.homeTeamLogo} teamName={homeLineupTeam?.team} size={36} />
                     <View style={{ flex: 1 }}>
-                      <Text style={styles.lineupTeamName} numberOfLines={1}>{matchDetail.starters[0]?.team}</Text>
-                      {matchDetail.starters[0]?.formation ? <Text style={styles.lineupFormation}>{matchDetail.starters[0].formation}</Text> : null}
+                      <Text style={styles.lineupTeamName} numberOfLines={1}>{homeLineupTeam?.team}</Text>
+                      {homeLineupTeam?.formation ? <Text style={styles.lineupFormation}>{homeLineupTeam.formation}</Text> : null}
                     </View>
                   </View>
                   <View style={styles.lineupTeamDivider}><Text style={styles.lineupVsSmall}>VS</Text></View>
                   <View style={[styles.lineupTeamSide, { flexDirection: "row-reverse" }]}>
-                    <TeamLogo uri={matchDetail?.awayTeamLogo || params.awayTeamLogo} teamName={matchDetail.starters[1]?.team} size={36} />
+                    <TeamLogo uri={matchDetail?.awayTeamLogo || params.awayTeamLogo} teamName={awayLineupTeam?.team} size={36} />
                     <View style={{ flex: 1, alignItems: "flex-end" }}>
-                      <Text style={styles.lineupTeamName} numberOfLines={1}>{matchDetail.starters[1]?.team}</Text>
-                      {matchDetail.starters[1]?.formation ? <Text style={styles.lineupFormation}>{matchDetail.starters[1].formation}</Text> : null}
+                      <Text style={styles.lineupTeamName} numberOfLines={1}>{awayLineupTeam?.team}</Text>
+                      {awayLineupTeam?.formation ? <Text style={styles.lineupFormation}>{awayLineupTeam.formation}</Text> : null}
                     </View>
                   </View>
                 </View>
               )}
 
-              {lineupView === "pitch" && matchDetail.starters.length >= 2 ? (
+              {lineupView === "pitch" && homeLineupTeam && awayLineupTeam ? (
                 <CombinedPitchView
-                  homeTeamData={matchDetail.starters[0]}
-                  awayTeamData={matchDetail.starters[1]}
+                  homeTeamData={homeLineupTeam}
+                  awayTeamData={awayLineupTeam}
                   league={espnLeague}
                 />
               ) : (
-                matchDetail.starters.map((team: any, ti: number) => (
+                orderedLineupTeams.map((team: any, ti: number) => (
                   <View key={ti} style={styles.lineupTeamSection}>
                     <View style={styles.lineupHeaderRow}>
                       <Text style={styles.sectionLabel}>{team.team?.toUpperCase()}</Text>
-                      <View style={styles.lineupTypeBadge}>
-                        <Text style={styles.lineupTypeText}>{team.lineupType === "official" ? tFn("matchDetail.official") : tFn("matchDetail.expected")}</Text>
-                      </View>
                     </View>
 
                     {lineupView === "pitch" ? (
@@ -2029,29 +2111,24 @@ function PlayerRow({ player, sport, compact = false, teamName = "", league = "en
     theSportsDbPhoto: player?.theSportsDbPhoto || null,
   }), [player?.id, player?.name, player?.team, player?.nationality, player?.position, player?.positionName, player?.age, player?.photo, player?.theSportsDbPhoto, teamName, league, sport]);
 
-  const cachedPhoto = getCachedPlayerImage(seed);
-  const photoCandidates = useMemo(() => {
-    const espnCdn = player?.id && /^\d+$/.test(String(player.id))
-      ? `https://a.espncdn.com/i/headshots/soccer/players/full/${encodeURIComponent(String(player.id))}.png`
-      : null;
-    const fallbackAvatar = `https://ui-avatars.com/api/?name=${encodeURIComponent(String(player?.name || "Player"))}&size=256&background=1a1a2e&color=e0e0e0&bold=true&format=png`;
-    return [...new Set([cachedPhoto, player?.photo, player?.theSportsDbPhoto || null, espnCdn, fallbackAvatar].filter(Boolean) as string[])];
-  }, [cachedPhoto, player?.id, player?.photo, player?.theSportsDbPhoto]);
+  const [resolvedPhoto, setResolvedPhoto] = useState<string | null>(getBestCachedOrSeedPlayerImage(seed));
+  const [imageFailed, setImageFailed] = useState(false);
+  const photoUri = !imageFailed ? resolvedPhoto : null;
 
-  const [photoIndex, setPhotoIndex] = useState(0);
-  const [resolvedPhoto, setResolvedPhoto] = useState<string | null>(cachedPhoto || null);
-  const photoUri = resolvedPhoto || photoCandidates[photoIndex] || null;
+  useEffect(() => {
+    setResolvedPhoto(getBestCachedOrSeedPlayerImage(seed));
+    setImageFailed(false);
+  }, [seed]);
 
   useEffect(() => {
     let disposed = false;
-    if (resolvedPhoto) return () => { disposed = true; };
-    void getPlayerImage(seed, { allowNetwork: true }).then((uri) => {
+    void resolvePlayerImageUri(seed, { allowNetwork: true }).then((uri) => {
       if (disposed || !uri) return;
       setResolvedPhoto(uri);
-      setPhotoIndex(0);
+      setImageFailed(false);
     }).catch(() => undefined);
     return () => { disposed = true; };
-  }, [resolvedPhoto, seed]);
+  }, [seed]);
 
   const compactStyle = compact ? styles.playerRowCompact : null;
   const handleOpenProfile = () => {
@@ -2082,8 +2159,7 @@ function PlayerRow({ player, sport, compact = false, teamName = "", league = "en
           source={{ uri: photoUri }}
           style={styles.playerPhoto}
           onError={() => {
-            setResolvedPhoto(null);
-            setPhotoIndex((idx) => (idx + 1 < photoCandidates.length ? idx + 1 : -1));
+            setImageFailed(true);
           }}
         />
       ) : (
@@ -2141,39 +2217,25 @@ function PitchDot({ player, color, teamName, league }: { player: any; color: str
     theSportsDbPhoto: player?.theSportsDbPhoto || null,
   }), [player?.id, player?.name, player?.team, player?.nationality, player?.position, player?.positionName, player?.age, player?.photo, player?.theSportsDbPhoto, teamName, league]);
 
-  const cachedPhoto = getCachedPlayerImage(seed);
-  const photoCandidates = React.useMemo(() => {
-    const candidates: string[] = [];
-    if (cachedPhoto) candidates.push(cachedPhoto);
-    if (player?.photo) candidates.push(player.photo);
-    if (player?.theSportsDbPhoto && player.theSportsDbPhoto !== player?.photo) candidates.push(player.theSportsDbPhoto);
-    if (player?.headshot && player.headshot !== player?.photo) candidates.push(player.headshot);
-    const eid = String(player?.id || "");
-    if (/^\d+$/.test(eid)) {
-      const espnUrl = `https://a.espncdn.com/i/headshots/soccer/players/full/${eid}.png`;
-      if (!candidates.includes(espnUrl)) candidates.push(espnUrl);
-    }
-    const fallbackAvatar = `https://ui-avatars.com/api/?name=${encodeURIComponent(String(player?.name || "Player"))}&size=128&background=1a1a2e&color=e0e0e0&bold=true&format=png`;
-    if (!candidates.includes(fallbackAvatar)) candidates.push(fallbackAvatar);
-    return [...new Set(candidates)];
-  }, [cachedPhoto, player?.photo, player?.theSportsDbPhoto, player?.headshot, player?.id]);
-
-  const [photoIdx, setPhotoIdx] = React.useState(0);
-  const [resolvedPhoto, setResolvedPhoto] = React.useState<string | null>(cachedPhoto || null);
-  const [photoOk, setPhotoOk] = React.useState(false);
-  const currentPhoto = resolvedPhoto || photoCandidates[photoIdx] || null;
+  const [resolvedPhoto, setResolvedPhoto] = React.useState<string | null>(getBestCachedOrSeedPlayerImage(seed));
+  const [imageFailed, setImageFailed] = React.useState(false);
+  const currentPhoto = !imageFailed ? resolvedPhoto : null;
   const showPhoto = Boolean(currentPhoto);
 
   useEffect(() => {
+    setResolvedPhoto(getBestCachedOrSeedPlayerImage(seed));
+    setImageFailed(false);
+  }, [seed]);
+
+  useEffect(() => {
     let disposed = false;
-    if (resolvedPhoto) return () => { disposed = true; };
-    void getPlayerImage(seed, { allowNetwork: true }).then((uri) => {
+    void resolvePlayerImageUri(seed, { allowNetwork: true }).then((uri) => {
       if (disposed || !uri) return;
       setResolvedPhoto(uri);
-      setPhotoIdx(0);
+      setImageFailed(false);
     }).catch(() => undefined);
     return () => { disposed = true; };
-  }, [resolvedPhoto, seed]);
+  }, [seed]);
 
   return (
     <View style={styles.pitchDotWrap}>
@@ -2181,20 +2243,13 @@ function PitchDot({ player, color, teamName, league }: { player: any; color: str
         {showPhoto ? (
           <Image
             source={{ uri: currentPhoto! }}
-            style={[styles.pitchDotPhoto, !photoOk && { opacity: 0 }]}
-            onLoad={() => setPhotoOk(true)}
+            style={styles.pitchDotPhoto}
             onError={() => {
-              setPhotoOk(false);
-              setResolvedPhoto(null);
-              if (photoIdx + 1 < photoCandidates.length) {
-                setPhotoIdx((i) => i + 1);
-              } else {
-                setPhotoIdx(-1); // exhausted all candidates
-              }
+              setImageFailed(true);
             }}
           />
         ) : null}
-        {!showPhoto || !photoOk ? (
+        {!showPhoto ? (
           <Text style={[styles.pitchDotNum, { color }]}>{player.jersey || "—"}</Text>
         ) : null}
       </View>
@@ -2781,7 +2836,7 @@ function EmptyState({ icon, text }: { icon: any; text: string }) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
-  header: { paddingHorizontal: 20, paddingBottom: 16 },
+  header: { paddingHorizontal: 20, paddingBottom: 18 },
   backBtn: {
     marginBottom: 12,
     width: 44,
@@ -2794,37 +2849,52 @@ const styles = StyleSheet.create({
     borderColor: "rgba(255,255,255,0.12)",
     alignSelf: "flex-start",
   },
-  matchHeader: { alignItems: "center", gap: 14 },
+  matchHeader: { alignItems: "center", gap: 15 },
   competitionRow: {
     width: "100%",
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: 10,
+    gap: 12,
   },
-  competitionSideSpacer: {
-    width: 74,
-    height: 1,
+  matchStatusChip: {
+    minWidth: 78,
+    borderRadius: 999,
+    paddingHorizontal: 11,
+    paddingVertical: 7,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.16)",
+    backgroundColor: "rgba(255,255,255,0.06)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  matchStatusText: {
+    fontFamily: "Inter_700Bold",
+    fontSize: 10,
+    color: COLORS.text,
+    letterSpacing: 0.4,
+    textTransform: "uppercase",
   },
   competitionCenter: {
     flex: 1,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 8,
+    gap: 9,
   },
   leagueName: {
     fontFamily: "Inter_700Bold",
-    fontSize: 11,
+    fontSize: 10,
     color: "rgba(255,255,255,0.65)",
     letterSpacing: 2,
     textTransform: "uppercase",
     backgroundColor: "rgba(255,255,255,0.08)",
-    borderRadius: 20,
-    paddingHorizontal: 14,
-    paddingVertical: 5,
+    borderRadius: 18,
+    paddingHorizontal: 13,
+    paddingVertical: 6,
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.1)",
+    maxWidth: "90%",
   },
   scoreRow: { flexDirection: "row", alignItems: "center", width: "100%", paddingHorizontal: 10, justifyContent: "center" },
   teamSideWrap: { flex: 1, alignItems: "center", gap: 6 },
@@ -2921,8 +2991,8 @@ const styles = StyleSheet.create({
   },
   tabBar: {
     flexDirection: "row",
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 11,
     gap: 6,
   },
   streamContainer: { flex: 1 },
@@ -3015,14 +3085,14 @@ const styles = StyleSheet.create({
     maxWidth: 280,
   },
   tabContent: { flex: 1 },
-  tabContentInner: { paddingHorizontal: 14, paddingTop: 12, paddingBottom: 18, gap: 0 },
+  tabContentInner: { paddingHorizontal: 16, paddingTop: 14, paddingBottom: 20, gap: 0 },
   sectionLabel: {
     fontFamily: "Inter_700Bold",
     fontSize: 11,
     color: COLORS.accent,
     letterSpacing: 1.5,
     textTransform: "uppercase",
-    marginBottom: 10,
+    marginBottom: 12,
     marginTop: 2,
   },
   infoCard: {
@@ -3075,7 +3145,7 @@ const styles = StyleSheet.create({
   },
   statsHeaderCard: {
     backgroundColor: COLORS.card,
-    borderRadius: 16,
+    borderRadius: 18,
     paddingHorizontal: 14,
     paddingTop: 12,
     paddingBottom: 14,
@@ -3438,8 +3508,8 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.08)",
-    padding: 12,
-    marginBottom: 14,
+    padding: 13,
+    marginBottom: 16,
     gap: 8,
   },
   lineupTeamSide: {
@@ -3470,14 +3540,14 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
   },
   lineupTeamSection: { marginBottom: 22 },
-  lineupViewToggleRow: { flexDirection: "row", gap: 8, marginBottom: 14 },
+  lineupViewToggleRow: { flexDirection: "row", gap: 8, marginBottom: 16 },
   lineupViewBtn: {
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
-    paddingHorizontal: 14,
+    paddingHorizontal: 15,
     paddingVertical: 10,
-    borderRadius: 14,
+    borderRadius: 15,
     backgroundColor: COLORS.card,
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.12)",
@@ -3492,15 +3562,6 @@ const styles = StyleSheet.create({
     marginBottom: 10,
     gap: 8,
   },
-  lineupTypeBadge: {
-    borderWidth: 1,
-    borderColor: `${COLORS.accent}44`,
-    backgroundColor: COLORS.accentGlow,
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-  },
-  lineupTypeText: { fontFamily: "Inter_700Bold", fontSize: 10, color: COLORS.accent, textTransform: "uppercase", letterSpacing: 0.5 },
   pitchCard: {
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.15)",

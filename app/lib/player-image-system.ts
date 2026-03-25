@@ -178,6 +178,62 @@ export function makePlayerCacheKey(player: PlayerSeed): string {
   return `name:${name}|team:${team}|league:${league}|sport:${sport}|gender:${gender}`;
 }
 
+function composeNameKey(player: PlayerSeed, overrides?: { team?: string; league?: string }): string {
+  const name = normalizeName(player.name);
+  const team = normalizeName(overrides?.team ?? player.team);
+  const league = normalizeName(overrides?.league ?? player.league);
+  const sport = normalizeName(player.sport || "soccer");
+  const gender = normalizeName(player.gender);
+  return `name:${name}|team:${team}|league:${league}|sport:${sport}|gender:${gender}`;
+}
+
+function getPlayerAliasKeys(player: PlayerSeed, profile?: any): string[] {
+  const keys = new Set<string>();
+  const id = normalizeText(player.id || profile?.id);
+  const name = normalizeName(player.name || profile?.name || profile?.fullName || profile?.displayName);
+
+  keys.add(makePlayerCacheKey(player));
+  if (/^\d+$/.test(id)) keys.add(`id:${id}`);
+
+  if (name) {
+    keys.add(composeNameKey(player));
+    keys.add(composeNameKey({ ...player, team: "", league: "" }));
+
+    const profileTeam = normalizeText(profile?.currentClub || profile?.team || profile?.club?.name);
+    const profileLeague = normalizeText(profile?.league || profile?.competition || profile?.leagueName);
+    if (profileTeam || profileLeague) {
+      keys.add(composeNameKey(player, { team: profileTeam || player.team, league: profileLeague || player.league }));
+    }
+  }
+
+  return [...keys].filter(Boolean);
+}
+
+function getBestCacheEntry<T extends { expiresAt: number; confidence?: number; updatedAt?: number }>(
+  map: Map<string, T>,
+  keys: string[]
+): T | null {
+  let best: T | null = null;
+  for (const key of keys) {
+    const hit = map.get(key);
+    if (!hit || isExpired(hit.expiresAt)) continue;
+    if (!best) {
+      best = hit;
+      continue;
+    }
+    const bestConfidence = Number((best as any)?.confidence || 0);
+    const hitConfidence = Number((hit as any)?.confidence || 0);
+    if (hitConfidence > bestConfidence) {
+      best = hit;
+      continue;
+    }
+    if (hitConfidence === bestConfidence && Number(hit.updatedAt || 0) > Number((best as any)?.updatedAt || 0)) {
+      best = hit;
+    }
+  }
+  return best;
+}
+
 function now(): number {
   return Date.now();
 }
@@ -318,27 +374,63 @@ export async function hydratePlayerImageCaches(): Promise<void> {
 }
 
 export function getCachedPlayerImage(player: PlayerSeed): string | null {
-  const key = makePlayerCacheKey(player);
-  const hit = imageCache.get(key);
-  if (!hit || isExpired(hit.expiresAt)) return null;
+  const hit = getBestCacheEntry(imageCache, getPlayerAliasKeys(player));
+  if (!hit) return null;
   return hit.localUri || hit.photoUrl || null;
 }
 
+export function getPlayerFallbackAvatar(name: Nullable<string>): string | null {
+  const normalizedName = normalizeText(name);
+  if (!normalizedName) return null;
+  return `https://ui-avatars.com/api/?name=${encodeURIComponent(normalizedName)}&size=256&background=1a1a2e&color=e0e0e0&bold=true&format=png`;
+}
+
+export function getBestCachedOrSeedPlayerImage(player: PlayerSeed): string | null {
+  const cached = getCachedPlayerImage(player);
+  if (cached) return cached;
+
+  if (isValidHttpUrl(player.photo)) return String(player.photo);
+  if (isValidHttpUrl(player.theSportsDbPhoto)) return String(player.theSportsDbPhoto);
+
+  const playerId = normalizeText(player.id);
+  if (/^\d+$/.test(playerId)) {
+    return `https://a.espncdn.com/i/headshots/soccer/players/full/${encodeURIComponent(playerId)}.png`;
+  }
+
+  return getPlayerFallbackAvatar(player.name);
+}
+
+export async function resolvePlayerImageUri(
+  player: PlayerSeed,
+  options?: { allowNetwork?: boolean; preloadProfile?: boolean }
+): Promise<string | null> {
+  const cached = getCachedPlayerImage(player);
+  if (cached) return cached;
+
+  const resolved = await getPlayerImage(player, options);
+  if (resolved) return resolved;
+
+  return getBestCachedOrSeedPlayerImage(player);
+}
+
 export function getCachedPlayerProfile(player: PlayerSeed): any | null {
-  const key = makePlayerCacheKey(player);
-  const hit = profileCache.get(key);
-  if (!hit || isExpired(hit.expiresAt)) return null;
+  const hit = getBestCacheEntry(profileCache, getPlayerAliasKeys(player));
+  if (!hit) return null;
   return hit.data;
 }
 
 function mergeProfileIntoCache(player: PlayerSeed, profileData: any): void {
-  const key = makePlayerCacheKey(player);
-  profileCache.set(key, {
-    key,
-    data: profileData,
-    updatedAt: now(),
-    expiresAt: now() + CACHE_TTL_MS,
-  });
+  const entries = getPlayerAliasKeys(player, profileData);
+  const updatedAt = now();
+  const expiresAt = updatedAt + CACHE_TTL_MS;
+  for (const key of entries) {
+    profileCache.set(key, {
+      key,
+      data: profileData,
+      updatedAt,
+      expiresAt,
+    });
+  }
   if (globalQueryClient) {
     globalQueryClient.setQueryData(["player-profile", player.id, player.name, player.team, player.league], profileData);
   }
@@ -346,20 +438,24 @@ function mergeProfileIntoCache(player: PlayerSeed, profileData: any): void {
 }
 
 function mergeImageIntoCache(player: PlayerSeed, image: { photoUrl: string | null; localUri: string | null; confidence: number; source: PlayerImageEntry["source"] }): void {
-  const key = makePlayerCacheKey(player);
-  imageCache.set(key, {
-    key,
-    playerId: normalizeText(player.id) || undefined,
-    name: normalizeText(player.name) || undefined,
-    team: normalizeText(player.team) || undefined,
-    league: normalizeText(player.league) || undefined,
-    photoUrl: image.photoUrl,
-    localUri: image.localUri,
-    source: image.source,
-    confidence: image.confidence,
-    updatedAt: now(),
-    expiresAt: now() + CACHE_TTL_MS,
-  });
+  const entries = getPlayerAliasKeys(player);
+  const updatedAt = now();
+  const expiresAt = updatedAt + CACHE_TTL_MS;
+  for (const key of entries) {
+    imageCache.set(key, {
+      key,
+      playerId: normalizeText(player.id) || undefined,
+      name: normalizeText(player.name) || undefined,
+      team: normalizeText(player.team) || undefined,
+      league: normalizeText(player.league) || undefined,
+      photoUrl: image.photoUrl,
+      localUri: image.localUri,
+      source: image.source,
+      confidence: image.confidence,
+      updatedAt,
+      expiresAt,
+    });
+  }
   schedulePersist();
 }
 
@@ -407,7 +503,7 @@ function collectCandidates(player: PlayerSeed, profile: any | null): Array<{ url
     .filter((x) => isValidHttpUrl(x));
   for (const url of seedPhotos) {
     const source = classifySource(url);
-    addCandidate(url, source, Math.max(0.82, scoreCandidate(url, player, { candidateName: player.name, candidateTeam: player.team })));
+    addCandidate(url, source, Math.max(0.97, scoreCandidate(url, player, { candidateName: player.name, candidateTeam: player.team })));
   }
 
   // 3. Profile photos — scored normally

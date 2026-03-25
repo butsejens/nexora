@@ -8,16 +8,19 @@ import { useQuery } from "@tanstack/react-query";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { COLORS } from "@/constants/colors";
 import { normalizeApiError } from "@/lib/error-messages";
+import { enrichPlayerProfilePayload } from "@/lib/sports-enrichment";
 import { useTranslation } from "@/lib/useTranslation";
 import { t as tFn, getLanguage } from "@/lib/i18n";
 import { TeamLogo } from "@/components/TeamLogo";
 import { SectionHeader, StateBlock, SurfaceCard } from "@/components/ui/PremiumPrimitives";
 import { resolveClubHistoryLogoUri } from "@/lib/logo-manager";
 import {
+  getBestCachedOrSeedPlayerImage,
   getCachedPlayerImage,
   getCachedPlayerProfile,
   getPlayerImage,
   preloadPlayerProfileInBackground,
+  resolvePlayerImageUri,
 } from "@/lib/player-image-system";
 
 const UNKNOWN = "N/A";
@@ -60,6 +63,24 @@ function formatDisplayDate(value: unknown): string {
     month: "2-digit",
     year: "numeric",
   }).format(date);
+}
+
+function parseTransferMoment(value: unknown): number {
+  const raw = String(value || "").trim();
+  if (!raw) return Number.MAX_SAFE_INTEGER;
+  const asDate = Date.parse(raw);
+  if (Number.isFinite(asDate)) return asDate;
+  const year = Number(raw.replace(/[^\d]/g, "").slice(0, 4));
+  if (Number.isFinite(year) && year > 1800 && year < 3000) return Date.UTC(year, 0, 1);
+  return Number.MAX_SAFE_INTEGER;
+}
+
+function transferTypeLabel(fee: unknown): string {
+  const text = String(fee || "").trim().toLowerCase();
+  if (!text) return "Transfer";
+  if (text.includes("loan") || text.includes("huur")) return "Loan";
+  if (text.includes("free") || text.includes("gratis") || text === "-") return "Free transfer";
+  return "Transfer fee";
 }
 
 function initialsFromName(name: string): string {
@@ -170,10 +191,10 @@ export default function PlayerProfileScreen() {
       const cachedProfile = getCachedPlayerProfile(seed);
       const cachedImage = getCachedPlayerImage(seed);
       if (cachedProfile) {
-        const merged = {
+        const merged = enrichPlayerProfilePayload({
           ...cachedProfile,
           photo: cachedImage || cachedProfile?.photo || null,
-        };
+        }, seed);
         const normalized = normalizePlayerDto(merged, params);
         await AsyncStorage.setItem(cacheKey, JSON.stringify(normalized));
         return normalized;
@@ -192,10 +213,10 @@ export default function PlayerProfileScreen() {
       const refreshedProfile = getCachedPlayerProfile(seed);
       const refreshedImage = getCachedPlayerImage(seed);
       if (refreshedProfile) {
-        const merged = {
+        const merged = enrichPlayerProfilePayload({
           ...refreshedProfile,
           photo: refreshedImage || refreshedProfile?.photo || null,
-        };
+        }, seed);
         const normalized = normalizePlayerDto(merged, params);
         await AsyncStorage.setItem(cacheKey, JSON.stringify(normalized));
         return normalized;
@@ -204,7 +225,7 @@ export default function PlayerProfileScreen() {
       // Never block profile navigation on network; load richer data in background.
       preloadPlayerProfileInBackground(seed);
 
-      const instant = normalizePlayerDto(
+      const instantPayload = enrichPlayerProfilePayload(
         {
           id: seed.id,
           name: seed.name,
@@ -220,8 +241,10 @@ export default function PlayerProfileScreen() {
           offlineData: false,
           updatedAt: new Date().toISOString(),
         },
-        params
+        seed
       );
+
+      const instant = normalizePlayerDto(instantPayload, params);
 
       await AsyncStorage.setItem(cacheKey, JSON.stringify(instant));
       return instant;
@@ -233,26 +256,71 @@ export default function PlayerProfileScreen() {
     retry: 0,
   });
 
-  const photoCandidates = useMemo(() => {
-    const paramPhoto = params.photo ? String(params.photo) : null;
-    const paramSportsDb = params.theSportsDbPhoto ? String(params.theSportsDbPhoto) : null;
-    const fallbackAvatar = (data?.name || params.name)
-      ? `https://ui-avatars.com/api/?name=${encodeURIComponent(String(data?.name || params.name || "Player"))}&size=256&background=1a1a2e&color=e0e0e0&bold=true&format=png`
-      : null;
-    const raw = [data?.photo, data?.theSportsDbPhoto || null, paramPhoto, paramSportsDb, fallbackAvatar].filter(Boolean) as string[];
-    return [...new Set(raw)];
-  }, [data?.name, data?.photo, data?.theSportsDbPhoto, params.name, params.photo, params.theSportsDbPhoto]);
-
-  const [photoIdx, setPhotoIdx] = useState(0);
-  const photoUri = photoCandidates[photoIdx] || null;
-  const photoCandidatesKey = photoCandidates.join(",");
+  const playerImageSeed = useMemo(() => ({
+    id: String(params.playerId || data?.id || ""),
+    name: String(data?.name || params.name || ""),
+    team: String(data?.currentClub || params.team || ""),
+    league: String(params.league || "eng.1"),
+    sport: "soccer",
+    photo: data?.photo || (params.photo ? String(params.photo) : null),
+    theSportsDbPhoto: data?.theSportsDbPhoto || (params.theSportsDbPhoto ? String(params.theSportsDbPhoto) : null),
+    nationality: String(data?.nationality || params.nationality || ""),
+    position: String(data?.position || params.position || ""),
+    age: data?.age,
+  }), [
+    params.playerId,
+    params.name,
+    params.team,
+    params.league,
+    params.photo,
+    params.theSportsDbPhoto,
+    params.nationality,
+    params.position,
+    data?.id,
+    data?.name,
+    data?.currentClub,
+    data?.photo,
+    data?.theSportsDbPhoto,
+    data?.nationality,
+    data?.position,
+    data?.age,
+  ]);
+  const [photoUri, setPhotoUri] = useState<string | null>(getBestCachedOrSeedPlayerImage(playerImageSeed));
+  const [photoFailed, setPhotoFailed] = useState(false);
 
   useEffect(() => {
-    setPhotoIdx(0);
-  }, [photoCandidatesKey]);
+    setPhotoUri(getBestCachedOrSeedPlayerImage(playerImageSeed));
+    setPhotoFailed(false);
+  }, [playerImageSeed]);
+
+  useEffect(() => {
+    let disposed = false;
+    void resolvePlayerImageUri(playerImageSeed, { allowNetwork: true, preloadProfile: true }).then((uri) => {
+      if (disposed || !uri) return;
+      setPhotoUri(uri);
+      setPhotoFailed(false);
+    }).catch(() => undefined);
+    return () => { disposed = true; };
+  }, [playerImageSeed]);
 
   const badgeColor = colorFromSeed(`${data?.currentClub || params.team || "nexora"}`);
   const initials = initialsFromName(String(data?.name || params.name || "?"));
+  const clubHistory = useMemo(() => {
+    const rows = Array.isArray(data?.formerClubs) ? data.formerClubs : [];
+    const normalized = rows
+      .map((club: any) => ({
+        ...club,
+        role: String(club?.role || "").toLowerCase() === "to" ? "to" : "from",
+        date: String(club?.date || "").trim(),
+        fee: String(club?.fee || "").trim(),
+      }))
+      .sort((a: any, b: any) => parseTransferMoment(a?.date) - parseTransferMoment(b?.date));
+
+    return {
+      joined: normalized.filter((club: any) => club.role === "to"),
+      left: normalized.filter((club: any) => club.role !== "to"),
+    };
+  }, [data?.formerClubs]);
 
   const scrollY = useRef(new Animated.Value(0)).current;
   const heroOpacity = scrollY.interpolate({ inputRange: [0, 120], outputRange: [1, 1], extrapolate: "clamp" });
@@ -270,17 +338,13 @@ export default function PlayerProfileScreen() {
         {/* Collapsible hero details — fades on scroll */}
         <Animated.View style={{ opacity: heroOpacity }}>
         <View style={styles.hero}>
-          {photoUri ? (
-            <TouchableOpacity onPress={() => setPhotoIdx((i) => (i + 1) % photoCandidates.length)}>
-              <Image source={{ uri: photoUri }} style={[styles.photo, { backgroundColor: COLORS.card }]} resizeMode="contain" onError={() => setPhotoIdx((i) => i + 1)} />
-              {photoCandidates.length > 1 && (
-                <View style={styles.photoDots}>
-                  {photoCandidates.map((_, idx) => (
-                    <View key={`dot_${idx}`} style={[styles.photoDot, idx === photoIdx && styles.photoDotActive]} />
-                  ))}
-                </View>
-              )}
-            </TouchableOpacity>
+          {photoUri && !photoFailed ? (
+            <Image
+              source={{ uri: photoUri }}
+              style={[styles.photo, { backgroundColor: COLORS.card }]}
+              resizeMode="cover"
+              onError={() => setPhotoFailed(true)}
+            />
           ) : (
             <View style={[styles.photo, styles.photoFallback, { borderColor: badgeColor }]}> 
               <Text style={styles.photoInitials}>{initials}</Text>
@@ -380,42 +444,49 @@ export default function PlayerProfileScreen() {
           </Card>
 
           <Card title={tx("playerProfile.clubHistory", "Club history")}>
-            {(Array.isArray(data?.formerClubs) ? data.formerClubs : []).length === 0 ? (
+            {clubHistory.joined.length === 0 && clubHistory.left.length === 0 ? (
               <Text style={styles.placeholder}>{tx("playerProfile.noTransferHistory", "No transfer history available")}</Text>
             ) : (
               <View style={styles.timeline}>
-                {((data?.formerClubs ?? []) as any[]).map((club, idx, arr) => {
-                  const isLast = idx === arr.length - 1;
-                  const isJoin = club?.role === "to";
-                  return (
-                    <View key={`${club?.name || "club"}_${idx}`} style={styles.timelineItem}>
-                      {/* Timeline line */}
-                      <View style={styles.timelineSide}>
-                        <View style={[styles.timelineDot, isJoin ? styles.timelineDotJoin : styles.timelineDotLeave]} />
-                        {!isLast && <View style={styles.timelineLine} />}
-                      </View>
-                      {/* Content */}
-                      <View style={styles.timelineContent}>
-                        <View style={styles.timelineRow}>
-                          <TeamLogo
-                            uri={club?.logo}
-                            resolvedLogo={resolveClubHistoryLogoUri(club?.name || "", club?.logo || null)}
-                            teamName={club?.name || "Unknown"}
-                            size={32}
-                          />
-                          <View style={styles.timelineInfo}>
-                            <Text style={styles.timelineClub} numberOfLines={1}>{club?.name || tx("common.notAvailable", "Not available")}</Text>
-                            <View style={styles.timelineMetaRow}>
-                              <Text style={styles.timelineLabel}>{isJoin ? "Joined" : "Left"}</Text>
-                              {club?.date ? <Text style={styles.timelineDate}>{club.date}</Text> : null}
+                {([
+                  { title: "Joined", rows: clubHistory.joined, isJoin: true },
+                  { title: "Left", rows: clubHistory.left, isJoin: false },
+                ] as const).map((group) => (
+                  group.rows.length === 0 ? null : (
+                    <View key={group.title} style={styles.transferGroup}>
+                      <Text style={styles.transferGroupTitle}>{group.title}</Text>
+                      {group.rows.map((club: any, idx: number) => {
+                        const isLast = idx === group.rows.length - 1;
+                        return (
+                          <View key={`${club?.name || "club"}_${group.title}_${idx}`} style={styles.timelineItem}>
+                            <View style={styles.timelineSide}>
+                              <View style={[styles.timelineDot, group.isJoin ? styles.timelineDotJoin : styles.timelineDotLeave]} />
+                              {!isLast && <View style={styles.timelineLine} />}
                             </View>
-                            {club?.fee ? <Text style={styles.timelineFee}>{club.fee}</Text> : null}
+                            <View style={styles.timelineContent}>
+                              <View style={styles.timelineRow}>
+                                <TeamLogo
+                                  uri={club?.logo}
+                                  resolvedLogo={resolveClubHistoryLogoUri(club?.name || "", club?.logo || null)}
+                                  teamName={club?.name || "Unknown"}
+                                  size={32}
+                                />
+                                <View style={styles.timelineInfo}>
+                                  <Text style={styles.timelineClub} numberOfLines={1}>{club?.name || tx("common.notAvailable", "Not available")}</Text>
+                                  <View style={styles.timelineMetaRow}>
+                                    {club?.date ? <Text style={styles.timelineDate}>{club.date}</Text> : null}
+                                    {club?.fee ? <Text style={styles.timelineLabel}>{transferTypeLabel(club.fee)}</Text> : null}
+                                  </View>
+                                  {club?.fee ? <Text style={styles.timelineFee}>{club.fee}</Text> : null}
+                                </View>
+                              </View>
+                            </View>
                           </View>
-                        </View>
-                      </View>
+                        );
+                      })}
                     </View>
-                  );
-                })}
+                  )
+                ))}
               </View>
             )}
           </Card>
@@ -472,20 +543,31 @@ function Bullet({ text, good = false }: { text: string; good?: boolean }) {
 }
 
 function StatsGrid({ items }: { items: { label: string; value: any }[] }) {
-  const cleaned = items.filter((x) => x?.label);
+  const cleaned = items
+    .filter((x) => x?.label)
+    .map((item) => {
+      const raw = item?.value;
+      const parsed = Number(raw);
+      const hasValue = raw != null && String(raw).trim() !== "" && String(raw).toLowerCase() !== "null";
+      const visible = Number.isFinite(parsed) ? parsed > 0 : hasValue;
+      return { ...item, __visible: visible };
+    })
+    .filter((item) => item.__visible);
   const isGoals = (label: string) => label.toLowerCase().includes("goal");
   const isAssists = (label: string) => label.toLowerCase().includes("assist");
   const isAppearances = (label: string) => label.toLowerCase().includes("match") || label.toLowerCase().includes("appear");
+  if (cleaned.length === 0) {
+    return <Text style={styles.placeholder}>{tFn("common.notAvailable") || "Not available"}</Text>;
+  }
   return (
     <View style={styles.statsGrid}>
       {cleaned.map((item, idx) => {
-        const hasValue = item?.value != null && String(item.value).trim() !== "" && String(item.value) !== "0";
         const isKeyMetric = isGoals(item.label) || isAssists(item.label) || isAppearances(item.label);
         return (
           <View key={`${item.label}_${idx}`} style={[styles.statCard, isKeyMetric && styles.statCardHighlight]}>
             <Text style={styles.statLabel} numberOfLines={1}>{item.label}</Text>
             <Text style={[styles.statValue, isGoals(item.label) && styles.statValueGoals, isAssists(item.label) && styles.statValueAssists]}>
-              {hasValue ? String(item.value) : (tFn("common.notAvailable") || "Niet beschikbaar")}
+              {String(item.value)}
             </Text>
           </View>
         );
@@ -508,29 +590,26 @@ function QuickFact({ icon, label, value }: { icon: keyof typeof Ionicons.glyphMa
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
-  header: { paddingHorizontal: 16, paddingBottom: 16 },
+  header: { paddingHorizontal: 18, paddingBottom: 18 },
   backBtn: { width: 38, height: 38, alignItems: "center", justifyContent: "center", marginBottom: 6 },
-  hero: { alignItems: "center", gap: 6 },
-  photo: { width: 130, height: 130, borderRadius: 18, borderWidth: 0 },
+  hero: { alignItems: "center", gap: 8, paddingTop: 2 },
+  photo: { width: 134, height: 134, borderRadius: 20, borderWidth: 0 },
   photoFallback: { backgroundColor: COLORS.card, alignItems: "center", justifyContent: "center", borderWidth: 1.5, borderColor: "rgba(255,255,255,0.08)" },
   photoInitials: { fontFamily: "Inter_700Bold", fontSize: 24, color: COLORS.text },
-  photoDots: { flexDirection: "row", justifyContent: "center", gap: 4, marginTop: 8 },
-  photoDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: "rgba(255,255,255,0.3)" },
-  photoDotActive: { backgroundColor: COLORS.accent, width: 8 },
-  name: { fontFamily: "Inter_800ExtraBold", fontSize: 22, color: COLORS.text, textAlign: "center", paddingHorizontal: 16, maxWidth: "100%" },
-  meta: { fontFamily: "Inter_400Regular", fontSize: 13, color: COLORS.textMuted, textAlign: "center", paddingHorizontal: 24, maxWidth: "100%" },
+  name: { fontFamily: "Inter_800ExtraBold", fontSize: 23, color: COLORS.text, textAlign: "center", paddingHorizontal: 16, maxWidth: "100%", lineHeight: 28 },
+  meta: { fontFamily: "Inter_400Regular", fontSize: 13, color: COLORS.textMuted, textAlign: "center", paddingHorizontal: 24, maxWidth: "100%", lineHeight: 18 },
   value: { fontFamily: "Inter_700Bold", fontSize: 14, color: COLORS.textMuted },
   valueReal: { color: "#00C896" },
   loading: { flex: 1, alignItems: "center", justifyContent: "center", gap: 10 },
   loadingText: { fontFamily: "Inter_400Regular", fontSize: 13, color: COLORS.textMuted },
   retryBtn: { marginTop: 8, paddingHorizontal: 20, paddingVertical: 10, borderRadius: 18, backgroundColor: COLORS.accent },
   retryBtnText: { fontFamily: "Inter_600SemiBold", fontSize: 14, color: "#fff" },
-  content: { padding: 16, gap: 10, paddingBottom: 40 },
-  card: { backgroundColor: COLORS.overlayLight, gap: 8 },
-  row: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", borderBottomWidth: 1, borderBottomColor: COLORS.border, paddingVertical: 8 },
+  content: { padding: 18, gap: 12, paddingBottom: 46 },
+  card: { backgroundColor: COLORS.overlayLight, gap: 9 },
+  row: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", borderBottomWidth: 1, borderBottomColor: COLORS.border, paddingVertical: 9 },
   rowLabelWrap: { flexDirection: "row", alignItems: "center", gap: 6 },
-  rowLabel: { fontFamily: "Inter_400Regular", fontSize: 13, color: COLORS.textMuted },
-  rowValue: { fontFamily: "Inter_600SemiBold", fontSize: 13, color: COLORS.text, flexShrink: 1, textAlign: "right", maxWidth: "60%" },
+  rowLabel: { fontFamily: "Inter_400Regular", fontSize: 12, color: COLORS.textMuted, lineHeight: 17 },
+  rowValue: { fontFamily: "Inter_600SemiBold", fontSize: 13, color: COLORS.text, flexShrink: 1, textAlign: "right", maxWidth: "60%", lineHeight: 18 },
   clubValueRow: { flexDirection: "row", alignItems: "center", justifyContent: "flex-end", gap: 8, flexShrink: 1, maxWidth: "60%" },
   analysisText: { fontFamily: "Inter_400Regular", fontSize: 13, lineHeight: 20, color: COLORS.textSecondary },
   analysisSource: { fontFamily: "Inter_500Medium", fontSize: 11, color: COLORS.accentDim },
@@ -551,12 +630,12 @@ const styles = StyleSheet.create({
   quickFactsGrid: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   quickFactCard: {
     width: "48%",
-    borderRadius: 12,
+    borderRadius: 14,
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.12)",
     backgroundColor: "rgba(255,255,255,0.03)",
     paddingHorizontal: 10,
-    paddingVertical: 9,
+    paddingVertical: 10,
     gap: 3,
   },
   quickFactIconWrap: {
@@ -568,17 +647,17 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   quickFactLabel: { fontFamily: "Inter_500Medium", fontSize: 10, color: COLORS.textMuted },
-  quickFactValue: { fontFamily: "Inter_700Bold", fontSize: 13, color: COLORS.text },
+  quickFactValue: { fontFamily: "Inter_700Bold", fontSize: 13, color: COLORS.text, lineHeight: 17 },
   infoDivider: { height: 1, backgroundColor: "rgba(255,255,255,0.08)", marginTop: 6, marginBottom: 2 },
   statsGrid: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   statCard: {
     width: "48%",
-    borderRadius: 10,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: COLORS.border,
     backgroundColor: "rgba(255,255,255,0.02)",
     paddingHorizontal: 10,
-    paddingVertical: 8,
+    paddingVertical: 9,
     gap: 4,
   },
   statCardHighlight: { borderColor: "rgba(229,9,20,0.4)", backgroundColor: "rgba(229,9,20,0.08)" },
@@ -605,6 +684,8 @@ const styles = StyleSheet.create({
   clubDate: { fontFamily: "Inter_400Regular", fontSize: 11, color: COLORS.textMuted },
   // Timeline styles
   timeline: { gap: 0 },
+  transferGroup: { marginBottom: 10 },
+  transferGroupTitle: { fontFamily: "Inter_700Bold", fontSize: 12, color: COLORS.textMuted, marginBottom: 6, paddingLeft: 8 },
   timelineItem: { flexDirection: "row", minHeight: 56 },
   timelineSide: { width: 24, alignItems: "center" },
   timelineDot: { width: 10, height: 10, borderRadius: 5, marginTop: 11 },
