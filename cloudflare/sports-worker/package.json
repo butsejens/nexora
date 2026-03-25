@@ -12,7 +12,16 @@
     "kv:create": "wrangler kv:namespace create SPORTS_CACHE_KV",
     "kv:create:preview": "wrangler kv:namespace create SPORTS_CACHE_KV --preview"
   },
-  "keywords": ["cloudflare", "worker", "d1", "sports", "cache"],
+  "keywords": [
+    "cloudflare",
+    "worker",
+    "d1",
+    "sports",
+    "cache"
+  ],
   "author": "Nexora",
-  "license": "MIT"
+  "license": "MIT",
+  "devDependencies": {
+    "wrangler": "^4.77.0"
+  }
 }

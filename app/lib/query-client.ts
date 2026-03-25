@@ -129,12 +129,13 @@ export function getApiBaseCandidates(): string[] {
 export function getSportsApiBaseCandidates(): string[] {
   const explicit = normalizeBase(process.env.EXPO_PUBLIC_SPORTS_API_BASE || "");
   const explicitList = parseEnvBaseList(process.env.EXPO_PUBLIC_SPORTS_API_BASES || "");
+  // Prioritize: last working → explicit env → Render (stable) → Cloudflare (when ready)
   return unique([
     lastWorkingSportsApiBase,
-    ...explicitList,
     explicit,
-    DEFAULT_SPORTS_CLOUD_API_BASE,
-    ...getApiBaseCandidates(),
+    ...explicitList,
+    ...getApiBaseCandidates(), // Render as main fallback (reliable)
+    DEFAULT_SPORTS_CLOUD_API_BASE, // Cloudflare last (for when it's deployed)
   ]);
 }
 
@@ -176,12 +177,17 @@ async function throwIfResNotOk(res: Response) {
 
 // Cloud URLs (https) may need to wake up from cold start → longer timeout
 // Local URLs (http) are either up or not → short timeout
-function timeoutForUrl(url: string): number {
+// Sports routes to non-deployed Cloudflare → use failfast to prioritize Render
+function timeoutForUrl(url: string, isSports: boolean = false): number {
+  if (isSports) {
+    // Sports: fail faster on Cloudflare since it's not deployed yet, fallback to Render quicker
+    return url.startsWith("https://nexora.dhgpfz2h8r") ? 8000 : 15000;
+  }
   return url.startsWith("https://") ? 25000 : 8000;
 }
 
-async function fetchWithTimeout(url: string, init?: RequestInit, timeoutMs?: number): Promise<Response> {
-  const ms = timeoutMs ?? timeoutForUrl(url);
+async function fetchWithTimeout(url: string, init?: RequestInit, timeoutMs?: number, isSports?: boolean): Promise<Response> {
+  const ms = timeoutMs ?? timeoutForUrl(url, isSports);
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), ms);
   try {
@@ -197,11 +203,12 @@ export async function apiRequest(
   data?: unknown | undefined,
 ): Promise<Response> {
   if (route.startsWith("http://") || route.startsWith("https://")) {
+    const isSports = isSportsRoute(route);
     const res = await fetchWithTimeout(route, {
       method,
       headers: data ? { "Content-Type": "application/json" } : {},
       body: data ? JSON.stringify(data) : undefined,
-    });
+    }, undefined, isSports);
     await throwIfResNotOk(res);
     return res;
   }
@@ -214,6 +221,7 @@ export async function apiRequest(
   }
 
   let lastError: unknown;
+  const isSports = isSportsRoute(route);
 
   for (const baseUrl of baseUrls) {
     const url = `${baseUrl}${route}`;
@@ -222,7 +230,7 @@ export async function apiRequest(
         method,
         headers: data ? { "Content-Type": "application/json" } : {},
         body: data ? JSON.stringify(data) : undefined,
-      });
+      }, undefined, isSports);
 
       // Wrong target (for example Metro/web origin) can return route 404.
       // Try the next candidate before failing hard.
@@ -267,6 +275,7 @@ export const getQueryFn: <T>(options: {
   async ({ queryKey }) => {
     const path = queryKey.join("/") as string;
     const baseUrls = getBaseCandidatesForRoute(path);
+    const isSports = isSportsRoute(path);
     if (baseUrls.length === 0) {
       throw new Error(
         "API base URL is not configured. Set EXPO_PUBLIC_API_BASE or run the app in an environment where the host can be inferred (e.g. Expo simulator)."
@@ -278,7 +287,7 @@ export const getQueryFn: <T>(options: {
     for (const baseUrl of baseUrls) {
       const url = `${baseUrl}${path}`;
       try {
-        const res = await fetchWithTimeout(url, undefined);
+        const res = await fetchWithTimeout(url, undefined, undefined, isSports);
 
         if (unauthorizedBehavior === "returnNull" && res.status === 401) {
           return null;
