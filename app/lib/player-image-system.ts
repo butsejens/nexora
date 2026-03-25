@@ -4,6 +4,14 @@ import * as FileSystem from "expo-file-system";
 import * as LegacyFileSystem from "expo-file-system/legacy";
 import type { QueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/query-client";
+import {
+  getEntityAliases,
+  normalizeCountryName,
+  normalizeEntityText,
+  normalizePlayerName,
+  normalizeTeamName,
+  tokenOverlapScore,
+} from "@/lib/entity-normalization";
 
 type Nullable<T> = T | null | undefined;
 
@@ -65,13 +73,7 @@ function normalizeText(value: Nullable<string>): string {
 }
 
 function normalizeName(value: Nullable<string>): string {
-  return normalizeText(value)
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^a-z0-9 ]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
+  return normalizeEntityText(value);
 }
 
 function hashString(input: string): string {
@@ -86,14 +88,9 @@ function hashString(input: string): string {
 function scoreNameSimilarity(a: string, b: string): number {
   if (!a || !b) return 0;
   if (a === b) return 1;
+  const jaccard = tokenOverlapScore(a, b);
   const aParts = a.split(" ").filter(Boolean);
   const bParts = b.split(" ").filter(Boolean);
-  const aSet = new Set(aParts);
-  const bSet = new Set(bParts);
-  let overlap = 0;
-  for (const token of aSet) if (bSet.has(token)) overlap += 1;
-  const union = new Set([...aSet, ...bSet]).size || 1;
-  const jaccard = overlap / union;
   const starts = aParts[0] && bParts[0] && (aParts[0] === bParts[0] ? 0.15 : 0);
   return Math.min(1, jaccard + starts);
 }
@@ -119,7 +116,13 @@ function normalizePosition(value: Nullable<string>): string {
 }
 
 function normalizeNationality(value: Nullable<string>): string {
-  return normalizeName(value);
+  return normalizeCountryName(value);
+}
+
+function aliasIntersection(a: string[], b: string[]): boolean {
+  if (!a.length || !b.length) return false;
+  const bSet = new Set(b);
+  return a.some((item) => bSet.has(item));
 }
 
 function profileMatchesSeed(player: PlayerSeed, profile: any): boolean {
@@ -130,15 +133,19 @@ function profileMatchesSeed(player: PlayerSeed, profile: any): boolean {
   if (/^\d+$/.test(seedId) && /^\d+$/.test(profileId) && seedId !== profileId) return false;
 
   const seedName = normalizeName(player.name);
-  const profileName = normalizeName(profile?.name || profile?.fullName || profile?.displayName);
+  const profileName = normalizePlayerName(profile?.name || profile?.fullName || profile?.displayName);
+  const seedNameAliases = getEntityAliases(seedName, "player");
+  const profileNameAliases = getEntityAliases(profileName, "player");
   const nameScore = scoreNameSimilarity(seedName, profileName);
-  if (seedName && profileName && nameScore < 0.58) return false;
+  if (seedName && profileName && nameScore < 0.58 && !aliasIntersection(seedNameAliases, profileNameAliases)) return false;
 
-  const seedTeam = normalizeName(player.team);
-  const profileTeam = normalizeName(profile?.currentClub || profile?.team || profile?.club?.name);
+  const seedTeam = normalizeTeamName(player.team);
+  const profileTeam = normalizeTeamName(profile?.currentClub || profile?.team || profile?.club?.name);
   if (seedTeam && profileTeam) {
     const teamScore = scoreNameSimilarity(seedTeam, profileTeam);
-    if (teamScore < 0.45) return false;
+    const seedTeamAliases = getEntityAliases(seedTeam, "team");
+    const profileTeamAliases = getEntityAliases(profileTeam, "team");
+    if (teamScore < 0.45 && !aliasIntersection(seedTeamAliases, profileTeamAliases)) return false;
   }
 
   const seedNat = normalizeNationality(player.nationality);
@@ -170,8 +177,8 @@ function profileMatchesSeed(player: PlayerSeed, profile: any): boolean {
 export function makePlayerCacheKey(player: PlayerSeed): string {
   const id = normalizeText(player.id);
   if (/^\d+$/.test(id)) return `id:${id}`;
-  const name = normalizeName(player.name);
-  const team = normalizeName(player.team);
+  const name = normalizePlayerName(player.name);
+  const team = normalizeTeamName(player.team);
   const league = normalizeName(player.league);
   const sport = normalizeName(player.sport || "soccer");
   const gender = normalizeName(player.gender);
@@ -179,8 +186,8 @@ export function makePlayerCacheKey(player: PlayerSeed): string {
 }
 
 function composeNameKey(player: PlayerSeed, overrides?: { team?: string; league?: string }): string {
-  const name = normalizeName(player.name);
-  const team = normalizeName(overrides?.team ?? player.team);
+  const name = normalizePlayerName(player.name);
+  const team = normalizeTeamName(overrides?.team ?? player.team);
   const league = normalizeName(overrides?.league ?? player.league);
   const sport = normalizeName(player.sport || "soccer");
   const gender = normalizeName(player.gender);
@@ -190,12 +197,19 @@ function composeNameKey(player: PlayerSeed, overrides?: { team?: string; league?
 function getPlayerAliasKeys(player: PlayerSeed, profile?: any): string[] {
   const keys = new Set<string>();
   const id = normalizeText(player.id || profile?.id);
-  const name = normalizeName(player.name || profile?.name || profile?.fullName || profile?.displayName);
+  const name = normalizePlayerName(player.name || profile?.name || profile?.fullName || profile?.displayName);
+  const team = normalizeTeamName(player.team || profile?.currentClub || profile?.team || profile?.club?.name);
 
   keys.add(makePlayerCacheKey(player));
   if (/^\d+$/.test(id)) keys.add(`id:${id}`);
 
   if (name) {
+    for (const alias of getEntityAliases(name, "player")) {
+      const aliasSeed = { ...player, name: alias };
+      keys.add(composeNameKey(aliasSeed));
+      keys.add(composeNameKey({ ...aliasSeed, team: "", league: "" }));
+    }
+
     keys.add(composeNameKey(player));
     keys.add(composeNameKey({ ...player, team: "", league: "" }));
 
@@ -203,6 +217,12 @@ function getPlayerAliasKeys(player: PlayerSeed, profile?: any): string[] {
     const profileLeague = normalizeText(profile?.league || profile?.competition || profile?.leagueName);
     if (profileTeam || profileLeague) {
       keys.add(composeNameKey(player, { team: profileTeam || player.team, league: profileLeague || player.league }));
+    }
+
+    if (team) {
+      for (const teamAlias of getEntityAliases(team, "team")) {
+        keys.add(composeNameKey(player, { team: teamAlias, league: player.league }));
+      }
     }
   }
 
@@ -263,10 +283,10 @@ function scoreCandidate(url: string, player: PlayerSeed, meta?: { candidateName?
   if (isEspnPhoto(url)) score += 0.2;
   if (/thesportsdb|transfermarkt|wikimedia|wikipedia/i.test(url)) score += 0.18;
 
-  const playerName = normalizeName(player.name);
-  const candidateName = normalizeName(meta?.candidateName || player.name);
-  const playerTeam = normalizeName(player.team);
-  const candidateTeam = normalizeName(meta?.candidateTeam || player.team);
+  const playerName = normalizePlayerName(player.name);
+  const candidateName = normalizePlayerName(meta?.candidateName || player.name);
+  const playerTeam = normalizeTeamName(player.team);
+  const candidateTeam = normalizeTeamName(meta?.candidateTeam || player.team);
 
   const nameSimilarity = scoreNameSimilarity(playerName, candidateName);
   score += nameSimilarity * 0.45;

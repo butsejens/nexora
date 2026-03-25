@@ -19,6 +19,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { COLORS }  from '@/constants/colors';
 import { SPACING } from '@/constants/design-system';
 import { TeamLogo } from '@/components/TeamLogo';
+import { resolveMatchBucket } from '@/lib/match-state';
+import { t as tFn } from '@/lib/i18n';
 
 export interface MatchRowCardProps {
   match: {
@@ -71,6 +73,24 @@ function getSportAccent(sport?: string): string {
   return SPORT_ACCENTS[key] || COLORS.accent;
 }
 
+function formatKickoffLabel(value?: string): string {
+  const raw = String(value || '').trim();
+  if (!raw) return tFn('matchDetail.kickoffTBD');
+  const parsed = Date.parse(raw);
+  if (Number.isFinite(parsed)) {
+    try {
+      return new Intl.DateTimeFormat('nl-BE', {
+        hour: '2-digit',
+        minute: '2-digit',
+      }).format(new Date(parsed));
+    } catch {
+      return raw;
+    }
+  }
+  const hm = raw.match(/(\d{1,2}:\d{2})/);
+  return hm?.[1] || raw;
+}
+
 const LOGO_SIZE = 40;
 
 // Static live dot (no animation — removeChild proof)
@@ -105,9 +125,15 @@ function MatchRowCardInner({
   onStatsPress,
   onLineupsPress,
 }: MatchRowCardProps) {
-  const live     = match.status === 'live';
-  const finished = match.status === 'finished';
-  const upcoming = match.status === 'upcoming';
+  const bucket = resolveMatchBucket({
+    status: match.status,
+    minute: match.minute,
+    homeScore: match.homeScore,
+    awayScore: match.awayScore,
+  });
+  const live = bucket === 'live';
+  const finished = bucket === 'finished';
+  const upcoming = bucket === 'upcoming';
 
   const sportKey = (match.sport || '').toLowerCase();
   const sportAccent = getSportAccent(match.sport);
@@ -119,8 +145,8 @@ function MatchRowCardInner({
 
   const timeLabel = live
     ? `${match.minute ?? 0}'`
-    : finished ? 'FT'
-    : match.startTime ?? '';
+    : finished ? tFn('common.ft')
+    : formatKickoffLabel(match.startTime);
 
   return (
     <View style={s.wrap}>
@@ -145,14 +171,14 @@ function MatchRowCardInner({
                 >
                   <Ionicons
                     name={isNotificationOn ? 'notifications' : 'notifications-outline'}
-                    size={12}
+                    size={14}
                     color={isNotificationOn ? '#fff' : COLORS.textMuted}
                   />
                 </TouchableOpacity>
               ) : null}
               <View style={[s.metaBadge, live ? s.metaBadgeLive : null]}>
                 <Text style={[s.metaBadgeText, live ? s.metaBadgeTextLive : null]}>
-                  {live ? 'LIVE' : finished ? 'FT' : 'UPCOMING'}
+                  {live ? tFn('common.live') : finished ? tFn('common.ft') : tFn('common.upcoming')}
                 </Text>
               </View>
             </View>
@@ -196,16 +222,6 @@ function MatchRowCardInner({
                 <View style={s.livePill}>
                   <Text style={s.livePillText}>{match.minute ?? 0}&apos;</Text>
                 </View>
-              ) : (
-                <Text style={s.statusText}>
-                  {finished ? 'FULL TIME' : timeLabel}
-                </Text>
-              )}
-
-              {match.league ? (
-                <Text style={s.leagueLabel} numberOfLines={1}>
-                  {sportIcon ? `${sportIcon} ` : ''}{match.league}
-                </Text>
               ) : null}
             </View>
 
@@ -271,11 +287,11 @@ export default MatchRowCard;
 const s = StyleSheet.create({
   wrap: {
     marginHorizontal: SPACING.lg,
-    marginBottom: 8,
+    marginBottom: 12,
   },
   card: {
     backgroundColor: COLORS.card,
-    borderRadius: 16,
+    borderRadius: 18,
     overflow: 'hidden',
     borderWidth: 1,
     borderColor: COLORS.border,
@@ -294,23 +310,23 @@ const s = StyleSheet.create({
     elevation: 4,
   },
   topBar: {
-    height: 2,
+    height: 3,
   },
   metaRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingTop: 10,
-    paddingBottom: 2,
+    paddingHorizontal: 14,
+    paddingTop: 12,
+    paddingBottom: 4,
     gap: 8,
   },
   metaBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    maxWidth: '72%',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
+    flex: 1,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
     borderRadius: 999,
     borderWidth: 1,
     backgroundColor: COLORS.cardElevated,
@@ -326,9 +342,9 @@ const s = StyleSheet.create({
     gap: 6,
   },
   notifyQuickBtn: {
-    width: 26,
-    height: 26,
-    borderRadius: 13,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
@@ -340,11 +356,12 @@ const s = StyleSheet.create({
     backgroundColor: COLORS.live,
   },
   metaBadgeText: {
-    fontSize: 9,
+    fontSize: 11,
     fontWeight: '700',
     color: COLORS.textMuted,
-    letterSpacing: 0.4,
+    letterSpacing: 0.3,
     textTransform: 'uppercase',
+    flexShrink: 1,
   },
   metaBadgeTextLive: {
     color: COLORS.live,
@@ -352,26 +369,26 @@ const s = StyleSheet.create({
   row: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingTop: 10,
-    paddingBottom: 11,
-    minHeight: 84,
+    paddingHorizontal: 14,
+    paddingTop: 12,
+    paddingBottom: 13,
+    minHeight: 92,
   },
 
   // Teams ─────────────────────────────────────────────────────────────────────
   teamCol: {
     flex: 5,
     alignItems: 'center',
-    gap: 3,
+    gap: 5,
     minWidth: 0,
   },
   teamName: {
-    fontSize: 12,
+    fontSize: 14,
     fontWeight: '600',
     color: COLORS.textSecondary,
-    lineHeight: 15,
+    lineHeight: 16,
     textAlign: 'center',
-    letterSpacing: 0.2,
+    letterSpacing: 0.1,
   },
   teamNameRight: {
     textAlign: 'center',
@@ -393,11 +410,11 @@ const s = StyleSheet.create({
     flex: 3,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 4,
-    minWidth: 78,
+    paddingHorizontal: 6,
+    minWidth: 88,
   },
   score: {
-    fontSize: 26,
+    fontSize: 28,
     fontWeight: '800',
     color: COLORS.text,
     letterSpacing: 1,
@@ -414,25 +431,25 @@ const s = StyleSheet.create({
     fontWeight: '400',
   },
   kickoff: {
-    fontSize: 19,
-    fontWeight: '700',
-    color: COLORS.textSecondary,
+    fontSize: 22,
+    fontWeight: '800',
+    color: COLORS.text,
     letterSpacing: 0.5,
   },
   statusText: {
-    fontSize: 9,
-    fontWeight: '600',
+    fontSize: 10,
+    fontWeight: '700',
     color: COLORS.textMuted,
     letterSpacing: 0.8,
-    marginTop: 2,
+    marginTop: 3,
     textTransform: 'uppercase',
   },
   livePill: {
-    marginTop: 4,
+    marginTop: 6,
     backgroundColor: COLORS.live,
     borderRadius: 5,
-    paddingHorizontal: 7,
-    paddingVertical: 2,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
   },
   livePillText: {
     fontSize: 10,
@@ -475,9 +492,9 @@ const s = StyleSheet.create({
   possRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingBottom: 7,
-    gap: 7,
+    paddingHorizontal: 14,
+    paddingBottom: 10,
+    gap: 9,
   },
   possBar: {
     flex: 1,
@@ -503,8 +520,8 @@ const s = StyleSheet.create({
 
   // Actions ─────────────────────────────────────────────────────────────────────
   actions: {
-    paddingHorizontal: 12,
-    paddingBottom: 9,
+    paddingHorizontal: 14,
+    paddingBottom: 12,
   },
   actionsDivider: {
     height: 1,

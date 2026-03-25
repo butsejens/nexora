@@ -6,6 +6,14 @@ function normalizeText(value: unknown): string {
   return String(value ?? "").trim();
 }
 
+function pickFirstText(...values: unknown[]): string {
+  for (const value of values) {
+    const text = normalizeText(value);
+    if (text) return text;
+  }
+  return "";
+}
+
 function parseNumber(value: unknown): number | null {
   const n = Number(value);
   if (Number.isFinite(n)) return n;
@@ -20,6 +28,40 @@ function isGoodText(value: unknown): boolean {
   if (!text) return false;
   if (["n/a", "na", "not available", "unknown", "none", "null", "-"] .includes(text)) return false;
   return true;
+}
+
+function coalesceNumber(...values: unknown[]): number | null {
+  for (const value of values) {
+    const parsed = parseNumber(value);
+    if (parsed != null && Number.isFinite(parsed)) return parsed;
+  }
+  return null;
+}
+
+function toFormattedHeight(value: unknown): string | null {
+  const raw = normalizeText(value).toLowerCase();
+  if (!raw) return null;
+  if (raw.includes("cm")) {
+    const cm = parseNumber(raw);
+    if (cm != null && cm >= 130 && cm <= 250) return `${Math.round(cm)} cm`;
+  }
+  if (raw.includes("m")) {
+    const meters = parseNumber(raw);
+    if (meters != null && meters >= 1.3 && meters <= 2.5) return `${meters.toFixed(2)} m`;
+  }
+  const numeric = parseNumber(raw);
+  if (numeric == null) return isGoodText(value) ? normalizeText(value) : null;
+  if (numeric >= 130 && numeric <= 250) return `${Math.round(numeric)} cm`;
+  if (numeric >= 1.3 && numeric <= 2.5) return `${numeric.toFixed(2)} m`;
+  return isGoodText(value) ? normalizeText(value) : null;
+}
+
+function toFormattedWeight(value: unknown): string | null {
+  const raw = normalizeText(value).toLowerCase();
+  if (!raw) return null;
+  const numeric = parseNumber(raw);
+  if (numeric != null && numeric >= 40 && numeric <= 180) return `${Math.round(numeric)} kg`;
+  return isGoodText(value) ? normalizeText(value) : null;
 }
 
 function deriveAgeFromBirthDate(birthDate: unknown): number | null {
@@ -115,7 +157,7 @@ function enrichLeaderRow(row: any, kind: "topscorers" | "topassists", leagueName
 
   const playerId = normalizeText(row?.id || row?.playerId || row?.athleteId);
   const photo = normalizeText(row?.photo || row?.image || row?.headshot || row?.athlete?.headshot?.href || row?.theSportsDbPhoto) || null;
-  const teamLogo = resolveTeamLogoUri(team, row?.teamLogo || null);
+  const teamLogo = resolveTeamLogoUri(team, row?.teamLogo || null, { competition: leagueName || null });
   const confidence = computeConfidence([
     Boolean(name),
     Boolean(team),
@@ -148,7 +190,7 @@ function enrichStandings(standings: any[], leagueName?: string): any[] {
     .map((row, index) => {
       const team = normalizeText(row?.team || row?.name);
       const rank = parseNumber(row?.rank) ?? index + 1;
-      const logo = resolveTeamLogoUri(team, row?.logo || row?.teamLogo || null);
+      const logo = resolveTeamLogoUri(team, row?.logo || row?.teamLogo || null, { competition: leagueName || null });
       const points = parseNumber(row?.points ?? row?.pts) ?? 0;
       const played = parseNumber(row?.played ?? row?.gamesPlayed ?? row?.gp) ?? 0;
       const goalsFor = parseNumber(row?.goalsFor ?? row?.gf) ?? 0;
@@ -199,7 +241,7 @@ function enrichCompetitionTeams(teams: any[], leagueName?: string): any[] {
       return {
         ...team,
         name,
-        logo: resolveTeamLogoUri(name, team?.logo || null),
+        logo: resolveTeamLogoUri(name, team?.logo || null, { competition: leagueName || null }),
         enrichment: {
           confidence: computeConfidence([
             Boolean(name),
@@ -214,7 +256,7 @@ function enrichCompetitionTeams(teams: any[], leagueName?: string): any[] {
     .filter((team) => Boolean(team?.name));
 }
 
-function enrichCompetitionMatches(matches: any[]): any[] {
+function enrichCompetitionMatches(matches: any[], leagueName?: string): any[] {
   return (Array.isArray(matches) ? matches : []).map((match) => {
     const homeTeam = normalizeText(match?.homeTeam);
     const awayTeam = normalizeText(match?.awayTeam);
@@ -222,8 +264,8 @@ function enrichCompetitionMatches(matches: any[]): any[] {
       ...match,
       homeTeam,
       awayTeam,
-      homeTeamLogo: resolveTeamLogoUri(homeTeam, match?.homeTeamLogo || null),
-      awayTeamLogo: resolveTeamLogoUri(awayTeam, match?.awayTeamLogo || null),
+      homeTeamLogo: resolveTeamLogoUri(homeTeam, match?.homeTeamLogo || null, { competition: leagueName || null }),
+      awayTeamLogo: resolveTeamLogoUri(awayTeam, match?.awayTeamLogo || null, { competition: leagueName || null }),
       enrichment: {
         confidence: computeConfidence([
           Boolean(homeTeam),
@@ -244,36 +286,104 @@ function compactAnalysisText(text: unknown, name: string, position: string): str
   return `${name} has a limited verified data profile. Core fields are shown and will improve as more competition data is synced.`;
 }
 
+function deriveRatingFromContributions(
+  rating: number | null,
+  appearances: number | null,
+  goals: number | null,
+  assists: number | null,
+): number | null {
+  if (rating != null && rating > 0) return Number(rating.toFixed(2));
+  if (appearances == null || appearances < 2) return null;
+  const contributions = (goals || 0) + (assists || 0);
+  const inferred = 6.2 + Math.min(1.9, contributions / Math.max(appearances, 1));
+  return Number(inferred.toFixed(2));
+}
+
+function normalizeFormerClubs(raw: any, leagueName?: string): any[] {
+  const sourceRows = Array.isArray(raw) ? raw : [];
+  const seen = new Set<string>();
+  const rows = sourceRows
+    .map((club: any) => {
+      const name = pickFirstText(club?.name, club?.team, club?.club, club?.to, club?.from);
+      const role = String(club?.role || "").toLowerCase() === "to" ? "to" : "from";
+      const date = pickFirstText(club?.date, club?.season, club?.year);
+      const fee = pickFirstText(club?.fee, club?.transferFee, club?.value);
+      const key = `${name}|${role}|${date}|${fee}`.toLowerCase();
+      if (!name || seen.has(key)) return null;
+      seen.add(key);
+      const transferType = fee
+        ? /loan|huur/i.test(fee)
+          ? "loan"
+          : /free|gratis/i.test(fee)
+            ? "free"
+            : "fee"
+        : null;
+
+      return {
+        ...club,
+        name,
+        role,
+        date,
+        fee,
+        transferType,
+        logo: resolveTeamLogoUri(name, club?.logo || null, { competition: leagueName || null }),
+      };
+    })
+    .filter(Boolean) as any[];
+
+  return rows
+    .sort((a, b) => {
+      const aTime = Date.parse(a?.date || "") || Number.MAX_SAFE_INTEGER;
+      const bTime = Date.parse(b?.date || "") || Number.MAX_SAFE_INTEGER;
+      return aTime - bTime;
+    })
+    .slice(0, 24);
+}
+
 export function enrichPlayerProfilePayload(raw: any, seed?: { name?: string; team?: string; league?: string }): any {
-  const name = normalizeText(raw?.name || seed?.name || "Player");
-  const currentClub = normalizeText(raw?.currentClub || seed?.team);
-  const birthDate = normalizeText(raw?.birthDate) || null;
+  const name = pickFirstText(raw?.name, raw?.displayName, raw?.fullName, seed?.name, "Player");
+  const currentClub = pickFirstText(raw?.currentClub, raw?.team, raw?.teamName, raw?.club?.name, seed?.team);
+  const birthDate = pickFirstText(raw?.birthDate, raw?.dateOfBirth) || null;
   const derivedAge = deriveAgeFromBirthDate(birthDate);
-  const age = parseNumber(raw?.age) ?? derivedAge;
-  const position = normalizeText(raw?.position);
-  const nationality = normalizeText(raw?.nationality);
+  const age = coalesceNumber(raw?.age, raw?.profileMeta?.age, derivedAge);
+  const position = pickFirstText(raw?.position, raw?.positionName, raw?.role);
+  const nationality = pickFirstText(raw?.nationality, raw?.citizenship, raw?.country);
+
+  const jerseyNumber = pickFirstText(raw?.jerseyNumber, raw?.shirtNumber, raw?.number, raw?.jersey);
+  const contractUntil = pickFirstText(raw?.contractUntil, raw?.contract?.endDate, raw?.contractEndDate);
+  const marketValueText = pickFirstText(raw?.marketValue, raw?.market_value, raw?.estimatedMarketValue);
+  const height = toFormattedHeight(raw?.height);
+  const weight = toFormattedWeight(raw?.weight);
+
+  const rawSeason = raw?.seasonStats || raw?.statistics || {};
 
   const stats = {
-    appearances: parseNumber(raw?.seasonStats?.appearances),
-    goals: parseNumber(raw?.seasonStats?.goals),
-    assists: parseNumber(raw?.seasonStats?.assists),
-    minutes: parseNumber(raw?.seasonStats?.minutes),
-    starts: parseNumber(raw?.seasonStats?.starts),
-    rating: parseNumber(raw?.seasonStats?.rating),
-    cleanSheets: parseNumber(raw?.seasonStats?.cleanSheets),
-    saves: parseNumber(raw?.seasonStats?.saves),
+    appearances: coalesceNumber(rawSeason?.appearances, rawSeason?.matches, rawSeason?.games, raw?.appearances),
+    goals: coalesceNumber(rawSeason?.goals, raw?.goals),
+    assists: coalesceNumber(rawSeason?.assists, raw?.assists),
+    minutes: coalesceNumber(rawSeason?.minutes, raw?.minutes),
+    starts: coalesceNumber(rawSeason?.starts, rawSeason?.lineups, raw?.starts),
+    rating: coalesceNumber(rawSeason?.rating, raw?.rating),
+    cleanSheets: coalesceNumber(rawSeason?.cleanSheets, raw?.cleanSheets),
+    saves: coalesceNumber(rawSeason?.saves, raw?.saves),
   };
 
   const inferredStarts = stats.starts != null ? stats.starts : (stats.appearances != null ? Math.max(0, Math.min(stats.appearances, Math.round(stats.appearances * 0.76))) : null);
   const inferredMinutes = stats.minutes != null ? stats.minutes : (stats.appearances != null ? Math.round(stats.appearances * 74) : null);
+  const inferredRating = deriveRatingFromContributions(stats.rating, stats.appearances, stats.goals, stats.assists);
 
-  const normalizedHistory = (Array.isArray(raw?.formerClubs) ? raw.formerClubs : [])
-    .map((club: any) => ({
-      ...club,
-      name: normalizeText(club?.name),
-      logo: resolveTeamLogoUri(club?.name, club?.logo || null),
-    }))
-    .filter((club: any) => Boolean(club?.name));
+  const normalizedHistory = normalizeFormerClubs(raw?.formerClubs, seed?.league);
+
+  const keyStatCount = [
+    stats.appearances,
+    stats.goals,
+    stats.assists,
+    inferredMinutes,
+    inferredStarts,
+    inferredRating,
+    stats.cleanSheets,
+    stats.saves,
+  ].filter((value) => value != null).length;
 
   return {
     ...raw,
@@ -283,10 +393,12 @@ export function enrichPlayerProfilePayload(raw: any, seed?: { name?: string; tea
     nationality: isGoodText(nationality) ? nationality : null,
     position: isGoodText(position) ? position : null,
     currentClub: isGoodText(currentClub) ? currentClub : null,
-    currentClubLogo: resolveTeamLogoUri(currentClub, raw?.currentClubLogo || null),
-    marketValue: isGoodText(raw?.marketValue) ? normalizeText(raw?.marketValue) : null,
-    jerseyNumber: isGoodText(raw?.jerseyNumber) ? normalizeText(raw?.jerseyNumber) : null,
-    contractUntil: isGoodText(raw?.contractUntil) ? normalizeText(raw?.contractUntil) : null,
+    currentClubLogo: resolveTeamLogoUri(currentClub, raw?.currentClubLogo || null, { competition: seed?.league || null }),
+    marketValue: isGoodText(marketValueText) ? marketValueText : null,
+    jerseyNumber: isGoodText(jerseyNumber) ? jerseyNumber : null,
+    contractUntil: isGoodText(contractUntil) ? contractUntil : null,
+    height,
+    weight,
     analysis: compactAnalysisText(raw?.analysis, name, position),
     seasonStats: {
       appearances: stats.appearances,
@@ -294,10 +406,11 @@ export function enrichPlayerProfilePayload(raw: any, seed?: { name?: string; tea
       assists: stats.assists,
       minutes: inferredMinutes,
       starts: inferredStarts,
-      rating: stats.rating,
+      rating: inferredRating,
       cleanSheets: stats.cleanSheets,
       saves: stats.saves,
     },
+    seasonStatsMode: keyStatCount >= 4 ? "full" : "compact",
     formerClubs: normalizedHistory,
     enrichment: {
       confidence: computeConfidence([
@@ -324,20 +437,66 @@ export function enrichTeamDetailPayload(raw: any): any {
       ...player,
       name: pName,
       nationality: isGoodText(player?.nationality) ? normalizeText(player?.nationality) : "",
-      position: normalizeText(player?.position),
+      position: pickFirstText(player?.position, player?.role),
       positionName: normalizeText(player?.positionName || player?.position),
       marketValue: isGoodText(player?.marketValue) ? normalizeText(player?.marketValue) : null,
       marketValueNumeric: parseMarketValue(player?.marketValue),
+      age: coalesceNumber(player?.age),
+      jersey: pickFirstText(player?.jersey, player?.jerseyNumber, player?.shirtNumber, player?.number),
+      seasonStats: {
+        appearances: coalesceNumber(player?.seasonStats?.appearances, player?.appearances),
+        goals: coalesceNumber(player?.seasonStats?.goals, player?.goals),
+        assists: coalesceNumber(player?.seasonStats?.assists, player?.assists),
+        minutes: coalesceNumber(player?.seasonStats?.minutes, player?.minutes),
+        starts: coalesceNumber(player?.seasonStats?.starts, player?.starts),
+        rating: coalesceNumber(player?.seasonStats?.rating, player?.rating),
+        cleanSheets: coalesceNumber(player?.seasonStats?.cleanSheets, player?.cleanSheets),
+        saves: coalesceNumber(player?.seasonStats?.saves, player?.saves),
+      },
       photo,
     };
   }).filter((player: any) => Boolean(player?.name));
 
+  const topScorer = isGoodText(raw?.topScorer?.name)
+    ? raw.topScorer
+    : [...enrichedPlayers]
+      .filter((player: any) => (coalesceNumber(player?.seasonStats?.goals, player?.goals) || 0) > 0)
+      .sort((a: any, b: any) => (coalesceNumber(b?.seasonStats?.goals, b?.goals) || 0) - (coalesceNumber(a?.seasonStats?.goals, a?.goals) || 0))[0] || null;
+
+  const topAssist = isGoodText(raw?.topAssist?.name)
+    ? raw.topAssist
+    : [...enrichedPlayers]
+      .filter((player: any) => (coalesceNumber(player?.seasonStats?.assists, player?.assists) || 0) > 0)
+      .sort((a: any, b: any) => (coalesceNumber(b?.seasonStats?.assists, b?.assists) || 0) - (coalesceNumber(a?.seasonStats?.assists, a?.assists) || 0))[0] || null;
+
+  const wins = coalesceNumber(raw?.wins, raw?.won, raw?.leagueStats?.wins);
+  const draws = coalesceNumber(raw?.draws, raw?.drawn, raw?.leagueStats?.draws);
+  const losses = coalesceNumber(raw?.losses, raw?.lost, raw?.leagueStats?.losses);
+  const points = coalesceNumber(raw?.leaguePoints, raw?.points, raw?.leagueStats?.points);
+  const played = coalesceNumber(raw?.leaguePlayed, raw?.played, raw?.leagueStats?.played);
+  const goalsFor = coalesceNumber(raw?.goalsFor, raw?.gf, raw?.leagueStats?.goalsFor);
+  const goalsAgainst = coalesceNumber(raw?.goalsAgainst, raw?.ga, raw?.leagueStats?.goalsAgainst);
+  const cleanSheets = coalesceNumber(raw?.cleanSheets, raw?.leagueStats?.cleanSheets);
+
   return {
     ...raw,
-    logo: resolveTeamLogoUri(raw?.name, raw?.logo || null),
+    logo: resolveTeamLogoUri(raw?.name, raw?.logo || null, { country: raw?.country || null, competition: raw?.leagueName || null }),
+    leagueName: pickFirstText(raw?.leagueName, raw?.league, raw?.competition),
+    founded: coalesceNumber(raw?.founded, raw?.foundedYear),
     coach: isGoodText(raw?.coach) ? normalizeText(raw?.coach) : null,
-    venue: isGoodText(raw?.venue) ? normalizeText(raw?.venue) : null,
+    venue: isGoodText(raw?.venue || raw?.stadium) ? pickFirstText(raw?.venue, raw?.stadium) : null,
     country: isGoodText(raw?.country) ? normalizeText(raw?.country) : null,
+    squadMarketValue: isGoodText(raw?.squadMarketValue || raw?.clubValue) ? pickFirstText(raw?.squadMarketValue, raw?.clubValue) : null,
+    wins,
+    draws,
+    losses,
+    leaguePoints: points,
+    leaguePlayed: played,
+    goalsFor,
+    goalsAgainst,
+    cleanSheets,
+    topScorer,
+    topAssist,
     players: [...enrichedPlayers].sort((a, b) => (Number(b?.marketValueNumeric || 0) - Number(a?.marketValueNumeric || 0))),
     enrichment: {
       confidence: computeConfidence([
@@ -356,7 +515,15 @@ export function enrichSportsLeagueResource(kind: string, payload: any, context?:
   if (!payload || typeof payload !== "object") return payload;
 
   if (kind === "standings") {
-    const standings = enrichStandings(payload?.standings || payload?.teams || [], leagueName);
+    const standings = enrichStandings(
+      payload?.standings
+      || payload?.teams
+      || payload?.table
+      || payload?.entries
+      || payload?.data
+      || [],
+      leagueName,
+    );
     return { ...payload, standings, teams: standings };
   }
 
@@ -389,11 +556,21 @@ export function enrichSportsLeagueResource(kind: string, payload: any, context?:
   }
 
   if (kind === "competition-teams") {
-    return { ...payload, teams: enrichCompetitionTeams(payload?.teams || [], leagueName) };
+    return {
+      ...payload,
+      teams: enrichCompetitionTeams(
+        payload?.teams
+        || payload?.clubs
+        || payload?.entries
+        || payload?.data
+        || [],
+        leagueName,
+      ),
+    };
   }
 
   if (kind === "competition-matches") {
-    return { ...payload, matches: enrichCompetitionMatches(payload?.matches || []) };
+    return { ...payload, matches: enrichCompetitionMatches(payload?.matches || [], leagueName) };
   }
 
   return payload;

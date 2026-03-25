@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import {
   View, Text, StyleSheet, TouchableOpacity, ScrollView,
   Image, Platform, ActivityIndicator, FlatList,
@@ -12,8 +12,9 @@ import { LinearGradient } from "expo-linear-gradient";
 import { useQuery } from "@tanstack/react-query";
 import { COLORS } from "@/constants/colors";
 import { fetchSportsLeagueResourceWithFallback, getLeaderboardRows } from "@/lib/sports-data";
-import { resolveMatchBucket } from "@/lib/match-state";
+import { dedupeCanonicalMatches, toCanonicalMatch, toLegacyMatchCard } from "@/lib/canonical-match";
 import { normalizeApiError } from "@/lib/error-messages";
+import { getBestCachedOrSeedPlayerImage, resolvePlayerImageUri } from "@/lib/player-image-system";
 import { getLeagueLogo } from "@/lib/logo-manager";
 import { TeamLogo } from "@/components/TeamLogo";
 import { useTranslation } from "@/lib/useTranslation";
@@ -75,9 +76,9 @@ function buildStorylines(standings: any[], scorers: any[], assists: any[]): Stor
   if (leader) {
     const gap = second ? (Number(leader.points || 0) - Number(second.points || 0)) : 0;
     if (gap === 0) {
-      stories.push({ icon: "🏆", label: tFn("storyline.titleRace"), text: tFn("storyline.titleRaceText", { team1: leader.team, team2: second?.team }), color: "#FFD700" });
+      stories.push({ icon: "🏆", label: tFn("storyline.titleRace"), text: tFn("storyline.titleRaceText", { team1: leader.team, team2: second?.team }), color: COLORS.gold });
     } else {
-      stories.push({ icon: "🏆", label: tFn("storyline.leader"), text: tFn("storyline.leaderText", { team: leader.team, gap: String(gap), plural: gap === 1 ? "point" : "points" }), color: "#FFD700" });
+      stories.push({ icon: "🏆", label: tFn("storyline.leader"), text: tFn("storyline.leaderText", { team: leader.team, gap: String(gap), plural: gap === 1 ? "point" : "points" }), color: COLORS.gold });
     }
   }
 
@@ -92,7 +93,7 @@ function buildStorylines(standings: any[], scorers: any[], assists: any[]): Stor
     const topA = assists[0];
     const assistValue = Number(topA?.assists ?? topA?.displayValue ?? 0);
     if (Number.isFinite(assistValue) && assistValue > 0) {
-      stories.push({ icon: "🎯", label: "Top Assist", text: `${topA.name} (${topA.team}) — ${assistValue} assists`, color: "#00BFFF" });
+      stories.push({ icon: "🎯", label: tFn("storyline.topAssist"), text: `${topA.name} (${topA.team}) — ${assistValue} assists`, color: COLORS.blue });
     }
   }
 
@@ -175,66 +176,57 @@ export default function CompetitionScreen() {
     });
   };
 
+  const fetchCompetitionBundle = async () => {
+    const safeFetch = async (kind: "standings" | "topscorers" | "topassists" | "competition-stats" | "competition-teams" | "competition-matches") => {
+      try {
+        return await fetchLeaguePayloadWithFallback(kind);
+      } catch (error) {
+        const fallbackMessage = `Failed to load ${kind}`;
+        const message = normalizeApiError(error).userMessage || fallbackMessage;
+        return { error: message };
+      }
+    };
 
-  const { data: standingsData, isLoading: standingsLoading, error: standingsQueryError } = useQuery({
-    queryKey: ["standings", "v2", leagueName, espnLeague],
-    queryFn: async () => {
-      return fetchLeaguePayloadWithFallback("standings");
-    },
-    enabled: activeTab === "standings",
+    const [standings, topscorers, topassists, competitionStats, competitionTeams, competitionMatches] = await Promise.all([
+      safeFetch("standings"),
+      safeFetch("topscorers"),
+      safeFetch("topassists"),
+      safeFetch("competition-stats"),
+      safeFetch("competition-teams"),
+      safeFetch("competition-matches"),
+    ]);
+
+    return {
+      standings,
+      topscorers,
+      topassists,
+      competitionStats,
+      competitionTeams,
+      competitionMatches,
+    };
+  };
+
+  const { data: competitionBundle, isLoading: bundleLoading, error: bundleError } = useQuery({
+    queryKey: ["competition-bundle", "v3", leagueName, espnLeague],
+    queryFn: fetchCompetitionBundle,
+    enabled: Boolean(leagueName && espnLeague),
     staleTime: 5 * 60 * 1000,
     retry: 1,
   });
 
-  const { data: scorersData, isLoading: scorersLoading, error: scorersQueryError } = useQuery({
-    queryKey: ["topscorers", "v2", leagueName, espnLeague],
-    queryFn: async () => {
-      return fetchLeaguePayloadWithFallback("topscorers");
-    },
-    enabled: activeTab === "scorers",
-    staleTime: 5 * 60 * 1000,
-    retry: 1,
-  });
+  const standingsData = competitionBundle?.standings;
+  const scorersData = competitionBundle?.topscorers;
+  const assistsData = competitionBundle?.topassists;
+  const compStatsData = competitionBundle?.competitionStats;
+  const matchesData = competitionBundle?.competitionMatches;
+  const teamsData = competitionBundle?.competitionTeams;
 
-  const { data: assistsData, isLoading: assistsLoading } = useQuery({
-    queryKey: ["topassists", "v2", leagueName, espnLeague],
-    queryFn: async () => {
-      return fetchLeaguePayloadWithFallback("topassists");
-    },
-    enabled: activeTab === "assists",
-    staleTime: 5 * 60 * 1000,
-    retry: 1,
-  });
-
-  const { data: compStatsData, isLoading: compStatsLoading } = useQuery({
-    queryKey: ["competition-stats", "v2", leagueName, espnLeague],
-    queryFn: async () => {
-      return fetchLeaguePayloadWithFallback("competition-stats");
-    },
-    enabled: activeTab === "stats",
-    staleTime: 10 * 60 * 1000,
-    retry: 1,
-  });
-
-  const { data: matchesData, isLoading: matchesLoading } = useQuery({
-    queryKey: ["competition-matches", "v2", leagueName, espnLeague],
-    queryFn: async () => {
-      return fetchLeaguePayloadWithFallback("competition-matches");
-    },
-    enabled: activeTab === "matches",
-    staleTime: 5 * 60 * 1000,
-    retry: 1,
-  });
-
-  const { data: teamsData, isLoading: teamsLoading } = useQuery({
-    queryKey: ["competition-teams", "v2", leagueName, espnLeague],
-    queryFn: async () => {
-      return fetchLeaguePayloadWithFallback("competition-teams");
-    },
-    enabled: activeTab === "teams",
-    staleTime: 10 * 60 * 1000,
-    retry: 1,
-  });
+  const standingsLoading = bundleLoading && !standingsData;
+  const scorersLoading = bundleLoading && !scorersData;
+  const assistsLoading = bundleLoading && !assistsData;
+  const compStatsLoading = bundleLoading && !compStatsData;
+  const matchesLoading = bundleLoading && !matchesData;
+  const teamsLoading = bundleLoading && !teamsData;
 
   const standings: any[] = useMemo(() => standingsData?.standings || [], [standingsData]);
   const standingsPhases: any[] = useMemo(() => standingsData?.phases || [], [standingsData]);
@@ -243,35 +235,55 @@ export default function CompetitionScreen() {
     return getLeaderboardRows("topscorers", scorersData).filter((row) => {
       const goals = Number((row as any)?.goals ?? (row as any)?.displayValue ?? 0);
       return Boolean((row as any)?.name) && Number.isFinite(goals) && goals > 0;
-    });
+    }).sort((a: any, b: any) => Number(b?.goals ?? b?.displayValue ?? 0) - Number(a?.goals ?? a?.displayValue ?? 0));
   }, [scorersData]);
   const assists: any[] = useMemo(() => {
-    return getLeaderboardRows("topassists", assistsData).filter((row) => {
+    const direct = getLeaderboardRows("topassists", assistsData).filter((row) => {
       const assistsValue = Number((row as any)?.assists ?? (row as any)?.displayValue ?? 0);
       return Boolean((row as any)?.name) && Number.isFinite(assistsValue) && assistsValue > 0;
     });
+    if (direct.length > 0) {
+      return direct.sort((a: any, b: any) => Number(b?.assists ?? b?.displayValue ?? 0) - Number(a?.assists ?? a?.displayValue ?? 0));
+    }
+
+    // Some weaker competitions miss a dedicated assists feed; recover from mixed leaderboard rows if available.
+    const fromScorerPayload = getLeaderboardRows("topscorers", assistsData)
+      .map((row) => {
+        const assistsValue = Number((row as any)?.assists ?? (row as any)?.stats?.assists ?? 0);
+        if (!Boolean((row as any)?.name) || !Number.isFinite(assistsValue) || assistsValue <= 0) return null;
+        return {
+          ...row,
+          assists: assistsValue,
+          displayValue: String(assistsValue),
+          stat: "Assists",
+        };
+      })
+      .filter(Boolean) as any[];
+
+    return fromScorerPayload.sort((a: any, b: any) => Number(b?.assists ?? b?.displayValue ?? 0) - Number(a?.assists ?? a?.displayValue ?? 0));
   }, [assistsData]);
   const competitionMatches: any[] = useMemo(() => {
     const rows = Array.isArray(matchesData?.matches) ? matchesData.matches : [];
-    return rows.map((m: any) => {
-      const bucket = resolveMatchBucket({
-        status: m?.status,
-        minute: m?.minute,
-        homeScore: m?.homeScore,
-        awayScore: m?.awayScore,
-        startDate: m?.startDate,
+    const canonicalRows = rows
+      .map((m: any) => toCanonicalMatch(m))
+      .filter(Boolean) as any[];
+    return dedupeCanonicalMatches(canonicalRows)
+      .map((m: any) => toLegacyMatchCard(m))
+      .sort((a: any, b: any) => {
+        const rank = (value: string) => value === "live" ? 0 : value === "upcoming" ? 1 : 2;
+        const byState = rank(String(a?.status || "")) - rank(String(b?.status || ""));
+        if (byState !== 0) return byState;
+        const at = Date.parse(String(a?.startDate || ""));
+        const bt = Date.parse(String(b?.startDate || ""));
+        if (Number.isFinite(at) && Number.isFinite(bt) && at !== bt) return at - bt;
+        return String(a?.homeTeam || "").localeCompare(String(b?.homeTeam || ""));
       });
-      return {
-        ...m,
-        status: bucket === "live" ? "live" : bucket === "finished" ? "finished" : "upcoming",
-      };
-    });
   }, [matchesData?.matches]);
   const competitionTeams: any[] = teamsData?.teams || [];
   const standingsError = normalizeApiError((standingsData as any)?.error || null);
   const scorersError = normalizeApiError((scorersData as any)?.error || null);
-  const standingsQueryErrorMsg = standingsQueryError ? normalizeApiError(standingsQueryError).userMessage : "";
-  const scorersQueryErrorMsg = scorersQueryError ? normalizeApiError(scorersQueryError).userMessage : "";
+  const standingsQueryErrorMsg = bundleError ? normalizeApiError(bundleError).userMessage : "";
+  const scorersQueryErrorMsg = bundleError ? normalizeApiError(bundleError).userMessage : "";
   const storylines = useMemo(() => buildStorylines(standings, scorers, assists), [standings, scorers, assists]);
 
   const seasonLabel: string =
@@ -367,8 +379,16 @@ export default function CompetitionScreen() {
           <View style={styles.emptyState}>
             <Ionicons name="list-outline" size={40} color={COLORS.textMuted} />
             <Text style={styles.emptyText}>{t("competition.standingsUnavailable")}</Text>
+            {competitionTeams.length > 0 ? (
+              <Text style={styles.errorDetail}>{t("competition.teamsAvailableFallback") || "Team list is available while standings are being refreshed."}</Text>
+            ) : null}
             {(standingsData as any)?.error ? <Text style={styles.errorDetail}>{standingsError.userMessage}</Text> : null}
             {standingsQueryErrorMsg ? <Text style={styles.errorDetail}>{standingsQueryErrorMsg}</Text> : null}
+            {competitionTeams.length > 0 ? (
+              <TouchableOpacity style={styles.retryBtn} onPress={() => setActiveTab("teams")}> 
+                <Text style={styles.retryBtnText}>{t("competition.openTeams") || "Open teams"}</Text>
+              </TouchableOpacity>
+            ) : null}
           </View>
         ) : isMultiPhase && standingsPhases.length > 1 ? (
           // Multi-phase standings (Belgian play-offs, group stages, etc.)
@@ -583,7 +603,7 @@ export default function CompetitionScreen() {
           <View style={styles.emptyState}>
             <Ionicons name="arrow-redo-outline" size={40} color={COLORS.textMuted} />
             <Text style={styles.emptyText}>{t("competition.assistsUnavailable") || "Top assists not available"}</Text>
-            <Text style={[styles.emptyText, { fontSize: 12, color: COLORS.textMuted }]}>{(assistsData as any)?.error || "Data source is being refreshed. Try again in a moment."}</Text>
+            <Text style={[styles.emptyText, { fontSize: 12, color: COLORS.textMuted }]}>{(assistsData as any)?.error || "Assist rankings are still syncing for this competition."}</Text>
             {scorers.length > 0 ? (
               <TouchableOpacity style={styles.retryBtn} onPress={() => setActiveTab("scorers")}> 
                 <Text style={styles.retryBtnText}>{t("competition.topScorers") || "Open top scorers"}</Text>
@@ -693,7 +713,7 @@ function CompetitionStatsView({ data, league, espnLeague }: { data: any; league:
     return (
       <View style={styles.emptyState}>
         <Ionicons name="stats-chart-outline" size={40} color={COLORS.textMuted} />
-        <Text style={styles.emptyText}>{"Competition stats not available"}</Text>
+        <Text style={styles.emptyText}>{"Competition stats are still syncing"}</Text>
       </View>
     );
   }
@@ -756,6 +776,34 @@ function CompetitionStatsView({ data, league, espnLeague }: { data: any; league:
 
 function ScorerRow({ scorer, rank, league, espnLeague, statLabel, accentColor }: { scorer: any; rank: number; league: string; espnLeague: string; statLabel?: string; accentColor?: string }) {
   const rankColor = rank === 1 ? COLORS.gold : rank === 2 ? "#C0C0C0" : rank === 3 ? "#CD7F32" : COLORS.textMuted;
+  const seed = useMemo(() => ({
+    id: String(scorer?.id || ""),
+    name: String(scorer?.name || ""),
+    team: String(scorer?.team || ""),
+    league: String(espnLeague || league || "eng.1"),
+    sport: "soccer",
+    photo: scorer?.photo || null,
+    theSportsDbPhoto: scorer?.theSportsDbPhoto || null,
+  }), [scorer?.id, scorer?.name, scorer?.team, scorer?.photo, scorer?.theSportsDbPhoto, espnLeague, league]);
+  const [photoUri, setPhotoUri] = useState<string | null>(getBestCachedOrSeedPlayerImage(seed));
+  const [photoFailed, setPhotoFailed] = useState(false);
+
+  useEffect(() => {
+    setPhotoUri(getBestCachedOrSeedPlayerImage(seed));
+    setPhotoFailed(false);
+  }, [seed]);
+
+  useEffect(() => {
+    let disposed = false;
+    void resolvePlayerImageUri(seed, { allowNetwork: rank <= 3 }).then((uri) => {
+      if (disposed || !uri) return;
+      setPhotoUri(uri);
+      setPhotoFailed(false);
+    }).catch(() => undefined);
+    return () => { disposed = true; };
+  }, [seed, rank]);
+
+  const resolvedPhotoUri = !photoFailed ? photoUri || scorer?.photo || null : null;
 
   const handlePress = () => {
     if (!scorer.id) return;
@@ -774,8 +822,8 @@ function ScorerRow({ scorer, rank, league, espnLeague, statLabel, accentColor }:
   return (
     <TouchableOpacity style={styles.scorerRow} onPress={handlePress} activeOpacity={scorer.id ? 0.75 : 1}>
       <Text style={[styles.scorerRank, { color: rankColor }]}>{rank}</Text>
-      {scorer.photo ? (
-        <Image source={{ uri: scorer.photo }} style={styles.scorerPhoto} />
+      {resolvedPhotoUri ? (
+        <Image source={{ uri: resolvedPhotoUri }} style={styles.scorerPhoto} onError={() => setPhotoFailed(true)} />
       ) : (
         <View style={[styles.scorerPhoto, styles.logoPlaceholder]}>
           <Ionicons name="person" size={16} color={COLORS.textMuted} />
@@ -846,7 +894,7 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
   },
   retryBtnText: { fontFamily: "Inter_600SemiBold", fontSize: 12, color: COLORS.accent },
-  errorDetail: { fontFamily: "Inter_400Regular", fontSize: 12, color: "#ff6b6b", textAlign: "center", paddingHorizontal: 24 },
+  errorDetail: { fontFamily: "Inter_400Regular", fontSize: 12, color: COLORS.textMuted, textAlign: "center", paddingHorizontal: 24 },
   listContent: { paddingTop: 8, paddingBottom: 40 },
 
   // Standings

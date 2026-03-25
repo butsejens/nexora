@@ -17,6 +17,8 @@ import {
   tierLabel,
   tierIcon,
 } from "@/lib/country-data";
+import { useQuery } from "@tanstack/react-query";
+import { apiRequest } from "@/lib/query-client";
 
 const P = {
   bg: "#09090D",
@@ -55,6 +57,25 @@ export default function CountryScreen() {
       .filter((s) => s.items.length > 0);
   }, [country]);
 
+  const nationalTeamName = useMemo(() => {
+    return country.competitions.find((competition) => competition.tier === "national")?.nationalTeamName || "";
+  }, [country.competitions]);
+
+  const { data: worldRank } = useQuery({
+    queryKey: ["country", "world-rank", code, nationalTeamName],
+    enabled: Boolean(nationalTeamName),
+    queryFn: async () => {
+      const teamId = `name:${encodeURIComponent(nationalTeamName)}`;
+      const route = `/api/sports/team/${encodeURIComponent(teamId)}?sport=soccer&league=fifa.world&teamName=${encodeURIComponent(nationalTeamName)}`;
+      const res = await apiRequest("GET", route);
+      const json = await res.json();
+      const rank = Number(json?.worldRank ?? json?.fifaRank ?? json?.leagueRank ?? json?.ranking);
+      return Number.isFinite(rank) && rank > 0 ? rank : null;
+    },
+    staleTime: 15 * 60 * 1000,
+    retry: 1,
+  });
+
   return (
     <View style={styles.container}>
       {/* ── Header ── */}
@@ -75,6 +96,12 @@ export default function CountryScreen() {
               {country.competitions.length} {tFn("sportsHome.competitions")}
             </Text>
           </View>
+          {worldRank ? (
+            <View style={styles.metaPill}>
+              <Ionicons name="flag-outline" size={11} color={P.muted} />
+              <Text style={styles.countryMeta}>FIFA #{worldRank}</Text>
+            </View>
+          ) : null}
         </View>
       </LinearGradient>
 

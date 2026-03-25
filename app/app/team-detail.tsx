@@ -95,6 +95,17 @@ function positionLabel(pos: string, positionName?: string): string {
   return POSITION_LABELS_FALLBACK[key] || key || tFn("teamDetail.unknown");
 }
 
+function isLeagueCode(value: unknown): boolean {
+  const text = String(value || "").trim().toLowerCase();
+  if (!text) return false;
+  return /^[a-z]{3,6}\.\d$/i.test(text) || /^[a-z]{3,6}\.[a-z0-9_]+$/i.test(text);
+}
+
+function cleanLeagueLabel(value: unknown): string {
+  const text = String(value || "").trim();
+  return isLeagueCode(text) ? "" : text;
+}
+
 export default function TeamDetailScreen() {
   const params = useLocalSearchParams<{
     teamId: string; teamName: string; logo?: string; sport?: string; league?: string; espnLeague?: string;
@@ -291,7 +302,12 @@ export default function TeamDetailScreen() {
   const topScorerValue = Number(topScorerForTeam?.displayValue || topScorerForTeam?.goals || 0);
   const hasTopScorer = Boolean(topScorerForTeam?.name) && Number.isFinite(topScorerValue) && topScorerValue > 0;
   const topAssistValue = Number(topAssistForTeam?.displayValue || topAssistForTeam?.assists || 0);
-  const hasTopAssist = Boolean(topAssistForTeam?.name) && Number.isFinite(topAssistValue) && topAssistValue > 0;
+  const enrichedTopAssistValue = Number((data as any)?.topAssist?.assists || 0);
+  const hasTopAssistFromPayload = Boolean((data as any)?.topAssist?.name) && Number.isFinite(enrichedTopAssistValue) && enrichedTopAssistValue > 0;
+  const hasTopAssist = hasTopAssistFromPayload || (Boolean(topAssistForTeam?.name) && Number.isFinite(topAssistValue) && topAssistValue > 0);
+  const topAssistName = hasTopAssistFromPayload ? String((data as any)?.topAssist?.name || "") : String(topAssistForTeam?.name || "");
+  const topAssistStat = hasTopAssistFromPayload ? enrichedTopAssistValue : topAssistValue;
+  const leagueLabel = cleanLeagueLabel(data?.leagueName || "") || cleanLeagueLabel(leagueParam);
 
   return (
     <View style={styles.container}>
@@ -351,7 +367,7 @@ export default function TeamDetailScreen() {
             <View style={styles.rankBadge}>
               <MaterialCommunityIcons name="trophy-outline" size={14} color="#FFD700" />
               <Text style={styles.rankText}>
-                #{data.leagueRank} {data.leagueName}
+                #{data.leagueRank}{leagueLabel ? ` ${leagueLabel}` : ""}
                 {data.leaguePoints ? `  ·  ${data.leaguePoints} pts` : ""}
                 {data.leaguePlayed ? `  ·  ${t("teamDetail.matchesPlayed", { count: String(data.leaguePlayed) })}` : ""}
               </Text>
@@ -380,7 +396,7 @@ export default function TeamDetailScreen() {
             <View style={styles.topAssistBadge}>
               <MaterialCommunityIcons name="target" size={13} color="#4FC3F7" />
               <Text style={styles.topAssistText}>
-                {`${topAssistForTeam.name} · ${topAssistValue} A`}
+                {`${topAssistName} · ${topAssistStat} A`}
               </Text>
             </View>
           ) : null}
@@ -604,11 +620,11 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
   header: { paddingHorizontal: 18, paddingBottom: 22 },
   backBtn: { width: 38, height: 38, alignItems: "center", justifyContent: "center", marginBottom: 8 },
-  headerActions: { flexDirection: "row", alignItems: "center", gap: 8 },
+  headerActions: { flexDirection: "row", alignItems: "center", gap: 10 },
   infoBtn: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
+    width: 38,
+    height: 38,
+    borderRadius: 19,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "rgba(255,255,255,0.1)",
@@ -616,12 +632,13 @@ const styles = StyleSheet.create({
     borderColor: "rgba(255,255,255,0.15)",
   },
   followBtn: {
-    flexDirection: "row", alignItems: "center", gap: 5,
-    backgroundColor: "rgba(255,255,255,0.1)", borderRadius: 20,
-    paddingHorizontal: 12, paddingVertical: 6,
-    borderWidth: 1, borderColor: "rgba(255,255,255,0.15)",
+    flexDirection: "row", alignItems: "center", gap: 6,
+    backgroundColor: "rgba(255,255,255,0.1)", borderRadius: 999,
+    paddingHorizontal: 14, paddingVertical: 8,
+    minHeight: 38,
+    borderWidth: 1, borderColor: "rgba(255,255,255,0.18)",
   },
-  followBtnText: { fontFamily: "Inter_600SemiBold", fontSize: 12, color: COLORS.text },
+  followBtnText: { fontFamily: "Inter_700Bold", fontSize: 12, color: COLORS.text, letterSpacing: 0.2 },
   teamHeaderContent: { alignItems: "center", gap: 10, paddingTop: 2 },
   teamBigLogo: { width: 84, height: 84, borderRadius: 16 },
   logoPlaceholder: { backgroundColor: COLORS.card, alignItems: "center", justifyContent: "center" },

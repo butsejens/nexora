@@ -387,7 +387,8 @@
     "tacticalAnalysis": "TACTISCHE ANALYSE",
     "keyFactors": "SLEUTELFACTOREN",
     "tacticalNotes": "TACTISCHE NOTITIES",
-    "errorCode": "Foutcode: {{code}}"
+    "errorCode": "Foutcode: {{code}}",
+    "kickoffTBD": "Aftrap nog niet bevestigd"
   },
 
   "storyline": {

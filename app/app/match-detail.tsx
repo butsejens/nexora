@@ -25,6 +25,9 @@ import { useNexora } from "@/context/NexoraContext";
 import { t as tFn } from "@/lib/i18n";
 import { getBestCachedOrSeedPlayerImage, resolvePlayerImageUri } from "@/lib/player-image-system";
 import { resolveMatchBucket } from "@/lib/match-state";
+import { buildGroundedMatchAnalysis } from "@/lib/match-analysis-engine";
+import { toCanonicalMatch } from "@/lib/canonical-match";
+import { normalizeTeamName, tokenOverlapScore } from "@/lib/entity-normalization";
 import {
   MatchSubscription,
   ensureMatchNotificationPermission,
@@ -136,27 +139,20 @@ function buildFormationRows(players: any[], formationRaw?: string) {
   return [...rows.reverse(), gk].filter((row) => row.length > 0);
 }
 
-function normalizeTeamIdentity(value: unknown): string {
-  return String(value || "")
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^a-z0-9 ]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
 function orderLineupTeams(starters: any[], homeName: string, awayName: string): any[] {
   const teams = Array.isArray(starters) ? [...starters] : [];
   if (teams.length < 2) return teams;
 
-  const homeKey = normalizeTeamIdentity(homeName);
-  const awayKey = normalizeTeamIdentity(awayName);
+  const homeKey = normalizeTeamName(homeName);
+  const awayKey = normalizeTeamName(awayName);
 
   const matchIndex = (target: string) => teams.findIndex((team) => {
-    const teamKey = normalizeTeamIdentity(team?.team || team?.name || "");
+    const teamName = team?.team || team?.name || "";
+    const teamKey = normalizeTeamName(teamName);
     if (!teamKey || !target) return false;
-    return teamKey === target || teamKey.includes(target) || target.includes(teamKey);
+    // Use tokenOverlapScore for more sophisticated matching than substring inclusion
+    const overlapScore = tokenOverlapScore(teamKey, target);
+    return teamKey === target || overlapScore >= 0.5;
   });
 
   const homeIdx = matchIndex(homeKey);
@@ -202,13 +198,26 @@ export default function MatchDetailScreen() {
   const [streamFinderActive, setStreamFinderActive] = useState(false);
   const [streamFinderDone, setStreamFinderDone] = useState(false);
   const streamFinderTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const paramBucket = resolveMatchBucket({
-    status: params.status,
-    minute: params.minute,
+  const paramCanonical = useMemo(() => toCanonicalMatch({
+    id: params.matchId,
+    homeTeam: params.homeTeam,
+    awayTeam: params.awayTeam,
+    homeTeamLogo: params.homeTeamLogo,
+    awayTeamLogo: params.awayTeamLogo,
     homeScore: params.homeScore,
     awayScore: params.awayScore,
-  });
-  const isPostponed = ["postponed", "cancelled", "abandoned"].includes(String(params.status || "").toLowerCase());
+    status: params.status,
+    minute: params.minute,
+    startDate: undefined,
+    league: params.league,
+    espnLeague: params.espnLeague,
+    sport: params.sport,
+  }), [params.awayScore, params.awayTeam, params.awayTeamLogo, params.espnLeague, params.homeScore, params.homeTeam, params.homeTeamLogo, params.league, params.matchId, params.minute, params.sport, params.status]);
+  const paramBucket = paramCanonical?.status === "live"
+    ? "live"
+    : paramCanonical?.status === "finished"
+      ? "finished"
+      : "upcoming";
   const espnSport = "soccer";
   const espnLeague = useMemo(() => {
     const direct = String(params.espnLeague || "").trim();
@@ -295,22 +304,18 @@ export default function MatchDetailScreen() {
     staleTime: paramBucket === "live" ? 4000 : 30000,
   });
 
-  const effectiveBucket = resolveMatchBucket({
-    status: matchDetail?.status ?? params.status,
-    detail: matchDetail?.status,
-    minute: matchDetail?.minute ?? params.minute,
-    homeScore: matchDetail?.homeScore ?? params.homeScore,
-    awayScore: matchDetail?.awayScore ?? params.awayScore,
-    startDate: matchDetail?.startDate,
-  });
-  const isLive = effectiveBucket === "live";
-  const isFinished = effectiveBucket === "finished";
-  const statusText = String(matchDetail?.status || params.status || "").toLowerCase();
+  const detailCanonical = useMemo(() => toCanonicalMatch(matchDetail), [matchDetail]);
+  const effectiveCanonical = detailCanonical || paramCanonical;
+
+  const isLive = effectiveCanonical?.status === "live";
+  const isFinished = effectiveCanonical?.status === "finished";
+  const isPostponed = effectiveCanonical?.status === "postponed" || effectiveCanonical?.status === "cancelled";
+  const statusText = String(effectiveCanonical?.statusDetail || matchDetail?.status || params.status || "").toLowerCase();
   const isHalfTime = isLive && (statusText.includes("ht") || statusText.includes("half"));
 
-  const liveHomeScore = matchDetail?.homeScore ?? Number(params.homeScore ?? 0);
-  const liveAwayScore = matchDetail?.awayScore ?? Number(params.awayScore ?? 0);
-  const liveMinute = matchDetail?.minute ?? (params.minute ? parseInt(params.minute) : undefined);
+  const liveHomeScore = effectiveCanonical?.homeScore ?? Number(params.homeScore ?? 0);
+  const liveAwayScore = effectiveCanonical?.awayScore ?? Number(params.awayScore ?? 0);
+  const liveMinute = effectiveCanonical?.minute ?? (params.minute ? parseInt(params.minute) : undefined);
   const matchId = String(params.matchId || "").trim();
   const matchSubscriptionId = useMemo(() => `soccer:${matchId}`, [matchId]);
   const [isMatchFollowed, setIsMatchFollowed] = useState(false);
@@ -370,16 +375,22 @@ export default function MatchDetailScreen() {
       const [standingsData, scorersData, assistsData] = await Promise.all([
         (async () => {
           try {
-            const res = await apiRequest("GET", `/api/sports/standings/${encodeURIComponent(params.league)}`);
-            return await res.json();
+            return await fetchSportsLeagueResourceWithFallback("standings", {
+              leagueName: params.league,
+              espnLeague,
+              sequential: true,
+            });
           } catch {
             return null;
           }
         })(),
         (async () => {
           try {
-            const res = await apiRequest("GET", `/api/sports/topscorers/${encodeURIComponent(params.league)}`);
-            return await res.json();
+            return await fetchSportsLeagueResourceWithFallback("topscorers", {
+              leagueName: params.league,
+              espnLeague,
+              sequential: true,
+            });
           } catch {
             return null;
           }
@@ -435,46 +446,106 @@ export default function MatchDetailScreen() {
 
       const isLiveMode = mode === "live";
 
-      const res = await apiRequest("POST", "/api/sports/predict", {
-        matchId: params.matchId,
-        espnLeague,
-        homeTeam: params.homeTeam,
-        awayTeam: params.awayTeam,
-        league: params.league,
-        sport: params.sport,
-        status: isLiveMode ? "live" : "upcoming",
-        homeScore: isLiveMode ? String(liveHomeScore ?? 0) : "0",
-        awayScore: isLiveMode ? String(liveAwayScore ?? 0) : "0",
+      const groundedFallback = buildGroundedMatchAnalysis({
+        homeTeam: String(params.homeTeam || "Home"),
+        awayTeam: String(params.awayTeam || "Away"),
         isLive: isLiveMode,
-        minute: isLiveMode && liveMinute !== undefined ? String(liveMinute) : undefined,
+        minute: isLiveMode ? liveMinute ?? null : null,
+        homeScore: Number(isLiveMode ? liveHomeScore ?? 0 : params.homeScore ?? 0),
+        awayScore: Number(isLiveMode ? liveAwayScore ?? 0 : params.awayScore ?? 0),
         stats: {
           home: isLiveMode ? (matchDetail?.homeStats || {}) : {},
           away: isLiveMode ? (matchDetail?.awayStats || {}) : {},
         },
         events: isLiveMode && Array.isArray(matchDetail?.keyEvents) ? matchDetail.keyEvents.slice(0, 20) : [],
-        venue: matchDetail?.venue || undefined,
-        context: {
-          homeRank: homeStanding?.rank,
-          awayRank: awayStanding?.rank,
-          homePoints: homeStanding?.points,
-          awayPoints: awayStanding?.points,
-          homeGoalDiff: homeStanding?.goalDiff,
-          awayGoalDiff: awayStanding?.goalDiff,
-          homeTopScorer: homeTopScorer?.name || null,
-          awayTopScorer: awayTopScorer?.name || null,
-          homeTopScorerGoals: homeTopScorer?.goals ?? null,
-          awayTopScorerGoals: awayTopScorer?.goals ?? null,
-          homeTopAssist: homeTopAssist?.name || null,
-          awayTopAssist: awayTopAssist?.name || null,
-          homeTopAssistCount: (homeTopAssist?.assists ?? Number(homeTopAssist?.displayValue || 0)) || null,
-          awayTopAssistCount: (awayTopAssist?.assists ?? Number(awayTopAssist?.displayValue || 0)) || null,
+        home: {
+          rank: homeStanding?.rank ?? null,
+          points: homeStanding?.points ?? null,
+          goalDiff: homeStanding?.goalDiff ?? null,
+          topScorer: homeTopScorer?.name || null,
+          topScorerGoals: homeTopScorer?.goals ?? null,
+          topAssist: homeTopAssist?.name || null,
+          topAssistCount: (homeTopAssist?.assists ?? Number(homeTopAssist?.displayValue || 0)) || null,
+        },
+        away: {
+          rank: awayStanding?.rank ?? null,
+          points: awayStanding?.points ?? null,
+          goalDiff: awayStanding?.goalDiff ?? null,
+          topScorer: awayTopScorer?.name || null,
+          topScorerGoals: awayTopScorer?.goals ?? null,
+          topAssist: awayTopAssist?.name || null,
+          topAssistCount: (awayTopAssist?.assists ?? Number(awayTopAssist?.displayValue || 0)) || null,
         },
       });
-      const json = await res.json();
-      if (json && typeof json === "object" && "prediction" in json && json.prediction && typeof json.prediction === "object") {
-        return json.prediction;
+
+      try {
+        const res = await apiRequest("POST", "/api/sports/predict", {
+          matchId: params.matchId,
+          espnLeague,
+          homeTeam: params.homeTeam,
+          awayTeam: params.awayTeam,
+          league: params.league,
+          sport: params.sport,
+          status: isLiveMode ? "live" : "upcoming",
+          homeScore: isLiveMode ? String(liveHomeScore ?? 0) : "0",
+          awayScore: isLiveMode ? String(liveAwayScore ?? 0) : "0",
+          isLive: isLiveMode,
+          minute: isLiveMode && liveMinute !== undefined ? String(liveMinute) : undefined,
+          stats: {
+            home: isLiveMode ? (matchDetail?.homeStats || {}) : {},
+            away: isLiveMode ? (matchDetail?.awayStats || {}) : {},
+          },
+          events: isLiveMode && Array.isArray(matchDetail?.keyEvents) ? matchDetail.keyEvents.slice(0, 20) : [],
+          venue: matchDetail?.venue || undefined,
+          context: {
+            homeRank: homeStanding?.rank,
+            awayRank: awayStanding?.rank,
+            homePoints: homeStanding?.points,
+            awayPoints: awayStanding?.points,
+            homeGoalDiff: homeStanding?.goalDiff,
+            awayGoalDiff: awayStanding?.goalDiff,
+            homeTopScorer: homeTopScorer?.name || null,
+            awayTopScorer: awayTopScorer?.name || null,
+            homeTopScorerGoals: homeTopScorer?.goals ?? null,
+            awayTopScorerGoals: awayTopScorer?.goals ?? null,
+            homeTopAssist: homeTopAssist?.name || null,
+            awayTopAssist: awayTopAssist?.name || null,
+            homeTopAssistCount: (homeTopAssist?.assists ?? Number(homeTopAssist?.displayValue || 0)) || null,
+            awayTopAssistCount: (awayTopAssist?.assists ?? Number(awayTopAssist?.displayValue || 0)) || null,
+          },
+        });
+        const json = await res.json();
+        const provider = (json && typeof json === "object" && "prediction" in json && json.prediction && typeof json.prediction === "object")
+          ? json.prediction
+          : json;
+        if (!provider || typeof provider !== "object") return groundedFallback;
+
+        return {
+          ...groundedFallback,
+          ...provider,
+          favored_side: provider?.favored_side || groundedFallback.favored_side,
+          confidence_score: Number(provider?.confidence_score || groundedFallback.confidence_score),
+          key_factors: Array.isArray(provider?.key_factors) && provider.key_factors.length ? provider.key_factors : groundedFallback.key_factors,
+          likely_pattern: String(provider?.likely_pattern || groundedFallback.likely_pattern),
+          live_shift_summary: provider?.live_shift_summary || groundedFallback.live_shift_summary,
+          post_match_summary: provider?.post_match_summary || groundedFallback.post_match_summary,
+          prediction: provider?.prediction || groundedFallback.prediction,
+          confidence: Number(provider?.confidence || groundedFallback.confidence),
+          summary: String(provider?.summary || groundedFallback.summary),
+          keyFactors: Array.isArray(provider?.keyFactors) && provider.keyFactors.length ? provider.keyFactors : groundedFallback.keyFactors,
+          tacticalNotes: Array.isArray(provider?.tacticalNotes) && provider.tacticalNotes.length ? provider.tacticalNotes : groundedFallback.tacticalNotes,
+          matchPattern: String(provider?.matchPattern || groundedFallback.matchPattern),
+          confidenceReason: String(provider?.confidenceReason || groundedFallback.confidenceReason),
+          homePct: Number(provider?.homePct || groundedFallback.homePct),
+          drawPct: Number(provider?.drawPct || groundedFallback.drawPct),
+          awayPct: Number(provider?.awayPct || groundedFallback.awayPct),
+        };
+      } catch {
+        return {
+          ...groundedFallback,
+          providerError: true,
+        };
       }
-      return json;
   };
 
   const {
@@ -565,7 +636,6 @@ export default function MatchDetailScreen() {
   }, [isLive, detailLoading, liveMinute, liveHomeScore, liveAwayScore, fetchLivePrediction]);
 
   const topPad = Platform.OS === "web" ? 67 : insets.top;
-  const isSmallDevice = screenWidth < 365;
   const scoreFontSize = screenWidth < 350 ? 40 : screenWidth < 385 ? 44 : 48;
   const timelineEvents = Array.isArray(matchDetail?.timeline) ? matchDetail.timeline : [];
   const orderedLineupTeams = useMemo(
@@ -574,17 +644,45 @@ export default function MatchDetailScreen() {
   );
   const homeLineupTeam = orderedLineupTeams[0] || null;
   const awayLineupTeam = orderedLineupTeams[1] || null;
-  const competitionName = safeStr(matchDetail?.competition || matchDetail?.league || params.league);
+  const competitionName = safeStr(effectiveCanonical?.league || matchDetail?.competition || matchDetail?.league || params.league);
   const leagueLogoUri = getLeagueLogo(competitionName) as string | null;
   const homeTeamName = safeStr(matchDetail?.homeTeam || params.homeTeam || "Home");
   const awayTeamName = safeStr(matchDetail?.awayTeam || params.awayTeam || "Away");
-  const kickoffLabel = safeStr(matchDetail?.date || matchDetail?.startDate);
+  const kickoffRaw = safeStr(matchDetail?.startDate || matchDetail?.date || effectiveCanonical?.startDate || "");
+  const kickoffDate = (() => {
+    const parsed = Date.parse(kickoffRaw);
+    if (!Number.isFinite(parsed)) return kickoffRaw;
+    try {
+      return new Intl.DateTimeFormat("nl-BE", {
+        weekday: "short",
+        day: "numeric",
+        month: "short",
+      }).format(new Date(parsed));
+    } catch {
+      return kickoffRaw;
+    }
+  })();
+  const kickoffTime = (() => {
+    const parsed = Date.parse(kickoffRaw);
+    if (!Number.isFinite(parsed)) {
+      const hm = kickoffRaw.match(/(\d{1,2}:\d{2})/);
+      return hm?.[1] || tFn("matchDetail.kickoffTBD");
+    }
+    try {
+      return new Intl.DateTimeFormat("nl-BE", {
+        hour: "2-digit",
+        minute: "2-digit",
+      }).format(new Date(parsed));
+    } catch {
+      return tFn("matchDetail.kickoffTBD");
+    }
+  })();
   const matchStatusLabel = (() => {
     if (isHalfTime) return "HT";
     if (isLive) return liveMinute != null ? `${liveMinute}'` : "LIVE";
     if (isFinished) return "FT";
     if (isPostponed) return "Postponed";
-    return "Upcoming";
+    return "Scheduled";
   })();
   const highlightSummary = matchDetail?.highlights || null;
   const highlightMoments = Array.isArray(highlightSummary?.topMoments) ? highlightSummary.topMoments : [];
@@ -600,16 +698,6 @@ export default function MatchDetailScreen() {
 
         <View style={styles.matchHeader}>
           <View style={styles.competitionRow}>
-            <View
-              style={[
-                styles.matchStatusChip,
-                isLive ? styles.matchStatusChipLive : null,
-                isFinished ? styles.matchStatusChipFinished : null,
-                isPostponed ? styles.matchStatusChipPostponed : null,
-              ]}
-            >
-              <Text style={styles.matchStatusText} numberOfLines={1}>{matchStatusLabel}</Text>
-            </View>
             <View style={styles.competitionCenter}>
               {leagueLogoUri ? (
                 <TeamLogo uri={leagueLogoUri} teamName={competitionName} size={24} />
@@ -620,12 +708,24 @@ export default function MatchDetailScreen() {
               )}
               <Text style={styles.leagueName} numberOfLines={1}>{competitionName}</Text>
             </View>
-            <TouchableOpacity style={[styles.followChip, isMatchFollowed ? styles.followChipActive : null]} onPress={toggleMatchFollow}>
-              <Ionicons name={isMatchFollowed ? "notifications" : "notifications-outline"} size={14} color={isMatchFollowed ? "#fff" : COLORS.textMuted} />
-              {!isSmallDevice ? (
-                <Text style={[styles.followChipText, isMatchFollowed ? styles.followChipTextActive : null]}>{isMatchFollowed ? "Following" : "Follow"}</Text>
+            <View style={styles.competitionMetaRow}>
+              <View
+                style={[
+                  styles.matchStatusChip,
+                  isLive ? styles.matchStatusChipLive : null,
+                  isFinished ? styles.matchStatusChipFinished : null,
+                  isPostponed ? styles.matchStatusChipPostponed : null,
+                ]}
+              >
+                <Text style={styles.matchStatusText} numberOfLines={1}>{matchStatusLabel}</Text>
+              </View>
+              {(!isLive && !isFinished && kickoffDate) ? (
+                <View style={styles.kickoffDateChip}>
+                  <Ionicons name="calendar-outline" size={11} color={COLORS.textMuted} />
+                  <Text style={styles.kickoffDateChipText} numberOfLines={1}>{kickoffDate}</Text>
+                </View>
               ) : null}
-            </TouchableOpacity>
+            </View>
           </View>
           <View style={styles.scoreRow}>
             <TeamSide align="left" name={homeTeamName} logo={matchDetail?.homeTeamLogo || params.homeTeamLogo} followed={isFavorite(homeTeamFavoriteId)} onToggleFollow={() => toggleFavorite(homeTeamFavoriteId)} onPress={() => {
@@ -662,7 +762,7 @@ export default function MatchDetailScreen() {
                 <>
                   <Text style={styles.vsText}>VS</Text>
                   <Text style={styles.upcomingTime} numberOfLines={1}>
-                    {kickoffLabel || "Kickoff TBD"}
+                    {kickoffTime}
                   </Text>
                 </>
               )}
@@ -689,6 +789,13 @@ export default function MatchDetailScreen() {
               <Text style={styles.venueText}>{matchDetail.venue}</Text>
             </View>
           )}
+
+          <View style={styles.heroActionRow}>
+            <TouchableOpacity style={[styles.followChip, isMatchFollowed ? styles.followChipActive : null]} onPress={toggleMatchFollow} activeOpacity={0.8}>
+              <Ionicons name={isMatchFollowed ? "notifications" : "notifications-outline"} size={14} color={isMatchFollowed ? "#fff" : COLORS.textMuted} />
+              <Text style={[styles.followChipText, isMatchFollowed ? styles.followChipTextActive : null]}>{isMatchFollowed ? "Following" : "Follow match"}</Text>
+            </TouchableOpacity>
+          </View>
         </View>
       </LinearGradient>
 
@@ -1212,7 +1319,7 @@ function TeamSide({ name, logo, onPress, followed, onToggleFollow, align = "left
         <Text style={[styles.teamName, width < 360 && { fontSize: 10, maxWidth: 80 }]} numberOfLines={2}>{name}</Text>
       </TouchableOpacity>
       <TouchableOpacity style={[styles.teamFollowBtn, followed ? styles.teamFollowBtnActive : null]} onPress={onToggleFollow}>
-        <Ionicons name={followed ? "heart" : "heart-outline"} size={12} color={followed ? "#fff" : COLORS.textMuted} />
+        <Ionicons name={followed ? "heart" : "heart-outline"} size={14} color={followed ? "#fff" : COLORS.textMuted} />
       </TouchableOpacity>
     </View>
   );
@@ -2274,8 +2381,10 @@ function PitchDot({ player, color, teamName, league }: { player: any; color: str
 }
 
 function CombinedPitchViewInner({ homeTeamData, awayTeamData, league }: { homeTeamData: any; awayTeamData: any; league?: string }) {
-  const homeRows = buildFormationRows(homeTeamData?.players || [], homeTeamData?.formation);
-  const awayRows = [...buildFormationRows(awayTeamData?.players || [], awayTeamData?.formation)].reverse();
+  // Home at top: GK first, attackers last (toward center line)
+  const homeRows = [...buildFormationRows(homeTeamData?.players || [], homeTeamData?.formation)].reverse();
+  // Away at bottom: attackers first (near center line), GK last
+  const awayRows = buildFormationRows(awayTeamData?.players || [], awayTeamData?.formation);
 
   return (
     <LinearGradient colors={["#0d2e18", "#1a4428", "#1a4428", "#0d2e18"]} style={styles.combinedPitch}>
@@ -2290,24 +2399,13 @@ function CombinedPitchViewInner({ homeTeamData, awayTeamData, league }: { homeTe
       <View style={styles.pitchBottomArc} />
 
       {/* Away team label */}
+      {/* Home team label (top) */}
       <View style={styles.pitchTeamLabelRow}>
-        <Text style={[styles.pitchTeamLabel, { color: "#5D9EFF" }]}>{awayTeamData?.team?.toUpperCase()}</Text>
-        {awayTeamData?.formation ? <Text style={styles.pitchFormLabel}>{awayTeamData.formation}</Text> : null}
+        <Text style={[styles.pitchTeamLabel, { color: COLORS.accent }]}>{homeTeamData?.team?.toUpperCase()}</Text>
+        {homeTeamData?.formation ? <Text style={styles.pitchFormLabel}>{homeTeamData.formation}</Text> : null}
       </View>
 
-      {/* Away rows (GK top → FWDs center) */}
-      {awayRows.map((row, ri) => (
-        <View key={`away_${ri}`} style={styles.combinedPitchRow}>
-          {row.map((p: any, pi: number) => (
-            <PitchDot key={`a_${p?.id || p?.name || pi}`} player={p} color="#5D9EFF" teamName={awayTeamData?.team} league={league} />
-          ))}
-        </View>
-      ))}
-
-      {/* Center divider */}
-      <View style={styles.pitchDivider} />
-
-      {/* Home rows (FWDs center → GK bottom) */}
+      {/* Home rows (GK top → FWDs center) */}
       {homeRows.map((row, ri) => (
         <View key={`home_${ri}`} style={styles.combinedPitchRow}>
           {row.map((p: any, pi: number) => (
@@ -2316,10 +2414,22 @@ function CombinedPitchViewInner({ homeTeamData, awayTeamData, league }: { homeTe
         </View>
       ))}
 
-      {/* Home team label */}
+      {/* Center divider */}
+      <View style={styles.pitchDivider} />
+
+      {/* Away rows (FWDs center → GK bottom) */}
+      {awayRows.map((row, ri) => (
+        <View key={`away_${ri}`} style={styles.combinedPitchRow}>
+          {row.map((p: any, pi: number) => (
+            <PitchDot key={`a_${p?.id || p?.name || pi}`} player={p} color="#5D9EFF" teamName={awayTeamData?.team} league={league} />
+          ))}
+        </View>
+      ))}
+
+      {/* Away team label (bottom) */}
       <View style={styles.pitchTeamLabelRow}>
-        <Text style={[styles.pitchTeamLabel, { color: COLORS.accent }]}>{homeTeamData?.team?.toUpperCase()}</Text>
-        {homeTeamData?.formation ? <Text style={styles.pitchFormLabel}>{homeTeamData.formation}</Text> : null}
+        <Text style={[styles.pitchTeamLabel, { color: "#5D9EFF" }]}>{awayTeamData?.team?.toUpperCase()}</Text>
+        {awayTeamData?.formation ? <Text style={styles.pitchFormLabel}>{awayTeamData.formation}</Text> : null}
       </View>
     </LinearGradient>
   );
@@ -2864,7 +2974,18 @@ const styles = StyleSheet.create({
     borderColor: "rgba(255,255,255,0.12)",
     alignSelf: "flex-start",
   },
-  matchHeader: { alignItems: "center", gap: 15 },
+  matchHeader: {
+    width: "100%",
+    alignItems: "center",
+    gap: 14,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.10)",
+    backgroundColor: "rgba(255,255,255,0.03)",
+    paddingHorizontal: 12,
+    paddingTop: 12,
+    paddingBottom: 14,
+  },
   competitionRow: {
     width: "100%",
     flexDirection: "row",
@@ -2872,10 +2993,17 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     gap: 12,
   },
+  competitionMetaRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    justifyContent: "flex-end",
+    flexShrink: 0,
+  },
   matchStatusChip: {
     minWidth: 78,
     borderRadius: 999,
-    paddingHorizontal: 11,
+    paddingHorizontal: 10,
     paddingVertical: 7,
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.16)",
@@ -2899,7 +3027,7 @@ const styles = StyleSheet.create({
     fontFamily: "Inter_700Bold",
     fontSize: 10,
     color: COLORS.text,
-    letterSpacing: 0.4,
+    letterSpacing: 0.5,
     textTransform: "uppercase",
   },
   competitionCenter: {
@@ -2921,9 +3049,9 @@ const styles = StyleSheet.create({
   },
   leagueName: {
     fontFamily: "Inter_700Bold",
-    fontSize: 10,
-    color: "rgba(255,255,255,0.65)",
-    letterSpacing: 2,
+    fontSize: 11,
+    color: "rgba(255,255,255,0.82)",
+    letterSpacing: 0.35,
     textTransform: "uppercase",
     backgroundColor: "rgba(255,255,255,0.08)",
     borderRadius: 18,
@@ -2933,13 +3061,31 @@ const styles = StyleSheet.create({
     borderColor: "rgba(255,255,255,0.1)",
     maxWidth: "90%",
   },
-  scoreRow: { flexDirection: "row", alignItems: "center", width: "100%", paddingHorizontal: 10, justifyContent: "center" },
-  teamSideWrap: { flex: 1, alignItems: "center", gap: 6 },
+  kickoffDateChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.15)",
+    backgroundColor: "rgba(255,255,255,0.06)",
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    maxWidth: 140,
+  },
+  kickoffDateChipText: {
+    color: COLORS.textMuted,
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 10,
+    textTransform: "capitalize",
+  },
+  scoreRow: { flexDirection: "row", alignItems: "center", width: "100%", paddingHorizontal: 4, justifyContent: "center" },
+  teamSideWrap: { flex: 1, alignItems: "center", gap: 8 },
   teamSide: { alignItems: "center", gap: 8 },
   teamFollowBtn: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "rgba(255,255,255,0.07)",
@@ -2950,18 +3096,24 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.accent,
     borderColor: `${COLORS.accent}77`,
   },
+  heroActionRow: {
+    width: "100%",
+    flexDirection: "row",
+    justifyContent: "center",
+    marginTop: 2,
+  },
   teamName: {
     fontFamily: "Inter_700Bold",
-    fontSize: 12,
+    fontSize: 13,
     color: COLORS.text,
-    lineHeight: 16,
+    lineHeight: 17,
     textAlign: "center",
-    maxWidth: 100,
+    maxWidth: 112,
   },
-  scoreCenter: { minWidth: 70, alignItems: "center", gap: 4 },
+  scoreCenter: { minWidth: 92, alignItems: "center", gap: 5 },
   score: {
     fontFamily: "Inter_800ExtraBold",
-    fontSize: 48,
+    fontSize: 44,
     color: COLORS.text,
     flexDirection: "row",
     // @ts-ignore
@@ -2977,15 +3129,16 @@ const styles = StyleSheet.create({
     letterSpacing: 3,
   },
   upcomingTime: {
-    fontFamily: "Inter_600SemiBold",
-    fontSize: 11,
-    color: COLORS.textMuted,
-    backgroundColor: "rgba(255,255,255,0.06)",
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
+    fontFamily: "Inter_700Bold",
+    fontSize: 15,
+    color: COLORS.text,
+    backgroundColor: "rgba(255,255,255,0.08)",
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.16)",
+    borderColor: "rgba(255,255,255,0.18)",
+    letterSpacing: 0.3,
   },
   finishedLabel: {
     fontFamily: "Inter_700Bold",
@@ -2998,27 +3151,41 @@ const styles = StyleSheet.create({
   followChip: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 5,
+    gap: 6,
     borderRadius: 999,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.14)",
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    backgroundColor: "rgba(255,255,255,0.05)",
+    borderColor: "rgba(255,255,255,0.16)",
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    backgroundColor: "rgba(255,255,255,0.06)",
+    minHeight: 36,
   },
   followChipActive: {
     backgroundColor: `${COLORS.accent}cc`,
     borderColor: `${COLORS.accent}55`,
   },
   followChipText: {
-    fontFamily: "Inter_600SemiBold",
-    fontSize: 11,
+    fontFamily: "Inter_700Bold",
+    fontSize: 12,
     color: COLORS.textMuted,
+    letterSpacing: 0.2,
   },
   followChipTextActive: {
     color: "#fff",
   },
-  venueRow: { flexDirection: "row", alignItems: "center", gap: 5, marginTop: 4, opacity: 0.7 },
+  venueRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginTop: 2,
+    opacity: 0.9,
+    borderRadius: 999,
+    paddingHorizontal: 11,
+    paddingVertical: 5,
+    backgroundColor: "rgba(255,255,255,0.04)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.10)",
+  },
   venueText: { fontFamily: "Inter_400Regular", fontSize: 12, color: COLORS.textMuted },
   tabBarScroll: {
     flexGrow: 0,

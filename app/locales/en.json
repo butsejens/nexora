@@ -387,7 +387,8 @@
     "tacticalAnalysis": "TACTICAL ANALYSIS",
     "keyFactors": "KEY FACTORS",
     "tacticalNotes": "TACTICAL NOTES",
-    "errorCode": "Error code: {{code}}"
+    "errorCode": "Error code: {{code}}",
+    "kickoffTBD": "Kickoff pending"
   },
 
   "storyline": {
