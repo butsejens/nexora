@@ -4,7 +4,9 @@ import { QueryClient, QueryFunction } from "@tanstack/react-query";
 import Constants from "expo-constants";
 
 let lastWorkingApiBase = "";
+let lastWorkingSportsApiBase = "";
 const DEFAULT_CLOUD_API_BASE = "https://nexora-api-8xxb.onrender.com";
+const DEFAULT_SPORTS_CLOUD_API_BASE = "https://nexora.dhgpfz2h8r.workers.dev";
 
 function normalizeBase(base: string): string {
   return String(base || "").trim().replace(/\/$/, "");
@@ -124,6 +126,36 @@ export function getApiBaseCandidates(): string[] {
   return [];
 }
 
+export function getSportsApiBaseCandidates(): string[] {
+  const explicit = normalizeBase(process.env.EXPO_PUBLIC_SPORTS_API_BASE || "");
+  const explicitList = parseEnvBaseList(process.env.EXPO_PUBLIC_SPORTS_API_BASES || "");
+  return unique([
+    lastWorkingSportsApiBase,
+    ...explicitList,
+    explicit,
+    DEFAULT_SPORTS_CLOUD_API_BASE,
+    ...getApiBaseCandidates(),
+  ]);
+}
+
+function isSportsRoute(route: string): boolean {
+  if (!route) return false;
+  if (route.startsWith("http://") || route.startsWith("https://")) return false;
+  return /^\/?api\/sports(?:\/|$)/i.test(route);
+}
+
+function getBaseCandidatesForRoute(route: string): string[] {
+  return isSportsRoute(route) ? getSportsApiBaseCandidates() : getApiBaseCandidates();
+}
+
+function markWorkingBaseForRoute(route: string, baseUrl: string): void {
+  if (isSportsRoute(route)) {
+    lastWorkingSportsApiBase = baseUrl;
+    return;
+  }
+  lastWorkingApiBase = baseUrl;
+}
+
 export function getApiUrl(): string {
   return lastWorkingApiBase || getApiBaseCandidates()[0] || "";
 }
@@ -164,7 +196,17 @@ export async function apiRequest(
   route: string,
   data?: unknown | undefined,
 ): Promise<Response> {
-  const baseUrls = getApiBaseCandidates();
+  if (route.startsWith("http://") || route.startsWith("https://")) {
+    const res = await fetchWithTimeout(route, {
+      method,
+      headers: data ? { "Content-Type": "application/json" } : {},
+      body: data ? JSON.stringify(data) : undefined,
+    });
+    await throwIfResNotOk(res);
+    return res;
+  }
+
+  const baseUrls = getBaseCandidatesForRoute(route);
   if (baseUrls.length === 0) {
     throw new Error(
       "API base URL is not configured. Set EXPO_PUBLIC_API_BASE or run the app in an environment where the host can be inferred (e.g. Expo simulator)."
@@ -190,7 +232,7 @@ export async function apiRequest(
       }
 
       await throwIfResNotOk(res);
-      lastWorkingApiBase = baseUrl;
+      markWorkingBaseForRoute(route, baseUrl);
       return res;
     } catch (e: any) {
       lastError = e;
@@ -223,13 +265,13 @@ export const getQueryFn: <T>(options: {
 }) => QueryFunction<T> =
   ({ on401: unauthorizedBehavior }) =>
   async ({ queryKey }) => {
-    const baseUrls = getApiBaseCandidates();
+    const path = queryKey.join("/") as string;
+    const baseUrls = getBaseCandidatesForRoute(path);
     if (baseUrls.length === 0) {
       throw new Error(
         "API base URL is not configured. Set EXPO_PUBLIC_API_BASE or run the app in an environment where the host can be inferred (e.g. Expo simulator)."
       );
     }
-    const path = queryKey.join("/") as string;
 
     let lastError: unknown;
 
@@ -248,7 +290,7 @@ export const getQueryFn: <T>(options: {
         }
 
         await throwIfResNotOk(res);
-        lastWorkingApiBase = baseUrl;
+        markWorkingBaseForRoute(path, baseUrl);
         return await res.json();
       } catch (e: any) {
         lastError = e;

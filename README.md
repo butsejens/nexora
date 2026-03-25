@@ -46,6 +46,13 @@ Edit `app/.env`:
 EXPO_PUBLIC_API_BASE=https://your-nexora-api.onrender.com
 # optional fallback order (cloud first, local second)
 EXPO_PUBLIC_API_BASES=https://your-nexora-api.onrender.com,http://localhost:8080
+
+# optional: route sports endpoints to Cloudflare Workers
+# all /api/sports/* calls use this base first
+EXPO_PUBLIC_SPORTS_API_BASE=https://nexora.dhgpfz2h8r.workers.dev
+
+# optional sports fallback list
+EXPO_PUBLIC_SPORTS_API_BASES=https://nexora.dhgpfz2h8r.workers.dev,https://your-nexora-api.onrender.com
 ```
 
 Then run only the app:
