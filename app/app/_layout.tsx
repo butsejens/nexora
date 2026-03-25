@@ -15,7 +15,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
-import { queryClient, getApiBaseCandidates, apiRequest } from "@/lib/query-client";
+import { queryClient, getApiBaseCandidates, apiRequest, apiRequestJson } from "@/lib/query-client";
 import { startPlayerImageWarmup } from "@/lib/player-image-system";
 import { NexoraProvider } from "@/context/NexoraContext";
 import { UserStateProvider } from "@/context/UserStateContext";
@@ -36,6 +36,7 @@ import {
   TTL,
 } from "@/lib/app-cache";
 import { initializeMatchNotifications } from "@/lib/match-notifications";
+import { fetchSportsLeagueResourceWithFallback } from "@/lib/sports-data";
 
 // ─── Persistent cache keys (must match what screens useQuery with) ────────────
 const PREFETCH_ENTRIES = (today: string) => [
@@ -46,6 +47,105 @@ const PREFETCH_ENTRIES = (today: string) => [
   { queryKey: ["sports", "highlights"],cacheKey: "sports:highlights", ttlMs: TTL.HIGHLIGHTS},
   { queryKey: ["sports", "today", today], cacheKey: `sports:today:${today}`, ttlMs: TTL.SPORTS_TODAY },
 ];
+
+const POPULAR_COMPETITIONS = [
+  { league: "UEFA Champions League", espn: "uefa.champions" },
+  { league: "Premier League", espn: "eng.1" },
+  { league: "La Liga", espn: "esp.1" },
+];
+
+function normalizeSportsPayload(json: any) {
+  const hasMatchBuckets =
+    Array.isArray(json?.live) ||
+    Array.isArray(json?.upcoming) ||
+    Array.isArray(json?.finished);
+  if (!hasMatchBuckets) return json;
+  return {
+    ...json,
+    live: Array.isArray(json?.live) ? json.live : [],
+    upcoming: Array.isArray(json?.upcoming) ? json.upcoming : [],
+    finished: Array.isArray(json?.finished) ? json.finished : [],
+  };
+}
+
+function getFrequentMatchesFromPayloads(payloads: (any | undefined)[]): any[] {
+  const byId = new Map<string, any>();
+  for (const payload of payloads) {
+    if (!payload) continue;
+    const rows = [
+      ...(Array.isArray(payload.live) ? payload.live : []),
+      ...(Array.isArray(payload.upcoming) ? payload.upcoming : []),
+      ...(Array.isArray(payload.finished) ? payload.finished : []),
+    ];
+    for (const row of rows) {
+      const id = String(row?.id || "").trim();
+      if (!id || byId.has(id)) continue;
+      byId.set(id, row);
+    }
+  }
+  return Array.from(byId.values());
+}
+
+async function prefetchMatchDetailEssentials(matches: any[]): Promise<void> {
+  const topCandidates = matches.slice(0, 6);
+  await Promise.allSettled(
+    topCandidates.map(async (match) => {
+      const matchId = String(match?.id || "").trim();
+      if (!matchId) return;
+      const espnLeague = String(match?.espnLeague || "eng.1").trim() || "eng.1";
+      const queryKey = ["match-detail", matchId, espnLeague] as const;
+      const cacheKey = `sports:match-detail:${matchId}:${espnLeague}`;
+
+      await queryClient.prefetchQuery({
+        queryKey,
+        staleTime: 30_000,
+        queryFn: async () => {
+          const data = await apiRequestJson<any>(`/api/sports/match/${encodeURIComponent(matchId)}?sport=soccer&league=${encodeURIComponent(espnLeague)}`);
+          cacheSet(cacheKey, data, TTL.DETAIL);
+          return data;
+        },
+      });
+    }),
+  );
+}
+
+async function prefetchPopularCompetitionBundles(): Promise<void> {
+  await Promise.allSettled(
+    POPULAR_COMPETITIONS.map(async (competition) => {
+      const safeFetch = async (
+        kind: "standings" | "topscorers" | "topassists" | "competition-stats" | "competition-teams" | "competition-matches",
+      ) => {
+        try {
+          return await fetchSportsLeagueResourceWithFallback(kind, {
+            leagueName: competition.league,
+            espnLeague: competition.espn,
+            sequential: kind === "topscorers" || kind === "topassists",
+          });
+        } catch {
+          return { error: `Failed to load ${kind}` };
+        }
+      };
+
+      const [standings, topscorers, topassists, competitionStats, competitionTeams, competitionMatches] = await Promise.all([
+        safeFetch("standings"),
+        safeFetch("topscorers"),
+        safeFetch("topassists"),
+        safeFetch("competition-stats"),
+        safeFetch("competition-teams"),
+        safeFetch("competition-matches"),
+      ]);
+
+      queryClient.setQueryData(["competition-bundle", "v3", competition.league, competition.espn], {
+        standings,
+        topscorers,
+        topassists,
+        competitionStats,
+        competitionTeams,
+        competitionMatches,
+      });
+    }),
+  );
+}
 
 // Seed the QueryClient from disk cache so screens render instantly on cold start.
 function seedQueryClientFromCache() {
@@ -65,18 +165,18 @@ function prefetchHomeData() {
 
   const fetchAndCache = async (path: string, ck: string, ttl: number, queryKey: readonly unknown[]) => {
     try {
-      const res = await apiRequest("GET", path);
-      const data = await res.json();
-      cacheSet(ck, data, ttl);
-      queryClient.setQueryData(queryKey, data);
-      return data;
+      const data = await apiRequestJson<any>(path);
+      const normalized = path.startsWith("/api/sports/") ? normalizeSportsPayload(data) : data;
+      cacheSet(ck, normalized, ttl);
+      queryClient.setQueryData(queryKey, normalized);
+      return normalized;
     } catch {
       return undefined;
     }
   };
 
   // Phase A (critical): first paint data for sports + home rails.
-  void Promise.allSettled([
+  const phaseATask = Promise.allSettled([
     fetchAndCache(`/api/sports/live?date=${date}`, "sports:live:" + today, TTL.LIVE, ["sports", "live", today]),
     fetchAndCache(`/api/sports/by-date?date=${date}`, `sports:today:${today}`, TTL.SPORTS_TODAY, ["sports", "today", today]),
     fetchAndCache("/api/sports/highlights", "sports:highlights", TTL.HIGHLIGHTS, ["sports", "highlights"]),
@@ -84,12 +184,24 @@ function prefetchHomeData() {
     fetchAndCache("/api/series/trending", "series:trending", TTL.TRENDING, ["series", "trending"]),
   ]);
 
+  // Match detail essentials for likely next navigations.
+  void phaseATask.then(async (results) => {
+    const payloads = results
+      .filter((result): result is PromiseFulfilledResult<any> => result.status === "fulfilled")
+      .map((result) => result.value);
+    const frequentMatches = getFrequentMatchesFromPayloads(payloads);
+    if (frequentMatches.length > 0) {
+      await prefetchMatchDetailEssentials(frequentMatches);
+    }
+  });
+
   // Phase B (background): enrich secondary tabs and warm server-side sports caches.
   setTimeout(() => {
-    void fetchAndCache(`/api/sports/menu-tools?date=${date}&league=all`, `sports:menu-tools:${today}`, TTL.HIGHLIGHTS, ["sports", "menu-tools", today, "all"]);
+    void fetchAndCache(`/api/sports/menu-tools?date=${date}&league=all`, `sports:menu-tools:${today}:all`, TTL.HIGHLIGHTS, ["sports", "menu-tools", today, "all"]);
     void fetchAndCache("/api/movies/genres-catalog?page=1", "movies:genres", TTL.GENRES, ["movies", "genres"]);
     void fetchAndCache("/api/series/genres-catalog?page=1", "series:genres", TTL.GENRES, ["series", "genres"]);
     void apiRequest("GET", "/api/sports/prefetch-home").catch(() => undefined);
+    void prefetchPopularCompetitionBundles();
   }, 1200);
 }
 

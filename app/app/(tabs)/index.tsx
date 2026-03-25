@@ -11,7 +11,7 @@ import "@/constants/design-system";
 import { NexoraHeader } from "@/components/NexoraHeader";
 import { TeamLogo } from "@/components/TeamLogo";
 import { MatchRowCard } from "@/components/premium";
-import { apiRequest } from "@/lib/query-client";
+import { apiRequest, apiRequestJson } from "@/lib/query-client";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { getLeagueLogo } from "@/lib/logo-manager";
@@ -40,6 +40,7 @@ import {
   saveMatchSubscriptions,
   toEventHash,
 } from "@/lib/match-notifications";
+import { cacheGetStale, cacheSet, TTL } from "@/lib/app-cache";
 
 /** Safely convert any value to string — prevents [object Object] rendering */
 // ── Sport design tokens ───────────────────────────────────────────────────────
@@ -79,8 +80,7 @@ type SportsMenuToolsPayload = {
 };
 
 async function fetchSportsPayload(path: string): Promise<SportsPayload> {
-  const res = await apiRequest("GET", path);
-  const json = await res.json();
+  const json = await apiRequestJson<any>(path);
   return {
     ...json,
     live: Array.isArray(json?.live) ? json.live : [],
@@ -90,14 +90,36 @@ async function fetchSportsPayload(path: string): Promise<SportsPayload> {
 }
 
 async function fetchSportsMenuTools(path: string): Promise<SportsMenuToolsPayload> {
-  const res = await apiRequest("GET", path);
-  const json = await res.json();
+  const json = await apiRequestJson<any>(path);
   return {
     ...json,
     footballPredictions: Array.isArray(json?.footballPredictions) ? json.footballPredictions : [],
     dailyAccaPicks: Array.isArray(json?.dailyAccaPicks) ? json.dailyAccaPicks : [],
   };
 }
+
+function shouldRetrySportsQuery(failureCount: number, error: unknown): boolean {
+  if (failureCount >= 1) return false;
+  const msg = String((error as any)?.message || "").toLowerCase();
+  return (
+    msg.includes("network") ||
+    msg.includes("netwerk") ||
+    msg.includes("failed to fetch") ||
+    msg.includes("timed out") ||
+    msg.includes("timeout") ||
+    msg.includes("abort") ||
+    msg.includes("429") ||
+    msg.includes("500") ||
+    msg.includes("502") ||
+    msg.includes("503") ||
+    msg.includes("504")
+  );
+}
+
+const sportsLiveCacheKey = (date: string) => `sports:live:${date}`;
+const sportsTodayCacheKey = (date: string) => `sports:today:${date}`;
+const sportsToolsCacheKey = (date: string, league: string) => `sports:menu-tools:${date}:${league}`;
+const sportsHighlightsCacheKey = "sports:highlights";
 
 async function fetchSportsPayloadWithTimeout(path: string, timeoutMs = 18000): Promise<SportsPayload> {
   return await Promise.race([
@@ -311,8 +333,44 @@ function formatDateDisplay(ymd: string): string {
 function isFootballMatch(match: any): boolean {
   const sport = String(match?.sport || "").toLowerCase();
   if (sport === "football" || sport === "soccer") return true;
+  const espnLeague = String(match?.espnLeague || "").toLowerCase();
+  if (espnLeague.startsWith("eng.") || espnLeague.startsWith("esp.") || espnLeague.startsWith("ger.") || espnLeague.startsWith("ita.") || espnLeague.startsWith("fra.") || espnLeague.startsWith("ned.") || espnLeague.startsWith("bel.") || espnLeague.startsWith("uefa.") || espnLeague.startsWith("fifa.")) {
+    return true;
+  }
   const league = String(match?.league || "").toLowerCase();
-  return league.includes("league") || league.includes("liga") || league.includes("bundesliga") || league.includes("serie a") || league.includes("uefa") || league.includes("jupiler");
+  return (
+    league.includes("league") ||
+    league.includes("liga") ||
+    league.includes("bundesliga") ||
+    league.includes("serie a") ||
+    league.includes("uefa") ||
+    league.includes("jupiler") ||
+    league.includes("cup") ||
+    league.includes("copa") ||
+    league.includes("pokal") ||
+    league.includes("beker") ||
+    league.includes("champions") ||
+    league.includes("europa")
+  );
+}
+
+function splitReplayAndHighlightItems(items: any[]): { replays: any[]; highlights: any[] } {
+  const replayTokens = /(replay|full\s*match|full\s*game|extended\s*highlights|highlights\s*\+\s*goals)/i;
+  const replays: any[] = [];
+  const highlights: any[] = [];
+
+  for (const item of Array.isArray(items) ? items : []) {
+    const title = String(item?.title || "");
+    const competition = String(item?.competition || "");
+    const descriptor = `${title} ${competition}`;
+    if (replayTokens.test(descriptor)) {
+      replays.push(item);
+      continue;
+    }
+    highlights.push(item);
+  }
+
+  return { replays, highlights };
 }
 
 // ── DateSelector ────────────────────────────────────────────────────────────
@@ -856,6 +914,7 @@ export default function SportsScreen() {
 
   const liveQuery = useQuery({
     queryKey: ["sports", "live", selectedDate],
+    placeholderData: () => cacheGetStale<SportsPayload>(sportsLiveCacheKey(selectedDate)) || undefined,
     queryFn: async () => {
       const date = encodeURIComponent(selectedDate);
       const candidates = [
@@ -863,13 +922,17 @@ export default function SportsScreen() {
         `/api/sports/by-date?date=${date}`,
         "/api/sports/live",
       ];
-      let best: SportsPayload = { live: [], upcoming: [], finished: [] };
+      const stale = cacheGetStale<SportsPayload>(sportsLiveCacheKey(selectedDate));
+      let best: SportsPayload = stale || { live: [], upcoming: [], finished: [] };
       for (const path of candidates) {
         try {
           const payload = await fetchSportsPayloadWithTimeout(path, 16000);
           const liveCount = Array.isArray(payload?.live) ? payload.live.length : 0;
           const total = liveCount + (payload?.upcoming?.length || 0) + (payload?.finished?.length || 0);
-          if (liveCount > 0) return payload;
+          if (liveCount > 0) {
+            cacheSet(sportsLiveCacheKey(selectedDate), payload, TTL.LIVE);
+            return payload;
+          }
           if (total > ((best?.live?.length || 0) + (best?.upcoming?.length || 0) + (best?.finished?.length || 0))) {
             best = payload;
           }
@@ -877,62 +940,96 @@ export default function SportsScreen() {
           // Continue to next fallback endpoint.
         }
       }
+      cacheSet(sportsLiveCacheKey(selectedDate), best, TTL.LIVE);
       return best;
     },
-    refetchInterval: 8_000,
+    refetchInterval: 12_000,
     refetchIntervalInBackground: true,
-    staleTime: 4_000,
-    retry: 2,
+    staleTime: 10_000,
+    retry: shouldRetrySportsQuery,
     refetchOnReconnect: true,
+    refetchOnMount: false,
     notifyOnChangeProps: ["data", "error"],
   });
 
   const todayQuery = useQuery({
     queryKey: ["sports", "today", selectedDate],
+    placeholderData: () => cacheGetStale<SportsPayload>(sportsTodayCacheKey(selectedDate)) || undefined,
     queryFn: async () => {
       const date = encodeURIComponent(selectedDate);
+      const stale = cacheGetStale<SportsPayload>(sportsTodayCacheKey(selectedDate));
       try {
         const byDate = await fetchSportsPayloadWithTimeout(`/api/sports/by-date?date=${date}`, 18000);
         const hasByDateData = (byDate.live?.length || 0) + (byDate.upcoming?.length || 0) + (byDate.finished?.length || 0) > 0;
-        if (hasByDateData || byDate.error) return byDate;
+        if (hasByDateData || byDate.error) {
+          cacheSet(sportsTodayCacheKey(selectedDate), byDate, TTL.SPORTS_TODAY);
+          return byDate;
+        }
       } catch { /* fallback below */ }
       try {
         const today = await fetchSportsPayloadWithTimeout(`/api/sports/today?date=${date}`, 18000);
         const hasData = (today.live?.length || 0) + (today.upcoming?.length || 0) + (today.finished?.length || 0) > 0;
-        if (hasData || today.error) return today;
+        if (hasData || today.error) {
+          cacheSet(sportsTodayCacheKey(selectedDate), today, TTL.SPORTS_TODAY);
+          return today;
+        }
       } catch { /* no fallback data */ }
+      if (stale) return stale;
       return { date: selectedDate, source: "espn", timezone: "Europe/Brussels", live: [], upcoming: [], finished: [] };
     },
-    refetchInterval: 30_000,
+    refetchInterval: 45_000,
     staleTime: 30_000,
-    retry: 2,
+    retry: shouldRetrySportsQuery,
     refetchOnReconnect: true,
-    refetchOnMount: "always",
+    refetchOnMount: false,
     notifyOnChangeProps: ["data", "error", "isLoading"],
   });
 
   const toolsQuery = useQuery({
     queryKey: ["sports", "menu-tools", selectedDate, sportCategory],
-    queryFn: () => fetchSportsMenuTools(`/api/sports/menu-tools?date=${encodeURIComponent(selectedDate)}&league=${encodeURIComponent(sportCategory)}`),
+    placeholderData: () => cacheGetStale<SportsMenuToolsPayload>(sportsToolsCacheKey(selectedDate, sportCategory)) || undefined,
+    queryFn: async () => {
+      const key = sportsToolsCacheKey(selectedDate, sportCategory);
+      const stale = cacheGetStale<SportsMenuToolsPayload>(key);
+      try {
+        const payload = await fetchSportsMenuTools(`/api/sports/menu-tools?date=${encodeURIComponent(selectedDate)}&league=${encodeURIComponent(sportCategory)}`);
+        cacheSet(key, payload, TTL.HIGHLIGHTS);
+        return payload;
+      } catch {
+        return stale || { footballPredictions: [], dailyAccaPicks: [] };
+      }
+    },
     refetchInterval: 30_000,
     staleTime: 20_000,
-    retry: 1,
+    retry: shouldRetrySportsQuery,
     refetchOnReconnect: true,
+    refetchOnMount: false,
     notifyOnChangeProps: ["data", "error", "isFetching"],
   });
 
   const highlightsQuery = useQuery({
     queryKey: ["sports", "highlights"],
+    placeholderData: () => cacheGetStale<any[]>(sportsHighlightsCacheKey) || undefined,
     queryFn: async () => {
-      const res = await apiRequest("GET", "/api/sports/highlights");
-      const json = await res.json();
-      return Array.isArray(json?.highlights) ? json.highlights : [];
+      const stale = cacheGetStale<any[]>(sportsHighlightsCacheKey);
+      try {
+        const json = await apiRequestJson<any>("/api/sports/highlights");
+        const rows = Array.isArray(json?.highlights) ? json.highlights : [];
+        cacheSet(sportsHighlightsCacheKey, rows, TTL.HIGHLIGHTS);
+        return rows;
+      } catch {
+        return stale || [];
+      }
     },
     staleTime: 10 * 60 * 1000,
     refetchInterval: 10 * 60 * 1000,
-    retry: 1,
+    retry: shouldRetrySportsQuery,
+    refetchOnMount: false,
   });
-  const realHighlights: any[] = highlightsQuery.data || [];
+  const realHighlights: any[] = useMemo(() => highlightsQuery.data || [], [highlightsQuery.data]);
+  const replayAndHighlight = useMemo(() => splitReplayAndHighlightItems(realHighlights), [realHighlights]);
+  const replayItems = replayAndHighlight.replays;
+  const highlightItems = replayAndHighlight.highlights;
 
   const liveFirstLoad = liveQuery.isLoading && !liveQuery.data;
   const todayFirstLoad = todayQuery.isLoading && !todayQuery.data;
@@ -951,8 +1048,12 @@ export default function SportsScreen() {
     ]
       .map((row) => toCanonicalMatch(row))
       .filter(Boolean) as any[];
-    return partitionForHomeSections(dedupeCanonicalMatches(rows), selectedDate);
-  }, [remoteFinished, remoteLive, remoteUpcoming, selectedDate]);
+    const fromServerDate = String(todayQuery.data?.date || liveQuery.data?.date || "").trim();
+    const effectiveDate = /^\d{4}-\d{2}-\d{2}$/.test(fromServerDate) ? fromServerDate : selectedDate;
+    const partitioned = partitionForHomeSections(dedupeCanonicalMatches(rows), selectedDate);
+    if (partitioned.today.length > 0 || effectiveDate === selectedDate) return partitioned;
+    return partitionForHomeSections(dedupeCanonicalMatches(rows), effectiveDate);
+  }, [liveQuery.data?.date, remoteFinished, remoteLive, remoteUpcoming, selectedDate, todayQuery.data?.date]);
   const hasRemoteData = remoteLive.length + remoteUpcoming.length + remoteFinished.length > 0;
 
   const [stickyLiveMap, setStickyLiveMap] = useState<Record<string, any>>({});
@@ -996,8 +1097,11 @@ export default function SportsScreen() {
     return matches.filter((m) => {
       const sport = String(m?.sport || "").toLowerCase();
       const league = String(m?.league || "").toLowerCase();
+      const espnLeague = String(m?.espnLeague || "").toLowerCase();
+      const footballByLeagueCode = espnLeague.startsWith("eng.") || espnLeague.startsWith("esp.") || espnLeague.startsWith("ger.") || espnLeague.startsWith("ita.") || espnLeague.startsWith("fra.") || espnLeague.startsWith("ned.") || espnLeague.startsWith("bel.") || espnLeague.startsWith("uefa.") || espnLeague.startsWith("fifa.");
       switch (sportCategory) {
-        case "football":   return sport === "football" || sport === "soccer" || league.includes("liga") || league.includes("league") || league.includes("bundesliga") || league.includes("serie") || league.includes("ligue") || league.includes("jupiler") || league.includes("uefa") || league.includes("eredivisie");
+        case "football":
+          return sport === "football" || sport === "soccer" || footballByLeagueCode || league.includes("liga") || league.includes("league") || league.includes("bundesliga") || league.includes("serie") || league.includes("ligue") || league.includes("jupiler") || league.includes("uefa") || league.includes("eredivisie") || league.includes("cup") || league.includes("copa") || league.includes("pokal") || league.includes("beker") || league.includes("champions") || league.includes("europa");
         case "basketball": return sport === "basketball" || league.includes("nba") || league.includes("basketball");
         case "mma":        return sport === "mma" || sport === "ufc" || league.includes("ufc") || league.includes("mma");
         case "motorsport": return sport === "motorsport" || sport === "f1" || sport === "motogp" || league.includes("formula") || league.includes("f1") || league.includes("nascar") || league.includes("motogp");
@@ -1074,8 +1178,8 @@ export default function SportsScreen() {
       qc.invalidateQueries({ queryKey: ["sports", "live", selectedDate] }),
       qc.invalidateQueries({ queryKey: ["sports", "today", selectedDate] }),
       qc.invalidateQueries({ queryKey: ["sports", "by-date", selectedDate] }),
-      qc.invalidateQueries({ queryKey: ["standings"] }),
-      qc.invalidateQueries({ queryKey: ["topscorers"] }),
+      qc.invalidateQueries({ queryKey: ["sports", "menu-tools", selectedDate] }),
+      qc.invalidateQueries({ queryKey: ["sports", "highlights"] }),
     ]);
     setRefreshing(false);
   }, [qc, selectedDate]);
@@ -1286,6 +1390,20 @@ export default function SportsScreen() {
   }, []);
 
   const handleMatchPress = useCallback((match: any) => {
+    const matchId = String(match?.id || "").trim();
+    const espnLeague = resolveEspnLeague(match);
+    if (matchId) {
+      void qc.prefetchQuery({
+        queryKey: ["match-detail", matchId, espnLeague],
+        staleTime: 30_000,
+        queryFn: async () => {
+          const payload = await apiRequestJson<any>(`/api/sports/match/${encodeURIComponent(matchId)}?sport=soccer&league=${encodeURIComponent(espnLeague)}`);
+          cacheSet(`sports:match-detail:${matchId}:${espnLeague}`, payload, TTL.DETAIL);
+          return payload;
+        },
+      });
+    }
+
     router.push({
       pathname: "/match-detail",
       params: {
@@ -1297,13 +1415,15 @@ export default function SportsScreen() {
         homeScore: String(match.homeScore ?? 0),
         awayScore: String(match.awayScore ?? 0),
         league: match.league,
-        espnLeague: resolveEspnLeague(match),
+        espnLeague,
         minute: match.minute !== undefined ? String(match.minute) : "",
+        startDate: match.startDate ? String(match.startDate) : "",
+        statusDetail: String(match.statusDetail || ""),
         status: match.status,
         sport: match.sport,
       },
     });
-  }, [resolveEspnLeague]);
+  }, [qc, resolveEspnLeague]);
 
   const handleToolMatchPress = (item: any) => {
     handleMatchPress({
@@ -1790,12 +1910,12 @@ export default function SportsScreen() {
               ))}
             </ScrollView>
 
-            {/* ── HIGHLIGHTS & REPLAYS ── */}
-            {realHighlights.length > 0 && (
+            {/* ── REPLAYS ── */}
+            {replayItems.length > 0 && (
               <>
-                <SectionTitle title={t("sportsHome.highlightsReplays")} accent />
+                <SectionTitle title={t("sportsHome.replays") || "Replays"} accent />
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.carouselContent}>
-                  {realHighlights.slice(0, 15).map((hl: any, idx: number) => (
+                  {replayItems.slice(0, 12).map((hl: any, idx: number) => (
                     <HighlightCard
                       key={hl.id || idx}
                       match={hl}
@@ -1804,6 +1924,32 @@ export default function SportsScreen() {
                   ))}
                 </ScrollView>
               </>
+            )}
+
+            {/* ── HIGHLIGHTS ── */}
+            {highlightItems.length > 0 && (
+              <>
+                <SectionTitle title={t("sportsHome.highlights") || "Highlights"} accent />
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.carouselContent}>
+                  {highlightItems.slice(0, 15).map((hl: any, idx: number) => (
+                    <HighlightCard
+                      key={hl.id || idx}
+                      match={hl}
+                      onPress={() => openReplay(hl, String(hl.id || idx))}
+                    />
+                  ))}
+                </ScrollView>
+              </>
+            )}
+
+            {replayItems.length === 0 && highlightItems.length === 0 && realHighlights.length === 0 && (
+              <View style={styles.fallbackPanel}>
+                <View style={styles.fallbackHead}>
+                  <Ionicons name="videocam-outline" size={14} color={P.muted} />
+                  <Text style={styles.fallbackTitle}>{t("sportsHome.highlightsReplays")}</Text>
+                </View>
+                <Text style={styles.fallbackText}>{t("sportsHome.noHighlights") || "No highlights or replays available right now."}</Text>
+              </View>
             )}
 
           </>

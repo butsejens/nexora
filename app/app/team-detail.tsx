@@ -234,6 +234,14 @@ export default function TeamDetailScreen() {
   });
 
   const teamName = String(data?.name || teamNameParam || "Team");
+  const hasRenderableTeamData = Boolean(
+    data && (
+      String((data as any)?.name || "").trim() ||
+      (Array.isArray((data as any)?.players) && (data as any).players.length > 0) ||
+      String((data as any)?.leagueName || "").trim() ||
+      String((data as any)?.logo || "").trim()
+    )
+  );
 
   const players: any[] = useMemo(() => data?.players || [], [data?.players]);
 
@@ -425,12 +433,12 @@ export default function TeamDetailScreen() {
         <View style={styles.loadingState}>
           <StateBlock loading title={t("teamDetail.loadingPlayers")} message={t("common.loading") || "Loading..."} />
         </View>
-      ) : error || !data || (data as any).error ? (
+      ) : error || !data || (!hasRenderableTeamData && (data as any)?.error) ? (
         <View style={styles.emptyState}>
           <StateBlock
             icon="alert-circle-outline"
             title={t("teamDetail.dataUnavailable")}
-            message={error ? normalizeApiError(error).userMessage : String((data as any)?.error || "")}
+            message={error ? normalizeApiError(error).userMessage : String((data as any)?.error || t("common.unknownError") || "Unknown error")}
             actionLabel={t("teamDetail.retry") || "Opnieuw proberen"}
             onAction={() => refetch()}
           />

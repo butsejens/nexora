@@ -146,12 +146,12 @@ cache-control: public, max-age=15, stale-while-revalidate=30
 Edit `app/.env`:
 ```bash
 EXPO_PUBLIC_API_BASE=https://nexora-api-8xxb.onrender.com
-EXPO_PUBLIC_SPORTS_API_BASE=https://nexora.ACCOUNT_ID.workers.dev
+EXPO_PUBLIC_SPORTS_API_BASE=https://nexora.<your-account-or-domain>.workers.dev
 ```
 
 Or specify with fallback:
 ```bash
-EXPO_PUBLIC_SPORTS_API_BASES=https://nexora.ACCOUNT_ID.workers.dev,https://nexora-api-8xxb.onrender.com
+EXPO_PUBLIC_SPORTS_API_BASES=https://nexora.<your-account-or-domain>.workers.dev,https://nexora-api-8xxb.onrender.com
 ```
 
 ## Monitoring & Operations

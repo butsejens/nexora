@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import {
   View, Text, StyleSheet, TouchableOpacity, Platform,
   ScrollView, Image, ActivityIndicator, useWindowDimensions,
@@ -12,7 +12,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { COLORS } from "@/constants/colors";
 import { LiveBadge } from "@/components/LiveBadge";
 import { SafeHaptics } from "@/lib/safeHaptics";
-import { apiRequest } from "@/lib/query-client";
+import { apiRequest, apiRequestJson } from "@/lib/query-client";
 import { openInVlc } from "@/lib/vlc";
 import { TeamLogo } from "@/components/TeamLogo";
 import { PillTabs, StateBlock } from "@/components/ui/PremiumPrimitives";
@@ -28,6 +28,7 @@ import { resolveMatchBucket } from "@/lib/match-state";
 import { buildGroundedMatchAnalysis } from "@/lib/match-analysis-engine";
 import { toCanonicalMatch } from "@/lib/canonical-match";
 import { normalizeTeamName, tokenOverlapScore } from "@/lib/entity-normalization";
+import { cacheGetStale, cacheSet, TTL } from "@/lib/app-cache";
 const BLOCK_POPUP_JS = `
 (function(){
   // Patch removeChild to never throw — prevents DOMException crashes
@@ -79,6 +80,24 @@ const TABS = [
 ] as const;
 
 type TabId = "stream" | "stats" | "lineups" | "timeline" | "highlights" | "ai";
+
+function shouldRetryRequest(failureCount: number, error: unknown): boolean {
+  if (failureCount >= 1) return false;
+  const msg = String((error as any)?.message || "").toLowerCase();
+  return (
+    msg.includes("network") ||
+    msg.includes("netwerk") ||
+    msg.includes("failed to fetch") ||
+    msg.includes("timed out") ||
+    msg.includes("timeout") ||
+    msg.includes("abort") ||
+    msg.includes("429") ||
+    msg.includes("500") ||
+    msg.includes("502") ||
+    msg.includes("503") ||
+    msg.includes("504")
+  );
+}
 
 function buildFormationRows(players: any[], formationRaw?: string) {
   const starters = (Array.isArray(players) ? players : [])
@@ -168,6 +187,7 @@ export default function MatchDetailScreen() {
     homeTeamLogo?: string; awayTeamLogo?: string;
     homeScore?: string; awayScore?: string;
     league: string; espnLeague?: string; minute?: string; status: string; sport: string;
+    startDate?: string; statusDetail?: string;
     initialTab?: string;
   }>();
 
@@ -201,12 +221,13 @@ export default function MatchDetailScreen() {
     homeScore: params.homeScore,
     awayScore: params.awayScore,
     status: params.status,
+    detail: params.statusDetail,
     minute: params.minute,
-    startDate: undefined,
+    startDate: params.startDate,
     league: params.league,
     espnLeague: params.espnLeague,
     sport: params.sport,
-  }), [params.awayScore, params.awayTeam, params.awayTeamLogo, params.espnLeague, params.homeScore, params.homeTeam, params.homeTeamLogo, params.league, params.matchId, params.minute, params.sport, params.status]);
+  }), [params.awayScore, params.awayTeam, params.awayTeamLogo, params.espnLeague, params.homeScore, params.homeTeam, params.homeTeamLogo, params.league, params.matchId, params.minute, params.sport, params.startDate, params.status, params.statusDetail]);
   const paramBucket = paramCanonical?.status === "live"
     ? "live"
     : paramCanonical?.status === "finished"
@@ -251,12 +272,22 @@ export default function MatchDetailScreen() {
     refetch: refetchStream,
   } = useQuery({
     queryKey: ["match-stream", params.matchId, espnLeague],
+    placeholderData: () => cacheGetStale<any>(`sports:match-stream:${params.matchId}:${espnLeague}`) || undefined,
     queryFn: async () => {
-      const res = await apiRequest("GET", `/api/sports/stream/${params.matchId}?league=${encodeURIComponent(espnLeague)}`);
-      return res.json();
+      const key = `sports:match-stream:${params.matchId}:${espnLeague}`;
+      const stale = cacheGetStale<any>(key);
+      try {
+        const payload = await apiRequestJson<any>(`/api/sports/stream/${params.matchId}?league=${encodeURIComponent(espnLeague)}`);
+        cacheSet(key, payload, 60_000);
+        return payload;
+      } catch {
+        return stale || {};
+      }
     },
     enabled: !!params.matchId && paramBucket === "live",
     staleTime: 60_000,
+    retry: shouldRetryRequest,
+    refetchOnMount: false,
   });
   const _rawStreamUrl = streamData?.url || ""; void _streamLoading;
   const streamUrl = (() => {
@@ -276,9 +307,18 @@ export default function MatchDetailScreen() {
 
   const { data: matchDetail, isLoading: detailLoading } = useQuery({
     queryKey: ["match-detail", params.matchId, espnLeague],
+    placeholderData: () => cacheGetStale<any>(`sports:match-detail:${params.matchId}:${espnLeague}`) || undefined,
     queryFn: async () => {
-      const res = await apiRequest("GET", `/api/sports/match/${params.matchId}?sport=${espnSport}&league=${espnLeague}`);
-      return res.json();
+      const key = `sports:match-detail:${params.matchId}:${espnLeague}`;
+      const stale = cacheGetStale<any>(key);
+      try {
+        const payload = await apiRequestJson<any>(`/api/sports/match/${params.matchId}?sport=${espnSport}&league=${espnLeague}`);
+        cacheSet(key, payload, TTL.DETAIL);
+        return payload;
+      } catch (error) {
+        if (stale) return stale;
+        throw error;
+      }
     },
     enabled: true,
     // Poll only while match is effectively live.
@@ -286,16 +326,18 @@ export default function MatchDetailScreen() {
       const payload = query?.state?.data;
       const bucket = resolveMatchBucket({
         status: payload?.status ?? params.status,
-        detail: payload?.status,
+        detail: payload?.statusDetail ?? payload?.status ?? params.statusDetail,
         minute: payload?.minute ?? params.minute,
         homeScore: payload?.homeScore ?? params.homeScore,
         awayScore: payload?.awayScore ?? params.awayScore,
-        startDate: payload?.startDate,
+        startDate: payload?.startDate ?? params.startDate,
       });
       return bucket === "live" ? 10000 : false;
     },
     refetchIntervalInBackground: true,
     staleTime: paramBucket === "live" ? 4000 : 30000,
+    retry: shouldRetryRequest,
+    refetchOnMount: false,
   });
 
   const detailCanonical = useMemo(() => toCanonicalMatch(matchDetail), [matchDetail]);
