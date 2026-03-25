@@ -2,7 +2,6 @@ name = "nexora"
 main = "src/index.js"
 compatibility_date = "2026-03-25"
 workers_dev = true
-account_id = "e0c4c6c4a7ecd8f9131e8e78cf731ed68585bfae0e8acae0b1ffd67edef24ae3"
 
 [vars]
 RENDER_SPORTS_ORIGIN = "https://nexora-api-8xxb.onrender.com"
@@ -10,21 +9,6 @@ CACHE_MODE = "hybrid"
 CACHE_STALE_UNTIL_REVALIDATE = "true"
 LOG_ANALYTICS = "false"
 MAX_CACHE_SIZE_MB = "100"
-
-[[d1_databases]]
-binding = "SPORTS_DB"
-database_name = "nexora-sports"
-database_id = "REPLACE_WITH_YOUR_D1_DATABASE_ID"
-
-[[kv_namespaces]]
-binding = "SPORTS_CACHE_KV"
-id = "REPLACE_WITH_YOUR_KV_NAMESPACE_ID"
-preview_id = "REPLACE_WITH_YOUR_KV_PREVIEW_NAMESPACE_ID"
-
-[[r2_buckets]]
-binding = "ASSETS_R2"
-bucket_name = "nexora-assets"
-preview_bucket_name = "nexora-assets-preview"
 
 [observability]
 enabled = true
