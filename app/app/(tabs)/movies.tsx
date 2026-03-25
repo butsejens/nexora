@@ -16,6 +16,8 @@ import { RealContentCard, RealHeroBanner } from "@/components/RealContentCard";
 import { SafeHaptics } from "@/lib/safeHaptics";
 import { SilentResetBoundary } from "@/components/SilentResetBoundary";
 import { StateBlock } from "@/components/ui";
+import { applyGlobalUniqueness, buildMoodRecommendations, createContinueWatching, type VodMood } from "@/lib/vod-curation";
+import { withTimeout } from "@/lib/utils";
 
 const CATEGORY_SORT: Record<string, string> = {
   trending: "popularity.desc",
@@ -27,24 +29,19 @@ const CATEGORY_SORT: Record<string, string> = {
 
 const MOOD_OPTIONS = [
   { id: "fun", emoji: "🎉", label: "Fun" },
-  { id: "thrilling", emoji: "😱", label: "Thrilling" },
+  { id: "thriller", emoji: "🕶️", label: "Thriller" },
   { id: "emotional", emoji: "😢", label: "Emotional" },
   { id: "smart", emoji: "🧠", label: "Smart" },
+  { id: "cozy", emoji: "🛋️", label: "Cozy" },
+  { id: "binge", emoji: "🍿", label: "Binge" },
 ] as const;
 
-type MoodId = typeof MOOD_OPTIONS[number]["id"];
+type MoodId = VodMood;
 
 const IPTV_PALETTE = ["#1B2B4B","#2B1B4B","#1B4B2B","#4B1B2B","#4B2B1B","#1B3B4B","#2B4B1B","#3B1B4B","#1B4B3B","#2B3B1B"];
 function iptvColor(title: string): string {
   let h = 0; for (const c of String(title || "")) h = (h * 31 + c.charCodeAt(0)) & 0xffff;
   return IPTV_PALETTE[h % IPTV_PALETTE.length];
-}
-
-async function withTimeout<T>(promise: Promise<T>, ms = 8000): Promise<T> {
-  return await Promise.race([
-    promise,
-    new Promise<T>((_, reject) => setTimeout(() => reject(new Error("Request timeout")), ms)),
-  ]);
 }
 
 async function fetchMovies() {
@@ -234,58 +231,24 @@ export default function MoviesScreen() {
   const becauseYouWatched: any[] = useMemo(() => becauseYouWatchedData?.items || [], [becauseYouWatchedData]);
 
   const moodPicks = useMemo(() => {
-    const pool = [...recommendedForYou, ...hiddenGems, ...topRated, ...popular, ...trending, ...newReleases];
-    const genreMap: Record<MoodId, number[]> = {
-      fun: [35, 10751, 16, 12],
-      thrilling: [53, 27, 80, 9648, 28],
-      emotional: [18, 10749],
-      smart: [99, 36, 10752, 878],
-    };
-    const keywordMap: Record<MoodId, string[]> = {
-      fun: ["fun", "comedy", "family", "adventure"],
-      thrilling: ["thriller", "crime", "murder", "suspense", "horror"],
-      emotional: ["love", "drama", "heart", "life"],
-      smart: ["documentary", "biography", "history", "science", "politics"],
-    };
-    const seen = new Set<string>();
-    const out: any[] = [];
-    for (const item of pool) {
-      const id = String(item?.id || "");
-      if (!id || seen.has(id)) continue;
-      seen.add(id);
-      const genres = Array.isArray(item?.genre_ids)
-        ? item.genre_ids.map((g: any) => Number(g)).filter((g: number) => Number.isFinite(g))
-        : [];
-      const text = `${String(item?.title || "")} ${String(item?.synopsis || "")} ${String(item?.overview || "")}`.toLowerCase();
-      const moodGenre = genreMap[selectedMood];
-      const moodWords = keywordMap[selectedMood];
-      const matchByGenre = genres.some((g: number) => moodGenre.includes(g));
-      const matchByText = moodWords.some((w) => text.includes(w));
-      if (matchByGenre || matchByText) out.push(item);
-      if (out.length >= 20) break;
-    }
-    return out;
-  }, [hiddenGems, newReleases, popular, recommendedForYou, selectedMood, topRated, trending]);
+    const candidates = [
+      ...recommendedForYou.map((item) => ({ item, source: "recommended" })),
+      ...becauseYouWatched.map((item) => ({ item, source: "because" })),
+      ...topRated.map((item) => ({ item, source: "topRated" })),
+      ...trending.map((item) => ({ item, source: "trending" })),
+      ...popular.map((item) => ({ item, source: "popular" })),
+      ...newReleases.map((item) => ({ item, source: "newReleases" })),
+      ...hiddenGems.map((item) => ({ item, source: "hiddenGems" })),
+      ...acclaimed.map((item) => ({ item, source: "acclaimed" })),
+    ];
+    return buildMoodRecommendations(selectedMood, candidates, watchHistory as any, "movie", 20);
+  }, [acclaimed, becauseYouWatched, hiddenGems, newReleases, popular, recommendedForYou, selectedMood, topRated, trending, watchHistory]);
 
   // Continue Watching — movies from watch history
-  const continueWatching = useMemo(() => {
-    return watchHistory
-      .filter(h => h.type === "movie" && !h.id.startsWith("sport_") && h.progress && h.progress > 0 && h.progress < 0.95)
-      .slice(0, 20)
-      .map(h => ({
-        id: h.id,
-        title: h.title,
-        poster: h.poster || null,
-        backdrop: h.backdrop || null,
-        synopsis: "",
-        year: undefined,
-        imdb: undefined,
-        genre: [],
-        quality: "HD",
-        isIptv: false,
-        progress: h.progress,
-      }));
-  }, [watchHistory]);
+  const continueWatching = useMemo(
+    () => createContinueWatching(watchHistory as any, "movie", 20) as any[],
+    [watchHistory]
+  );
 
   // Recently watched — for "Watch Again" row
   const recentlyWatched = useMemo(() => {
@@ -476,43 +439,72 @@ export default function MoviesScreen() {
     }
   }, [categoryExtras]);
 
-  // ── Deduplicate: build set of IDs already shown in all base rows ───────────
+  const curatedRows = useMemo(() => {
+    return applyGlobalUniqueness([
+      { key: "continue", items: continueWatching as any[] },
+      { key: "because", items: becauseYouWatched as any[] },
+      { key: "watchAgain", items: recentlyWatched as any[] },
+      { key: "recommended", items: recommendedForYou as any[] },
+      { key: "mood", items: moodPicks as any[] },
+      { key: "trending", items: trending as any[] },
+      { key: "newReleases", items: newReleases as any[] },
+      { key: "topRated", items: topRated as any[] },
+      { key: "popular", items: popular as any[] },
+      { key: "hiddenGems", items: hiddenGems as any[] },
+      { key: "acclaimed", items: acclaimed as any[] },
+      { key: "upcoming", items: upcoming as any[] },
+    ]);
+  }, [acclaimed, becauseYouWatched, continueWatching, hiddenGems, moodPicks, newReleases, popular, recentlyWatched, recommendedForYou, topRated, trending, upcoming]);
+
+  const dedupRows = useMemo(() => ({
+    continue: (curatedRows.continue || []) as any[],
+    because: (curatedRows.because || []) as any[],
+    watchAgain: (curatedRows.watchAgain || []) as any[],
+    recommended: (curatedRows.recommended || []) as any[],
+    mood: (curatedRows.mood || []) as any[],
+    trending: (curatedRows.trending || []) as any[],
+    newReleases: (curatedRows.newReleases || []) as any[],
+    topRated: (curatedRows.topRated || []) as any[],
+    popular: (curatedRows.popular || []) as any[],
+    hiddenGems: (curatedRows.hiddenGems || []) as any[],
+    acclaimed: (curatedRows.acclaimed || []) as any[],
+    upcoming: (curatedRows.upcoming || []) as any[],
+  }), [curatedRows]);
+
+  const dedupContinueWatching = dedupRows.continue;
+  const dedupBecauseYouWatched = dedupRows.because;
+  const dedupWatchAgain = dedupRows.watchAgain;
+  const dedupRecommendedForYou = dedupRows.recommended;
+  const dedupMoodPicks = dedupRows.mood;
+  const dedupTrending = dedupRows.trending;
+  const dedupNewReleases = dedupRows.newReleases;
+  const dedupTopRated = dedupRows.topRated;
+  const dedupPopular = dedupRows.popular;
+  const dedupHiddenGems = dedupRows.hiddenGems;
+  const dedupAcclaimed = dedupRows.acclaimed;
+  const dedupUpcoming = dedupRows.upcoming;
+
   const baseSeenIds = useMemo(() => {
     const seen = new Set<string>();
-    [trending, newReleases, topRated, popular, upcoming, hiddenGems, acclaimed].forEach(arr =>
-      arr.forEach((m: any) => seen.add(m.id))
-    );
-    return seen;
-  }, [trending, newReleases, topRated, popular, upcoming, hiddenGems, acclaimed]);
-
-  // Normalize title for dedup: lowercase, strip non-alphanumeric
-  const normalizeTitle = (title: string, year?: string | number) => {
-    const t = (title || "").toLowerCase().replace(/[^a-z0-9]/g, "");
-    return year ? `${t}__${String(year).slice(0, 4)}` : t;
-  };
-
-  // Deduplicate each base list against earlier categories (by ID + normalized title+year)
-  const [dedupTrending, dedupNewReleases, dedupTopRated, dedupPopular, dedupUpcoming, dedupHiddenGems, dedupAcclaimed] = useMemo(() => {
-    const seenIds = new Set<string>();
-    const seenTitles = new Set<string>();
-    const dedup = (arr: any[]) => arr.filter((m: any) => {
-      if (seenIds.has(m.id)) return false;
-      const norm = normalizeTitle(m.title, m.year);
-      if (norm.length > 3 && seenTitles.has(norm)) return false;
-      seenIds.add(m.id);
-      if (norm.length > 3) seenTitles.add(norm);
-      return true;
+    [
+      ...dedupContinueWatching,
+      ...dedupBecauseYouWatched,
+      ...dedupWatchAgain,
+      ...dedupRecommendedForYou,
+      ...dedupMoodPicks,
+      ...dedupTrending,
+      ...dedupNewReleases,
+      ...dedupTopRated,
+      ...dedupPopular,
+      ...dedupHiddenGems,
+      ...dedupAcclaimed,
+      ...dedupUpcoming,
+    ].forEach((item: any) => {
+      const key = String(item?.tmdbId || item?.id || "").trim();
+      if (key) seen.add(key);
     });
-    return [
-      dedup(trending),
-      dedup(newReleases),
-      dedup(topRated),
-      dedup(popular),
-      dedup(upcoming),
-      dedup(hiddenGems),
-      dedup(acclaimed),
-    ];
-  }, [trending, newReleases, topRated, popular, upcoming, hiddenGems, acclaimed]);
+    return seen;
+  }, [dedupAcclaimed, dedupBecauseYouWatched, dedupContinueWatching, dedupHiddenGems, dedupMoodPicks, dedupNewReleases, dedupPopular, dedupRecommendedForYou, dedupTopRated, dedupTrending, dedupUpcoming, dedupWatchAgain]);
 
   const filteredTmdb = useMemo(() => {
     if (!search.trim()) return null;
@@ -542,10 +534,10 @@ export default function MoviesScreen() {
     return [...exact, ...partial];
   }, [search, trending, newReleases, topRated, popular, upcoming, hiddenGems, acclaimed, serverResults]);
 
-  const renderCard = useCallback((item: any, showProgress = false) => (
+  const renderCard = useCallback((item: any, showProgress = false, onPressOverride?: () => void) => (
     <RealContentCard
       item={{ ...item, isIptv: item.isIptv ?? false }}
-      onPress={() => goToDetail(item)}
+      onPress={onPressOverride || (() => goToDetail(item))}
       onFavorite={() => toggleFavorite(item.id)}
       isFavorite={isFavorite(item.id)}
       showProgress={showProgress}
@@ -642,6 +634,7 @@ export default function MoviesScreen() {
 
   const renderSimpleRow = (title: string, items: any[], keyPrefix: string, showProgress = false) => {
     if (items.length === 0) return null;
+    const resumeRow = keyPrefix === "continue";
     return (
       <View style={styles.section} key={keyPrefix}>
         <Text style={styles.sectionTitle}>{title}</Text>
@@ -649,7 +642,7 @@ export default function MoviesScreen() {
           horizontal
           data={items}
           keyExtractor={(item: any) => `${keyPrefix}-${item.id}`}
-          renderItem={({ item }: any) => renderCard(item, showProgress)}
+          renderItem={({ item }: any) => renderCard(item, showProgress, resumeRow ? () => goToPlayer(item) : undefined)}
           contentContainerStyle={styles.carouselPadding}
           showsHorizontalScrollIndicator={false}
           initialNumToRender={4}
@@ -781,23 +774,23 @@ export default function MoviesScreen() {
               </View>
 
               {/* Continue Watching — always mounted */}
-              <View style={continueWatching.length > 0 ? undefined : { display: "none" }}>
-                {renderSimpleRow("Continue Watching", continueWatching, "continue", true)}
+              <View style={dedupContinueWatching.length > 0 ? undefined : { display: "none" }}>
+                {renderSimpleRow("Continue Watching", dedupContinueWatching, "continue", true)}
               </View>
 
               {/* Because You Watched [Title] */}
-              <View style={becauseYouWatched.length > 0 && lastWatchedMovie ? undefined : { display: "none" }}>
-                {renderSimpleRow(`Because You Watched ${lastWatchedMovie?.title || ""}`, becauseYouWatched, "because-you-watched")}
+              <View style={dedupBecauseYouWatched.length > 0 && lastWatchedMovie ? undefined : { display: "none" }}>
+                {renderSimpleRow(`Because You Watched ${lastWatchedMovie?.title || ""}`, dedupBecauseYouWatched, "because-you-watched")}
               </View>
 
               {/* Watch Again — right after Because You Watched */}
-              <View style={recentlyWatched.length > 0 ? undefined : { display: "none" }}>
-                {renderSimpleRow("Watch Again", recentlyWatched, "watch-again")}
+              <View style={dedupWatchAgain.length > 0 ? undefined : { display: "none" }}>
+                {renderSimpleRow("Watch Again", dedupWatchAgain, "watch-again")}
               </View>
 
               {/* Recommended For You */}
-              <View style={recommendedForYou.length > 0 ? undefined : { display: "none" }}>
-                {renderSimpleRow("Recommended For You", recommendedForYou, "rec-for-you")}
+              <View style={dedupRecommendedForYou.length > 0 ? undefined : { display: "none" }}>
+                {renderSimpleRow("Recommended For You", dedupRecommendedForYou, "rec-for-you")}
               </View>
 
               {/* Mood-based smart picks */}
@@ -823,7 +816,7 @@ export default function MoviesScreen() {
                   contentContainerStyle={styles.moodRow}
                   showsHorizontalScrollIndicator={false}
                 />
-                {renderSimpleRow(`${MOOD_OPTIONS.find((m) => m.id === selectedMood)?.emoji || ""} ${MOOD_OPTIONS.find((m) => m.id === selectedMood)?.label || "Mood"} Picks`, moodPicks, `mood-${selectedMood}`)}
+                {renderSimpleRow(`${MOOD_OPTIONS.find((m) => m.id === selectedMood)?.emoji || ""} ${MOOD_OPTIONS.find((m) => m.id === selectedMood)?.label || "Mood"} Picks`, dedupMoodPicks, `mood-${selectedMood}`)}
               </View>
 
               {/* IPTV Playlist - always mounted */}
@@ -936,7 +929,7 @@ export default function MoviesScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
-  searchRow: { flexDirection: "row", alignItems: "center", backgroundColor: "rgba(255,255,255,0.04)", borderRadius: 12, marginHorizontal: 16, marginTop: 10, marginBottom: 14, borderWidth: 0.5, borderColor: "rgba(255,255,255,0.06)" },
+  searchRow: { flexDirection: "row", alignItems: "center", backgroundColor: "rgba(255,255,255,0.05)", borderRadius: 14, marginHorizontal: 16, marginTop: 12, marginBottom: 18, borderWidth: 1, borderColor: "rgba(255,255,255,0.08)" },
   searchInput: { flex: 1, height: 42, paddingHorizontal: 10, fontFamily: "Inter_400Regular", fontSize: 14, color: COLORS.text },
   heroFrame: {
     marginBottom: 8,
@@ -995,18 +988,18 @@ const styles = StyleSheet.create({
   },
   errorText: { fontFamily: "Inter_500Medium", fontSize: 12, color: COLORS.textSecondary, flex: 1 },
   errorCodeText: { fontFamily: "Inter_400Regular", fontSize: 10, color: COLORS.textMuted },
-  section: { marginBottom: 28 },
-  sectionHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingHorizontal: 20, marginBottom: 12 },
-  sectionTitle: { fontFamily: "Inter_700Bold", fontSize: 18, color: COLORS.text, paddingHorizontal: 20, marginBottom: 12 },
-  sectionHeaderTitle: { fontFamily: "Inter_700Bold", fontSize: 18, color: COLORS.text },
+  section: { marginBottom: 34 },
+  sectionHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingHorizontal: 20, marginBottom: 14 },
+  sectionTitle: { fontFamily: "Inter_700Bold", fontSize: 19, color: COLORS.text, paddingHorizontal: 20, marginBottom: 14 },
+  sectionHeaderTitle: { fontFamily: "Inter_700Bold", fontSize: 19, color: COLORS.text },
   seeAllBtn: { flexDirection: "row", alignItems: "center", gap: 2 },
   seeAllText: { fontFamily: "Inter_500Medium", fontSize: 12, color: COLORS.accent },
-  carouselPadding: { paddingHorizontal: 20, paddingRight: 8 },
+  carouselPadding: { paddingHorizontal: 20, paddingRight: 16 },
   loadMoreBtn: {
     width: 64, alignItems: "center", justifyContent: "center", gap: 4,
     backgroundColor: COLORS.cardElevated, borderRadius: 12,
     borderWidth: 0.5, borderColor: "rgba(255,255,255,0.06)",
-    marginLeft: 6, marginRight: 20, height: 203,
+    marginLeft: 8, marginRight: 20, height: 203,
   },
   loadMoreText: { fontFamily: "Inter_600SemiBold", fontSize: 11, color: COLORS.accent },
 });

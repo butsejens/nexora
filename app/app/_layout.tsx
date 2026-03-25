@@ -11,6 +11,7 @@ import { Stack, router } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import React, { useEffect, useRef, useState } from "react";
 import { Platform, Linking } from "react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
@@ -27,39 +28,85 @@ import * as FileSystem from "expo-file-system/legacy";
 import * as IntentLauncher from "expo-intent-launcher";
 import Constants from "expo-constants";
 import { COLORS } from "@/constants/colors";
+import {
+  preloadDiskCache,
+  cacheSet,
+  cacheGet,
+  TTL,
+} from "@/lib/app-cache";
 
-// Prefetch key API data into React Query cache so screens load instantly
+// ─── Persistent cache keys (must match what screens useQuery with) ────────────
+const PREFETCH_ENTRIES = (today: string) => [
+  { queryKey: ["movies", "trending"],  cacheKey: "movies:trending",   ttlMs: TTL.TRENDING },
+  { queryKey: ["movies", "genres"],    cacheKey: "movies:genres",     ttlMs: TTL.GENRES   },
+  { queryKey: ["series", "trending"],  cacheKey: "series:trending",   ttlMs: TTL.TRENDING },
+  { queryKey: ["series", "genres"],    cacheKey: "series:genres",     ttlMs: TTL.GENRES   },
+  { queryKey: ["sports", "highlights"],cacheKey: "sports:highlights", ttlMs: TTL.HIGHLIGHTS},
+  { queryKey: ["sports", "today", today], cacheKey: `sports:today:${today}`, ttlMs: TTL.SPORTS_TODAY },
+];
+
+// Seed the QueryClient from disk cache so screens render instantly on cold start.
+function seedQueryClientFromCache() {
+  const today = new Date().toISOString().slice(0, 10);
+  for (const { queryKey, cacheKey } of PREFETCH_ENTRIES(today)) {
+    const cached = cacheGet(cacheKey);
+    if (cached != null) {
+      queryClient.setQueryData(queryKey, cached);
+    }
+  }
+}
+
+// Prefetch key API data, writing results to both QueryClient and disk cache.
 function prefetchHomeData() {
   const today = new Date().toISOString().slice(0, 10);
   const date = encodeURIComponent(today);
-  const fetcher = async (path: string) => {
-    const res = await apiRequest("GET", path);
-    return res.json();
+
+  const fetchAndCache = async (path: string, ck: string, ttl: number, queryKey: readonly unknown[]) => {
+    try {
+      const res = await apiRequest("GET", path);
+      const data = await res.json();
+      cacheSet(ck, data, ttl);
+      queryClient.setQueryData(queryKey, data);
+      return data;
+    } catch {
+      return undefined;
+    }
   };
-  // — Sports home (live, today, tools, highlights) —
-  queryClient.prefetchQuery({ queryKey: ["sports", "live", today], queryFn: () => fetcher(`/api/sports/live?date=${date}`), staleTime: 4_000 });
-  queryClient.prefetchQuery({ queryKey: ["sports", "today", today], queryFn: () => fetcher(`/api/sports/by-date?date=${date}`), staleTime: 30_000 });
-  queryClient.prefetchQuery({ queryKey: ["sports", "menu-tools", today, "all"], queryFn: () => fetcher(`/api/sports/menu-tools?date=${date}&league=all`), staleTime: 20_000 });
-  queryClient.prefetchQuery({ queryKey: ["sports", "highlights"], queryFn: () => fetcher("/api/sports/highlights"), staleTime: 10 * 60 * 1000 });
-  // — Standings + top scorers for key leagues (with full photo enrichment) —
+
+  // — Sports home —
+  fetchAndCache(`/api/sports/live?date=${date}`,         "sports:live:" + today,            TTL.LIVE,         ["sports", "live", today]);
+  fetchAndCache(`/api/sports/by-date?date=${date}`,      `sports:today:${today}`,           TTL.SPORTS_TODAY, ["sports", "today", today]);
+  fetchAndCache(`/api/sports/menu-tools?date=${date}&league=all`, `sports:menu-tools:${today}`, TTL.HIGHLIGHTS, ["sports", "menu-tools", today, "all"]);
+  fetchAndCache("/api/sports/highlights",                "sports:highlights",               TTL.HIGHLIGHTS,   ["sports", "highlights"]);
+
+  // — Standings + top scorers for key leagues —
   const leagues = ["bel.1", "eng.1", "esp.1", "ger.1", "ita.1", "fra.1", "ned.1", "uefa.champions"];
   for (const league of leagues) {
-    queryClient.prefetchQuery({ queryKey: ["standings", league], queryFn: () => fetcher(`/api/sports/standings/${league}`), staleTime: 90_000 });
-    queryClient.prefetchQuery({ queryKey: ["topscorers", league], queryFn: () => fetcher(`/api/sports/topscorers/${league}`), staleTime: 90_000 });
+    fetchAndCache(`/api/sports/standings/${league}`,  `standings:${league}`,  TTL.STANDINGS, ["standings", league]);
+    fetchAndCache(`/api/sports/topscorers/${league}`, `topscorers:${league}`, TTL.STANDINGS, ["topscorers", league]);
   }
-  // — Movies & Series (trending + genres for instant tab loading) —
-  queryClient.prefetchQuery({ queryKey: ["movies", "trending"], queryFn: () => fetcher("/api/movies/trending"), staleTime: 5 * 60 * 1000 });
-  queryClient.prefetchQuery({ queryKey: ["movies", "genres"], queryFn: () => fetcher("/api/movies/genres-catalog?page=1"), staleTime: 10 * 60 * 1000 });
-  queryClient.prefetchQuery({ queryKey: ["series", "trending"], queryFn: () => fetcher("/api/series/trending"), staleTime: 5 * 60 * 1000 });
-  queryClient.prefetchQuery({ queryKey: ["series", "genres"], queryFn: () => fetcher("/api/series/genres-catalog?page=1"), staleTime: 10 * 60 * 1000 });
+
+  // — Movies & Series —
+  fetchAndCache("/api/movies/trending",          "movies:trending", TTL.TRENDING, ["movies", "trending"]);
+  fetchAndCache("/api/movies/genres-catalog?page=1", "movies:genres", TTL.GENRES, ["movies", "genres"]);
+  fetchAndCache("/api/series/trending",          "series:trending", TTL.TRENDING, ["series", "trending"]);
+  fetchAndCache("/api/series/genres-catalog?page=1", "series:genres", TTL.GENRES, ["series", "genres"]);
 }
+
 SplashScreen.preventAutoHideAsync();
 
+// In-memory flags (reset on cold app start)
 let hasCompletedBootOnce = false;
 let hasShownIntroOnce = false;
 let hasCheckedOtaUpdateOnce = false;
 let hasCheckedServerUpdateOnce = false;
+
+// Persistent boot flag key — written after first boot so subsequent cold
+// starts skip the boot screen entirely.
+const BOOT_FLAG_KEY = "nexora_booted_v1";
 let otaCheckDone: Promise<boolean> | null = null;
+// Signals that the disk cache has been loaded into memory
+let diskCacheReady = false;
 
 function compareVersions(a: string, b: string): number {
   const pa = String(a || "")
@@ -139,9 +186,9 @@ export default function RootLayout() {
   const [fontFallbackReady, setFontFallbackReady] = useState(false);
   const bootStartedRef = useRef(false);
 
-  // 7s font fallback
+  // 3s font fallback (reduced from 7s – fonts rarely take this long)
   useEffect(() => {
-    const timer = setTimeout(() => setFontFallbackReady(true), 7000);
+    const timer = setTimeout(() => setFontFallbackReady(true), 3000);
     return () => clearTimeout(timer);
   }, []);
 
@@ -152,7 +199,12 @@ export default function RootLayout() {
     }
   }, [fontsLoaded, fontFallbackReady]);
 
-  // Boot sequence — start immediately when fonts are ready (parallel with intro)
+  // Boot sequence — starts immediately when fonts are ready.
+  // Strategy:
+  //   1. Load disk cache → seed QueryClient (instant, no network)
+  //   2. Check AsyncStorage boot flag — if already booted, skip screen entirely
+  //   3. Fire prefetch + warmup (non-blocking)
+  //   4. Complete boot in ≤ 1.5 s regardless of server response
   useEffect(() => {
     if (hasCompletedBootOnce) {
       setBootDone(true);
@@ -165,47 +217,58 @@ export default function RootLayout() {
 
     let mounted = true;
     const messages = [
-      "Fonts en resources laden...",
-      "Cloud API verbinding controleren...",
-      "Kanaallijsten synchroniseren...",
       "Interface voorbereiden...",
+      "Content laden...",
+      "Bijna klaar...",
     ];
     let messageIndex = 0;
 
+    // Progress bar animates quickly — boot completes in ~1-1.5s
     const progressTimer = setInterval(() => {
       if (!mounted) return;
-      setBootProgress((p) => Math.min(92, p + Math.max(2, Math.round((100 - p) * 0.12))));
+      setBootProgress((p) => Math.min(92, p + Math.max(4, Math.round((100 - p) * 0.22))));
       messageIndex = Math.min(messages.length - 1, messageIndex + 1);
       setBootMessage(messages[messageIndex]);
-    }, 450);
+    }, 300);
 
     (async () => {
       try {
-        if (fontsLoaded || fontFallbackReady) {
-          setBootMessage("Server status controleren...");
-          const candidates = getApiBaseCandidates();
-          if (candidates.length > 0) {
-            const isCloud = candidates[0].startsWith("https://");
-            if (isCloud) setBootMessage("Server aan het opstarten...");
-            await Promise.race([
-              fetch(`${candidates[0]}/health`).catch(() => null),
-              new Promise((resolve) => setTimeout(resolve, isCloud ? 5000 : 2500)),
-            ]);
-            // Server is reachable — start prefetching data in the background
-            prefetchHomeData();
-            // Warmup player images + profiles globally so team/player navigation stays instant.
-            startPlayerImageWarmup(queryClient).catch(() => undefined);
-          } else {
-            await new Promise((resolve) => setTimeout(resolve, 900));
-          }
+        // Step 1: load disk cache and immediately seed QueryClient
+        if (!diskCacheReady) {
+          await preloadDiskCache();
+          seedQueryClientFromCache();
+          diskCacheReady = true;
         }
-        await new Promise((resolve) => setTimeout(resolve, 500));
+
+        // Step 2: check persistent boot flag — if already booted once, skip
+        const bootFlag = await AsyncStorage.getItem(BOOT_FLAG_KEY).catch(() => null);
+        if (bootFlag) {
+          hasCompletedBootOnce = true;
+          // Still fire background refresh and warmup
+          prefetchHomeData();
+          startPlayerImageWarmup(queryClient).catch(() => undefined);
+          return; // completes in finally
+        }
+
+        // Step 3: fire prefetch and warmup — completely non-blocking
+        const candidates = getApiBaseCandidates();
+        if (candidates.length > 0) {
+          // Wake up server in background (fire and forget, no await)
+          fetch(`${candidates[0]}/health`).catch(() => null);
+          prefetchHomeData();
+          startPlayerImageWarmup(queryClient).catch(() => undefined);
+        }
+
+        // Step 4: wait a minimal time so the boot screen briefly shows
+        await new Promise((resolve) => setTimeout(resolve, 800));
       } finally {
         if (!mounted) return;
         clearInterval(progressTimer);
         setBootProgress(100);
         setBootMessage("Klaar");
         hasCompletedBootOnce = true;
+        // Persist so next cold start skips the boot screen
+        AsyncStorage.setItem(BOOT_FLAG_KEY, "1").catch(() => null);
         setBootDone(true);
       }
     })();
