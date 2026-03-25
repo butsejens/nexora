@@ -145,7 +145,7 @@ async function throwIfResNotOk(res: Response) {
 // Cloud URLs (https) may need to wake up from cold start → longer timeout
 // Local URLs (http) are either up or not → short timeout
 function timeoutForUrl(url: string): number {
-  return url.startsWith("https://") ? 15000 : 8000;
+  return url.startsWith("https://") ? 25000 : 8000;
 }
 
 async function fetchWithTimeout(url: string, init?: RequestInit, timeoutMs?: number): Promise<Response> {
