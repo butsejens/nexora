@@ -2,7 +2,7 @@ name = "nexora"
 main = "src/index.js"
 compatibility_date = "2026-03-25"
 workers_dev = true
-account_id = "REPLACE_WITH_YOUR_ACCOUNT_ID"
+account_id = "e0c4c6c4a7ecd8f9131e8e78cf731ed68585bfae0e8acae0b1ffd67edef24ae3"
 
 [vars]
 RENDER_SPORTS_ORIGIN = "https://nexora-api-8xxb.onrender.com"
