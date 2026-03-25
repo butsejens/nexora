@@ -27,6 +27,7 @@ import {
   loadMoodPreferences, deriveMoodPreferences,
   pruneExpiredFollowedMatches,
 } from "@/lib/services/user-state-service";
+import { ensureMatchNotificationPermission } from "@/lib/match-notifications";
 import type {
   FollowedTeam, FollowedMatch, WatchHistoryItem, MoodPreference, WatchProgress,
   EntityId,
@@ -93,6 +94,10 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
 
         // Prune expired followed matches in background
         pruneExpiredFollowedMatches().catch(() => {});
+        // Derive mood preferences from accumulated watch history in background
+        deriveMoodPreferences().then(fresh => {
+          if (active) setMoodPreferences(fresh);
+        }).catch(() => {});
       } catch {
         // Non-fatal — context works with empty defaults
       } finally {
@@ -130,6 +135,10 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
   const followMatchAction = useCallback(async (match: Omit<FollowedMatch, "followedAt">) => {
     const updated = await followMatch(match);
     setFollowedMatches(updated);
+    // Request notification permission if user opted in for this match
+    if (match.notificationsEnabled) {
+      ensureMatchNotificationPermission().catch(() => {/* non-fatal */});
+    }
   }, []);
 
   const unfollowMatchAction = useCallback(async (matchId: EntityId) => {
