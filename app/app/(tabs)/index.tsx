@@ -1496,6 +1496,20 @@ export default function SportsScreen() {
     [selectedCountryCode]
   );
 
+  const groupedSelectedCompetitions = useMemo(() => {
+    const order: CompetitionTier[] = ["division1", "division2", "cup", "national"];
+    const byTier = new Map<CompetitionTier, CountryCompetition[]>();
+    order.forEach((tier) => byTier.set(tier, []));
+    for (const comp of selectedCountry?.competitions || []) {
+      const bucket = byTier.get(comp.tier) || [];
+      bucket.push(comp);
+      byTier.set(comp.tier, bucket);
+    }
+    return order
+      .map((tier) => ({ tier, items: byTier.get(tier) || [] }))
+      .filter((x) => x.items.length > 0);
+  }, [selectedCountry]);
+
   const tierLabel = (tier: CompetitionTier) => {
     if (tier === "division1") return tFn("countries.tier1");
     if (tier === "division2") return tFn("countries.tier2");
@@ -1845,32 +1859,39 @@ export default function SportsScreen() {
 
             {/* ── ALLE COMPETITIES (selected country) ── */}
             <SectionTitle title={`${flagFromIso2(selectedCountryCode)} ${tFn(selectedCountry?.countryName || "")} · ${t("sportsHome.competitions")}`} accent />
-            <View style={styles.compListPanel}>
-              {(selectedCountry?.competitions || []).map((comp) => (
-                <TouchableOpacity
-                  key={comp.id}
-                  activeOpacity={0.75}
-                  style={styles.compListRow}
-                  onPress={() => {
-                    if (comp.tier === "national" && comp.nationalTeamName) {
-                      router.push({ pathname: "/team-detail", params: { teamId: `name:${encodeURIComponent(comp.nationalTeamName)}`, teamName: comp.nationalTeamName, sport: "soccer", league: comp.espn, espnLeague: comp.espn } });
-                    } else {
-                      handleCompetitionPress(comp);
-                    }
-                  }}
-                >
-                  <View style={[styles.compListAccent, { backgroundColor: comp.color }]} />
-                  <View style={[styles.compListIcon, { backgroundColor: `${comp.color}18` }]}>
-                    <Ionicons name={tierIcon(comp.tier) as any} size={16} color={comp.color} />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.compListName} numberOfLines={1}>{comp.league}</Text>
-                    <Text style={[styles.compListTier, { color: comp.color }]}>{tierLabel(comp.tier)}</Text>
-                  </View>
-                  <Ionicons name="chevron-forward" size={14} color={P.muted} />
-                </TouchableOpacity>
-              ))}
-            </View>
+            {groupedSelectedCompetitions.map((section) => (
+              <View key={section.tier} style={styles.compListPanel}>
+                <View style={styles.compSectionHead}>
+                  <Ionicons name={tierIcon(section.tier) as any} size={14} color={P.muted} />
+                  <Text style={styles.compSectionHeadText}>{tierLabel(section.tier)}</Text>
+                  <Text style={styles.compSectionHeadCount}>{section.items.length}</Text>
+                </View>
+                {section.items.map((comp) => (
+                  <TouchableOpacity
+                    key={comp.id}
+                    activeOpacity={0.75}
+                    style={styles.compListRow}
+                    onPress={() => {
+                      if (comp.tier === "national" && comp.nationalTeamName) {
+                        router.push({ pathname: "/team-detail", params: { teamId: `name:${encodeURIComponent(comp.nationalTeamName)}`, teamName: comp.nationalTeamName, sport: "soccer", league: comp.espn, espnLeague: comp.espn } });
+                      } else {
+                        handleCompetitionPress(comp);
+                      }
+                    }}
+                  >
+                    <View style={[styles.compListAccent, { backgroundColor: comp.color }]} />
+                    <View style={[styles.compListIcon, { backgroundColor: `${comp.color}18` }]}>
+                      <Ionicons name={tierIcon(comp.tier) as any} size={16} color={comp.color} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.compListName} numberOfLines={1}>{comp.league}</Text>
+                      <Text style={[styles.compListTier, { color: comp.color }]}>{tierLabel(comp.tier)}</Text>
+                    </View>
+                    <Ionicons name="chevron-forward" size={14} color={P.muted} />
+                  </TouchableOpacity>
+                ))}
+              </View>
+            ))}
 
           </>
         )}
@@ -2162,6 +2183,26 @@ const styles = StyleSheet.create({
     borderColor: P.border,
     backgroundColor: P.elevated,
     marginBottom: 6,
+  },
+  compSectionHead: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: P.border,
+    backgroundColor: "rgba(255,255,255,0.03)",
+  },
+  compSectionHeadText: { color: P.text, fontSize: 12, fontWeight: "700", flex: 1, letterSpacing: 0.3 },
+  compSectionHeadCount: {
+    color: P.muted,
+    fontSize: 11,
+    fontWeight: "700",
+    backgroundColor: "rgba(255,255,255,0.08)",
+    borderRadius: 10,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
   },
   compListRow: {
     flexDirection: "row",

@@ -104,6 +104,11 @@ function normalizePlayerDto(raw: any, params: {
     marketValue: normalizeText(raw?.marketValue || params.marketValue, tFn("common.notAvailable") || "Niet beschikbaar"),
     isRealValue: Boolean(raw?.isRealValue),
     valueMethod: normalizeText(raw?.valueMethod),
+    jerseyNumber: normalizeText(raw?.jerseyNumber, ""),
+    contractUntil: normalizeText(raw?.contractUntil, ""),
+    seasonStats: raw?.seasonStats || null,
+    recentForm: raw?.recentForm || null,
+    profileMeta: raw?.profileMeta || null,
     strengths: Array.isArray(raw?.strengths) ? raw.strengths : [],
     weaknesses: Array.isArray(raw?.weaknesses) ? raw.weaknesses : [],
     analysis: normalizeText(raw?.analysis, tFn("playerProfile.analysisTempUnavailable")),
@@ -285,11 +290,32 @@ export default function PlayerProfileScreen() {
             <Row label={t("playerProfile.birthDate")} value={data?.birthDate ? formatDisplayDate(data.birthDate) : UNKNOWN} />
             <Row label={t("playerProfile.nationality")} value={normalizeText(data?.nationality || params.nationality)} />
             <Row label={t("playerProfile.position")} value={normalizeText(data?.position || params.position)} />
+            <Row label={t("playerProfile.jerseyNumber") || "Rugnummer"} value={normalizeText(data?.jerseyNumber, t("common.notAvailable") || "Niet beschikbaar")} />
+            <Row label={t("playerProfile.contractUntil") || "Contract"} value={normalizeText(data?.contractUntil, t("common.notAvailable") || "Niet beschikbaar")} />
             <Row label={t("playerProfile.height")} value={normalizeText(data?.height)} />
             <Row label={t("playerProfile.weight")} value={normalizeText(data?.weight)} />
             <ClubRow label={t("playerProfile.currentClub")} value={normalizeText(data?.currentClub || params.team)} logo={data?.currentClubLogo} />
             <Row label={t("playerProfile.marketValue")} value={normalizeText(data?.marketValue || params.marketValue, t("playerProfile.valueUnknown"))} />
             <Row label={t("playerProfile.lastUpdated")} value={formatUpdatedAt(data?.updatedAt)} />
+          </Card>
+
+          <Card title={t("playerProfile.seasonStats") || "Season stats"}>
+            <StatsGrid
+              items={[
+                { label: t("playerProfile.appearances") || "Matches", value: data?.seasonStats?.appearances },
+                { label: t("playerProfile.goals") || "Goals", value: data?.seasonStats?.goals },
+                { label: t("playerProfile.assists") || "Assists", value: data?.seasonStats?.assists },
+                { label: t("playerProfile.minutes") || "Minutes", value: data?.seasonStats?.minutes },
+                { label: t("playerProfile.starts") || "Starts", value: data?.seasonStats?.starts },
+                { label: t("playerProfile.rating") || "Rating", value: data?.seasonStats?.rating },
+              ]}
+            />
+            {data?.recentForm?.contributionLabel ? (
+              <View style={styles.formBadge}>
+                <Ionicons name="trending-up-outline" size={12} color="#7EE787" />
+                <Text style={styles.formBadgeText}>{data.recentForm.contributionLabel}</Text>
+              </View>
+            ) : null}
           </Card>
 
           <Card title={t("playerProfile.analysis")}>
@@ -409,6 +435,23 @@ function Bullet({ text, good = false }: { text: string; good?: boolean }) {
   );
 }
 
+function StatsGrid({ items }: { items: { label: string; value: any }[] }) {
+  const cleaned = items.filter((x) => x?.label);
+  return (
+    <View style={styles.statsGrid}>
+      {cleaned.map((item, idx) => {
+        const hasValue = item?.value != null && String(item.value).trim() !== "" && String(item.value) !== "0";
+        return (
+          <View key={`${item.label}_${idx}`} style={styles.statCard}>
+            <Text style={styles.statLabel} numberOfLines={1}>{item.label}</Text>
+            <Text style={styles.statValue}>{hasValue ? String(item.value) : (tFn("common.notAvailable") || "Niet beschikbaar")}</Text>
+          </View>
+        );
+      })}
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
   header: { paddingHorizontal: 16, paddingBottom: 16 },
@@ -448,6 +491,33 @@ const styles = StyleSheet.create({
   bulletBad: { backgroundColor: COLORS.live },
   bulletText: { fontFamily: "Inter_500Medium", fontSize: 12, color: COLORS.text, flexShrink: 1 },
   placeholder: { fontFamily: "Inter_400Regular", fontSize: 13, color: COLORS.textMuted },
+  statsGrid: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  statCard: {
+    width: "48%",
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: "rgba(255,255,255,0.02)",
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    gap: 4,
+  },
+  statLabel: { fontFamily: "Inter_500Medium", fontSize: 11, color: COLORS.textMuted },
+  statValue: { fontFamily: "Inter_700Bold", fontSize: 13, color: COLORS.text },
+  formBadge: {
+    marginTop: 10,
+    alignSelf: "flex-start",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 20,
+    backgroundColor: "rgba(126,231,135,0.12)",
+    borderWidth: 1,
+    borderColor: "rgba(126,231,135,0.34)",
+  },
+  formBadgeText: { fontFamily: "Inter_600SemiBold", fontSize: 12, color: "#7EE787" },
   clubRow: { flexDirection: "row", alignItems: "center", gap: 8, borderBottomWidth: 1, borderBottomColor: COLORS.border, paddingVertical: 7 },
   clubName: { fontFamily: "Inter_500Medium", fontSize: 13, color: COLORS.text, flex: 1 },
   clubDate: { fontFamily: "Inter_400Regular", fontSize: 11, color: COLORS.textMuted },

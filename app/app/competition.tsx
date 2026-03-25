@@ -12,6 +12,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { useQuery } from "@tanstack/react-query";
 import { COLORS } from "@/constants/colors";
 import { apiRequest } from "@/lib/query-client";
+import { fetchSportsLeagueResourceWithFallback } from "@/lib/sports-data";
 import { normalizeApiError } from "@/lib/error-messages";
 import { getLeagueLogo } from "@/lib/logo-manager";
 import { TeamLogo } from "@/components/TeamLogo";
@@ -154,46 +155,12 @@ const storyStyles = StyleSheet.create({
 
 export default function CompetitionScreen() {
     const fetchLeaguePayloadWithFallback = async (kind: "standings" | "topscorers" | "topassists" | "competition-stats") => {
-      const candidates = Array.from(new Set([leagueName, espnLeague].filter(Boolean)));
-      const fetchCandidate = async (candidate: string) => {
-        try {
-          const res = await apiRequest("GET", `/api/sports/${kind}/${encodeURIComponent(candidate)}`);
-          const json = await res.json();
-          let count = 0;
-          if (kind === "standings") count = Array.isArray(json?.standings) ? json.standings.length : 0;
-          else if (kind === "topscorers") count = Array.isArray(json?.scorers) ? json.scorers.length : 0;
-          else if (kind === "topassists") count = Array.isArray(json?.assists) ? json.assists.length : 0;
-          else if (kind === "competition-stats") count = json?.totalGoals != null ? 1 : 0;
-          return { json, count, candidate };
-        } catch {
-          return { json: null as any, count: 0, candidate };
-        }
-      };
-
-      if (kind === "topscorers" || kind === "topassists") {
-        let best: { json: any; count: number; candidate: string } = { json: {}, count: 0, candidate: candidates[0] || "" };
-        for (const candidate of candidates) {
-          const result = await fetchCandidate(candidate);
-          if (result.count > best.count || (result.count === best.count && !result.json?.error && best.json?.error)) {
-            best = result;
-          }
-          if (result.count > 0 && !result.json?.error) {
-            return result.json;
-          }
-        }
-        return best?.json || {};
-      }
-
-      const responses = await Promise.all(candidates.map(fetchCandidate));
-
-      const best = responses.sort((a, b) => {
-        if (a.count !== b.count) return b.count - a.count;
-        const aPenalty = a.json?.error ? 1 : 0;
-        const bPenalty = b.json?.error ? 1 : 0;
-        return aPenalty - bPenalty;
-      })[0];
-
-      return best?.json || {};
+      return fetchSportsLeagueResourceWithFallback(kind, {
+        leagueName,
+        espnLeague,
+        // leaderboards are more latency-sensitive; sequential prevents duplicate heavy calls.
+        sequential: kind === "topscorers" || kind === "topassists",
+      });
     };
 
   const params = useLocalSearchParams<{ league: string; sport?: string; espnLeague?: string }>();
@@ -210,13 +177,7 @@ export default function CompetitionScreen() {
   const { data: standingsData, isLoading: standingsLoading, error: standingsQueryError } = useQuery({
     queryKey: ["standings", leagueName, espnLeague],
     queryFn: async () => {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 15000);
-      try {
-        const payload = await fetchLeaguePayloadWithFallback("standings");
-        clearTimeout(timeout);
-        return payload;
-      } catch (e) { clearTimeout(timeout); throw e; }
+      return fetchLeaguePayloadWithFallback("standings");
     },
     enabled: activeTab === "standings",
     staleTime: 5 * 60 * 1000,
@@ -226,13 +187,7 @@ export default function CompetitionScreen() {
   const { data: scorersData, isLoading: scorersLoading, error: scorersQueryError } = useQuery({
     queryKey: ["topscorers", leagueName, espnLeague],
     queryFn: async () => {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 20000);
-      try {
-        const payload = await fetchLeaguePayloadWithFallback("topscorers");
-        clearTimeout(timeout);
-        return payload;
-      } catch (e) { clearTimeout(timeout); throw e; }
+      return fetchLeaguePayloadWithFallback("topscorers");
     },
     enabled: activeTab === "scorers",
     staleTime: 5 * 60 * 1000,
@@ -242,13 +197,7 @@ export default function CompetitionScreen() {
   const { data: assistsData, isLoading: assistsLoading } = useQuery({
     queryKey: ["topassists", leagueName, espnLeague],
     queryFn: async () => {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 20000);
-      try {
-        const payload = await fetchLeaguePayloadWithFallback("topassists");
-        clearTimeout(timeout);
-        return payload;
-      } catch (e) { clearTimeout(timeout); throw e; }
+      return fetchLeaguePayloadWithFallback("topassists");
     },
     enabled: activeTab === "assists",
     staleTime: 5 * 60 * 1000,
@@ -258,13 +207,7 @@ export default function CompetitionScreen() {
   const { data: compStatsData, isLoading: compStatsLoading } = useQuery({
     queryKey: ["competition-stats", leagueName],
     queryFn: async () => {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 20000);
-      try {
-        const payload = await fetchLeaguePayloadWithFallback("competition-stats");
-        clearTimeout(timeout);
-        return payload;
-      } catch (e) { clearTimeout(timeout); throw e; }
+      return fetchLeaguePayloadWithFallback("competition-stats");
     },
     enabled: activeTab === "stats",
     staleTime: 10 * 60 * 1000,

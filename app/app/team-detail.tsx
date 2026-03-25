@@ -11,6 +11,7 @@ import { useQuery } from "@tanstack/react-query";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { COLORS } from "@/constants/colors";
 import { apiRequest } from "@/lib/query-client";
+import { fetchSportsLeagueResourceWithFallback } from "@/lib/sports-data";
 import { normalizeApiError } from "@/lib/error-messages";
 import { TeamLogo } from "@/components/TeamLogo";
 import { useNexora } from "@/context/NexoraContext";
@@ -177,8 +178,24 @@ export default function TeamDetailScreen() {
   const { data: scorersData } = useQuery({
     queryKey: ["topscorers", league],
     queryFn: async () => {
-      const res = await apiRequest("GET", `/api/sports/topscorers/${encodeURIComponent(league)}`);
-      return res.json();
+      return fetchSportsLeagueResourceWithFallback("topscorers", {
+        leagueName: data?.leagueName || leagueParam,
+        espnLeague: league,
+        sequential: true,
+      });
+    },
+    enabled: !!league && !isNationalTeam,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const { data: assistsData } = useQuery({
+    queryKey: ["topassists", league],
+    queryFn: async () => {
+      return fetchSportsLeagueResourceWithFallback("topassists", {
+        leagueName: data?.leagueName || leagueParam,
+        espnLeague: league,
+        sequential: true,
+      });
     },
     enabled: !!league && !isNationalTeam,
     staleTime: 5 * 60 * 1000,
@@ -240,6 +257,12 @@ export default function TeamDetailScreen() {
 
   const realValueCount = players.filter(p => p.isRealValue).length;
   const topScorerForTeam = ((scorersData?.scorers || []) as any[]).find((s) => {
+    const team = String(s?.team || "").toLowerCase();
+    const current = String(data?.name || teamNameParam || "").toLowerCase();
+    return team && current && (team.includes(current) || current.includes(team));
+  });
+
+  const topAssistForTeam = ((assistsData?.assists || []) as any[]).find((s) => {
     const team = String(s?.team || "").toLowerCase();
     const current = String(data?.name || teamNameParam || "").toLowerCase();
     return team && current && (team.includes(current) || current.includes(team));
@@ -328,6 +351,15 @@ export default function TeamDetailScreen() {
               <MaterialCommunityIcons name="trophy-outline" size={13} color={COLORS.gold} />
               <Text style={styles.topScorerText}>
                 {t("teamDetail.topScorerLabel", { name: topScorerForTeam.name, goals: String(topScorerForTeam.displayValue || topScorerForTeam.goals || 0) })}
+              </Text>
+            </View>
+          ) : null}
+
+          {topAssistForTeam ? (
+            <View style={styles.topAssistBadge}>
+              <MaterialCommunityIcons name="target" size={13} color="#4FC3F7" />
+              <Text style={styles.topAssistText}>
+                {t("teamDetail.topAssistLabel", { name: topAssistForTeam.name, assists: String(topAssistForTeam.displayValue || topAssistForTeam.assists || 0) }) || `${topAssistForTeam.name} · ${topAssistForTeam.displayValue || topAssistForTeam.assists || 0} assists`}
               </Text>
             </View>
           ) : null}
@@ -614,6 +646,13 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: "rgba(255,215,0,0.25)",
   },
   topScorerText: { fontFamily: "Inter_500Medium", fontSize: 11, color: COLORS.gold },
+  topAssistBadge: {
+    flexDirection: "row", alignItems: "center", gap: 5,
+    backgroundColor: "rgba(79,195,247,0.12)", borderRadius: 10,
+    paddingHorizontal: 10, paddingVertical: 4,
+    borderWidth: 1, borderColor: "rgba(79,195,247,0.28)",
+  },
+  topAssistText: { fontFamily: "Inter_500Medium", fontSize: 11, color: "#7DD3FC" },
   loadingState: { flex: 1, alignItems: "center", justifyContent: "center", gap: 12 },
   loadingText: { fontFamily: "Inter_400Regular", fontSize: 14, color: COLORS.textMuted },
   emptyState: { flex: 1, alignItems: "center", justifyContent: "center", gap: 12, paddingVertical: 40 },

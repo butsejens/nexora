@@ -62,6 +62,9 @@ export function formatDuration(ms: number): string {
  */
 export function flagFromIso2(code: string): string {
   const normalized = String(code || "").trim().toUpperCase();
+  if (normalized === "SCO" || normalized === "SCOTLAND" || normalized === "GB-SCT" || normalized === "SCT") {
+    return "🏴";
+  }
   if (!/^[A-Z]{2}$/.test(normalized)) return "🏳️";
   return String.fromCodePoint(
     ...normalized.split("").map((ch) => 127397 + ch.charCodeAt(0))

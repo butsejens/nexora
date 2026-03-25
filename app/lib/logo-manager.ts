@@ -184,6 +184,7 @@ const ESPN_TEAM_LOGO_IDS: Record<string, number> = {
   "virtus entella": 11137,
   // France - Ligue 1
   "paris saint germain": 160, "psg": 160, "marseille": 176, "lyon": 167,
+  "olympique lyonnais": 167, "olympique lyon": 167,
   "monaco": 174, "lille": 166, "rennes": 169, "nice": 2502, "lens": 175,
   "strasbourg": 180, "nantes": 165, "toulouse": 179, "brest": 6997,
   "reims": 3243, "montpellier": 274, "le havre": 3236, "angers": 7868,
@@ -311,28 +312,22 @@ export function resolveTeamLogoUri(teamName?: string, logoUri?: string | null): 
   // Try partial match: find ESPN entry where key matches as a whole word in normalized or vice versa
   if (normalized.length >= 4) {
     for (const [key, id] of Object.entries(ESPN_TEAM_LOGO_IDS)) {
-      // Use word-boundary matching to prevent "lille" matching "lilliestrom"
-      const keyRegex = new RegExp(`\\b${key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`);
-      const normRegex = new RegExp(`\\b${normalized.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`);
-      if (keyRegex.test(normalized) || normRegex.test(key)) {
-        return `https://a.espncdn.com/i/teamlogos/soccer/500/${id}.png`;
+      const keyParts = key.split(" ").filter(Boolean);
+      const normalizedParts = normalized.split(" ").filter(Boolean);
+      if (keyParts.length < 2) continue;
+      let overlap = 0;
+      for (const p of keyParts) {
+        if (normalizedParts.includes(p)) overlap += 1;
       }
+      const overlapRatio = overlap / Math.max(keyParts.length, 1);
+      if (overlapRatio >= 0.8) return `https://a.espncdn.com/i/teamlogos/soccer/500/${id}.png`;
     }
   }
 
   // National team fallback: try ESPN country logos
   const countryCode = NATIONAL_TEAM_CODES[normalized];
   if (countryCode) return `https://a.espncdn.com/i/teamlogos/countries/500/${countryCode}.png`;
-  // Partial match for national teams (word-boundary)
-  if (normalized.length >= 4) {
-    for (const [key, code] of Object.entries(NATIONAL_TEAM_CODES)) {
-      const keyRegex = new RegExp(`\\b${key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`);
-      const normRegex = new RegExp(`\\b${normalized.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`);
-      if (keyRegex.test(normalized) || normRegex.test(key)) {
-        return `https://a.espncdn.com/i/teamlogos/countries/500/${code}.png`;
-      }
-    }
-  }
+  // Keep national team lookup strict (exact aliases only) to avoid wrong-country matches.
 
   return null;
 }

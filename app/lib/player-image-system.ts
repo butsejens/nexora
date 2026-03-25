@@ -125,10 +125,14 @@ function normalizeNationality(value: Nullable<string>): string {
 function profileMatchesSeed(player: PlayerSeed, profile: any): boolean {
   if (!profile) return false;
 
+  const seedId = normalizeText(player.id);
+  const profileId = normalizeText(profile?.id);
+  if (/^\d+$/.test(seedId) && /^\d+$/.test(profileId) && seedId !== profileId) return false;
+
   const seedName = normalizeName(player.name);
   const profileName = normalizeName(profile?.name || profile?.fullName || profile?.displayName);
   const nameScore = scoreNameSimilarity(seedName, profileName);
-  if (seedName && profileName && nameScore < 0.72) return false;
+  if (seedName && profileName && nameScore < 0.58) return false;
 
   const seedTeam = normalizeName(player.team);
   const profileTeam = normalizeName(profile?.currentClub || profile?.team || profile?.club?.name);
@@ -139,11 +143,22 @@ function profileMatchesSeed(player: PlayerSeed, profile: any): boolean {
 
   const seedNat = normalizeNationality(player.nationality);
   const profileNat = normalizeNationality(profile?.nationality || profile?.citizenship);
-  if (seedNat && profileNat && seedNat !== profileNat) return false;
+  if (seedNat && profileNat) {
+    const natMatch = seedNat === profileNat || seedNat.includes(profileNat) || profileNat.includes(seedNat);
+    if (!natMatch) return false;
+  }
 
   const seedPos = normalizePosition(player.position);
   const profilePos = normalizePosition(profile?.position);
-  if (seedPos && profilePos && seedPos !== profilePos) return false;
+  if (seedPos && profilePos && seedPos !== profilePos) {
+    // Do not reject if one side is a broader category of the other.
+    const broadPosMatch =
+      (seedPos === "forward" && (profilePos === "wing" || profilePos === "forward")) ||
+      (profilePos === "forward" && (seedPos === "wing" || seedPos === "forward")) ||
+      (seedPos === "midfield" && profilePos === "midfield") ||
+      (seedPos === "defense" && profilePos === "defense");
+    if (!broadPosMatch) return false;
+  }
 
   const seedAge = readAge(player.age);
   const profileAge = readAge(profile?.age);

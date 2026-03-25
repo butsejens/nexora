@@ -885,16 +885,19 @@ function resolveFootballLogosUrl(teamName, leagueName) {
     }
   }
 
-  // Try partial key match: find alias keys that contain the normalized name or vice versa
-  if (!fileName && normalized.length >= 4) {
+  // Conservative word-boundary match only: avoids false positives like Lyon/"Olympique ..." mismatches.
+  if (!fileName && normalized.length >= 5) {
     const aliasKeys = Object.keys(TEAM_LOGO_ALIASES);
-    // Exact substring match — only if unambiguous
-    const candidates = aliasKeys.filter((k) => k === normalized || k.includes(normalized) || normalized.includes(k));
+    const tokens = normalized.split(" ").filter((t) => t.length >= 3);
+    const candidates = aliasKeys.filter((k) => {
+      if (k === normalized) return true;
+      const kTokens = k.split(" ").filter((t) => t.length >= 3);
+      if (tokens.length === 0 || kTokens.length === 0) return false;
+      const overlap = tokens.filter((t) => kTokens.includes(t)).length;
+      const overlapScore = overlap / Math.max(tokens.length, kTokens.length, 1);
+      return overlapScore >= 0.66;
+    });
     if (candidates.length === 1) {
-      fileName = TEAM_LOGO_ALIASES[candidates[0]];
-    } else if (candidates.length > 1) {
-      // Pick the closest length match
-      candidates.sort((a, b) => Math.abs(a.length - normalized.length) - Math.abs(b.length - normalized.length));
       fileName = TEAM_LOGO_ALIASES[candidates[0]];
     }
   }
@@ -966,6 +969,21 @@ function normalizeRemoteMediaUrl(candidate, { allowSvg = false } = {}) {
     return parsed.toString();
   } catch {
     return null;
+  }
+}
+
+function redactSensitiveUrl(url) {
+  try {
+    const parsed = new URL(String(url || ""));
+    const sensitiveParams = ["token", "apikey", "api_key", "key", "access_token", "auth", "authorization"];
+    for (const key of sensitiveParams) {
+      if (parsed.searchParams.has(key)) {
+        parsed.searchParams.set(key, "REDACTED");
+      }
+    }
+    return parsed.toString();
+  } catch {
+    return String(url || "");
   }
 }
 
@@ -1391,10 +1409,13 @@ async function apifyRunActor(actorId, input = {}) {
 
   try {
     // run-sync-get-dataset-items: starts actor, waits for completion, returns items directly
-    const url = `${APIFY_BASE}/acts/${encodeURIComponent(actor)}/run-sync-get-dataset-items?token=${encodeURIComponent(token)}&clean=true&limit=10`;
+    const url = `${APIFY_BASE}/acts/${encodeURIComponent(actor)}/run-sync-get-dataset-items?clean=true&limit=10`;
     const resp = await fetch(url, {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${token}`,
+      },
       body: JSON.stringify(input || {}),
       signal: AbortSignal.timeout(120_000), // 2 min max (Apify actors can take 30-90s)
     });
@@ -4755,17 +4776,17 @@ app.get("/", (_req, res) => {
 });
 
 app.get("/health", (req, res) => {
-  const aiProviders = {
-    ollama: Boolean(process.env.OLLAMA_MODEL),
-    deepseek: Boolean(process.env.DEEPSEEK_API_KEY),
-    openrouter: Boolean(process.env.OPENROUTER_API_KEY),
-    groq: Boolean(process.env.GROQ_API_KEY),
-    openai: Boolean(process.env.OPENAI_API_KEY),
-    gemini: Boolean(process.env.GEMINI_API_KEY),
-    grok: Boolean(process.env.XAI_API_KEY),
-  };
-  const aiReady = Object.values(aiProviders).some(Boolean);
-  res.json({ ok: true, time: new Date().toISOString(), source: footballSource(), tz: TZ, aiReady, aiProviders, zilliz: _zillizReady, tmdb: Boolean(process.env.TMDB_API_KEY), apify: Boolean(process.env.APIFY_TOKEN) });
+  const aiReady = Boolean(
+    process.env.OLLAMA_MODEL ||
+    process.env.DEEPSEEK_API_KEY ||
+    process.env.OPENROUTER_API_KEY ||
+    process.env.GROQ_API_KEY ||
+    process.env.OPENAI_API_KEY ||
+    process.env.GEMINI_API_KEY ||
+    process.env.XAI_API_KEY
+  );
+  // Do not expose which secret-backed providers are configured.
+  res.json({ ok: true, time: new Date().toISOString(), source: footballSource(), tz: TZ, aiReady, integrationsReady: { zilliz: _zillizReady } });
 });
 
 // ── App version / update check ────────────────────────────────────────────────
@@ -6459,7 +6480,7 @@ async function fetchJsonWithTimeout(url, timeoutMs = 12000) {
     fetch(url, { headers: { "user-agent": "Mozilla/5.0 (Nexora/1.0)", accept: "application/json" } }),
     timeoutMs
   );
-  if (!resp.ok) throw new Error(`Fetch ${resp.status}: ${url}`);
+  if (!resp.ok) throw new Error(`Fetch ${resp.status}: ${redactSensitiveUrl(url)}`);
   return resp.json();
 }
 
@@ -7469,6 +7490,25 @@ app.get("/api/sports/player/:playerId", async (req, res) => {
 
       const sourceTag = apifyFallback?.source || apiSports?.source || "espn";
 
+      const seasonStats = {
+        appearances: Number(profileStats?.games?.appearences || profileStats?.games?.appearances || apifyFallback?.appearances || 0) || null,
+        starts: Number(profileStats?.games?.lineups || profileStats?.games?.starts || 0) || null,
+        minutes: Number(profileStats?.games?.minutes || apifyFallback?.minutes || 0) || null,
+        goals: Number(profileStats?.goals?.total || profileStats?.goals || apifyFallback?.goals || 0) || null,
+        assists: Number(profileStats?.goals?.assists || profileStats?.passes?.assists || apifyFallback?.assists || 0) || null,
+        rating: Number(profileStats?.games?.rating || profileStats?.rating || apifyFallback?.rating || 0) || null,
+        yellowCards: Number(profileStats?.cards?.yellow || apifyFallback?.yellowCards || 0) || null,
+        redCards: Number(profileStats?.cards?.red || apifyFallback?.redCards || 0) || null,
+      };
+
+      const recentForm = {
+        trend: aiInsights?.summary ? "model-derived" : "heuristic",
+        contributionLabel: (seasonStats.goals || seasonStats.assists)
+          ? `${seasonStats.goals || 0}G + ${seasonStats.assists || 0}A`
+          : null,
+        strengths: aiInsights?.strengths?.length ? aiInsights.strengths.slice(0, 3) : fallbackInsights.strengths.slice(0, 3),
+      };
+
       const clubName = profileStats?.team?.name || espnTeam?.displayName || espnTeam?.name || teamName || apifyFallback?.team || "";
       const basePhoto = normalizePlayerPhoto(
         valued?.id,
@@ -7569,17 +7609,6 @@ app.get("/api/sports/player/:playerId", async (req, res) => {
         const validated = await validateEspnHeadshot(espnUrl);
         if (validated) resolvedPhoto = validated;
       }
-      // Gemini AI Wikipedia photo lookup
-      if (!resolvedPhoto && name && name !== "Onbekend") {
-        try {
-          const aiMap = await Promise.race([
-            resolvePlayerPhotosViaAI([{ name, nationality: valued?.nationality, position: valued?.position, team: clubName || "", league: espnLeague }], clubName, espnLeague),
-            new Promise((resolve) => setTimeout(() => resolve(new Map()), 4000)),
-          ]);
-          const aiPhoto = aiMap.get(name) || aiMap.get(normalizePersonName(name));
-          if (aiPhoto) resolvedPhoto = aiPhoto;
-        } catch { /* ignore */ }
-      }
       // UI Avatars guaranteed fallback
       if (!resolvedPhoto && name && name !== "Onbekend") {
         resolvedPhoto = `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&size=256&background=1a1a2e&color=e0e0e0&bold=true&format=png`;
@@ -7609,6 +7638,15 @@ app.get("/api/sports/player/:playerId", async (req, res) => {
         marketValue: valued?.marketValue || null,
         isRealValue: Boolean(valued?.isRealValue),
         valueMethod: valued?.valueMethod || "estimated",
+        jerseyNumber: profile?.number || espnAthlete?.jersey || apifyFallback?.jerseyNumber || null,
+        contractUntil: apifyFallback?.contractUntil || null,
+        seasonStats,
+        recentForm,
+        profileMeta: {
+          league: espnLeague,
+          team: clubName || null,
+          confidence: aiInsights ? "high" : "medium",
+        },
         strengths: aiInsights?.strengths?.length ? aiInsights.strengths : fallbackInsights.strengths,
         weaknesses: aiInsights?.weaknesses?.length ? aiInsights.weaknesses : fallbackInsights.weaknesses,
         analysis:
