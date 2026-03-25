@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState, useRef } from "react";
 import { View, Text, StyleSheet, TouchableOpacity, Image, Animated } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { Ionicons } from "@expo/vector-icons";
+import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { useQuery } from "@tanstack/react-query";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -271,7 +271,16 @@ export default function PlayerProfileScreen() {
         <Animated.View style={{ opacity: heroOpacity }}>
         <View style={styles.hero}>
           {photoUri ? (
-            <Image source={{ uri: photoUri }} style={[styles.photo, { backgroundColor: COLORS.card }]} resizeMode="contain" onError={() => setPhotoIdx((i) => i + 1)} />
+            <TouchableOpacity onPress={() => setPhotoIdx((i) => (i + 1) % photoCandidates.length)}>
+              <Image source={{ uri: photoUri }} style={[styles.photo, { backgroundColor: COLORS.card }]} resizeMode="contain" onError={() => setPhotoIdx((i) => i + 1)} />
+              {photoCandidates.length > 1 && (
+                <View style={styles.photoDots}>
+                  {photoCandidates.map((_, idx) => (
+                    <View key={`dot_${idx}`} style={[styles.photoDot, idx === photoIdx && styles.photoDotActive]} />
+                  ))}
+                </View>
+              )}
+            </TouchableOpacity>
           ) : (
             <View style={[styles.photo, styles.photoFallback, { borderColor: badgeColor }]}> 
               <Text style={styles.photoInitials}>{initials}</Text>
@@ -314,13 +323,13 @@ export default function PlayerProfileScreen() {
               <QuickFact icon="barbell-outline" label={tx("playerProfile.weight", "Weight")} value={normalizeText(data?.weight)} />
             </View>
             <View style={styles.infoDivider} />
-            <Row label={tx("playerProfile.birthDate", "Birth date")} value={data?.birthDate ? formatDisplayDate(data.birthDate) : UNKNOWN} />
-            <Row label={tx("playerProfile.nationality", "Nationality")} value={normalizeText(data?.nationality || params.nationality)} />
-            <Row label={tx("playerProfile.position", "Position")} value={normalizeText(data?.position || params.position)} />
-            <Row label={tx("playerProfile.contractUntil", "Contract")} value={normalizeText(data?.contractUntil, tx("common.notAvailable", "Not available"))} />
+            <Row icon="calendar-outline" label={tx("playerProfile.birthDate", "Birth date")} value={data?.birthDate ? formatDisplayDate(data.birthDate) : UNKNOWN} />
+            <Row icon="earth" label={tx("playerProfile.nationality", "Nationality")} value={normalizeText(data?.nationality || params.nationality)} />
+            <Row icon="soccer-field" label={tx("playerProfile.position", "Position")} value={normalizeText(data?.position || params.position)} />
+            <Row icon="contract" label={tx("playerProfile.contractUntil", "Contract")} value={normalizeText(data?.contractUntil, tx("common.notAvailable", "Not available"))} />
             <ClubRow label={tx("playerProfile.currentClub", "Current club")} value={normalizeText(data?.currentClub || params.team)} logo={data?.currentClubLogo} />
-            <Row label={tx("playerProfile.marketValue", "Market value")} value={normalizeText(data?.marketValue || params.marketValue, tx("playerProfile.valueUnknown", "Value unavailable"))} />
-            <Row label={tx("playerProfile.lastUpdated", "Last updated")} value={formatUpdatedAt(data?.updatedAt)} />
+            <Row icon="currency-eur" label={tx("playerProfile.marketValue", "Market value")} value={normalizeText(data?.marketValue || params.marketValue, tx("playerProfile.valueUnknown", "Value unavailable"))} />
+            <Row icon="clock-outline" label={tx("playerProfile.lastUpdated", "Last updated")} value={formatUpdatedAt(data?.updatedAt)} />
           </Card>
 
           <Card title={tx("playerProfile.seasonStats", "Season stats")}>
@@ -425,10 +434,13 @@ function Card({ title, children }: { title: string; children: React.ReactNode })
   );
 }
 
-function Row({ label, value }: { label: string; value: string }) {
+function Row({ label, value, icon }: { label: string; value: string; icon?: keyof typeof MaterialCommunityIcons.glyphMap }) {
   return (
     <View style={styles.row}>
-      <Text style={styles.rowLabel}>{label}</Text>
+      <View style={styles.rowLabelWrap}>
+        {icon && <MaterialCommunityIcons name={icon} size={14} color={COLORS.textMuted} />}
+        <Text style={styles.rowLabel}>{label}</Text>
+      </View>
       <Text style={styles.rowValue} numberOfLines={2}>{value}</Text>
     </View>
   );
@@ -461,14 +473,20 @@ function Bullet({ text, good = false }: { text: string; good?: boolean }) {
 
 function StatsGrid({ items }: { items: { label: string; value: any }[] }) {
   const cleaned = items.filter((x) => x?.label);
+  const isGoals = (label: string) => label.toLowerCase().includes("goal");
+  const isAssists = (label: string) => label.toLowerCase().includes("assist");
+  const isAppearances = (label: string) => label.toLowerCase().includes("match") || label.toLowerCase().includes("appear");
   return (
     <View style={styles.statsGrid}>
       {cleaned.map((item, idx) => {
         const hasValue = item?.value != null && String(item.value).trim() !== "" && String(item.value) !== "0";
+        const isKeyMetric = isGoals(item.label) || isAssists(item.label) || isAppearances(item.label);
         return (
-          <View key={`${item.label}_${idx}`} style={styles.statCard}>
+          <View key={`${item.label}_${idx}`} style={[styles.statCard, isKeyMetric && styles.statCardHighlight]}>
             <Text style={styles.statLabel} numberOfLines={1}>{item.label}</Text>
-            <Text style={styles.statValue}>{hasValue ? String(item.value) : (tFn("common.notAvailable") || "Niet beschikbaar")}</Text>
+            <Text style={[styles.statValue, isGoals(item.label) && styles.statValueGoals, isAssists(item.label) && styles.statValueAssists]}>
+              {hasValue ? String(item.value) : (tFn("common.notAvailable") || "Niet beschikbaar")}
+            </Text>
           </View>
         );
       })}
@@ -496,6 +514,9 @@ const styles = StyleSheet.create({
   photo: { width: 130, height: 130, borderRadius: 18, borderWidth: 0 },
   photoFallback: { backgroundColor: COLORS.card, alignItems: "center", justifyContent: "center", borderWidth: 1.5, borderColor: "rgba(255,255,255,0.08)" },
   photoInitials: { fontFamily: "Inter_700Bold", fontSize: 24, color: COLORS.text },
+  photoDots: { flexDirection: "row", justifyContent: "center", gap: 4, marginTop: 8 },
+  photoDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: "rgba(255,255,255,0.3)" },
+  photoDotActive: { backgroundColor: COLORS.accent, width: 8 },
   name: { fontFamily: "Inter_800ExtraBold", fontSize: 22, color: COLORS.text, textAlign: "center", paddingHorizontal: 16, maxWidth: "100%" },
   meta: { fontFamily: "Inter_400Regular", fontSize: 13, color: COLORS.textMuted, textAlign: "center", paddingHorizontal: 24, maxWidth: "100%" },
   value: { fontFamily: "Inter_700Bold", fontSize: 14, color: COLORS.textMuted },
@@ -507,6 +528,7 @@ const styles = StyleSheet.create({
   content: { padding: 16, gap: 10, paddingBottom: 40 },
   card: { backgroundColor: COLORS.overlayLight, gap: 8 },
   row: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", borderBottomWidth: 1, borderBottomColor: COLORS.border, paddingVertical: 8 },
+  rowLabelWrap: { flexDirection: "row", alignItems: "center", gap: 6 },
   rowLabel: { fontFamily: "Inter_400Regular", fontSize: 13, color: COLORS.textMuted },
   rowValue: { fontFamily: "Inter_600SemiBold", fontSize: 13, color: COLORS.text, flexShrink: 1, textAlign: "right", maxWidth: "60%" },
   clubValueRow: { flexDirection: "row", alignItems: "center", justifyContent: "flex-end", gap: 8, flexShrink: 1, maxWidth: "60%" },
@@ -559,8 +581,11 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     gap: 4,
   },
+  statCardHighlight: { borderColor: "rgba(229,9,20,0.4)", backgroundColor: "rgba(229,9,20,0.08)" },
   statLabel: { fontFamily: "Inter_500Medium", fontSize: 11, color: COLORS.textMuted },
   statValue: { fontFamily: "Inter_700Bold", fontSize: 13, color: COLORS.text },
+  statValueGoals: { color: "#FF5252" },
+  statValueAssists: { color: "#4CAF82" },
   formBadge: {
     marginTop: 10,
     alignSelf: "flex-start",
