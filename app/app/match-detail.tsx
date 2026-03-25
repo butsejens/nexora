@@ -19,11 +19,17 @@ import { PillTabs, StateBlock } from "@/components/ui/PremiumPrimitives";
 import { buildErrorReference, normalizeApiError } from "@/lib/error-messages";
 import { getLeaderboardRows } from "@/lib/sports-data";
 import { safeStr } from "@/lib/utils";
+import { getLeagueLogo } from "@/lib/logo-manager";
 import { SilentResetBoundary } from "@/components/SilentResetBoundary";
 import { useNexora } from "@/context/NexoraContext";
 import { t as tFn } from "@/lib/i18n";
 import { getCachedPlayerImage, getPlayerImage } from "@/lib/player-image-system";
-
+import {
+  MatchSubscription,
+  ensureMatchNotificationPermission,
+  loadMatchSubscriptions,
+  saveMatchSubscriptions,
+} from "@/lib/match-notifications";
 const BLOCK_POPUP_JS = `
 (function(){
   // Patch removeChild to never throw — prevents DOMException crashes
@@ -139,7 +145,7 @@ export default function MatchDetailScreen() {
   }>();
 
   const insets = useSafeAreaInsets();
-  const { hasPremium } = useNexora();
+  const { hasPremium, toggleFavorite, isFavorite } = useNexora();
   const sportPremium = hasPremium("sport");
   const resolvedInitialTab = (params.initialTab && ["stream", "stats", "lineups", "timeline", "highlights", "ai"].includes(params.initialTab)) ? params.initialTab as TabId : "stream";
   const [activeTab, setActiveTab] = useState<TabId>(resolvedInitialTab);
@@ -240,6 +246,49 @@ export default function MatchDetailScreen() {
   const liveHomeScore = matchDetail?.homeScore ?? Number(params.homeScore ?? 0);
   const liveAwayScore = matchDetail?.awayScore ?? Number(params.awayScore ?? 0);
   const liveMinute = matchDetail?.minute ?? (params.minute ? parseInt(params.minute) : undefined);
+  const matchId = String(params.matchId || "").trim();
+  const matchSubscriptionId = useMemo(() => `soccer:${matchId}`, [matchId]);
+  const [isMatchFollowed, setIsMatchFollowed] = useState(false);
+  const homeTeamFavoriteId = useMemo(() => `team:${String(matchDetail?.homeTeamId || params.homeTeam || "").toLowerCase()}`, [matchDetail?.homeTeamId, params.homeTeam]);
+  const awayTeamFavoriteId = useMemo(() => `team:${String(matchDetail?.awayTeamId || params.awayTeam || "").toLowerCase()}`, [matchDetail?.awayTeamId, params.awayTeam]);
+
+  useEffect(() => {
+    let disposed = false;
+    (async () => {
+      const subs = await loadMatchSubscriptions();
+      if (disposed) return;
+      setIsMatchFollowed(subs.some((sub) => sub?.id === matchSubscriptionId));
+    })();
+    return () => { disposed = true; };
+  }, [matchSubscriptionId]);
+
+  const toggleMatchFollow = useCallback(async () => {
+    if (!matchId) return;
+    const currentSubs = await loadMatchSubscriptions();
+    const exists = currentSubs.some((sub) => sub?.id === matchSubscriptionId);
+
+    if (!exists) {
+      const permission = await ensureMatchNotificationPermission();
+      if (!permission) return;
+      const nextSub: MatchSubscription = {
+        id: matchSubscriptionId,
+        espnLeague,
+        homeTeam: String(params.homeTeam || "Home"),
+        awayTeam: String(params.awayTeam || "Away"),
+      };
+      const next = [...currentSubs, nextSub];
+      await saveMatchSubscriptions(next);
+      setIsMatchFollowed(true);
+      SafeHaptics.impactLight();
+      return;
+    }
+
+    const next = currentSubs.filter((sub) => sub?.id !== matchSubscriptionId);
+    await saveMatchSubscriptions(next);
+    setIsMatchFollowed(false);
+    SafeHaptics.impactLight();
+  }, [espnLeague, matchId, matchSubscriptionId, params.awayTeam, params.homeTeam]);
+
   // AI Prediction
   const requestPrediction = async (mode: "prematch" | "live") => {
       const normalizeTeam = (value: unknown) => String(value || "")
@@ -253,7 +302,7 @@ export default function MatchDetailScreen() {
       const homeTag = normalizeTeam(params.homeTeam);
       const awayTag = normalizeTeam(params.awayTeam);
 
-      const [standingsData, scorersData] = await Promise.all([
+      const [standingsData, scorersData, assistsData] = await Promise.all([
         (async () => {
           try {
             const res = await apiRequest("GET", `/api/sports/standings/${encodeURIComponent(params.league)}`);
@@ -270,10 +319,19 @@ export default function MatchDetailScreen() {
             return null;
           }
         })(),
+        (async () => {
+          try {
+            const res = await apiRequest("GET", `/api/sports/topassists/${encodeURIComponent(params.league)}`);
+            return await res.json();
+          } catch {
+            return null;
+          }
+        })(),
       ]);
 
       const standings = Array.isArray(standingsData?.standings) ? standingsData.standings : [];
       const scorers = getLeaderboardRows("topscorers", scorersData);
+      const assisters = getLeaderboardRows("topassists", assistsData);
 
       const matchStanding = (teamName?: string) => {
         const teamKey = normalizeTeam(teamName);
@@ -296,6 +354,16 @@ export default function MatchDetailScreen() {
 
       const homeTopScorer = homeTag ? topByTeam(homeTag) : null;
       const awayTopScorer = awayTag ? topByTeam(awayTag) : null;
+
+      const topAssistByTeam = (tag: string) => assisters
+        .filter((row: any) => {
+          const assistTeam = normalizeTeam(row?.team);
+          return assistTeam === tag || assistTeam.includes(tag) || tag.includes(assistTeam);
+        })
+        .sort((a: any, b: any) => Number(b?.assists || b?.displayValue || 0) - Number(a?.assists || a?.displayValue || 0))[0] || null;
+
+      const homeTopAssist = homeTag ? topAssistByTeam(homeTag) : null;
+      const awayTopAssist = awayTag ? topAssistByTeam(awayTag) : null;
 
       const isLiveMode = mode === "live";
 
@@ -328,6 +396,10 @@ export default function MatchDetailScreen() {
           awayTopScorer: awayTopScorer?.name || null,
           homeTopScorerGoals: homeTopScorer?.goals ?? null,
           awayTopScorerGoals: awayTopScorer?.goals ?? null,
+          homeTopAssist: homeTopAssist?.name || null,
+          awayTopAssist: awayTopAssist?.name || null,
+          homeTopAssistCount: homeTopAssist?.assists ?? Number(homeTopAssist?.displayValue || 0) || null,
+          awayTopAssistCount: awayTopAssist?.assists ?? Number(awayTopAssist?.displayValue || 0) || null,
         },
       });
       const json = await res.json();
@@ -439,9 +511,16 @@ export default function MatchDetailScreen() {
         </TouchableOpacity>
 
         <View style={styles.matchHeader}>
-          <Text style={styles.leagueName}>{params.league}</Text>
+          <View style={styles.competitionRow}>
+            <TeamLogo uri={getLeagueLogo(params.league)} teamName={params.league} size={24} />
+            <Text style={styles.leagueName}>{params.league}</Text>
+            <TouchableOpacity style={[styles.followChip, isMatchFollowed ? styles.followChipActive : null]} onPress={toggleMatchFollow}>
+              <Ionicons name={isMatchFollowed ? "notifications" : "notifications-outline"} size={14} color={isMatchFollowed ? "#fff" : COLORS.textMuted} />
+              <Text style={[styles.followChipText, isMatchFollowed ? styles.followChipTextActive : null]}>{isMatchFollowed ? "Following" : "Follow"}</Text>
+            </TouchableOpacity>
+          </View>
           <View style={styles.scoreRow}>
-            <TeamSide align="left" name={params.homeTeam} logo={matchDetail?.homeTeamLogo || params.homeTeamLogo} onPress={() => {
+            <TeamSide align="left" name={params.homeTeam} logo={matchDetail?.homeTeamLogo || params.homeTeamLogo} followed={isFavorite(homeTeamFavoriteId)} onToggleFollow={() => toggleFavorite(homeTeamFavoriteId)} onPress={() => {
               const fallbackTeamId = `name:${encodeURIComponent(params.homeTeam || "")}`;
               router.push({
                 pathname: "/team-detail",
@@ -481,7 +560,7 @@ export default function MatchDetailScreen() {
                 </>
               )}
             </View>
-            <TeamSide align="right" name={params.awayTeam} logo={matchDetail?.awayTeamLogo || params.awayTeamLogo} onPress={() => {
+            <TeamSide align="right" name={params.awayTeam} logo={matchDetail?.awayTeamLogo || params.awayTeamLogo} followed={isFavorite(awayTeamFavoriteId)} onToggleFollow={() => toggleFavorite(awayTeamFavoriteId)} onPress={() => {
               const fallbackTeamId = `name:${encodeURIComponent(params.awayTeam || "")}`;
               router.push({
                 pathname: "/team-detail",
@@ -1016,18 +1095,23 @@ function MiniAIPill({ prediction, homeTeam, awayTeam, loading, onPress }: any) {
   );
 }
 
-function TeamSide({ name, logo, onPress, align = "left" }: { name: string; logo?: string; onPress?: () => void; align?: "left" | "right" }) {
+function TeamSide({ name, logo, onPress, followed, onToggleFollow, align = "left" }: { name: string; logo?: string; onPress?: () => void; followed?: boolean; onToggleFollow?: () => void; align?: "left" | "right" }) {
   const { width } = useWindowDimensions();
   const logoSize = width < 360 ? 40 : width < 400 ? 46 : 52;
   return (
-    <TouchableOpacity
-      style={styles.teamSide}
-      onPress={onPress}
-      activeOpacity={onPress ? 0.7 : 1}
-    >
-      <TeamLogo uri={logo} teamName={name} size={logoSize} />
-      <Text style={[styles.teamName, width < 360 && { fontSize: 10, maxWidth: 80 }]} numberOfLines={2}>{name}</Text>
-    </TouchableOpacity>
+    <View style={styles.teamSideWrap}>
+      <TouchableOpacity
+        style={styles.teamSide}
+        onPress={onPress}
+        activeOpacity={onPress ? 0.7 : 1}
+      >
+        <TeamLogo uri={logo} teamName={name} size={logoSize} />
+        <Text style={[styles.teamName, width < 360 && { fontSize: 10, maxWidth: 80 }]} numberOfLines={2}>{name}</Text>
+      </TouchableOpacity>
+      <TouchableOpacity style={[styles.teamFollowBtn, followed ? styles.teamFollowBtnActive : null]} onPress={onToggleFollow}>
+        <Ionicons name={followed ? "heart" : "heart-outline"} size={12} color={followed ? "#fff" : COLORS.textMuted} />
+      </TouchableOpacity>
+    </View>
   );
 }
 
@@ -1054,8 +1138,8 @@ function timelinePhaseWeight(kind: string): number {
 
 function sortTimelineForRender(events: any[]): any[] {
   const unique = new Set<string>();
-  const cleaned = (Array.isArray(events) ? events : []).filter((event, index) => {
-    const key = `${String(event?.kind || "")}|${String(event?.minute || event?.time || "")}|${String(event?.title || "")}|${String(event?.description || "")}|${index}`;
+  const cleaned = (Array.isArray(events) ? events : []).filter((event) => {
+    const key = `${String(event?.kind || event?.type || "")}|${String(event?.minute || event?.time || "")}|${String(event?.title || "")}|${String(event?.description || event?.detail || "")}|${String(event?.team || event?.teamName || "")}`;
     if (unique.has(key)) return false;
     unique.add(key);
     return true;
@@ -1072,8 +1156,12 @@ function sortTimelineForRender(events: any[]): any[] {
     const phaseB = timelinePhaseWeight(kindB);
     if (phaseA !== phaseB) return phaseA - phaseB;
 
-    const orderA = Number(a?.sequence || a?.order || 0);
-    const orderB = Number(b?.sequence || b?.order || 0);
+    const isBoundaryA = ["kickoff", "halftime", "second_half", "secondhalf", "fulltime", "extra_time", "penalties"].includes(kindA);
+    const isBoundaryB = ["kickoff", "halftime", "second_half", "secondhalf", "fulltime", "extra_time", "penalties"].includes(kindB);
+    if (isBoundaryA !== isBoundaryB) return isBoundaryA ? -1 : 1;
+
+    const orderA = Number(a?.sequence || a?.order || Number.MAX_SAFE_INTEGER);
+    const orderB = Number(b?.sequence || b?.order || Number.MAX_SAFE_INTEGER);
     if (Number.isFinite(orderA) && Number.isFinite(orderB) && orderA !== orderB) {
       return orderA - orderB;
     }
@@ -1294,7 +1382,10 @@ function MatchHeatmapInner({ homeTeam, awayTeam, homeStats, awayStats }: { homeT
       <View style={heatmapStyles.header}>
         <View style={heatmapStyles.headerAccent} />
         <Text style={heatmapStyles.headerIcon}>🔥</Text>
-        <Text style={heatmapStyles.headerTitle}>ZONE CONTROL & SHOTS</Text>
+        <View style={{ flex: 1 }}>
+          <Text style={heatmapStyles.headerTitle}>ZONE CONTROL & SHOTS</Text>
+          <Text style={heatmapStyles.headerSub}>Higher opacity means stronger control</Text>
+        </View>
       </View>
 
       <View style={heatmapStyles.pitch}>
@@ -1473,6 +1564,12 @@ const heatmapStyles = StyleSheet.create({
     fontSize: 12,
     color: COLORS.text,
     letterSpacing: 1,
+  },
+  headerSub: {
+    marginTop: 2,
+    fontFamily: "Inter_400Regular",
+    fontSize: 10,
+    color: COLORS.textMuted,
   },
   pitch: {
     marginHorizontal: 12,
@@ -2681,6 +2778,13 @@ const styles = StyleSheet.create({
     alignSelf: "flex-start",
   },
   matchHeader: { alignItems: "center", gap: 14 },
+  competitionRow: {
+    width: "100%",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+  },
   leagueName: {
     fontFamily: "Inter_700Bold",
     fontSize: 11,
@@ -2695,7 +2799,22 @@ const styles = StyleSheet.create({
     borderColor: "rgba(255,255,255,0.1)",
   },
   scoreRow: { flexDirection: "row", alignItems: "center", width: "100%", paddingHorizontal: 10, justifyContent: "center" },
-  teamSide: { flex: 1, alignItems: "center", gap: 8 },
+  teamSideWrap: { flex: 1, alignItems: "center", gap: 6 },
+  teamSide: { alignItems: "center", gap: 8 },
+  teamFollowBtn: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(255,255,255,0.07)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.12)",
+  },
+  teamFollowBtnActive: {
+    backgroundColor: COLORS.accent,
+    borderColor: `${COLORS.accent}77`,
+  },
   teamName: {
     fontFamily: "Inter_700Bold",
     fontSize: 12,
@@ -2740,6 +2859,29 @@ const styles = StyleSheet.create({
     letterSpacing: 1.5,
     textTransform: "uppercase",
     marginTop: 2,
+  },
+  followChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.14)",
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    backgroundColor: "rgba(255,255,255,0.05)",
+  },
+  followChipActive: {
+    backgroundColor: `${COLORS.accent}cc`,
+    borderColor: `${COLORS.accent}55`,
+  },
+  followChipText: {
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 11,
+    color: COLORS.textMuted,
+  },
+  followChipTextActive: {
+    color: "#fff",
   },
   venueRow: { flexDirection: "row", alignItems: "center", gap: 5, marginTop: 4, opacity: 0.7 },
   venueText: { fontFamily: "Inter_400Regular", fontSize: 12, color: COLORS.textMuted },
@@ -3538,7 +3680,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.15)",
     paddingVertical: 16,
-    paddingHorizontal: 10,
+    paddingHorizontal: 16,
     gap: 6,
     overflow: "hidden",
     position: "relative",
@@ -3550,13 +3692,13 @@ const styles = StyleSheet.create({
   },
   combinedPitchRow: {
     flexDirection: "row",
-    justifyContent: "center",
+    justifyContent: "space-evenly",
     alignItems: "center",
     alignSelf: "stretch",
     zIndex: 2,
-    paddingHorizontal: 6,
+    paddingHorizontal: 2,
     minHeight: 58,
-    gap: 8,
+    gap: 6,
   },
   pitchDivider: {
     height: 1,
@@ -3680,9 +3822,9 @@ const styles = StyleSheet.create({
   pitchDotWrap: {
     alignItems: "center",
     gap: 2,
-    minWidth: 48,
-    maxWidth: 68,
-    flex: 1,
+    width: 62,
+    maxWidth: 62,
+    flexShrink: 0,
     paddingVertical: 2,
   },
   pitchDotCircle: {

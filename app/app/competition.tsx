@@ -549,6 +549,12 @@ export default function CompetitionScreen() {
           <View style={styles.emptyState}>
             <Ionicons name="arrow-redo-outline" size={40} color={COLORS.textMuted} />
             <Text style={styles.emptyText}>{t("competition.assistsUnavailable") || "Top assists not available"}</Text>
+            <Text style={[styles.emptyText, { fontSize: 12, color: COLORS.textMuted }]}>{(assistsData as any)?.error || "Data source is being refreshed. Try again in a moment."}</Text>
+            {scorers.length > 0 ? (
+              <TouchableOpacity style={styles.retryBtn} onPress={() => setActiveTab("scorers")}> 
+                <Text style={styles.retryBtnText}>{t("competition.topScorers") || "Open top scorers"}</Text>
+              </TouchableOpacity>
+            ) : null}
           </View>
         ) : (
           <FlatList
@@ -779,7 +785,17 @@ const styles = StyleSheet.create({
   loadingState: { flex: 1, alignItems: "center", justifyContent: "center", gap: 12 },
   loadingText: { fontFamily: "Inter_400Regular", fontSize: 14, color: COLORS.textMuted },
   emptyState: { flex: 1, alignItems: "center", justifyContent: "center", gap: 12 },
-  emptyText: { fontFamily: "Inter_400Regular", fontSize: 14, color: COLORS.textMuted },
+  emptyText: { fontFamily: "Inter_400Regular", fontSize: 14, color: COLORS.textMuted, textAlign: "center", paddingHorizontal: 24 },
+  retryBtn: {
+    marginTop: 4,
+    backgroundColor: `${COLORS.accent}18`,
+    borderWidth: 1,
+    borderColor: `${COLORS.accent}44`,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  retryBtnText: { fontFamily: "Inter_600SemiBold", fontSize: 12, color: COLORS.accent },
   errorDetail: { fontFamily: "Inter_400Regular", fontSize: 12, color: "#ff6b6b", textAlign: "center", paddingHorizontal: 24 },
   listContent: { paddingTop: 8, paddingBottom: 40 },
 

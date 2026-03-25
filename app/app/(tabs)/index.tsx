@@ -814,6 +814,7 @@ const popCompStyles = StyleSheet.create({
 function CountryCard({ country, active, onPress }: { country: CountryCatalog; active: boolean; onPress: () => void }) {
   return (
     <TouchableOpacity onPress={onPress} activeOpacity={0.82} style={[countryCardStyles.card, active && countryCardStyles.cardActive]}>
+      <View style={[countryCardStyles.topAccent, active && countryCardStyles.topAccentActive]} />
       <View style={[countryCardStyles.flagChip, active && countryCardStyles.flagChipActive]}>
         <Text style={countryCardStyles.flag}>{flagFromIso2(country.countryCode)}</Text>
       </View>
@@ -821,23 +822,49 @@ function CountryCard({ country, active, onPress }: { country: CountryCatalog; ac
         <Text style={[countryCardStyles.name, active && countryCardStyles.nameActive]} numberOfLines={1}>{tFn(country.countryName)}</Text>
         <Text style={countryCardStyles.meta}>{country.competitions.length} {tFn("sportsHome.competitions")}</Text>
       </View>
-      {active && <Ionicons name="checkmark-circle" size={14} color={P.accent} />}
+      <View style={countryCardStyles.codeWrap}>
+        <Text style={countryCardStyles.codeText}>{country.countryCode}</Text>
+        <Ionicons name={active ? "checkmark-circle" : "chevron-forward"} size={14} color={active ? P.accent : P.muted} />
+      </View>
     </TouchableOpacity>
   );
 }
 
 const countryCardStyles = StyleSheet.create({
   card: {
-    flexBasis: "48%", height: 70, borderRadius: 14, backgroundColor: P.elevated,
-    flexDirection: "row", alignItems: "center", gap: 10,
-    paddingHorizontal: 12, paddingVertical: 10,
-    borderWidth: 1, borderColor: P.border,
-    shadowColor: "#000", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.24, shadowRadius: 8, elevation: 3,
+    flexBasis: "48%",
+    height: 78,
+    borderRadius: 16,
+    backgroundColor: P.elevated,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    borderWidth: 1,
+    borderColor: P.border,
+    overflow: "hidden",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.24,
+    shadowRadius: 8,
+    elevation: 3,
   },
   cardActive: { borderColor: P.accent, backgroundColor: `${P.accent}14`, shadowColor: P.accent, shadowOpacity: 0.24 },
+  topAccent: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 3,
+    backgroundColor: "rgba(255,255,255,0.1)",
+  },
+  topAccentActive: {
+    backgroundColor: P.accent,
+  },
   flagChip: {
-    width: 32,
-    height: 32,
+    width: 34,
+    height: 34,
     borderRadius: 10,
     alignItems: "center",
     justifyContent: "center",
@@ -851,6 +878,16 @@ const countryCardStyles = StyleSheet.create({
   name: { color: P.muted, fontSize: 13, fontWeight: "700" },
   nameActive: { color: P.text },
   meta: { color: P.muted, fontSize: 10, fontWeight: "500", opacity: 0.9 },
+  codeWrap: {
+    alignItems: "flex-end",
+    gap: 6,
+  },
+  codeText: {
+    fontSize: 9,
+    color: P.muted,
+    fontWeight: "700",
+    letterSpacing: 0.8,
+  },
 });
 
 // ── Highlight Card ────────────────────────────────────────────────────────────
