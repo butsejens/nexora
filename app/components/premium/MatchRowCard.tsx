@@ -445,20 +445,6 @@ const s = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 3,
   },
-  livePillText: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: '#fff',
-    letterSpacing: 0.3,
-  },
-  leagueLabel: {
-    fontSize: 8,
-    fontWeight: '500',
-    color: COLORS.textFaint,
-    marginTop: 2,
-    letterSpacing: 0.3,
-    textAlign: 'center',
-  },
 
   // Live pulse dot ─────────────────────────────────────────────────────────────
   pulseWrap: {
