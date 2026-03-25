@@ -63,8 +63,20 @@ type TeamDetailData = {
   leaguePoints?: number;
   leaguePlayed?: number;
   venue?: string;
+  stadiumCapacity?: number | null;
+  country?: string;
+  founded?: number | null;
+  clubColors?: string[];
   coach?: string;
   record?: string;
+  goalsFor?: number | null;
+  goalsAgainst?: number | null;
+  cleanSheets?: number | null;
+  yellowCards?: number | null;
+  redCards?: number | null;
+  form?: string | null;
+  recentResults?: { id: string; opponent: string; isHome: boolean; status: string; homeScore?: number; awayScore?: number; date?: string | null }[];
+  upcomingMatches?: { id: string; opponent: string; isHome: boolean; status: string; date?: string | null }[];
   squadMarketValue?: string | null;
   players: any[];
   source?: string;
@@ -288,12 +300,29 @@ export default function TeamDetailScreen() {
             <Ionicons name="chevron-back" size={24} color={COLORS.text} />
           </TouchableOpacity>
           <Text style={[styles.teamTitle, { flex: 1, marginHorizontal: 8 }]} numberOfLines={1}>{data?.name || teamNameParam}</Text>
-          <TouchableOpacity style={styles.followBtn} onPress={() => toggleFavorite(favKey)} activeOpacity={0.75}>
-            <Ionicons name={isFollowing ? "heart" : "heart-outline"} size={16} color={isFollowing ? COLORS.accent : COLORS.text} />
-            <Text style={[styles.followBtnText, isFollowing && { color: COLORS.accent }]}>
-              {isFollowing ? t("teamDetail.following") : t("teamDetail.follow")}
-            </Text>
-          </TouchableOpacity>
+          <View style={styles.headerActions}>
+            <TouchableOpacity
+              style={styles.infoBtn}
+              onPress={() => router.push({
+                pathname: "/team-info",
+                params: {
+                  teamId: teamIdParam,
+                  teamName: data?.name || teamNameParam,
+                  sport: sport,
+                  league,
+                },
+              })}
+              activeOpacity={0.75}
+            >
+              <Ionicons name="information-circle-outline" size={18} color={COLORS.text} />
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.followBtn} onPress={() => toggleFavorite(favKey)} activeOpacity={0.75}>
+              <Ionicons name={isFollowing ? "heart" : "heart-outline"} size={16} color={isFollowing ? COLORS.accent : COLORS.text} />
+              <Text style={[styles.followBtnText, isFollowing && { color: COLORS.accent }]}>
+                {isFollowing ? t("teamDetail.following") : t("teamDetail.follow")}
+              </Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
         {data ? (
@@ -603,6 +632,17 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
   header: { paddingHorizontal: 16, paddingBottom: 20 },
   backBtn: { width: 38, height: 38, alignItems: "center", justifyContent: "center", marginBottom: 8 },
+  headerActions: { flexDirection: "row", alignItems: "center", gap: 8 },
+  infoBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(255,255,255,0.1)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.15)",
+  },
   followBtn: {
     flexDirection: "row", alignItems: "center", gap: 5,
     backgroundColor: "rgba(255,255,255,0.1)", borderRadius: 20,

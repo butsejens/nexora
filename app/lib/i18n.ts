@@ -8,6 +8,16 @@ const translations: Record<Language, typeof en> = { en, nl };
 let currentLanguage: Language = "en";
 let listeners: Array<() => void> = [];
 
+function humanizeKey(key: string): string {
+  const tail = String(key || "").split(".").pop() || "";
+  const text = tail
+    .replace(/([a-z])([A-Z])/g, "$1 $2")
+    .replace(/[_-]+/g, " ")
+    .trim();
+  if (!text) return "Not available";
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
 export function setLanguage(lang: Language) {
   if (lang === currentLanguage) return;
   currentLanguage = lang;
@@ -49,13 +59,13 @@ export function t(key: string, params?: Record<string, string | number>): string
       if (fallback && typeof fallback === "object" && part in fallback) {
         fallback = (fallback as Record<string, unknown>)[part];
       } else {
-        return key; // Return key itself as last resort
+        return humanizeKey(key);
       }
     }
     value = fallback;
   }
 
-  if (typeof value !== "string") return key;
+  if (typeof value !== "string") return humanizeKey(key);
 
   if (params) {
     return value.replace(/\{\{(\w+)\}\}/g, (_, k) =>

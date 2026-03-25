@@ -20,11 +20,21 @@ import {
   preloadPlayerProfileInBackground,
 } from "@/lib/player-image-system";
 
-const UNKNOWN = "Unknown";
+const UNKNOWN = "N/A";
+
+function looksLikeTranslationKey(value: string): boolean {
+  return value.includes(".") && !value.includes(" ") && /^[a-z0-9._-]+$/i.test(value);
+}
+
+function safeTranslation(key: string, fallback: string): string {
+  const translated = tFn(key);
+  if (!translated || translated === key || looksLikeTranslationKey(translated)) return fallback;
+  return translated;
+}
 
 function normalizeText(value: unknown, fallback = UNKNOWN): string {
   const text = String(value ?? "").trim();
-  if (!text || text === "-" || text.toLowerCase() === "offline data") return fallback;
+  if (!text || text === "-" || text.toLowerCase() === "offline data" || looksLikeTranslationKey(text)) return fallback;
   return text;
 }
 
@@ -102,7 +112,7 @@ function normalizePlayerDto(raw: any, params: {
     currentClub: normalizeText(raw?.currentClub || params.team),
     currentClubLogo: raw?.currentClubLogo || null,
     formerClubs: Array.isArray(raw?.formerClubs) ? raw.formerClubs : [],
-    marketValue: normalizeText(raw?.marketValue || params.marketValue, tFn("common.notAvailable") || "Niet beschikbaar"),
+    marketValue: normalizeText(raw?.marketValue || params.marketValue, safeTranslation("common.notAvailable", "Not available")),
     isRealValue: Boolean(raw?.isRealValue),
     valueMethod: normalizeText(raw?.valueMethod),
     jerseyNumber: normalizeText(raw?.jerseyNumber, ""),
@@ -112,7 +122,7 @@ function normalizePlayerDto(raw: any, params: {
     profileMeta: raw?.profileMeta || null,
     strengths: Array.isArray(raw?.strengths) ? raw.strengths : [],
     weaknesses: Array.isArray(raw?.weaknesses) ? raw.weaknesses : [],
-    analysis: normalizeText(raw?.analysis, tFn("playerProfile.analysisTempUnavailable")),
+    analysis: normalizeText(raw?.analysis, safeTranslation("playerProfile.analysisTempUnavailable", "Analysis is temporarily unavailable")),
     source: normalizeText(raw?.source, "live-data"),
     updatedAt: raw?.updatedAt || null,
     offlineData: Boolean(raw?.offlineData),
@@ -121,7 +131,7 @@ function normalizePlayerDto(raw: any, params: {
 
 export default function PlayerProfileScreen() {
   const insets = useSafeAreaInsets();
-  const { t } = useTranslation();
+  const { ts } = useTranslation();
   const params = useLocalSearchParams<{
     playerId?: string;
     name?: string;
@@ -134,6 +144,11 @@ export default function PlayerProfileScreen() {
     position?: string;
     nationality?: string;
   }>();
+
+  const tx = (key: string, fallback: string, params?: Record<string, string | number>) => {
+    const translated = ts(key, params, fallback);
+    return translated || fallback;
+  };
 
   const cacheKey = useMemo(() => {
     const keyRaw = `${params.playerId || ""}_${params.name || ""}_${params.team || ""}_${params.league || ""}`;
@@ -246,7 +261,7 @@ export default function PlayerProfileScreen() {
         </TouchableOpacity>
 
         {/* Player name — always visible */}
-        <Text style={styles.name} numberOfLines={2}>{normalizeText(data?.name || params.name, t("playerProfile.player"))}</Text>
+        <Text style={styles.name} numberOfLines={2}>{normalizeText(data?.name || params.name, tx("playerProfile.player", "Player"))}</Text>
 
         {/* Collapsible hero details — fades on scroll */}
         <Animated.View style={{ opacity: heroOpacity }}>
@@ -260,7 +275,7 @@ export default function PlayerProfileScreen() {
           )}
           <Text style={styles.meta} numberOfLines={2}>{normalizeText(data?.position || params.position)} {normalizeText(data?.nationality || params.nationality, "") ? `· ${normalizeText(data?.nationality || params.nationality)}` : ""}</Text>
           <Text style={[styles.value, data?.isRealValue ? styles.valueReal : null]}>
-            {normalizeText(data?.marketValue || params.marketValue, t("playerProfile.valueUnknown"))}
+            {normalizeText(data?.marketValue || params.marketValue, tx("playerProfile.valueUnknown", "Value unavailable"))}
           </Text>
         </View>
         </Animated.View>
@@ -268,15 +283,15 @@ export default function PlayerProfileScreen() {
 
       {isLoading ? (
         <View style={styles.loading}>
-          <StateBlock loading title={t("playerProfile.loading")} message={t("playerProfile.analysisTempUnavailable")} />
+          <StateBlock loading title={tx("playerProfile.loading", "Loading player profile") } message={tx("playerProfile.analysisTempUnavailable", "Analysis is temporarily unavailable")} />
         </View>
       ) : error || !data || (data as any)?.error ? (
         <View style={styles.loading}>
           <StateBlock
             icon="alert-circle-outline"
-            title={t("playerProfile.analysisUnavailable")}
+            title={tx("playerProfile.analysisUnavailable", "Player profile unavailable")}
             message={normalizeApiError(error || (data as any)?.error).userMessage}
-            actionLabel={t("teamDetail.retry") || "Opnieuw proberen"}
+            actionLabel={tx("teamDetail.retry", "Retry")}
             onAction={() => refetch()}
           />
         </View>
@@ -287,32 +302,32 @@ export default function PlayerProfileScreen() {
           onScroll={Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], { useNativeDriver: true })}
           scrollEventThrottle={16}
         >
-          <Card title={t("playerProfile.overview")}>
+          <Card title={tx("playerProfile.overview", "Overview")}>
             <View style={styles.quickFactsGrid}>
-              <QuickFact icon="person-outline" label={t("playerProfile.age")} value={data?.age ? t("playerProfile.years", { age: String(data.age) }) : UNKNOWN} />
-              <QuickFact icon="shirt-outline" label={t("playerProfile.jerseyNumber") || "Rugnummer"} value={normalizeText(data?.jerseyNumber, t("common.notAvailable") || "Niet beschikbaar")} />
-              <QuickFact icon="body-outline" label={t("playerProfile.height")} value={normalizeText(data?.height)} />
-              <QuickFact icon="barbell-outline" label={t("playerProfile.weight")} value={normalizeText(data?.weight)} />
+              <QuickFact icon="person-outline" label={tx("playerProfile.age", "Age")} value={data?.age ? tx("playerProfile.years", `${String(data.age)} years`, { age: String(data.age) }) : UNKNOWN} />
+              <QuickFact icon="shirt-outline" label={tx("playerProfile.jerseyNumber", "Jersey number")} value={normalizeText(data?.jerseyNumber, tx("common.notAvailable", "Not available"))} />
+              <QuickFact icon="body-outline" label={tx("playerProfile.height", "Height")} value={normalizeText(data?.height)} />
+              <QuickFact icon="barbell-outline" label={tx("playerProfile.weight", "Weight")} value={normalizeText(data?.weight)} />
             </View>
             <View style={styles.infoDivider} />
-            <Row label={t("playerProfile.birthDate")} value={data?.birthDate ? formatDisplayDate(data.birthDate) : UNKNOWN} />
-            <Row label={t("playerProfile.nationality")} value={normalizeText(data?.nationality || params.nationality)} />
-            <Row label={t("playerProfile.position")} value={normalizeText(data?.position || params.position)} />
-            <Row label={t("playerProfile.contractUntil") || "Contract"} value={normalizeText(data?.contractUntil, t("common.notAvailable") || "Niet beschikbaar")} />
-            <ClubRow label={t("playerProfile.currentClub")} value={normalizeText(data?.currentClub || params.team)} logo={data?.currentClubLogo} />
-            <Row label={t("playerProfile.marketValue")} value={normalizeText(data?.marketValue || params.marketValue, t("playerProfile.valueUnknown"))} />
-            <Row label={t("playerProfile.lastUpdated")} value={formatUpdatedAt(data?.updatedAt)} />
+            <Row label={tx("playerProfile.birthDate", "Birth date")} value={data?.birthDate ? formatDisplayDate(data.birthDate) : UNKNOWN} />
+            <Row label={tx("playerProfile.nationality", "Nationality")} value={normalizeText(data?.nationality || params.nationality)} />
+            <Row label={tx("playerProfile.position", "Position")} value={normalizeText(data?.position || params.position)} />
+            <Row label={tx("playerProfile.contractUntil", "Contract")} value={normalizeText(data?.contractUntil, tx("common.notAvailable", "Not available"))} />
+            <ClubRow label={tx("playerProfile.currentClub", "Current club")} value={normalizeText(data?.currentClub || params.team)} logo={data?.currentClubLogo} />
+            <Row label={tx("playerProfile.marketValue", "Market value")} value={normalizeText(data?.marketValue || params.marketValue, tx("playerProfile.valueUnknown", "Value unavailable"))} />
+            <Row label={tx("playerProfile.lastUpdated", "Last updated")} value={formatUpdatedAt(data?.updatedAt)} />
           </Card>
 
-          <Card title={t("playerProfile.seasonStats") || "Season stats"}>
+          <Card title={tx("playerProfile.seasonStats", "Season stats")}>
             <StatsGrid
               items={[
-                { label: t("playerProfile.appearances") || "Matches", value: data?.seasonStats?.appearances },
-                { label: t("playerProfile.goals") || "Goals", value: data?.seasonStats?.goals },
-                { label: t("playerProfile.assists") || "Assists", value: data?.seasonStats?.assists },
-                { label: t("playerProfile.minutes") || "Minutes", value: data?.seasonStats?.minutes },
-                { label: t("playerProfile.starts") || "Starts", value: data?.seasonStats?.starts },
-                { label: t("playerProfile.rating") || "Rating", value: data?.seasonStats?.rating },
+                { label: tx("playerProfile.appearances", "Matches"), value: data?.seasonStats?.appearances },
+                { label: tx("playerProfile.goals", "Goals"), value: data?.seasonStats?.goals },
+                { label: tx("playerProfile.assists", "Assists"), value: data?.seasonStats?.assists },
+                { label: tx("playerProfile.minutes", "Minutes"), value: data?.seasonStats?.minutes },
+                { label: tx("playerProfile.starts", "Starts"), value: data?.seasonStats?.starts },
+                { label: tx("playerProfile.rating", "Rating"), value: data?.seasonStats?.rating },
               ]}
             />
             {data?.recentForm?.contributionLabel ? (
@@ -323,17 +338,17 @@ export default function PlayerProfileScreen() {
             ) : null}
           </Card>
 
-          <Card title={t("playerProfile.analysis")}>
+          <Card title={tx("playerProfile.analysis", "Analysis")}>
             <LinearGradient
               colors={["rgba(229,9,20,0.07)", "rgba(17,17,17,0)"]}
               style={{ borderRadius: 10, padding: 12, marginBottom: 4 }}
             >
-              <Text style={[styles.analysisText, { color: COLORS.text }]}>{data?.analysis || t("playerProfile.analysisUnavailable")}</Text>
+              <Text style={[styles.analysisText, { color: COLORS.text }]}>{data?.analysis || tx("playerProfile.analysisUnavailable", "Analysis unavailable")}</Text>
             </LinearGradient>
 
           </Card>
 
-          <Card title={t("playerProfile.strengths")}>
+          <Card title={tx("playerProfile.strengths", "Strengths")}>
             <View style={styles.pillWrap}>
               {(Array.isArray(data?.strengths) ? data.strengths : []).slice(0, 6).map((item: string, idx: number) => (
                 <Bullet key={`s_${idx}`} text={item} good />
@@ -342,7 +357,7 @@ export default function PlayerProfileScreen() {
             </View>
           </Card>
 
-          <Card title={t("playerProfile.weaknesses")}>
+          <Card title={tx("playerProfile.weaknesses", "Weaknesses")}>
             <View style={styles.pillWrap}>
               {(Array.isArray(data?.weaknesses) ? data.weaknesses : []).slice(0, 6).map((item: string, idx: number) => (
                 <Bullet key={`w_${idx}`} text={item} />
@@ -351,9 +366,9 @@ export default function PlayerProfileScreen() {
             </View>
           </Card>
 
-          <Card title={t("playerProfile.clubHistory")}>
+          <Card title={tx("playerProfile.clubHistory", "Club history")}>
             {(Array.isArray(data?.formerClubs) ? data.formerClubs : []).length === 0 ? (
-              <Text style={styles.placeholder}>{t("playerProfile.noTransferHistory")}</Text>
+              <Text style={styles.placeholder}>{tx("playerProfile.noTransferHistory", "No transfer history available")}</Text>
             ) : (
               <View style={styles.timeline}>
                 {((data?.formerClubs ?? []) as any[]).map((club, idx, arr) => {
@@ -376,7 +391,7 @@ export default function PlayerProfileScreen() {
                             size={32}
                           />
                           <View style={styles.timelineInfo}>
-                            <Text style={styles.timelineClub} numberOfLines={1}>{club?.name || (t("common.notAvailable") || "Niet beschikbaar")}</Text>
+                            <Text style={styles.timelineClub} numberOfLines={1}>{club?.name || tx("common.notAvailable", "Not available")}</Text>
                             <View style={styles.timelineMetaRow}>
                               <Text style={styles.timelineLabel}>{isJoin ? "Joined" : "Left"}</Text>
                               {club?.date ? <Text style={styles.timelineDate}>{club.date}</Text> : null}

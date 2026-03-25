@@ -6517,9 +6517,16 @@ async function espnSeasonLeaders(leagueName, season = seasonForDate(new Date()))
 async function mapEspnCoreLeaders(data, kind) {
   try {
     const aliases = kind === "assists"
-      ? ["assistsLeaders", "assists"]
-      : ["goalsLeaders", "goals"];
-    const category = (data?.categories || []).find((c) => aliases.includes(c?.name) || aliases.includes(String(c?.displayName || "").toLowerCase()));
+      ? ["assistsLeaders", "assistLeaders", "assists", "assist"]
+      : ["goalsLeaders", "goalLeaders", "goals", "goal"];
+    const category = (data?.categories || []).find((c) => {
+      const name = String(c?.name || "").toLowerCase();
+      const displayName = String(c?.displayName || "").toLowerCase();
+      return aliases.some((alias) => {
+        const needle = alias.toLowerCase();
+        return name === needle || displayName === needle || name.includes(needle) || displayName.includes(needle);
+      });
+    });
     const leaders = Array.isArray(category?.leaders) ? category.leaders.slice(0, 30) : [];
     if (!leaders.length) return [];
 
@@ -7357,6 +7364,66 @@ app.get("/api/sports/team/:teamId", async (req, res) => {
       const squadValue = enrichResult?.squadMarketValue ?? null;
       const resolvedLogo = enrichResult?.resolvedLogo ?? (rawTeamLogo || espnLogo || footballLogosUrl || null);
 
+      const normalizedLeagueName = normalizeLeagueName(espnLeague)
+        || normalizeLeagueName(rosterJson?.team?.links?.[0]?.text || "")
+        || "";
+
+      let standingsRow = null;
+      if (normalizedLeagueName) {
+        try {
+          const standingsData = await espnStandings(normalizedLeagueName);
+          const mappedStandings = mapEspnStandings(standingsData)?.entries || [];
+          const byTeamId = mappedStandings.find((row) => String(row?.teamId || "") === String(team?.id || resolvedTeamId || ""));
+          const byTeamName = mappedStandings.find((row) => normalizePersonName(row?.team || "") === normalizePersonName(teamDisplayName || ""));
+          standingsRow = byTeamId || byTeamName || null;
+        } catch {
+          standingsRow = null;
+        }
+      }
+
+      let recentResults = [];
+      let upcomingMatches = [];
+      if (team?.id || resolvedTeamId) {
+        try {
+          const scheduleUrl = `https://site.api.espn.com/apis/site/v2/sports/soccer/leagues/${encodeURIComponent(espnLeague)}/teams/${encodeURIComponent(String(team?.id || resolvedTeamId))}/schedule`;
+          const scheduleJson = await fetchJsonWithTimeout(scheduleUrl, 9000).catch(() => null);
+          const events = Array.isArray(scheduleJson?.events) ? scheduleJson.events : [];
+          const mappedEvents = events.map((event) => {
+            const comp = event?.competitions?.[0] || {};
+            const statusType = String(comp?.status?.type?.state || comp?.status?.type?.name || "").toLowerCase();
+            const competitors = Array.isArray(comp?.competitors) ? comp.competitors : [];
+            const home = competitors.find((c) => c?.homeAway === "home") || competitors[0] || {};
+            const away = competitors.find((c) => c?.homeAway === "away") || competitors[1] || {};
+            return {
+              id: String(event?.id || ""),
+              date: event?.date || null,
+              opponent: String((home?.team?.id === team?.id || home?.team?.displayName === teamDisplayName) ? away?.team?.displayName || "" : home?.team?.displayName || ""),
+              isHome: Boolean(home?.team?.id === team?.id || home?.team?.displayName === teamDisplayName),
+              status: statusType,
+              homeScore: Number(home?.score || 0),
+              awayScore: Number(away?.score || 0),
+            };
+          }).filter((row) => row.opponent);
+
+          recentResults = mappedEvents
+            .filter((row) => row.status === "post" || row.status === "final")
+            .slice(0, 5);
+
+          upcomingMatches = mappedEvents
+            .filter((row) => !(row.status === "post" || row.status === "final"))
+            .slice(0, 3);
+        } catch {
+          recentResults = [];
+          upcomingMatches = [];
+        }
+      }
+
+      const founded = Number(team?.founded || team?.foundedYear || team?.foundedOn || 0) || null;
+      const clubColors = [team?.color, team?.alternateColor].filter(Boolean).map((value) => {
+        const raw = String(value).replace("#", "").slice(0, 6);
+        return /^[0-9a-fA-F]{3,6}$/.test(raw) ? `#${raw.length === 3 ? raw.split("").map((c) => c + c).join("") : raw}` : null;
+      }).filter(Boolean);
+
       return {
         id: String(team?.id || resolvedTeamId || ""),
         name: teamDisplayName || "Team",
@@ -7372,13 +7439,25 @@ app.get("/api/sports/team/:teamId", async (req, res) => {
           if (lum < 25) return "#1a3a6b";  // too dark (e.g. #000000)
           return `#${hex}`;
         })(),
-        leagueName: rosterJson?.team?.links?.[0]?.text || espnLeague,
-        leagueRank: undefined,
-        leaguePoints: undefined,
-        leaguePlayed: undefined,
+        leagueName: rosterJson?.team?.links?.[0]?.text || normalizedLeagueName || espnLeague,
+        leagueRank: standingsRow?.rank,
+        leaguePoints: standingsRow?.points,
+        leaguePlayed: standingsRow?.played,
         venue: team?.venue?.fullName || team?.venue?.name || "",
+        stadiumCapacity: Number(team?.venue?.capacity || 0) || null,
+        country: team?.location || "",
+        founded,
+        clubColors,
         coach: team?.staff?.[0]?.displayName || "",
         record: "",
+        goalsFor: standingsRow?.goalsFor ?? null,
+        goalsAgainst: standingsRow?.goalsAgainst ?? null,
+        cleanSheets: standingsRow?.cleanSheets ?? null,
+        yellowCards: standingsRow?.yellowCards ?? null,
+        redCards: standingsRow?.redCards ?? null,
+        form: standingsRow?.form ?? null,
+        recentResults,
+        upcomingMatches,
         squadMarketValue: squadValue,
         players: finalPlayers,
         source: "espn",
@@ -7638,6 +7717,12 @@ app.get("/api/sports/player/:playerId", async (req, res) => {
         new Promise((resolve) => setTimeout(() => resolve(null), 2500)),
       ]) || null;
 
+      const contractUntil =
+        apifyFallback?.contractUntil
+        || profile?.contract?.endDate
+        || espnAthlete?.contract?.endDate
+        || null;
+
       return {
         id: String(valued?.id || ""),
         name: valued?.name || name,
@@ -7655,7 +7740,7 @@ app.get("/api/sports/player/:playerId", async (req, res) => {
         isRealValue: Boolean(valued?.isRealValue),
         valueMethod: valued?.valueMethod || "estimated",
         jerseyNumber: profile?.number || espnAthlete?.jersey || apifyFallback?.jerseyNumber || null,
-        contractUntil: apifyFallback?.contractUntil || null,
+        contractUntil,
         seasonStats,
         recentForm,
         profileMeta: {
@@ -7666,8 +7751,9 @@ app.get("/api/sports/player/:playerId", async (req, res) => {
         strengths: aiInsights?.strengths?.length ? aiInsights.strengths : fallbackInsights.strengths,
         weaknesses: aiInsights?.weaknesses?.length ? aiInsights.weaknesses : fallbackInsights.weaknesses,
         analysis:
-          aiInsights?.summary ||
-          `${name} (${valued?.position || "Speler"}) wordt beoordeeld op actuele profieldata, positie-eisen en recente context van club/rol.`,
+          aiInsights?.summary
+          || apifyFallback?.analysis
+          || `${name} (${valued?.position || "Speler"}) wordt beoordeeld op actuele profieldata, positie-eisen en recente context van club/rol.`,
         source: aiInsights ? `${sourceTag}+ai` : `${sourceTag}+deterministic`,
         updatedAt: new Date().toISOString(),
       };
