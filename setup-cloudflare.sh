@@ -9,6 +9,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "$0")" && pwd)"
 WORKER_DIR="$ROOT_DIR/cloudflare/sports-worker"
 WRANGLER_TOML="$WORKER_DIR/wrangler.toml"
+ROOT_WRANGLER_TOML="$ROOT_DIR/wrangler.toml"
 
 if [[ ! -f "$WRANGLER_TOML" ]]; then
   echo "ERROR: Could not find $WRANGLER_TOML"
@@ -65,6 +66,44 @@ extract_first_id() {
   sed -n 's/.*"\([a-f0-9]\{32\}\)".*/\1/p' | head -n1
 }
 
+write_ids_to_wrangler() {
+  local target="$1"
+
+  if grep -q '^\[\[d1_databases\]\]' "$target"; then
+    perl -0777 -i -pe 's/database_id\s*=\s*"[^"]*"/database_id = "'"$d1_id"'"/g' "$target"
+  else
+    cat >> "$target" <<EOF
+
+[[d1_databases]]
+binding = "SPORTS_DB"
+database_name = "nexora-sports"
+database_id = "$d1_id"
+EOF
+  fi
+
+  if grep -q '^\[\[kv_namespaces\]\]' "$target"; then
+    perl -0777 -i -pe 's/id\s*=\s*"[^"]*"\npreview_id\s*=\s*"[^"]*"/id = "'"$kv_prod_id"'"\npreview_id = "'"$kv_preview_id"'"/g' "$target"
+  else
+    cat >> "$target" <<EOF
+
+[[kv_namespaces]]
+binding = "SPORTS_CACHE_KV"
+id = "$kv_prod_id"
+preview_id = "$kv_preview_id"
+EOF
+  fi
+
+  if ! grep -q '^\[\[r2_buckets\]\]' "$target"; then
+    cat >> "$target" <<'EOF'
+
+[[r2_buckets]]
+binding = "ASSETS_R2"
+bucket_name = "nexora-assets"
+preview_bucket_name = "nexora-assets-preview"
+EOF
+  fi
+}
+
 echo "1) Ensuring account_id"
 ensure_account_id
 
@@ -114,38 +153,11 @@ tail -n 6 /tmp/nexora-r2-preview.log || true
 tail -n 6 /tmp/nexora-r2-prod.log || true
 
 echo "5) Writing IDs into wrangler.toml"
-if grep -q '^\[\[d1_databases\]\]' "$WRANGLER_TOML"; then
-  perl -0777 -i -pe 's/database_id\s*=\s*"[^"]*"/database_id = "'"$d1_id"'"/g' "$WRANGLER_TOML"
-else
-  cat >> "$WRANGLER_TOML" <<EOF
+write_ids_to_wrangler "$WRANGLER_TOML"
 
-[[d1_databases]]
-binding = "SPORTS_DB"
-database_name = "nexora-sports"
-database_id = "$d1_id"
-EOF
-fi
-
-if grep -q '^\[\[kv_namespaces\]\]' "$WRANGLER_TOML"; then
-  perl -0777 -i -pe 's/id\s*=\s*"[^"]*"\npreview_id\s*=\s*"[^"]*"/id = "'"$kv_prod_id"'"\npreview_id = "'"$kv_preview_id"'"/g' "$WRANGLER_TOML"
-else
-  cat >> "$WRANGLER_TOML" <<EOF
-
-[[kv_namespaces]]
-binding = "SPORTS_CACHE_KV"
-id = "$kv_prod_id"
-preview_id = "$kv_preview_id"
-EOF
-fi
-
-if ! grep -q '^\[\[r2_buckets\]\]' "$WRANGLER_TOML"; then
-  cat >> "$WRANGLER_TOML" <<'EOF'
-
-[[r2_buckets]]
-binding = "ASSETS_R2"
-bucket_name = "nexora-assets"
-preview_bucket_name = "nexora-assets-preview"
-EOF
+if [[ -f "$ROOT_WRANGLER_TOML" ]]; then
+  write_ids_to_wrangler "$ROOT_WRANGLER_TOML"
+  echo "OK: Updated root wrangler.toml with the same binding IDs"
 fi
 
 echo "6) Applying remote migrations"

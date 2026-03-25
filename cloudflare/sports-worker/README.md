@@ -49,13 +49,13 @@ npm run d1:migrate:remote  # for production
 npm run deploy
 ```
 
-After deploy, your Worker URL will look like: `https://nexora.dhgpfz2h8r.workers.dev`
+After deploy, your Worker URL will look like: `https://nexora.<your-account-or-domain>.workers.dev`
 
 ### 4) Configure app
 
 Update `app/.env`:
 ```bash
-EXPO_PUBLIC_SPORTS_API_BASE=https://nexora.dhgpfz2h8r.workers.dev
+EXPO_PUBLIC_SPORTS_API_BASE=https://nexora.<your-account-or-domain>.workers.dev
 ```
 
 ## Architecture & Cache Strategy

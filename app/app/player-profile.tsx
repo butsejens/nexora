@@ -373,6 +373,15 @@ export default function PlayerProfileScreen() {
     return seasonStatItems.filter((item) => hasNumericValue(item.value)).length;
   }, [seasonStatItems]);
   const useCompactSeasonStats = Boolean((data as any)?.seasonStatsMode === "compact") || seasonVisibleCount < 3;
+  const hasRenderablePlayerData = Boolean(
+    data && (
+      hasMeaningfulText((data as any)?.name || params.name) ||
+      hasMeaningfulText((data as any)?.currentClub || params.team) ||
+      hasMeaningfulText((data as any)?.position || params.position) ||
+      hasMeaningfulText((data as any)?.marketValue || params.marketValue) ||
+      (Array.isArray((data as any)?.formerClubs) && (data as any).formerClubs.length > 0)
+    )
+  );
 
   return (
     <View style={styles.container}>
@@ -411,7 +420,7 @@ export default function PlayerProfileScreen() {
         <View style={styles.loading}>
           <StateBlock loading title={tx("playerProfile.loading", "Loading player profile") } message={tx("playerProfile.analysisTempUnavailable", "Analysis is temporarily unavailable")} />
         </View>
-      ) : error || !data || (data as any)?.error ? (
+      ) : error || !data || (!hasRenderablePlayerData && (data as any)?.error) ? (
         <View style={styles.loading}>
           <StateBlock
             icon="alert-circle-outline"

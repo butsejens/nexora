@@ -49,10 +49,10 @@ EXPO_PUBLIC_API_BASES=https://your-nexora-api.onrender.com,http://localhost:8080
 
 # optional: route sports endpoints to Cloudflare Workers
 # all /api/sports/* calls use this base first
-EXPO_PUBLIC_SPORTS_API_BASE=https://nexora.dhgpfz2h8r.workers.dev
+EXPO_PUBLIC_SPORTS_API_BASE=https://nexora.<your-account-or-domain>.workers.dev
 
 # optional sports fallback list
-EXPO_PUBLIC_SPORTS_API_BASES=https://nexora.dhgpfz2h8r.workers.dev,https://your-nexora-api.onrender.com
+EXPO_PUBLIC_SPORTS_API_BASES=https://nexora.<your-account-or-domain>.workers.dev,https://your-nexora-api.onrender.com
 ```
 
 Then run only the app:
@@ -61,6 +61,18 @@ npm run app
 ```
 
 Result: app works without running `npm run server` locally.
+
+## Network architecture (production)
+- Sports routes (`/api/sports/*`): App -> Cloudflare Worker (`EXPO_PUBLIC_SPORTS_API_BASE`) -> Render (`RENDER_SPORTS_ORIGIN`) -> upstream providers.
+- Non-sports routes (`/api/*`): App -> Render (`EXPO_PUBLIC_API_BASE`).
+- Fallback path for sports: if Cloudflare is unavailable/transiently failing, app automatically retries Render.
+
+Recommended env setup:
+```bash
+EXPO_PUBLIC_API_BASE=https://nexora-api-8xxb.onrender.com
+EXPO_PUBLIC_SPORTS_API_BASE=https://nexora.dhgpfz2h8r.workers.dev
+EXPO_PUBLIC_SPORTS_API_BASES=https://nexora.dhgpfz2h8r.workers.dev,https://nexora-api-8xxb.onrender.com
+```
 
 ## Cloudflare Worker deploy (monorepo-safe)
 If Cloudflare Build Logs show:

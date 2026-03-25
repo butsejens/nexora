@@ -5,8 +5,16 @@ import Constants from "expo-constants";
 
 let lastWorkingApiBase = "";
 let lastWorkingSportsApiBase = "";
-const DEFAULT_CLOUD_API_BASE = "https://nexora-api-8xxb.onrender.com";
-const DEFAULT_SPORTS_CLOUD_API_BASE = "https://nexora.dhgpfz2h8r.workers.dev";
+const DEFAULT_RENDER_API_BASE = "https://nexora-api-8xxb.onrender.com";
+const inflightJsonRequests = new Map<string, Promise<unknown>>();
+
+function isCloudflareSportsUrl(url: string): boolean {
+  return /\.workers\.dev/i.test(url) || /cloudflare/i.test(url);
+}
+
+function isRenderUrl(url: string): boolean {
+  return /\.onrender\.com/i.test(url);
+}
 
 function normalizeBase(base: string): string {
   return String(base || "").trim().replace(/\/$/, "");
@@ -74,9 +82,9 @@ export function getApiBaseCandidates(): string[] {
     if (!__DEV__) {
       return unique([
         lastWorkingApiBase,
-        DEFAULT_CLOUD_API_BASE,
-        ...explicitList,
         explicit,
+        ...explicitList,
+        DEFAULT_RENDER_API_BASE,
       ]);
     }
 
@@ -129,13 +137,26 @@ export function getApiBaseCandidates(): string[] {
 export function getSportsApiBaseCandidates(): string[] {
   const explicit = normalizeBase(process.env.EXPO_PUBLIC_SPORTS_API_BASE || "");
   const explicitList = parseEnvBaseList(process.env.EXPO_PUBLIC_SPORTS_API_BASES || "");
-  // Prioritize: last working → explicit env → Render (stable) → Cloudflare (when ready)
+  const hasExplicitSportsBase = Boolean(explicit) || explicitList.length > 0;
+
+  // Dev ergonomics: if no dedicated sports base is configured, prefer local/general
+  // API candidates first to avoid unnecessary edge/network hops while developing.
+  if (__DEV__ && !hasExplicitSportsBase) {
+    return unique([
+      lastWorkingSportsApiBase,
+      ...getApiBaseCandidates(),
+      DEFAULT_RENDER_API_BASE,
+    ]);
+  }
+
+  // Production/default: explicit edge-first for sports, then Render/general fallbacks.
+  // Avoid hardcoded worker domains that can silently go stale.
   return unique([
     lastWorkingSportsApiBase,
     explicit,
     ...explicitList,
-    ...getApiBaseCandidates(), // Render as main fallback (reliable)
-    DEFAULT_SPORTS_CLOUD_API_BASE, // Cloudflare last (for when it's deployed)
+    DEFAULT_RENDER_API_BASE,
+    ...getApiBaseCandidates(),
   ]);
 }
 
@@ -180,10 +201,26 @@ async function throwIfResNotOk(res: Response) {
 // Sports routes to non-deployed Cloudflare → use failfast to prioritize Render
 function timeoutForUrl(url: string, isSports: boolean = false): number {
   if (isSports) {
-    // Sports: fail faster on Cloudflare since it's not deployed yet, fallback to Render quicker
-    return url.startsWith("https://nexora.dhgpfz2h8r") ? 8000 : 15000;
+    if (isCloudflareSportsUrl(url)) return 12000;
+    if (isRenderUrl(url)) return 18000;
+    return 12000;
   }
   return url.startsWith("https://") ? 25000 : 8000;
+}
+
+function shouldTryNextBase(route: string, status: number): boolean {
+  if (status === 404) return true;
+  if (!isSportsRoute(route)) return false;
+  return [408, 425, 429, 500, 502, 503, 504].includes(status);
+}
+
+function shouldTryNextBaseForResponse(route: string, res: Response): boolean {
+  if (shouldTryNextBase(route, res.status)) return true;
+  if (!isSportsRoute(route)) return false;
+  const contentType = String(res.headers.get("content-type") || "").toLowerCase();
+  // Cloudflare Access/challenge pages can return HTTP 200 + text/html.
+  if (contentType.includes("text/html")) return true;
+  return false;
 }
 
 async function fetchWithTimeout(url: string, init?: RequestInit, timeoutMs?: number, isSports?: boolean): Promise<Response> {
@@ -232,10 +269,10 @@ export async function apiRequest(
         body: data ? JSON.stringify(data) : undefined,
       }, undefined, isSports);
 
-      // Wrong target (for example Metro/web origin) can return route 404.
-      // Try the next candidate before failing hard.
-      if (res.status === 404) {
-        lastError = new Error(`404 from ${baseUrl}`);
+      // Wrong targets and transient upstream/edge failures should fall through to
+      // the next candidate (for example Cloudflare -> Render fallback).
+      if (shouldTryNextBaseForResponse(route, res)) {
+        lastError = new Error(`${res.status} from ${baseUrl}`);
         continue;
       }
 
@@ -267,6 +304,49 @@ export async function apiRequest(
   throw new Error("Netwerkfout: server niet bereikbaar");
 }
 
+type ApiJsonRequestOptions = {
+  method?: string;
+  data?: unknown;
+  dedupe?: boolean;
+  dedupeKey?: string;
+};
+
+function buildJsonDedupeKey(method: string, route: string, data?: unknown): string {
+  if (data === undefined) return `${method.toUpperCase()} ${route}`;
+  try {
+    return `${method.toUpperCase()} ${route} ${JSON.stringify(data)}`;
+  } catch {
+    return `${method.toUpperCase()} ${route}`;
+  }
+}
+
+export async function apiRequestJson<T>(
+  route: string,
+  options?: ApiJsonRequestOptions,
+): Promise<T> {
+  const method = (options?.method || "GET").toUpperCase();
+  const shouldDedupe = options?.dedupe ?? method === "GET";
+  const requestKey = options?.dedupeKey || buildJsonDedupeKey(method, route, options?.data);
+
+  const run = async (): Promise<T> => {
+    const res = await apiRequest(method, route, options?.data);
+    return await res.json() as T;
+  };
+
+  if (!shouldDedupe) return await run();
+
+  const inflight = inflightJsonRequests.get(requestKey) as Promise<T> | undefined;
+  if (inflight) return await inflight;
+
+  const task = run();
+  inflightJsonRequests.set(requestKey, task as Promise<unknown>);
+  try {
+    return await task;
+  } finally {
+    inflightJsonRequests.delete(requestKey);
+  }
+}
+
 type UnauthorizedBehavior = "returnNull" | "throw";
 export const getQueryFn: <T>(options: {
   on401: UnauthorizedBehavior;
@@ -293,8 +373,8 @@ export const getQueryFn: <T>(options: {
           return null;
         }
 
-        if (res.status === 404) {
-          lastError = new Error(`404 from ${baseUrl}`);
+        if (shouldTryNextBaseForResponse(path, res)) {
+          lastError = new Error(`${res.status} from ${baseUrl}`);
           continue;
         }
 

@@ -94,6 +94,24 @@ export function cacheGet<T>(key: string): T | null {
   return entry.data as T;
 }
 
+/**
+ * Read cache without evicting expired entries. Useful for stale fallback UX.
+ */
+export function cachePeek<T>(key: string): { data: T; isStale: boolean } | null {
+  const entry = mem.get(key);
+  if (!entry) return null;
+  return {
+    data: entry.data as T,
+    isStale: entry.expiresAt < Date.now(),
+  };
+}
+
+/** Return cached data even when stale (if present). */
+export function cacheGetStale<T>(key: string): T | null {
+  const peek = cachePeek<T>(key);
+  return peek ? peek.data : null;
+}
+
 /** Write a value to cache with a TTL in milliseconds. */
 export function cacheSet(key: string, data: unknown, ttlMs: number): void {
   mem.set(key, { data, expiresAt: Date.now() + ttlMs });

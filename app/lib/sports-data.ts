@@ -72,6 +72,13 @@ function buildLeagueCandidates(params: { leagueName?: string; espnLeague?: strin
 function countForKind(kind: SportsLeagueResourceKind, json: any): number {
   if (kind === "standings") {
     if (Array.isArray(json?.standings)) return json.standings.length;
+    if (Array.isArray(json?.entries)) return json.entries.length;
+    if (Array.isArray(json?.phases)) {
+      return json.phases.reduce((sum: number, phase: any) => {
+        const rows = Array.isArray(phase?.standings) ? phase.standings.length : 0;
+        return sum + rows;
+      }, 0);
+    }
     if (Array.isArray(json?.teams)) return json.teams.length;
     if (Array.isArray(json?.data)) return json.data.length;
     return 0;
