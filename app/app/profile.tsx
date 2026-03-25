@@ -23,7 +23,9 @@ import Constants from "expo-constants";
 import * as Application from "expo-application";
 import * as Updates from "expo-updates";
 import { COLORS } from "@/constants/colors";
+import { TYPOGRAPHY } from "@/constants/design-system";
 import { NexoraHeader } from "@/components/NexoraHeader";
+import { SectionHeader, SurfaceCard } from "@/components/ui";
 import { useNexora } from "@/context/NexoraContext";
 import { useTranslation } from "@/lib/useTranslation";
 import { t as tFn } from "@/lib/i18n";
@@ -671,8 +673,8 @@ function QualityModal({ visible, selected, onClose, onSelect }: {
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <View style={styles.section}>
-      <Text style={styles.sectionTitle}>{title}</Text>
-      <View style={styles.sectionContent}>{children}</View>
+      <SectionHeader title={title} />
+      <SurfaceCard style={styles.sectionContent}>{children}</SurfaceCard>
     </View>
   );
 }
@@ -1782,11 +1784,14 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   section: { marginHorizontal: 20, marginBottom: 24 },
-  sectionTitle: {
-    fontFamily: "Inter_600SemiBold", fontSize: 11, color: COLORS.textMuted,
-    letterSpacing: 1.5, textTransform: "uppercase", marginBottom: 10,
+  sectionContent: {
+    backgroundColor: COLORS.overlayLight,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: COLORS.borderLight,
+    overflow: "hidden",
+    padding: 0,
   },
-  sectionContent: { backgroundColor: COLORS.overlayLight, borderRadius: 18, borderWidth: 1, borderColor: COLORS.borderLight, overflow: "hidden" },
   row: { flexDirection: "row", alignItems: "center", paddingHorizontal: 16, paddingVertical: 14, gap: 12 },
   rowIcon: { width: 34, height: 34, borderRadius: 10, backgroundColor: COLORS.accentGlow, alignItems: "center", justifyContent: "center" },
   rowIconDanger: { backgroundColor: COLORS.liveGlow },
@@ -1853,7 +1858,7 @@ const styles = StyleSheet.create({
   playlistNameRow: { flexDirection: "row", alignItems: "center", gap: 6 },
   playlistName: { fontFamily: "Inter_600SemiBold", fontSize: 14, color: COLORS.text },
   playlistUrl: { fontFamily: "Inter_400Regular", fontSize: 11, color: COLORS.textMuted, marginTop: 2 },
-  loadingText: { fontFamily: "Inter_400Regular", fontSize: 11, color: COLORS.accent, marginTop: 2 },
+  loadingText: { ...TYPOGRAPHY.caption, color: COLORS.accent, marginTop: 2 },
   channelCountText: { fontFamily: "Inter_400Regular", fontSize: 11, color: COLORS.textSecondary, marginTop: 2 },
   readyBadge: { backgroundColor: "#0D3", borderRadius: 4, paddingHorizontal: 5, paddingVertical: 1 },
   readyBadgeText: { fontFamily: "Inter_700Bold", fontSize: 9, color: "#fff" },

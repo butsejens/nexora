@@ -7,7 +7,9 @@ import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { COLORS } from "@/constants/colors";
+import { SPACING, TYPOGRAPHY } from "@/constants/design-system";
 import { NexoraHeader } from "@/components/NexoraHeader";
+import { StateBlock, SurfaceCard } from "@/components/ui";
 import { useNexora } from "@/context/NexoraContext";
 import { SafeHaptics } from "@/lib/safeHaptics";
 import type { DownloadedItem } from "@/context/NexoraContext";
@@ -127,24 +129,22 @@ export default function DownloadsScreen() {
       />
 
       {downloads.length > 0 && (
-        <View style={styles.summary}>
+        <SurfaceCard style={styles.summary}>
           <Ionicons name="phone-portrait-outline" size={15} color={COLORS.accent} />
           <Text style={styles.summaryText}>
             {downloads.length} item{downloads.length !== 1 ? "s" : ""} opgeslagen
             {totalSize > 0 ? ` · ${formatBytes(totalSize)}` : ""}
           </Text>
-        </View>
+        </SurfaceCard>
       )}
 
       {downloads.length === 0 ? (
         <View style={styles.empty}>
-          <View style={styles.emptyIcon}>
-            <Ionicons name="cloud-download-outline" size={52} color={COLORS.accent} />
-          </View>
-          <Text style={styles.emptyTitle}>Geen downloads</Text>
-          <Text style={styles.emptyText}>
-            Download films of series vanuit je IPTV playlist om ze offline te bekijken.
-          </Text>
+          <StateBlock
+            icon="cloud-download-outline"
+            title="Geen downloads"
+            message="Download films of series vanuit je IPTV playlist om ze offline te bekijken."
+          />
           <View style={styles.emptyActions}>
             <TouchableOpacity
               style={styles.emptyBtn}
@@ -170,9 +170,9 @@ export default function DownloadsScreen() {
           showsVerticalScrollIndicator={false}
           renderItem={({ item }) => (
             deleting === item.id ? (
-              <View style={[styles.card, { justifyContent: "center", alignItems: "center", height: 90 }]}>
+              <SurfaceCard style={[styles.card, { justifyContent: "center", alignItems: "center", height: 90 }]}>
                 <ActivityIndicator color={COLORS.accent} />
-              </View>
+              </SurfaceCard>
             ) : (
               <DownloadCard
                 item={item}
@@ -191,21 +191,15 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
   summary: {
     flexDirection: "row", alignItems: "center", gap: 8,
-    paddingHorizontal: 20, paddingVertical: 10,
-    borderBottomWidth: 1, borderBottomColor: COLORS.border,
+    marginHorizontal: SPACING.lg,
+    marginTop: SPACING.sm,
+    paddingVertical: SPACING.sm,
   },
-  summaryText: { fontFamily: "Inter_500Medium", fontSize: 13, color: COLORS.textSecondary },
+  summaryText: { ...TYPOGRAPHY.body, color: COLORS.textSecondary },
   empty: {
     flex: 1, alignItems: "center", justifyContent: "center",
     paddingHorizontal: 40, gap: 12,
   },
-  emptyIcon: {
-    width: 90, height: 90, borderRadius: 45,
-    backgroundColor: COLORS.accentGlow, borderWidth: 2, borderColor: COLORS.accent + "55",
-    alignItems: "center", justifyContent: "center", marginBottom: 8,
-  },
-  emptyTitle: { fontFamily: "Inter_700Bold", fontSize: 20, color: COLORS.text, textAlign: "center" },
-  emptyText: { fontFamily: "Inter_400Regular", fontSize: 14, color: COLORS.textMuted, textAlign: "center", lineHeight: 20 },
   emptyActions: { flexDirection: "row", gap: 12, marginTop: 8 },
   emptyBtn: {
     flexDirection: "row", alignItems: "center", gap: 6,

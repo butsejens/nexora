@@ -7,7 +7,9 @@ import { router } from "expo-router";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import { COLORS } from "@/constants/colors";
+import { SPACING, TYPOGRAPHY } from "@/constants/design-system";
 import { NexoraHeader } from "@/components/NexoraHeader";
+import { SectionHeader, StateBlock, SurfaceCard } from "@/components/ui";
 import { useNexora } from "@/context/NexoraContext";
 import { apiRequest } from "@/lib/query-client";
 
@@ -159,12 +161,16 @@ export default function FavoritesScreen() {
         <Text style={styles.heroHeadline}>All your saved content in one place</Text>
         <Text style={styles.title}>Favorites</Text>
 
-        <Text style={styles.sectionTitle}>IPTV</Text>
+        <SectionHeader title="IPTV" subtitle="Live channels and playlist picks" />
         {iptvItems.length === 0 ? (
-          <Text style={styles.empty}>Geen IPTV favorieten.</Text>
+          <StateBlock
+            icon="heart-dislike-outline"
+            title="No IPTV favorites"
+            message="Add channels to favorites to keep them here."
+          />
         ) : (
           iptvItems.map((ch: any) => (
-            <View key={ch.id} style={styles.row}>
+            <SurfaceCard key={ch.id} style={styles.row}>
               <Poster uri={ch.poster || ch.logo} />
               <TouchableOpacity
                 style={styles.rowBody}
@@ -221,18 +227,22 @@ export default function FavoritesScreen() {
               >
                 <Ionicons name="funnel-outline" size={18} color={COLORS.accent} />
               </TouchableOpacity>
-            </View>
+            </SurfaceCard>
           ))
         )}
 
         <View style={styles.divider} />
 
-        <Text style={styles.sectionTitle}>Movies / Series</Text>
+        <SectionHeader title="Movies / Series" subtitle="TMDB favorites ordered by priority" />
         {tmdbSorted.length === 0 ? (
-          <Text style={styles.empty}>Geen Movie/Series favorieten.</Text>
+          <StateBlock
+            icon="film-outline"
+            title="No movie or series favorites"
+            message="Favorite movies and series to build your watchlist."
+          />
         ) : (
           tmdbSorted.map((it: any) => (
-            <View key={`${it._type}_${it.id}`} style={styles.row}>
+            <SurfaceCard key={`${it._type}_${it.id}`} style={styles.row}>
               <Poster uri={it.poster || null} />
               <TouchableOpacity
                 style={styles.rowBody}
@@ -277,7 +287,7 @@ export default function FavoritesScreen() {
               >
                 <Ionicons name="funnel-outline" size={18} color={COLORS.accent} />
               </TouchableOpacity>
-            </View>
+            </SurfaceCard>
           ))
         )}
       </ScrollView>
@@ -303,30 +313,17 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   title: {
+    ...TYPOGRAPHY.screenTitle,
     color: COLORS.text,
-    fontSize: 22,
-    fontFamily: "Inter_700Bold",
     marginBottom: 10,
   },
-  sectionTitle: {
-    color: COLORS.textSecondary,
-    fontSize: 14,
-    fontFamily: "Inter_600SemiBold",
-    marginTop: 10,
-    marginBottom: 8,
-  },
-  empty: { color: COLORS.textMuted, fontFamily: "Inter_500Medium", paddingVertical: 10 },
   row: {
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
-    paddingVertical: 12,
-    paddingHorizontal: 10,
+    paddingVertical: SPACING.padding.compact,
+    paddingHorizontal: SPACING.gap.small,
     marginBottom: 8,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: 14,
-    backgroundColor: COLORS.cardElevated,
   },
   rowBody: { flex: 1 },
   rowTitle: { color: COLORS.text, fontFamily: "Inter_600SemiBold", fontSize: 14 },

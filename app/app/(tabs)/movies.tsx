@@ -15,6 +15,7 @@ import { buildErrorReference, normalizeApiError } from "@/lib/error-messages";
 import { RealContentCard, RealHeroBanner } from "@/components/RealContentCard";
 import { SafeHaptics } from "@/lib/safeHaptics";
 import { SilentResetBoundary } from "@/components/SilentResetBoundary";
+import { StateBlock } from "@/components/ui";
 
 const CATEGORY_SORT: Record<string, string> = {
   trending: "popularity.desc",
@@ -904,19 +905,21 @@ export default function MoviesScreen() {
               ))}
 
               {isLoading && (
-                <View style={{ padding: 40, alignItems: "center" }}>
-                  <ActivityIndicator color={COLORS.accent} />
-                  <Text style={{ color: COLORS.textMuted, fontFamily: "Inter_400Regular", fontSize: 13, marginTop: 12 }}>
-                    Loading movies...
-                  </Text>
+                <View style={{ paddingHorizontal: 20, paddingTop: 12 }}>
+                  <StateBlock loading title="Loading movies..." message="Fetching the latest catalog." />
                 </View>
               )}
               {isError && !iptvMovies.length && (
-                <View style={{ padding: 40, alignItems: "center", gap: 10 }}>
-                  <Ionicons name="cloud-offline-outline" size={40} color={COLORS.textMuted} />
-                  <Text style={{ fontFamily: "Inter_500Medium", color: COLORS.textMuted, textAlign: "center" }}>
-                    {normalizedCatalogError?.userMessage || "Unable to load movies."}
-                  </Text>
+                <View style={{ paddingHorizontal: 20, paddingTop: 12 }}>
+                  <StateBlock
+                    icon="cloud-offline-outline"
+                    title="Unable to load movies"
+                    message={normalizedCatalogError?.userMessage || "Unable to load movies."}
+                    actionLabel="Retry"
+                    onAction={() => {
+                      void refetch();
+                    }}
+                  />
                 </View>
               )}
             </View>
