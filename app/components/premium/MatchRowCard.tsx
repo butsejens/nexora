@@ -58,16 +58,6 @@ const SPORT_ACCENTS: Record<string, string> = {
   ice_hockey: '#2196F3', hockey: '#2196F3',
 };
 
-const SPORT_ICONS: Record<string, string> = {
-  football: '⚽', soccer: '⚽',
-  basketball: '🏀',
-  tennis: '🎾',
-  mma: '🥊', ufc: '🥊',
-  motorsport: '🏎️', f1: '🏎️', motogp: '🏍️',
-  baseball: '⚾',
-  ice_hockey: '🏒', hockey: '🏒',
-};
-
 function getSportAccent(sport?: string): string {
   const key = (sport || '').toLowerCase();
   return SPORT_ACCENTS[key] || COLORS.accent;
@@ -135,9 +125,7 @@ function MatchRowCardInner({
   const finished = bucket === 'finished';
   const upcoming = bucket === 'upcoming';
 
-  const sportKey = (match.sport || '').toLowerCase();
   const sportAccent = getSportAccent(match.sport);
-  const sportIcon = SPORT_ICONS[sportKey] || '';
   const barColor = live ? COLORS.live : sportAccent;
 
   const homeWin = !upcoming && (match.homeScore > match.awayScore);
@@ -157,12 +145,15 @@ function MatchRowCardInner({
           <View style={[s.topBar, { backgroundColor: barColor }]} />
 
           <View style={s.metaRow}>
-            <View style={[s.metaBadge, { borderColor: `${sportAccent}55`, backgroundColor: `${sportAccent}16` }]}>
-              <Text style={[s.metaBadgeText, { color: sportAccent }]} numberOfLines={1}>
-                {sportIcon ? `${sportIcon} ` : ''}{match.league || 'Match'}
-              </Text>
+            <View style={s.metaLeagueWrap}>
+              <Text style={s.metaLeagueLabel} numberOfLines={1}>{match.league || 'Match'}</Text>
             </View>
             <View style={s.metaActions}>
+              <View style={[s.metaStatusBadge, live ? s.metaStatusBadgeLive : null]}>
+                <Text style={[s.metaStatusText, live ? s.metaStatusTextLive : null]}>
+                  {live ? `${tFn('common.live')} ${timeLabel}` : finished ? tFn('common.ft') : timeLabel}
+                </Text>
+              </View>
               {onNotificationToggle ? (
                 <TouchableOpacity
                   style={[s.notifyQuickBtn, isNotificationOn ? s.notifyQuickBtnActive : null]}
@@ -176,11 +167,6 @@ function MatchRowCardInner({
                   />
                 </TouchableOpacity>
               ) : null}
-              <View style={[s.metaBadge, live ? s.metaBadgeLive : null]}>
-                <Text style={[s.metaBadgeText, live ? s.metaBadgeTextLive : null]}>
-                  {live ? `${tFn('common.live')} ${timeLabel}` : finished ? tFn('common.ft') : tFn('common.upcoming')}
-                </Text>
-              </View>
             </View>
           </View>
 
@@ -215,7 +201,10 @@ function MatchRowCardInner({
                   {match.awayScore ?? 0}
                 </Text>
               ) : (
-                <Text style={s.kickoff}>{timeLabel}</Text>
+                <>
+                  <Text style={s.kickoffLabel}>{tFn('common.upcoming')}</Text>
+                  <Text style={s.kickoff}>{timeLabel}</Text>
+                </>
               )}
             </View>
 
@@ -311,24 +300,51 @@ const s = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: 14,
-    paddingTop: 12,
-    paddingBottom: 4,
+    paddingTop: 11,
+    paddingBottom: 6,
     gap: 8,
   },
-  metaBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  metaLeagueWrap: {
     flex: 1,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
+    minWidth: 0,
     borderRadius: 999,
     borderWidth: 1,
-    backgroundColor: COLORS.cardElevated,
-    borderColor: COLORS.border,
+    borderColor: 'rgba(255,255,255,0.12)',
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
   },
-  metaBadgeLive: {
+  metaLeagueLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: COLORS.textSecondary,
+    letterSpacing: 0.25,
+    textTransform: 'uppercase',
+  },
+  metaStatusBadge: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    minWidth: 72,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.12)',
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+  },
+  metaStatusBadgeLive: {
     backgroundColor: 'rgba(255, 59, 92, 0.12)',
     borderColor: 'rgba(255, 59, 92, 0.34)',
+  },
+  metaStatusText: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: COLORS.textMuted,
+    letterSpacing: 0.35,
+    textTransform: 'uppercase',
+  },
+  metaStatusTextLive: {
+    color: COLORS.live,
   },
   metaActions: {
     flexDirection: 'row',
@@ -349,24 +365,13 @@ const s = StyleSheet.create({
     borderColor: 'rgba(255, 59, 92, 0.36)',
     backgroundColor: COLORS.live,
   },
-  metaBadgeText: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: COLORS.textMuted,
-    letterSpacing: 0.3,
-    textTransform: 'uppercase',
-    flexShrink: 1,
-  },
-  metaBadgeTextLive: {
-    color: COLORS.live,
-  },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 14,
-    paddingTop: 12,
+    paddingTop: 10,
     paddingBottom: 13,
-    minHeight: 92,
+    minHeight: 88,
   },
 
   // Teams ─────────────────────────────────────────────────────────────────────
@@ -405,7 +410,7 @@ const s = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 6,
-    minWidth: 88,
+    minWidth: 92,
   },
   score: {
     fontSize: 28,
@@ -425,9 +430,17 @@ const s = StyleSheet.create({
     fontWeight: '400',
   },
   kickoff: {
-    fontSize: 22,
+    fontSize: 19,
     fontWeight: '800',
     color: COLORS.text,
+    letterSpacing: 0.5,
+  },
+  kickoffLabel: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: COLORS.textMuted,
+    marginBottom: 2,
+    textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
   statusText: {
