@@ -203,7 +203,7 @@ export function resolvePlayerIdentity(
 
 // ─── Competition identity ─────────────────────────────────────────────────────
 
-const COMPETITION_ALIASES: Record<string, string> = {
+const COMPETITION_ALIASES: Record<string, string[]> = {
   // Canonical slug → alternate display names (lowercase, normalized)
   "bel.1": ["jupiler pro league", "first division a", "pro league", "1a"],
   "bel.2": ["challenger pro league", "first division b", "1b"],

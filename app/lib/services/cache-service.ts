@@ -30,7 +30,7 @@ interface CacheEntry<T> {
 const mem = new Map<string, CacheEntry<unknown>>();
 
 // Pending writes (debounced)
-const pending = new Map<string, NodeJS.Timeout>();
+const pending = new Map<string, ReturnType<typeof setTimeout>>();
 
 function storageKey(key: string): string {
   return `${PREFIX}${key}`;
