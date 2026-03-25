@@ -160,6 +160,7 @@ function RootLayoutNav() {
       <Stack.Screen name="premium" options={{ headerShown: false }} />
       <Stack.Screen name="playlist-manage" options={{ headerShown: false }} />
       <Stack.Screen name="playlist-edit" options={{ headerShown: false }} />
+      <Stack.Screen name="follow-center" options={{ headerShown: false }} />
     </Stack>
   );
 }

@@ -1,3 +1,13 @@
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import {
+  getEntityAliases,
+  normalizeCompetitionName,
+  normalizeCountryName,
+  normalizeEntityText,
+  normalizeTeamName,
+  tokenOverlapScore,
+} from "@/lib/entity-normalization";
+
 // Local logo assets
 const LOCAL_LOGOS = {
   clubBrugge: require("../assets/logos/club-brugge.png"),
@@ -99,13 +109,67 @@ const LEAGUE_LOGO_MAP: Record<string, string | number> = {
 };
 
 function normalizeName(value: string): string {
-  return String(value || "")
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^a-z0-9 ]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
+  return normalizeEntityText(value);
+}
+
+type CachedResolution = {
+  value: string | number | null;
+  confidence: number;
+  updatedAt: number;
+};
+
+type ResolutionStore = {
+  team: Record<string, CachedResolution>;
+  competition: Record<string, CachedResolution>;
+};
+
+const RESOLUTION_CACHE_KEY = "nexora_logo_resolution_cache_v1";
+const RESOLUTION_CACHE_TTL = 14 * 24 * 60 * 60 * 1000;
+const teamResolutionCache = new Map<string, CachedResolution>();
+const competitionResolutionCache = new Map<string, CachedResolution>();
+let resolutionHydrated = false;
+let resolutionPersistTimer: ReturnType<typeof setTimeout> | null = null;
+
+function isFresh(ts: number): boolean {
+  return Number(ts || 0) > Date.now() - RESOLUTION_CACHE_TTL;
+}
+
+function scheduleResolutionPersist(): void {
+  if (resolutionPersistTimer) clearTimeout(resolutionPersistTimer);
+  resolutionPersistTimer = setTimeout(async () => {
+    resolutionPersistTimer = null;
+    const payload: ResolutionStore = {
+      team: Object.fromEntries(teamResolutionCache.entries()),
+      competition: Object.fromEntries(competitionResolutionCache.entries()),
+    };
+    try {
+      await AsyncStorage.setItem(RESOLUTION_CACHE_KEY, JSON.stringify(payload));
+    } catch {
+      // ignore cache persistence errors
+    }
+  }, 250);
+}
+
+function ensureResolutionHydrated(): void {
+  if (resolutionHydrated) return;
+  resolutionHydrated = true;
+  void (async () => {
+    try {
+      const raw = await AsyncStorage.getItem(RESOLUTION_CACHE_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as ResolutionStore;
+      for (const [key, val] of Object.entries(parsed?.team || {})) {
+        if (!key || !val || !isFresh(val.updatedAt)) continue;
+        teamResolutionCache.set(key, val);
+      }
+      for (const [key, val] of Object.entries(parsed?.competition || {})) {
+        if (!key || !val || !isFresh(val.updatedAt)) continue;
+        competitionResolutionCache.set(key, val);
+      }
+    } catch {
+      // ignore cache hydration errors
+    }
+  })();
 }
 
 export function sanitizeRemoteLogoUri(value?: string | null): string | null {
@@ -122,15 +186,42 @@ export function sanitizeRemoteLogoUri(value?: string | null): string | null {
 }
 
 export function getLeagueLogo(leagueName?: string): string | number | null {
-  const key = String(leagueName || "").trim();
-  // Exact match first
-  if (LEAGUE_LOGO_MAP[key] != null) return LEAGUE_LOGO_MAP[key];
-  // Case-insensitive fallback
-  const normalized = key.toLowerCase();
-  const found = Object.entries(LEAGUE_LOGO_MAP).find(
-    ([k]) => k.toLowerCase() === normalized
-  );
-  return found?.[1] ?? null;
+  ensureResolutionHydrated();
+  const rawName = String(leagueName || "").trim();
+  if (!rawName) return null;
+
+  const cacheKey = normalizeCompetitionName(rawName);
+  const cached = competitionResolutionCache.get(cacheKey);
+  if (cached && isFresh(cached.updatedAt)) return cached.value;
+
+  const aliases = getEntityAliases(rawName, "competition");
+  const direct = LEAGUE_LOGO_MAP[rawName];
+  if (direct != null) {
+    competitionResolutionCache.set(cacheKey, { value: direct, confidence: 1, updatedAt: Date.now() });
+    scheduleResolutionPersist();
+    return direct;
+  }
+
+  let best: { logo: string | number; confidence: number } | null = null;
+  for (const [name, logo] of Object.entries(LEAGUE_LOGO_MAP)) {
+    const candidate = normalizeCompetitionName(name);
+    let confidence = 0;
+    if (aliases.includes(candidate)) confidence = 0.92;
+    else {
+      const overlap = tokenOverlapScore(cacheKey, candidate);
+      if (overlap >= 0.86) confidence = 0.74 + overlap * 0.2;
+    }
+    if (!best || confidence > best.confidence) best = { logo, confidence };
+  }
+
+  const resolved = best && best.confidence >= 0.78 ? best.logo : null;
+  competitionResolutionCache.set(cacheKey, {
+    value: resolved,
+    confidence: best?.confidence || 0,
+    updatedAt: Date.now(),
+  });
+  scheduleResolutionPersist();
+  return resolved;
 }
 
 // ESPN CDN team logo fallback: normalized name → ESPN team ID
@@ -289,46 +380,90 @@ const NATIONAL_TEAM_CODES: Record<string, string> = {
   "india": "ind",
 };
 
-export function resolveTeamLogoUri(teamName?: string, logoUri?: string | null): string | number | null {
-  const normalized = normalizeName(String(teamName || ""));
+export function resolveTeamLogoUri(
+  teamName?: string,
+  logoUri?: string | null,
+  context?: { country?: string | null; competition?: string | null }
+): string | number | null {
+  ensureResolutionHydrated();
+  const normalized = normalizeTeamName(String(teamName || ""));
+  const parentClub = normalizeTeamName(String(teamName || ""), { parentClub: true });
+  const cacheKey = `${normalized}|${normalizeCountryName(context?.country || "")}|${normalizeCompetitionName(context?.competition || "")}|${String(logoUri || "").trim()}`;
+
+  const cached = teamResolutionCache.get(cacheKey);
+  if (cached && isFresh(cached.updatedAt)) return cached.value;
+
   if (normalized === "club brugge" || normalized === "club brugge kv" || normalized.startsWith("club brugge ")) {
-    return LOCAL_LOGOS.clubBrugge;
+    const value = LOCAL_LOGOS.clubBrugge;
+    teamResolutionCache.set(cacheKey, { value, confidence: 1, updatedAt: Date.now() });
+    scheduleResolutionPersist();
+    return value;
   }
   if (
     normalized === "raal la louviere" ||
     normalized === "raal" ||
     normalized.startsWith("raal la louviere")
   ) {
-    return LOCAL_LOGOS.raalLaLouviere;
+    const value = LOCAL_LOGOS.raalLaLouviere;
+    teamResolutionCache.set(cacheKey, { value, confidence: 1, updatedAt: Date.now() });
+    scheduleResolutionPersist();
+    return value;
   }
   // Server-provided logo URL takes priority (verified via HEAD requests on server)
   const safeLogo = sanitizeRemoteLogoUri(logoUri);
-  if (safeLogo) return safeLogo;
+  if (safeLogo) {
+    teamResolutionCache.set(cacheKey, { value: safeLogo, confidence: 1, updatedAt: Date.now() });
+    scheduleResolutionPersist();
+    return safeLogo;
+  }
+
+  const aliases = getEntityAliases(normalized, "team");
+  if (parentClub && !aliases.includes(parentClub)) aliases.push(parentClub);
 
   // ESPN curated ID as fallback
-  const espnId = ESPN_TEAM_LOGO_IDS[normalized];
-  if (espnId) return `https://a.espncdn.com/i/teamlogos/soccer/500/${espnId}.png`;
+  const contextBoost = (context?.country || context?.competition) ? 0.03 : 0;
 
-  // Try partial match: find ESPN entry where key matches as a whole word in normalized or vice versa
-  if (normalized.length >= 4) {
-    for (const [key, id] of Object.entries(ESPN_TEAM_LOGO_IDS)) {
-      const keyParts = key.split(" ").filter(Boolean);
-      const normalizedParts = normalized.split(" ").filter(Boolean);
-      if (keyParts.length < 2) continue;
-      let overlap = 0;
-      for (const p of keyParts) {
-        if (normalizedParts.includes(p)) overlap += 1;
-      }
-      const overlapRatio = overlap / Math.max(keyParts.length, 1);
-      if (overlapRatio >= 0.8) return `https://a.espncdn.com/i/teamlogos/soccer/500/${id}.png`;
+  for (const alias of aliases) {
+    const espnId = ESPN_TEAM_LOGO_IDS[alias];
+    if (espnId) {
+      const value = `https://a.espncdn.com/i/teamlogos/soccer/500/${espnId}.png`;
+      teamResolutionCache.set(cacheKey, { value, confidence: 0.95 + contextBoost, updatedAt: Date.now() });
+      scheduleResolutionPersist();
+      return value;
     }
   }
 
+  // Conservative fuzzy fallback to avoid wrong-club logo assignments.
+  let bestFuzzy: { value: string; confidence: number } | null = null;
+  for (const alias of aliases) {
+    if (alias.length < 4) continue;
+    for (const [key, id] of Object.entries(ESPN_TEAM_LOGO_IDS)) {
+      const overlap = tokenOverlapScore(alias, key);
+      if (overlap < 0.9) continue;
+      const confidence = 0.68 + overlap * 0.22 + contextBoost;
+      const value = `https://a.espncdn.com/i/teamlogos/soccer/500/${id}.png`;
+      if (!bestFuzzy || confidence > bestFuzzy.confidence) bestFuzzy = { value, confidence };
+    }
+  }
+
+  if (bestFuzzy && bestFuzzy.confidence >= 0.84) {
+    teamResolutionCache.set(cacheKey, { value: bestFuzzy.value, confidence: bestFuzzy.confidence, updatedAt: Date.now() });
+    scheduleResolutionPersist();
+    return bestFuzzy.value;
+  }
+
   // National team fallback: try ESPN country logos
-  const countryCode = NATIONAL_TEAM_CODES[normalized];
-  if (countryCode) return `https://a.espncdn.com/i/teamlogos/countries/500/${countryCode}.png`;
+  const countryCode = NATIONAL_TEAM_CODES[normalizeCountryName(normalized)] || NATIONAL_TEAM_CODES[normalized];
+  if (countryCode) {
+    const value = `https://a.espncdn.com/i/teamlogos/countries/500/${countryCode}.png`;
+    teamResolutionCache.set(cacheKey, { value, confidence: 0.9, updatedAt: Date.now() });
+    scheduleResolutionPersist();
+    return value;
+  }
   // Keep national team lookup strict (exact aliases only) to avoid wrong-country matches.
 
+  teamResolutionCache.set(cacheKey, { value: null, confidence: 0, updatedAt: Date.now() });
+  scheduleResolutionPersist();
   return null;
 }
 

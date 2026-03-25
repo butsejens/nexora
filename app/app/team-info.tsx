@@ -68,6 +68,20 @@ function toNumber(value: unknown): number {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+function isLeagueCode(value: unknown): boolean {
+  const text = String(value || "").trim().toLowerCase();
+  if (!text) return false;
+  return /^[a-z]{3,6}\.\d$/i.test(text) || /^[a-z]{3,6}\.[a-z0-9_]+$/i.test(text);
+}
+
+function cleanLeagueLabel(primary: unknown, fallback: unknown): string {
+  const first = String(primary || "").trim();
+  if (first && !isLeagueCode(first)) return first;
+  const second = String(fallback || "").trim();
+  if (second && !isLeagueCode(second)) return second;
+  return second || first || "";
+}
+
 function roleForPosition(player: any): "gk" | "def" | "mid" | "att" {
   const pos = String(player?.position || player?.positionName || "").toUpperCase();
   if (pos.includes("GK") || pos.includes("GOAL")) return "gk";
@@ -76,50 +90,81 @@ function roleForPosition(player: any): "gk" | "def" | "mid" | "att" {
   return "att";
 }
 
+function metric(player: any, key: string): number {
+  return toNumber(player?.seasonStats?.[key] ?? player?.[key]);
+}
+
+function isEligibleForTopList(player: any): boolean {
+  const appearances = metric(player, "appearances");
+  const minutes = metric(player, "minutes");
+  return appearances >= 3 || minutes >= 180;
+}
+
 function playerTopScore(player: any): number {
-  const stats = player?.seasonStats || {};
-  const goals = toNumber(stats?.goals ?? player?.goals);
-  const assists = toNumber(stats?.assists ?? player?.assists);
-  const rating = toNumber(stats?.rating ?? player?.rating);
-  const cleanSheets = toNumber(stats?.cleanSheets ?? player?.cleanSheets);
-  const saves = toNumber(stats?.saves ?? player?.saves);
-  const minutes = toNumber(stats?.minutes ?? player?.minutes);
-  const starts = toNumber(stats?.starts ?? player?.starts);
-  const appearances = toNumber(stats?.appearances ?? player?.appearances);
+  const goals = metric(player, "goals");
+  const assists = metric(player, "assists");
+  const rating = metric(player, "rating");
+  const cleanSheets = metric(player, "cleanSheets");
+  const saves = metric(player, "saves");
+  const minutes = metric(player, "minutes");
+  const starts = metric(player, "starts");
+  const appearances = metric(player, "appearances");
   const role = roleForPosition(player);
 
   let score = 0;
-  if (role === "att") score = goals * 5 + assists * 3 + rating * 2 + minutes / 120;
-  else if (role === "mid") score = assists * 4 + rating * 3 + goals * 2 + minutes / 120;
-  else if (role === "def") score = cleanSheets * 4 + rating * 3 + goals * 2 + minutes / 120;
-  else score = cleanSheets * 5 + saves * 1.5 + rating * 2 + minutes / 120;
-  return score + starts * 0.4 + appearances * 0.2;
+  if (role === "att") score = goals * 6 + assists * 3 + rating * 2 + appearances * 0.5 + minutes / 180;
+  else if (role === "mid") score = assists * 5 + rating * 3 + goals * 2 + appearances * 0.7 + minutes / 160;
+  else if (role === "def") score = cleanSheets * 5 + rating * 3 + appearances * 0.9 + goals * 1.5 + minutes / 150;
+  else score = cleanSheets * 6 + saves * 2 + rating * 2.5 + appearances * 0.9 + minutes / 150;
+
+  if (!isEligibleForTopList(player)) score -= 8;
+  return score + starts * 0.6;
 }
 
 function getUsefulPlayerStat(player: any): { label: string; value: string } | null {
+  const role = roleForPosition(player);
   const goals = Number(player?.seasonStats?.goals ?? player?.goals ?? NaN);
-  if (Number.isFinite(goals) && goals > 0) return { label: "Goals", value: String(goals) };
-
   const assists = Number(player?.seasonStats?.assists ?? player?.assists ?? NaN);
-  if (Number.isFinite(assists) && assists > 0) return { label: "Assists", value: String(assists) };
-
   const appearances = Number(player?.seasonStats?.appearances ?? player?.appearances ?? NaN);
-  if (Number.isFinite(appearances) && appearances > 0) return { label: "Matches", value: String(appearances) };
-
   const cleanSheets = Number(player?.seasonStats?.cleanSheets ?? player?.cleanSheets ?? NaN);
-  if (Number.isFinite(cleanSheets) && cleanSheets > 0) return { label: "Clean sheets", value: String(cleanSheets) };
-
   const saves = Number(player?.seasonStats?.saves ?? player?.saves ?? NaN);
-  if (Number.isFinite(saves) && saves > 0) return { label: "Saves", value: String(saves) };
-
   const minutes = Number(player?.seasonStats?.minutes ?? player?.minutes ?? NaN);
-  if (Number.isFinite(minutes) && minutes > 0) return { label: "Minutes", value: String(minutes) };
-
   const rating = Number(player?.seasonStats?.rating ?? player?.rating ?? NaN);
-  if (Number.isFinite(rating) && rating > 0) return { label: "Rating", value: rating.toFixed(1) };
 
-  const value = String(player?.marketValue || "").trim();
-  if (value && value !== "-") return { label: "Value", value };
+  const roleStats: { label: string; value: number; format?: (v: number) => string }[] = role === "att"
+    ? [
+        { label: "Goals", value: goals },
+        { label: "Assists", value: assists },
+        { label: "Matches", value: appearances },
+      ]
+    : role === "mid"
+      ? [
+          { label: "Assists", value: assists },
+          { label: "Rating", value: rating, format: (v) => v.toFixed(1) },
+          { label: "Matches", value: appearances },
+        ]
+      : role === "def"
+        ? [
+            { label: "Clean sheets", value: cleanSheets },
+            { label: "Rating", value: rating, format: (v) => v.toFixed(1) },
+            { label: "Matches", value: appearances },
+          ]
+        : [
+            { label: "Saves", value: saves },
+            { label: "Clean sheets", value: cleanSheets },
+            { label: "Matches", value: appearances },
+          ];
+
+  for (const candidate of roleStats) {
+    if (Number.isFinite(candidate.value) && candidate.value > 0) {
+      return {
+        label: candidate.label,
+        value: candidate.format ? candidate.format(candidate.value) : String(candidate.value),
+      };
+    }
+  }
+
+  if (Number.isFinite(minutes) && minutes > 0) return { label: "Minutes", value: String(minutes) };
 
   const age = Number(player?.age ?? NaN);
   if (Number.isFinite(age) && age > 0) return { label: "Age", value: String(age) };
@@ -202,15 +247,52 @@ export default function TeamInfoScreen() {
 
   const recent = Array.isArray(data?.recentResults) ? data.recentResults : [];
   const upcoming = Array.isArray(data?.upcomingMatches) ? data.upcomingMatches : [];
-  const players = Array.isArray(data?.players) ? data.players : [];
-  const topPlayers = [...players]
-    .filter((p: any) => Boolean(String(p?.name || "").trim()) && Boolean(getUsefulPlayerStat(p)))
-    .sort((a: any, b: any) => {
-      const scoreDiff = playerTopScore(b) - playerTopScore(a);
-      if (scoreDiff !== 0) return scoreDiff;
-      return parseMarketValue(b?.marketValue) - parseMarketValue(a?.marketValue);
-    })
-    .slice(0, 6);
+  const players = useMemo((): any[] => {
+    return Array.isArray(data?.players) ? data.players : [];
+  }, [data?.players]);
+  const topPlayers = useMemo(() => {
+    const base = [...players]
+      .filter((p: any) => Boolean(String(p?.name || "").trim()) && Boolean(getUsefulPlayerStat(p)) && isEligibleForTopList(p))
+      .sort((a: any, b: any) => {
+        const scoreDiff = playerTopScore(b) - playerTopScore(a);
+        if (scoreDiff !== 0) return scoreDiff;
+        return parseMarketValue(b?.marketValue) - parseMarketValue(a?.marketValue);
+      });
+
+    const byRole = {
+      gk: base.filter((p: any) => roleForPosition(p) === "gk"),
+      def: base.filter((p: any) => roleForPosition(p) === "def"),
+      mid: base.filter((p: any) => roleForPosition(p) === "mid"),
+      att: base.filter((p: any) => roleForPosition(p) === "att"),
+    };
+
+    const selected: any[] = [];
+    const pushUnique = (player: any) => {
+      if (!player) return;
+      if (selected.some((p) => String(p?.id || p?.name) === String(player?.id || player?.name))) return;
+      selected.push(player);
+    };
+
+    pushUnique(byRole.att[0]);
+    pushUnique(byRole.mid[0]);
+    pushUnique(byRole.def[0]);
+    pushUnique(byRole.gk[0]);
+
+    for (const player of base) {
+      if (selected.length >= 6) break;
+      pushUnique(player);
+    }
+
+    return selected.slice(0, 6);
+  }, [players]);
+
+  const leagueLabel = cleanLeagueLabel(data?.leagueName, league);
+  const topScorerLabel = String(data?.topScorer?.name || "").trim()
+    ? `${data.topScorer.name}${data?.topScorer?.goals ? ` · ${data.topScorer.goals}G` : ""}`
+    : "";
+  const topAssistLabel = String(data?.topAssist?.name || "").trim()
+    ? `${data.topAssist.name}${data?.topAssist?.assists ? ` · ${data.topAssist.assists}A` : ""}`
+    : "";
 
   const heroColor = data?.color || "#E50914";
 
@@ -232,7 +314,7 @@ export default function TeamInfoScreen() {
         <View style={[styles.hero, { borderColor: `${heroColor}44` }]}>
           <TeamLogo uri={data?.logo} teamName={data?.name || teamName} size={72} />
           <Text style={styles.teamName}>{data?.name || teamName}</Text>
-          <Text style={styles.league}>{data?.leagueName || league}</Text>
+          {leagueLabel ? <Text style={styles.league} numberOfLines={1}>{leagueLabel}</Text> : null}
           {data?.leagueRank && (
             <View style={[styles.rankBadge, { backgroundColor: `${heroColor}22`, borderColor: heroColor }]}>
               <Text style={[styles.rankText, { color: heroColor }]}>#{data.leagueRank}</Text>
@@ -242,7 +324,7 @@ export default function TeamInfoScreen() {
 
         <View style={styles.card}>
           <Text style={styles.cardTitle}>General Info</Text>
-          <Line label="League" value={String(data?.leagueName || league)} icon="soccer-field" />
+          <Line label="League" value={leagueLabel} icon="soccer-field" />
           <Line label="Country" value={String(data?.country || "")} icon="earth" />
           <Line label="Founded" value={data?.founded ? String(data.founded) : ""} icon="calendar-outline" />
           <Line label="Venue" value={String(data?.venue || "")} icon="home-city-outline" />
@@ -286,6 +368,8 @@ export default function TeamInfoScreen() {
           <Line label="Goals For" value={data?.goalsFor != null ? String(data.goalsFor) : ""} icon="soccer" />
           <Line label="Goals Against" value={data?.goalsAgainst != null ? String(data.goalsAgainst) : ""} icon="shield-outline" />
           <Line label="Clean Sheets" value={data?.cleanSheets != null ? String(data.cleanSheets) : ""} icon="check-circle-outline" />
+          <Line label="Top Scorer" value={topScorerLabel} icon="trophy-outline" />
+          <Line label="Top Assist" value={topAssistLabel} icon="target" />
           <Line label="Discipline" value={data?.yellowCards != null || data?.redCards != null ? `${data?.yellowCards || 0}Y · ${data?.redCards || 0}R` : ""} icon="alert-outline" />
           <Line label="Club Value" value={String(data?.squadMarketValue || "")} icon="currency-eur" />
         </View>

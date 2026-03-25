@@ -7,7 +7,7 @@ import { router } from "expo-router";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import { COLORS } from "@/constants/colors";
-import { SPACING, TYPOGRAPHY } from "@/constants/design-system";
+import { TYPOGRAPHY } from "@/constants/design-system";
 import { NexoraHeader } from "@/components/NexoraHeader";
 import { SectionHeader, StateBlock, SurfaceCard } from "@/components/ui";
 import { useNexora } from "@/context/NexoraContext";
@@ -158,15 +158,15 @@ export default function FavoritesScreen() {
         contentContainerStyle={[styles.content, { paddingBottom: bottomPad, width: contentWidth }]}
         showsVerticalScrollIndicator={false}
       >
-        <Text style={styles.heroHeadline}>All your saved content in one place</Text>
+        <Text style={styles.heroHeadline}>Your saved picks, organized beautifully</Text>
         <Text style={styles.title}>Favorites</Text>
 
         <SectionHeader title="IPTV" subtitle="Live channels and playlist picks" />
         {iptvItems.length === 0 ? (
           <StateBlock
             icon="heart-dislike-outline"
-            title="No IPTV favorites"
-            message="Add channels to favorites to keep them here."
+            title="No IPTV favorites yet"
+            message="Save live channels to build your quick-access board."
           />
         ) : (
           iptvItems.map((ch: any) => (
@@ -215,30 +215,32 @@ export default function FavoritesScreen() {
                   {ch.group} · {ch.category.toUpperCase()}
                 </Text>
               </TouchableOpacity>
-              <TouchableOpacity onPress={() => toggleFavorite(ch.id)} style={styles.iconBtn}>
-                <Ionicons name="trash-outline" size={18} color={COLORS.live} />
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={() => {
-                  const id = String(ch.id);
-                  void setPriority(id, nextPriority(priorityMap[id]));
-                }}
-                style={styles.iconBtn}
-              >
-                <Ionicons name="funnel-outline" size={18} color={COLORS.accent} />
-              </TouchableOpacity>
+              <View style={styles.rowActions}>
+                <TouchableOpacity onPress={() => toggleFavorite(ch.id)} style={styles.iconBtn}>
+                  <Ionicons name="trash-outline" size={17} color={COLORS.live} />
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => {
+                    const id = String(ch.id);
+                    void setPriority(id, nextPriority(priorityMap[id]));
+                  }}
+                  style={styles.iconBtn}
+                >
+                  <Ionicons name="funnel-outline" size={17} color={COLORS.accent} />
+                </TouchableOpacity>
+              </View>
             </SurfaceCard>
           ))
         )}
 
         <View style={styles.divider} />
 
-        <SectionHeader title="Movies / Series" subtitle="TMDB favorites ordered by priority" />
+        <SectionHeader title="Movies / Series" subtitle="Your watchlist ordered by priority" />
         {tmdbSorted.length === 0 ? (
           <StateBlock
             icon="film-outline"
-            title="No movie or series favorites"
-            message="Favorite movies and series to build your watchlist."
+            title="No movies or series yet"
+            message="Heart movies and series to keep your watchlist ready."
           />
         ) : (
           tmdbSorted.map((it: any) => (
@@ -272,21 +274,23 @@ export default function FavoritesScreen() {
                   {it.imdb ? ` · ⭐ ${it.imdb}` : ""}
                 </Text>
               </TouchableOpacity>
-              <TouchableOpacity onPress={() => toggleFavorite(String(it.id))} style={styles.iconBtn}>
-                <Ionicons name="trash-outline" size={18} color={COLORS.live} />
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={() => {
-                  const compoundId = `${it._type}_${String(it.id)}`;
-                  const current = priorityMap[compoundId] || priorityMap[String(it.id)];
-                  const next = nextPriority(current);
-                  void setPriority(compoundId, next);
-                  void setPriority(String(it.id), next);
-                }}
-                style={styles.iconBtn}
-              >
-                <Ionicons name="funnel-outline" size={18} color={COLORS.accent} />
-              </TouchableOpacity>
+              <View style={styles.rowActions}>
+                <TouchableOpacity onPress={() => toggleFavorite(String(it.id))} style={styles.iconBtn}>
+                  <Ionicons name="trash-outline" size={17} color={COLORS.live} />
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => {
+                    const compoundId = `${it._type}_${String(it.id)}`;
+                    const current = priorityMap[compoundId] || priorityMap[String(it.id)];
+                    const next = nextPriority(current);
+                    void setPriority(compoundId, next);
+                    void setPriority(String(it.id), next);
+                  }}
+                  style={styles.iconBtn}
+                >
+                  <Ionicons name="funnel-outline" size={17} color={COLORS.accent} />
+                </TouchableOpacity>
+              </View>
             </SurfaceCard>
           ))
         )}
@@ -300,8 +304,8 @@ const styles = StyleSheet.create({
   scroll: { flex: 1 },
   content: {
     alignSelf: "center",
-    paddingHorizontal: 12,
-    paddingTop: 8,
+    paddingHorizontal: 16,
+    paddingTop: 14,
   },
   heroHeadline: {
     fontFamily: "Inter_800ExtraBold",
@@ -309,24 +313,24 @@ const styles = StyleSheet.create({
     textAlign: "center",
     fontSize: 19,
     lineHeight: 27,
-    marginHorizontal: 20,
-    marginBottom: 8,
+    marginHorizontal: 24,
+    marginBottom: 10,
   },
   title: {
     ...TYPOGRAPHY.screenTitle,
     color: COLORS.text,
-    marginBottom: 10,
+    marginBottom: 14,
   },
   row: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 10,
-    paddingVertical: SPACING.padding.compact,
-    paddingHorizontal: SPACING.gap.small,
-    marginBottom: 8,
+    gap: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 12,
+    marginBottom: 10,
   },
   rowBody: { flex: 1 },
-  rowTitle: { color: COLORS.text, fontFamily: "Inter_600SemiBold", fontSize: 14 },
+  rowTitle: { color: COLORS.text, fontFamily: "Inter_700Bold", fontSize: 14 },
   priorityBadge: {
     flexDirection: "row",
     alignItems: "center",
@@ -340,15 +344,30 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   priorityText: { fontFamily: "Inter_600SemiBold", fontSize: 10 },
-  rowSub: { color: COLORS.textMuted, fontFamily: "Inter_500Medium", fontSize: 12, marginTop: 2 },
-  iconBtn: { padding: 8 },
-  divider: { height: 1, backgroundColor: COLORS.border, marginVertical: 14, marginHorizontal: 8 },
+  rowSub: { color: COLORS.textMuted, fontFamily: "Inter_500Medium", fontSize: 12, marginTop: 3, lineHeight: 17 },
+  rowActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginLeft: 4,
+  },
+  iconBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: COLORS.cardElevated,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  divider: { height: 1, backgroundColor: COLORS.border, marginVertical: 20, marginHorizontal: 4, opacity: 0.8 },
   posterFallback: {
     borderRadius: 10,
     borderWidth: 1,
     borderColor: COLORS.border,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: COLORS.card,
+    backgroundColor: COLORS.cardElevated,
   },
 });

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState, useRef } from "react";
+import React, { useCallback, useEffect, useMemo, useState, useRef } from "react";
 import { View, Text, StyleSheet, TouchableOpacity, Image, Animated } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -39,6 +39,17 @@ function normalizeText(value: unknown, fallback = UNKNOWN): string {
   const text = String(value ?? "").trim();
   if (!text || text === "-" || text.toLowerCase() === "offline data" || looksLikeTranslationKey(text)) return fallback;
   return text;
+}
+
+function hasMeaningfulText(value: unknown): boolean {
+  const text = String(value ?? "").trim().toLowerCase();
+  if (!text) return false;
+  return !["-", "n/a", "na", "unknown", "not available", "offline data", "null"].includes(text);
+}
+
+function hasNumericValue(value: unknown): boolean {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0;
 }
 
 function formatUpdatedAt(value: unknown): string {
@@ -168,10 +179,10 @@ export default function PlayerProfileScreen() {
     theSportsDbPhoto?: string;
   }>();
 
-  const tx = (key: string, fallback: string, params?: Record<string, string | number>) => {
+  const tx = useCallback((key: string, fallback: string, params?: Record<string, string | number>) => {
     const translated = ts(key, params, fallback);
     return translated || fallback;
-  };
+  }, [ts]);
 
   const cacheKey = useMemo(() => {
     const keyRaw = `${params.playerId || ""}_${params.name || ""}_${params.team || ""}_${params.league || ""}`;
@@ -305,25 +316,63 @@ export default function PlayerProfileScreen() {
 
   const badgeColor = colorFromSeed(`${data?.currentClub || params.team || "nexora"}`);
   const initials = initialsFromName(String(data?.name || params.name || "?"));
-  const clubHistory = useMemo(() => {
+  const transferTimeline = useMemo(() => {
     const rows = Array.isArray(data?.formerClubs) ? data.formerClubs : [];
-    const normalized = rows
+    return rows
       .map((club: any) => ({
         ...club,
-        role: String(club?.role || "").toLowerCase() === "to" ? "to" : "from",
+        role: String(club?.role || "").toLowerCase() === "to" ? "in" : "out",
         date: String(club?.date || "").trim(),
         fee: String(club?.fee || "").trim(),
+        moment: parseTransferMoment(club?.date),
       }))
-      .sort((a: any, b: any) => parseTransferMoment(a?.date) - parseTransferMoment(b?.date));
-
-    return {
-      joined: normalized.filter((club: any) => club.role === "to"),
-      left: normalized.filter((club: any) => club.role !== "to"),
-    };
+      .sort((a: any, b: any) => {
+        if (a.moment !== b.moment) return b.moment - a.moment;
+        if (a.role !== b.role) return a.role === "out" ? -1 : 1;
+        return String(a?.name || "").localeCompare(String(b?.name || ""));
+      });
   }, [data?.formerClubs]);
 
   const scrollY = useRef(new Animated.Value(0)).current;
   const heroOpacity = scrollY.interpolate({ inputRange: [0, 120], outputRange: [1, 1], extrapolate: "clamp" });
+
+  const overviewFacts = useMemo(() => {
+    const facts = [
+      { icon: "person-outline" as const, label: tx("playerProfile.age", "Age"), value: data?.age ? tx("playerProfile.years", `${String(data.age)} years`, { age: String(data.age) }) : "" },
+      { icon: "shirt-outline" as const, label: tx("playerProfile.jerseyNumber", "Jersey number"), value: hasMeaningfulText(data?.jerseyNumber) ? String(data?.jerseyNumber) : "" },
+      { icon: "body-outline" as const, label: tx("playerProfile.height", "Height"), value: hasMeaningfulText(data?.height) ? String(data?.height) : "" },
+      { icon: "barbell-outline" as const, label: tx("playerProfile.weight", "Weight"), value: hasMeaningfulText(data?.weight) ? String(data?.weight) : "" },
+    ];
+    return facts.filter((fact) => hasMeaningfulText(fact.value));
+  }, [data?.age, data?.jerseyNumber, data?.height, data?.weight, tx]);
+
+  const seasonStatItems = useMemo(() => {
+    return [
+      { label: tx("playerProfile.appearances", "Matches"), value: data?.seasonStats?.appearances },
+      { label: tx("playerProfile.goals", "Goals"), value: data?.seasonStats?.goals },
+      { label: tx("playerProfile.assists", "Assists"), value: data?.seasonStats?.assists },
+      { label: tx("playerProfile.minutes", "Minutes"), value: data?.seasonStats?.minutes },
+      { label: tx("playerProfile.starts", "Starts"), value: data?.seasonStats?.starts },
+      { label: tx("playerProfile.rating", "Rating"), value: data?.seasonStats?.rating },
+      { label: tx("playerProfile.cleanSheets", "Clean sheets"), value: data?.seasonStats?.cleanSheets },
+      { label: tx("playerProfile.saves", "Saves"), value: data?.seasonStats?.saves },
+    ];
+  }, [
+    data?.seasonStats?.appearances,
+    data?.seasonStats?.goals,
+    data?.seasonStats?.assists,
+    data?.seasonStats?.minutes,
+    data?.seasonStats?.starts,
+    data?.seasonStats?.rating,
+    data?.seasonStats?.cleanSheets,
+    data?.seasonStats?.saves,
+    tx,
+  ]);
+
+  const seasonVisibleCount = useMemo(() => {
+    return seasonStatItems.filter((item) => hasNumericValue(item.value)).length;
+  }, [seasonStatItems]);
+  const useCompactSeasonStats = Boolean((data as any)?.seasonStatsMode === "compact") || seasonVisibleCount < 3;
 
   return (
     <View style={styles.container}>
@@ -380,33 +429,33 @@ export default function PlayerProfileScreen() {
           scrollEventThrottle={16}
         >
           <Card title={tx("playerProfile.overview", "Overview")}>
-            <View style={styles.quickFactsGrid}>
-              <QuickFact icon="person-outline" label={tx("playerProfile.age", "Age")} value={data?.age ? tx("playerProfile.years", `${String(data.age)} years`, { age: String(data.age) }) : UNKNOWN} />
-              <QuickFact icon="shirt-outline" label={tx("playerProfile.jerseyNumber", "Jersey number")} value={normalizeText(data?.jerseyNumber, tx("common.notAvailable", "Not available"))} />
-              <QuickFact icon="body-outline" label={tx("playerProfile.height", "Height")} value={normalizeText(data?.height)} />
-              <QuickFact icon="barbell-outline" label={tx("playerProfile.weight", "Weight")} value={normalizeText(data?.weight)} />
-            </View>
-            <View style={styles.infoDivider} />
-            <Row icon="calendar-outline" label={tx("playerProfile.birthDate", "Birth date")} value={data?.birthDate ? formatDisplayDate(data.birthDate) : UNKNOWN} />
-            <Row icon="earth" label={tx("playerProfile.nationality", "Nationality")} value={normalizeText(data?.nationality || params.nationality)} />
-            <Row icon="soccer-field" label={tx("playerProfile.position", "Position")} value={normalizeText(data?.position || params.position)} />
-            <Row icon="file-document-outline" label={tx("playerProfile.contractUntil", "Contract")} value={normalizeText(data?.contractUntil, tx("common.notAvailable", "Not available"))} />
-            <ClubRow label={tx("playerProfile.currentClub", "Current club")} value={normalizeText(data?.currentClub || params.team)} logo={data?.currentClubLogo} />
-            <Row icon="currency-eur" label={tx("playerProfile.marketValue", "Market value")} value={normalizeText(data?.marketValue || params.marketValue, tx("playerProfile.valueUnknown", "Value unavailable"))} />
-            <Row icon="clock-outline" label={tx("playerProfile.lastUpdated", "Last updated")} value={formatUpdatedAt(data?.updatedAt)} />
+            {overviewFacts.length > 0 ? (
+              <View style={styles.quickFactsGrid}>
+                {overviewFacts.map((fact, index) => (
+                  <QuickFact key={`${fact.label}_${index}`} icon={fact.icon} label={fact.label} value={fact.value} />
+                ))}
+              </View>
+            ) : (
+              <Text style={styles.placeholder}>{tx("playerProfile.limitedData", "Verified profile data is still limited for this player.")}</Text>
+            )}
+            {(overviewFacts.length > 0) ? <View style={styles.infoDivider} /> : null}
+            {data?.birthDate ? <Row icon="calendar-outline" label={tx("playerProfile.birthDate", "Birth date")} value={formatDisplayDate(data.birthDate)} /> : null}
+            {hasMeaningfulText(data?.nationality || params.nationality) ? <Row icon="earth" label={tx("playerProfile.nationality", "Nationality")} value={normalizeText(data?.nationality || params.nationality)} /> : null}
+            {hasMeaningfulText(data?.position || params.position) ? <Row icon="soccer-field" label={tx("playerProfile.position", "Position")} value={normalizeText(data?.position || params.position)} /> : null}
+            {hasMeaningfulText(data?.contractUntil) ? <Row icon="file-document-outline" label={tx("playerProfile.contractUntil", "Contract")} value={normalizeText(data?.contractUntil)} /> : null}
+            {hasMeaningfulText(data?.currentClub || params.team) ? <ClubRow label={tx("playerProfile.currentClub", "Current club")} value={normalizeText(data?.currentClub || params.team)} logo={data?.currentClubLogo} /> : null}
+            {hasMeaningfulText(data?.marketValue || params.marketValue) ? <Row icon="currency-eur" label={tx("playerProfile.marketValue", "Market value")} value={normalizeText(data?.marketValue || params.marketValue)} /> : null}
+            {data?.updatedAt ? <Row icon="clock-outline" label={tx("playerProfile.lastUpdated", "Last updated")} value={formatUpdatedAt(data?.updatedAt)} /> : null}
           </Card>
 
           <Card title={tx("playerProfile.seasonStats", "Season stats")}>
-            <StatsGrid
-              items={[
-                { label: tx("playerProfile.appearances", "Matches"), value: data?.seasonStats?.appearances },
-                { label: tx("playerProfile.goals", "Goals"), value: data?.seasonStats?.goals },
-                { label: tx("playerProfile.assists", "Assists"), value: data?.seasonStats?.assists },
-                { label: tx("playerProfile.minutes", "Minutes"), value: data?.seasonStats?.minutes },
-                { label: tx("playerProfile.starts", "Starts"), value: data?.seasonStats?.starts },
-                { label: tx("playerProfile.rating", "Rating"), value: data?.seasonStats?.rating },
-              ]}
-            />
+            {useCompactSeasonStats ? (
+              <View style={styles.formBadge}>
+                <Ionicons name="sparkles-outline" size={12} color="#7EE787" />
+                <Text style={styles.formBadgeText}>{tx("playerProfile.compactStatsFallback", "Season data is partial. Core verified metrics are shown.")}</Text>
+              </View>
+            ) : null}
+            <StatsGrid items={seasonStatItems} />
             {data?.recentForm?.contributionLabel ? (
               <View style={styles.formBadge}>
                 <Ionicons name="trending-up-outline" size={12} color="#7EE787" />
@@ -444,49 +493,43 @@ export default function PlayerProfileScreen() {
           </Card>
 
           <Card title={tx("playerProfile.clubHistory", "Club history")}>
-            {clubHistory.joined.length === 0 && clubHistory.left.length === 0 ? (
+            {transferTimeline.length === 0 ? (
               <Text style={styles.placeholder}>{tx("playerProfile.noTransferHistory", "No transfer history available")}</Text>
             ) : (
               <View style={styles.timeline}>
-                {([
-                  { title: "Joined", rows: clubHistory.joined, isJoin: true },
-                  { title: "Left", rows: clubHistory.left, isJoin: false },
-                ] as const).map((group) => (
-                  group.rows.length === 0 ? null : (
-                    <View key={group.title} style={styles.transferGroup}>
-                      <Text style={styles.transferGroupTitle}>{group.title}</Text>
-                      {group.rows.map((club: any, idx: number) => {
-                        const isLast = idx === group.rows.length - 1;
-                        return (
-                          <View key={`${club?.name || "club"}_${group.title}_${idx}`} style={styles.timelineItem}>
-                            <View style={styles.timelineSide}>
-                              <View style={[styles.timelineDot, group.isJoin ? styles.timelineDotJoin : styles.timelineDotLeave]} />
-                              {!isLast && <View style={styles.timelineLine} />}
+                {transferTimeline.map((club: any, idx: number) => {
+                  const isLast = idx === transferTimeline.length - 1;
+                  const isJoin = club.role === "in";
+                  return (
+                    <View key={`${club?.name || "club"}_${idx}`} style={styles.timelineItem}>
+                      <View style={styles.timelineSide}>
+                        <View style={[styles.timelineDot, isJoin ? styles.timelineDotJoin : styles.timelineDotLeave]} />
+                        {!isLast && <View style={styles.timelineLine} />}
+                      </View>
+                      <View style={styles.timelineContent}>
+                        <View style={styles.timelineRow}>
+                          <TeamLogo
+                            uri={club?.logo}
+                            resolvedLogo={resolveClubHistoryLogoUri(club?.name || "", club?.logo || null)}
+                            teamName={club?.name || "Unknown"}
+                            size={32}
+                          />
+                          <View style={styles.timelineInfo}>
+                            <Text style={styles.timelineClub} numberOfLines={1}>{club?.name || tx("common.notAvailable", "Not available")}</Text>
+                            <View style={styles.timelineMetaRow}>
+                              <Text style={[styles.timelineLabel, isJoin ? styles.transferTagJoin : styles.transferTagLeave]}>
+                                {isJoin ? "Joined" : "Left"}
+                              </Text>
+                              {club?.date ? <Text style={styles.timelineDate}>{club.date}</Text> : null}
+                              {club?.fee ? <Text style={styles.timelineLabel}>{transferTypeLabel(club.fee)}</Text> : null}
                             </View>
-                            <View style={styles.timelineContent}>
-                              <View style={styles.timelineRow}>
-                                <TeamLogo
-                                  uri={club?.logo}
-                                  resolvedLogo={resolveClubHistoryLogoUri(club?.name || "", club?.logo || null)}
-                                  teamName={club?.name || "Unknown"}
-                                  size={32}
-                                />
-                                <View style={styles.timelineInfo}>
-                                  <Text style={styles.timelineClub} numberOfLines={1}>{club?.name || tx("common.notAvailable", "Not available")}</Text>
-                                  <View style={styles.timelineMetaRow}>
-                                    {club?.date ? <Text style={styles.timelineDate}>{club.date}</Text> : null}
-                                    {club?.fee ? <Text style={styles.timelineLabel}>{transferTypeLabel(club.fee)}</Text> : null}
-                                  </View>
-                                  {club?.fee ? <Text style={styles.timelineFee}>{club.fee}</Text> : null}
-                                </View>
-                              </View>
-                            </View>
+                            {club?.fee ? <Text style={styles.timelineFee}>{club.fee}</Text> : null}
                           </View>
-                        );
-                      })}
+                        </View>
+                      </View>
                     </View>
-                  )
-                ))}
+                  );
+                })}
               </View>
             )}
           </Card>
@@ -698,6 +741,8 @@ const styles = StyleSheet.create({
   timelineClub: { fontFamily: "Inter_600SemiBold", fontSize: 14, color: COLORS.text },
   timelineMetaRow: { flexDirection: "row", alignItems: "center", gap: 6 },
   timelineLabel: { fontFamily: "Inter_500Medium", fontSize: 11, color: COLORS.textMuted },
+  transferTagJoin: { color: "#4CAF82" },
+  transferTagLeave: { color: COLORS.accent },
   timelineDate: { fontFamily: "Inter_400Regular", fontSize: 11, color: COLORS.textSecondary },
   timelineFee: { fontFamily: "Inter_600SemiBold", fontSize: 11, color: "#00C896", marginTop: 2 },
 });

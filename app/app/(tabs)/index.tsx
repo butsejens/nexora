@@ -10,7 +10,6 @@ import { COLORS } from "@/constants/colors";
 import "@/constants/design-system";
 import { NexoraHeader } from "@/components/NexoraHeader";
 import { TeamLogo } from "@/components/TeamLogo";
-import { LiveBadge } from "@/components/LiveBadge";
 import { MatchRowCard } from "@/components/premium";
 import { apiRequest } from "@/lib/query-client";
 import { Ionicons } from "@expo/vector-icons";
@@ -18,8 +17,16 @@ import { LinearGradient } from "expo-linear-gradient";
 import { getLeagueLogo } from "@/lib/logo-manager";
 import { safeStr, toPct, flagFromIso2 } from "@/lib/utils";
 import { COUNTRY_COMPETITIONS, CountryCatalog, tierPriority } from "@/lib/country-data";
-import { partitionMatches, resolveMatchBucket } from "@/lib/match-state";
+import { resolveMatchBucket } from "@/lib/match-state";
+import { buildGroundedMatchAnalysis } from "@/lib/match-analysis-engine";
+import {
+  dedupeCanonicalMatches,
+  partitionForHomeSections,
+  toCanonicalMatch,
+  toLegacyMatchCard,
+} from "@/lib/canonical-match";
 import { useNexora } from "@/context/NexoraContext";
+import { useFollowState } from "@/context/UserStateContext";
 import { t as tFn, getLanguage } from "@/lib/i18n";
 import { useTranslation } from "@/lib/useTranslation";
 import {
@@ -132,18 +139,51 @@ const SPORT_TOOL_CARDS = [
 
 type SportToolId = typeof SPORT_TOOL_CARDS[number]["id"];
 
-function predictionSplit(match: any) {
-  const base = `${match?.homeTeam || ""}-${match?.awayTeam || ""}-${match?.id || ""}`;
-  let seed = 0;
-  for (let i = 0; i < base.length; i += 1) seed = (seed + base.charCodeAt(i) * (i + 1)) % 997;
-  const homePct = 36 + (seed % 31);
-  const drawPct = 18 + (seed % 17);
-  const awayPct = Math.max(6, 100 - homePct - drawPct);
-  const total = homePct + drawPct + awayPct;
+function buildMenuAnalysis(match: any) {
+  const structured = buildGroundedMatchAnalysis({
+    homeTeam: String(match?.homeTeam || "Home"),
+    awayTeam: String(match?.awayTeam || "Away"),
+    isLive: resolveMatchBucket(match) === "live",
+    minute: Number(match?.minute ?? null),
+    homeScore: Number(match?.homeScore ?? 0),
+    awayScore: Number(match?.awayScore ?? 0),
+    stats: {
+      home: match?.homeStats || match?.stats?.home || undefined,
+      away: match?.awayStats || match?.stats?.away || undefined,
+    },
+    events: Array.isArray(match?.keyEvents) ? match.keyEvents : [],
+    home: {
+      rank: Number(match?.homeRank ?? null),
+      points: Number(match?.homePoints ?? null),
+      goalDiff: Number(match?.homeGoalDiff ?? null),
+      topScorer: String(match?.homeTopScorer || "") || null,
+      topScorerGoals: Number(match?.homeTopScorerGoals ?? null),
+      topAssist: String(match?.homeTopAssist || "") || null,
+      topAssistCount: Number(match?.homeTopAssistCount ?? null),
+    },
+    away: {
+      rank: Number(match?.awayRank ?? null),
+      points: Number(match?.awayPoints ?? null),
+      goalDiff: Number(match?.awayGoalDiff ?? null),
+      topScorer: String(match?.awayTopScorer || "") || null,
+      topScorerGoals: Number(match?.awayTopScorerGoals ?? null),
+      topAssist: String(match?.awayTopAssist || "") || null,
+      topAssistCount: Number(match?.awayTopAssistCount ?? null),
+    },
+  });
   return {
-    home: Math.round((homePct / total) * 100),
-    draw: Math.round((drawPct / total) * 100),
-    away: 100 - Math.round((homePct / total) * 100) - Math.round((drawPct / total) * 100),
+    ...structured,
+    matchId: String(match?.id || ""),
+    homeTeam: String(match?.homeTeam || ""),
+    awayTeam: String(match?.awayTeam || ""),
+    status: String(match?.status || "upcoming"),
+    sport: String(match?.sport || "football"),
+    homeScore: Number(match?.homeScore ?? 0),
+    awayScore: Number(match?.awayScore ?? 0),
+    minute: Number(match?.minute ?? 0),
+    homeTeamLogo: match?.homeTeamLogo || "",
+    awayTeamLogo: match?.awayTeamLogo || "",
+    league: String(match?.league || ""),
   };
 }
 
@@ -176,16 +216,24 @@ const normalizeLeagueKey = (value: string): string =>
     .replace(/[\u0300-\u036f]/g, "")
     .replace(/[^a-z0-9]/g, "");
 
+const PRIORITY_COMPETITIONS: Record<string, number> = {
+  [normalizeLeagueKey("UEFA Champions League")]: 1,
+  [normalizeLeagueKey("Premier League")]: 2,
+  [normalizeLeagueKey("La Liga")]: 3,
+  [normalizeLeagueKey("Bundesliga")]: 4,
+  [normalizeLeagueKey("Serie A")]: 5,
+  [normalizeLeagueKey("Ligue 1")]: 6,
+  [normalizeLeagueKey("Jupiler Pro League")]: 7,
+};
+
 const competitionRankByLeague = COUNTRY_COMPETITIONS
   .flatMap((country) => country.competitions)
   .reduce<Record<string, number>>((acc, competition) => {
-    acc[normalizeLeagueKey(competition.league)] = tierPriority[competition.tier] ?? 9;
+    const key = normalizeLeagueKey(competition.league);
+    const explicit = PRIORITY_COMPETITIONS[key];
+    acc[key] = explicit ?? ((tierPriority[competition.tier] ?? 9) + 20);
     return acc;
-  }, {
-    [normalizeLeagueKey("UEFA Champions League")]: 1,
-    [normalizeLeagueKey("UEFA Europa League")]: 2,
-    [normalizeLeagueKey("UEFA Conference League")]: 3,
-  });
+  }, { ...PRIORITY_COMPETITIONS });
 
 const espnLeagueByName = COUNTRY_COMPETITIONS
   .flatMap((country) => country.competitions)
@@ -353,7 +401,7 @@ const dsStyles = StyleSheet.create({
 });
 
 // ── Section Title ─────────────────────────────────────────────────────────────
-function SectionTitle({ title, accent = false, action, onAction, count }: {
+function SectionTitle({ title, action, onAction, count }: {
   title: string;
   accent?: boolean;
   action?: string;
@@ -363,7 +411,7 @@ function SectionTitle({ title, accent = false, action, onAction, count }: {
   return (
     <View style={secStyles.row}>
       <View style={secStyles.left}>
-        {accent && <View style={secStyles.accentBar} />}
+        <View style={secStyles.accentBar} />
         <Text style={secStyles.title}>{title}</Text>
         {count !== undefined && count > 0 && (
           <View style={secStyles.countBadge}>
@@ -374,28 +422,59 @@ function SectionTitle({ title, accent = false, action, onAction, count }: {
       {action && onAction && (
         <TouchableOpacity onPress={onAction} style={secStyles.actionBtn}>
           <Text style={secStyles.actionText}>{action}</Text>
-          <Ionicons name="chevron-forward" size={12} color={P.accent} />
+          <Ionicons name="chevron-forward" size={11} color={P.accent} />
         </TouchableOpacity>
       )}
     </View>
   );
 }
 
+// ── Competition Group Header (for Live tab) ───────────────────────────────────
+function CompetitionGroupHeader({ league, count }: { league: string; count: number }) {
+  const logo = getLeagueLogo(league);
+  return (
+    <View style={cgStyles.row}>
+      {logo ? (
+        <Image source={typeof logo === "number" ? logo : { uri: logo as string }} style={cgStyles.logo} resizeMode="contain" />
+      ) : (
+        <View style={cgStyles.logoPh} />
+      )}
+      <Text style={cgStyles.name} numberOfLines={1}>{league}</Text>
+      <View style={cgStyles.badge}><Text style={cgStyles.badgeText}>{count}</Text></View>
+    </View>
+  );
+}
+const cgStyles = StyleSheet.create({
+  row: {
+    flexDirection: "row", alignItems: "center", gap: 8,
+    paddingHorizontal: 16, paddingVertical: 8,
+    marginTop: 8,
+  },
+  logo: { width: 18, height: 18 },
+  logoPh: { width: 18, height: 18, borderRadius: 4, backgroundColor: P.elevated },
+  name: { flex: 1, color: P.muted, fontSize: 11, fontWeight: "700", letterSpacing: 0.6, textTransform: "uppercase" },
+  badge: {
+    backgroundColor: "rgba(255,255,255,0.10)", borderRadius: 8,
+    paddingHorizontal: 6, paddingVertical: 2,
+  },
+  badgeText: { color: P.muted, fontSize: 10, fontWeight: "700" },
+});
+
 const secStyles = StyleSheet.create({
   row: {
     flexDirection: "row", alignItems: "center", justifyContent: "space-between",
-    paddingHorizontal: 16, marginTop: 18, marginBottom: 8,
+    paddingHorizontal: 18, marginTop: 28, marginBottom: 12,
   },
-  left: { flexDirection: "row", alignItems: "center", gap: 8 },
-  accentBar: { width: 3, height: 18, backgroundColor: P.accent, borderRadius: 2 },
-  title: { color: P.text, fontSize: 17, fontWeight: "700", letterSpacing: -0.2, fontFamily: "Inter_700Bold" },
-  actionBtn: { flexDirection: "row", alignItems: "center", gap: 3 },
-  actionText: { color: P.accent, fontSize: 12, fontWeight: "600", fontFamily: "Inter_600SemiBold" },
+  left: { flexDirection: "row", alignItems: "center", gap: 12 },
+  accentBar: { width: 3, height: 20, backgroundColor: P.accent, borderRadius: 2 },
+  title: { color: P.text, fontSize: 19, fontWeight: "800", letterSpacing: -0.3, fontFamily: "Inter_800ExtraBold" },
+  actionBtn: { flexDirection: "row", alignItems: "center", gap: 3, paddingVertical: 4, paddingHorizontal: 2 },
+  actionText: { color: P.accent, fontSize: 12, fontWeight: "700", fontFamily: "Inter_700Bold" },
   countBadge: {
-    backgroundColor: "rgba(229,9,20,0.18)", borderRadius: 10, paddingHorizontal: 7, paddingVertical: 2,
-    borderWidth: 1, borderColor: "rgba(229,9,20,0.35)",
+    backgroundColor: "rgba(229,9,20,0.15)", borderRadius: 10, paddingHorizontal: 7, paddingVertical: 2,
+    borderWidth: 1, borderColor: "rgba(229,9,20,0.30)",
   },
-  countText: { color: P.accent, fontSize: 11, fontWeight: "700", fontFamily: "Inter_700Bold" },
+  countText: { color: P.accent, fontSize: 11, fontWeight: "800", fontFamily: "Inter_700Bold" },
 });
 
 // ── Live Now Card ─────────────────────────────────────────────────────────────
@@ -489,8 +568,9 @@ const liveCardStyles = StyleSheet.create({
 
 // ── Today Match Card ──────────────────────────────────────────────────────────
 function TodayMatchCardInner({ match, onPress }: { match: any; onPress: () => void }) {
-  const isLive = String(match?.status || "").toLowerCase() === "live";
-  const isFinished = String(match?.status || "").toLowerCase() === "finished";
+  const bucket = resolveMatchBucket(match);
+  const isLive = bucket === "live";
+  const isFinished = bucket === "finished";
   const leagueLogo = getLeagueLogo(match?.league || "");
   const homeScore = match?.homeScore ?? 0;
   const awayScore = match?.awayScore ?? 0;
@@ -728,6 +808,7 @@ export default function SportsScreen() {
   const compCardWidth = Math.floor((Math.min(screenWidth, 480) - 16 * 2 - 10 * 3) / 4);
   const qc = useQueryClient();
   const { favorites } = useNexora();
+  const { followedTeams } = useFollowState();
   const { t } = useTranslation();
 
   const [refreshing, setRefreshing] = useState(false);
@@ -855,14 +936,16 @@ export default function SportsScreen() {
   );
   const remoteUpcoming: any[] = useMemo(() => todayQuery.data?.upcoming || [], [todayQuery.data?.upcoming]);
   const remoteFinished: any[] = useMemo(() => todayQuery.data?.finished || [], [todayQuery.data?.finished]);
-  const canonicalRemote = useMemo(
-    () => partitionMatches([
+  const canonicalRemote = useMemo(() => {
+    const rows = [
       ...(Array.isArray(remoteLive) ? remoteLive : []),
       ...(Array.isArray(remoteUpcoming) ? remoteUpcoming : []),
       ...(Array.isArray(remoteFinished) ? remoteFinished : []),
-    ]),
-    [remoteFinished, remoteLive, remoteUpcoming],
-  );
+    ]
+      .map((row) => toCanonicalMatch(row))
+      .filter(Boolean) as any[];
+    return partitionForHomeSections(dedupeCanonicalMatches(rows), selectedDate);
+  }, [remoteFinished, remoteLive, remoteUpcoming, selectedDate]);
   const hasRemoteData = remoteLive.length + remoteUpcoming.length + remoteFinished.length > 0;
 
   const [stickyLiveMap, setStickyLiveMap] = useState<Record<string, any>>({});
@@ -873,7 +956,7 @@ export default function SportsScreen() {
     const now = Date.now();
     setStickyLiveMap((prev) => {
       const next = { ...prev };
-      for (const match of canonicalRemote.live) {
+      for (const match of canonicalRemote.liveNow) {
         if (!match?.id) continue;
         next[match.id] = { ...next[match.id], ...match, __lastSeenLiveAt: now };
       }
@@ -887,18 +970,18 @@ export default function SportsScreen() {
       }
       return next;
     });
-  }, [canonicalRemote.finished, canonicalRemote.live]);
+  }, [canonicalRemote.finished, canonicalRemote.liveNow]);
 
   const mergedLive = useMemo(() => {
     const byId = new Map<string, any>();
     Object.entries(stickyLiveMap).forEach(([id, m]) => byId.set(id, m));
-    canonicalRemote.live.forEach((m) => { if (m?.id) byId.set(String(m.id), m); });
+    canonicalRemote.liveNow.forEach((m) => { if (m?.id) byId.set(String(m.id), m); });
     return Array.from(byId.values());
-  }, [canonicalRemote.live, stickyLiveMap]);
+  }, [canonicalRemote.liveNow, stickyLiveMap]);
 
-  const allLive: any[] = mergedLive.filter(isFootballMatch);
-  const allUpcoming: any[] = canonicalRemote.upcoming.filter(isFootballMatch);
-  const allFinished: any[] = canonicalRemote.finished.filter(isFootballMatch);
+  const allLive: any[] = mergedLive.map(toLegacyMatchCard).filter(isFootballMatch);
+  const allUpcoming: any[] = canonicalRemote.today.map(toLegacyMatchCard).filter(isFootballMatch);
+  const allFinished: any[] = canonicalRemote.finished.map(toLegacyMatchCard).filter(isFootballMatch);
   const noRemoteData = !liveFirstLoad && !todayFirstLoad && !hasRemoteData;
 
   const filterBySport = (matches: any[]) => {
@@ -939,17 +1022,23 @@ export default function SportsScreen() {
   }, [sortedFinished, sortedUpcoming]);
 
   const myTeamMatches = useMemo(() => {
-    const favTeams = new Set(
-      favorites
-        .filter(f => f.startsWith("sport_team:"))
-        .map(f => f.slice("sport_team:".length).toLowerCase())
+    // Prefer follows from UserStateContext (persistent follow system)
+    const followedNames = new Set(
+      followedTeams.map(t => t.teamName.toLowerCase()),
     );
+    // Fallback: sport_team: entries in NexoraContext favorites
+    const favTeams = new Set([
+      ...Array.from(followedNames),
+      ...favorites
+        .filter(f => f.startsWith("sport_team:"))
+        .map(f => f.slice("sport_team:".length).toLowerCase()),
+    ]);
     if (favTeams.size === 0) return [];
     return [...sortedLive, ...sortedUpcoming].filter(m =>
       favTeams.has(String(m?.homeTeam || "").toLowerCase()) ||
       favTeams.has(String(m?.awayTeam || "").toLowerCase())
     );
-  }, [favorites, sortedLive, sortedUpcoming]);
+  }, [favorites, followedTeams, sortedLive, sortedUpcoming]);
 
   const sportsSearchResults = useMemo(() => {
     const q = sportsSearchQuery.trim().toLowerCase();
@@ -1000,8 +1089,23 @@ export default function SportsScreen() {
     return sortedFinished;
   }, [sortedFinished, sortedLive, sortedUpcoming]);
 
+  // Group live matches by competition for the Live tab
+  const groupedLive = useMemo(() => {
+    const groups: Record<string, any[]> = {};
+    for (const match of sortedLive) {
+      const key = match.league || "Other";
+      if (!groups[key]) groups[key] = [];
+      groups[key].push(match);
+    }
+    return Object.entries(groups).sort((a, b) => {
+      const ra = competitionRankByLeague[normalizeLeagueKey(a[0])] ?? 99;
+      const rb = competitionRankByLeague[normalizeLeagueKey(b[0])] ?? 99;
+      return ra - rb;
+    });
+  }, [sortedLive]);
+
   const sportMenuPreview = useMemo(
-    () => sportToolSourceMatches.slice(0, 6).map((match) => ({ match, split: predictionSplit(match) })),
+    () => sportToolSourceMatches.slice(0, 8).map((match) => ({ match, analysis: buildMenuAnalysis(match) })),
     [sportToolSourceMatches]
   );
 
@@ -1018,12 +1122,12 @@ export default function SportsScreen() {
             badges: buildHomeAwayBadges(item.homePct, item.awayPct, item.drawPct),
             item,
           }))
-        : sportMenuPreview.slice(0, 6).map(({ match, split }) => ({
-            key: `pred_${match.id}`,
-            title: `${safeStr(match.homeTeam)} vs ${safeStr(match.awayTeam)}`,
-            meta: `${split.home}% · ${split.draw}% · ${split.away}%`,
-            badges: buildHomeAwayBadges(split.home, split.away, split.draw),
-            match,
+        : sportMenuPreview.slice(0, 8).map(({ analysis }) => ({
+            key: `pred_${analysis.matchId}`,
+            title: `${safeStr(analysis.homeTeam)} vs ${safeStr(analysis.awayTeam)}`,
+            meta: `${analysis.homePct}% · ${analysis.drawPct}% · ${analysis.awayPct}% · ${analysis.confidence}% conf.`,
+            badges: buildHomeAwayBadges(analysis.homePct, analysis.awayPct, analysis.drawPct),
+            item: analysis,
           }));
     }
     if (activeSportTool === "daily-acca-picks") {
@@ -1035,15 +1139,15 @@ export default function SportsScreen() {
             badges: buildHomeAwayBadges(item.homePct, item.awayPct, item.drawPct),
             item,
           }))
-        : sportMenuPreview.slice(0, 6).map(({ match, split }) => {
-            const side = split.home >= split.away ? "1" : "2";
-            const confidence = Math.max(split.home, split.away);
+        : sportMenuPreview.slice(0, 8).map(({ analysis }) => {
+            const side = analysis.homePct >= analysis.awayPct ? "1" : "2";
+            const confidence = Math.max(analysis.homePct, analysis.awayPct);
             return {
-              key: `acca_${match.id}`,
-              title: `${side} · ${safeStr(match.homeTeam)} - ${safeStr(match.awayTeam)}`,
+              key: `acca_${analysis.matchId}`,
+              title: `${side} · ${safeStr(analysis.homeTeam)} - ${safeStr(analysis.awayTeam)}`,
               meta: `Confidence ${confidence}%`,
-              badges: buildHomeAwayBadges(split.home, split.away, split.draw),
-              match,
+              badges: buildHomeAwayBadges(analysis.homePct, analysis.awayPct, analysis.drawPct),
+              item: analysis,
             };
           });
     }
@@ -1079,7 +1183,11 @@ export default function SportsScreen() {
         }
       : null;
 
-    const underdog = [...backendPredictions]
+    const predictionPool = backendPredictions.length > 0
+      ? backendPredictions
+      : sportMenuPreview.map(({ analysis }) => analysis);
+
+    const underdog = [...predictionPool]
       .filter((p: any) => {
         const hp = Number(p?.homePct || 0);
         const ap = Number(p?.awayPct || 0);
@@ -1091,8 +1199,8 @@ export default function SportsScreen() {
       .sort((a: any, b: any) => Number(b?.confidence || 0) - Number(a?.confidence || 0))[0];
 
     const upset = [...sortedFinished].find((m: any) => {
-      const split = predictionSplit(m);
-      const fav = split.home >= split.away ? "home" : "away";
+      const analysis = buildMenuAnalysis(m);
+      const fav = analysis.homePct >= analysis.awayPct ? "home" : "away";
       const s = parseScore(m);
       const winner = s.home === s.away ? "draw" : s.home > s.away ? "home" : "away";
       return winner !== "draw" && winner !== fav;
@@ -1149,7 +1257,7 @@ export default function SportsScreen() {
       hotStreak,
       bigMatches,
     };
-  }, [backendPredictions, sortedFinished, sortedUpcoming]);
+  }, [backendPredictions, sortedFinished, sortedUpcoming, sportMenuPreview]);
 
   const resolveEspnLeague = useCallback((match: any): string => {
     return resolveEspnLeagueForMatch(match);
@@ -1379,12 +1487,15 @@ export default function SportsScreen() {
         <NexoraHeader
           title="SPORT"
           titleColor={P.accent}
+          badgeLabel={sortedLive.length > 0 ? `${sortedLive.length} live` : undefined}
+          badgeTone={sortedLive.length > 0 ? "live" : "accent"}
           compact={compactHeader}
           showSearch
           showNotification
           showFavorites
           showProfile
           onSearch={() => { setSportsSearchActive(s => !s); setSportsSearchQuery(""); }}
+          onNotification={() => router.push("/follow-center")}
           onFavorites={() => router.push("/favorites")}
           onProfile={() => router.push("/profile")}
         />
@@ -1398,20 +1509,25 @@ export default function SportsScreen() {
           >
             {SPORTS_TABS.map((tab) => {
               const isActive = sportsView === tab.id;
+              const isLiveTab = tab.id === "live";
+              const liveCount = sortedLive.length;
               return (
                 <TouchableOpacity
                   key={tab.id}
-                  style={styles.subNavItem}
+                  style={[styles.subNavItem, isActive && styles.subNavItemActive]}
                   onPress={() => setSportsView(tab.id)}
-                  activeOpacity={0.75}
+                  activeOpacity={0.8}
                 >
                   <Text style={[styles.subNavText, isActive && styles.subNavTextActive]}>
                     {tab.label}
-                    {tab.id === "live" && sortedLive.length > 0 && (
-                      <Text style={styles.liveCount}> {sortedLive.length}</Text>
-                    )}
                   </Text>
-                  {isActive && <View style={styles.subNavIndicator} />}
+                  {isLiveTab && liveCount > 0 && (
+                    <View style={[styles.subNavLiveBadge, isActive && styles.subNavLiveBadgeActive]}>
+                      <Text style={[styles.subNavLiveBadgeText, isActive && styles.subNavLiveBadgeTextActive]}>
+                        {liveCount}
+                      </Text>
+                    </View>
+                  )}
                 </TouchableOpacity>
               );
             })}
@@ -1425,7 +1541,7 @@ export default function SportsScreen() {
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
-            contentContainerStyle={{ paddingHorizontal: 16, paddingVertical: 10, gap: 8, flexDirection: "row" }}
+            contentContainerStyle={{ paddingHorizontal: 18, paddingVertical: 12, gap: 10, flexDirection: "row" }}
           >
             {SPORT_CATEGORIES.map((cat) => {
               const isActive = sportCategory === cat.id;
@@ -1468,7 +1584,7 @@ export default function SportsScreen() {
           {sportsSearchResults.length === 0 ? (
             <Text style={styles.sportsSearchEmpty}>{t("sportsHome.noResults")} &quot;{sportsSearchQuery}&quot;</Text>
           ) : sportsSearchResults.map((match: any) => {
-            const isLiveMatch = String(match?.status || "").toLowerCase() === "live";
+            const isLiveMatch = resolveMatchBucket(match) === "live";
             return (
               <TouchableOpacity
                 key={match.id}
@@ -1701,29 +1817,53 @@ export default function SportsScreen() {
         ══════════════════════════════════════════ */}
         {showLive && (
           <View style={styles.section}>
-            <View style={styles.sectionHead}>
+            {/* Live header */}
+            <View style={styles.liveTabHeader}>
               <View style={styles.livePillInline}>
                 <View style={styles.liveDotInline} />
                 <Text style={styles.livePillText}>{t("sportsHome.liveNow")}</Text>
               </View>
-              <LiveBadge />
+              {sortedLive.length > 0 && (
+                <View style={styles.liveTabCount}>
+                  <Text style={styles.liveTabCountText}>{sortedLive.length} {t("sportsHome.matches") || "matches"}</Text>
+                </View>
+              )}
             </View>
             {liveFirstLoad ? (
               [1, 2, 3].map(i => <View key={i} style={styles.matchCardSkeleton}><View style={styles.skeletonShimmer} /></View>)
             ) : sortedLive.length === 0 ? (
-              <View style={styles.emptyState}>
-                <Ionicons name="radio-button-off-outline" size={28} color={P.muted} />
-                <Text style={styles.emptyText}>{t("sportsHome.noLive")}</Text>
+              <View style={styles.liveEmptyStateWrap}>
+                <LinearGradient
+                  colors={["rgba(255,255,255,0.05)", "rgba(255,255,255,0.02)"]}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={styles.liveEmptyState}
+                >
+                  <View style={styles.liveEmptyIconRing}>
+                    <Ionicons name="radio-outline" size={22} color={P.muted} />
+                  </View>
+                  <Text style={styles.liveEmptyTitle}>{t("sportsHome.noLive")}</Text>
+                  <Text style={styles.liveEmptyHint}>{t("sportsHome.checkSchedule") || "Check Speeldag for upcoming matches"}</Text>
+                  <TouchableOpacity style={styles.liveEmptyAction} onPress={() => setSportsView("upcoming")} activeOpacity={0.85}>
+                    <Ionicons name="calendar-outline" size={14} color={P.text} />
+                    <Text style={styles.liveEmptyActionText}>{t("sportsHome.matchday")}</Text>
+                  </TouchableOpacity>
+                </LinearGradient>
               </View>
             ) : (
-              sortedLive.slice(0, 60).map((match: any) => (
-                <MatchRowCard
-                  key={match.id}
-                  match={match}
-                  onPress={() => handleMatchPress(match)}
-                  onNotificationToggle={() => toggleMatchNotification(match)}
-                  isNotificationOn={Boolean(matchSubscriptions[String(match.id || "")])}
-                />
+              groupedLive.map(([league, matches]) => (
+                <View key={league}>
+                  <CompetitionGroupHeader league={league} count={matches.length} />
+                  {matches.map((match: any) => (
+                    <MatchRowCard
+                      key={match.id}
+                      match={match}
+                      onPress={() => handleMatchPress(match)}
+                      onNotificationToggle={() => toggleMatchNotification(match)}
+                      isNotificationOn={Boolean(matchSubscriptions[String(match.id || "")])}
+                    />
+                  ))}
+                </View>
               ))
             )}
           </View>
@@ -1735,26 +1875,24 @@ export default function SportsScreen() {
         {showUpcoming && (
           <View style={styles.section}>
             <DateSelector date={selectedDate} onDateChange={setSelectedDate} />
-            <View style={styles.sectionHead}>
-              <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-                <View style={{ width: 3, height: 18, backgroundColor: P.accent, borderRadius: 2 }} />
-                <Text style={styles.sectionTitle}>
-                  {selectedDate === todayUTC() ? t("sportsHome.matchesToday") : formatDateDisplay(selectedDate)}
-                </Text>
-              </View>
-            </View>
             {todayFirstLoad ? (
               [1, 2, 3].map(i => <View key={i} style={styles.matchCardSkeleton}><View style={styles.skeletonShimmer} /></View>)
             ) : sortedUpcoming.length === 0 && sortedFinished.length === 0 ? (
               <View style={styles.emptyState}>
-                <Ionicons name="calendar-outline" size={28} color={P.muted} />
-                <Text style={styles.emptyText}>{t("sportsHome.noMatchesOn", { date: formatDateDisplay(selectedDate) })}</Text>
+                <Ionicons name="calendar-outline" size={32} color={P.muted} />
+                <Text style={styles.emptyTitle}>{t("sportsHome.noMatchesOn", { date: formatDateDisplay(selectedDate) })}</Text>
+                <Text style={styles.emptySubtext}>{t("sportsHome.tryOtherDate") || "Try another date"}</Text>
               </View>
             ) : (
               <>
                 {sortedUpcoming.length > 0 && (
                   <>
-                    <Text style={styles.subHead}>{t("sportsHome.upcoming")}</Text>
+                    <View style={styles.scheduleSection}>
+                      <Text style={styles.scheduleSectionLabel}>{t("sportsHome.upcoming") || "UPCOMING"}</Text>
+                      <View style={styles.scheduleSectionBadge}>
+                        <Text style={styles.scheduleSectionBadgeText}>{sortedUpcoming.length}</Text>
+                      </View>
+                    </View>
                     {sortedUpcoming.slice(0, 60).map((match: any) => (
                       <MatchRowCard
                         key={match.id}
@@ -1768,7 +1906,12 @@ export default function SportsScreen() {
                 )}
                 {sortedFinished.length > 0 && (
                   <>
-                    <Text style={[styles.subHead, { marginTop: 16 }]}>{t("sportsHome.finished")}</Text>
+                    <View style={[styles.scheduleSection, { marginTop: 20 }]}>
+                      <Text style={styles.scheduleSectionLabel}>{t("sportsHome.finished") || "FINISHED"}</Text>
+                      <View style={[styles.scheduleSectionBadge, styles.scheduleSectionBadgeMuted]}>
+                        <Text style={[styles.scheduleSectionBadgeText, styles.scheduleSectionBadgeTextMuted]}>{sortedFinished.length}</Text>
+                      </View>
+                    </View>
                     {sortedFinished.slice(0, 60).map((match: any) => (
                       <MatchRowCard
                         key={match.id}
@@ -1790,74 +1933,92 @@ export default function SportsScreen() {
         ══════════════════════════════════════════ */}
         {showMenuSection && (
           <View style={styles.section}>
-            <View style={styles.sectionHead}>
-              <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-                <View style={{ width: 3, height: 18, backgroundColor: P.accent, borderRadius: 2 }} />
-                <Text style={styles.sectionTitle}>{t("sportsHome.analyse")}</Text>
-              </View>
-            </View>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.toolsRow}>
+            {/* Tool selector pills */}
+            <View style={styles.toolSelectorRow}>
               {SPORT_TOOL_CARDS.map((card) => {
                 const isActive = activeSportTool === card.id;
                 return (
                   <TouchableOpacity
                     key={card.id}
-                    style={[styles.toolCard, isActive && { borderColor: card.accent }]}
+                    style={[styles.toolSelectorPill, isActive && { backgroundColor: card.accent, borderColor: card.accent }]}
                     activeOpacity={0.85}
                     onPress={() => setActiveSportTool(card.id)}
                   >
-                    <LinearGradient
-                      colors={isActive ? [COLORS.cardElevated, COLORS.card] : [COLORS.card, COLORS.background]}
-                      style={styles.toolCardInner}
-                    >
-                      <View style={[styles.toolIconWrap, { backgroundColor: `${card.accent}22`, borderColor: `${card.accent}55` }]}>
-                        <Ionicons name={card.icon} size={16} color={card.accent} />
-                      </View>
-                      <Text style={styles.toolTitle} numberOfLines={1}>{tFn(card.titleKey)}</Text>
-                      <Text style={styles.toolSub} numberOfLines={2}>{tFn(card.subtitleKey)}</Text>
-                      <View style={styles.toolAction}>
-                        <Text style={[styles.toolActionText, { color: card.accent }]}>{t("sportsHome.open")}</Text>
-                        <Ionicons name="chevron-forward" size={12} color={card.accent} />
-                      </View>
-                    </LinearGradient>
+                    <Ionicons name={card.icon} size={14} color={isActive ? "#fff" : card.accent} />
+                    <Text style={[styles.toolSelectorLabel, isActive && styles.toolSelectorLabelActive]}>{tFn(card.titleKey)}</Text>
                   </TouchableOpacity>
                 );
               })}
-            </ScrollView>
-            <LinearGradient colors={[COLORS.cardElevated, COLORS.background]} style={styles.toolPanel}>
-              <View style={styles.toolPanelHead}>
-                <Text style={styles.toolPanelTitle}>{tFn(activeSportToolCard.titleKey)}</Text>
-                <Text style={styles.toolPanelCount}>{activeToolRows.length} {t("sportsHome.picks")}</Text>
-              </View>
-              {activeToolRows.length > 0 ? activeToolRows.map((row: any) => (
-                <TouchableOpacity
-                  key={row.key}
-                  style={styles.toolRow}
-                  onPress={() => row.item ? handleToolMatchPress(row.item) : handleMatchPress(row.match)}
-                >
-                  <Text style={styles.toolRowTeams} numberOfLines={1}>{row.title}</Text>
-                  <Text style={styles.toolRowMeta} numberOfLines={1}>{row.meta}</Text>
-                  {Array.isArray(row.badges) && row.badges.length > 0 && (
-                    <View style={styles.toolBadgeRow}>
-                      {row.badges.slice(0, 3).map((badge: any, idx: number) => (
-                        <View
-                          key={`${row.key}_b${idx}`}
-                          style={[styles.toolBadge, badge.tone === "positive" && styles.toolBadgePos, badge.tone === "negative" && styles.toolBadgeNeg]}
-                        >
-                          <Text style={styles.toolBadgeText}>{badge.label}</Text>
-                        </View>
-                      ))}
-                    </View>
-                  )}
-                </TouchableOpacity>
-              )) : (
-                <Text style={styles.toolEmpty}>{t("sportsHome.noDataYet")}</Text>
-              )}
-            </LinearGradient>
+            </View>
 
-            <LinearGradient colors={["#121826", "#0C0F18"]} style={styles.nextLevelPanel}>
+            {/* Prediction cards */}
+            <View style={styles.analysePanel}>
+              <View style={styles.analysePanelHead}>
+                <View style={styles.analysePanelTitle}>
+                  <Ionicons name={activeSportToolCard.icon} size={15} color={activeSportToolCard.accent} />
+                  <Text style={styles.analysePanelTitleText}>{tFn(activeSportToolCard.titleKey)}</Text>
+                </View>
+                <Text style={styles.analysePanelCount}>{activeToolRows.length} {t("sportsHome.picks")}</Text>
+              </View>
+              {activeToolRows.length > 0 ? activeToolRows.map((row: any) => {
+                const homeBadge = row.badges?.[0];
+                const drawBadge = row.badges?.[2];
+                const awayBadge = row.badges?.[1];
+                const homePct = row.item?.homePct ?? row.match?.split?.home ?? 0;
+                const awayPct = row.item?.awayPct ?? row.match?.split?.away ?? 0;
+                const drawPct = row.item?.drawPct ?? row.match?.split?.draw ?? 0;
+                const confidence = row.item?.confidence ?? null;
+                const total = homePct + awayPct + drawPct;
+                return (
+                  <TouchableOpacity
+                    key={row.key}
+                    style={styles.predCard}
+                    onPress={() => row.item ? handleToolMatchPress(row.item) : handleMatchPress(row.match)}
+                    activeOpacity={0.82}
+                  >
+                    <View style={styles.predCardTeamRow}>
+                      <Text style={styles.predCardTeams} numberOfLines={1}>{row.title}</Text>
+                      <Ionicons name="chevron-forward" size={13} color={P.muted} />
+                    </View>
+                    {/* Probability bar */}
+                    {total > 0 && (
+                      <View style={styles.predBarWrap}>
+                        <View style={[styles.predBarSegment, { flex: homePct, backgroundColor: "#4CAF82" }]} />
+                        {drawPct > 0 && <View style={[styles.predBarSegment, { flex: drawPct, backgroundColor: "#888" }]} />}
+                        <View style={[styles.predBarSegment, { flex: awayPct, backgroundColor: P.accent }]} />
+                      </View>
+                    )}
+                    <View style={styles.predBarLabels}>
+                      {homeBadge && <Text style={[styles.predBarLabel, { color: "#4CAF82" }]}>{homeBadge.label}</Text>}
+                      {drawBadge && <Text style={[styles.predBarLabel, { color: "#888" }]}>{drawBadge.label}</Text>}
+                      {awayBadge && <Text style={[styles.predBarLabel, { color: P.accent }]}>{awayBadge.label}</Text>}
+                    </View>
+                    {confidence != null && (
+                      <View style={styles.predConfRow}>
+                        <Text style={styles.predConfLabel}>{t("sportsHome.confidence") || "Confidence"}</Text>
+                        <View style={styles.predConfBar}>
+                          <View style={[styles.predConfFill, { width: `${Math.min(Number(confidence), 100)}%` as any }]} />
+                        </View>
+                        <Text style={styles.predConfPct}>{confidence}%</Text>
+                      </View>
+                    )}
+                  </TouchableOpacity>
+                );
+              }) : (
+                <View style={styles.emptyState}>
+                  <Ionicons name="analytics-outline" size={28} color={P.muted} />
+                  <Text style={styles.emptyTitle}>{t("sportsHome.noDataYet")}</Text>
+                </View>
+              )}
+            </View>
+
+            {/* Next Level Intelligence panel */}
+            <LinearGradient colors={["#0E1626", "#090D18"]} style={styles.nextLevelPanel}>
               <View style={styles.nextLevelHead}>
-                <Text style={styles.nextLevelTitle}>Next Level Intelligence</Text>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                  <Ionicons name="flash" size={16} color="#FFD166" />
+                  <Text style={styles.nextLevelTitle}>Next Level Intelligence</Text>
+                </View>
                 <Text style={styles.nextLevelSub}>Smart picks, momentum and hidden edges</Text>
               </View>
 
@@ -1873,7 +2034,7 @@ export default function SportsScreen() {
                 >
                   <View style={styles.spotlightTopRow}>
                     <View style={styles.nextChip}><Text style={styles.nextChipText}>MATCH OF THE DAY</Text></View>
-                    <Ionicons name="flash" size={14} color="#FFD166" />
+                    <Ionicons name="flash" size={13} color="#FFD166" />
                   </View>
                   <Text style={styles.spotlightMain}>{nextLevelInsights.spotlight.subtitle}</Text>
                   <Text style={styles.spotlightMeta}>{nextLevelInsights.spotlight.detail}</Text>
@@ -1887,14 +2048,12 @@ export default function SportsScreen() {
                     <Text style={styles.nextGridValue} numberOfLines={2}>{safeStr(nextLevelInsights.underdog.homeTeam)} vs {safeStr(nextLevelInsights.underdog.awayTeam)}</Text>
                   </TouchableOpacity>
                 ) : null}
-
                 {nextLevelInsights.hotStreak ? (
                   <View style={styles.nextGridCard}>
-                    <Text style={styles.nextGridLabel}>Hot Streak Player/Team 🔥</Text>
+                    <Text style={styles.nextGridLabel}>Hot Streak 🔥</Text>
                     <Text style={styles.nextGridValue} numberOfLines={2}>{nextLevelInsights.hotStreak[0]} · {nextLevelInsights.hotStreak[1].points} pts</Text>
                   </View>
                 ) : null}
-
                 {nextLevelInsights.upset ? (
                   <TouchableOpacity style={styles.nextGridCard} onPress={() => handleMatchPress(nextLevelInsights.upset)}>
                     <Text style={styles.nextGridLabel}>Biggest Upset</Text>
@@ -1904,12 +2063,13 @@ export default function SportsScreen() {
               </View>
 
               {nextLevelInsights.bigMatches.length > 0 ? (
-                <View style={{ marginTop: 8, gap: 8 }}>
+                <View style={{ marginTop: 8, gap: 6 }}>
                   <Text style={styles.nextUpcomingTitle}>Upcoming Big Matches</Text>
                   {nextLevelInsights.bigMatches.map((m: any, idx: number) => (
                     <TouchableOpacity key={`${m.id}_${idx}`} style={styles.nextUpcomingRow} onPress={() => handleMatchPress(m)}>
                       <Text style={styles.nextUpcomingText} numberOfLines={1}>{safeStr(m.homeTeam)} vs {safeStr(m.awayTeam)}</Text>
-                      <Ionicons name="chevron-forward" size={13} color={COLORS.textMuted} />
+                      <Text style={styles.nextUpcomingComp} numberOfLines={1}>{safeStr(m.league)}</Text>
+                      <Ionicons name="chevron-forward" size={12} color={COLORS.textMuted} />
                     </TouchableOpacity>
                   ))}
                 </View>
@@ -1936,38 +2096,57 @@ const styles = StyleSheet.create({
   subNavContent: {
     flexDirection: "row",
     paddingHorizontal: 16,
-    paddingTop: 6,
-    paddingBottom: 4,
-    gap: 8,
+    paddingTop: 10,
+    paddingBottom: 12,
+    gap: 9,
+    alignItems: "center",
   },
   subNavItem: {
-    paddingHorizontal: 14,
-    paddingVertical: 8,
+    paddingHorizontal: 18,
+    paddingVertical: 10,
+    borderRadius: 24,
     alignItems: "center",
-    position: "relative",
+    flexDirection: "row",
+    gap: 7,
+  },
+  subNavItemActive: {
+    backgroundColor: P.accent,
   },
   subNavText: {
     color: P.muted,
-    fontSize: 14,
-    fontWeight: "600",
+    fontSize: 13,
+    fontWeight: "700",
     letterSpacing: 0.2,
   },
-  subNavTextActive: { color: P.text },
-  subNavIndicator: {
-    position: "absolute",
-    bottom: 0,
-    left: 10,
-    right: 10,
-    height: 2,
-    backgroundColor: P.accent,
-    borderRadius: 1,
+  subNavTextActive: { color: "#fff" },
+  subNavLiveBadge: {
+    backgroundColor: `${P.live}28`,
+    borderRadius: 10,
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    borderWidth: 1,
+    borderColor: `${P.live}44`,
+    minWidth: 20,
+    alignItems: "center",
   },
-  liveCount: { color: P.live, fontSize: 12 },
+  subNavLiveBadgeActive: {
+    backgroundColor: "rgba(255,255,255,0.25)",
+    borderColor: "rgba(255,255,255,0.35)",
+  },
+  subNavLiveBadgeText: {
+    color: P.live,
+    fontSize: 10,
+    fontWeight: "800",
+  },
+  subNavLiveBadgeTextActive: {
+    color: "#fff",
+  },
 
   /* ── Carousels ── */
   carouselContent: {
-    paddingHorizontal: 16,
-    paddingVertical: 2,
+    paddingHorizontal: 18,
+    paddingTop: 4,
+    paddingBottom: 8,
   },
 
   /* ── Competition grid ── */
@@ -2038,19 +2217,19 @@ const styles = StyleSheet.create({
 
   /* ── Banners ── */
   banner: {
-    flexDirection: "row", alignItems: "center", gap: 8,
-    marginHorizontal: 16, marginTop: 8, padding: 11,
-    borderRadius: 14, backgroundColor: `${P.accent}18`,
+    flexDirection: "row", alignItems: "center", gap: 10,
+    marginHorizontal: 18, marginTop: 12, padding: 13,
+    borderRadius: 16, backgroundColor: `${P.accent}18`,
     borderWidth: 1, borderColor: `${P.accent}44`,
   },
   bannerError: { backgroundColor: "rgba(255,107,107,0.12)", borderColor: "rgba(255,107,107,0.3)" },
   bannerText: { flex: 1, color: P.muted, fontSize: 12, fontWeight: "500" },
   bannerCode: { color: P.muted, fontSize: 10, marginTop: 2 },
   fallbackPanel: {
-    marginHorizontal: 16,
-    marginTop: 10,
-    padding: 12,
-    borderRadius: 14,
+    marginHorizontal: 18,
+    marginTop: 14,
+    padding: 14,
+    borderRadius: 16,
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.12)",
     backgroundColor: "rgba(28,28,40,0.9)",
@@ -2075,15 +2254,65 @@ const styles = StyleSheet.create({
   fallbackCode: { color: P.muted, fontSize: 10 },
 
   /* ── Section titles ── */
-  section: { marginTop: 4 },
+  section: { marginTop: 10 },
   sectionHead: {
     flexDirection: "row", alignItems: "center", justifyContent: "space-between",
     paddingHorizontal: 16, paddingVertical: 8,
   },
   sectionTitle: { color: P.text, fontSize: 17, fontWeight: "700", letterSpacing: 0.3 },
   subHead: { color: P.muted, fontSize: 11, fontWeight: "600", paddingHorizontal: 16, paddingTop: 6, letterSpacing: 0.8, textTransform: "uppercase" },
+  scheduleSection: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 18,
+    paddingTop: 12,
+    paddingBottom: 10,
+  },
+  scheduleSectionLabel: {
+    color: P.text,
+    fontSize: 12,
+    fontWeight: "700",
+    letterSpacing: 0.8,
+    textTransform: "uppercase",
+  },
+  scheduleSectionBadge: {
+    minWidth: 24,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: `${P.accent}55`,
+    backgroundColor: `${P.accent}1F`,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    alignItems: "center",
+  },
+  scheduleSectionBadgeMuted: {
+    borderColor: P.border,
+    backgroundColor: "rgba(255,255,255,0.08)",
+  },
+  scheduleSectionBadgeText: { color: P.accent, fontSize: 11, fontWeight: "700" },
+  scheduleSectionBadgeTextMuted: { color: P.muted },
 
   /* ── Live pill inline ── */
+  liveTabHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingHorizontal: 18,
+    paddingTop: 12,
+    paddingBottom: 10,
+    flexWrap: "wrap",
+  },
+  liveTabCount: {
+    marginLeft: "auto",
+    backgroundColor: "rgba(255,255,255,0.08)",
+    borderWidth: 1,
+    borderColor: P.border,
+    borderRadius: 10,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  liveTabCountText: { color: P.muted, fontSize: 11, fontWeight: "700" },
   livePillInline: {
     flexDirection: "row", alignItems: "center", gap: 5,
     backgroundColor: `${P.live}22`, borderRadius: 8,
@@ -2109,7 +2338,7 @@ const styles = StyleSheet.create({
   skeletonShimmer: { height: "100%", width: "40%", backgroundColor: `${P.text}08` },
 
   /* ── Empty states ── */
-  emptyState: { alignItems: "center", paddingVertical: 26, gap: 8 },
+  emptyState: { alignItems: "center", paddingVertical: 34, gap: 10 },
   emptyCarousel: {
     height: 96, alignItems: "center", justifyContent: "center",
     flexDirection: "row", gap: 12, marginHorizontal: 16,
@@ -2118,6 +2347,63 @@ const styles = StyleSheet.create({
     borderStyle: "dashed",
   },
   emptyText: { color: P.muted, fontSize: 13, fontWeight: "500", letterSpacing: 0.2 },
+  emptyTitle: { color: P.text, fontSize: 16, fontWeight: "700" },
+  emptySubtext: { color: P.muted, fontSize: 12, textAlign: "center", paddingHorizontal: 34, lineHeight: 18 },
+  liveEmptyStateWrap: {
+    paddingHorizontal: 18,
+    paddingTop: 8,
+    paddingBottom: 10,
+  },
+  liveEmptyState: {
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.12)",
+    backgroundColor: "rgba(20,20,30,0.78)",
+    alignItems: "center",
+    paddingVertical: 24,
+    paddingHorizontal: 16,
+    gap: 10,
+  },
+  liveEmptyIconRing: {
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.16)",
+    backgroundColor: "rgba(255,255,255,0.05)",
+  },
+  liveEmptyTitle: {
+    color: P.text,
+    fontSize: 16,
+    fontWeight: "700",
+  },
+  liveEmptyHint: {
+    color: P.muted,
+    fontSize: 12,
+    textAlign: "center",
+    lineHeight: 18,
+    paddingHorizontal: 24,
+  },
+  liveEmptyAction: {
+    marginTop: 2,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.18)",
+    backgroundColor: "rgba(255,255,255,0.08)",
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+  },
+  liveEmptyActionText: {
+    color: P.text,
+    fontSize: 12,
+    fontWeight: "700",
+    letterSpacing: 0.2,
+  },
 
   /* ── Analyse tool cards ── */
   toolsRow: { paddingHorizontal: 16, gap: 10, paddingVertical: 6 },
@@ -2151,11 +2437,66 @@ const styles = StyleSheet.create({
   toolBadgeText: { color: P.muted, fontSize: 9, fontWeight: "700", letterSpacing: 0.5 },
   toolEmpty: { color: P.muted, fontSize: 13, textAlign: "center", paddingVertical: 16 },
 
+  /* ── Analyse redesign ── */
+  toolSelectorRow: {
+    flexDirection: "row", gap: 10,
+    paddingHorizontal: 18, paddingTop: 18, paddingBottom: 10,
+  },
+  toolSelectorPill: {
+    flexDirection: "row", alignItems: "center", gap: 7,
+    paddingHorizontal: 16, paddingVertical: 10, borderRadius: 24,
+    backgroundColor: P.elevated, borderWidth: 1.5, borderColor: P.border,
+    flex: 1, justifyContent: "center",
+  },
+  toolSelectorLabel: { color: P.muted, fontSize: 13, fontWeight: "700" },
+  toolSelectorLabelActive: { color: "#fff" },
+  analysePanel: {
+    marginHorizontal: 18, marginTop: 10, borderRadius: 16,
+    backgroundColor: P.card, borderWidth: 1, borderColor: P.border,
+    overflow: "hidden",
+  },
+  analysePanelHead: {
+    flexDirection: "row", alignItems: "center", justifyContent: "space-between",
+    paddingHorizontal: 14, paddingVertical: 12,
+    borderBottomWidth: 1, borderBottomColor: P.border,
+    backgroundColor: "rgba(255,255,255,0.03)",
+  },
+  analysePanelTitle: { flexDirection: "row", alignItems: "center", gap: 7 },
+  analysePanelTitleText: { color: P.text, fontSize: 14, fontWeight: "800" },
+  analysePanelCount: { color: P.muted, fontSize: 12, fontWeight: "600" },
+  predCard: {
+    paddingHorizontal: 14, paddingVertical: 12,
+    borderBottomWidth: 1, borderBottomColor: P.border, gap: 8,
+  },
+  predCardTeamRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  predCardTeams: { color: P.text, fontSize: 13, fontWeight: "700", flex: 1, marginRight: 8 },
+  predBarWrap: {
+    flexDirection: "row", height: 5, borderRadius: 3, overflow: "hidden",
+    backgroundColor: "rgba(255,255,255,0.06)",
+  },
+  predBarSegment: { height: 5 },
+  predBarLabels: { flexDirection: "row", justifyContent: "space-between" },
+  predBarLabel: { fontSize: 10, fontWeight: "700", letterSpacing: 0.2 },
+  predConfRow: {
+    flexDirection: "row", alignItems: "center", gap: 8,
+    paddingTop: 4,
+  },
+  predConfLabel: { color: P.muted, fontSize: 10, fontWeight: "600", width: 70 },
+  predConfBar: {
+    flex: 1, height: 4, borderRadius: 2,
+    backgroundColor: "rgba(255,255,255,0.06)", overflow: "hidden",
+  },
+  predConfFill: {
+    height: 4, borderRadius: 2,
+    backgroundColor: "#4CAF82",
+  },
+  predConfPct: { color: "#4CAF82", fontSize: 11, fontWeight: "800", width: 34, textAlign: "right" },
+
   nextLevelPanel: {
-    marginHorizontal: 16,
-    marginTop: 10,
-    borderRadius: 16,
-    padding: 12,
+    marginHorizontal: 18,
+    marginTop: 14,
+    borderRadius: 18,
+    padding: 14,
     borderWidth: 1,
     borderColor: "rgba(130,170,255,0.22)",
     gap: 10,
@@ -2191,6 +2532,7 @@ const styles = StyleSheet.create({
   nextGridLabel: { color: "#A9B7D8", fontSize: 10, fontWeight: "700", letterSpacing: 0.4 },
   nextGridValue: { color: P.text, fontSize: 12, fontWeight: "600", lineHeight: 16 },
   nextUpcomingTitle: { color: "#C7D3EF", fontSize: 12, fontWeight: "700", letterSpacing: 0.2 },
+  nextUpcomingComp: { color: P.muted, fontSize: 10, fontWeight: "600", maxWidth: 100, textAlign: "right" },
   nextUpcomingRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -2206,12 +2548,12 @@ const styles = StyleSheet.create({
 
   /* ── Sport category filter ── */
   sportCatPill: {
-    flexDirection: "row", alignItems: "center", gap: 5,
-    paddingHorizontal: 12, paddingVertical: 7, borderRadius: 20,
+    flexDirection: "row", alignItems: "center", gap: 6,
+    paddingHorizontal: 14, paddingVertical: 9, borderRadius: 22,
     backgroundColor: P.elevated, borderWidth: 1, borderColor: P.border,
   },
   sportCatPillActive: { backgroundColor: P.accent, borderColor: P.accent },
-  sportCatLabel: { color: P.muted, fontSize: 12, fontWeight: "600" },
+  sportCatLabel: { color: P.muted, fontSize: 12, fontWeight: "600", letterSpacing: 0.2 },
   sportCatLabelActive: { color: "#fff" },
 
 
@@ -2225,9 +2567,9 @@ const styles = StyleSheet.create({
   /* ── Sport search ── */
   sportsSearchBar: {
     flexDirection: "row", alignItems: "center", gap: 10,
-    marginHorizontal: 16, marginVertical: 6,
-    backgroundColor: P.elevated, borderRadius: 12,
-    paddingHorizontal: 14, paddingVertical: 9,
+    marginHorizontal: 18, marginVertical: 8,
+    backgroundColor: P.elevated, borderRadius: 14,
+    paddingHorizontal: 14, paddingVertical: 10,
     borderWidth: 1, borderColor: P.border,
     zIndex: 45, elevation: 45,
   },
@@ -2236,14 +2578,14 @@ const styles = StyleSheet.create({
     paddingVertical: 0,
   },
   sportsSearchResults: {
-    marginHorizontal: 16, borderRadius: 12, overflow: "hidden",
+    marginHorizontal: 18, borderRadius: 14, overflow: "hidden",
     borderWidth: 1, borderColor: P.border,
-    backgroundColor: P.card, marginBottom: 8,
+    backgroundColor: P.card, marginBottom: 10,
     zIndex: 44, elevation: 44,
   },
   sportsSearchResult: {
     flexDirection: "row", alignItems: "center", justifyContent: "space-between",
-    paddingHorizontal: 14, paddingVertical: 12,
+    paddingHorizontal: 14, paddingVertical: 13,
     borderBottomWidth: 1, borderBottomColor: P.border,
   },
   sportsSearchResultInfo: { flex: 1, gap: 2 },

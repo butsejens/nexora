@@ -9,6 +9,8 @@ import { COLORS } from "@/constants/colors";
 interface Props {
   title?: string;
   titleColor?: string;
+  badgeLabel?: string;
+  badgeTone?: "live" | "accent" | "neutral";
   compact?: boolean;
   showSearch?: boolean;
   showNotification?: boolean;
@@ -24,6 +26,8 @@ interface Props {
 export function NexoraHeader({
   title,
   titleColor,
+  badgeLabel,
+  badgeTone = "neutral",
   compact = false,
   showSearch = true,
   showNotification = false,
@@ -53,6 +57,19 @@ export function NexoraHeader({
           <Text style={styles.logoN}>N</Text>
         </Text>
         {title ? <Text style={[styles.sectionTitleCompact, titleColor ? { color: titleColor } : null]}>{title}</Text> : null}
+        {badgeLabel ? (
+          <View
+            style={[
+              styles.headerBadge,
+              badgeTone === "live" ? styles.headerBadgeLive : null,
+              badgeTone === "accent" ? styles.headerBadgeAccent : null,
+            ]}
+          >
+            <Text style={[styles.headerBadgeText, badgeTone === "live" ? styles.headerBadgeTextLive : null]} numberOfLines={1}>
+              {badgeLabel}
+            </Text>
+          </View>
+        ) : null}
       </View>
 
       <View style={styles.actions}>
@@ -72,10 +89,25 @@ export function NexoraHeader({
   ) : (
     <View style={styles.contentRow}>
       <View style={styles.logo}>
-        <Text style={styles.logoText}>
-          <Text style={styles.logoN}>N</Text>
-          <Text style={styles.logoRest}>EXORA</Text>
-        </Text>
+        <View style={styles.logoTopRow}>
+          <Text style={styles.logoText}>
+            <Text style={styles.logoN}>N</Text>
+            <Text style={styles.logoRest}>EXORA</Text>
+          </Text>
+          {badgeLabel ? (
+            <View
+              style={[
+                styles.headerBadge,
+                badgeTone === "live" ? styles.headerBadgeLive : null,
+                badgeTone === "accent" ? styles.headerBadgeAccent : null,
+              ]}
+            >
+              <Text style={[styles.headerBadgeText, badgeTone === "live" ? styles.headerBadgeTextLive : null]} numberOfLines={1}>
+                {badgeLabel}
+              </Text>
+            </View>
+          ) : null}
+        </View>
         {title ? <Text style={[styles.sectionTitle, titleColor ? { color: titleColor } : null]}>{title}</Text> : null}
       </View>
 
@@ -153,6 +185,11 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: 2,
   },
+  logoTopRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
   logoText: {
     fontSize: 24,
     letterSpacing: 4,
@@ -167,30 +204,67 @@ const styles = StyleSheet.create({
     letterSpacing: 1.4,
     textTransform: "uppercase",
   },
+  headerBadge: {
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.14)",
+    backgroundColor: "rgba(255,255,255,0.08)",
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    maxWidth: 130,
+  },
+  headerBadgeLive: {
+    borderColor: `${COLORS.live}55`,
+    backgroundColor: `${COLORS.live}22`,
+  },
+  headerBadgeAccent: {
+    borderColor: `${COLORS.accent}55`,
+    backgroundColor: `${COLORS.accent}22`,
+  },
+  headerBadgeText: {
+    color: COLORS.textMuted,
+    fontSize: 10,
+    fontFamily: "Inter_700Bold",
+    letterSpacing: 0.4,
+    textTransform: "uppercase",
+  },
+  headerBadgeTextLive: {
+    color: COLORS.live,
+  },
   actions: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
+    gap: 10,
   },
   iconBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     backgroundColor: COLORS.cardElevated,
     borderWidth: 1,
     borderColor: COLORS.border,
     alignItems: "center",
     justifyContent: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.2,
+    shadowRadius: 6,
+    elevation: 3,
   },
   profileBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: COLORS.cardElevated,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "rgba(229,9,20,0.12)",
     borderWidth: 1,
-    borderColor: COLORS.accent,
+    borderColor: `${COLORS.accent}88`,
     alignItems: "center",
     justifyContent: "center",
+    shadowColor: COLORS.accent,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    elevation: 5,
   },
   containerCompact: {
     paddingBottom: 4,
@@ -213,9 +287,9 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
   },
   iconBtnCompact: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
     backgroundColor: COLORS.cardElevated,
     borderWidth: 1,
     borderColor: COLORS.border,
