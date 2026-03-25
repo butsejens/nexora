@@ -25,7 +25,6 @@ import {
   toCanonicalMatch,
   toLegacyMatchCard,
 } from "@/lib/canonical-match";
-import { useNexora } from "@/context/NexoraContext";
 import { useFollowState } from "@/context/UserStateContext";
 import { t as tFn, getLanguage } from "@/lib/i18n";
 import { useTranslation } from "@/lib/useTranslation";
@@ -574,7 +573,14 @@ function TodayMatchCardInner({ match, onPress }: { match: any; onPress: () => vo
   const leagueLogo = getLeagueLogo(match?.league || "");
   const homeScore = match?.homeScore ?? 0;
   const awayScore = match?.awayScore ?? 0;
-  const time = match?.startTime || "--:--";
+  const kickoffRaw = String(match?.startDate || match?.startTime || "");
+  const parsedKickoff = Date.parse(kickoffRaw);
+  const kickoffDate = Number.isFinite(parsedKickoff)
+    ? new Intl.DateTimeFormat("nl-BE", { day: "2-digit", month: "short" }).format(new Date(parsedKickoff))
+    : (kickoffRaw.slice(0, 10) || "TBD");
+  const kickoffTime = Number.isFinite(parsedKickoff)
+    ? new Intl.DateTimeFormat("nl-BE", { hour: "2-digit", minute: "2-digit" }).format(new Date(parsedKickoff))
+    : (kickoffRaw.match(/(\d{1,2}:\d{2})/)?.[1] || "--:--");
 
   return (
     <TouchableOpacity onPress={onPress} activeOpacity={0.88} style={todayCardStyles.wrap}>
@@ -605,8 +611,9 @@ function TodayMatchCardInner({ match, onPress }: { match: any; onPress: () => vo
               <Text style={todayCardStyles.finScore}>{homeScore} - {awayScore}</Text>
             ) : (
               <>
-                <Text style={todayCardStyles.time}>{time}</Text>
-                <Text style={todayCardStyles.vs}>vs</Text>
+                <Text style={todayCardStyles.upcomingDate}>{kickoffDate}</Text>
+                <Text style={todayCardStyles.vs}>VS</Text>
+                <Text style={todayCardStyles.time}>{kickoffTime}</Text>
               </>
             )}
           </View>
@@ -636,8 +643,9 @@ const todayCardStyles = StyleSheet.create({
   teamBlock: { flex: 1, alignItems: "center", gap: 4 },
   teamName: { color: P.text, fontSize: 10, fontWeight: "600", textAlign: "center", maxWidth: 68 },
   center: { paddingHorizontal: 6, alignItems: "center" },
+  upcomingDate: { color: P.muted, fontSize: 9, fontWeight: "600", textTransform: "uppercase", letterSpacing: 0.4 },
   time: { color: P.text, fontSize: 14, fontWeight: "700" },
-  vs: { color: P.muted, fontSize: 9, marginTop: 2 },
+  vs: { color: P.muted, fontSize: 9, marginTop: 1, marginBottom: 1 },
   liveScore: { color: P.live, fontSize: 16, fontWeight: "800" },
   liveTag: {
     flexDirection: "row", alignItems: "center", gap: 3,
@@ -807,8 +815,7 @@ export default function SportsScreen() {
   const contentWidth = Math.min(screenWidth, 1200);
   const compCardWidth = Math.floor((Math.min(screenWidth, 480) - 16 * 2 - 10 * 3) / 4);
   const qc = useQueryClient();
-  const { favorites } = useNexora();
-  const { followedTeams } = useFollowState();
+  const { followedTeams, followedMatches, followMatchAction, unfollowMatchAction } = useFollowState();
   const { t } = useTranslation();
 
   const [refreshing, setRefreshing] = useState(false);
@@ -1022,23 +1029,24 @@ export default function SportsScreen() {
   }, [sortedFinished, sortedUpcoming]);
 
   const myTeamMatches = useMemo(() => {
-    // Prefer follows from UserStateContext (persistent follow system)
     const followedNames = new Set(
       followedTeams.map(t => t.teamName.toLowerCase()),
     );
-    // Fallback: sport_team: entries in NexoraContext favorites
-    const favTeams = new Set([
-      ...Array.from(followedNames),
-      ...favorites
-        .filter(f => f.startsWith("sport_team:"))
-        .map(f => f.slice("sport_team:".length).toLowerCase()),
-    ]);
-    if (favTeams.size === 0) return [];
+    if (followedNames.size === 0) return [];
     return [...sortedLive, ...sortedUpcoming].filter(m =>
-      favTeams.has(String(m?.homeTeam || "").toLowerCase()) ||
-      favTeams.has(String(m?.awayTeam || "").toLowerCase())
+      followedNames.has(String(m?.homeTeam || "").toLowerCase()) ||
+      followedNames.has(String(m?.awayTeam || "").toLowerCase())
     );
-  }, [favorites, followedTeams, sortedLive, sortedUpcoming]);
+  }, [followedTeams, sortedLive, sortedUpcoming]);
+
+  const followedMatchIdSet = useMemo(() => {
+    return new Set(
+      followedMatches
+        .filter((match) => Boolean(match?.notificationsEnabled))
+        .map((match) => String(match.matchId || ""))
+        .filter(Boolean),
+    );
+  }, [followedMatches]);
 
   const sportsSearchResults = useMemo(() => {
     const q = sportsSearchQuery.trim().toLowerCase();
@@ -1340,8 +1348,9 @@ export default function SportsScreen() {
   const toggleMatchNotification = useCallback(async (match: any) => {
     const id = String(match?.id || "");
     if (!id) return;
-    const currentlyOn = Boolean(subscriptionsRef.current[id]);
+    const currentlyOn = followedMatchIdSet.has(id);
     if (currentlyOn) {
+      await unfollowMatchAction(id);
       const next = { ...subscriptionsRef.current };
       delete next[id];
       await setSubscriptionsAndPersist(next);
@@ -1358,8 +1367,16 @@ export default function SportsScreen() {
       [id]: { id, espnLeague: resolveEspnLeague(match), homeTeam: safeStr(match?.homeTeam) || "Home", awayTeam: safeStr(match?.awayTeam) || "Away" },
     };
     await setSubscriptionsAndPersist(next);
+    await followMatchAction({
+      matchId: id,
+      homeTeam: safeStr(match?.homeTeam) || "Home",
+      awayTeam: safeStr(match?.awayTeam) || "Away",
+      competition: safeStr(match?.league) || null,
+      startTime: safeStr(match?.startDate || match?.startTime) || null,
+      notificationsEnabled: true,
+    });
     await pushMatchNotification("Notifications enabled", `${safeStr(match.homeTeam)} - ${safeStr(match.awayTeam)} is being followed`, { matchId: id });
-  }, [resolveEspnLeague, setSubscriptionsAndPersist]);
+  }, [followMatchAction, followedMatchIdSet, resolveEspnLeague, setSubscriptionsAndPersist, unfollowMatchAction]);
 
   useEffect(() => {
     const activeSubs = Object.values(matchSubscriptions);
@@ -1724,7 +1741,7 @@ export default function SportsScreen() {
               decelerationRate={0.9}
               snapToInterval={compCardWidth + 10}
               snapToAlignment="start"
-              contentContainerStyle={{ paddingHorizontal: 16, gap: 10, paddingBottom: 4 }}
+              contentContainerStyle={{ paddingHorizontal: 18, gap: 10, paddingBottom: 4 }}
             >
               {TOP_COMPETITIONS.map((comp) => (
                 <PopularCompetitionCard
@@ -1742,7 +1759,7 @@ export default function SportsScreen() {
               horizontal
               showsHorizontalScrollIndicator={false}
               decelerationRate={0.9}
-              contentContainerStyle={{ paddingHorizontal: 16, gap: 10, paddingBottom: 4 }}
+              contentContainerStyle={{ paddingHorizontal: 18, gap: 10, paddingBottom: 4 }}
             >
               {COUNTRY_COMPETITIONS.map((country) => (
                 <CountryCard
@@ -1860,7 +1877,7 @@ export default function SportsScreen() {
                       match={match}
                       onPress={() => handleMatchPress(match)}
                       onNotificationToggle={() => toggleMatchNotification(match)}
-                      isNotificationOn={Boolean(matchSubscriptions[String(match.id || "")])}
+                      isNotificationOn={followedMatchIdSet.has(String(match.id || ""))}
                     />
                   ))}
                 </View>
@@ -1899,7 +1916,7 @@ export default function SportsScreen() {
                         match={match}
                         onPress={() => handleMatchPress(match)}
                         onNotificationToggle={() => toggleMatchNotification(match)}
-                        isNotificationOn={Boolean(matchSubscriptions[String(match.id || "")])}
+                        isNotificationOn={followedMatchIdSet.has(String(match.id || ""))}
                       />
                     ))}
                   </>
@@ -1918,7 +1935,7 @@ export default function SportsScreen() {
                         match={match}
                         onPress={() => handleMatchPress(match)}
                         onNotificationToggle={() => toggleMatchNotification(match)}
-                        isNotificationOn={Boolean(matchSubscriptions[String(match.id || "")])}
+                        isNotificationOn={followedMatchIdSet.has(String(match.id || ""))}
                       />
                     ))}
                   </>
@@ -2095,7 +2112,7 @@ const styles = StyleSheet.create({
   },
   subNavContent: {
     flexDirection: "row",
-    paddingHorizontal: 16,
+    paddingHorizontal: 18,
     paddingTop: 10,
     paddingBottom: 12,
     gap: 9,
@@ -2159,7 +2176,7 @@ const styles = StyleSheet.create({
 
   /* ── Competition list ── */
   compListPanel: {
-    marginHorizontal: 16,
+    marginHorizontal: 18,
     borderRadius: 16,
     overflow: "hidden",
     borderWidth: 1,
@@ -2206,7 +2223,7 @@ const styles = StyleSheet.create({
   compListTier: { fontSize: 11, fontWeight: "500", marginTop: 3, opacity: 0.95 },
 
   /* ── All countries ── */
-  countrySection: { marginHorizontal: 16, marginBottom: 12 },
+  countrySection: { marginHorizontal: 18, marginBottom: 12 },
   countrySectionHead: {
     flexDirection: "row", alignItems: "center", gap: 8,
     paddingVertical: 10, paddingHorizontal: 4,
@@ -2257,10 +2274,10 @@ const styles = StyleSheet.create({
   section: { marginTop: 10 },
   sectionHead: {
     flexDirection: "row", alignItems: "center", justifyContent: "space-between",
-    paddingHorizontal: 16, paddingVertical: 8,
+    paddingHorizontal: 18, paddingVertical: 8,
   },
   sectionTitle: { color: P.text, fontSize: 17, fontWeight: "700", letterSpacing: 0.3 },
-  subHead: { color: P.muted, fontSize: 11, fontWeight: "600", paddingHorizontal: 16, paddingTop: 6, letterSpacing: 0.8, textTransform: "uppercase" },
+  subHead: { color: P.muted, fontSize: 11, fontWeight: "600", paddingHorizontal: 18, paddingTop: 6, letterSpacing: 0.8, textTransform: "uppercase" },
   scheduleSection: {
     flexDirection: "row",
     alignItems: "center",
@@ -2332,7 +2349,7 @@ const styles = StyleSheet.create({
     backgroundColor: P.elevated, marginRight: 8, opacity: 0.6,
   },
   matchCardSkeleton: {
-    marginHorizontal: 16, marginVertical: 4, height: 72, borderRadius: 14,
+    marginHorizontal: 18, marginVertical: 4, height: 72, borderRadius: 14,
     backgroundColor: P.elevated, overflow: "hidden",
   },
   skeletonShimmer: { height: "100%", width: "40%", backgroundColor: `${P.text}08` },
@@ -2341,7 +2358,7 @@ const styles = StyleSheet.create({
   emptyState: { alignItems: "center", paddingVertical: 34, gap: 10 },
   emptyCarousel: {
     height: 96, alignItems: "center", justifyContent: "center",
-    flexDirection: "row", gap: 12, marginHorizontal: 16,
+    flexDirection: "row", gap: 12, marginHorizontal: 18,
     borderRadius: 16, backgroundColor: P.card,
     borderWidth: 1, borderColor: P.border,
     borderStyle: "dashed",
@@ -2406,7 +2423,7 @@ const styles = StyleSheet.create({
   },
 
   /* ── Analyse tool cards ── */
-  toolsRow: { paddingHorizontal: 16, gap: 10, paddingVertical: 6 },
+  toolsRow: { paddingHorizontal: 18, gap: 10, paddingVertical: 6 },
   toolCard: {
     width: 180, borderRadius: 16, overflow: "hidden",
     borderWidth: 1.5, borderColor: SP_BORDER,
@@ -2418,7 +2435,7 @@ const styles = StyleSheet.create({
   toolAction: { flexDirection: "row", alignItems: "center", gap: 3, marginTop: 6 },
   toolActionText: { fontSize: 12, fontWeight: "600" },
   toolPanel: {
-    marginHorizontal: 16, marginTop: 6, borderRadius: 14, padding: 12,
+    marginHorizontal: 18, marginTop: 6, borderRadius: 14, padding: 12,
     borderWidth: 1, borderColor: SP_BORDER,
   },
   toolPanelHead: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 12 },

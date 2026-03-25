@@ -22,6 +22,7 @@ import { safeStr } from "@/lib/utils";
 import { getLeagueLogo } from "@/lib/logo-manager";
 import { SilentResetBoundary } from "@/components/SilentResetBoundary";
 import { useNexora } from "@/context/NexoraContext";
+import { useFollowState } from "@/context/UserStateContext";
 import { t as tFn } from "@/lib/i18n";
 import { getBestCachedOrSeedPlayerImage, resolvePlayerImageUri } from "@/lib/player-image-system";
 import { resolveMatchBucket } from "@/lib/match-state";
@@ -179,7 +180,8 @@ export default function MatchDetailScreen() {
 
   const insets = useSafeAreaInsets();
   const { width: screenWidth } = useWindowDimensions();
-  const { hasPremium, toggleFavorite, isFavorite } = useNexora();
+  const { hasPremium } = useNexora();
+  const { isFollowingTeam, followTeamAction, unfollowTeamAction, isFollowingMatch, followMatchAction, unfollowMatchAction } = useFollowState();
   const sportPremium = hasPremium("sport");
   const resolvedInitialTab = (params.initialTab && ["stream", "stats", "lineups", "timeline", "highlights", "ai"].includes(params.initialTab)) ? params.initialTab as TabId : "stream";
   const [activeTab, setActiveTab] = useState<TabId>(resolvedInitialTab);
@@ -317,25 +319,21 @@ export default function MatchDetailScreen() {
   const liveAwayScore = effectiveCanonical?.awayScore ?? Number(params.awayScore ?? 0);
   const liveMinute = effectiveCanonical?.minute ?? (params.minute ? parseInt(params.minute) : undefined);
   const matchId = String(params.matchId || "").trim();
-  const matchSubscriptionId = useMemo(() => `soccer:${matchId}`, [matchId]);
-  const [isMatchFollowed, setIsMatchFollowed] = useState(false);
-  const homeTeamFavoriteId = useMemo(() => `team:${String(matchDetail?.homeTeamId || params.homeTeam || "").toLowerCase()}`, [matchDetail?.homeTeamId, params.homeTeam]);
-  const awayTeamFavoriteId = useMemo(() => `team:${String(matchDetail?.awayTeamId || params.awayTeam || "").toLowerCase()}`, [matchDetail?.awayTeamId, params.awayTeam]);
-
-  useEffect(() => {
-    let disposed = false;
-    (async () => {
-      const subs = await loadMatchSubscriptions();
-      if (disposed) return;
-      setIsMatchFollowed(subs.some((sub) => sub?.id === matchSubscriptionId));
-    })();
-    return () => { disposed = true; };
-  }, [matchSubscriptionId]);
+  const matchSubscriptionId = useMemo(() => matchId, [matchId]);
+  const isMatchFollowed = isFollowingMatch(matchSubscriptionId);
+  const homeTeamFollowId = useMemo(
+    () => String(matchDetail?.homeTeamId || params.homeTeam || "").trim().toLowerCase() || "team:home",
+    [matchDetail?.homeTeamId, params.homeTeam],
+  );
+  const awayTeamFollowId = useMemo(
+    () => String(matchDetail?.awayTeamId || params.awayTeam || "").trim().toLowerCase() || "team:away",
+    [matchDetail?.awayTeamId, params.awayTeam],
+  );
 
   const toggleMatchFollow = useCallback(async () => {
     if (!matchId) return;
     const currentSubs = await loadMatchSubscriptions();
-    const exists = currentSubs.some((sub) => sub?.id === matchSubscriptionId);
+    const exists = isFollowingMatch(matchSubscriptionId);
 
     if (!exists) {
       const permission = await ensureMatchNotificationPermission();
@@ -348,16 +346,23 @@ export default function MatchDetailScreen() {
       };
       const next = [...currentSubs, nextSub];
       await saveMatchSubscriptions(next);
-      setIsMatchFollowed(true);
+      await followMatchAction({
+        matchId: matchSubscriptionId,
+        homeTeam: String(params.homeTeam || "Home"),
+        awayTeam: String(params.awayTeam || "Away"),
+        competition: String(params.league || "") || null,
+        startTime: null,
+        notificationsEnabled: true,
+      });
       SafeHaptics.impactLight();
       return;
     }
 
     const next = currentSubs.filter((sub) => sub?.id !== matchSubscriptionId);
     await saveMatchSubscriptions(next);
-    setIsMatchFollowed(false);
+    await unfollowMatchAction(matchSubscriptionId);
     SafeHaptics.impactLight();
-  }, [espnLeague, matchId, matchSubscriptionId, params.awayTeam, params.homeTeam]);
+  }, [espnLeague, followMatchAction, isFollowingMatch, matchId, matchSubscriptionId, params.awayTeam, params.homeTeam, params.league, unfollowMatchAction]);
 
   // AI Prediction
   const requestPrediction = async (mode: "prematch" | "live") => {
@@ -728,7 +733,24 @@ export default function MatchDetailScreen() {
             </View>
           </View>
           <View style={styles.scoreRow}>
-            <TeamSide align="left" name={homeTeamName} logo={matchDetail?.homeTeamLogo || params.homeTeamLogo} followed={isFavorite(homeTeamFavoriteId)} onToggleFollow={() => toggleFavorite(homeTeamFavoriteId)} onPress={() => {
+            <TeamSide
+              align="left"
+              name={homeTeamName}
+              logo={matchDetail?.homeTeamLogo || params.homeTeamLogo}
+              followed={isFollowingTeam(homeTeamFollowId)}
+              onToggleFollow={() => {
+                if (isFollowingTeam(homeTeamFollowId)) {
+                  void unfollowTeamAction(homeTeamFollowId);
+                  return;
+                }
+                void followTeamAction({
+                  teamId: homeTeamFollowId,
+                  teamName: homeTeamName,
+                  logo: matchDetail?.homeTeamLogo || params.homeTeamLogo || null,
+                  competition: competitionName || null,
+                });
+              }}
+              onPress={() => {
               const fallbackTeamId = `name:${encodeURIComponent(homeTeamName || "")}`;
               router.push({
                 pathname: "/team-detail",
@@ -740,7 +762,8 @@ export default function MatchDetailScreen() {
                   league: espnLeague,
                 },
               });
-            }} />
+            }}
+            />
             <View style={styles.scoreCenter}>
               {(isLive || isHalfTime) ? (
                 <>
@@ -767,7 +790,24 @@ export default function MatchDetailScreen() {
                 </>
               )}
             </View>
-            <TeamSide align="right" name={awayTeamName} logo={matchDetail?.awayTeamLogo || params.awayTeamLogo} followed={isFavorite(awayTeamFavoriteId)} onToggleFollow={() => toggleFavorite(awayTeamFavoriteId)} onPress={() => {
+            <TeamSide
+              align="right"
+              name={awayTeamName}
+              logo={matchDetail?.awayTeamLogo || params.awayTeamLogo}
+              followed={isFollowingTeam(awayTeamFollowId)}
+              onToggleFollow={() => {
+                if (isFollowingTeam(awayTeamFollowId)) {
+                  void unfollowTeamAction(awayTeamFollowId);
+                  return;
+                }
+                void followTeamAction({
+                  teamId: awayTeamFollowId,
+                  teamName: awayTeamName,
+                  logo: matchDetail?.awayTeamLogo || params.awayTeamLogo || null,
+                  competition: competitionName || null,
+                });
+              }}
+              onPress={() => {
               const fallbackTeamId = `name:${encodeURIComponent(awayTeamName || "")}`;
               router.push({
                 pathname: "/team-detail",
@@ -779,7 +819,8 @@ export default function MatchDetailScreen() {
                   league: espnLeague,
                 },
               });
-            }} />
+            }}
+            />
           </View>
 
           {/* Stadium info */}

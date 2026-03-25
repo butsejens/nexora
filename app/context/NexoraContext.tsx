@@ -281,9 +281,11 @@ export function NexoraProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const toggleFavorite = async (id: string) => {
-    const next = favorites.includes(id) ? favorites.filter(f => f !== id) : [...favorites, id];
-    setFavorites(next);
-    await AsyncStorage.setItem("nexora_favorites", JSON.stringify(next));
+    setFavorites((prev) => {
+      const next = prev.includes(id) ? prev.filter((f) => f !== id) : [...prev, id];
+      AsyncStorage.setItem("nexora_favorites", JSON.stringify(next)).catch(() => undefined);
+      return next;
+    });
   };
 
   const isFavorite = (id: string) => favorites.includes(id);

@@ -68,6 +68,14 @@ const HeroMatchCardInner = ({
 
   const homeWin = !upcoming && (match.homeScore > match.awayScore);
   const awayWin = !upcoming && (match.awayScore > match.homeScore);
+  const kickoffRaw = String(match.startTime || '').trim();
+  const kickoffParsed = Date.parse(kickoffRaw);
+  const kickoffDateLabel = Number.isFinite(kickoffParsed)
+    ? new Intl.DateTimeFormat('nl-BE', { day: '2-digit', month: 'short' }).format(new Date(kickoffParsed))
+    : (kickoffRaw.slice(0, 10) || 'TBD');
+  const kickoffTimeLabel = Number.isFinite(kickoffParsed)
+    ? new Intl.DateTimeFormat('nl-BE', { hour: '2-digit', minute: '2-digit' }).format(new Date(kickoffParsed))
+    : (kickoffRaw.match(/(\d{1,2}:\d{2})/)?.[1] || '--:--');
 
   return (
     <View style={s.wrap}>
@@ -96,11 +104,7 @@ const HeroMatchCardInner = ({
               <View style={s.statusBadgeFt}>
                 <Text style={s.statusBadgeFtText}>FT</Text>
               </View>
-            ) : (
-              <View style={s.statusBadgeTime}>
-                <Text style={s.statusBadgeTimeText}>{match.startTime}</Text>
-              </View>
-            )}
+            ) : null}
           </View>
 
           {/* ── Match center ── */}
@@ -143,8 +147,9 @@ const HeroMatchCardInner = ({
                 </>
               ) : (
                 <>
+                  <Text style={s.kickoffDateText}>{kickoffDateLabel}</Text>
                   <Text style={s.vsText}>VS</Text>
-                  <Text style={s.kickoffText}>{match.startTime}</Text>
+                  <Text style={s.kickoffText}>{kickoffTimeLabel}</Text>
                 </>
               )}
             </View>
@@ -388,6 +393,13 @@ const s = StyleSheet.create({
     fontWeight: '600',
     color: COLORS.textSecondary,
     letterSpacing: 0.5,
+  },
+  kickoffDateText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: COLORS.textMuted,
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
   },
 
   // Stats strip

@@ -178,7 +178,7 @@ function MatchRowCardInner({
               ) : null}
               <View style={[s.metaBadge, live ? s.metaBadgeLive : null]}>
                 <Text style={[s.metaBadgeText, live ? s.metaBadgeTextLive : null]}>
-                  {live ? tFn('common.live') : finished ? tFn('common.ft') : tFn('common.upcoming')}
+                  {live ? `${tFn('common.live')} ${timeLabel}` : finished ? tFn('common.ft') : tFn('common.upcoming')}
                 </Text>
               </View>
             </View>
@@ -217,12 +217,6 @@ function MatchRowCardInner({
               ) : (
                 <Text style={s.kickoff}>{timeLabel}</Text>
               )}
-
-              {live ? (
-                <View style={s.livePill}>
-                  <Text style={s.livePillText}>{match.minute ?? 0}&apos;</Text>
-                </View>
-              ) : null}
             </View>
 
             {/* Away team */}
