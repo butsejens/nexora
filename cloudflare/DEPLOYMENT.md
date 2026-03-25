@@ -105,7 +105,19 @@ MAX_CACHE_SIZE_MB = "100"
 ### Phase 6: Deploy Worker
 
 ```bash
-wrangler deploy
+npm run cloudflare:deploy
+```
+
+If deploying directly inside `cloudflare/sports-worker`, this also works:
+
+```bash
+npx wrangler deploy
+```
+
+For Cloudflare dashboard deploy command (monorepo root), use:
+
+```bash
+npm run cloudflare:deploy
 ```
 
 You'll receive a URL like `https://nexora.ACCOUNT_ID.workers.dev`.
