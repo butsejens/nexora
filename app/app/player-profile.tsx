@@ -326,7 +326,7 @@ export default function PlayerProfileScreen() {
             <Row icon="calendar-outline" label={tx("playerProfile.birthDate", "Birth date")} value={data?.birthDate ? formatDisplayDate(data.birthDate) : UNKNOWN} />
             <Row icon="earth" label={tx("playerProfile.nationality", "Nationality")} value={normalizeText(data?.nationality || params.nationality)} />
             <Row icon="soccer-field" label={tx("playerProfile.position", "Position")} value={normalizeText(data?.position || params.position)} />
-            <Row icon="contract" label={tx("playerProfile.contractUntil", "Contract")} value={normalizeText(data?.contractUntil, tx("common.notAvailable", "Not available"))} />
+            <Row icon="file-document-outline" label={tx("playerProfile.contractUntil", "Contract")} value={normalizeText(data?.contractUntil, tx("common.notAvailable", "Not available"))} />
             <ClubRow label={tx("playerProfile.currentClub", "Current club")} value={normalizeText(data?.currentClub || params.team)} logo={data?.currentClubLogo} />
             <Row icon="currency-eur" label={tx("playerProfile.marketValue", "Market value")} value={normalizeText(data?.marketValue || params.marketValue, tx("playerProfile.valueUnknown", "Value unavailable"))} />
             <Row icon="clock-outline" label={tx("playerProfile.lastUpdated", "Last updated")} value={formatUpdatedAt(data?.updatedAt)} />
