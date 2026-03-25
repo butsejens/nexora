@@ -88,7 +88,6 @@ export function cacheGet<T>(key: string): T | null {
   const entry = mem.get(key);
   if (!entry) return null;
   if (entry.expiresAt < Date.now()) {
-    mem.delete(key);
     return null;
   }
   return entry.data as T;

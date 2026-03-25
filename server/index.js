@@ -9915,7 +9915,7 @@ app.listen(PORT, () => {
   if (selfPingUrl) {
     setInterval(async () => {
       try { await fetch(`${selfPingUrl}/health`, { signal: AbortSignal.timeout(10000) }); } catch {}
-    }, 10 * 60 * 1000);
+    }, 4 * 60 * 1000);
     console.log(`Keep-alive ping enabled → ${selfPingUrl}/health`);
   }
 
