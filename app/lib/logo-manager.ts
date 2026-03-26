@@ -41,33 +41,41 @@ const LOCAL_LOGOS = {
 const ESPN = (id: number) => `https://a.espncdn.com/i/leaguelogos/soccer/500/${id}.png`;
 
 const LEAGUE_LOGO_MAP: Record<string, string | number> = {
-  // ── Top European leagues ──────────────────────────────────────────────────
+  // ── England ───────────────────────────────────────────────────────────────
   "Premier League":          ESPN(23),
   "Championship":            ESPN(24),
   "EFL Championship":        ESPN(24),
   "League One":              ESPN(25),
   "FA Cup":                  ESPN(30),
   "EFL Cup":                 ESPN(31),
+  "Carabao Cup":             ESPN(31),
 
+  // ── Spain ─────────────────────────────────────────────────────────────────
   "La Liga":                 ESPN(15),
   "La Liga 2":               ESPN(17),
   "Segunda División":        ESPN(17),
   "Copa del Rey":            ESPN(16),
 
+  // ── Germany ───────────────────────────────────────────────────────────────
   "Bundesliga":              ESPN(10),
   "2. Bundesliga":           ESPN(19),
   "DFB-Pokal":               ESPN(20),
 
+  // ── Italy ─────────────────────────────────────────────────────────────────
   "Serie A":                 ESPN(12),
   "Serie B":                 ESPN(13),
   "Coppa Italia":            ESPN(14),
 
+  // ── France ────────────────────────────────────────────────────────────────
   "Ligue 1":                 ESPN(9),
   "Ligue 2":                 ESPN(55),
 
+  // ── Netherlands ───────────────────────────────────────────────────────────
+  // Eredivisie ESPN(11) confirmed. Eerste Divisie (2nd tier) has no verified
+  // ESPN CDN ID — omitted to prevent showing the wrong (EFL Cup) logo.
   "Eredivisie":              ESPN(11),
-  "Eerste Divisie":          ESPN(31),
 
+  // ── Belgium ───────────────────────────────────────────────────────────────
   "Jupiler Pro League":      LOCAL_LOGOS.jupilerProLeague,
   "Belgian Pro League":      LOCAL_LOGOS.jupilerProLeague,
   "Challenger Pro League":   LOCAL_LOGOS.challengerProLeague,
@@ -75,37 +83,47 @@ const LEAGUE_LOGO_MAP: Record<string, string | number> = {
   "Beker van België":        LOCAL_LOGOS.jupilerProLeague,
   "Belgian Cup":             LOCAL_LOGOS.jupilerProLeague,
 
-  "Primeira Liga":           ESPN(24),
-  "Liga Portugal":           ESPN(24),
-  "Liga Portugal 2":         ESPN(14),
-  "Taça de Portugal":        ESPN(14),
-  "Taca de Portugal":        ESPN(14),
+  // ── Portugal ──────────────────────────────────────────────────────────────
+  // Primeira Liga / Liga Portugal have no verified ESPN CDN IDs.
+  // ESPN(24) is the English Championship; ESPN(14) is Coppa Italia.
+  // These entries are intentionally omitted to prevent wrong logos.
 
+  // ── Turkey ────────────────────────────────────────────────────────────────
   "Süper Lig":               ESPN(18),
   "Super Lig":               ESPN(18),
-  "Turkish Cup":             ESPN(18),
-  "1. Lig":                  ESPN(18),
-  "Super League":            ESPN(53),
+  // Turkish Cup and 1. Lig have no verified ESPN CDN IDs separate from the
+  // top division — omitted to avoid showing Süper Lig logo for the wrong competition.
+
+  // ── Scotland ──────────────────────────────────────────────────────────────
   "Scottish Premiership":    ESPN(54),
   "Premiership":             ESPN(54),
-  "Scottish Championship":   ESPN(45),
-  "Scottish FA Cup":         ESPN(45),
+  // Scottish Championship (sco.2) and Scottish FA Cup: ESPN CDN IDs unverified — omitted.
+
+  // ── Austria ───────────────────────────────────────────────────────────────
   "Austrian Bundesliga":     ESPN(5),
   "Austrian Football Bundesliga": ESPN(5),
   "Austrian Cup":            ESPN(5),
-  "Swiss Super League":      ESPN(17),
-  "Swiss Challenge League":  ESPN(17),
-  "Swiss Cup":               ESPN(17),
+
+  // ── Switzerland ───────────────────────────────────────────────────────────
+  // Swiss Super League / Challenge League / Cup: ESPN(17) is La Liga 2 (wrong).
+  // Entries intentionally omitted until correct ESPN CDN IDs are verified.
+
+  // ── Greece ────────────────────────────────────────────────────────────────
   "Super League Greece":     ESPN(98),
+  "Greek Super League":      ESPN(98),
   "Greek Cup":               ESPN(98),
-  "Ekstraklasa":             ESPN(53),
-  "Polish Cup":              ESPN(53),
-  "Czech First League":      ESPN(10),
-  "Czech Cup":               ESPN(10),
-  "Romanian Liga 1":         ESPN(53),
-  "Danish Superliga":        ESPN(53),
-  "Allsvenskan":             ESPN(16),
-  "Eliteserien":             ESPN(53),
+
+  // ── Other European leagues ────────────────────────────────────────────────
+  // The following leagues had wrong ESPN CDN IDs that showed logos for other
+  // competitions (Bundesliga, Copa del Rey, EFL Cup, etc.). Entries are
+  // intentionally omitted until correct IDs are verified:
+  //   Ekstraklasa (pol.1) — was ESPN(53) shared/wrong
+  //   Czech First League (cze.1) — was ESPN(10) = Bundesliga
+  //   Romanian Liga 1 (rou.1) — was ESPN(53) shared/wrong
+  //   Danish Superliga (den.1) — was ESPN(53) shared/wrong
+  //   Allsvenskan (swe.1) — was ESPN(16) = Copa del Rey
+  //   Eliteserien (nor.1) — was ESPN(53) shared/wrong
+  //   Eerste Divisie (ned.2) — was ESPN(31) = EFL Cup
 
   // ── UEFA Competitions ─────────────────────────────────────────────────────
   "UEFA Champions League":   LOCAL_LOGOS.championsLeague,

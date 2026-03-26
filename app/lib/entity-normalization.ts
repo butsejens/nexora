@@ -39,10 +39,50 @@ const COMPETITION_ALIAS_MAP: Record<string, string[]> = {
   "uefa europa league": ["europa league", "uel"],
   "uefa conference league": ["conference league", "uecl", "europa conference league"],
   "premier league": ["epl", "english premier league"],
+  "championship": ["efl championship"],
   "la liga": ["laliga", "primera division", "la liga ea sports"],
-  "bundesliga": ["bundesliga 1", "german bundesliga"],
+  "bundesliga": ["bundesliga 1", "german bundesliga", "1 bundesliga"],
+  "2 bundesliga": ["2. bundesliga", "zweite bundesliga"],
   "serie a": ["serie a enilive", "italian serie a"],
-  "ligue 1": ["ligue 1 mcdonalds", "french ligue 1"],
+  "serie b": ["serie bkt"],
+  "ligue 1": ["ligue 1 mcdonalds", "french ligue 1", "ligue 1 uber eats"],
+  "ligue 2": ["french ligue 2", "ligue 2 bkt"],
+  "eredivisie": ["dutch eredivisie", "nederland eredivisie"],
+  "eerste divisie": ["keuken kampioen divisie", "dutch second division"],
+  // ── Portugal ──────────────────────────────────────────────────────────────
+  "primeira liga": ["liga portugal", "liga nos", "liga bwin", "liga portugal bwin", "portuguesa", "primera liga"],
+  "liga portugal 2": ["liga pro", "segunda liga"],
+  "taca de portugal": ["taca de portugal", "taça de portugal", "portuguese cup", "taca portugal"],
+  // ── Turkey ────────────────────────────────────────────────────────────────
+  "super lig": ["super lig turkey", "turk telekom super lig", "ziraat super lig"],
+  "1 lig": ["tff first league", "turkish first league"],
+  // ── Scotland ──────────────────────────────────────────────────────────────
+  "scottish premiership": ["scottish premier league", "spfl premiership", "premiership scotland"],
+  "scottish championship": ["spfl championship"],
+  // ── Austria ───────────────────────────────────────────────────────────────
+  "austrian bundesliga": ["admiral bundesliga", "tipico bundesliga", "ost bundesliga", "austria bundesliga"],
+  // ── Switzerland ───────────────────────────────────────────────────────────
+  "swiss super league": ["raiffeisen super league", "credit suisse super league", "squisito pizza super league",
+    "super league suisse", "sui 1"],
+  "swiss challenge league": ["challenge league switzerland", "mysports league"],
+  // ── Greece ────────────────────────────────────────────────────────────────
+  "super league greece": ["super league 1", "greek super league", "greek premier league", "stoiximan super league"],
+  // ── Poland ────────────────────────────────────────────────────────────────
+  "ekstraklasa": ["polish ekstraklasa", "pko ekstraklasa", "pko bp ekstraklasa"],
+  // ── Czech Republic ────────────────────────────────────────────────────────
+  "czech first league": ["fortuna liga", "chance liga", "czech league"],
+  // ── Romania ───────────────────────────────────────────────────────────────
+  "romanian liga 1": ["liga 1", "superliga romania", "superliga", "casa liga 1"],
+  // ── Denmark ───────────────────────────────────────────────────────────────
+  "danish superliga": ["superliga denmark", "3f superliga"],
+  // ── Sweden ────────────────────────────────────────────────────────────────
+  "allsvenskan": ["swedish allsvenskan", "swedish premier league"],
+  // ── Norway ────────────────────────────────────────────────────────────────
+  "eliteserien": ["norwegian eliteserien", "tippeligaen"],
+  // ── Finland ───────────────────────────────────────────────────────────────
+  "veikkausliiga": ["finnish premier division"],
+  // ── Netherlands (cups) ────────────────────────────────────────────────────
+  "knvb beker": ["dutch cup", "toto knvb cup", "knvb cup"],
 };
 
 const COUNTRY_ALIAS_MAP: Record<string, string> = {

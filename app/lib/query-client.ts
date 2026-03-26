@@ -1,11 +1,22 @@
 import { fetch } from "expo/fetch";
-import { Platform } from "react-native";
-import { QueryClient, QueryFunction } from "@tanstack/react-query";
+import { Platform, AppState } from "react-native";
+import { QueryClient, QueryFunction, focusManager } from "@tanstack/react-query";
 import Constants from "expo-constants";
+
+// ── React Native: wire React Query's focusManager to AppState ────────────────
+// This keeps React Query's internal "focused" state accurate so that any query
+// that opts into refetchOnWindowFocus correctly triggers on foreground resume.
+// (Global queries use refetchOnWindowFocus:false, but per-query overrides work.)
+focusManager.setEventListener((onFocus) => {
+  const sub = AppState.addEventListener("change", (state) => {
+    onFocus(state === "active");
+  });
+  return () => sub.remove();
+});
 
 let lastWorkingApiBase = "";
 let lastWorkingSportsApiBase = "";
-const DEFAULT_RENDER_API_BASE = "https://nexora-api-8xxb.onrender.com";
+export const DEFAULT_RENDER_API_BASE = "https://nexora-api-8xxb.onrender.com";
 const inflightJsonRequests = new Map<string, Promise<unknown>>();
 
 function isCloudflareSportsUrl(url: string): boolean {

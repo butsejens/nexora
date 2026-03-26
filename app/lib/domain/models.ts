@@ -323,6 +323,8 @@ export interface MatchAnalysisInput {
   competition: string;
   homeScore?: number | null;
   awayScore?: number | null;
+  isLive?: boolean | null;
+  minute?: number | null;
   events: Array<{ minute: number; type: string; team: string; player?: string }>;
   stats?: MatchStatEntry[];
   standings?: Array<{
@@ -332,7 +334,14 @@ export interface MatchAnalysisInput {
     goalsFor: number;
     goalsAgainst: number;
     form?: string;
+    cleanSheets?: number | null;
+    gamesPlayed?: number | null;
   }>;
+  headToHead?: {
+    homeWins: number;
+    awayWins: number;
+    draws: number;
+  } | null;
 }
 
 // ─── 3. MEDIA MODELS ─────────────────────────────────────────────────────────

@@ -203,82 +203,81 @@ export default function TabLayout() {
           ) : null,
       }}
     >
+      {/* Home Tab - Only show if sports enabled */}
       <Tabs.Screen
         name="index"
         options={{
-            href: sportsEnabled ? undefined : null,
-          title: t("tabs.sports"),
-          tabBarIcon: ({ focused }) => (
-            <TabIcon focused={focused} accentColor={SP_ACCENT}>
-              <MaterialCommunityIcons
-                name="soccer"
-                size={26}
-                color={focused ? SP_ACCENT : COLORS.textMuted}
-              />
-            </TabIcon>
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="livetv"
-        options={{
-          title: t("tabs.livetv"),
+          href: sportsEnabled ? undefined : null,
+          title: t("tabs.home") || "Home",
           tabBarIcon: ({ focused }) => (
             <TabIcon focused={focused} accentColor={COLORS.accent}>
               <Ionicons
-                name={focused ? "tv" : "tv-outline"}
+                name={focused ? "home" : "home-outline"}
                 size={24}
                 color={focused ? COLORS.accent : COLORS.textMuted}
               />
             </TabIcon>
           ),
+        }}
+      />
+
+      {/* Search Tab */}
+      <Tabs.Screen
+        name="search"
+        options={{
+          title: t("tabs.search") || "Search",
+          tabBarIcon: ({ focused }) => (
+            <TabIcon focused={focused} accentColor={COLORS.accent}>
+              <Ionicons
+                name={focused ? "search" : "search-outline"}
+                size={24}
+                color={focused ? COLORS.accent : COLORS.textMuted}
+              />
+            </TabIcon>
+          ),
+        }}
+      />
+
+      {/* More Tab */}
+      <Tabs.Screen
+        name="more"
+        options={{
+          title: t("tabs.more") || "More",
+          tabBarIcon: ({ focused }) => (
+            <TabIcon focused={focused} accentColor={COLORS.accent}>
+              <Ionicons
+                name={focused ? "ellipsis-horizontal" : "ellipsis-horizontal-outline"}
+                size={24}
+                color={focused ? COLORS.accent : COLORS.textMuted}
+              />
+            </TabIcon>
+          ),
+        }}
+      />
+
+      {/* Legacy routes - hidden but available for navigation */}
+      <Tabs.Screen
+        name="livetv"
+        options={{
+          href: null,
         }}
       />
       <Tabs.Screen
         name="movies"
         options={{
-            href: moviesEnabled ? undefined : null,
-          title: t("tabs.movies"),
-          tabBarIcon: ({ focused }) => (
-            <TabIcon focused={focused} accentColor={COLORS.accent}>
-              <Ionicons
-                name={focused ? "film" : "film-outline"}
-                size={24}
-                color={focused ? COLORS.accent : COLORS.textMuted}
-              />
-            </TabIcon>
-          ),
+          href: null,
         }}
       />
       <Tabs.Screen
         name="series"
         options={{
-            href: moviesEnabled ? undefined : null,
-          title: t("tabs.series"),
-          tabBarIcon: ({ focused }) => (
-            <TabIcon focused={focused} accentColor={COLORS.accent}>
-              <Ionicons
-                name={focused ? "layers" : "layers-outline"}
-                size={24}
-                color={focused ? COLORS.accent : COLORS.textMuted}
-              />
-            </TabIcon>
-          ),
+          href: null,
         }}
       />
       <Tabs.Screen
         name="downloads"
         options={{
-          title: t("tabs.downloads"),
-          tabBarIcon: ({ focused }) => (
-            <TabIcon focused={focused} accentColor={COLORS.accent}>
-              <Ionicons
-                name={focused ? "arrow-down-circle" : "arrow-down-circle-outline"}
-                size={24}
-                color={focused ? COLORS.accent : COLORS.textMuted}
-              />
-            </TabIcon>
-          ),
+          href: null,
         }}
       />
       <Tabs.Screen
@@ -287,8 +286,12 @@ export default function TabLayout() {
           href: null,
         }}
       />
-      {/* Hidden routes – no tab icon */}
-      <Tabs.Screen name="favorites" options={{ href: null }} />
+      <Tabs.Screen
+        name="favorites"
+        options={{
+          href: null,
+        }}
+      />
     </Tabs>
   );
 }

@@ -312,6 +312,8 @@ function buildAnalysisInput(
     competition: match.competition.displayName,
     homeScore: match.score.home,
     awayScore: match.score.away,
+    isLive: match.status === "live",
+    minute: (match as any).minute ?? null,
     events: events.map(e => ({
       minute: e.minute,
       type: e.type,
