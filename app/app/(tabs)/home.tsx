@@ -15,6 +15,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { NexoraHeader } from "@/components/NexoraHeader";
 import { RealContentCard } from "@/components/RealContentCard";
+import { MatchRowCard } from "@/components/premium";
 import { COLORS } from "@/constants/colors";
 import { useNexora } from "@/context/NexoraContext";
 import { apiRequest } from "@/lib/query-client";
@@ -40,7 +41,52 @@ function toMediaItem(item: any, type: "movie" | "series") {
   return enrichVodModuleItem({ ...item, type });
 }
 
+function normalizeLeagueLabel(value: unknown): string {
+  return String(value || "").trim().toLowerCase();
+}
+
+function looksDomesticLeague(label: string): boolean {
+  return /premier|laliga|la liga|bundesliga|serie a|ligue 1|championship|eredivisie|pro league|super lig|primeira/.test(label);
+}
+
+function isLikelyInternationalMatch(match: any): boolean {
+  const league = normalizeLeagueLabel(match?.league);
+  if (/friendly|friendlies|international|fifa|nations|world cup|euro/.test(league)) return true;
+  const homeLogo = String(match?.homeTeamLogo || "").toLowerCase();
+  const awayLogo = String(match?.awayTeamLogo || "").toLowerCase();
+  return homeLogo.includes("/countries/") && awayLogo.includes("/countries/");
+}
+
+function resolveLeagueLabel(match: any): string {
+  const rawLeague = String(match?.league || "").trim();
+  const normalized = normalizeLeagueLabel(rawLeague);
+  if (isLikelyInternationalMatch(match) && (!rawLeague || looksDomesticLeague(normalized))) {
+    return "International Friendly";
+  }
+  return rawLeague || "International Friendly";
+}
+
+function resolveEspnLeague(match: any): string {
+  const direct = String(match?.espnLeague || "").trim();
+  if (direct) return direct;
+  const league = normalizeLeagueLabel(resolveLeagueLabel(match));
+  if (/friendly|international|fifa|nations|world cup|euro/.test(league)) return "fifa.world";
+  const map: Record<string, string> = {
+    "premier league": "eng.1",
+    "la liga": "esp.1",
+    "bundesliga": "ger.1",
+    "serie a": "ita.1",
+    "ligue 1": "fra.1",
+    "jupiler pro league": "bel.1",
+    "uefa champions league": "uefa.champions",
+    "uefa europa league": "uefa.europa",
+    "uefa conference league": "uefa.europa.conf",
+  };
+  return map[league] || "eng.1";
+}
+
 function toMatchParams(match: any) {
+  const league = resolveLeagueLabel(match);
   return {
     matchId: String(match?.id || ""),
     homeTeam: String(match?.homeTeam || "Home"),
@@ -49,7 +95,8 @@ function toMatchParams(match: any) {
     awayTeamLogo: String(match?.awayTeamLogo || ""),
     homeScore: String(match?.homeScore ?? 0),
     awayScore: String(match?.awayScore ?? 0),
-    league: String(match?.league || ""),
+    league,
+    espnLeague: resolveEspnLeague(match),
     minute: String(match?.minute ?? ""),
     status: String(match?.status || "upcoming"),
     sport: String(match?.sport || "football"),
@@ -199,19 +246,27 @@ export default function CuratedHomeScreen() {
                 <Text style={styles.sectionAction}>Open sport module</Text>
               </TouchableOpacity>
             </View>
-            <View style={styles.todayCard}>
-              {todayMatches.length > 0 ? todayMatches.map((match: any) => (
-                <TouchableOpacity
-                  key={String(match?.id || `${match?.homeTeam}_${match?.awayTeam}`)}
-                  style={styles.todayRow}
-                  activeOpacity={0.82}
-                  onPress={() => router.push({ pathname: "/match-detail", params: toMatchParams(match) })}
-                >
-                  <Text style={styles.todayTeams} numberOfLines={1}>{String(match?.homeTeam || "Home")} vs {String(match?.awayTeam || "Away")}</Text>
-                  <Text style={styles.todayMeta} numberOfLines={1}>{String(match?.league || "Sport")}</Text>
-                </TouchableOpacity>
-              )) : <Text style={styles.emptyText}>No matches scheduled yet.</Text>}
-            </View>
+            {todayMatches.length > 0 ? todayMatches.map((match: any) => (
+              <MatchRowCard
+                key={String(match?.id || `${match?.homeTeam}_${match?.awayTeam}`)}
+                match={{
+                  id: String(match?.id || ""),
+                  homeTeam: String(match?.homeTeam || "Home"),
+                  awayTeam: String(match?.awayTeam || "Away"),
+                  homeTeamLogo: match?.homeTeamLogo || "",
+                  awayTeamLogo: match?.awayTeamLogo || "",
+                  homeScore: Number(match?.homeScore ?? 0),
+                  awayScore: Number(match?.awayScore ?? 0),
+                  status: String(match?.status || "upcoming") as any,
+                  minute: Number(match?.minute ?? 0),
+                  startTime: String(match?.startDate || ""),
+                  league: resolveLeagueLabel(match),
+                  espnLeague: resolveEspnLeague(match),
+                  sport: String(match?.sport || "football"),
+                }}
+                onPress={() => router.push({ pathname: "/match-detail", params: toMatchParams(match) })}
+              />
+            )) : <Text style={styles.emptyText}>No matches scheduled yet.</Text>}
           </View>
         )}
 
@@ -358,28 +413,11 @@ const styles = StyleSheet.create({
     letterSpacing: 0.6,
   },
   sectionAction: { color: COLORS.accent, fontFamily: "Inter_600SemiBold", fontSize: 12 },
-  todayCard: {
-    marginHorizontal: 16,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.08)",
-    backgroundColor: "rgba(255,255,255,0.03)",
-    overflow: "hidden",
-  },
-  todayRow: {
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: "rgba(255,255,255,0.06)",
-    gap: 3,
-  },
-  todayTeams: { color: "#fff", fontFamily: "Inter_600SemiBold", fontSize: 14 },
-  todayMeta: { color: COLORS.textMuted, fontFamily: "Inter_500Medium", fontSize: 11 },
   emptyText: {
     color: COLORS.textMuted,
     fontFamily: "Inter_500Medium",
     fontSize: 12,
-    paddingHorizontal: 14,
+    paddingHorizontal: 18,
     paddingVertical: 12,
   },
   rail: { paddingHorizontal: 18, paddingBottom: 8 },

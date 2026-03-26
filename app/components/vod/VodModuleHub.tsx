@@ -76,6 +76,12 @@ type CuratedStudioPayload = {
   items: VodModuleItem[];
 };
 
+type PlatformGroup = {
+  key: string;
+  label: string;
+  items: VodModuleItem[];
+};
+
 const SEARCH_FILTERS: { key: VodSearchFilter; label: string }[] = [
   { key: "all", label: "All" },
   { key: "movie", label: "Movies" },
@@ -217,6 +223,36 @@ async function fetchCuratedStudios(): Promise<CuratedStudioPayload[]> {
     })
   );
   return results.filter((item) => item.itemCount > 3);
+}
+
+function buildPlatformGroups(items: VodModuleItem[]): PlatformGroup[] {
+  const providers = [
+    { key: "netflix", label: "Netflix", aliases: ["netflix"] },
+    { key: "disney", label: "Disney+", aliases: ["disney", "walt disney", "pixar", "marvel studios"] },
+    { key: "prime", label: "Prime Video", aliases: ["amazon", "prime video", "amazon studios"] },
+    { key: "hbo", label: "HBO", aliases: ["hbo", "max"] },
+    { key: "apple", label: "Apple TV+", aliases: ["apple", "apple tv"] },
+  ];
+
+  const normalized = (value: unknown) => String(value || "").toLowerCase();
+  return providers
+    .map((provider) => {
+      const filtered = items.filter((item) => {
+        const haystack = normalized([
+          ...(item.studios || []),
+          ...((item.productionCompanies || []).map((company) => company?.name || "")),
+          ...(item.keywords || []),
+          item.title,
+        ].join(" "));
+        return provider.aliases.some((alias) => haystack.includes(alias));
+      });
+      return {
+        key: provider.key,
+        label: provider.label,
+        items: dedupeModuleItems(filtered).slice(0, 24),
+      };
+    })
+    .filter((entry) => entry.items.length >= 3);
 }
 
 function ModuleSection({ title, children, actionLabel, onAction }: { title: string; children: React.ReactNode; actionLabel?: string; onAction?: () => void }) {
@@ -417,6 +453,7 @@ export function VodModuleHub({ initialPane = "home", initialFilter = "all" }: Vo
       .slice(0, 20);
   }, [allItems, curatedStudiosQuery.data]);
   const genres = useMemo(() => buildCategoryRails(allItems, 24).slice(0, 14), [allItems]);
+  const platforms = useMemo(() => buildPlatformGroups(allItems), [allItems]);
   const featured = homeQuery.data?.featured || null;
 
   const recommended = useMemo(() => {
@@ -579,7 +616,19 @@ export function VodModuleHub({ initialPane = "home", initialFilter = "all" }: Vo
                     <CollectionCard
                       key={group.key}
                       group={group}
-                      onPress={() => router.push({ pathname: "/vod-collection", params: { id: String(group.collectionId || ""), name: group.name } })}
+                      onPress={() => {
+                        queryClient.setQueryData(["vod-collection", String(group.collectionId || "") || group.name], {
+                          collection: {
+                            id: group.collectionId,
+                            name: group.name,
+                            poster: group.posterUri || null,
+                            backdrop: group.bannerUri || null,
+                          },
+                          items: group.items,
+                          stats: { total: group.itemCount },
+                        });
+                        router.push({ pathname: "/vod-collection", params: { id: String(group.collectionId || ""), name: group.name } });
+                      }}
                     />
                   ))}
                 </ScrollView>
@@ -595,6 +644,26 @@ export function VodModuleHub({ initialPane = "home", initialFilter = "all" }: Vo
                       group={group}
                       onPress={() => router.push({ pathname: "/vod-studio", params: { id: String(group.id || ""), name: group.name } })}
                     />
+                  ))}
+                </ScrollView>
+              </ModuleSection>
+            ) : null}
+
+            {platforms.length ? (
+              <ModuleSection title="Platforms" actionLabel="Browse all" onAction={() => setActivePane("search")}>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterRow}>
+                  {platforms.map((platform) => (
+                    <TouchableOpacity
+                      key={platform.key}
+                      style={styles.platformCard}
+                      onPress={() => {
+                        setActivePane("search");
+                        setQuery(platform.label);
+                      }}
+                    >
+                      <Text style={styles.platformTitle}>{platform.label}</Text>
+                      <Text style={styles.platformMeta}>{platform.items.length} titles</Text>
+                    </TouchableOpacity>
                   ))}
                 </ScrollView>
               </ModuleSection>
@@ -739,12 +808,35 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(255,255,255,0.06)",
+    backgroundColor: "rgba(255,255,255,0.9)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.18)",
   },
   studioLogo: { width: 80, height: 30 },
   studioLogoFallback: { color: COLORS.text, fontFamily: "Inter_800ExtraBold", fontSize: 24 },
   studioTitle: { color: COLORS.text, fontFamily: "Inter_700Bold", fontSize: 14, lineHeight: 18 },
   studioInfo: { color: COLORS.textMuted, fontFamily: "Inter_500Medium", fontSize: 11 },
+  platformCard: {
+    minWidth: 140,
+    borderRadius: 14,
+    backgroundColor: "rgba(255,255,255,0.05)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.08)",
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    marginRight: 10,
+  },
+  platformTitle: {
+    color: COLORS.text,
+    fontFamily: "Inter_700Bold",
+    fontSize: 13,
+  },
+  platformMeta: {
+    color: COLORS.textMuted,
+    fontFamily: "Inter_500Medium",
+    fontSize: 11,
+    marginTop: 4,
+  },
   searchBox: {
     flexDirection: "row",
     alignItems: "center",
