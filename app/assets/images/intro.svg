@@ -1,0 +1,24 @@
+<svg width="2048" height="2048" viewBox="0 0 2048 2048" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#050505"/>
+      <stop offset="100%" stop-color="#0B0B12"/>
+    </linearGradient>
+    <linearGradient id="red" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#FF3B3B"/>
+      <stop offset="100%" stop-color="#B20710"/>
+    </linearGradient>
+    <filter id="glow" x="260" y="420" width="540" height="780" filterUnits="userSpaceOnUse">
+      <feGaussianBlur stdDeviation="26"/>
+    </filter>
+  </defs>
+  <rect width="2048" height="2048" fill="url(#bg)"/>
+  <circle cx="1560" cy="440" r="260" fill="#E50914" opacity="0.05"/>
+  <circle cx="360" cy="1620" r="320" fill="#E50914" opacity="0.04"/>
+  <g opacity="0.22" filter="url(#glow)">
+    <path d="M370 1138V522H506L700 892V522H780V1138H646L450 766V1138H370Z" fill="#E50914"/>
+  </g>
+  <path d="M370 1138V522H506L700 892V522H780V1138H646L450 766V1138H370Z" fill="url(#red)"/>
+  <text x="845" y="1035" fill="#F5F5F7" font-size="248" font-weight="800" font-family="Inter, Arial, sans-serif" letter-spacing="18">EXORA</text>
+  <text x="1024" y="1188" fill="#AAAAAA" font-size="64" font-weight="600" font-family="Inter, Arial, sans-serif" letter-spacing="14" text-anchor="middle">ALL YOUR CONTENT. ONE PLACE.</text>
+</svg>
