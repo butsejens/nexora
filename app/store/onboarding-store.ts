@@ -9,6 +9,7 @@ import {
   type SportPreferenceKey,
   type TeamPreference,
 } from "@/services/onboarding-storage";
+import { getProductMode, type ProductMode } from "@/lib/module-config";
 
 type PreloadState = {
   status: "idle" | "running" | "done";
@@ -22,6 +23,8 @@ type OnboardingStore = {
   isEditorOpen: boolean;
   sportsEnabled: boolean;
   moviesEnabled: boolean;
+  iptvEnabled: boolean;
+  productMode: ProductMode;
   selectedSports: SportPreferenceKey[];
   selectedTeams: TeamPreference[];
   selectedCompetitions: CompetitionPreference[];
@@ -32,6 +35,7 @@ type OnboardingStore = {
   closeEditor: () => void;
   setSportsEnabled: (value: boolean) => void;
   setMoviesEnabled: (value: boolean) => void;
+  setIptvEnabled: (value: boolean) => void;
   setSelectedSports: (sports: SportPreferenceKey[]) => void;
   toggleSport: (sport: SportPreferenceKey) => void;
   toggleTeam: (team: TeamPreference) => void;
@@ -54,6 +58,8 @@ const defaultState = {
   isEditorOpen: false,
   sportsEnabled: true,
   moviesEnabled: true,
+  iptvEnabled: true,
+  productMode: "all" as ProductMode,
   selectedSports: ["football"] as SportPreferenceKey[],
   selectedTeams: [] as TeamPreference[],
   selectedCompetitions: [] as CompetitionPreference[],
@@ -75,6 +81,7 @@ function normalizePersistedState(raw: unknown) {
     isEditorOpen: false,
     sportsEnabled: typeof candidate.sportsEnabled === "boolean" ? candidate.sportsEnabled : defaultState.sportsEnabled,
     moviesEnabled: typeof candidate.moviesEnabled === "boolean" ? candidate.moviesEnabled : defaultState.moviesEnabled,
+    iptvEnabled: typeof candidate.iptvEnabled === "boolean" ? candidate.iptvEnabled : defaultState.iptvEnabled,
     selectedSports: Array.isArray(candidate.selectedSports)
       ? candidate.selectedSports.filter((item): item is SportPreferenceKey => typeof item === "string")
       : defaultState.selectedSports,
@@ -88,6 +95,11 @@ function normalizePersistedState(raw: unknown) {
       ...DEFAULT_NOTIFICATION_PREFERENCES,
       ...notificationsCandidate,
     },
+    productMode: getProductMode({
+      sportsEnabled: typeof candidate.sportsEnabled === "boolean" ? candidate.sportsEnabled : defaultState.sportsEnabled,
+      moviesEnabled: typeof candidate.moviesEnabled === "boolean" ? candidate.moviesEnabled : defaultState.moviesEnabled,
+      iptvEnabled: typeof candidate.iptvEnabled === "boolean" ? candidate.iptvEnabled : defaultState.iptvEnabled,
+    }),
   };
 }
 
@@ -104,8 +116,28 @@ export const useOnboardingStore = create<OnboardingStore>()(
         selectedSports: value ? state.selectedSports : [],
         selectedTeams: value ? state.selectedTeams : [],
         selectedCompetitions: value ? state.selectedCompetitions : [],
+        productMode: getProductMode({
+          sportsEnabled: value,
+          moviesEnabled: state.moviesEnabled,
+          iptvEnabled: state.iptvEnabled,
+        }),
       })),
-      setMoviesEnabled: (value) => set({ moviesEnabled: value }),
+      setMoviesEnabled: (value) => set((state) => ({
+        moviesEnabled: value,
+        productMode: getProductMode({
+          sportsEnabled: state.sportsEnabled,
+          moviesEnabled: value,
+          iptvEnabled: state.iptvEnabled,
+        }),
+      })),
+      setIptvEnabled: (value) => set((state) => ({
+        iptvEnabled: value,
+        productMode: getProductMode({
+          sportsEnabled: state.sportsEnabled,
+          moviesEnabled: state.moviesEnabled,
+          iptvEnabled: value,
+        }),
+      })),
       setSelectedSports: (sports) => set({ selectedSports: sports }),
       toggleSport: (sport) => set((state) => ({
         selectedSports: state.selectedSports.includes(sport)
@@ -151,6 +183,11 @@ export const useOnboardingStore = create<OnboardingStore>()(
 
           set({
             ...persistedState,
+            productMode: getProductMode({
+              sportsEnabled: persistedState.sportsEnabled,
+              moviesEnabled: persistedState.moviesEnabled,
+              iptvEnabled: persistedState.iptvEnabled,
+            }),
             hasHydrated: true,
           });
         } catch {
@@ -178,6 +215,8 @@ export const useOnboardingStore = create<OnboardingStore>()(
         isEditorOpen: state.isEditorOpen,
         sportsEnabled: state.sportsEnabled,
         moviesEnabled: state.moviesEnabled,
+        iptvEnabled: state.iptvEnabled,
+        productMode: state.productMode,
         selectedSports: state.selectedSports,
         selectedTeams: state.selectedTeams,
         selectedCompetitions: state.selectedCompetitions,

@@ -58,7 +58,8 @@ export function SearchTab({ onSelectResult }: SearchTabProps) {
   const [recentSearches, setRecentSearches] = useState<string[]>([]);
   const sportsEnabled = useOnboardingStore((s) => s.sportsEnabled);
   const moviesEnabled = useOnboardingStore((s) => s.moviesEnabled);
-    const insets = useSafeAreaInsets();
+  const iptvEnabled = useOnboardingStore((s) => s.iptvEnabled);
+  const insets = useSafeAreaInsets();
   const { iptvChannels } = useNexora();
 
   // Fetch sports data for search
@@ -177,6 +178,7 @@ export function SearchTab({ onSelectResult }: SearchTabProps) {
 
   // Build searchable IPTV items
   const iptvItems = useMemo(() => {
+    if (!iptvEnabled) return [];
     if (!iptvChannels || iptvChannels.length === 0) return [];
     return iptvChannels.slice(0, 30).map((channel: any) => ({
       id: `channel-${channel.id}`,
@@ -185,7 +187,7 @@ export function SearchTab({ onSelectResult }: SearchTabProps) {
       subtitle: channel.group,
       image: channel.logo,
     }));
-  }, [iptvChannels]);
+  }, [iptvChannels, iptvEnabled]);
 
   // Perform unified search
   const performSearch = useCallback((searchQuery: string) => {
@@ -208,7 +210,9 @@ export function SearchTab({ onSelectResult }: SearchTabProps) {
     }
 
     // Add IPTV results
-    allItems.push(...iptvItems);
+    if (iptvEnabled) {
+      allItems.push(...iptvItems);
+    }
 
     // Filter by query
     const filtered = allItems.filter((item) => {
@@ -250,7 +254,7 @@ export function SearchTab({ onSelectResult }: SearchTabProps) {
     });
 
     setResults(filtered.slice(0, 50));
-  }, [sportsEnabled, moviesEnabled, sportsItems, mediaItems, iptvItems]);
+  }, [sportsEnabled, moviesEnabled, iptvEnabled, sportsItems, mediaItems, iptvItems]);
 
   const handleSearch = useCallback((text: string) => {
     setQuery(text);

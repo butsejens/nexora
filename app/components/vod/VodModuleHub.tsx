@@ -1,7 +1,6 @@
 import React, { useDeferredValue, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   FlatList,
   Image,
   ScrollView,
@@ -35,7 +34,6 @@ import {
   type VodStudioGroup,
 } from "@/lib/vod-module";
 import { withTimeout } from "@/lib/utils";
-import { ensureNamespaced } from "@/lib/id-namespace";
 
 type VodModuleHubProps = {
   initialPane?: VodModulePane;
@@ -78,26 +76,11 @@ type CuratedStudioPayload = {
   items: VodModuleItem[];
 };
 
-const MODULE_NAV = [
-  { key: "home" as const, label: "HOME", icon: "home-outline" as const },
-  { key: "search" as const, label: "SEARCH", icon: "search-outline" as const },
-  { key: "more" as const, label: "MORE", icon: "grid-outline" as const },
-];
-
 const SEARCH_FILTERS: { key: VodSearchFilter; label: string }[] = [
   { key: "all", label: "All" },
   { key: "movie", label: "Movies" },
   { key: "series", label: "TV Shows" },
   { key: "anime", label: "Anime" },
-];
-
-const MORE_MEDIA_ACTIONS = [
-  { key: "movies", label: "Movies", icon: "film-outline" },
-  { key: "series", label: "TV Shows", icon: "tv-outline" },
-  { key: "anime", label: "Anime", icon: "sparkles-outline" },
-  { key: "manga", label: "Manga", icon: "book-outline", badge: "Soon" },
-  { key: "music", label: "Music", icon: "musical-notes-outline", badge: "Soon" },
-  { key: "sports", label: "Live Sports", icon: "trophy-outline" },
 ];
 
 async function fetchJson(path: string) {
@@ -286,8 +269,10 @@ function StudioCard({ group, onPress }: { group: VodStudioGroup; onPress: () => 
 
 export function VodModuleHub({ initialPane = "home", initialFilter = "all" }: VodModuleHubProps) {
   const queryClient = useQueryClient();
-  const { isFavorite, toggleFavorite, watchHistory, favorites } = useNexora();
-  const [activePane, setActivePane] = useState<VodModulePane>(initialPane);
+  const { isFavorite, toggleFavorite, watchHistory } = useNexora();
+  const [activePane, setActivePane] = useState<VodModulePane>(
+    initialPane === "more" ? "home" : initialPane
+  );
   const [searchFilter, setSearchFilter] = useState<VodSearchFilter>(initialFilter);
   const [query, setQuery] = useState("");
   const deferredQuery = useDeferredValue(query.trim());
@@ -462,25 +447,6 @@ export function VodModuleHub({ initialPane = "home", initialFilter = "all" }: Vo
     return filterBySearchFilter(combined, searchFilter);
   }, [searchFilter, searchQuery.data]);
 
-  const favoriteItems = useMemo(() => {
-    return allItems.filter((item) => {
-      const mediaId = ensureNamespaced("media", item.id);
-      return favorites.includes(mediaId) || favorites.includes(item.id);
-    });
-  }, [allItems, favorites]);
-  const historyPreview = useMemo(() => {
-    return watchHistory.slice(0, 8).map((item: any) => enrichVodModuleItem({
-      id: item.id,
-      tmdbId: item.tmdbId,
-      type: item.type === "movie" ? "movie" : "series",
-      title: item.title,
-      poster: item.poster,
-      backdrop: item.backdrop,
-      year: item.year,
-      progress: item.progress,
-      genreIds: item.genre_ids,
-    }));
-  }, [watchHistory]);
 
   const warmDetailPayload = (item: VodModuleItem) => {
     const tmdbId = item.tmdbId ? String(item.tmdbId) : item.id;
@@ -523,29 +489,6 @@ export function VodModuleHub({ initialPane = "home", initialFilter = "all" }: Vo
         episode: "1",
       },
     });
-  };
-
-  const handleMediaAction = (key: string) => {
-    if (key === "movies") {
-      setSearchFilter("movie");
-      setActivePane("search");
-      return;
-    }
-    if (key === "series") {
-      setSearchFilter("series");
-      setActivePane("search");
-      return;
-    }
-    if (key === "anime") {
-      setSearchFilter("anime");
-      setActivePane("search");
-      return;
-    }
-    if (key === "sports") {
-      router.push("/");
-      return;
-    }
-    Alert.alert("Coming soon", "This module section is wired into the premium structure and can be activated as soon as a dedicated source is connected.");
   };
 
   const renderRail = (items: VodModuleItem[]) => (
@@ -598,7 +541,7 @@ export function VodModuleHub({ initialPane = "home", initialFilter = "all" }: Vo
         showNotification
         showFavorites
         showProfile
-        onSearch={() => setActivePane("search")}
+        onSearch={() => router.push("/(tabs)/search")}
         onNotification={() => router.push("/follow-center")}
         onFavorites={() => router.push("/favorites")}
         onProfile={() => router.push("/profile")}
@@ -627,13 +570,6 @@ export function VodModuleHub({ initialPane = "home", initialFilter = "all" }: Vo
                 onPlay={() => goToPlayer(featured)}
                 onInfo={() => goToDetail(featured)}
               />
-            ) : null}
-
-            {catalogChunkOneQuery.isFetching || catalogChunkTwoQuery.isFetching || catalogChunkThreeQuery.isFetching || catalogChunkFourQuery.isFetching ? (
-              <View style={styles.catalogLoadingRow}>
-                <ActivityIndicator color={COLORS.accent} size="small" />
-                <Text style={styles.catalogLoadingText}>Expanding 30-year catalog in the background...</Text>
-              </View>
             ) : null}
 
             {collections.length ? (
@@ -749,99 +685,17 @@ export function VodModuleHub({ initialPane = "home", initialFilter = "all" }: Vo
           </>
         ) : null}
 
-          {activePane === "more" ? (
-          <>
-            <ModuleSection title="Media">
-              <View style={styles.menuGrid}>
-                {MORE_MEDIA_ACTIONS.map((item) => (
-                  <TouchableOpacity key={item.key} style={styles.menuCard} onPress={() => handleMediaAction(item.key)}>
-                    <View style={styles.menuIconWrap}>
-                      <Ionicons name={item.icon as any} size={20} color={COLORS.accent} />
-                    </View>
-                    <Text style={styles.menuTitle}>{item.label}</Text>
-                    <Text style={styles.menuMeta}>{item.badge || "Open"}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </ModuleSection>
-
-            <ModuleSection title="User">
-              <View style={styles.menuList}>
-                <TouchableOpacity style={styles.menuRow} onPress={() => router.push("/favorites")}>
-                  <Text style={styles.menuRowLabel}>Watchlist</Text>
-                  <Text style={styles.menuRowValue}>{favoriteItems.length}</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.menuRow} onPress={() => router.push("/profile")}>
-                  <Text style={styles.menuRowLabel}>History</Text>
-                  <Text style={styles.menuRowValue}>{watchHistory.length}</Text>
-                </TouchableOpacity>
-              </View>
-            </ModuleSection>
-
-            {favoriteItems.length ? (
-              <ModuleSection title="Watchlist Preview">
-                {renderRail(favoriteItems.slice(0, 12))}
-              </ModuleSection>
-            ) : null}
-
-            {historyPreview.length ? (
-              <ModuleSection title="History Preview">
-                {renderRail(historyPreview.slice(0, 12))}
-              </ModuleSection>
-            ) : null}
-
-            <ModuleSection title="System">
-              <View style={styles.menuList}>
-                <TouchableOpacity style={styles.menuRow} onPress={() => Alert.alert("Legal / DMCA", "DMCA and legal handling should be exposed from the service/legal backend. This entry is now wired into the module menu.")}>
-                  <Text style={styles.menuRowLabel}>Legal / DMCA</Text>
-                  <Ionicons name="chevron-forward" size={16} color={COLORS.textMuted} />
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.menuRow} onPress={() => router.push("/settings")}>
-                  <Text style={styles.menuRowLabel}>Settings</Text>
-                  <Ionicons name="chevron-forward" size={16} color={COLORS.textMuted} />
-                </TouchableOpacity>
-              </View>
-            </ModuleSection>
-          </>
-        ) : null}
       </ScrollView>
 
-      <View style={styles.moduleNavShell}>
-        <View style={styles.moduleNav}>
-          {MODULE_NAV.map((item) => {
-            const active = activePane === item.key;
-            return (
-              <TouchableOpacity key={item.key} style={[styles.moduleNavItem, active && styles.moduleNavItemActive]} onPress={() => setActivePane(item.key)}>
-                <Ionicons name={item.icon} size={18} color={active ? COLORS.text : COLORS.textMuted} />
-                <Text style={[styles.moduleNavLabel, active && styles.moduleNavLabelActive]}>{item.label}</Text>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
-      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
-  scrollContent: { paddingBottom: 170 },
+  scrollContent: { paddingBottom: 104 },
   loadingWrap: { paddingTop: 80, alignItems: "center", gap: 12 },
   loadingText: { color: COLORS.textSecondary, fontFamily: "Inter_500Medium" },
-  catalogLoadingRow: {
-    marginHorizontal: 18,
-    marginBottom: 18,
-    borderRadius: 14,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    backgroundColor: "rgba(229,9,20,0.08)",
-    borderWidth: 1,
-    borderColor: "rgba(229,9,20,0.22)",
-  },
-  catalogLoadingText: { color: COLORS.textSecondary, fontFamily: "Inter_500Medium", fontSize: 12 },
   section: { marginBottom: 28 },
   sectionHeader: {
     flexDirection: "row",
@@ -934,73 +788,4 @@ const styles = StyleSheet.create({
   emptyWrap: { paddingTop: 90, alignItems: "center", gap: 10, paddingHorizontal: 28 },
   emptyTitle: { color: COLORS.text, fontFamily: "Inter_700Bold", fontSize: 20 },
   emptyText: { color: COLORS.textSecondary, fontFamily: "Inter_400Regular", textAlign: "center" },
-  menuGrid: { flexDirection: "row", flexWrap: "wrap", gap: 12, paddingHorizontal: 18 },
-  menuCard: {
-    width: "47%",
-    padding: 16,
-    borderRadius: 18,
-    backgroundColor: "rgba(255,255,255,0.04)",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.06)",
-    gap: 8,
-  },
-  menuIconWrap: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: "rgba(229,9,20,0.12)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  menuTitle: { color: COLORS.text, fontFamily: "Inter_700Bold", fontSize: 15 },
-  menuMeta: { color: COLORS.textMuted, fontFamily: "Inter_500Medium", fontSize: 11 },
-  menuList: {
-    marginHorizontal: 18,
-    borderRadius: 18,
-    overflow: "hidden",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.06)",
-    backgroundColor: "rgba(255,255,255,0.04)",
-  },
-  menuRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 16,
-    paddingVertical: 15,
-    borderBottomWidth: 1,
-    borderBottomColor: "rgba(255,255,255,0.05)",
-  },
-  menuRowLabel: { color: COLORS.text, fontFamily: "Inter_600SemiBold", fontSize: 14 },
-  menuRowValue: { color: COLORS.textMuted, fontFamily: "Inter_500Medium", fontSize: 12 },
-  moduleNavShell: {
-    position: "absolute",
-    left: 0,
-    right: 0,
-    bottom: 82,
-    alignItems: "center",
-  },
-  moduleNav: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    padding: 8,
-    borderRadius: 999,
-    backgroundColor: "rgba(8,8,12,0.88)",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.08)",
-  },
-  moduleNavItem: {
-    minWidth: 92,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    borderRadius: 999,
-  },
-  moduleNavItemActive: { backgroundColor: COLORS.accent },
-  moduleNavLabel: { color: COLORS.textMuted, fontFamily: "Inter_700Bold", fontSize: 11, letterSpacing: 1.1 },
-  moduleNavLabelActive: { color: COLORS.text },
 });

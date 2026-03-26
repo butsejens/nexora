@@ -1,6 +1,6 @@
 export const ONBOARDING_STORAGE_KEY = "nexora.onboarding.v2";
 
-export type OnboardingModuleKey = "sports" | "movies";
+export type OnboardingModuleKey = "sports" | "movies" | "iptv";
 
 export type SportPreferenceKey = "football" | "basketball" | "tennis" | "mma" | "motorsport";
 

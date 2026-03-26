@@ -179,13 +179,6 @@ export function MediaHomeSections({ title = "Entertainment for you", compact = f
         {mediaQuery.isFetching ? <ActivityIndicator size="small" color={COLORS.accent} /> : null}
       </View>
 
-      {mediaQuery.isLoading && !mediaQuery.data ? (
-        <View style={styles.loadingCard}>
-          <ActivityIndicator size="small" color={COLORS.accent} />
-          <Text style={styles.loadingText}>Loading entertainment picks</Text>
-        </View>
-      ) : null}
-
       {!mediaQuery.isLoading && !continueWatching.length && !recommended.length && !(mediaQuery.data?.trendingMovies?.length || mediaQuery.data?.trendingSeries?.length) ? (
         <View style={styles.emptyCard}>
           <Ionicons name="film-outline" size={22} color={COLORS.textMuted} />
@@ -225,23 +218,6 @@ const styles = StyleSheet.create({
     fontSize: 22,
     fontFamily: "Inter_800ExtraBold",
     marginTop: 4,
-  },
-  loadingCard: {
-    marginHorizontal: 18,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.08)",
-    backgroundColor: "rgba(255,255,255,0.03)",
-    paddingVertical: 16,
-    paddingHorizontal: 18,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-  },
-  loadingText: {
-    color: COLORS.textSecondary,
-    fontSize: 13,
-    fontFamily: "Inter_500Medium",
   },
   emptyCard: {
     marginHorizontal: 18,
