@@ -8508,6 +8508,13 @@ function mapFullDetail(detail, videos, credits, type) {
     }));
 
   const genres = (detail.genres || []).map((g) => g.name).filter(Boolean);
+  const genreIds = (detail.genres || []).map((g) => Number(g.id)).filter((value) => Number.isFinite(value));
+  const keywordList = Array.isArray(detail?.keywords?.keywords)
+    ? detail.keywords.keywords
+    : Array.isArray(detail?.keywords?.results)
+      ? detail.keywords.results
+      : [];
+  const keywords = keywordList.map((keyword) => keyword?.name).filter(Boolean);
 
   const trailerCandidates = pickTrailerCandidates(videos);
   const trailerKey = trailerCandidates[0]?.key || null;
@@ -8534,6 +8541,13 @@ function mapFullDetail(detail, videos, credits, type) {
   const studios = (detail.production_companies || [])
     .map((company) => company.name)
     .filter(Boolean);
+  const productionCompanies = (detail.production_companies || [])
+    .map((company) => ({
+      id: Number(company.id),
+      name: company.name,
+      logo: company.logo_path ? `${TMDB_IMG_500}${company.logo_path}` : null,
+    }))
+    .filter((company) => company.id && company.name);
   const runtimeMinutes = type === "movie"
     ? (Number(detail.runtime || 0) || null)
     : (Number((detail.episode_run_time || [])[0] || 0) || null);
@@ -8578,12 +8592,32 @@ function mapFullDetail(detail, videos, credits, type) {
     totalSeasons: type === "series" ? Number(detail.number_of_seasons || (detail.seasons || []).length || 0) || null : null,
     totalEpisodes: type === "series" ? Number(detail.number_of_episodes || 0) || null : null,
     genre: genres,
+    genreIds,
+    keywords,
     quality: "HD",
     cast,
     networks,
     creators,
+    collection: detail.belongs_to_collection
+      ? {
+          id: Number(detail.belongs_to_collection.id),
+          name: detail.belongs_to_collection.name,
+          poster: detail.belongs_to_collection.poster_path ? `${TMDB_IMG_500}${detail.belongs_to_collection.poster_path}` : null,
+          backdrop: detail.belongs_to_collection.backdrop_path ? `${TMDB_IMG_780}${detail.belongs_to_collection.backdrop_path}` : null,
+        }
+      : null,
+    productionCompanies,
     _raw: detail,
   };
+}
+
+function sortMediaChronologically(items) {
+  return [...(items || [])].sort((left, right) => {
+    const leftDate = Date.parse(left?.releaseDate || left?.release_date || left?.first_air_date || "") || 0;
+    const rightDate = Date.parse(right?.releaseDate || right?.release_date || right?.first_air_date || "") || 0;
+    if (leftDate !== rightDate) return leftDate - rightDate;
+    return String(left?.title || left?.name || "").localeCompare(String(right?.title || right?.name || ""));
+  });
 }
 
 app.get("/api/movies/trending", tmdbLimiter, async (req, res) => {
@@ -8714,7 +8748,7 @@ app.get("/api/tmdb/search", tmdbLimiter, async (req, res) => {
     if (!first) return res.json(null);
     const mediaType = type === "tv" ? "series" : "movie";
     const [detail, videos, credits] = await Promise.all([
-      tmdb(type === "tv" ? `/tv/${first.id}` : `/movie/${first.id}`),
+      tmdb(type === "tv" ? `/tv/${first.id}?append_to_response=keywords` : `/movie/${first.id}?append_to_response=keywords`),
       tmdb(type === "tv" ? `/tv/${first.id}/videos` : `/movie/${first.id}/videos`),
       tmdb(type === "tv" ? `/tv/${first.id}/credits` : `/movie/${first.id}/credits`),
     ]);
@@ -8816,7 +8850,7 @@ app.get("/api/movies/:id/full", tmdbLimiter, async (req, res) => {
 
     try {
       [detail, videos, credits] = await Promise.all([
-        tmdb(`/movie/${encodeURIComponent(id)}`),
+        tmdb(`/movie/${encodeURIComponent(id)}?append_to_response=keywords`),
         tmdb(`/movie/${encodeURIComponent(id)}/videos`),
         tmdb(`/movie/${encodeURIComponent(id)}/credits`),
       ]);
@@ -8829,7 +8863,7 @@ app.get("/api/movies/:id/full", tmdbLimiter, async (req, res) => {
         if (first?.id) {
           id = String(first.id);
           [detail, videos, credits] = await Promise.all([
-            tmdb(`/movie/${encodeURIComponent(id)}`),
+            tmdb(`/movie/${encodeURIComponent(id)}?append_to_response=keywords`),
             tmdb(`/movie/${encodeURIComponent(id)}/videos`),
             tmdb(`/movie/${encodeURIComponent(id)}/credits`),
           ]);
@@ -8863,7 +8897,7 @@ app.get("/api/series/:id/full", tmdbLimiter, async (req, res) => {
 
     try {
       [detail, videos, credits] = await Promise.all([
-        tmdb(`/tv/${encodeURIComponent(id)}`),
+        tmdb(`/tv/${encodeURIComponent(id)}?append_to_response=keywords`),
         tmdb(`/tv/${encodeURIComponent(id)}/videos`),
         tmdb(`/tv/${encodeURIComponent(id)}/credits`),
       ]);
@@ -8876,7 +8910,7 @@ app.get("/api/series/:id/full", tmdbLimiter, async (req, res) => {
         if (first?.id) {
           id = String(first.id);
           [detail, videos, credits] = await Promise.all([
-            tmdb(`/tv/${encodeURIComponent(id)}`),
+            tmdb(`/tv/${encodeURIComponent(id)}?append_to_response=keywords`),
             tmdb(`/tv/${encodeURIComponent(id)}/videos`),
             tmdb(`/tv/${encodeURIComponent(id)}/credits`),
           ]);
@@ -8931,6 +8965,76 @@ app.get("/api/series/:id/season/:seasonNumber", tmdbLimiter, async (req, res) =>
     });
   } catch (e) {
     res.status(200).json({ episodes: [], error: String(e?.message || e) });
+  }
+});
+
+app.get("/api/vod/collection", tmdbLimiter, async (req, res) => {
+  try {
+    if (!process.env.TMDB_API_KEY) return res.json({ collection: null, items: [] });
+
+    const requestedId = Number(req.query.id || 0);
+    const requestedTitle = String(req.query.title || "").trim();
+    let collectionId = requestedId;
+
+    if (!collectionId && requestedTitle) {
+      const search = await tmdb(`/search/movie?query=${encodeURIComponent(requestedTitle)}&page=1`);
+      const first = search?.results?.[0];
+      if (first?.id) {
+        const detail = await tmdb(`/movie/${encodeURIComponent(first.id)}?append_to_response=keywords`).catch(() => null);
+        collectionId = Number(detail?.belongs_to_collection?.id || 0);
+      }
+    }
+
+    if (!collectionId) return res.json({ collection: null, items: [] });
+
+    const collection = await tmdb(`/collection/${encodeURIComponent(collectionId)}`);
+    const items = sortMediaChronologically(
+      (collection?.parts || []).map((item) => ({
+        ...mapTrendingItem(item, "movie"),
+        releaseDate: item.release_date || null,
+      }))
+    );
+
+    res.json({
+      collection: {
+        id: Number(collection?.id || collectionId),
+        name: collection?.name || "Collection",
+        overview: collection?.overview || "",
+        poster: collection?.poster_path ? `${TMDB_IMG_500}${collection.poster_path}` : null,
+        backdrop: collection?.backdrop_path ? `${TMDB_IMG_780}${collection.backdrop_path}` : null,
+      },
+      items,
+    });
+  } catch (e) {
+    res.status(200).json({ collection: null, items: [], error: String(e?.message || e) });
+  }
+});
+
+app.get("/api/vod/studio", tmdbLimiter, async (req, res) => {
+  try {
+    if (!process.env.TMDB_API_KEY) return res.json({ studio: null, items: [] });
+
+    const studioId = Number(req.query.id || 0);
+    const studioName = String(req.query.name || "").trim();
+    if (!studioId && !studioName) return res.json({ studio: null, items: [] });
+
+    const items = studioId
+      ? (await tmdb(`/discover/movie?with_companies=${encodeURIComponent(studioId)}&sort_by=popularity.desc&vote_count.gte=20&page=1`))?.results || []
+      : [];
+
+    res.json({
+      studio: {
+        id: studioId,
+        name: studioName || "Studio",
+        logo: null,
+      },
+      items: sortMediaChronologically(items.map((item) => ({
+        ...mapTrendingItem(item, "movie"),
+        releaseDate: item.release_date || null,
+      }))),
+    });
+  } catch (e) {
+    res.status(200).json({ studio: null, items: [], error: String(e?.message || e) });
   }
 });
 // ─── Genre catalog (discover) ─────────────────────────────────────────────────
