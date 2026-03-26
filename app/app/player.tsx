@@ -977,7 +977,7 @@ export default function PlayerScreen() {
       Animated.timing(controlsOpacity, { toValue: 0, duration: 500, useNativeDriver: true }).start(
         () => setControlsVisible(false)
       );
-    }, 5000);
+    }, 3200);
   }, [controlsOpacity]);
 
   const showControls = useCallback(() => {
@@ -1438,15 +1438,10 @@ export default function PlayerScreen() {
         )}
         </SilentResetBoundary>
 
-        {/* Spinner */}
+        {/* Spinner (silent background loading) */}
         {isLoading && hasSource && Platform.OS !== "web" && (
           <View style={styles.loadingOverlay} pointerEvents="none">
             <ActivityIndicator size="large" color={COLORS.accent} />
-            <Text style={styles.loadingText}>
-              {(tmdbId && !effectiveStreamUrl) || (useFallbackEmbed && tmdbId)
-                ? `Verbinding zoeken... (${providerIndex + 1}/${STREAM_PROVIDERS.length})`
-                : "Laden..."}
-            </Text>
           </View>
         )}
 

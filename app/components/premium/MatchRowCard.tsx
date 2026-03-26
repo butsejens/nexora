@@ -136,6 +136,24 @@ function MatchRowCardInner({
     <View style={s.wrap}>
       <TouchableOpacity activeOpacity={0.88} onPress={onPress}>
         <View style={[s.card, live && s.cardLive]}>
+          <View style={s.posterBackdrop}>
+            <View style={s.posterLogoLeft}>
+              <TeamLogo uri={match.homeTeamLogo} teamName={match.homeTeam} size={88} />
+            </View>
+            <View style={s.posterLogoRight}>
+              <TeamLogo uri={match.awayTeamLogo} teamName={match.awayTeam} size={88} />
+            </View>
+            <LinearGradient
+              colors={[
+                'rgba(10,10,18,0.36)',
+                'rgba(10,10,18,0.78)',
+                'rgba(10,10,18,0.96)',
+              ]}
+              locations={[0, 0.58, 1]}
+              style={StyleSheet.absoluteFillObject}
+            />
+          </View>
+
           <LinearGradient
             colors={['rgba(255,255,255,0.06)', 'rgba(255,255,255,0.015)', 'rgba(0,0,0,0.14)']}
             start={{ x: 0, y: 0 }}
@@ -287,6 +305,23 @@ const s = StyleSheet.create({
   },
   glowOverlay: {
     ...StyleSheet.absoluteFillObject,
+  },
+  posterBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  posterLogoLeft: {
+    position: 'absolute',
+    left: -10,
+    top: 16,
+    opacity: 0.16,
+    transform: [{ rotate: '-7deg' }],
+  },
+  posterLogoRight: {
+    position: 'absolute',
+    right: -10,
+    top: 16,
+    opacity: 0.16,
+    transform: [{ rotate: '7deg' }],
   },
   cardLive: {
     borderColor: 'rgba(255, 45, 85, 0.32)',

@@ -1,7 +1,7 @@
 import React from "react";
 import { ActivityIndicator, FlatList, Image, ScrollView, StyleSheet, Text, View, useWindowDimensions } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { NexoraHeader } from "@/components/NexoraHeader";
 import { RealContentCard } from "@/components/RealContentCard";
 import { COLORS } from "@/constants/colors";
@@ -16,6 +16,7 @@ async function fetchCollection(id?: string, title?: string) {
 
 export default function VodCollectionScreen() {
   const params = useLocalSearchParams<{ id?: string; name?: string }>();
+  const queryClient = useQueryClient();
   const { width: screenWidth } = useWindowDimensions();
   const cardWidth = Math.floor(Math.min(screenWidth * 0.46, 210));
 
@@ -25,13 +26,41 @@ export default function VodCollectionScreen() {
     staleTime: 20 * 60 * 1000,
   });
 
+  const normalize = (value: unknown) => String(value || "").toLowerCase().trim();
   const collection = data?.collection;
-  const items = [...(data?.items || [])].sort((left, right) => {
+  const directItems = Array.isArray(data?.items) ? data.items : [];
+  const fallbackFromCurated = (() => {
+    const curated = (queryClient.getQueryData(["vod-module-curated-collections"]) as any[] | undefined) || [];
+    const needleId = normalize(params.id);
+    const needleName = normalize(params.name);
+    const found = curated.find((entry: any) => {
+      const idMatch = needleId && normalize(entry?.id) === needleId;
+      const nameMatch = needleName && normalize(entry?.name).includes(needleName);
+      return idMatch || nameMatch;
+    });
+    return Array.isArray(found?.items) ? found.items : [];
+  })();
+  const fallbackFromModuleItems = (() => {
+    const allItems = [
+      ...(((queryClient.getQueryData(["vod-module-home"]) as any)?.allItems || []) as any[]),
+      ...(((queryClient.getQueryData(["vod-module-catalog", "chunk-1"]) as any)?.items || []) as any[]),
+      ...(((queryClient.getQueryData(["vod-module-catalog", "chunk-2"]) as any)?.items || []) as any[]),
+    ];
+    const needleName = normalize(params.name).replace(/collection/g, "").trim();
+    if (!needleName) return [];
+    return allItems.filter((item: any) => {
+      const title = normalize(item?.title);
+      return title.includes(needleName);
+    });
+  })();
+  const rawItems = directItems.length ? directItems : (fallbackFromCurated.length ? fallbackFromCurated : fallbackFromModuleItems);
+  const items = [...rawItems].sort((left, right) => {
     const leftDate = Date.parse(String(left?.releaseDate || left?.year || "")) || 0;
     const rightDate = Date.parse(String(right?.releaseDate || right?.year || "")) || 0;
     return leftDate - rightDate;
   });
-  const stats = data?.stats;
+  const stats = data?.stats || { total: items.length };
+  const heroBackdrop = collection?.backdrop || items[0]?.backdrop || items[0]?.poster || null;
 
   return (
     <View style={styles.container}>
@@ -43,7 +72,7 @@ export default function VodCollectionScreen() {
       ) : (
         <ScrollView contentContainerStyle={styles.content}>
           <View style={styles.hero}>
-            {collection?.backdrop ? <Image source={{ uri: collection.backdrop }} style={styles.heroImage} /> : null}
+            {heroBackdrop ? <Image source={{ uri: heroBackdrop }} style={styles.heroImage} /> : null}
             <View style={styles.heroOverlay} />
             <View style={styles.heroContent}>
               <Text style={styles.label}>WATCH IN ORDER</Text>

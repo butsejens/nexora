@@ -181,6 +181,18 @@ function orderLineupTeams(starters: any[], homeName: string, awayName: string): 
   return teams;
 }
 
+function normalizeLeague(value: unknown): string {
+  return String(value || "").trim().toLowerCase();
+}
+
+function looksDomesticCompetition(label: string): boolean {
+  return /premier|laliga|la liga|bundesliga|serie a|ligue 1|championship|eredivisie|pro league|super lig|primeira/.test(label);
+}
+
+function hasCountryLogo(uri: unknown): boolean {
+  return String(uri || "").toLowerCase().includes("/countries/");
+}
+
 export default function MatchDetailScreen() {
   const params = useLocalSearchParams<{
     matchId: string; homeTeam: string; awayTeam: string;
@@ -234,9 +246,16 @@ export default function MatchDetailScreen() {
       ? "finished"
       : "upcoming";
   const espnSport = "soccer";
+  const likelyInternationalFromParams = useMemo(() => {
+    const rawLeague = normalizeLeague(params.league);
+    if (/friendly|friendlies|international|fifa|nations|world cup|euro/.test(rawLeague)) return true;
+    return hasCountryLogo(params.homeTeamLogo) && hasCountryLogo(params.awayTeamLogo);
+  }, [params.awayTeamLogo, params.homeTeamLogo, params.league]);
+
   const espnLeague = useMemo(() => {
     const direct = String(params.espnLeague || "").trim();
     if (direct) return direct;
+    if (likelyInternationalFromParams) return "fifa.world";
     const map: Record<string, string> = {
       "Premier League": "eng.1",
       "Championship": "eng.2",
@@ -264,7 +283,7 @@ export default function MatchDetailScreen() {
       "KNVB Beker": "ned.knvb_beker",
     };
     return map[params.league] || "eng.1";
-  }, [params.espnLeague, params.league]);
+  }, [likelyInternationalFromParams, params.espnLeague, params.league]);
   const {
     data: streamData,
     isLoading: _streamLoading,
@@ -649,7 +668,20 @@ export default function MatchDetailScreen() {
   );
   const homeLineupTeam = orderedLineupTeams[0] || null;
   const awayLineupTeam = orderedLineupTeams[1] || null;
-  const competitionName = safeStr(effectiveCanonical?.league || matchDetail?.competition || matchDetail?.league || params.league);
+  const rawCompetitionName = safeStr(effectiveCanonical?.league || matchDetail?.competition || matchDetail?.league || params.league);
+  const likelyInternational = useMemo(() => {
+    if (/fifa\.|uefa\.nations|international|friendly|friendlies|world cup|euro/i.test(espnLeague)) return true;
+    const normalized = normalizeLeague(rawCompetitionName);
+    if (/friendly|friendlies|international|fifa|nations|world cup|euro/.test(normalized)) return true;
+    return (hasCountryLogo(matchDetail?.homeTeamLogo || params.homeTeamLogo) && hasCountryLogo(matchDetail?.awayTeamLogo || params.awayTeamLogo));
+  }, [espnLeague, matchDetail?.awayTeamLogo, matchDetail?.homeTeamLogo, params.awayTeamLogo, params.homeTeamLogo, rawCompetitionName]);
+  const competitionName = useMemo(() => {
+    const normalized = normalizeLeague(rawCompetitionName);
+    if (likelyInternational && (!rawCompetitionName || looksDomesticCompetition(normalized))) {
+      return "International Friendly";
+    }
+    return rawCompetitionName || (likelyInternational ? "International Friendly" : "Competition");
+  }, [likelyInternational, rawCompetitionName]);
   const competitionBrand = useMemo(
     () => resolveCompetitionBrand({ name: competitionName, espnLeague }),
     [competitionName, espnLeague],
@@ -1561,20 +1593,13 @@ function MatchHeatmapInner({ homeTeam, awayTeam, homeStats, awayStats }: { homeT
   const maxShots = Math.max(hShots, aShots, 1);
   const maxCorners = Math.max(hCorners, aCorners, 1);
 
-  const hAttackIntensity = Math.min(1, ((hInsideBox || hOnTarget) / Math.max(maxShots, 1)) * 1.5 + 0.15);
-  const hMidIntensity = Math.min(1, (hPoss / 100) * 1.2);
-  const hDefIntensity = Math.min(1, (aPoss / 100) * 0.5 + (aCorners / Math.max(maxCorners, 1)) * 0.3);
+  const hDefIntensity = Math.min(1, ((aShots - aOnTarget) / Math.max(maxShots, 1)) * 0.65 + (hPoss / 100) * 0.2 + 0.08);
+  const hMidIntensity = Math.min(1, (hPoss / 100) * 0.95 + ((hShots + hCorners) / Math.max(maxShots + maxCorners, 1)) * 0.25 + 0.08);
+  const hAttackIntensity = Math.min(1, ((hInsideBox || hOnTarget) / Math.max(maxShots, 1)) * 1.35 + (hCorners / Math.max(maxCorners, 1)) * 0.18 + 0.1);
 
-  const aAttackIntensity = Math.min(1, ((aInsideBox || aOnTarget) / Math.max(maxShots, 1)) * 1.5 + 0.15);
-  const aMidIntensity = Math.min(1, (aPoss / 100) * 1.2);
-  const aDefIntensity = Math.min(1, (hPoss / 100) * 0.5 + (hCorners / Math.max(maxCorners, 1)) * 0.3);
-
-  const zoneColor = (intensity: number, teamColor: string) => {
-    const alpha = Math.max(0.08, Math.min(0.55, intensity * 0.6));
-    return teamColor === "home"
-      ? `rgba(232,93,47,${alpha.toFixed(2)})`
-      : `rgba(91,141,239,${alpha.toFixed(2)})`;
-  };
+  const aDefIntensity = Math.min(1, ((hShots - hOnTarget) / Math.max(maxShots, 1)) * 0.65 + (aPoss / 100) * 0.2 + 0.08);
+  const aMidIntensity = Math.min(1, (aPoss / 100) * 0.95 + ((aShots + aCorners) / Math.max(maxShots + maxCorners, 1)) * 0.25 + 0.08);
+  const aAttackIntensity = Math.min(1, ((aInsideBox || aOnTarget) / Math.max(maxShots, 1)) * 1.35 + (aCorners / Math.max(maxCorners, 1)) * 0.18 + 0.1);
 
   const shotDots: { x: number; y: number; color: string; onTarget: boolean }[] = [];
   const seedRng = (s: number) => { let v = s; return () => { v = (v * 16807 + 0) % 2147483647; return (v & 0x7fffffff) / 0x7fffffff; }; };
@@ -1582,90 +1607,81 @@ function MatchHeatmapInner({ homeTeam, awayTeam, homeStats, awayStats }: { homeT
 
   for (let i = 0; i < Math.min(hShots, 12); i++) {
     const onTarget = i < hOnTarget;
-    shotDots.push({ x: 15 + rng() * 70, y: 15 + rng() * 29, color: COLORS.accent, onTarget });
+    shotDots.push({ x: 8 + rng() * 33, y: 16 + rng() * 66, color: COLORS.accent, onTarget });
   }
   for (let i = 0; i < Math.min(aShots, 12); i++) {
     const onTarget = i < aOnTarget;
-    shotDots.push({ x: 15 + rng() * 70, y: 56 + rng() * 29, color: "#5B8DEF", onTarget });
+    shotDots.push({ x: 59 + rng() * 33, y: 16 + rng() * 66, color: "#5B8DEF", onTarget });
   }
 
   const LINE = "rgba(255,255,255,0.4)";
+  const intensityToColor = (intensity: number, side: "home" | "away") => {
+    const alpha = Math.max(0.08, Math.min(0.48, intensity * 0.56));
+    return side === "home"
+      ? `rgba(229,9,20,${alpha.toFixed(2)})`
+      : `rgba(70,130,255,${alpha.toFixed(2)})`;
+  };
+  const laneCards = [
+    { label: "Defense", home: hDefIntensity, away: aDefIntensity },
+    { label: "Midfield", home: hMidIntensity, away: aMidIntensity },
+    { label: "Attack", home: hAttackIntensity, away: aAttackIntensity },
+  ];
 
   return (
     <View style={heatmapStyles.card}>
       <View style={heatmapStyles.header}>
         <View style={heatmapStyles.headerAccent} />
-        <Text style={heatmapStyles.headerIcon}>🔥</Text>
+        <View style={heatmapStyles.headerIconWrap}>
+          <MaterialCommunityIcons name="soccer-field" size={16} color={COLORS.accent} />
+        </View>
         <View style={{ flex: 1 }}>
-          <Text style={heatmapStyles.headerTitle}>ZONE CONTROL & SHOTS</Text>
-          <Text style={heatmapStyles.headerSub}>Higher opacity means stronger control</Text>
+          <Text style={heatmapStyles.headerTitle}>FIELD CONTROL</Text>
+          <Text style={heatmapStyles.headerSub}>Home controls the left half, visitors the right half</Text>
+        </View>
+      </View>
+
+      <View style={heatmapStyles.teamScaleRow}>
+        <View style={heatmapStyles.teamScaleSide}>
+          <View style={[heatmapStyles.teamScaleDot, { backgroundColor: COLORS.accent }]} />
+          <Text style={heatmapStyles.teamScaleText} numberOfLines={1}>{safeStr(homeTeam)}</Text>
+        </View>
+        <Text style={heatmapStyles.teamScaleCenter}>ZONE MODEL</Text>
+        <View style={[heatmapStyles.teamScaleSide, { justifyContent: "flex-end" }]}>
+          <Text style={[heatmapStyles.teamScaleText, { textAlign: "right" }]} numberOfLines={1}>{safeStr(awayTeam)}</Text>
+          <View style={[heatmapStyles.teamScaleDot, { backgroundColor: "#5B8DEF" }]} />
         </View>
       </View>
 
       <View style={heatmapStyles.pitch}>
-        <LinearGradient colors={["#0a2613", "#154025", "#1a4a2a", "#1a4a2a", "#154025", "#0a2613"]} style={heatmapStyles.pitchGradient}>
-          {/* Away team zones (top half) */}
-          <View style={heatmapStyles.halfRow}>
-            <View style={[heatmapStyles.zone, { backgroundColor: zoneColor(aDefIntensity, "away") }]} />
-            <View style={[heatmapStyles.zone, { backgroundColor: zoneColor(aMidIntensity, "away") }]} />
-            <View style={[heatmapStyles.zone, { backgroundColor: zoneColor(aAttackIntensity, "away") }]} />
-          </View>
+        <LinearGradient colors={["#081711", "#0c2519", "#113225", "#113225", "#0c2519", "#081711"]} style={heatmapStyles.pitchGradient}>
+          <View style={[heatmapStyles.horizontalZone, heatmapStyles.homeZoneDefense, { backgroundColor: intensityToColor(hDefIntensity, "home") }]} />
+          <View style={[heatmapStyles.horizontalZone, heatmapStyles.homeZoneMidfield, { backgroundColor: intensityToColor(hMidIntensity, "home") }]} />
+          <View style={[heatmapStyles.horizontalZone, heatmapStyles.homeZoneAttack, { backgroundColor: intensityToColor(hAttackIntensity, "home") }]} />
+          <View style={[heatmapStyles.horizontalZone, heatmapStyles.awayZoneAttack, { backgroundColor: intensityToColor(aAttackIntensity, "away") }]} />
+          <View style={[heatmapStyles.horizontalZone, heatmapStyles.awayZoneMidfield, { backgroundColor: intensityToColor(aMidIntensity, "away") }]} />
+          <View style={[heatmapStyles.horizontalZone, heatmapStyles.awayZoneDefense, { backgroundColor: intensityToColor(aDefIntensity, "away") }]} />
 
-          {/* Home team zones (bottom half) */}
-          <View style={heatmapStyles.halfRow}>
-            <View style={[heatmapStyles.zone, { backgroundColor: zoneColor(hAttackIntensity, "home") }]} />
-            <View style={[heatmapStyles.zone, { backgroundColor: zoneColor(hMidIntensity, "home") }]} />
-            <View style={[heatmapStyles.zone, { backgroundColor: zoneColor(hDefIntensity, "home") }]} />
-          </View>
+          <View style={heatmapStyles.fieldBorder} />
+          <View style={heatmapStyles.fieldMidline} />
+          <View style={heatmapStyles.fieldCenterCircle} />
+          <View style={heatmapStyles.fieldCenterSpot} />
+          <View style={heatmapStyles.leftPenaltyArea} />
+          <View style={heatmapStyles.leftGoalArea} />
+          <View style={heatmapStyles.rightPenaltyArea} />
+          <View style={heatmapStyles.rightGoalArea} />
+          <View style={heatmapStyles.leftGoalSlot} />
+          <View style={heatmapStyles.rightGoalSlot} />
+          <View style={heatmapStyles.leftPenaltySpot} />
+          <View style={heatmapStyles.rightPenaltySpot} />
+          <View style={heatmapStyles.leftArc} />
+          <View style={heatmapStyles.rightArc} />
 
-          {/* ── Pitch markings overlay ─────────────────── */}
-          {/* Center line */}
-          <View style={{ position: "absolute", top: "50%", left: 6, right: 6, height: 1, backgroundColor: LINE }} />
-          {/* Center circle */}
-          <View style={{ position: "absolute", top: "50%", left: "50%", width: 60, height: 60, marginLeft: -30, marginTop: -30, borderRadius: 30, borderWidth: 1, borderColor: LINE }} />
-          {/* Center spot */}
-          <View style={{ position: "absolute", top: "50%", left: "50%", width: 6, height: 6, marginLeft: -3, marginTop: -3, borderRadius: 3, backgroundColor: LINE }} />
-
-          {/* Top penalty area */}
-          <View style={{ position: "absolute", top: 0, left: "20%", right: "20%", height: "16%", borderLeftWidth: 1, borderRightWidth: 1, borderBottomWidth: 1, borderColor: LINE }} />
-          {/* Top goal area */}
-          <View style={{ position: "absolute", top: 0, left: "33%", right: "33%", height: "7%", borderLeftWidth: 1, borderRightWidth: 1, borderBottomWidth: 1, borderColor: LINE }} />
-          {/* Top penalty spot */}
-          <View style={{ position: "absolute", top: "11%", left: "50%", width: 4, height: 4, marginLeft: -2, borderRadius: 2, backgroundColor: LINE }} />
-          {/* Top goal line center */}
-          <View style={{ position: "absolute", top: 0, left: "41%", right: "41%", height: 3, backgroundColor: "rgba(255,255,255,0.15)", borderBottomLeftRadius: 2, borderBottomRightRadius: 2 }} />
-
-          {/* Bottom penalty area */}
-          <View style={{ position: "absolute", bottom: 0, left: "20%", right: "20%", height: "16%", borderLeftWidth: 1, borderRightWidth: 1, borderTopWidth: 1, borderColor: LINE }} />
-          {/* Bottom goal area */}
-          <View style={{ position: "absolute", bottom: 0, left: "33%", right: "33%", height: "7%", borderLeftWidth: 1, borderRightWidth: 1, borderTopWidth: 1, borderColor: LINE }} />
-          {/* Bottom penalty spot */}
-          <View style={{ position: "absolute", bottom: "11%", left: "50%", width: 4, height: 4, marginLeft: -2, borderRadius: 2, backgroundColor: LINE }} />
-          {/* Bottom goal line center */}
-          <View style={{ position: "absolute", bottom: 0, left: "41%", right: "41%", height: 3, backgroundColor: "rgba(255,255,255,0.15)", borderTopLeftRadius: 2, borderTopRightRadius: 2 }} />
-
-          {/* Outer border */}
-          <View style={{ position: "absolute", top: 0, left: 6, right: 6, bottom: 0, borderWidth: 1, borderColor: LINE }} />
-
-          {/* Zone labels */}
-          <View style={{ position: "absolute", top: "4%", left: 0, right: 0, alignItems: "center" }}>
-            <Text style={heatmapStyles.zoneLabel}>DEF</Text>
-          </View>
-          <View style={{ position: "absolute", top: "21%", left: 0, right: 0, alignItems: "center" }}>
-            <Text style={heatmapStyles.zoneLabel}>MID</Text>
-          </View>
-          <View style={{ position: "absolute", top: "38%", left: 0, right: 0, alignItems: "center" }}>
-            <Text style={heatmapStyles.zoneLabel}>ATT</Text>
-          </View>
-          <View style={{ position: "absolute", bottom: "37%", left: 0, right: 0, alignItems: "center" }}>
-            <Text style={heatmapStyles.zoneLabel}>ATT</Text>
-          </View>
-          <View style={{ position: "absolute", bottom: "21%", left: 0, right: 0, alignItems: "center" }}>
-            <Text style={heatmapStyles.zoneLabel}>MID</Text>
-          </View>
-          <View style={{ position: "absolute", bottom: "4%", left: 0, right: 0, alignItems: "center" }}>
-            <Text style={heatmapStyles.zoneLabel}>DEF</Text>
-          </View>
+          <View style={[heatmapStyles.zoneLabelChip, { left: "8%" }]}><Text style={heatmapStyles.zoneLabel}>DEF</Text></View>
+          <View style={[heatmapStyles.zoneLabelChip, { left: "24%" }]}><Text style={heatmapStyles.zoneLabel}>MID</Text></View>
+          <View style={[heatmapStyles.zoneLabelChip, { left: "40%" }]}><Text style={heatmapStyles.zoneLabel}>ATT</Text></View>
+          <View style={[heatmapStyles.zoneLabelChip, { right: "40%" }]}><Text style={heatmapStyles.zoneLabel}>ATT</Text></View>
+          <View style={[heatmapStyles.zoneLabelChip, { right: "24%" }]}><Text style={heatmapStyles.zoneLabel}>MID</Text></View>
+          <View style={[heatmapStyles.zoneLabelChip, { right: "8%" }]}><Text style={heatmapStyles.zoneLabel}>DEF</Text></View>
 
           {/* Shot dots overlay */}
           {shotDots.map((dot, i) => (
@@ -1682,57 +1698,39 @@ function MatchHeatmapInner({ homeTeam, awayTeam, homeStats, awayStats }: { homeT
               ]}
             />
           ))}
-
-          {/* Team labels */}
-          <View style={heatmapStyles.teamLabelTop}>
-            <Text style={[heatmapStyles.teamLabel, { color: "#5B8DEF" }]}>{safeStr(awayTeam).toUpperCase()}</Text>
-          </View>
-          <View style={heatmapStyles.teamLabelBottom}>
-            <Text style={[heatmapStyles.teamLabel, { color: COLORS.accent }]}>{safeStr(homeTeam).toUpperCase()}</Text>
-          </View>
         </LinearGradient>
       </View>
 
-      {/* Shot stats mini cards */}
       <View style={heatmapStyles.shotStatsRow}>
-        <View style={heatmapStyles.shotStatCard}>
-          <Text style={[heatmapStyles.shotStatValue, { color: COLORS.accent }]}>{hShots}</Text>
-          <Text style={heatmapStyles.shotStatLabel}>Shots</Text>
-          <Text style={[heatmapStyles.shotStatValue, { color: "#5B8DEF" }]}>{aShots}</Text>
-        </View>
-        <View style={heatmapStyles.shotStatCard}>
-          <Text style={[heatmapStyles.shotStatValue, { color: COLORS.accent }]}>{hOnTarget}</Text>
-          <Text style={heatmapStyles.shotStatLabel}>On Target</Text>
-          <Text style={[heatmapStyles.shotStatValue, { color: "#5B8DEF" }]}>{aOnTarget}</Text>
-        </View>
-        <View style={heatmapStyles.shotStatCard}>
-          <Text style={[heatmapStyles.shotStatValue, { color: COLORS.accent }]}>{hCorners}</Text>
-          <Text style={heatmapStyles.shotStatLabel}>Corners</Text>
-          <Text style={[heatmapStyles.shotStatValue, { color: "#5B8DEF" }]}>{aCorners}</Text>
-        </View>
+        {[
+          { label: "Shots", home: hShots, away: aShots },
+          { label: "On Target", home: hOnTarget, away: aOnTarget },
+          { label: "Corners", home: hCorners, away: aCorners },
+        ].map((stat) => (
+          <View key={stat.label} style={heatmapStyles.shotStatCard}>
+            <Text style={[heatmapStyles.shotStatValue, { color: COLORS.accent }]}>{stat.home}</Text>
+            <Text style={heatmapStyles.shotStatLabel}>{stat.label}</Text>
+            <Text style={[heatmapStyles.shotStatValue, { color: "#5B8DEF" }]}>{stat.away}</Text>
+          </View>
+        ))}
       </View>
 
-      {/* Legend */}
-      <View style={heatmapStyles.legend}>
-        <View style={heatmapStyles.legendItem}>
-          <View style={[heatmapStyles.legendDot, { backgroundColor: COLORS.accent }]} />
-          <Text style={heatmapStyles.legendText}>On target</Text>
-        </View>
-        <View style={heatmapStyles.legendItem}>
-          <View style={[heatmapStyles.legendDotOutline, { borderColor: COLORS.accent }]} />
-          <Text style={heatmapStyles.legendText}>Off target</Text>
-        </View>
-        <View style={heatmapStyles.legendItem}>
-          <View style={[heatmapStyles.legendZone, { backgroundColor: "rgba(232,93,47,0.3)" }]} />
-          <Text style={heatmapStyles.legendText}>Home</Text>
-        </View>
-        <View style={heatmapStyles.legendItem}>
-          <View style={[heatmapStyles.legendZone, { backgroundColor: "rgba(91,141,239,0.3)" }]} />
-          <Text style={heatmapStyles.legendText}>Away</Text>
-        </View>
+      <View style={heatmapStyles.laneSummaryRow}>
+        {laneCards.map((lane) => (
+          <View key={lane.label} style={heatmapStyles.laneCard}>
+            <Text style={heatmapStyles.laneTitle}>{lane.label}</Text>
+            <View style={heatmapStyles.laneTrack}>
+              <View style={[heatmapStyles.laneFillHome, { flex: Math.max(8, Math.round(lane.home * 100)) }]} />
+              <View style={[heatmapStyles.laneFillAway, { flex: Math.max(8, Math.round(lane.away * 100)) }]} />
+            </View>
+            <View style={heatmapStyles.laneFooter}>
+              <Text style={heatmapStyles.laneHomeText}>{Math.round(lane.home * 100)}</Text>
+              <Text style={heatmapStyles.laneAwayText}>{Math.round(lane.away * 100)}</Text>
+            </View>
+          </View>
+        ))}
       </View>
 
-      {/* Possession bar */}
       {(hPoss > 0 || aPoss > 0) && (
         <View style={heatmapStyles.possessionBar}>
           <Text style={[heatmapStyles.possessionLabel, { color: COLORS.accent }]}>{hPoss}%</Text>
@@ -1752,7 +1750,7 @@ const MatchHeatmap = React.memo(MatchHeatmapInner);
 const heatmapStyles = StyleSheet.create({
   card: {
     backgroundColor: COLORS.card,
-    borderRadius: 16,
+    borderRadius: 20,
     borderWidth: 1,
     borderColor: COLORS.border,
     overflow: "hidden",
@@ -1772,12 +1770,21 @@ const heatmapStyles = StyleSheet.create({
     borderRadius: 2,
     backgroundColor: COLORS.accent,
   },
-  headerIcon: { fontSize: 14 },
+  headerIconWrap: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(229,9,20,0.12)",
+    borderWidth: 1,
+    borderColor: "rgba(229,9,20,0.24)",
+  },
   headerTitle: {
     fontFamily: "Inter_700Bold",
     fontSize: 12,
     color: COLORS.text,
-    letterSpacing: 1,
+    letterSpacing: 1.2,
   },
   headerSub: {
     marginTop: 2,
@@ -1785,29 +1792,217 @@ const heatmapStyles = StyleSheet.create({
     fontSize: 10,
     color: COLORS.textMuted,
   },
+  teamScaleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 14,
+    paddingBottom: 4,
+  },
+  teamScaleSide: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  teamScaleDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  teamScaleText: {
+    flex: 1,
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 11,
+    color: COLORS.text,
+    textTransform: "uppercase",
+    letterSpacing: 0.4,
+  },
+  teamScaleCenter: {
+    fontFamily: "Inter_700Bold",
+    fontSize: 10,
+    color: COLORS.textMuted,
+    letterSpacing: 1.3,
+    textTransform: "uppercase",
+  },
   pitch: {
     marginHorizontal: 12,
     marginVertical: 12,
-    borderRadius: 10,
+    borderRadius: 14,
     overflow: "hidden",
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.12)",
   },
   pitchGradient: {
-    aspectRatio: 0.68,
+    aspectRatio: 1.62,
     position: "relative",
   },
-  halfRow: {
-    flex: 1,
-    flexDirection: "column",
+  horizontalZone: {
+    position: "absolute",
+    top: 0,
+    bottom: 0,
   },
-  zone: {
-    flex: 1,
+  homeZoneDefense: { left: 0, width: "16.66%" },
+  homeZoneMidfield: { left: "16.66%", width: "16.66%" },
+  homeZoneAttack: { left: "33.32%", width: "16.68%" },
+  awayZoneAttack: { left: "50%", width: "16.68%" },
+  awayZoneMidfield: { left: "66.68%", width: "16.66%" },
+  awayZoneDefense: { right: 0, width: "16.66%" },
+  fieldBorder: {
+    position: "absolute",
+    top: 8,
+    bottom: 8,
+    left: 8,
+    right: 8,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.34)",
+  },
+  fieldMidline: {
+    position: "absolute",
+    top: 8,
+    bottom: 8,
+    left: "50%",
+    width: 1,
+    marginLeft: -0.5,
+    backgroundColor: "rgba(255,255,255,0.34)",
+  },
+  fieldCenterCircle: {
+    position: "absolute",
+    left: "50%",
+    top: "50%",
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    marginLeft: -32,
+    marginTop: -32,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.34)",
+  },
+  fieldCenterSpot: {
+    position: "absolute",
+    left: "50%",
+    top: "50%",
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    marginLeft: -3,
+    marginTop: -3,
+    backgroundColor: "rgba(255,255,255,0.38)",
+  },
+  leftPenaltyArea: {
+    position: "absolute",
+    left: 8,
+    top: "22%",
+    width: "16%",
+    height: "56%",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.34)",
+    borderLeftWidth: 0,
+  },
+  leftGoalArea: {
+    position: "absolute",
+    left: 8,
+    top: "35%",
+    width: "7.5%",
+    height: "30%",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.34)",
+    borderLeftWidth: 0,
+  },
+  rightPenaltyArea: {
+    position: "absolute",
+    right: 8,
+    top: "22%",
+    width: "16%",
+    height: "56%",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.34)",
+    borderRightWidth: 0,
+  },
+  rightGoalArea: {
+    position: "absolute",
+    right: 8,
+    top: "35%",
+    width: "7.5%",
+    height: "30%",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.34)",
+    borderRightWidth: 0,
+  },
+  leftGoalSlot: {
+    position: "absolute",
+    left: 3,
+    top: "43%",
+    width: 5,
+    height: "14%",
+    borderRadius: 2,
+    backgroundColor: "rgba(255,255,255,0.18)",
+  },
+  rightGoalSlot: {
+    position: "absolute",
+    right: 3,
+    top: "43%",
+    width: 5,
+    height: "14%",
+    borderRadius: 2,
+    backgroundColor: "rgba(255,255,255,0.18)",
+  },
+  leftPenaltySpot: {
+    position: "absolute",
+    left: "11.5%",
+    top: "50%",
+    width: 4,
+    height: 4,
+    borderRadius: 2,
+    marginTop: -2,
+    backgroundColor: "rgba(255,255,255,0.38)",
+  },
+  rightPenaltySpot: {
+    position: "absolute",
+    right: "11.5%",
+    top: "50%",
+    width: 4,
+    height: 4,
+    borderRadius: 2,
+    marginTop: -2,
+    backgroundColor: "rgba(255,255,255,0.38)",
+  },
+  leftArc: {
+    position: "absolute",
+    left: "16.7%",
+    top: "39%",
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.28)",
+    borderLeftWidth: 0,
+    backgroundColor: "transparent",
+  },
+  rightArc: {
+    position: "absolute",
+    right: "16.7%",
+    top: "39%",
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.28)",
+    borderRightWidth: 0,
+    backgroundColor: "transparent",
+  },
+  zoneLabelChip: {
+    position: "absolute",
+    top: 10,
+    borderRadius: 999,
+    backgroundColor: "rgba(0,0,0,0.28)",
+    paddingHorizontal: 7,
+    paddingVertical: 3,
   },
   zoneLabel: {
     fontFamily: "Inter_700Bold",
-    fontSize: 9,
-    color: "rgba(255,255,255,0.2)",
+    fontSize: 8,
+    color: "rgba(255,255,255,0.58)",
     letterSpacing: 1.5,
   },
   shotDot: {
@@ -1818,26 +2013,6 @@ const heatmapStyles = StyleSheet.create({
     borderWidth: 1.5,
     marginLeft: -4,
     marginTop: -4,
-  },
-  teamLabelTop: {
-    position: "absolute",
-    top: 4,
-    left: 0,
-    right: 0,
-    alignItems: "center",
-  },
-  teamLabelBottom: {
-    position: "absolute",
-    bottom: 4,
-    left: 0,
-    right: 0,
-    alignItems: "center",
-  },
-  teamLabel: {
-    fontFamily: "Inter_700Bold",
-    fontSize: 9,
-    letterSpacing: 1.5,
-    opacity: 0.7,
   },
   legend: {
     flexDirection: "row",
@@ -1886,10 +2061,12 @@ const heatmapStyles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    backgroundColor: "rgba(255,255,255,0.04)",
-    borderRadius: 8,
-    paddingVertical: 6,
-    paddingHorizontal: 10,
+    backgroundColor: "rgba(255,255,255,0.05)",
+    borderRadius: 12,
+    paddingVertical: 9,
+    paddingHorizontal: 11,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.06)",
   },
   shotStatValue: {
     fontFamily: "Inter_700Bold",
@@ -1899,11 +2076,49 @@ const heatmapStyles = StyleSheet.create({
   },
   shotStatLabel: {
     fontFamily: "Inter_500Medium",
-    fontSize: 9,
+    fontSize: 10,
     color: COLORS.textMuted,
     letterSpacing: 0.3,
     textAlign: "center",
   },
+  laneSummaryRow: {
+    flexDirection: "row",
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingBottom: 6,
+  },
+  laneCard: {
+    flex: 1,
+    backgroundColor: "rgba(255,255,255,0.04)",
+    borderRadius: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 10,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.06)",
+    gap: 8,
+  },
+  laneTitle: {
+    fontFamily: "Inter_700Bold",
+    fontSize: 10,
+    color: COLORS.text,
+    textTransform: "uppercase",
+    letterSpacing: 1,
+  },
+  laneTrack: {
+    flexDirection: "row",
+    height: 6,
+    borderRadius: 3,
+    overflow: "hidden",
+    backgroundColor: "rgba(255,255,255,0.05)",
+  },
+  laneFillHome: { backgroundColor: COLORS.accent },
+  laneFillAway: { backgroundColor: "#5B8DEF" },
+  laneFooter: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+  },
+  laneHomeText: { fontFamily: "Inter_700Bold", fontSize: 10, color: COLORS.accent },
+  laneAwayText: { fontFamily: "Inter_700Bold", fontSize: 10, color: "#5B8DEF" },
   possessionBar: {
     flexDirection: "row",
     alignItems: "center",
@@ -2042,7 +2257,7 @@ function StatsBarsInner({ homeTeam, awayTeam, homeStats, awayStats }: { homeTeam
   const STAT_SECTIONS: { label: string; icon: string; keys: string[] }[] = [
     {
       label: "CORE",
-      icon: "⚽",
+      icon: "chart-box-outline",
       keys: ["ball_possession", "possession", "possessionPct", "total_shots", "shots", "totalShots",
              "shots_on_goal", "shots_on_target", "shotsOnTarget", "shotsOnGoal",
              "shots_off_goal", "shots_off_target", "shotsOffTarget",
@@ -2053,31 +2268,31 @@ function StatsBarsInner({ homeTeam, awayTeam, homeStats, awayStats }: { homeTeam
     },
     {
       label: "ATTACKING",
-      icon: "🎯",
+      icon: "target",
       keys: ["corner_kicks", "corners", "cornerKicks", "crosses", "crossesTotal", "crosses_successful",
              "successful_dribbles", "dribbles_completed", "dribblesCompleted", "dribbles_attempted", "offsides"],
     },
     {
       label: "PASSING",
-      icon: "↗️",
+      icon: "vector-polyline",
       keys: ["total_passes", "totalPasses", "passes", "accurate_passes", "accuratePasses",
              "pass_accuracy", "passAccuracy", "key_passes", "keyPasses",
              "passes_final_third", "passesFinalThird", "long_balls", "longBalls", "long_balls_accurate"],
     },
     {
       label: "DEFENDING",
-      icon: "🛡️",
+      icon: "shield-outline",
       keys: ["total_tackles", "tackles", "tacklesWon", "interceptions", "clearances", "blocks",
              "aerial_won", "aerialWon", "total_duels", "totalDuels", "duels_won", "duelsWon", "ground_duels_won"],
     },
     {
       label: "GOALKEEPING",
-      icon: "🧤",
+      icon: "hand-back-right-outline",
       keys: ["goalkeeper_saves", "saves", "goalkeeperSaves", "goals_prevented", "goalsPrevented", "punches"],
     },
     {
       label: "DISCIPLINE",
-      icon: "🟨",
+      icon: "clipboard-alert-outline",
       keys: ["fouls", "foulsCommitted", "yellow_cards", "yellowCards", "red_cards", "redCards"],
     },
   ];
@@ -2120,7 +2335,10 @@ function StatsBarsInner({ homeTeam, awayTeam, homeStats, awayStats }: { homeTeam
     return (
       <View key={key}>
         <View style={styles.statRow}>
-          <Text style={[styles.statVal, hVal > aVal && styles.statValWinner]}>{hDisplay}</Text>
+          <View style={styles.statValueCol}>
+            <Text style={styles.statSideLabel}>HOME</Text>
+            <Text style={[styles.statVal, hVal > aVal && styles.statValWinner, styles.statValHome]}>{hDisplay}</Text>
+          </View>
           <View style={styles.statBarContainer}>
             <Text style={styles.statName} numberOfLines={1}>{STAT_LABELS[key]}</Text>
             <View style={styles.statBarsWrapper}>
@@ -2137,7 +2355,10 @@ function StatsBarsInner({ homeTeam, awayTeam, homeStats, awayStats }: { homeTeam
               </View>
             </View>
           </View>
-          <Text style={[styles.statVal, styles.statValRight, aVal > hVal && styles.statValWinner]}>{aDisplay}</Text>
+          <View style={[styles.statValueCol, styles.statValueColRight]}>
+            <Text style={[styles.statSideLabel, styles.statSideLabelRight]}>AWAY</Text>
+            <Text style={[styles.statVal, styles.statValRight, aVal > hVal && styles.statValWinner, styles.statValAway]}>{aDisplay}</Text>
+          </View>
         </View>
         {!isLast && <View style={styles.statDivider} />}
       </View>
@@ -2193,7 +2414,7 @@ function StatsBarsInner({ homeTeam, awayTeam, homeStats, awayStats }: { homeTeam
           <View key={section.label} style={styles.statSectionCard}>
             <View style={styles.statSectionHeader}>
               <View style={styles.statSectionAccent} />
-              <Text style={styles.statSectionIcon}>{section.icon}</Text>
+              <MaterialCommunityIcons name={section.icon as any} size={15} color={COLORS.accent} />
               <Text style={styles.statSectionTitle}>{section.label}</Text>
             </View>
             {sectionStats.map((k, i, a) => renderStatRow(k, i, a))}
@@ -2376,55 +2597,79 @@ function PitchDot({ player, color, teamName, league, rowSize = 4 }: { player: an
 }
 
 function CombinedPitchViewInner({ homeTeamData, awayTeamData, league }: { homeTeamData: any; awayTeamData: any; league?: string }) {
-  // Home at top: GK first, attackers last (toward center line)
-  const homeRows = [...buildFormationRows(homeTeamData?.players || [], homeTeamData?.formation)].reverse();
-  // Away at bottom: attackers first (near center line), GK last
-  const awayRows = buildFormationRows(awayTeamData?.players || [], awayTeamData?.formation);
+  const homeColumns = [...buildFormationRows(homeTeamData?.players || [], homeTeamData?.formation)].reverse();
+  const awayColumns = buildFormationRows(awayTeamData?.players || [], awayTeamData?.formation);
 
   return (
-    <LinearGradient colors={["#0d2e18", "#1a4428", "#1a4428", "#0d2e18"]} style={styles.combinedPitch}>
-      {/* Field markings */}
-      <View style={styles.pitchPenaltyBoxTop} />
-      <View style={styles.pitchGoalBoxTop} />
-      <View style={styles.pitchTopArc} />
-      <View style={styles.pitchCenterLine} />
-      <View style={styles.pitchCenterCircleNew} />
-      <View style={styles.pitchPenaltyBoxBottom} />
-      <View style={styles.pitchGoalBoxBottom} />
-      <View style={styles.pitchBottomArc} />
+    <LinearGradient colors={["#07150f", "#0b2418", "#123423", "#123423", "#0b2418", "#07150f"]} style={styles.combinedPitch}>
+      <View style={styles.pitchFieldBorder} />
+      <View style={styles.pitchVerticalCenterLine} />
+      <View style={styles.pitchHorizontalCenterLine} />
+      <View style={styles.pitchCenterCircleWide} />
+      <View style={styles.pitchCenterSpotWide} />
+      <View style={styles.pitchPenaltyBoxLeft} />
+      <View style={styles.pitchGoalBoxLeft} />
+      <View style={styles.pitchPenaltyBoxRight} />
+      <View style={styles.pitchGoalBoxRight} />
+      <View style={styles.pitchArcLeft} />
+      <View style={styles.pitchArcRight} />
 
-      {/* Away team label */}
-      {/* Home team label (top) */}
-      <View style={styles.pitchTeamLabelRow}>
-        <Text style={[styles.pitchTeamLabel, { color: COLORS.accent }]}>{homeTeamData?.team?.toUpperCase()}</Text>
-        {homeTeamData?.formation ? <Text style={styles.pitchFormLabel}>{homeTeamData.formation}</Text> : null}
+      <View style={styles.pitchTopTeamsRow}>
+        <View style={styles.pitchTopTeamCard}>
+          <TeamLogo uri={homeTeamData?.logo || null} teamName={homeTeamData?.team || "Home"} size={28} />
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.pitchTopTeamName, { color: COLORS.accent }]} numberOfLines={1}>{homeTeamData?.team}</Text>
+            {homeTeamData?.formation ? <Text style={styles.pitchTopTeamMeta}>{homeTeamData.formation}</Text> : null}
+          </View>
+        </View>
+        <View style={styles.pitchTopBadge}><Text style={styles.pitchTopBadgeText}>LINEUP</Text></View>
+        <View style={[styles.pitchTopTeamCard, { justifyContent: "flex-end" }]}>
+          <View style={{ flex: 1, alignItems: "flex-end" }}>
+            <Text style={[styles.pitchTopTeamName, { color: "#5D9EFF", textAlign: "right" }]} numberOfLines={1}>{awayTeamData?.team}</Text>
+            {awayTeamData?.formation ? <Text style={styles.pitchTopTeamMeta}>{awayTeamData.formation}</Text> : null}
+          </View>
+          <TeamLogo uri={awayTeamData?.logo || null} teamName={awayTeamData?.team || "Away"} size={28} />
+        </View>
       </View>
 
-      {/* Home rows (GK top → FWDs center) */}
-      {homeRows.map((row, ri) => (
-        <View key={`home_${ri}`} style={styles.combinedPitchRow}>
-          {row.map((p: any, pi: number) => (
-            <PitchDot key={`h_${p?.id || p?.name || pi}`} player={p} color={COLORS.accent} teamName={homeTeamData?.team} league={league} rowSize={row.length} />
+      <View style={styles.pitchHorizontalFormationRow}>
+        <View style={styles.pitchHalfSide}>
+          {homeColumns.map((column, columnIndex) => (
+            <View key={`home_col_${columnIndex}`} style={styles.pitchVerticalColumn}>
+              {column.map((player: any, playerIndex: number) => (
+                <PitchDot
+                  key={`home_${player?.id || player?.name || playerIndex}`}
+                  player={player}
+                  color={COLORS.accent}
+                  teamName={homeTeamData?.team}
+                  league={league}
+                  rowSize={column.length}
+                />
+              ))}
+            </View>
           ))}
         </View>
-      ))}
 
-      {/* Center divider */}
-      <View style={styles.pitchDivider} />
+        <View style={styles.pitchMiddleDividerCol}>
+          <View style={styles.pitchMidBadge}><Text style={styles.pitchMidBadgeText}>MIDFIELD</Text></View>
+        </View>
 
-      {/* Away rows (FWDs center → GK bottom) */}
-      {awayRows.map((row, ri) => (
-        <View key={`away_${ri}`} style={styles.combinedPitchRow}>
-          {row.map((p: any, pi: number) => (
-            <PitchDot key={`a_${p?.id || p?.name || pi}`} player={p} color="#5D9EFF" teamName={awayTeamData?.team} league={league} rowSize={row.length} />
+        <View style={styles.pitchHalfSide}>
+          {awayColumns.map((column, columnIndex) => (
+            <View key={`away_col_${columnIndex}`} style={styles.pitchVerticalColumn}>
+              {column.map((player: any, playerIndex: number) => (
+                <PitchDot
+                  key={`away_${player?.id || player?.name || playerIndex}`}
+                  player={player}
+                  color="#5D9EFF"
+                  teamName={awayTeamData?.team}
+                  league={league}
+                  rowSize={column.length}
+                />
+              ))}
+            </View>
           ))}
         </View>
-      ))}
-
-      {/* Away team label (bottom) */}
-      <View style={styles.pitchTeamLabelRow}>
-        <Text style={[styles.pitchTeamLabel, { color: "#5D9EFF" }]}>{awayTeamData?.team?.toUpperCase()}</Text>
-        {awayTeamData?.formation ? <Text style={styles.pitchFormLabel}>{awayTeamData.formation}</Text> : null}
       </View>
     </LinearGradient>
   );
@@ -3356,60 +3601,75 @@ const styles = StyleSheet.create({
     letterSpacing: 1.5,
     textTransform: "uppercase",
   },
-  statSectionIcon: {
-    fontSize: 13,
+  statRow: { flexDirection: "row", alignItems: "center", gap: 8, paddingVertical: 10, paddingHorizontal: 2 },
+  statValueCol: {
+    width: 56,
+    alignItems: "flex-start",
+    gap: 2,
   },
-  statRow: { flexDirection: "row", alignItems: "center", gap: 6, paddingVertical: 8, paddingHorizontal: 2 },
+  statValueColRight: {
+    alignItems: "flex-end",
+  },
+  statSideLabel: {
+    fontFamily: "Inter_700Bold",
+    fontSize: 9,
+    color: COLORS.textMuted,
+    letterSpacing: 1,
+    textTransform: "uppercase",
+  },
+  statSideLabelRight: { textAlign: "right" },
   statVal: {
     fontFamily: "Inter_700Bold",
-    fontSize: 14,
+    fontSize: 16,
     color: COLORS.textSecondary,
-    width: 42,
-    textAlign: "center",
+    width: 56,
+    textAlign: "left",
   },
   statValRight: {
-    textAlign: "center",
+    textAlign: "right",
   },
+  statValHome: { color: COLORS.accent },
+  statValAway: { color: "#5B8DEF" },
   statValWinner: {
     color: COLORS.text,
     fontFamily: "Inter_800ExtraBold",
-    fontSize: 15,
+    fontSize: 17,
   },
-  statBarContainer: { flex: 1, alignItems: "center", gap: 4 },
+  statBarContainer: { flex: 1, alignItems: "center", gap: 6 },
   statName: {
     fontFamily: "Inter_600SemiBold",
     fontSize: 10,
-    color: COLORS.textMuted,
+    color: COLORS.text,
     textAlign: "center",
-    letterSpacing: 0.5,
+    letterSpacing: 0.8,
     textTransform: "uppercase",
   },
   statBarsWrapper: {
     flexDirection: "row",
     alignItems: "center",
     width: "100%",
-    height: 5,
+    height: 7,
   },
   statBarHalf: {
     flex: 1,
     flexDirection: "row",
-    height: 5,
-    borderRadius: 2.5,
+    height: 7,
+    borderRadius: 3.5,
     overflow: "hidden",
     backgroundColor: "rgba(255,255,255,0.05)",
   },
   statBarHomeFill: {
-    height: 5,
+    height: 7,
     backgroundColor: COLORS.accent,
-    borderRadius: 2.5,
+    borderRadius: 3.5,
   },
   statBarCenterGap: {
-    width: 2,
+    width: 4,
   },
   statBarAwayFill: {
-    height: 5,
+    height: 7,
     backgroundColor: "#5B8DEF",
-    borderRadius: 2.5,
+    borderRadius: 3.5,
   },
   statDivider: {
     height: StyleSheet.hairlineWidth,
@@ -3643,12 +3903,12 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: COLORS.card,
-    borderRadius: 16,
+    borderRadius: 20,
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.08)",
-    padding: 13,
+    padding: 15,
     marginBottom: 16,
-    gap: 8,
+    gap: 10,
   },
   lineupTeamSide: {
     flex: 1,
@@ -3658,12 +3918,12 @@ const styles = StyleSheet.create({
   },
   lineupTeamName: {
     fontFamily: "Inter_700Bold",
-    fontSize: 13,
+    fontSize: 14,
     color: COLORS.text,
   },
   lineupFormation: {
     fontFamily: "Inter_500Medium",
-    fontSize: 10,
+    fontSize: 11,
     color: COLORS.accent,
     marginTop: 1,
   },
@@ -3903,166 +4163,243 @@ const styles = StyleSheet.create({
   metaBadgeLabel: { fontFamily: "Inter_400Regular", fontSize: 10, color: COLORS.textMuted },
   metaBadgeValue: { fontFamily: "Inter_700Bold", fontSize: 12, color: COLORS.text },
   combinedPitch: {
-    borderRadius: 16,
+    borderRadius: 22,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.15)",
-    paddingVertical: 12,
-    paddingHorizontal: 10,
-    gap: 4,
+    borderColor: "rgba(255,255,255,0.14)",
+    paddingVertical: 14,
+    paddingHorizontal: 12,
+    gap: 10,
     overflow: "hidden",
     position: "relative",
-    alignItems: "center",
+    alignItems: "stretch",
     alignSelf: "center",
     width: "100%",
     maxWidth: 460,
-    minHeight: 520,
+    minHeight: 420,
   },
-  combinedPitchRow: {
-    flexDirection: "row",
-    justifyContent: "center",
-    alignItems: "center",
-    alignSelf: "stretch",
-    zIndex: 2,
-    paddingHorizontal: 0,
-    minHeight: 52,
-    gap: 4,
+  pitchFieldBorder: {
+    position: "absolute",
+    top: 10,
+    left: 10,
+    right: 10,
+    bottom: 10,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.26)",
+    borderRadius: 18,
   },
-  pitchDivider: {
+  pitchVerticalCenterLine: {
+    position: "absolute",
+    top: 10,
+    bottom: 10,
+    left: "50%",
+    width: 1,
+    marginLeft: -0.5,
+    backgroundColor: "rgba(255,255,255,0.22)",
+  },
+  pitchHorizontalCenterLine: {
+    position: "absolute",
+    left: 10,
+    right: 10,
+    top: "50%",
     height: 1,
-    backgroundColor: "rgba(255,255,255,0.34)",
-    marginHorizontal: 18,
-    marginVertical: 8,
-    zIndex: 2,
+    marginTop: -0.5,
+    backgroundColor: "rgba(255,255,255,0.12)",
   },
-  pitchTeamLabelRow: {
+  pitchCenterCircleWide: {
+    position: "absolute",
+    width: 84,
+    height: 84,
+    borderRadius: 42,
+    left: "50%",
+    top: "50%",
+    marginLeft: -42,
+    marginTop: -42,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.22)",
+  },
+  pitchCenterSpotWide: {
+    position: "absolute",
+    left: "50%",
+    top: "50%",
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    marginLeft: -3,
+    marginTop: -3,
+    backgroundColor: "rgba(255,255,255,0.26)",
+  },
+  pitchPenaltyBoxLeft: {
+    position: "absolute",
+    left: 10,
+    top: "22%",
+    width: "14%",
+    height: "56%",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.2)",
+    borderLeftWidth: 0,
+  },
+  pitchGoalBoxLeft: {
+    position: "absolute",
+    left: 10,
+    top: "35%",
+    width: "6.5%",
+    height: "30%",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.2)",
+    borderLeftWidth: 0,
+  },
+  pitchPenaltyBoxRight: {
+    position: "absolute",
+    right: 10,
+    top: "22%",
+    width: "14%",
+    height: "56%",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.2)",
+    borderRightWidth: 0,
+  },
+  pitchGoalBoxRight: {
+    position: "absolute",
+    right: 10,
+    top: "35%",
+    width: "6.5%",
+    height: "30%",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.2)",
+    borderRightWidth: 0,
+  },
+  pitchArcLeft: {
+    position: "absolute",
+    left: "14%",
+    top: "41%",
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.18)",
+    borderLeftWidth: 0,
+  },
+  pitchArcRight: {
+    position: "absolute",
+    right: "14%",
+    top: "41%",
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.18)",
+    borderRightWidth: 0,
+  },
+  pitchTopTeamsRow: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
-    gap: 6,
+    justifyContent: "space-between",
+    gap: 10,
     zIndex: 2,
-    paddingVertical: 2,
   },
-  pitchTeamLabel: {
+  pitchTopTeamCard: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: "rgba(0,0,0,0.22)",
+    borderRadius: 14,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.08)",
+  },
+  pitchTopTeamName: {
     fontFamily: "Inter_700Bold",
-    fontSize: 10,
-    letterSpacing: 1,
+    fontSize: 11,
+    textTransform: "uppercase",
+    letterSpacing: 0.7,
   },
-  pitchFormLabel: {
+  pitchTopTeamMeta: {
     fontFamily: "Inter_500Medium",
+    fontSize: 10,
+    color: "rgba(255,255,255,0.56)",
+    marginTop: 2,
+  },
+  pitchTopBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: "rgba(255,255,255,0.06)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.08)",
+  },
+  pitchTopBadgeText: {
+    fontFamily: "Inter_700Bold",
     fontSize: 9,
-    color: "rgba(255,255,255,0.5)",
+    color: COLORS.textMuted,
+    textTransform: "uppercase",
+    letterSpacing: 1.1,
   },
-  pitchTopArc: {
-    position: "absolute",
-    width: 88,
-    height: 44,
-    borderBottomLeftRadius: 44,
-    borderBottomRightRadius: 44,
+  pitchHorizontalFormationRow: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "stretch",
+    zIndex: 2,
+    gap: 10,
+  },
+  pitchHalfSide: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "stretch",
+    justifyContent: "space-evenly",
+    gap: 6,
+  },
+  pitchVerticalColumn: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "space-evenly",
+    gap: 4,
+    minHeight: 284,
+  },
+  pitchMiddleDividerCol: {
+    width: 28,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  pitchMidBadge: {
+    transform: [{ rotate: "-90deg" }],
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    backgroundColor: "rgba(0,0,0,0.22)",
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.18)",
-    borderTopWidth: 0,
-    top: 0,
-    left: "50%",
-    marginLeft: -44,
-    zIndex: 1,
+    borderColor: "rgba(255,255,255,0.08)",
   },
-  pitchBottomArc: {
-    position: "absolute",
-    width: 88,
-    height: 44,
-    borderTopLeftRadius: 44,
-    borderTopRightRadius: 44,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.18)",
-    borderBottomWidth: 0,
-    bottom: 0,
-    left: "50%",
-    marginLeft: -44,
-    zIndex: 1,
-  },
-  pitchCenterLine: {
-    position: "absolute",
-    left: 8,
-    right: 8,
-    top: "50%",
-    borderTopWidth: 1,
-    borderTopColor: "rgba(255,255,255,0.18)",
-    zIndex: 1,
-  },
-  pitchCenterCircleNew: {
-    position: "absolute",
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.18)",
-    left: "50%",
-    marginLeft: -30,
-    top: "50%",
-    marginTop: -30,
-    zIndex: 1,
-  },
-  pitchPenaltyBoxTop: {
-    position: "absolute",
-    width: "54%",
-    height: 58,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.14)",
-    borderTopWidth: 0,
-    top: 0,
-    left: "23%",
-    zIndex: 1,
-  },
-  pitchGoalBoxTop: {
-    position: "absolute",
-    width: "28%",
-    height: 28,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.14)",
-    borderTopWidth: 0,
-    top: 0,
-    left: "36%",
-    zIndex: 1,
-  },
-  pitchPenaltyBoxBottom: {
-    position: "absolute",
-    width: "54%",
-    height: 58,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.14)",
-    borderBottomWidth: 0,
-    bottom: 0,
-    left: "23%",
-    zIndex: 1,
-  },
-  pitchGoalBoxBottom: {
-    position: "absolute",
-    width: "28%",
-    height: 28,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.14)",
-    borderBottomWidth: 0,
-    bottom: 0,
-    left: "36%",
-    zIndex: 1,
+  pitchMidBadgeText: {
+    fontFamily: "Inter_700Bold",
+    fontSize: 9,
+    color: COLORS.textMuted,
+    textTransform: "uppercase",
+    letterSpacing: 1.1,
   },
   pitchDotWrap: {
     alignItems: "center",
-    gap: 2,
-    width: 62,
-    maxWidth: 62,
+    gap: 4,
+    width: 64,
+    maxWidth: 64,
     flexShrink: 0,
     paddingVertical: 2,
   },
   pitchDotCircle: {
-    width: 38,
-    height: 38,
-    borderRadius: 8,
+    width: 40,
+    height: 40,
+    borderRadius: 12,
     borderWidth: 1.5,
-    backgroundColor: "rgba(0,0,0,0.6)",
+    backgroundColor: "rgba(0,0,0,0.5)",
     alignItems: "center",
     justifyContent: "center",
     overflow: "hidden",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.18,
+    shadowRadius: 8,
+    elevation: 3,
   },
   pitchDotPhoto: {
     width: 35,
@@ -4077,7 +4414,7 @@ const styles = StyleSheet.create({
   pitchDotName: {
     fontFamily: "Inter_500Medium",
     fontSize: 8,
-    color: "rgba(255,255,255,0.85)",
+    color: "rgba(255,255,255,0.88)",
     textAlign: "center",
   },
   // AI redesign styles
