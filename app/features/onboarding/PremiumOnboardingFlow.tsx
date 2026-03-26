@@ -218,7 +218,7 @@ export function PremiumOnboardingFlow({ mode = "first-launch", onFinished }: Pre
         badge={mode === "editor" ? "Updating experience" : "Finalizing setup"}
         title="Building your premium home"
         subtitle={preload.message || LOADING_MESSAGES[loadingMessageIndex]}
-        progress={preload.progress}
+        progress={Math.max(8, preload.progress)}
       />
     );
   }
@@ -239,7 +239,7 @@ export function PremiumOnboardingFlow({ mode = "first-launch", onFinished }: Pre
 
         {step === 1 ? (
           <View style={styles.heroCard}>
-            <PulseBrandMark size={86} wordmarkText="NEXORA" subtitle="Premium media workspace" />
+            <PulseBrandMark size={86} subtitle="Your premium streaming hub" />
             <Text style={styles.heroEyebrow}>One subscription layer. Zero noise.</Text>
             <Text style={styles.heroTitle}>All your content. One place.</Text>
             <Text style={styles.heroBody}>
