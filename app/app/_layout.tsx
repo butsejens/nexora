@@ -466,11 +466,19 @@ export default function RootLayout() {
             if (!result?.uri) throw new Error("Download mislukt");
 
             const contentUri = await FileSystem.getContentUriAsync(result.uri);
-            await IntentLauncher.startActivityAsync("android.intent.action.VIEW", {
-              data: contentUri,
-              type: "application/vnd.android.package-archive",
-              flags: 1, // FLAG_GRANT_READ_URI_PERMISSION
-            });
+            try {
+              await IntentLauncher.startActivityAsync("android.intent.action.INSTALL_PACKAGE", {
+                data: contentUri,
+                type: "application/vnd.android.package-archive",
+                flags: 268435457, // FLAG_ACTIVITY_NEW_TASK | FLAG_GRANT_READ_URI_PERMISSION
+              });
+            } catch {
+              await IntentLauncher.startActivityAsync("android.intent.action.VIEW", {
+                data: contentUri,
+                type: "application/vnd.android.package-archive",
+                flags: 268435457, // FLAG_ACTIVITY_NEW_TASK | FLAG_GRANT_READ_URI_PERMISSION
+              });
+            }
           } catch {
             // Fallback: open download URL in browser
             try { await Linking.openURL(normalized); } catch {}
