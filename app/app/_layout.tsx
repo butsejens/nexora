@@ -32,7 +32,6 @@ import { COLORS } from "@/constants/colors";
 import {
   preloadDiskCache,
   cacheSet,
-  cacheGet,
   cacheGetStale,
   TTL,
 } from "@/lib/app-cache";
@@ -637,8 +636,6 @@ export default function RootLayout() {
       stopKeepAlive();
     };
   }, [bootDone]);
-
-  const fontsReady = fontsLoaded || fontFallbackReady;
 
   // === RENDER PHASES ===
 

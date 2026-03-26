@@ -2,10 +2,9 @@
  * More Menu - Bottom navigation More screen with all features
  */
 
-import React, { useState } from 'react';
+import React from 'react';
 import {
   View,
-  ScrollView,
   Text,
   TouchableOpacity,
   StyleSheet,
@@ -13,7 +12,7 @@ import {
   SectionList,
   Switch,
 } from 'react-native';
-import { designTokens, componentTokens } from '@/constants/design-tokens';
+import { designTokens } from '@/constants/design-tokens';
 import { useModulePreferences } from '@/store/module-preferences';
 import { useFollowStore } from '@/store/follow-store';
 import { Ionicons } from '@expo/vector-icons';

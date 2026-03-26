@@ -2,7 +2,7 @@
  * Notifications Screen - Route accessible from tab + More menu
  */
 
-import React, { useEffect } from 'react';
+import React from 'react';
 import { router } from 'expo-router';
 import { NotificationCenter } from '@/components/NotificationCenter';
 
