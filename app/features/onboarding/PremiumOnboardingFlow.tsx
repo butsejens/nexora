@@ -13,6 +13,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { PulseBrandMark } from "@/components/brand/PulseBrandMark";
 import { PulseLaunchScreen } from "@/components/brand/PulseLaunchScreen";
+import { COLORS } from "@/constants/colors";
 import {
   SPORT_OPTIONS,
   getCompetitionSeedsForSports,
@@ -35,7 +36,7 @@ type PremiumOnboardingFlowProps = {
   onFinished?: () => void;
 };
 
-const STEP_TOTAL = 8;
+const STEP_TOTAL = 9;
 
 const LOADING_MESSAGES = [
   "Sequencing your premium rails",
@@ -44,10 +45,10 @@ const LOADING_MESSAGES = [
   "Tuning notifications for the right moments",
 ];
 
-function StepDots({ step }: { step: number }) {
+function StepDots({ step, total }: { step: number; total: number }) {
   return (
     <View style={styles.stepDots}>
-      {Array.from({ length: STEP_TOTAL }).map((_, index) => {
+      {Array.from({ length: total }).map((_, index) => {
         const active = index === step - 1;
         const complete = index < step - 1;
         return <View key={index} style={[styles.stepDot, active ? styles.stepDotActive : null, complete ? styles.stepDotComplete : null]} />;
@@ -97,8 +98,20 @@ export function PremiumOnboardingFlow({ mode = "first-launch", onFinished }: Pre
   const [step, setStep] = useState(1);
   const [teamQuery, setTeamQuery] = useState("");
   const [competitionQuery, setCompetitionQuery] = useState("");
+  const [movieSignals, setMovieSignals] = useState<string[]>(["movies", "series"]);
   const [loadingMessageIndex, setLoadingMessageIndex] = useState(0);
   const [isFinishing, setIsFinishing] = useState(false);
+
+  const stepOrder = useMemo(() => {
+    const allSteps = Array.from({ length: STEP_TOTAL }, (_, index) => index + 1);
+    return allSteps.filter((candidate) => {
+      if (!sportsEnabled && (candidate === 3 || candidate === 4 || candidate === 5)) return false;
+      if (!moviesEnabled && candidate === 8) return false;
+      return true;
+    });
+  }, [moviesEnabled, sportsEnabled]);
+
+  const visualStep = Math.max(1, stepOrder.indexOf(step) + 1);
 
   const teamSuggestions = useMemo(
     () => getSmartTeamSuggestions(selectedSports, localeSignals, 8),
@@ -120,7 +133,7 @@ export function PremiumOnboardingFlow({ mode = "first-launch", onFinished }: Pre
   );
 
   useEffect(() => {
-    if (step !== 8) return;
+    if (step !== 9) return;
     const interval = setInterval(() => {
       setLoadingMessageIndex((value) => (value + 1) % LOADING_MESSAGES.length);
     }, 900);
@@ -128,7 +141,12 @@ export function PremiumOnboardingFlow({ mode = "first-launch", onFinished }: Pre
   }, [step]);
 
   useEffect(() => {
-    if (step !== 8 || isFinishing) return;
+    if (stepOrder.includes(step)) return;
+    setStep(stepOrder[stepOrder.length - 1] || 1);
+  }, [step, stepOrder]);
+
+  useEffect(() => {
+    if (step !== 9 || isFinishing) return;
 
     let cancelled = false;
     setIsFinishing(true);
@@ -172,24 +190,29 @@ export function PremiumOnboardingFlow({ mode = "first-launch", onFinished }: Pre
   ]);
 
   const canAdvance = useMemo(() => {
+    if (step === 1) return true;
     if (step === 2) return true;
-    if (step === 3) return !sportsEnabled || selectedSports.length > 0;
-    if (step === 4) return !sportsEnabled || selectedTeams.length > 0;
-    if (step === 5) return !sportsEnabled || selectedCompetitions.length > 0;
-    return step < 8;
-  }, [selectedCompetitions.length, selectedSports.length, selectedTeams.length, sportsEnabled, step]);
+    if (step === 3) return selectedSports.length > 0;
+    if (step === 4) return selectedTeams.length > 0;
+    if (step === 5) return selectedCompetitions.length > 0;
+    if (step === 8) return movieSignals.length > 0;
+    return step < 9;
+  }, [movieSignals.length, selectedCompetitions.length, selectedSports.length, selectedTeams.length, step]);
 
   const next = () => {
-    if (!canAdvance || step >= 8) return;
-    setStep((value) => value + 1);
+    if (!canAdvance) return;
+    const currentIndex = stepOrder.indexOf(step);
+    if (currentIndex < 0 || currentIndex >= stepOrder.length - 1) return;
+    setStep(stepOrder[currentIndex + 1]);
   };
 
   const back = () => {
-    if (step <= 1) return;
-    setStep((value) => value - 1);
+    const currentIndex = stepOrder.indexOf(step);
+    if (currentIndex <= 0) return;
+    setStep(stepOrder[currentIndex - 1]);
   };
 
-  if (step === 8) {
+  if (step === 9) {
     return (
       <PulseLaunchScreen
         badge={mode === "editor" ? "Updating experience" : "Finalizing setup"}
@@ -206,7 +229,7 @@ export function PremiumOnboardingFlow({ mode = "first-launch", onFinished }: Pre
       <View style={styles.backgroundOrbBottom} />
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         <View style={styles.headerRow}>
-          <StepDots step={step} />
+          <StepDots step={visualStep} total={stepOrder.length} />
           {step > 1 ? (
             <Pressable onPress={back} hitSlop={8} style={styles.backButton}>
               <Ionicons name="arrow-back" size={18} color="#F4F5F7" />
@@ -350,8 +373,8 @@ export function PremiumOnboardingFlow({ mode = "first-launch", onFinished }: Pre
                     <Switch
                       value={notifications[prefKey]}
                       onValueChange={(value) => setNotifications({ [prefKey]: value })}
-                      trackColor={{ false: "rgba(255,255,255,0.15)", true: "rgba(255,90,95,0.4)" }}
-                      thumbColor={notifications[prefKey] ? "#FF5A5F" : "#F4F5F7"}
+                      trackColor={{ false: "rgba(255,255,255,0.15)", true: "rgba(229,9,20,0.4)" }}
+                      thumbColor={notifications[prefKey] ? COLORS.accent : "#F4F5F7"}
                     />
                   </View>
                 );
@@ -372,7 +395,51 @@ export function PremiumOnboardingFlow({ mode = "first-launch", onFinished }: Pre
           </View>
         ) : null}
 
-        {step < 8 ? (
+        {step === 8 ? (
+          <View style={styles.contentCard}>
+            <Text style={styles.sectionEyebrow}>Step 8</Text>
+            <Text style={styles.sectionTitle}>What do you want to watch most?</Text>
+            <Text style={styles.sectionBody}>Pick your entertainment profile. This helps tune recommendations on your home rails.</Text>
+            <View style={styles.selectionWrap}>
+              {[
+                { key: "movies", label: "Movies", sublabel: "Cinema and new releases" },
+                { key: "series", label: "Series", sublabel: "Binge and episodic picks" },
+                { key: "documentaries", label: "Documentaries", sublabel: "Sports docs and true stories" },
+                { key: "anime", label: "Anime", sublabel: "Popular and trending titles" },
+              ].map((item) => {
+                const active = movieSignals.includes(item.key);
+                return (
+                  <ChoiceChip
+                    key={item.key}
+                    active={active}
+                    label={item.label}
+                    sublabel={item.sublabel}
+                    onPress={() => {
+                      setMovieSignals((prev) => (
+                        prev.includes(item.key)
+                          ? prev.filter((entry) => entry !== item.key)
+                          : [...prev, item.key]
+                      ));
+                    }}
+                  />
+                );
+              })}
+            </View>
+            <View style={styles.preferenceRow}>
+              <View style={styles.preferenceTextWrap}>
+                <Text style={styles.preferenceLabel}>Notify me about new episodes and premieres</Text>
+              </View>
+              <Switch
+                value={notifications.news}
+                onValueChange={(value) => setNotifications({ news: value })}
+                trackColor={{ false: "rgba(255,255,255,0.15)", true: "rgba(229,9,20,0.4)" }}
+                thumbColor={notifications.news ? COLORS.accent : "#F4F5F7"}
+              />
+            </View>
+          </View>
+        ) : null}
+
+        {step < 9 ? (
           <View style={styles.footer}>
             <Text style={styles.footerHint}>
               {mode === "editor" ? "Changes apply immediately after final setup." : "This only takes a moment and improves the first load experience."}
@@ -383,7 +450,7 @@ export function PremiumOnboardingFlow({ mode = "first-launch", onFinished }: Pre
           </View>
         ) : null}
       </ScrollView>
-      {isFinishing && step === 8 ? (
+      {isFinishing && step === 9 ? (
         <View style={styles.loadingOverlay}>
           <ActivityIndicator size="small" color="#FF5A5F" />
         </View>
@@ -395,7 +462,7 @@ export function PremiumOnboardingFlow({ mode = "first-launch", onFinished }: Pre
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: "#090B10",
+    backgroundColor: COLORS.background,
   },
   backgroundOrbTop: {
     position: "absolute",
@@ -404,7 +471,7 @@ const styles = StyleSheet.create({
     width: 220,
     height: 220,
     borderRadius: 220,
-    backgroundColor: "rgba(255,90,95,0.12)",
+    backgroundColor: COLORS.accentGlow,
   },
   backgroundOrbBottom: {
     position: "absolute",
@@ -413,7 +480,7 @@ const styles = StyleSheet.create({
     width: 240,
     height: 240,
     borderRadius: 240,
-    backgroundColor: "rgba(77,226,255,0.12)",
+    backgroundColor: "rgba(229,9,20,0.14)",
   },
   scrollContent: {
     paddingHorizontal: 22,
@@ -438,17 +505,17 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(255,255,255,0.14)",
   },
   stepDotActive: {
-    backgroundColor: "#F6B36C",
+    backgroundColor: COLORS.accent,
     width: 34,
   },
   stepDotComplete: {
-    backgroundColor: "#FF5A5F",
+    backgroundColor: COLORS.accent,
   },
   backButton: {
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: "rgba(255,255,255,0.08)",
+    backgroundColor: COLORS.card,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -457,7 +524,7 @@ const styles = StyleSheet.create({
     gap: 20,
   },
   heroEyebrow: {
-    color: "#F6B36C",
+    color: COLORS.accent,
     fontSize: 12,
     fontWeight: "700",
     letterSpacing: 1.6,
@@ -483,8 +550,8 @@ const styles = StyleSheet.create({
   heroPreviewCard: {
     borderRadius: 24,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.08)",
-    backgroundColor: "rgba(255,255,255,0.03)",
+    borderColor: COLORS.borderLight,
+    backgroundColor: COLORS.card,
     padding: 18,
     gap: 8,
   },
@@ -501,13 +568,13 @@ const styles = StyleSheet.create({
     marginTop: 18,
     borderRadius: 28,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.08)",
-    backgroundColor: "rgba(255,255,255,0.04)",
+    borderColor: COLORS.borderLight,
+    backgroundColor: COLORS.surface,
     padding: 20,
     gap: 16,
   },
   sectionEyebrow: {
-    color: "#F6B36C",
+    color: COLORS.accent,
     fontSize: 12,
     fontWeight: "700",
     letterSpacing: 1.4,
@@ -530,15 +597,15 @@ const styles = StyleSheet.create({
   choiceChip: {
     borderRadius: 20,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.08)",
-    backgroundColor: "rgba(255,255,255,0.03)",
+    borderColor: COLORS.borderLight,
+    backgroundColor: COLORS.card,
     paddingHorizontal: 16,
     paddingVertical: 14,
     gap: 6,
   },
   choiceChipActive: {
-    backgroundColor: "#FF5A5F",
-    borderColor: "#FF5A5F",
+    backgroundColor: COLORS.accent,
+    borderColor: COLORS.accent,
   },
   choiceChipLabel: {
     color: "#F7F7FB",
@@ -565,14 +632,14 @@ const styles = StyleSheet.create({
     minHeight: 94,
     borderRadius: 22,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.08)",
-    backgroundColor: "rgba(255,255,255,0.03)",
+    borderColor: COLORS.borderLight,
+    backgroundColor: COLORS.card,
     padding: 16,
     justifyContent: "space-between",
   },
   sportCardActive: {
-    backgroundColor: "#FF5A5F",
-    borderColor: "#FF5A5F",
+    backgroundColor: COLORS.accent,
+    borderColor: COLORS.accent,
   },
   disabledCard: {
     opacity: 0.45,
@@ -593,8 +660,8 @@ const styles = StyleSheet.create({
   searchInput: {
     borderRadius: 18,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.08)",
-    backgroundColor: "rgba(255,255,255,0.03)",
+    borderColor: COLORS.borderLight,
+    backgroundColor: COLORS.card,
     paddingHorizontal: 16,
     paddingVertical: 14,
     color: "#F7F7FB",
@@ -619,8 +686,8 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     borderRadius: 18,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.08)",
-    backgroundColor: "rgba(255,255,255,0.03)",
+    borderColor: COLORS.borderLight,
+    backgroundColor: COLORS.card,
     paddingHorizontal: 16,
     paddingVertical: 14,
   },
@@ -648,7 +715,7 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#FF5A5F",
+    backgroundColor: COLORS.accent,
   },
   primaryButtonDisabled: {
     opacity: 0.45,

@@ -29,7 +29,7 @@ export function PulseLaunchScreen({ title, subtitle, progress = 0, badge }: Puls
       <View style={styles.auroraTop} />
       <View style={styles.auroraBottom} />
       <Animated.View style={[styles.center, { opacity: glow }]}>
-        <PulseBrandMark subtitle="Curated premium access" />
+        <PulseBrandMark wordmarkText="NEXORA" subtitle="Curated premium access" />
       </Animated.View>
       <View style={styles.content}>
         {badge ? <Text style={styles.badge}>{badge}</Text> : null}

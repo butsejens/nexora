@@ -5,9 +5,10 @@ type PulseBrandMarkProps = {
   size?: number;
   showWordmark?: boolean;
   subtitle?: string | null;
+  wordmarkText?: string;
 };
 
-function PulseBrandMarkComponent({ size = 72, showWordmark = true, subtitle = null }: PulseBrandMarkProps) {
+function PulseBrandMarkComponent({ size = 72, showWordmark = true, subtitle = null, wordmarkText = "PULSE" }: PulseBrandMarkProps) {
   const ringSize = size;
   const coreSize = Math.round(size * 0.62);
   const dotSize = Math.max(10, Math.round(size * 0.16));
@@ -23,7 +24,7 @@ function PulseBrandMarkComponent({ size = 72, showWordmark = true, subtitle = nu
       </View>
       {showWordmark ? (
         <View style={styles.wordmarkWrap}>
-          <Text style={styles.wordmark}>PULSE</Text>
+          <Text style={styles.wordmark}>{wordmarkText}</Text>
           <Text style={styles.wordmarkSub}>{subtitle || "Premium streaming hub"}</Text>
         </View>
       ) : null}

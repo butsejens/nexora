@@ -512,7 +512,7 @@ export default function RootLayout() {
   if (!bootDone) {
     content = (
       <PulseLaunchScreen
-        badge="Starting Pulse"
+        badge="Starting Nexora"
         title="Preparing your premium workspace"
         subtitle={bootMessage}
         progress={bootProgress}
