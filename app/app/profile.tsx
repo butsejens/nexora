@@ -40,6 +40,17 @@ import { useOnboardingStore } from "@/store/onboarding-store";
 
 const CHANGELOG: { version: string; date: string; changes: string[] }[] = [
   {
+    version: "2.6.0",
+    date: "2026-03-26",
+    changes: [
+      "Nieuwe premium Movies & Series module met HOME, SEARCH en MORE navigatie",
+      "Stap 1: automatische categorisatie op basis van genres, keywords, metadata en tags",
+      "Stap 2: collections/franchises toegevoegd (o.a. Star Wars, Harry Potter, Marvel) met chronologische volgorde oud -> nieuw",
+      "Stap 3: studio-sectie toegevoegd met klikbare studio's en gegroepeerde titels",
+      "Nieuwe collectie- en studiopagina's voor dieper browsen vanuit de module",
+    ],
+  },
+  {
     version: "2.5.39",
     date: "2026-03-20",
     changes: [
