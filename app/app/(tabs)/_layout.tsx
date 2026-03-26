@@ -201,11 +201,11 @@ export default function TabLayout() {
           ) : null,
       }}
     >
-      {/* Home Tab - Only show if sports enabled */}
+      {/* Home Tab - show when sports or movies enabled */}
       <Tabs.Screen
         name="index"
         options={{
-          href: sportsEnabled ? undefined : null,
+          href: (sportsEnabled || moviesEnabled) ? undefined : null,
           title: t("tabs.home") || "Home",
           tabBarIcon: ({ focused }) => (
             <TabIcon focused={focused} accentColor={COLORS.accent}>

@@ -28,7 +28,7 @@ import { resolveMatchBucket } from "@/lib/match-state";
 import { buildGroundedMatchAnalysis } from "@/lib/match-analysis-engine";
 import { toCanonicalMatch } from "@/lib/canonical-match";
 import { normalizeTeamName, tokenOverlapScore } from "@/lib/entity-normalization";
-import { cacheGetStale, cacheSet, TTL } from "@/lib/app-cache";
+import { cacheGetStale, cacheSet, CacheTTL } from "@/lib/services/cache-service";
 const BLOCK_POPUP_JS = `
 (function(){
   // Patch removeChild to never throw — prevents DOMException crashes
@@ -313,7 +313,7 @@ export default function MatchDetailScreen() {
       const stale = cacheGetStale<any>(key);
       try {
         const payload = await apiRequestJson<any>(`/api/sports/match/${params.matchId}?sport=${espnSport}&league=${espnLeague}`);
-        cacheSet(key, payload, TTL.DETAIL);
+        cacheSet(key, payload, CacheTTL.MATCH_DETAIL);
         return payload;
       } catch (error) {
         if (stale) return stale;

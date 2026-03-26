@@ -5,7 +5,6 @@ import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { BlurView } from "expo-blur";
 import { COLORS } from "@/constants/colors";
-import { PulseBrandMark } from "@/components/brand/PulseBrandMark";
 
 interface Props {
   title?: string;
@@ -74,7 +73,7 @@ export function NexoraHeader({
           </View>
         ) : (
           <>
-            <PulseBrandMark size={28} showWordmark={false} />
+            <Text style={[styles.logoText, styles.logoTextCompact]}><Text style={styles.logoTextAccent}>N</Text>EXORA</Text>
             {title ? <Text style={[styles.sectionTitleCompact, titleColor ? { color: titleColor } : null]}>{title}</Text> : null}
             {badgeLabel ? (
               <View
@@ -128,13 +127,7 @@ export function NexoraHeader({
         ) : (
           <>
             <View style={styles.logoTopRow}>
-              <View style={styles.brandLockup}>
-                <PulseBrandMark size={34} showWordmark={false} />
-                <View>
-                  <Text style={styles.logoText}>NEXORA</Text>
-                  <Text style={styles.logoSubText}>Premium Streaming Hub</Text>
-                </View>
-              </View>
+              <Text style={styles.logoText}><Text style={styles.logoTextAccent}>N</Text>EXORA</Text>
               {badgeLabel ? (
                 <View
                   style={[
@@ -208,14 +201,14 @@ const stylesModule = {
 const styles = StyleSheet.create({
   container: {
     paddingHorizontal: 16,
-    paddingBottom: 8,
+    paddingBottom: 4,
     backgroundColor: COLORS.background,
     borderBottomWidth: 1,
     borderBottomColor: COLORS.border,
   },
   containerModule: {
     paddingHorizontal: 28,
-    paddingBottom: 14,
+    paddingBottom: 10,
     borderBottomColor: "rgba(255,255,255,0.08)",
   },
   flatWrap: {
@@ -267,18 +260,19 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   logoText: {
-    fontSize: 22,
-    lineHeight: 24,
-    letterSpacing: 0.9,
+    fontSize: 20,
+    lineHeight: 22,
+    letterSpacing: 2,
     fontFamily: "Inter_800ExtraBold",
     color: COLORS.text,
   },
-  logoSubText: {
-    fontSize: 11,
-    lineHeight: 14,
-    letterSpacing: 0.3,
-    fontFamily: "Inter_600SemiBold",
-    color: COLORS.textSecondary,
+  logoTextAccent: {
+    color: COLORS.accent,
+  },
+  logoTextCompact: {
+    fontSize: 16,
+    lineHeight: 18,
+    letterSpacing: 1.5,
   },
   moduleWordmark: {
     fontSize: 44,

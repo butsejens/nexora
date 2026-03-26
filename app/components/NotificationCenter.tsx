@@ -11,11 +11,11 @@ import {
   TouchableOpacity,
   StyleSheet,
   SafeAreaView,
-  FlatList,
 } from 'react-native';
 import { designTokens } from '@/constants/design-tokens';
-import { useFollowStore } from '@/store/follow-store';
 import { Ionicons } from '@expo/vector-icons';
+import { useFollowState } from '@/context/UserStateContext';
+import { useOnboardingStore } from '@/store/onboarding-store';
 
 interface NotificationCenterProps {
   onClose: () => void;
@@ -23,33 +23,11 @@ interface NotificationCenterProps {
 }
 
 export function NotificationCenter({ onClose, onNavigate }: NotificationCenterProps) {
-  const {
-    followed,
-    notifications,
-    markAsRead,
-    deleteNotification,
-    markAllAsRead,
-    initializeNotifications,
-    removeFollow,
-  } =
-    useFollowStore();
+  const { followedTeams, followedMatches, unfollowTeamAction, unfollowMatchAction } = useFollowState();
+  const notificationPrefs = useOnboardingStore((state) => state.notifications);
   const [selectedTab, setSelectedTab] = useState<'followed' | 'alerts'>('alerts');
 
-  useEffect(() => {
-    initializeNotifications();
-  }, [initializeNotifications]);
-
-  const followedTeams = followed.filter((f) => f.type === 'team');
-  const followedMatches = followed.filter((f) => f.type === 'match');
-  const unreadNotifications = notifications.filter((n) => !n.read);
-
-  const handleMarkAsRead = (id: string) => {
-    markAsRead(id);
-  };
-
-  const handleDeleteNotification = (id: string) => {
-    deleteNotification(id);
-  };
+  const alertsEnabledCount = [notificationPrefs.matches, notificationPrefs.goals, notificationPrefs.lineups].filter(Boolean).length;
 
   const styles = StyleSheet.create({
     container: {
@@ -179,75 +157,54 @@ export function NotificationCenter({ onClose, onNavigate }: NotificationCenterPr
       color: designTokens.colors.primary,
     },
 
-    // Notifications
-    notificationsList: {
+    // Alerts summary
+    alertsContent: {
       padding: designTokens.spacing.lg,
+      gap: designTokens.spacing.md,
     },
-    notificationItem: {
+    alertCard: {
       backgroundColor: designTokens.colors.surface,
       borderRadius: designTokens.radius.lg,
       padding: designTokens.spacing.md,
-      marginBottom: designTokens.spacing.md,
       borderWidth: 1,
       borderColor: designTokens.colors.border,
     },
-    notificationItemUnread: {
-      borderColor: designTokens.colors.primary,
-      backgroundColor: designTokens.colors.primaryDark,
-    },
-    notificationHeader: {
+    alertCardHeader: {
       flexDirection: 'row',
+      alignItems: 'center',
       justifyContent: 'space-between',
-      alignItems: 'flex-start',
       marginBottom: designTokens.spacing.sm,
     },
-    notificationTitle: {
+    alertTitle: {
       ...designTokens.typography.bodyLarge,
       color: designTokens.colors.textPrimary,
       fontWeight: '600',
-      flex: 1,
-      marginRight: designTokens.spacing.md,
     },
-    notificationBadge: {
-      width: 8,
-      height: 8,
-      borderRadius: designTokens.radius.full,
-      backgroundColor: designTokens.colors.primary,
-    },
-    notificationMessage: {
+    alertMessage: {
       ...designTokens.typography.body,
       color: designTokens.colors.textSecondary,
-      marginBottom: designTokens.spacing.sm,
+      lineHeight: 20,
     },
-    notificationFooter: {
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      alignItems: 'center',
+    manageButton: {
+      marginTop: designTokens.spacing.sm,
+      alignSelf: 'flex-start',
+      paddingHorizontal: designTokens.spacing.md,
+      paddingVertical: designTokens.spacing.sm,
+      borderRadius: designTokens.radius.md,
+      backgroundColor: designTokens.colors.primaryDark,
+      borderWidth: 1,
+      borderColor: designTokens.colors.primary,
     },
-    notificationTime: {
-      ...designTokens.typography.labelSmall,
-      color: designTokens.colors.textTertiary,
-    },
-    notificationActions: {
-      flexDirection: 'row',
-      gap: designTokens.spacing.sm,
-    },
-    actionButton: {
-      padding: designTokens.spacing.sm,
-    },
-
-    // Mark all as read button
-    markAllButton: {
-      paddingHorizontal: designTokens.spacing.lg,
-      paddingVertical: designTokens.spacing.md,
-      borderTopWidth: 1,
-      borderTopColor: designTokens.colors.border,
-    },
-    markAllButtonText: {
+    manageButtonText: {
       ...designTokens.typography.body,
       color: designTokens.colors.primary,
-      textAlign: 'center',
       fontWeight: '600',
+    },
+    statusDot: {
+      width: 10,
+      height: 10,
+      borderRadius: designTokens.radius.full,
+      backgroundColor: designTokens.colors.primary,
     },
   });
 
@@ -258,16 +215,16 @@ export function NotificationCenter({ onClose, onNavigate }: NotificationCenterPr
           <Text style={styles.sectionTitle}>Followed Teams</Text>
           <View style={styles.followedGrid}>
             {followedTeams.map((team) => (
-              <View key={team.id} style={styles.followedCard}>
+              <View key={String(team.teamId)} style={styles.followedCard}>
                 <View style={styles.followedCardImage}>
                   <Ionicons name="shield" size={24} color={designTokens.colors.primary} />
                 </View>
                 <Text style={styles.followedCardName} numberOfLines={2}>
-                  {team.name}
+                  {team.teamName}
                 </Text>
                 <TouchableOpacity
                   style={styles.unfollowButton}
-                  onPress={() => removeFollow(team.id)}
+                  onPress={() => void unfollowTeamAction(team.teamId)}
                 >
                   <Text style={styles.unfollowButtonText}>Unfollow</Text>
                 </TouchableOpacity>
@@ -282,8 +239,8 @@ export function NotificationCenter({ onClose, onNavigate }: NotificationCenterPr
           <Text style={styles.sectionTitle}>Followed Matches</Text>
           {followedMatches.map((match) => (
             <TouchableOpacity
-              key={match.id}
-              onPress={() => onNavigate('match-detail', { matchId: match.id })}
+              key={String(match.matchId)}
+              onPress={() => onNavigate('match-detail', { matchId: String(match.matchId), espnLeague: match.espnLeague || undefined })}
               style={{
                 flexDirection: 'row',
                 alignItems: 'center',
@@ -302,10 +259,13 @@ export function NotificationCenter({ onClose, onNavigate }: NotificationCenterPr
               >
                 <Ionicons name="play-circle" size={24} color={designTokens.colors.primary} />
                 <View>
-                  <Text style={styles.notificationTitle}>{match.name}</Text>
-                  <Text style={styles.notificationMessage}>{match.sport}</Text>
+                    <Text style={styles.alertTitle}>{match.homeTeam} vs {match.awayTeam}</Text>
+                    <Text style={styles.alertMessage}>{match.competition || 'Competition'}</Text>
                 </View>
               </View>
+                <TouchableOpacity style={styles.unfollowButton} onPress={() => void unfollowMatchAction(match.matchId)}>
+                  <Text style={styles.unfollowButtonText}>Unfollow</Text>
+                </TouchableOpacity>
               <Ionicons name="chevron-forward" size={20} color={designTokens.colors.textTertiary} />
             </TouchableOpacity>
           ))}
@@ -328,73 +288,36 @@ export function NotificationCenter({ onClose, onNavigate }: NotificationCenterPr
   );
 
   const renderAlertsTab = () => {
-    if (notifications.length === 0) {
-      return (
-        <View style={styles.emptyState}>
-          <Ionicons
-            name="notifications-outline"
-            size={48}
-            color={designTokens.colors.textTertiary}
-            style={styles.emptyIcon}
-          />
-          <Text style={styles.emptyText}>No notifications yet</Text>
-          <Text style={styles.emptySubtext}>You&apos;ll see alerts here as they happen</Text>
-        </View>
-      );
-    }
-
     return (
       <View style={styles.content}>
-        <FlatList
-          data={notifications}
-          keyExtractor={(item) => item.id}
-          renderItem={({ item }) => (
-            <View
-              style={[
-                styles.notificationItem,
-                !item.read && styles.notificationItemUnread,
-              ]}
-            >
-              <View style={styles.notificationHeader}>
-                <Text style={styles.notificationTitle} numberOfLines={2}>
-                  {item.title}
-                </Text>
-                {!item.read && <View style={styles.notificationBadge} />}
-              </View>
-              <Text style={styles.notificationMessage}>{item.message}</Text>
-              <View style={styles.notificationFooter}>
-                <Text style={styles.notificationTime}>
-                  {formatTime(item.timestamp)}
-                </Text>
-                <View style={styles.notificationActions}>
-                  {!item.read && (
-                    <TouchableOpacity
-                      style={styles.actionButton}
-                      onPress={() => handleMarkAsRead(item.id)}
-                    >
-                      <Ionicons name="checkmark-circle" size={20} color={designTokens.colors.primary} />
-                    </TouchableOpacity>
-                  )}
-                  <TouchableOpacity
-                    style={styles.actionButton}
-                    onPress={() => handleDeleteNotification(item.id)}
-                  >
-                    <Ionicons name="trash-outline" size={20} color={designTokens.colors.textTertiary} />
-                  </TouchableOpacity>
-                </View>
-              </View>
+        <ScrollView contentContainerStyle={styles.alertsContent} showsVerticalScrollIndicator={false}>
+          <View style={styles.alertCard}>
+            <View style={styles.alertCardHeader}>
+              <Text style={styles.alertTitle}>Match alert system</Text>
+              <View style={styles.statusDot} />
             </View>
-          )}
-          contentContainerStyle={styles.notificationsList}
-          scrollIndicatorInsets={{ right: 1 }}
-        />
-        {unreadNotifications.length > 0 && (
-          <View style={styles.markAllButton}>
-            <TouchableOpacity onPress={markAllAsRead}>
-              <Text style={styles.markAllButtonText}>Mark all as read</Text>
+            <Text style={styles.alertMessage}>
+              Live notifications are now driven by your followed matches and onboarding preferences.
+              Enabled categories: {alertsEnabledCount}/3.
+            </Text>
+            <TouchableOpacity style={styles.manageButton} onPress={() => onNavigate('follow-center')}>
+              <Text style={styles.manageButtonText}>Manage followed matches</Text>
             </TouchableOpacity>
           </View>
-        )}
+
+          <View style={styles.alertCard}>
+            <View style={styles.alertCardHeader}>
+              <Text style={styles.alertTitle}>Current configuration</Text>
+              <Ionicons name="options" size={16} color={designTokens.colors.textSecondary} />
+            </View>
+            <Text style={styles.alertMessage}>
+              Matches: {notificationPrefs.matches ? 'On' : 'Off'}\nGoals: {notificationPrefs.goals ? 'On' : 'Off'}\nLineups: {notificationPrefs.lineups ? 'On' : 'Off'}
+            </Text>
+            <TouchableOpacity style={styles.manageButton} onPress={() => onNavigate('settings')}>
+              <Text style={styles.manageButtonText}>Open notification settings</Text>
+            </TouchableOpacity>
+          </View>
+        </ScrollView>
       </View>
     );
   };
@@ -415,7 +338,7 @@ export function NotificationCenter({ onClose, onNavigate }: NotificationCenterPr
             onPress={() => setSelectedTab('alerts')}
           >
             <Text style={[styles.tabText, selectedTab === 'alerts' && styles.tabTextActive]}>
-              Alerts {unreadNotifications.length > 0 && `(${unreadNotifications.length})`}
+              Alerts
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
@@ -433,20 +356,4 @@ export function NotificationCenter({ onClose, onNavigate }: NotificationCenterPr
       {selectedTab === 'followed' && renderFollowedTab()}
     </SafeAreaView>
   );
-}
-
-function formatTime(timestamp: number): string {
-  const now = Date.now();
-  const diff = now - timestamp;
-  const minutes = Math.floor(diff / 60000);
-  const hours = Math.floor(diff / 3600000);
-  const days = Math.floor(diff / 86400000);
-
-  if (minutes < 1) return 'Just now';
-  if (minutes < 60) return `${minutes}m ago`;
-  if (hours < 24) return `${hours}h ago`;
-  if (days < 7) return `${days}d ago`;
-
-  const date = new Date(timestamp);
-  return date.toLocaleDateString();
 }

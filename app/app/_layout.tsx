@@ -14,6 +14,8 @@ import { Platform, Linking, AppState } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import { GestureHandlerRootView } from "react-native-gesture-handler";
+import { MatchAlertsBridge } from "@/components/MatchAlertsBridge";
+import { PersonalizationBridge } from "@/components/PersonalizationBridge";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { queryClient, getApiBaseCandidates, apiRequest, apiRequestJson, DEFAULT_RENDER_API_BASE } from "@/lib/query-client";
 import { startPlayerImageWarmup } from "@/lib/player-image-system";
@@ -30,11 +32,11 @@ import * as IntentLauncher from "expo-intent-launcher";
 import Constants from "expo-constants";
 import { COLORS } from "@/constants/colors";
 import {
-  preloadDiskCache,
   cacheSet,
   cacheGetStale,
-  TTL,
-} from "@/lib/app-cache";
+  CacheTTL,
+  cacheWarmup,
+} from "@/lib/services/cache-service";
 import { initializeMatchNotifications } from "@/lib/match-notifications";
 import { fetchSportsLeagueResourceWithFallback } from "@/lib/sports-data";
 import { useOnboardingStore } from "@/store/onboarding-store";
@@ -42,13 +44,13 @@ import { logStartupEvent, runStartupTask } from "@/services/startup-orchestrator
 
 // ─── Persistent cache keys (must match what screens useQuery with) ────────────
 const PREFETCH_ENTRIES = (today: string) => [
-  { queryKey: ["movies", "trending"],  cacheKey: "movies:trending",   ttlMs: TTL.TRENDING },
-  { queryKey: ["movies", "genres"],    cacheKey: "movies:genres",     ttlMs: TTL.GENRES   },
-  { queryKey: ["series", "trending"],  cacheKey: "series:trending",   ttlMs: TTL.TRENDING },
-  { queryKey: ["series", "genres"],    cacheKey: "series:genres",     ttlMs: TTL.GENRES   },
-  { queryKey: ["sports", "highlights"],cacheKey: "sports:highlights", ttlMs: TTL.HIGHLIGHTS},
-  { queryKey: ["sports", "today", today], cacheKey: `sports:today:${today}`, ttlMs: TTL.SPORTS_TODAY },
-  { queryKey: ["sports", "live",  today], cacheKey: `sports:live:${today}`,  ttlMs: TTL.LIVE },
+  { queryKey: ["movies", "trending"],  cacheKey: "movies:trending",   ttlMs: CacheTTL.HOME_RAILS },
+  { queryKey: ["movies", "genres"],    cacheKey: "movies:genres",     ttlMs: CacheTTL.TMDB_METADATA },
+  { queryKey: ["series", "trending"],  cacheKey: "series:trending",   ttlMs: CacheTTL.HOME_RAILS },
+  { queryKey: ["series", "genres"],    cacheKey: "series:genres",     ttlMs: CacheTTL.TMDB_METADATA },
+  { queryKey: ["sports", "highlights"],cacheKey: "sports:highlights", ttlMs: CacheTTL.MATCH_DETAIL },
+  { queryKey: ["sports", "today", today], cacheKey: `sports:today:${today}`, ttlMs: CacheTTL.TODAY_SPORTS },
+  { queryKey: ["sports", "live",  today], cacheKey: `sports:live:${today}`,  ttlMs: CacheTTL.LIVE_MATCH },
 ];
 
 const POPULAR_COMPETITIONS = [
@@ -104,7 +106,7 @@ async function prefetchMatchDetailEssentials(matches: any[]): Promise<void> {
         staleTime: 30_000,
         queryFn: async () => {
           const data = await apiRequestJson<any>(`/api/sports/match/${encodeURIComponent(matchId)}?sport=soccer&league=${encodeURIComponent(espnLeague)}`);
-          cacheSet(cacheKey, data, TTL.DETAIL);
+          cacheSet(cacheKey, data, CacheTTL.MATCH_DETAIL);
           return data;
         },
       });
@@ -163,8 +165,13 @@ function seedQueryClientFromCache() {
   }
 }
 
+let prefetchHomeDataInFlight: Promise<void> | null = null;
+
 // Prefetch key API data, writing results to both QueryClient and disk cache.
 function prefetchHomeData(): Promise<void> {
+  if (prefetchHomeDataInFlight) return prefetchHomeDataInFlight;
+
+  const run = async () => {
   const today = new Date().toISOString().slice(0, 10);
   const date = encodeURIComponent(today);
 
@@ -182,11 +189,11 @@ function prefetchHomeData(): Promise<void> {
 
   // Phase A (critical): first paint data for sports + home rails.
   const phaseATask = Promise.allSettled([
-    fetchAndCache(`/api/sports/live?date=${date}`, "sports:live:" + today, TTL.LIVE, ["sports", "live", today]),
-    fetchAndCache(`/api/sports/by-date?date=${date}`, `sports:today:${today}`, TTL.SPORTS_TODAY, ["sports", "today", today]),
-    fetchAndCache("/api/sports/highlights", "sports:highlights", TTL.HIGHLIGHTS, ["sports", "highlights"]),
-    fetchAndCache("/api/movies/trending", "movies:trending", TTL.TRENDING, ["movies", "trending"]),
-    fetchAndCache("/api/series/trending", "series:trending", TTL.TRENDING, ["series", "trending"]),
+    fetchAndCache(`/api/sports/live?date=${date}`, "sports:live:" + today, CacheTTL.LIVE_MATCH, ["sports", "live", today]),
+    fetchAndCache(`/api/sports/by-date?date=${date}`, `sports:today:${today}`, CacheTTL.TODAY_SPORTS, ["sports", "today", today]),
+    fetchAndCache("/api/sports/highlights", "sports:highlights", CacheTTL.MATCH_DETAIL, ["sports", "highlights"]),
+    fetchAndCache("/api/movies/trending", "movies:trending", CacheTTL.HOME_RAILS, ["movies", "trending"]),
+    fetchAndCache("/api/series/trending", "series:trending", CacheTTL.HOME_RAILS, ["series", "trending"]),
   ]);
 
   // Match detail essentials for likely next navigations.
@@ -202,14 +209,21 @@ function prefetchHomeData(): Promise<void> {
 
   // Phase B (background): enrich secondary tabs and warm server-side sports caches.
   setTimeout(() => {
-    void fetchAndCache(`/api/sports/menu-tools?date=${date}&league=all`, `sports:menu-tools:${today}:all`, TTL.HIGHLIGHTS, ["sports", "menu-tools", today, "all"]);
-    void fetchAndCache("/api/movies/genres-catalog?page=1", "movies:genres", TTL.GENRES, ["movies", "genres"]);
-    void fetchAndCache("/api/series/genres-catalog?page=1", "series:genres", TTL.GENRES, ["series", "genres"]);
+    void fetchAndCache(`/api/sports/menu-tools?date=${date}&league=all`, `sports:menu-tools:${today}:all`, CacheTTL.MATCH_DETAIL, ["sports", "menu-tools", today, "all"]);
+    void fetchAndCache("/api/movies/genres-catalog?page=1", "movies:genres", CacheTTL.TMDB_METADATA, ["movies", "genres"]);
+    void fetchAndCache("/api/series/genres-catalog?page=1", "series:genres", CacheTTL.TMDB_METADATA, ["series", "genres"]);
     void apiRequest("GET", "/api/sports/prefetch-home").catch(() => undefined);
     void prefetchPopularCompetitionBundles();
   }, 0);
 
-  return phaseATask.then(() => undefined);
+    await phaseATask;
+  };
+
+  prefetchHomeDataInFlight = run().finally(() => {
+    prefetchHomeDataInFlight = null;
+  });
+
+  return prefetchHomeDataInFlight;
 }
 
 function scheduleBackgroundStartupTask(name: string, timeoutMs: number, run: () => Promise<void>) {
@@ -373,7 +387,11 @@ export default function RootLayout() {
             name: "preload-disk-cache",
             timeoutMs: BOOT_CACHE_TIMEOUT_MS,
             run: async () => {
-              await preloadDiskCache();
+              // Warm up cache layer from AsyncStorage
+              const today = new Date().toISOString().slice(0, 10);
+              const cacheKeys = PREFETCH_ENTRIES(today)
+                .map(e => e.cacheKey);
+              await cacheWarmup(cacheKeys);
               seedQueryClientFromCache();
               diskCacheReady = true;
             },
@@ -673,6 +691,8 @@ export default function RootLayout() {
           <GestureHandlerRootView style={{ flex: 1 }}>
             <NexoraProvider>
               <UserStateProvider>
+                <PersonalizationBridge />
+                <MatchAlertsBridge />
                 {content}
               </UserStateProvider>
             </NexoraProvider>

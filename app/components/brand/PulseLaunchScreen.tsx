@@ -11,28 +11,50 @@ type PulseLaunchScreenProps = {
 };
 
 export function PulseLaunchScreen({ title, subtitle, progress = 0, badge }: PulseLaunchScreenProps) {
-  const glow = useRef(new Animated.Value(0.55)).current;
+  const reveal = useRef(new Animated.Value(0)).current;
+  const glow = useRef(new Animated.Value(1)).current;
   const widthValue = useMemo(() => `${Math.max(6, Math.min(100, progress))}%`, [progress]);
 
   useEffect(() => {
-    const loop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(glow, { toValue: 1, duration: 1400, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
-        Animated.timing(glow, { toValue: 0.5, duration: 1400, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
-      ]),
-    );
-    loop.start();
-    return () => loop.stop();
-  }, [glow]);
+    // Step 1: smooth reveal — scale + fade in
+    Animated.timing(reveal, {
+      toValue: 1,
+      duration: 900,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
+    }).start(() => {
+      // Step 2: after reveal, subtle breathe loop
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(glow, { toValue: 0.82, duration: 2000, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
+          Animated.timing(glow, { toValue: 1, duration: 2000, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
+        ]),
+      ).start();
+    });
+    return () => {
+      reveal.stopAnimation();
+      glow.stopAnimation();
+    };
+  }, [glow, reveal]);
+
+  const opacity = reveal;
+  const scale = reveal.interpolate({ inputRange: [0, 1], outputRange: [0.78, 1] });
 
   return (
     <View style={styles.screen}>
+      {/* Background glow accents */}
       <View style={styles.auroraTop} />
       <View style={styles.auroraBottom} />
-      <Animated.View style={[styles.center, { opacity: glow }]}>
-        <PulseBrandMark subtitle="Your premium streaming hub" />
+
+      {/* Logo reveal */}
+      <Animated.View style={[styles.center, { opacity, transform: [{ scale }] }]}>
+        <Animated.View style={{ opacity: glow }}>
+          <PulseBrandMark size={88} subtitle={null} />
+        </Animated.View>
       </Animated.View>
-      <View style={styles.content}>
+
+      {/* Info */}
+      <Animated.View style={[styles.content, { opacity }]}>
         {badge ? <Text style={styles.badge}>{badge}</Text> : null}
         <Text style={styles.title}>{title}</Text>
         <Text style={styles.subtitle}>{subtitle}</Text>
@@ -40,7 +62,7 @@ export function PulseLaunchScreen({ title, subtitle, progress = 0, badge }: Puls
           <View style={[styles.progressFill, { width: widthValue as `${number}%` }]} />
         </View>
         <Text style={styles.progressLabel}>{Math.round(progress)}%</Text>
-      </View>
+      </Animated.View>
     </View>
   );
 }

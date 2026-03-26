@@ -5826,47 +5826,48 @@ app.get("/api/sports/live/by-date", (req, res) => {
   res.redirect(307, `/api/sports/by-date${suffix}`);
 });
 
-app.get("/api/sports/today", async (req, res) => {
+/**
+ * Unified sports by-date endpoint
+ * Fetches matches for a given date (YYYY-MM-DD query param, defaults to today)
+ * Returns { date, timezone, live[], upcoming[], finished[], source, stale? }
+ * 
+ * Replaces both /api/sports/today and /api/sports/by-date with single implementation.
+ * Since the code is identical, this eliminates double-fetching for same data.
+ */
+app.get("/api/sports/by-date", async (req, res) => {
   const date = getDateParam(req);
   const now = new Date(date + "T12:00:00Z");
   const season = seasonForDate(now);
-  const CACHE_KEY = `sports_today_${date}_s${season}`;
+  const CACHE_KEY = `sports_by_date_${date}_s${season}`;
   const todayYmd = new Date().toISOString().slice(0, 10);
   const isToday = date === todayYmd;
   const ttlMs = isToday ? 45_000 : 10 * 60_000;
 
   try {
     const payload = await getOrFetch(CACHE_KEY, ttlMs, async () => {
-
-// ESPN (no key, most reliable)
-// Returns matches for the given date. If no matches that day, search toward the nearest relevant day.
-for (const espnDate of buildScoreboardDateCandidates(date)) {
-  try {
-    const espn = await espnScoreboard(espnDate);
-    const events = Array.isArray(espn?.events) ? espn.events : [];
-    const mapped = events.map(mapEspnEventToMatch);
-
-    const major = new Set(Object.keys(LEAGUE_IDS).map(normalizeLeagueName));
-    // When using per-league ESPN URLs, events already belong to major leagues
-    // Keep all events that either match a major league OR have a _leagueHint set
-    const filtered = mapped.filter((m) =>
-      major.has(normalizeLeagueName(m.league)) || m.league
-    );
-
-    const liveRaw = filtered.filter((m) => m.status === "live");
-    const upcomingRaw = filtered.filter((m) => m.status === "upcoming");
-    const finishedRaw = filtered.filter((m) => m.status === "finished");
-
-    if (liveRaw.length || upcomingRaw.length || finishedRaw.length) {
-      const [live, upcoming, finished] = await Promise.all([
-        (async () => enrichMatchesWithSofaData(await enrichMatchLogos(liveRaw), espnDate))(),
-        (async () => enrichMatchesWithSofaData(await enrichMatchLogos(upcomingRaw), espnDate))(),
-        (async () => enrichMatchesWithSofaData(await enrichMatchLogos(finishedRaw), espnDate))(),
-      ]);
-      return { date: espnDate, timezone: TZ, live, upcoming, finished, source: "espn" };
-    }
-  } catch (_) {}
-}
+      // ESPN with limited nearest-day fallback for reliability + responsiveness.
+      for (const espnDate of buildScoreboardDateCandidates(date)) {
+        try {
+          const espn = await espnScoreboard(espnDate);
+          const events = Array.isArray(espn?.events) ? espn.events : [];
+          const mapped = events.map(mapEspnEventToMatch);
+          const major = new Set(Object.keys(LEAGUE_IDS).map(normalizeLeagueName));
+          const filtered = mapped.filter((m) =>
+            major.has(normalizeLeagueName(m.league)) || m.league
+          );
+          const liveRaw = filtered.filter((m) => m.status === "live");
+          const upcomingRaw = filtered.filter((m) => m.status === "upcoming");
+          const finishedRaw = filtered.filter((m) => m.status === "finished");
+          if (liveRaw.length || upcomingRaw.length || finishedRaw.length) {
+            const [live, upcoming, finished] = await Promise.all([
+              (async () => enrichMatchesWithSofaData(await enrichMatchLogos(liveRaw), espnDate))(),
+              (async () => enrichMatchesWithSofaData(await enrichMatchLogos(upcomingRaw), espnDate))(),
+              (async () => enrichMatchesWithSofaData(await enrichMatchLogos(finishedRaw), espnDate))(),
+            ]);
+            return { date: espnDate, timezone: TZ, live, upcoming, finished, source: "espn" };
+          }
+        } catch (_) {}
+      }
       return { date, timezone: TZ, live: [], upcoming: [], finished: [], source: "espn" };
     });
 
@@ -5894,66 +5895,11 @@ for (const espnDate of buildScoreboardDateCandidates(date)) {
   }
 });
 
-// Convenience endpoint: by-date (YYYY-MM-DD)
-app.get("/api/sports/by-date", async (req, res) => {
-  const date = getDateParam(req);
-  const todayYmd = new Date().toISOString().slice(0, 10);
-  const isToday = date === todayYmd;
-  const ttlMs = isToday ? 45_000 : 10 * 60_000;
-  const CACHE_KEY = `sports_by_date_${date}`;
-  // Reuse today logic but avoid cache collision by using dedicated key
-  try {
-    const payload = await getOrFetch(CACHE_KEY, ttlMs, async () => {
-      // ESPN with limited nearest-day fallback for reliability + responsiveness.
-      for (const espnDate of buildScoreboardDateCandidates(date)) {
-        try {
-          const espn = await espnScoreboard(espnDate);
-          const events = Array.isArray(espn?.events) ? espn.events : [];
-          const mapped = events.map(mapEspnEventToMatch);
-          const major = new Set(Object.keys(LEAGUE_IDS).map(normalizeLeagueName));
-          const filtered = mapped.filter((m) =>
-            major.has(normalizeLeagueName(m.league)) || m.league
-          );
-          const liveRaw = filtered.filter((m) => m.status === "live");
-          const upcomingRaw = filtered.filter((m) => m.status === "upcoming");
-          const finishedRaw = filtered.filter((m) => m.status === "finished");
-          if (liveRaw.length || upcomingRaw.length || finishedRaw.length) {
-            const [live, upcoming, finished] = await Promise.all([
-              (async () => enrichMatchesWithSofaData(await enrichMatchLogos(liveRaw), espnDate))(),
-              (async () => enrichMatchesWithSofaData(await enrichMatchLogos(upcomingRaw), espnDate))(),
-              (async () => enrichMatchesWithSofaData(await enrichMatchLogos(finishedRaw), espnDate))(),
-            ]);
-            return { date: espnDate, timezone: TZ, live, upcoming, finished, source: "espn" };
-          }
-        } catch (_) {}
-      }
-      return {
-        date,
-        timezone: TZ,
-        live: [],
-        upcoming: [],
-        finished: [],
-        source: "espn",
-      };
-    });
-    if (countSportsItems(payload) > 0) {
-      rememberLastGoodSportsPayload(CACHE_KEY, payload);
-      return res.json(payload);
-    }
-
-    const lastGood = getLastGoodSportsPayload(CACHE_KEY);
-    if (lastGood) {
-      return res.json({ ...lastGood, stale: true, source: `${lastGood.source || "espn"}-last-good` });
-    }
-
-    return res.json(payload);
-  } catch (e) {
-    const lastGood = getLastGoodSportsPayload(CACHE_KEY);
-    if (lastGood) {
-      return res.status(200).json({ ...lastGood, stale: true, source: `${lastGood.source || "espn"}-last-good` });
-    }
-    return res.status(200).json({ date, timezone: TZ, live: [], upcoming: [], finished: [], error: String(e?.message || e) });
-  }
+// Backwards compatibility alias: /api/sports/today → /api/sports/by-date
+app.get("/api/sports/today", async (req, res) => {
+  // Forward to unified endpoint by internally calling its logic
+  req.url = "/api/sports/by-date";
+  return app._router.handle(req, res);
 });
 
 // Highlights/Replays — ScoreBat free API (real video embeds)
@@ -8646,6 +8592,41 @@ function sortMediaChronologically(items) {
   });
 }
 
+function dedupeMappedMedia(items) {
+  const seen = new Set();
+  const out = [];
+  for (const item of items || []) {
+    const tmdbId = String(item?.tmdbId || item?.id || "").trim();
+    const type = String(item?.type || "movie").trim();
+    const title = String(item?.title || item?.name || "").trim().toLowerCase();
+    const year = String(item?.year || "").slice(0, 4);
+    const key = tmdbId ? `${type}:${tmdbId}` : `${type}:${title}:${year}`;
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    out.push(item);
+  }
+  return out;
+}
+
+function clampInt(value, min, max, fallback) {
+  const parsed = Number.parseInt(String(value), 10);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.min(max, Math.max(min, parsed));
+}
+
+function getThirtyYearWindow(yearCount = 30) {
+  const currentYear = new Date().getUTCFullYear();
+  const toYear = currentYear;
+  const fromYear = currentYear - Math.max(1, yearCount) + 1;
+  return { fromYear, toYear };
+}
+
+function buildYearSequence(fromYear, toYear) {
+  const years = [];
+  for (let year = fromYear; year <= toYear; year += 1) years.push(year);
+  return years;
+}
+
 app.get("/api/movies/trending", tmdbLimiter, async (req, res) => {
   try {
     if (!process.env.TMDB_API_KEY) return res.json({ trending: [], newReleases: [], topRated: [], popular: [], upcoming: [], hiddenGems: [], acclaimed: [], error: "TMDB_API_KEY niet geconfigureerd." });
@@ -9000,6 +8981,7 @@ app.get("/api/vod/collection", tmdbLimiter, async (req, res) => {
 
     const requestedId = Number(req.query.id || 0);
     const requestedTitle = String(req.query.title || "").trim();
+    const depth = clampInt(req.query.depth, 1, 5, 3);
     let collectionId = requestedId;
 
     if (!collectionId && requestedTitle) {
@@ -9011,25 +8993,63 @@ app.get("/api/vod/collection", tmdbLimiter, async (req, res) => {
       }
     }
 
-    if (!collectionId) return res.json({ collection: null, items: [] });
+    if (!collectionId && !requestedTitle) return res.json({ collection: null, items: [] });
 
-    const collection = await tmdb(`/collection/${encodeURIComponent(collectionId)}`);
-    const items = sortMediaChronologically(
-      (collection?.parts || []).map((item) => ({
+    let collectionPayload = null;
+    if (collectionId) {
+      collectionPayload = await tmdb(`/collection/${encodeURIComponent(collectionId)}`).catch(() => null);
+    }
+
+    const tmdbCollectionItems = (collectionPayload?.parts || []).map((item) => ({
+      ...mapTrendingItem(item, "movie"),
+      type: "movie",
+      releaseDate: item.release_date || null,
+    }));
+
+    let fallbackItems = [];
+    const fallbackQuery = requestedTitle || String(collectionPayload?.name || "").trim();
+    if (fallbackQuery) {
+      const pages = Array.from({ length: depth }, (_, index) => index + 1);
+      const movieSearches = await Promise.all(
+        pages.map((page) => tmdb(`/search/movie?query=${encodeURIComponent(fallbackQuery)}&page=${page}`).catch(() => ({ results: [] })))
+      );
+      const seriesSearches = await Promise.all(
+        pages.map((page) => tmdb(`/search/tv?query=${encodeURIComponent(fallbackQuery)}&page=${page}`).catch(() => ({ results: [] })))
+      );
+
+      const mappedMovies = movieSearches.flatMap((result) => (result?.results || []).map((item) => ({
         ...mapTrendingItem(item, "movie"),
+        type: "movie",
         releaseDate: item.release_date || null,
-      }))
-    );
+      })));
+      const mappedSeries = seriesSearches.flatMap((result) => (result?.results || []).map((item) => ({
+        ...mapTrendingItem(item, "series"),
+        type: "series",
+        releaseDate: item.first_air_date || null,
+      })));
+
+      fallbackItems = [...mappedMovies, ...mappedSeries];
+    }
+
+    const items = sortMediaChronologically(dedupeMappedMedia([...tmdbCollectionItems, ...fallbackItems]));
+    const movieCount = items.filter((item) => item.type === "movie").length;
+    const seriesCount = items.filter((item) => item.type === "series").length;
 
     res.json({
       collection: {
-        id: Number(collection?.id || collectionId),
-        name: collection?.name || "Collection",
-        overview: collection?.overview || "",
-        poster: collection?.poster_path ? `${TMDB_IMG_500}${collection.poster_path}` : null,
-        backdrop: collection?.backdrop_path ? `${TMDB_IMG_780}${collection.backdrop_path}` : null,
+        id: Number(collectionPayload?.id || collectionId || 0) || null,
+        name: collectionPayload?.name || requestedTitle || "Collection",
+        overview: collectionPayload?.overview || "",
+        poster: collectionPayload?.poster_path ? `${TMDB_IMG_500}${collectionPayload.poster_path}` : null,
+        backdrop: collectionPayload?.backdrop_path ? `${TMDB_IMG_780}${collectionPayload.backdrop_path}` : null,
+        source: collectionPayload ? "tmdb" : "search",
       },
       items,
+      stats: {
+        total: items.length,
+        movies: movieCount,
+        series: seriesCount,
+      },
     });
   } catch (e) {
     res.status(200).json({ collection: null, items: [], error: String(e?.message || e) });
@@ -9042,25 +9062,146 @@ app.get("/api/vod/studio", tmdbLimiter, async (req, res) => {
 
     const studioId = Number(req.query.id || 0);
     const studioName = String(req.query.name || "").trim();
+    const depth = clampInt(req.query.depth, 1, 6, 4);
     if (!studioId && !studioName) return res.json({ studio: null, items: [] });
 
-    const items = studioId
-      ? (await tmdb(`/discover/movie?with_companies=${encodeURIComponent(studioId)}&sort_by=popularity.desc&vote_count.gte=20&page=1`))?.results || []
-      : [];
+    let resolvedStudioId = studioId;
+    let resolvedStudio = null;
+
+    if (!resolvedStudioId && studioName) {
+      const search = await tmdb(`/search/company?query=${encodeURIComponent(studioName)}&page=1`).catch(() => null);
+      const first = (search?.results || [])[0] || null;
+      if (first?.id) resolvedStudioId = Number(first.id);
+      if (first) resolvedStudio = first;
+    }
+
+    if (resolvedStudioId) {
+      const companyDetail = await tmdb(`/company/${encodeURIComponent(resolvedStudioId)}`).catch(() => null);
+      if (companyDetail) resolvedStudio = companyDetail;
+    }
+
+    if (!resolvedStudioId) {
+      return res.json({
+        studio: {
+          id: null,
+          name: studioName || "Studio",
+          logo: null,
+          source: "query-only",
+        },
+        items: [],
+      });
+    }
+
+    const pages = Array.from({ length: depth }, (_, index) => index + 1);
+    const [moviePages, seriesPages] = await Promise.all([
+      Promise.all(pages.map((page) =>
+        tmdb(`/discover/movie?with_companies=${encodeURIComponent(resolvedStudioId)}&sort_by=popularity.desc&vote_count.gte=20&page=${page}`).catch(() => ({ results: [] }))
+      )),
+      Promise.all(pages.map((page) =>
+        tmdb(`/discover/tv?with_companies=${encodeURIComponent(resolvedStudioId)}&sort_by=popularity.desc&vote_count.gte=10&page=${page}`).catch(() => ({ results: [] }))
+      )),
+    ]);
+
+    const movies = moviePages.flatMap((payload) => (payload?.results || []).map((item) => ({
+      ...mapTrendingItem(item, "movie"),
+      type: "movie",
+      releaseDate: item.release_date || null,
+    })));
+    const series = seriesPages.flatMap((payload) => (payload?.results || []).map((item) => ({
+      ...mapTrendingItem(item, "series"),
+      type: "series",
+      releaseDate: item.first_air_date || null,
+    })));
+
+    const items = sortMediaChronologically(dedupeMappedMedia([...movies, ...series]));
+    const movieCount = items.filter((item) => item.type === "movie").length;
+    const seriesCount = items.filter((item) => item.type === "series").length;
 
     res.json({
       studio: {
-        id: studioId,
-        name: studioName || "Studio",
-        logo: null,
+        id: resolvedStudioId,
+        name: resolvedStudio?.name || studioName || "Studio",
+        logo: resolvedStudio?.logo_path ? `${TMDB_IMG_500}${resolvedStudio.logo_path}` : null,
+        headquarters: resolvedStudio?.headquarters || null,
+        originCountry: resolvedStudio?.origin_country || null,
+        source: "tmdb",
       },
-      items: sortMediaChronologically(items.map((item) => ({
-        ...mapTrendingItem(item, "movie"),
-        releaseDate: item.release_date || null,
-      }))),
+      items,
+      stats: {
+        total: items.length,
+        movies: movieCount,
+        series: seriesCount,
+      },
     });
   } catch (e) {
     res.status(200).json({ studio: null, items: [], error: String(e?.message || e) });
+  }
+});
+
+app.get("/api/vod/catalog", tmdbLimiter, async (req, res) => {
+  try {
+    if (!process.env.TMDB_API_KEY) return res.json({ items: [], meta: null });
+
+    const type = String(req.query.type || "all").toLowerCase(); // movie | series | all
+    const requestedYears = clampInt(req.query.years, 5, 30, 30);
+    const chunkYears = clampInt(req.query.chunkYears, 1, 6, 3);
+    const pagesPerYear = clampInt(req.query.pagesPerYear, 1, 3, 1);
+    const { fromYear, toYear } = getThirtyYearWindow(requestedYears);
+    const years = buildYearSequence(fromYear, toYear);
+
+    const cursorYear = clampInt(req.query.cursorYear, fromYear, toYear, fromYear);
+    const startIndex = Math.max(0, years.indexOf(cursorYear));
+    const selectedYears = years.slice(startIndex, startIndex + chunkYears);
+
+    const allowMovies = type === "all" || type === "movie";
+    const allowSeries = type === "all" || type === "series";
+
+    const requests = [];
+    for (const year of selectedYears) {
+      for (let page = 1; page <= pagesPerYear; page += 1) {
+        if (allowMovies) {
+          requests.push(
+            tmdb(`/discover/movie?primary_release_year=${year}&sort_by=popularity.desc&vote_count.gte=30&page=${page}`)
+              .then((payload) => ({ payload, mediaType: "movie", year }))
+              .catch(() => ({ payload: { results: [] }, mediaType: "movie", year }))
+          );
+        }
+        if (allowSeries) {
+          requests.push(
+            tmdb(`/discover/tv?first_air_date_year=${year}&sort_by=popularity.desc&vote_count.gte=15&page=${page}`)
+              .then((payload) => ({ payload, mediaType: "series", year }))
+              .catch(() => ({ payload: { results: [] }, mediaType: "series", year }))
+          );
+        }
+      }
+    }
+
+    const resolved = await Promise.all(requests);
+    const mapped = resolved.flatMap((entry) =>
+      (entry?.payload?.results || []).map((item) => ({
+        ...mapTrendingItem(item, entry.mediaType),
+        type: entry.mediaType,
+        releaseDate: entry.mediaType === "movie" ? item.release_date || null : item.first_air_date || null,
+      }))
+    );
+
+    const items = sortMediaChronologically(dedupeMappedMedia(mapped));
+    const lastYear = selectedYears[selectedYears.length - 1] || cursorYear;
+    const nextCursorYear = lastYear < toYear ? lastYear + 1 : null;
+
+    res.json({
+      items,
+      meta: {
+        mode: type,
+        fromYear,
+        toYear,
+        loadedYears: selectedYears,
+        nextCursorYear,
+        hasMore: Boolean(nextCursorYear),
+      },
+    });
+  } catch (e) {
+    res.status(200).json({ items: [], meta: null, error: String(e?.message || e) });
   }
 });
 // ─── Genre catalog (discover) ─────────────────────────────────────────────────
