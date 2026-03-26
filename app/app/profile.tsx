@@ -404,17 +404,36 @@ function UpdateModal({
 
         // Convert file:// to content:// URI and launch package installer
         const contentUri = await FileSystem.getContentUriAsync(result.uri);
-        await IntentLauncher.startActivityAsync("android.intent.action.VIEW", {
-          data: contentUri,
-          type: "application/vnd.android.package-archive",
-          flags: 1, // FLAG_GRANT_READ_URI_PERMISSION
-        });
+        try {
+          await IntentLauncher.startActivityAsync("android.intent.action.INSTALL_PACKAGE", {
+            data: contentUri,
+            type: "application/vnd.android.package-archive",
+            flags: 268435457, // FLAG_ACTIVITY_NEW_TASK | FLAG_GRANT_READ_URI_PERMISSION
+          });
+        } catch {
+          await IntentLauncher.startActivityAsync("android.intent.action.VIEW", {
+            data: contentUri,
+            type: "application/vnd.android.package-archive",
+            flags: 268435457, // FLAG_ACTIVITY_NEW_TASK | FLAG_GRANT_READ_URI_PERMISSION
+          });
+        }
         setStatus("idle");
       } catch (e: any) {
-        // Fallback: open URL in browser
         setStatus("update");
+        const packageId = Application.applicationId || Constants.expoConfig?.android?.package;
+        try {
+          if (packageId) {
+            await IntentLauncher.startActivityAsync("android.settings.MANAGE_UNKNOWN_APP_SOURCES", {
+              data: `package:${packageId}`,
+            });
+            Alert.alert("Installatie geblokkeerd", "Sta 'installeren van onbekende apps' toe voor Pulse en probeer opnieuw.");
+            return;
+          }
+        } catch {}
+
+        // Final fallback: open URL in browser so installer can continue there.
         try { await Linking.openURL(normalized); } catch {}
-        Alert.alert("Download mislukt", e?.message || "Probeer opnieuw.");
+        Alert.alert("Installatie mislukt", e?.message || "Kon de installer niet openen.");
       }
       return;
     }
