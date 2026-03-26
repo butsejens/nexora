@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef } from "react";
 import { Animated, Easing, StyleSheet, Text, View } from "react-native";
 import { PulseBrandMark } from "@/components/brand/PulseBrandMark";
+import { COLORS } from "@/constants/colors";
 
 type PulseLaunchScreenProps = {
   title: string;
@@ -29,7 +30,7 @@ export function PulseLaunchScreen({ title, subtitle, progress = 0, badge }: Puls
       <View style={styles.auroraTop} />
       <View style={styles.auroraBottom} />
       <Animated.View style={[styles.center, { opacity: glow }]}>
-        <PulseBrandMark wordmarkText="NEXORA" subtitle="Curated premium access" />
+        <PulseBrandMark subtitle="Your premium streaming hub" />
       </Animated.View>
       <View style={styles.content}>
         {badge ? <Text style={styles.badge}>{badge}</Text> : null}
@@ -47,7 +48,7 @@ export function PulseLaunchScreen({ title, subtitle, progress = 0, badge }: Puls
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: "#090B10",
+    backgroundColor: COLORS.background,
     paddingHorizontal: 28,
     justifyContent: "center",
     alignItems: "center",
@@ -59,7 +60,7 @@ const styles = StyleSheet.create({
     width: 260,
     height: 260,
     borderRadius: 260,
-    backgroundColor: "rgba(255,90,95,0.2)",
+    backgroundColor: COLORS.accentGlow,
   },
   auroraBottom: {
     position: "absolute",
@@ -68,7 +69,7 @@ const styles = StyleSheet.create({
     width: 220,
     height: 220,
     borderRadius: 220,
-    backgroundColor: "rgba(77,226,255,0.16)",
+    backgroundColor: "rgba(229,9,20,0.16)",
   },
   center: {
     marginBottom: 36,
@@ -80,7 +81,7 @@ const styles = StyleSheet.create({
     gap: 14,
   },
   badge: {
-    color: "#F6B36C",
+    color: COLORS.accent,
     fontSize: 11,
     fontWeight: "700",
     letterSpacing: 1.6,
@@ -110,7 +111,7 @@ const styles = StyleSheet.create({
   progressFill: {
     height: "100%",
     borderRadius: 999,
-    backgroundColor: "#FF5A5F",
+    backgroundColor: COLORS.accent,
   },
   progressLabel: {
     color: "rgba(247,247,251,0.6)",
