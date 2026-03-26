@@ -260,7 +260,7 @@ export function resolveCompetitionBrand(input: {
     }
   }
 
-  if (bestCatalog && bestCatalog.confidence >= 0.8) {
+  if (bestCatalog && bestCatalog.confidence >= 0.9) {
     const logo = getDirectLeagueLogo(bestCatalog.competition.league);
     competitionResolutionCache.set(cacheKey, { value: logo, confidence: bestCatalog.confidence, updatedAt: Date.now() });
     scheduleResolutionPersist();
@@ -286,7 +286,7 @@ export function resolveCompetitionBrand(input: {
     if (!bestLogo || confidence > bestLogo.confidence) bestLogo = { value: logo, confidence };
   }
 
-  const resolvedLogo = bestLogo && bestLogo.confidence >= 0.82 ? bestLogo.value : null;
+  const resolvedLogo = bestLogo && bestLogo.confidence >= 0.9 ? bestLogo.value : null;
   competitionResolutionCache.set(cacheKey, {
     value: resolvedLogo,
     confidence: bestLogo?.confidence || 0,
@@ -319,7 +319,7 @@ type ResolutionStore = {
   competition: Record<string, CachedResolution>;
 };
 
-const RESOLUTION_CACHE_KEY = "nexora_logo_resolution_cache_v1";
+const RESOLUTION_CACHE_KEY = "nexora_logo_resolution_cache_v2";
 const RESOLUTION_CACHE_TTL = 14 * 24 * 60 * 60 * 1000;
 const teamResolutionCache = new Map<string, CachedResolution>();
 const competitionResolutionCache = new Map<string, CachedResolution>();

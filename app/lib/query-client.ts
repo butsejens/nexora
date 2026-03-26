@@ -80,9 +80,10 @@ export function getApiBaseCandidates(): string[] {
     // defaulting to localhost. Prefer the production API unless the build
     // explicitly configured something else.
     if (!__DEV__) {
+      const safeExplicit = explicit && !isLoopbackHost(explicit) ? explicit : "";
       return unique([
         lastWorkingApiBase,
-        explicit,
+        safeExplicit,
         ...explicitList,
         DEFAULT_RENDER_API_BASE,
       ]);
