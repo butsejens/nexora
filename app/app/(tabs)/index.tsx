@@ -14,7 +14,7 @@ import { MatchRowCard } from "@/components/premium";
 import { apiRequest, apiRequestJson } from "@/lib/query-client";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
-import { getLeagueLogo } from "@/lib/logo-manager";
+import { resolveCompetitionBrand } from "@/lib/logo-manager";
 import { safeStr, toPct, flagFromIso2 } from "@/lib/utils";
 import { COUNTRY_COMPETITIONS, CountryCatalog, tierPriority } from "@/lib/country-data";
 import { resolveMatchBucket } from "@/lib/match-state";
@@ -486,9 +486,36 @@ function SectionTitle({ title, action, onAction, count }: {
   );
 }
 
+function getCompetitionBrand(matchOrCompetition: any, fallbackName = "Competition") {
+  if (matchOrCompetition && typeof matchOrCompetition === "object" && !Array.isArray(matchOrCompetition)) {
+    return resolveCompetitionBrand({
+      name: String(matchOrCompetition?.league || fallbackName),
+      espnLeague: String(matchOrCompetition?.espnLeague || "") || null,
+    });
+  }
+  return resolveCompetitionBrand({ name: String(matchOrCompetition || fallbackName) });
+}
+
+function formatKickoffLabel(value: string): string {
+  const raw = String(value || "").trim();
+  if (!raw) return "--:--";
+  const parsed = Date.parse(raw);
+  if (Number.isFinite(parsed)) {
+    return new Intl.DateTimeFormat("nl-BE", { hour: "2-digit", minute: "2-digit" }).format(new Date(parsed));
+  }
+  return raw.match(/(\d{1,2}:\d{2})/)?.[1] || raw;
+}
+
+function getMatchStateLabel(match: any, bucket: "live" | "upcoming" | "finished") {
+  if (bucket === "live") return match?.minute ? `${match.minute}'` : tFn("common.live");
+  if (bucket === "finished") return tFn("common.ft");
+  return formatKickoffLabel(String(match?.startDate || match?.startTime || ""));
+}
+
 // ── Competition Group Header (for Live tab) ───────────────────────────────────
-function CompetitionGroupHeader({ league, count }: { league: string; count: number }) {
-  const logo = getLeagueLogo(league);
+function CompetitionGroupHeader({ league, count, espnLeague }: { league: string; count: number; espnLeague?: string }) {
+  const brand = resolveCompetitionBrand({ name: league, espnLeague: espnLeague || null });
+  const logo = brand.logo;
   return (
     <View style={cgStyles.row}>
       {logo ? (
@@ -496,7 +523,7 @@ function CompetitionGroupHeader({ league, count }: { league: string; count: numb
       ) : (
         <View style={cgStyles.logoPh} />
       )}
-      <Text style={cgStyles.name} numberOfLines={1}>{league}</Text>
+      <Text style={cgStyles.name} numberOfLines={1}>{brand.name || league}</Text>
       <View style={cgStyles.badge}><Text style={cgStyles.badgeText}>{count}</Text></View>
     </View>
   );
@@ -536,38 +563,36 @@ const secStyles = StyleSheet.create({
 
 // ── Live Now Card ─────────────────────────────────────────────────────────────
 function LiveNowCardBase({ match, onPress }: { match: any; onPress: () => void }) {
-  const homeLogo = getLeagueLogo(match?.league || "");
-  const leagueLogo = homeLogo;
+  const brand = getCompetitionBrand(match, match?.league || "Live");
+  const leagueLogo = brand.logo;
   const homeScore = match?.homeScore ?? "–";
   const awayScore = match?.awayScore ?? "–";
-  const minute = match?.minute ? `${match.minute}'` : "LIVE";
+  const minute = getMatchStateLabel(match, "live");
 
   return (
     <TouchableOpacity onPress={onPress} activeOpacity={0.88} style={liveCardStyles.wrap}>
       <LinearGradient colors={["#1A0A0E", "#0D0D1A"]} style={liveCardStyles.card}>
         <View style={liveCardStyles.accentBorder} />
-        {/* Top row */}
-        <View style={liveCardStyles.topRow}>
-          {leagueLogo ? (
-            <Image source={typeof leagueLogo === "number" ? leagueLogo : { uri: leagueLogo as string }} style={liveCardStyles.leagueLogo} resizeMode="contain" />
-          ) : (
-            <View style={liveCardStyles.leagueLogoPlaceholder} />
-          )}
-          <Text style={liveCardStyles.leagueName} numberOfLines={1}>{match?.league || "Live"}</Text>
-          <View style={liveCardStyles.livePill}>
-            <View style={liveCardStyles.liveDot} />
-            <Text style={liveCardStyles.liveText}>LIVE</Text>
-          </View>
-          <Text style={liveCardStyles.minute}>{minute}</Text>
-        </View>
-        {/* Teams + score */}
+        {/* Teams + centered competition / score */}
         <View style={liveCardStyles.teamsRow}>
           <View style={liveCardStyles.teamBlock}>
             <Text style={liveCardStyles.teamName} numberOfLines={1}>{match?.homeTeam || "Home"}</Text>
             <TeamLogo uri={match?.homeTeamLogo} teamName={match?.homeTeam || ""} size={44} />
           </View>
           <View style={liveCardStyles.scoreBlock}>
+            {leagueLogo ? (
+              <Image source={typeof leagueLogo === "number" ? leagueLogo : { uri: leagueLogo as string }} style={liveCardStyles.leagueLogo} resizeMode="contain" />
+            ) : (
+              <View style={liveCardStyles.leagueLogoPlaceholder} />
+            )}
+            <Text style={liveCardStyles.leagueName} numberOfLines={2}>{brand.name || match?.league || "Live"}</Text>
             <Text style={liveCardStyles.score}>{homeScore} - {awayScore}</Text>
+            <View style={liveCardStyles.statusBelowWrap}>
+              <View style={liveCardStyles.livePill}>
+                <View style={liveCardStyles.liveDot} />
+                <Text style={liveCardStyles.liveText}>{minute}</Text>
+              </View>
+            </View>
           </View>
           <View style={liveCardStyles.teamBlock}>
             <Text style={liveCardStyles.teamName} numberOfLines={1}>{match?.awayTeam || "Away"}</Text>
@@ -597,10 +622,9 @@ const liveCardStyles = StyleSheet.create({
     position: "absolute", left: 0, top: 0, bottom: 0, width: 3,
     backgroundColor: P.accent, borderTopLeftRadius: 16, borderBottomLeftRadius: 16,
   },
-  topRow: { flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 10, paddingLeft: 4 },
-  leagueLogo: { width: 20, height: 20 },
+  leagueLogo: { width: 24, height: 24, marginBottom: 6 },
   leagueLogoPlaceholder: { width: 22, height: 22, borderRadius: 5, backgroundColor: P.elevated },
-  leagueName: { flex: 1, color: P.muted, fontSize: 11, fontWeight: "500" },
+  leagueName: { color: P.muted, fontSize: 10, fontWeight: "600", textAlign: "center", marginBottom: 8, maxWidth: 120 },
   livePill: {
     flexDirection: "row", alignItems: "center", gap: 4,
     backgroundColor: `${P.live}22`, borderRadius: 8, paddingHorizontal: 7, paddingVertical: 3,
@@ -608,11 +632,10 @@ const liveCardStyles = StyleSheet.create({
   },
   liveDot: { width: 5, height: 5, borderRadius: 3, backgroundColor: P.live },
   liveText: { color: P.live, fontSize: 9, fontWeight: "700", letterSpacing: 0.8 },
-  minute: { color: P.muted, fontSize: 10, fontWeight: "600", marginLeft: 3 },
   teamsRow: { flexDirection: "row", alignItems: "center", paddingLeft: 4, flex: 1 },
   teamBlock: { flex: 1, alignItems: "center", gap: 5 },
   teamName: { color: P.text, fontSize: 11, fontWeight: "600", textAlign: "center", maxWidth: 90 },
-  scoreBlock: { paddingHorizontal: 8, flexDirection: "row", alignItems: "center" },
+  scoreBlock: { paddingHorizontal: 8, alignItems: "center", justifyContent: "center", minWidth: 118 },
   score: {
     color: P.text, fontSize: 24, fontWeight: "800", letterSpacing: 0.8, textAlign: "center",
     // @ts-ignore
@@ -620,6 +643,7 @@ const liveCardStyles = StyleSheet.create({
     textShadowOffset: { width: 0, height: 0 },
     textShadowRadius: 10,
   },
+  statusBelowWrap: { marginTop: 8, minHeight: 24, alignItems: "center", justifyContent: "center" },
   stadium: { color: P.muted, fontSize: 9, marginTop: 6, paddingLeft: 4 },
 });
 
@@ -628,7 +652,8 @@ function TodayMatchCardInner({ match, onPress }: { match: any; onPress: () => vo
   const bucket = resolveMatchBucket(match);
   const isLive = bucket === "live";
   const isFinished = bucket === "finished";
-  const leagueLogo = getLeagueLogo(match?.league || "");
+  const brand = getCompetitionBrand(match, match?.league || "Sport");
+  const leagueLogo = brand.logo;
   const homeScore = match?.homeScore ?? 0;
   const awayScore = match?.awayScore ?? 0;
   const kickoffRaw = String(match?.startDate || match?.startTime || "");
@@ -643,13 +668,6 @@ function TodayMatchCardInner({ match, onPress }: { match: any; onPress: () => vo
   return (
     <TouchableOpacity onPress={onPress} activeOpacity={0.88} style={todayCardStyles.wrap}>
       <View style={todayCardStyles.card}>
-        {/* League */}
-        <View style={todayCardStyles.leagueRow}>
-          {leagueLogo ? (
-            <Image source={typeof leagueLogo === "number" ? leagueLogo : { uri: leagueLogo as string }} style={todayCardStyles.leagueIcon} resizeMode="contain" />
-          ) : null}
-          <Text style={todayCardStyles.leagueName} numberOfLines={1}>{match?.league || "Sport"}</Text>
-        </View>
         {/* Teams */}
         <View style={todayCardStyles.teamsRow}>
           <View style={todayCardStyles.teamBlock}>
@@ -657,16 +675,23 @@ function TodayMatchCardInner({ match, onPress }: { match: any; onPress: () => vo
             <TeamLogo uri={match?.homeTeamLogo} teamName={match?.homeTeam || ""} size={36} />
           </View>
           <View style={todayCardStyles.center}>
+            {leagueLogo ? (
+              <Image source={typeof leagueLogo === "number" ? leagueLogo : { uri: leagueLogo as string }} style={todayCardStyles.leagueIcon} resizeMode="contain" />
+            ) : null}
+            <Text style={todayCardStyles.leagueName} numberOfLines={2}>{brand.name || match?.league || "Sport"}</Text>
             {isLive ? (
               <>
                 <Text style={todayCardStyles.liveScore}>{homeScore} - {awayScore}</Text>
                 <View style={todayCardStyles.liveTag}>
                   <View style={todayCardStyles.liveDot} />
-                  <Text style={todayCardStyles.liveTagText}>LIVE</Text>
+                  <Text style={todayCardStyles.liveTagText}>{getMatchStateLabel(match, "live")}</Text>
                 </View>
               </>
             ) : isFinished ? (
-              <Text style={todayCardStyles.finScore}>{homeScore} - {awayScore}</Text>
+              <>
+                <Text style={todayCardStyles.finScore}>{homeScore} - {awayScore}</Text>
+                <Text style={todayCardStyles.finStatus}>{tFn("common.ft")}</Text>
+              </>
             ) : (
               <>
                 <Text style={todayCardStyles.upcomingDate}>{kickoffDate}</Text>
@@ -694,9 +719,8 @@ const todayCardStyles = StyleSheet.create({
     borderWidth: 1, borderColor: P.border,
     shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.3, shadowRadius: 6, elevation: 4,
   },
-  leagueRow: { flexDirection: "row", alignItems: "center", gap: 5, marginBottom: 8 },
-  leagueIcon: { width: 16, height: 16 },
-  leagueName: { color: P.muted, fontSize: 10, fontWeight: "500", flex: 1 },
+  leagueIcon: { width: 18, height: 18, marginBottom: 6 },
+  leagueName: { color: P.muted, fontSize: 9, fontWeight: "600", textAlign: "center", minHeight: 22, marginBottom: 8 },
   teamsRow: { flexDirection: "row", alignItems: "center" },
   teamBlock: { flex: 1, alignItems: "center", gap: 4 },
   teamName: { color: P.text, fontSize: 10, fontWeight: "600", textAlign: "center", maxWidth: 68 },
@@ -712,6 +736,7 @@ const todayCardStyles = StyleSheet.create({
   liveDot: { width: 4, height: 4, borderRadius: 2, backgroundColor: P.live },
   liveTagText: { color: P.live, fontSize: 8, fontWeight: "700" },
   finScore: { color: P.muted, fontSize: 15, fontWeight: "700" },
+  finStatus: { color: P.muted, fontSize: 9, fontWeight: "700", marginTop: 4, textTransform: "uppercase", letterSpacing: 0.5 },
 });
 
 // ── Popular Competition Card ───────────────────────────────────────────────────
@@ -729,7 +754,8 @@ const TOP_COMPETITIONS = [
 ];
 
 function PopularCompetitionCard({ comp, onPress, cardWidth }: { comp: typeof TOP_COMPETITIONS[0]; onPress: () => void; cardWidth: number }) {
-  const logo = getLeagueLogo(comp.league);
+  const brand = resolveCompetitionBrand({ name: comp.league, espnLeague: comp.espn });
+  const logo = brand.logo;
   return (
     <TouchableOpacity onPress={onPress} activeOpacity={0.82} style={[popCompStyles.card, { width: cardWidth }]}>
       <View style={[popCompStyles.colorTop, { backgroundColor: comp.color }]} />
@@ -740,7 +766,7 @@ function PopularCompetitionCard({ comp, onPress, cardWidth }: { comp: typeof TOP
           <Text style={popCompStyles.emoji}>{comp.emoji}</Text>
         )}
       </View>
-      <Text style={popCompStyles.name} numberOfLines={2}>{comp.league}</Text>
+      <Text style={popCompStyles.name} numberOfLines={2}>{brand.name || comp.league}</Text>
     </TouchableOpacity>
   );
 }
@@ -2028,7 +2054,7 @@ export default function SportsScreen() {
             ) : (
               groupedLive.map(([league, matches]) => (
                 <View key={league}>
-                  <CompetitionGroupHeader league={league} count={matches.length} />
+                  <CompetitionGroupHeader league={league} espnLeague={matches[0]?.espnLeague} count={matches.length} />
                   {matches.map((match: any) => (
                     <MatchRowCard
                       key={match.id}

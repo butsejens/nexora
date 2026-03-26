@@ -5,6 +5,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { BlurView } from "expo-blur";
 import { COLORS } from "@/constants/colors";
+import { PulseBrandMark } from "@/components/brand/PulseBrandMark";
 
 interface Props {
   title?: string;
@@ -54,9 +55,7 @@ export function NexoraHeader({
   const content = compact ? (
     <View style={styles.contentRow}>
       <View style={styles.logoCompact}>
-        <Text style={styles.logoTextCompact}>
-          <Text style={styles.logoN}>N</Text>
-        </Text>
+        <PulseBrandMark size={28} showWordmark={false} />
         {title ? <Text style={[styles.sectionTitleCompact, titleColor ? { color: titleColor } : null]}>{title}</Text> : null}
         {badgeLabel ? (
           <View
@@ -91,10 +90,13 @@ export function NexoraHeader({
     <View style={styles.contentRow}>
       <View style={styles.logo}>
         <View style={styles.logoTopRow}>
-          <Text style={styles.logoText}>
-            <Text style={styles.logoN}>N</Text>
-            <Text style={styles.logoRest}>EXORA</Text>
-          </Text>
+          <View style={styles.brandLockup}>
+            <PulseBrandMark size={34} showWordmark={false} />
+            <View>
+              <Text style={styles.logoText}>PULSE</Text>
+              <Text style={styles.logoSubText}>Premium streaming hub</Text>
+            </View>
+          </View>
           {badgeLabel ? (
             <View
               style={[
@@ -191,13 +193,24 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 8,
   },
-  logoText: {
-    fontSize: 24,
-    letterSpacing: 4,
-    fontFamily: "Inter_800ExtraBold",
+  brandLockup: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
   },
-  logoN: { color: COLORS.accent },
-  logoRest: { color: COLORS.text },
+  logoText: {
+    fontSize: 20,
+    letterSpacing: 3.6,
+    fontFamily: "Inter_800ExtraBold",
+    color: COLORS.text,
+  },
+  logoSubText: {
+    fontSize: 10,
+    letterSpacing: 1.6,
+    fontFamily: "Inter_600SemiBold",
+    textTransform: "uppercase",
+    color: COLORS.textSecondary,
+  },
   sectionTitle: {
     fontSize: 11,
     fontFamily: "Inter_600SemiBold",
@@ -274,11 +287,6 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
-  },
-  logoTextCompact: {
-    fontSize: 18,
-    letterSpacing: 2,
-    fontFamily: "Inter_800ExtraBold",
   },
   sectionTitleCompact: {
     fontSize: 13,

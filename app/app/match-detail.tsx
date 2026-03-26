@@ -19,7 +19,7 @@ import { PillTabs, StateBlock } from "@/components/ui/PremiumPrimitives";
 import { buildErrorReference, normalizeApiError } from "@/lib/error-messages";
 import { fetchSportsLeagueResourceWithFallback, getLeaderboardRows } from "@/lib/sports-data";
 import { safeStr } from "@/lib/utils";
-import { getLeagueLogo } from "@/lib/logo-manager";
+import { resolveCompetitionBrand } from "@/lib/logo-manager";
 import { SilentResetBoundary } from "@/components/SilentResetBoundary";
 import { useNexora } from "@/context/NexoraContext";
 import { t as tFn } from "@/lib/i18n";
@@ -459,6 +459,7 @@ export default function MatchDetailScreen() {
           topScorerGoals: homeTopScorer?.goals ?? null,
           topAssist: homeTopAssist?.name || null,
           topAssistCount: (homeTopAssist?.assists ?? Number(homeTopAssist?.displayValue || 0)) || null,
+          formation: homeLineupTeam?.formation || null,
         },
         away: {
           rank: awayStanding?.rank ?? null,
@@ -468,6 +469,7 @@ export default function MatchDetailScreen() {
           topScorerGoals: awayTopScorer?.goals ?? null,
           topAssist: awayTopAssist?.name || null,
           topAssistCount: (awayTopAssist?.assists ?? Number(awayTopAssist?.displayValue || 0)) || null,
+          formation: awayLineupTeam?.formation || null,
         },
       });
 
@@ -497,6 +499,8 @@ export default function MatchDetailScreen() {
             awayPoints: awayStanding?.points,
             homeGoalDiff: homeStanding?.goalDiff,
             awayGoalDiff: awayStanding?.goalDiff,
+            homeFormation: homeLineupTeam?.formation || null,
+            awayFormation: awayLineupTeam?.formation || null,
             homeTopScorer: homeTopScorer?.name || null,
             awayTopScorer: awayTopScorer?.name || null,
             homeTopScorerGoals: homeTopScorer?.goals ?? null,
@@ -638,7 +642,11 @@ export default function MatchDetailScreen() {
   const homeLineupTeam = orderedLineupTeams[0] || null;
   const awayLineupTeam = orderedLineupTeams[1] || null;
   const competitionName = safeStr(effectiveCanonical?.league || matchDetail?.competition || matchDetail?.league || params.league);
-  const leagueLogoUri = getLeagueLogo(competitionName) as string | null;
+  const competitionBrand = useMemo(
+    () => resolveCompetitionBrand({ name: competitionName, espnLeague }),
+    [competitionName, espnLeague],
+  );
+  const leagueLogoUri = competitionBrand.logo as string | null;
   const homeTeamName = safeStr(matchDetail?.homeTeam || params.homeTeam || "Home");
   const awayTeamName = safeStr(matchDetail?.awayTeam || params.awayTeam || "Away");
   const kickoffRaw = safeStr(matchDetail?.startDate || matchDetail?.date || effectiveCanonical?.startDate || "");
@@ -704,7 +712,7 @@ export default function MatchDetailScreen() {
                   <Ionicons name="trophy-outline" size={14} color={COLORS.textMuted} />
                 </View>
               )}
-              <Text style={styles.leagueName} numberOfLines={1}>{competitionName}</Text>
+              <Text style={styles.leagueName} numberOfLines={1}>{competitionBrand.name || competitionName}</Text>
             </View>
           </View>
           <View style={styles.scoreRow}>

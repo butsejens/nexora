@@ -15,7 +15,7 @@ import { fetchSportsLeagueResourceWithFallback, getLeaderboardRows } from "@/lib
 import { dedupeCanonicalMatches, toCanonicalMatch, toLegacyMatchCard } from "@/lib/canonical-match";
 import { normalizeApiError } from "@/lib/error-messages";
 import { getBestCachedOrSeedPlayerImage, resolvePlayerImageUri } from "@/lib/player-image-system";
-import { getLeagueLogo } from "@/lib/logo-manager";
+import { resolveCompetitionBrand } from "@/lib/logo-manager";
 import { TeamLogo } from "@/components/TeamLogo";
 import { useTranslation } from "@/lib/useTranslation";
 import { t as tFn } from "@/lib/i18n";
@@ -161,6 +161,10 @@ export default function CompetitionScreen() {
   const params = useLocalSearchParams<{ league: string; sport?: string; espnLeague?: string }>();
   const leagueName = asParam(params.league, tFn("competition.unknownCompetition"));
   const espnLeague = asParam(params.espnLeague, "eng.1");
+  const competitionBrand = useMemo(
+    () => resolveCompetitionBrand({ name: leagueName, espnLeague }),
+    [espnLeague, leagueName],
+  );
   const insets = useSafeAreaInsets();
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const gradColors = (LEAGUE_COLORS[leagueName] || ["#1a3a6b", "#0B0F17"]) as [string, string];
@@ -314,7 +318,7 @@ export default function CompetitionScreen() {
         </TouchableOpacity>
         <View style={styles.headerContent}>
           {(() => {
-            const leagueLogo = getLeagueLogo(leagueName);
+            const leagueLogo = competitionBrand.logo;
             return leagueLogo ? (
               <View style={styles.headerIconWrap}>
                 <Image
@@ -329,7 +333,7 @@ export default function CompetitionScreen() {
               </View>
             );
           })()}
-          <Text style={styles.leagueTitle} numberOfLines={1}>{leagueName}</Text>
+          <Text style={styles.leagueTitle} numberOfLines={1}>{competitionBrand.name || leagueName}</Text>
           <View style={styles.headerBadgeRow}>
             <View style={styles.headerBadge}>
               <Text style={styles.headerBadgeText}>{isCup ? t("competition.cup") : t("competition.league")}</Text>
@@ -470,7 +474,8 @@ export default function CompetitionScreen() {
                     status: m.status || "upcoming",
                     minute: m.minute,
                     startTime,
-                    league: leagueName,
+                    league: competitionBrand.name || leagueName,
+                    espnLeague: espnLeague || m.espnLeague || "",
                   }}
                   onPress={() => {
                     router.push({
@@ -488,7 +493,7 @@ export default function CompetitionScreen() {
                         status: m.status || "upcoming",
                         statusDetail: String(m.statusDetail || ""),
                         sport: "soccer",
-                        league: leagueName,
+                        league: competitionBrand.name || leagueName,
                         espnLeague: espnLeague || m.espnLeague || "",
                       },
                     });

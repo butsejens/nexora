@@ -6,6 +6,7 @@ type TeamContext = {
   topScorerGoals?: number | null;
   topAssist?: string | null;
   topAssistCount?: number | null;
+  formation?: string | null;
 };
 
 export type MatchAnalysisInput = {
@@ -61,6 +62,17 @@ function readStat(stats: Record<string, unknown> | undefined, keys: string[]): n
   return null;
 }
 
+function parseFormationBias(formation?: string | null): number {
+  const parts = String(formation || '')
+    .split(/[-/]/)
+    .map((part) => Number(part.trim()))
+    .filter((value) => Number.isFinite(value) && value > 0);
+  if (!parts.length) return 0;
+  const attackers = parts[parts.length - 1] || 0;
+  const defenders = parts[0] || 0;
+  return clamp((attackers - defenders) * 0.04, -0.12, 0.12);
+}
+
 function buildCoverageSignals(input: MatchAnalysisInput): boolean[] {
   return [
     input.home.rank != null && input.away.rank != null,
@@ -108,6 +120,7 @@ export function buildGroundedMatchAnalysis(input: MatchAnalysisInput): MatchAnal
   const gdDelta = (num(input.home.goalDiff) ?? 0) - (num(input.away.goalDiff) ?? 0);
   const scorerDelta = (num(input.home.topScorerGoals) ?? 0) - (num(input.away.topScorerGoals) ?? 0);
   const assistDelta = (num(input.home.topAssistCount) ?? 0) - (num(input.away.topAssistCount) ?? 0);
+  const formationDelta = parseFormationBias(input.home.formation) - parseFormationBias(input.away.formation);
 
   let modelScore = 0;
 
@@ -133,6 +146,14 @@ export function buildGroundedMatchAnalysis(input: MatchAnalysisInput): MatchAnal
 
   if (input.home.topAssistCount != null || input.away.topAssistCount != null) {
     modelScore += clamp(assistDelta * 0.016, -0.14, 0.14);
+  }
+
+  if (input.home.formation || input.away.formation) {
+    modelScore += clamp(formationDelta, -0.14, 0.14);
+    if (input.home.formation && input.away.formation) {
+      tacticalNotes.push(`Shape matchup: ${input.homeTeam} ${input.home.formation} vs ${input.awayTeam} ${input.away.formation}.`);
+      factors.push(`Formation balance: ${input.homeTeam} ${input.home.formation} against ${input.awayTeam} ${input.away.formation}`);
+    }
   }
 
   const homeShots = readStat(input.stats?.home, ["shotsOnTarget", "shots_on_target", "shots"]);

@@ -3380,6 +3380,21 @@ function getDateParam(req) {
   return new Date().toISOString().slice(0, 10);
 }
 
+function buildScoreboardDateCandidates(date, lookaheadDays = ESPN_LOOKAHEAD_DAYS) {
+  const target = String(date || "").trim();
+  const today = new Date().toISOString().slice(0, 10);
+  const direction = target < today ? -1 : 1;
+  const dates = [];
+  let cursor = target;
+  for (let i = 0; i <= lookaheadDays; i += 1) {
+    dates.push(cursor);
+    const next = new Date(`${cursor}T00:00:00Z`);
+    next.setUTCDate(next.getUTCDate() + direction);
+    cursor = next.toISOString().slice(0, 10);
+  }
+  return dates;
+}
+
 
 function footballSource() {
   return "espn";
@@ -5817,9 +5832,8 @@ app.get("/api/sports/today", async (req, res) => {
     const payload = await getOrFetch(CACHE_KEY, ttlMs, async () => {
 
 // ESPN (no key, most reliable)
-// Returns matches for the given date. If no matches that day, look ahead a few days.
-let espnDate = date;
-for (let i = 0; i <= ESPN_LOOKAHEAD_DAYS; i++) {
+// Returns matches for the given date. If no matches that day, search toward the nearest relevant day.
+for (const espnDate of buildScoreboardDateCandidates(date)) {
   try {
     const espn = await espnScoreboard(espnDate);
     const events = Array.isArray(espn?.events) ? espn.events : [];
@@ -5845,10 +5859,6 @@ for (let i = 0; i <= ESPN_LOOKAHEAD_DAYS; i++) {
       return { date: espnDate, timezone: TZ, live, upcoming, finished, source: "espn" };
     }
   } catch (_) {}
-  // advance a day if empty
-  const d = new Date(espnDate + "T00:00:00Z");
-  d.setUTCDate(d.getUTCDate() + 1);
-  espnDate = d.toISOString().slice(0, 10);
 }
       return { date, timezone: TZ, live: [], upcoming: [], finished: [], source: "espn" };
     });
@@ -5887,9 +5897,8 @@ app.get("/api/sports/by-date", async (req, res) => {
   // Reuse today logic but avoid cache collision by using dedicated key
   try {
     const payload = await getOrFetch(CACHE_KEY, ttlMs, async () => {
-      // ESPN with limited lookahead for reliability + responsiveness
-      let espnDate = date;
-      for (let i = 0; i <= ESPN_LOOKAHEAD_DAYS; i++) {
+      // ESPN with limited nearest-day fallback for reliability + responsiveness.
+      for (const espnDate of buildScoreboardDateCandidates(date)) {
         try {
           const espn = await espnScoreboard(espnDate);
           const events = Array.isArray(espn?.events) ? espn.events : [];
@@ -5910,9 +5919,6 @@ app.get("/api/sports/by-date", async (req, res) => {
             return { date: espnDate, timezone: TZ, live, upcoming, finished, source: "espn" };
           }
         } catch (_) {}
-        const d = new Date(espnDate + "T00:00:00Z");
-        d.setUTCDate(d.getUTCDate() + 1);
-        espnDate = d.toISOString().slice(0, 10);
       }
       return {
         date,
@@ -7037,7 +7043,7 @@ async function espnLeagueMatches(leagueName, wideRange = false) {
   const now = new Date();
   // Build a set of date strings: current + date offsets
   const dateStrs = [""];
-  const offsets = wideRange ? [-28, -21, -14, -7, 7, 14, 21, 28] : [-14, -7, 7, 14];
+  const offsets = wideRange ? [-84, -70, -56, -42, -28, -21, -14, -7, 7, 14, 21, 28] : [-21, -14, -7, 7, 14];
   for (const offsetDays of offsets) {
     const d = new Date(now.getTime() + offsetDays * 86400000);
     dateStrs.push(d.toISOString().slice(0, 10).replace(/-/g, ""));
