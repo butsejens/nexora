@@ -2,14 +2,12 @@ import { Tabs } from "expo-router";
 import { BlurView } from "expo-blur";
 import { Platform, StyleSheet, View } from "react-native";
 import React from "react";
-import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
+import { Ionicons } from "@expo/vector-icons";
 import { COLORS } from "@/constants/colors";
 import { isTV } from "@/lib/platform";
 import { useTranslation } from "@/lib/useTranslation";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useOnboardingStore } from "@/store/onboarding-store";
-
-const SP_ACCENT = COLORS.accent;
 
 function TabIcon({
   focused,

@@ -11,7 +11,6 @@
 
 import React, { useCallback } from "react";
 import {
-  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -21,9 +20,6 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
-import { BlurView } from "expo-blur";
-
-import { COLORS } from "@/constants/colors";
 import { useOnboardingStore } from "@/store/onboarding-store";
 import { useFollowState } from "@/context/UserStateContext";
 import { PulseBrandMark } from "@/components/brand/PulseBrandMark";

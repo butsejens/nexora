@@ -12,10 +12,9 @@ import {
   StyleSheet,
   SafeAreaView,
   FlatList,
-  SectionList,
 } from 'react-native';
-import { designTokens, componentTokens } from '@/constants/design-tokens';
-import { useFollowStore, FollowedItem, Notification } from '@/store/follow-store';
+import { designTokens } from '@/constants/design-tokens';
+import { useFollowStore } from '@/store/follow-store';
 import { Ionicons } from '@expo/vector-icons';
 
 interface NotificationCenterProps {
@@ -24,13 +23,21 @@ interface NotificationCenterProps {
 }
 
 export function NotificationCenter({ onClose, onNavigate }: NotificationCenterProps) {
-  const { followed, notifications, isLoading, markAsRead, deleteNotification, markAllAsRead } =
+  const {
+    followed,
+    notifications,
+    markAsRead,
+    deleteNotification,
+    markAllAsRead,
+    initializeNotifications,
+    removeFollow,
+  } =
     useFollowStore();
   const [selectedTab, setSelectedTab] = useState<'followed' | 'alerts'>('alerts');
 
   useEffect(() => {
-    useFollowStore().initializeNotifications();
-  }, []);
+    initializeNotifications();
+  }, [initializeNotifications]);
 
   const followedTeams = followed.filter((f) => f.type === 'team');
   const followedMatches = followed.filter((f) => f.type === 'match');
@@ -260,7 +267,7 @@ export function NotificationCenter({ onClose, onNavigate }: NotificationCenterPr
                 </Text>
                 <TouchableOpacity
                   style={styles.unfollowButton}
-                  onPress={() => useFollowStore().removeFollow(team.id)}
+                  onPress={() => removeFollow(team.id)}
                 >
                   <Text style={styles.unfollowButtonText}>Unfollow</Text>
                 </TouchableOpacity>
@@ -331,7 +338,7 @@ export function NotificationCenter({ onClose, onNavigate }: NotificationCenterPr
             style={styles.emptyIcon}
           />
           <Text style={styles.emptyText}>No notifications yet</Text>
-          <Text style={styles.emptySubtext}>You'll see alerts here as they happen</Text>
+          <Text style={styles.emptySubtext}>You&apos;ll see alerts here as they happen</Text>
         </View>
       );
     }

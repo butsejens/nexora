@@ -786,13 +786,9 @@ const [showAddPlaylist, setShowAddPlaylist] = useState(false);
   const [showUpdateModal, setShowUpdateModal] = useState(openUpdate === "1");
   const [showOnboardingEditor, setShowOnboardingEditor] = useState(false);
   const {
-    hasCompletedOnboarding,
     moviesEnabled: onboardingMoviesEnabled,
     notifications: onboardingNotifications,
     resetOnboarding,
-    selectedCompetitions,
-    selectedSports,
-    selectedTeams,
     sportsEnabled: onboardingSportsEnabled,
   } = useOnboardingStore();
 
@@ -810,12 +806,6 @@ const [showAddPlaylist, setShowAddPlaylist] = useState(false);
   const softwareVersion = Updates.updateId
     ? `${configVersion}-${Updates.updateId.slice(0, 8)}`
     : configVersion;
-  const onboardingSummary = [
-    onboardingSportsEnabled ? `${selectedSports.length || 0} sports` : "Sports hidden",
-    onboardingSportsEnabled ? `${selectedTeams.length || 0} teams` : null,
-    onboardingSportsEnabled ? `${selectedCompetitions.length || 0} competitions` : null,
-    onboardingMoviesEnabled ? "Movies enabled" : "Movies hidden",
-  ].filter(Boolean).join(" · ");
   const notificationSummary = Object.values(onboardingNotifications).filter(Boolean).length;
 
   const handleManualUpdateCheck = useCallback(() => {

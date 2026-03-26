@@ -1089,7 +1089,6 @@ export default function SportsScreen() {
   useEffect(() => {
     void apiRequest("GET", "/api/sports/health").catch(() => undefined);
   // Only on mount
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const liveFirstLoad = liveQuery.isLoading && !liveQuery.data;
