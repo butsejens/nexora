@@ -2,8 +2,8 @@
   "expo": {
     "name": "PULSE",
     "slug": "nexora-sports-stream",
-    "version": "2.5.5",
-    "runtimeVersion": "2.5.5",
+    "version": "2.5.6",
+    "runtimeVersion": "2.5.6",
     "updates": {
       "enabled": true,
       "checkAutomatically": "ON_LOAD",

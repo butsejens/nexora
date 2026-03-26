@@ -417,6 +417,12 @@ function UpdateModal({
             flags: 268435457, // FLAG_ACTIVITY_NEW_TASK | FLAG_GRANT_READ_URI_PERMISSION
           });
         }
+
+        // Some Android vendors silently ignore install intents from app cache.
+        // Opening the hosted APK URL ensures Download Manager / package installer takes over.
+        setTimeout(() => {
+          void Linking.openURL(normalized).catch(() => undefined);
+        }, 900);
         setStatus("idle");
       } catch (e: any) {
         setStatus("update");
