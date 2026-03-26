@@ -13,6 +13,7 @@ type PulseLaunchScreenProps = {
 export function PulseLaunchScreen({ title, subtitle, progress = 0, badge }: PulseLaunchScreenProps) {
   const reveal = useRef(new Animated.Value(0)).current;
   const glow = useRef(new Animated.Value(1)).current;
+  const shimmer = useRef(new Animated.Value(-220)).current;
   const widthValue = useMemo(() => `${Math.max(6, Math.min(100, progress))}%`, [progress]);
 
   useEffect(() => {
@@ -26,16 +27,26 @@ export function PulseLaunchScreen({ title, subtitle, progress = 0, badge }: Puls
       // Step 2: after reveal, subtle breathe loop
       Animated.loop(
         Animated.sequence([
-          Animated.timing(glow, { toValue: 0.82, duration: 2000, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
-          Animated.timing(glow, { toValue: 1, duration: 2000, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
+          Animated.timing(glow, { toValue: 0.84, duration: 1700, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
+          Animated.timing(glow, { toValue: 1, duration: 1700, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
         ]),
+      ).start();
+
+      Animated.loop(
+        Animated.timing(shimmer, {
+          toValue: 220,
+          duration: 1200,
+          easing: Easing.linear,
+          useNativeDriver: true,
+        }),
       ).start();
     });
     return () => {
       reveal.stopAnimation();
       glow.stopAnimation();
+      shimmer.stopAnimation();
     };
-  }, [glow, reveal]);
+  }, [glow, reveal, shimmer]);
 
   const opacity = reveal;
   const scale = reveal.interpolate({ inputRange: [0, 1], outputRange: [0.78, 1] });
@@ -60,6 +71,7 @@ export function PulseLaunchScreen({ title, subtitle, progress = 0, badge }: Puls
         <Text style={styles.subtitle}>{subtitle}</Text>
         <View style={styles.progressTrack}>
           <View style={[styles.progressFill, { width: widthValue as `${number}%` }]} />
+          <Animated.View style={[styles.progressShimmer, { transform: [{ translateX: shimmer }] }]} />
         </View>
         <Text style={styles.progressLabel}>{Math.round(progress)}%</Text>
       </Animated.View>
@@ -134,6 +146,15 @@ const styles = StyleSheet.create({
     height: "100%",
     borderRadius: 999,
     backgroundColor: COLORS.accent,
+  },
+  progressShimmer: {
+    position: "absolute",
+    left: 0,
+    top: 0,
+    bottom: 0,
+    width: 80,
+    backgroundColor: "rgba(255,255,255,0.16)",
+    borderRadius: 999,
   },
   progressLabel: {
     color: "rgba(247,247,251,0.6)",

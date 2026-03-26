@@ -1,131 +1,76 @@
-/**
- * NEXORA — More Menu
- *
- * Premium mega-menu with:
- *   MEDIA  — Movies · TV Shows · Anime · Manga · Music · Live Sports
- *   USER   — Watchlist · History · Favorites / Follows
- *   SYSTEM — Notifications · Settings · Legal
- *
- * Dynamically driven by sportsEnabled / moviesEnabled from onboarding store.
- */
-
-import React, { useCallback } from "react";
-import {
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
-} from "react-native";
+import React, { useMemo } from "react";
+import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { useOnboardingStore } from "@/store/onboarding-store";
 import { useFollowState } from "@/context/UserStateContext";
-import { PulseBrandMark } from "@/components/brand/PulseBrandMark";
 
-// ── Design tokens ──────────────────────────────────────────────────────────────
-const P = {
-  bg:       "#09090D",
-  surface:  "#111118",
-  card:     "#15151E",
-  elevated: "#1C1C28",
-  accent:   "#E50914",
-  text:     "#FFFFFF",
-  muted:    "#8E8E9E",
-  border:   "rgba(255,255,255,0.07)",
-  sectionLabel: "rgba(229,9,20,0.85)",
-};
-
-// ── Types ──────────────────────────────────────────────────────────────────────
-type MenuRow = {
-  id: string;
-  icon: string;
-  iconLib?: "ion" | "mci";
-  label: string;
-  sublabel?: string;
-  badge?: string | number;
-  route: () => void;
-  accent?: boolean;
-  disabled?: boolean;
-};
-
-type MenuSection = {
+type RowItem = {
   id: string;
   title: string;
-  rows: MenuRow[];
+  subtitle: string;
+  icon: string;
+  lib?: "ion" | "mci";
+  route: string;
+  disabled?: boolean;
+  badge?: string;
 };
 
-// ── Row component ──────────────────────────────────────────────────────────────
-function MenuRowItem({ row }: { row: MenuRow }) {
-  const isDisabled = row.disabled === true;
+const P = {
+  bg: "#09090D",
+  card: "#14141D",
+  accent: "#E50914",
+  text: "#FFFFFF",
+  muted: "#9797A5",
+  border: "rgba(255,255,255,0.09)",
+};
+
+function ItemRow({ item }: { item: RowItem }) {
+  const disabled = Boolean(item.disabled);
 
   return (
     <TouchableOpacity
-      onPress={isDisabled ? undefined : row.route}
-      activeOpacity={isDisabled ? 1 : 0.72}
-      style={[styles.row, isDisabled && styles.rowDisabled]}
-      accessibilityRole="button"
-      accessibilityLabel={row.label}
+      style={[styles.row, disabled && styles.rowDisabled]}
+      onPress={disabled ? undefined : () => router.push(item.route as any)}
+      activeOpacity={disabled ? 1 : 0.82}
     >
-      {/* Icon bubble */}
-      <View style={[styles.iconBubble, row.accent && styles.iconBubbleAccent]}>
-        {row.iconLib === "mci" ? (
-          <MaterialCommunityIcons
-            name={row.icon as any}
-            size={22}
-            color={row.accent ? "#FFF" : P.accent}
-          />
+      <View style={styles.iconWrap}>
+        {item.lib === "mci" ? (
+          <MaterialCommunityIcons name={item.icon as any} size={18} color={P.accent} />
         ) : (
-          <Ionicons
-            name={row.icon as any}
-            size={22}
-            color={row.accent ? "#FFF" : P.accent}
-          />
+          <Ionicons name={item.icon as any} size={18} color={P.accent} />
         )}
       </View>
 
-      {/* Label + sublabel */}
-      <View style={styles.rowText}>
-        <Text style={[styles.rowLabel, isDisabled && styles.rowLabelMuted]}>
-          {row.label}
-        </Text>
-        {row.sublabel ? (
-          <Text style={styles.rowSublabel}>{row.sublabel}</Text>
-        ) : null}
+      <View style={styles.rowTextWrap}>
+        <Text style={styles.rowTitle}>{item.title}</Text>
+        <Text style={styles.rowSubtitle}>{item.subtitle}</Text>
       </View>
 
-      {/* Badge */}
-      {!!row.badge && (
+      {item.badge ? (
         <View style={styles.badge}>
-          <Text style={styles.badgeText}>
-            {typeof row.badge === "number" && row.badge > 99 ? "99+" : String(row.badge)}
-          </Text>
+          <Text style={styles.badgeText}>{item.badge}</Text>
         </View>
-      )}
+      ) : null}
 
-      {/* Chevron */}
-      {!isDisabled && (
-        <Ionicons name="chevron-forward" size={16} color={P.muted} />
-      )}
+      {!disabled && <Ionicons name="chevron-forward" size={15} color={P.muted} />}
     </TouchableOpacity>
   );
 }
 
-// ── Section component ──────────────────────────────────────────────────────────
-function MenuSectionBlock({ section }: { section: MenuSection }) {
-  if (section.rows.length === 0) return null;
+function Section({ title, items }: { title: string; items: RowItem[] }) {
+  const visible = items.filter((item) => !item.disabled);
+  if (!visible.length) return null;
 
   return (
-    <View style={styles.sectionBlock}>
-      <Text style={styles.sectionTitle}>{section.title}</Text>
+    <View style={styles.section}>
+      <Text style={styles.sectionTitle}>{title}</Text>
       <View style={styles.sectionCard}>
-        {section.rows.map((row, index) => (
-          <React.Fragment key={row.id}>
-            <MenuRowItem row={row} />
-            {index < section.rows.length - 1 && (
-              <View style={styles.divider} />
-            )}
+        {visible.map((item, index) => (
+          <React.Fragment key={item.id}>
+            <ItemRow item={item} />
+            {index < visible.length - 1 && <View style={styles.divider} />}
           </React.Fragment>
         ))}
       </View>
@@ -133,7 +78,6 @@ function MenuSectionBlock({ section }: { section: MenuSection }) {
   );
 }
 
-// ── Main screen ────────────────────────────────────────────────────────────────
 export default function MoreScreen() {
   const insets = useSafeAreaInsets();
   const sportsEnabled = useOnboardingStore((s) => s.sportsEnabled);
@@ -142,340 +86,267 @@ export default function MoreScreen() {
 
   const followCount = followedTeams.length + followedMatches.length;
 
-  const go = useCallback((path: string) => () => router.push(path as any), []);
-
-  // ── Build sections ────────────────────────────────────────────────────────--
-  const mediaRows: MenuRow[] = [];
-
-  if (moviesEnabled) {
-    mediaRows.push(
+  const mediaItems = useMemo<RowItem[]>(
+    () => [
       {
         id: "movies",
-        icon: "film",
-        label: "Movies",
-        sublabel: "Trending & popular films",
-        route: go("/(tabs)/movies"),
+        title: "Movies",
+        subtitle: "Trending films and collections",
+        icon: "film-outline",
+        route: "/(tabs)/movies",
+        disabled: !moviesEnabled,
       },
       {
         id: "series",
-        icon: "layers",
-        iconLib: "ion",
-        label: "TV Shows",
-        sublabel: "Series, seasons & episodes",
-        route: go("/(tabs)/series"),
+        title: "TV Shows",
+        subtitle: "Series and episodic rails",
+        icon: "layers-outline",
+        route: "/(tabs)/series",
+        disabled: !moviesEnabled,
       },
-    );
-  }
-
-  mediaRows.push(
-    {
-      id: "livetv",
-      icon: "tv",
-      label: "Live TV",
-      sublabel: "IPTV channels & live streams",
-      route: go("/(tabs)/livetv"),
-    },
+      {
+        id: "anime",
+        title: "Anime",
+        subtitle: "Curated anime recommendations",
+        icon: "sparkles-outline",
+        route: "/media-category?type=anime",
+        disabled: !moviesEnabled,
+      },
+      {
+        id: "manga",
+        title: "Manga",
+        subtitle: "Manga discovery and reads",
+        icon: "book-outline",
+        route: "/media-category?type=manga",
+        disabled: !moviesEnabled,
+      },
+      {
+        id: "music",
+        title: "Music",
+        subtitle: "Soundtracks and music picks",
+        icon: "musical-notes-outline",
+        route: "/media-category?type=music",
+        disabled: !moviesEnabled,
+      },
+      {
+        id: "sports",
+        title: "Live Sports",
+        subtitle: "Live matches and score center",
+        icon: "soccer",
+        lib: "mci",
+        route: "/(tabs)",
+        disabled: !sportsEnabled,
+      },
+    ],
+    [moviesEnabled, sportsEnabled],
   );
 
-  if (sportsEnabled) {
-    mediaRows.push({
-      id: "livesports",
-      icon: "soccer",
-      iconLib: "mci",
-      label: "Live Sports",
-      sublabel: "Matches, scores & highlights",
-      route: go("/(tabs)/"),
-      accent: false,
-    });
-  }
-
-  if (!moviesEnabled && !sportsEnabled) {
-    // Both disabled — nudge user toward settings
-    mediaRows.push({
-      id: "enable-modules",
-      icon: "add-circle",
-      label: "Enable modules in Settings",
-      sublabel: "Turn on Sports or Movies",
-      route: go("/profile"),
-      accent: true,
-    });
-  }
-
-  const mediaSectionRows: MenuRow[] = [
-    ...mediaRows,
-    {
-      id: "downloads",
-      icon: "arrow-down-circle",
-      label: "Downloads",
-      sublabel: "Offline content",
-      route: go("/(tabs)/downloads"),
-    },
-  ];
-
-  const userRows: MenuRow[] = [
+  const libraryItems: RowItem[] = [
     {
       id: "watchlist",
-      icon: "bookmark",
-      label: "Watchlist",
-      sublabel: "Saved for later",
-      route: go("/favorites"),
+      title: "Watchlist",
+      subtitle: "Saved movies, shows and matches",
+      icon: "bookmark-outline",
+      route: "/favorites",
     },
     {
       id: "history",
-      icon: "time",
-      label: "History",
-      sublabel: "Recently watched",
-      route: go("/favorites"),
+      title: "History",
+      subtitle: "Recently watched content",
+      icon: "time-outline",
+      route: "/profile",
     },
     {
-      id: "follows",
-      icon: "heart",
-      label: "Follows & Notifications",
-      sublabel: followCount > 0 ? `${followCount} item${followCount === 1 ? "" : "s"} followed` : "Teams & match alerts",
-      badge: followCount > 0 ? followCount : undefined,
-      route: go("/follow-center"),
+      id: "notifications",
+      title: "Notifications",
+      subtitle: "Follows, alerts and match updates",
+      icon: "notifications-outline",
+      route: "/notifications",
+      badge: followCount > 0 ? String(followCount) : undefined,
     },
   ];
 
-  const systemRows: MenuRow[] = [
+  const systemItems: RowItem[] = [
     {
       id: "settings",
-      icon: "settings",
-      label: "Settings",
-      sublabel: "Preferences, modules & account",
-      route: go("/profile"),
+      title: "Settings",
+      subtitle: "Modules, onboarding and preferences",
+      icon: "settings-outline",
+      route: "/settings",
     },
     {
       id: "legal",
-      icon: "shield-checkmark",
-      label: "Legal & DMCA",
-      sublabel: "Privacy & content rights",
-      route: go("/profile"),
+      title: "Legal/DMCA",
+      subtitle: "Privacy, rights and takedown policy",
+      icon: "shield-checkmark-outline",
+      route: "/legal",
     },
   ];
 
-  const sections: MenuSection[] = [
-    { id: "media", title: "MEDIA", rows: mediaSectionRows },
-    { id: "user",  title: "YOUR CONTENT", rows: userRows },
-    { id: "sys",   title: "SYSTEM", rows: systemRows },
-  ];
-
   return (
-    <View style={[styles.screen, { backgroundColor: P.bg }]}>
-      {/* Background aurora blobs */}
-      <View style={styles.auroraTopLeft} />
-      <View style={styles.auroraBottomRight} />
+    <View style={styles.screen}>
+      <View style={styles.glowTop} />
+      <View style={styles.glowBottom} />
 
       <ScrollView
-        contentContainerStyle={[
-          styles.scroll,
-          { paddingTop: insets.top + 16, paddingBottom: insets.bottom + 100 },
-        ]}
         showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ paddingTop: insets.top + 12, paddingBottom: insets.bottom + 98, paddingHorizontal: 16 }}
       >
-        {/* ── Brand header ── */}
-        <View style={styles.brandHeader}>
-          <PulseBrandMark
-            size={48}
-            showWordmark={true}
-            subtitle={null}
-          />
-          <View style={styles.moduleChips}>
-            {sportsEnabled && (
-              <View style={[styles.chip, styles.chipActive]}>
-                <MaterialCommunityIcons name="soccer" size={11} color={P.accent} />
-                <Text style={styles.chipText}>Sports</Text>
-              </View>
-            )}
-            {moviesEnabled && (
-              <View style={[styles.chip, styles.chipActive]}>
-                <Ionicons name="film-outline" size={11} color={P.accent} />
-                <Text style={styles.chipText}>Movies & TV</Text>
-              </View>
-            )}
-            {!sportsEnabled && !moviesEnabled && (
-              <View style={[styles.chip, styles.chipInactive]}>
-                <Ionicons name="alert-circle-outline" size={11} color={P.muted} />
-                <Text style={[styles.chipText, { color: P.muted }]}>No modules active</Text>
-              </View>
-            )}
+        <View style={styles.header}>
+          <Text style={styles.brand}>NEXORA</Text>
+          <Text style={styles.subtitle}>More</Text>
+          <View style={styles.pillsRow}>
+            <View style={[styles.pill, sportsEnabled ? styles.pillActive : styles.pillMuted]}>
+              <Text style={styles.pillText}>Sports {sportsEnabled ? "On" : "Off"}</Text>
+            </View>
+            <View style={[styles.pill, moviesEnabled ? styles.pillActive : styles.pillMuted]}>
+              <Text style={styles.pillText}>Media {moviesEnabled ? "On" : "Off"}</Text>
+            </View>
           </View>
         </View>
 
-        {/* ── Menu sections ── */}
-        {sections.map((section) => (
-          <MenuSectionBlock key={section.id} section={section} />
-        ))}
-
-        {/* ── Footer label ── */}
-        <Text style={styles.footer}>NEXORA · Premium</Text>
+        <Section title="MEDIA" items={mediaItems} />
+        <Section title="LIBRARY" items={libraryItems} />
+        <Section title="SYSTEM" items={systemItems} />
       </ScrollView>
     </View>
   );
 }
 
-// ── Styles ─────────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
+    backgroundColor: P.bg,
   },
-  auroraTopLeft: {
+  glowTop: {
     position: "absolute",
     top: -80,
     left: -60,
-    width: 200,
-    height: 200,
-    borderRadius: 200,
-    backgroundColor: "rgba(229,9,20,0.10)",
+    width: 240,
+    height: 240,
+    borderRadius: 240,
+    backgroundColor: "rgba(229,9,20,0.11)",
   },
-  auroraBottomRight: {
+  glowBottom: {
     position: "absolute",
-    bottom: 80,
-    right: -60,
-    width: 180,
-    height: 180,
-    borderRadius: 180,
-    backgroundColor: "rgba(229,9,20,0.07)",
+    right: -70,
+    bottom: 100,
+    width: 210,
+    height: 210,
+    borderRadius: 210,
+    backgroundColor: "rgba(229,9,20,0.08)",
   },
-  scroll: {
-    paddingHorizontal: 18,
-    gap: 0,
+  header: {
+    marginBottom: 18,
+    gap: 6,
   },
-
-  // ── Brand header
-  brandHeader: {
-    alignItems: "center",
-    gap: 16,
-    marginBottom: 28,
-    paddingVertical: 8,
+  brand: {
+    color: P.text,
+    fontSize: 24,
+    letterSpacing: 2.6,
+    fontFamily: "Inter_800ExtraBold",
   },
-  moduleChips: {
+  subtitle: {
+    color: P.muted,
+    fontSize: 12,
+    letterSpacing: 1.5,
+    textTransform: "uppercase",
+    fontFamily: "Inter_600SemiBold",
+  },
+  pillsRow: {
     flexDirection: "row",
     gap: 8,
-    flexWrap: "wrap",
-    justifyContent: "center",
+    marginTop: 6,
   },
-  chip: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
+  pill: {
+    borderRadius: 99,
+    borderWidth: 1,
     paddingHorizontal: 10,
     paddingVertical: 4,
-    borderRadius: 20,
-    borderWidth: 1,
   },
-  chipActive: {
-    backgroundColor: "rgba(229,9,20,0.10)",
-    borderColor: "rgba(229,9,20,0.30)",
+  pillActive: {
+    borderColor: "rgba(229,9,20,0.38)",
+    backgroundColor: "rgba(229,9,20,0.13)",
   },
-  chipInactive: {
-    backgroundColor: "rgba(255,255,255,0.05)",
-    borderColor: "rgba(255,255,255,0.10)",
+  pillMuted: {
+    borderColor: P.border,
+    backgroundColor: "rgba(255,255,255,0.04)",
   },
-  chipText: {
-    color: P.accent,
+  pillText: {
+    color: P.text,
     fontSize: 11,
     fontFamily: "Inter_600SemiBold",
-    letterSpacing: 0.4,
   },
-
-  // ── Section
-  sectionBlock: {
-    marginBottom: 20,
+  section: {
+    marginBottom: 16,
   },
   sectionTitle: {
-    color: P.sectionLabel,
+    color: P.accent,
     fontSize: 10,
-    fontFamily: "Inter_700Bold",
-    letterSpacing: 1.8,
+    letterSpacing: 1.9,
     marginBottom: 10,
-    marginLeft: 4,
+    marginLeft: 3,
+    fontFamily: "Inter_700Bold",
   },
   sectionCard: {
-    backgroundColor: P.card,
-    borderRadius: 18,
+    borderRadius: 16,
     borderWidth: 1,
     borderColor: P.border,
     overflow: "hidden",
+    backgroundColor: P.card,
   },
-
-  // ── Row
   row: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 14,
-    paddingVertical: 14,
-    paddingHorizontal: 16,
+    gap: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
   },
   rowDisabled: {
-    opacity: 0.5,
+    opacity: 0.44,
   },
-  iconBubble: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    backgroundColor: "rgba(229,9,20,0.12)",
-    borderWidth: 1,
-    borderColor: "rgba(229,9,20,0.20)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  iconBubbleAccent: {
-    backgroundColor: P.accent,
-    borderColor: P.accent,
-  },
-  rowText: {
-    flex: 1,
-    gap: 2,
-  },
-  rowLabel: {
-    color: P.text,
-    fontSize: 15,
-    fontFamily: "Inter_600SemiBold",
-    letterSpacing: 0.1,
-  },
-  rowLabelMuted: {
-    color: P.muted,
-  },
-  rowSublabel: {
-    color: P.muted,
-    fontSize: 12,
-    fontFamily: "Inter_400Regular",
-    letterSpacing: 0.1,
-  },
-
-  // ── Badge
-  badge: {
-    backgroundColor: P.accent,
-    minWidth: 20,
-    height: 20,
+  iconWrap: {
+    width: 34,
+    height: 34,
     borderRadius: 10,
-    paddingHorizontal: 5,
     alignItems: "center",
     justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "rgba(229,9,20,0.32)",
+    backgroundColor: "rgba(229,9,20,0.10)",
+  },
+  rowTextWrap: {
+    flex: 1,
+    minWidth: 0,
+  },
+  rowTitle: {
+    color: P.text,
+    fontSize: 14,
+    fontFamily: "Inter_600SemiBold",
+  },
+  rowSubtitle: {
+    color: P.muted,
+    fontSize: 11,
+    lineHeight: 16,
+    fontFamily: "Inter_500Medium",
+  },
+  divider: {
+    height: 1,
+    backgroundColor: P.border,
+    marginLeft: 56,
+  },
+  badge: {
+    backgroundColor: "rgba(229,9,20,0.18)",
+    borderColor: "rgba(229,9,20,0.32)",
+    borderWidth: 1,
+    borderRadius: 99,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    marginRight: 4,
   },
   badgeText: {
-    color: "#FFF",
+    color: P.accent,
     fontSize: 10,
     fontFamily: "Inter_700Bold",
-    letterSpacing: 0.2,
-  },
-
-  // ── Divider
-  divider: {
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: P.border,
-    marginLeft: 70,
-  },
-
-  // ── Footer
-  footer: {
-    color: "rgba(255,255,255,0.20)",
-    fontSize: 11,
-    fontFamily: "Inter_500Medium",
-    letterSpacing: 2,
-    textAlign: "center",
-    marginTop: 20,
-    textTransform: "uppercase",
   },
 });

@@ -33,7 +33,7 @@ import Constants from "expo-constants";
 import { COLORS } from "@/constants/colors";
 import {
   cacheSet,
-  cacheGetStale,
+  cachePeekStale,
   CacheTTL,
   cacheWarmup,
 } from "@/lib/services/cache-service";
@@ -156,9 +156,8 @@ async function prefetchPopularCompetitionBundles(): Promise<void> {
 function seedQueryClientFromCache() {
   const today = new Date().toISOString().slice(0, 10);
   for (const { queryKey, cacheKey } of PREFETCH_ENTRIES(today)) {
-    // Use cacheGetStale so expired-but-present disk data seeds the
-    // QueryClient; React Query will treat it as placeholder and refetch.
-    const cached = cacheGetStale(cacheKey);
+    // Seed from in-memory cache after cacheWarmup() so render paths stay sync.
+    const cached = cachePeekStale(cacheKey);
     if (cached != null) {
       queryClient.setQueryData(queryKey, cached);
     }
@@ -310,6 +309,9 @@ function RootLayoutNav() {
       <Stack.Screen name="playlist-manage" options={{ headerShown: false }} />
       <Stack.Screen name="playlist-edit" options={{ headerShown: false }} />
       <Stack.Screen name="follow-center" options={{ headerShown: false }} />
+      <Stack.Screen name="notifications" options={{ headerShown: false }} />
+      <Stack.Screen name="legal" options={{ headerShown: false }} />
+      <Stack.Screen name="media-category" options={{ headerShown: false }} />
     </Stack>
   );
 }

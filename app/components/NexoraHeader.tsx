@@ -44,7 +44,8 @@ export function NexoraHeader({
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const isTV = width >= 1200;
-  const containerMax = isTV ? 1400 : 980;
+  const isTablet = width >= 760;
+  const containerMax = isTV ? 1320 : 960;
   const isIOS = Platform.OS === "ios";
   const topPad = Platform.OS === "web" ? 0 : insets.top;
   const isModuleVariant = variant === "module";
@@ -55,118 +56,104 @@ export function NexoraHeader({
   const handleProfile = onProfile ?? (() => router.push("/profile"));
 
   const moduleTitleColor = titleColor ?? COLORS.accent;
+  const iconSize = compact ? 17 : isTablet ? 20 : 18;
+  const actionSize = compact ? 34 : isTablet ? 40 : 36;
 
   const brandWordmark = (
-    <Text style={[styles.moduleWordmark, compact ? styles.moduleWordmarkCompact : null]}>
-      <Text style={styles.moduleWordmarkAccent}>N</Text>
-      EXORA
+    <Text
+      style={[
+        styles.brandWordmark,
+        compact ? styles.brandWordmarkCompact : null,
+        isModuleVariant ? styles.brandWordmarkModule : null,
+      ]}
+      numberOfLines={1}
+      ellipsizeMode="tail"
+    >
+      NEXORA
     </Text>
   );
 
   const content = compact ? (
     <View style={styles.contentRow}>
-      <View style={isModuleVariant ? styles.moduleBrandCompact : styles.logoCompact}>
-        {isModuleVariant ? (
-          <View style={styles.moduleWordmarkWrap}>
-            {brandWordmark}
-            {title ? <Text style={[styles.moduleSectionTitleCompact, { color: moduleTitleColor }]}>{title}</Text> : null}
-          </View>
-        ) : (
-          <>
-            <Text style={[styles.logoText, styles.logoTextCompact]}><Text style={styles.logoTextAccent}>N</Text>EXORA</Text>
-            {title ? <Text style={[styles.sectionTitleCompact, titleColor ? { color: titleColor } : null]}>{title}</Text> : null}
-            {badgeLabel ? (
-              <View
-                style={[
-                  styles.headerBadge,
-                  badgeTone === "live" ? styles.headerBadgeLive : null,
-                  badgeTone === "accent" ? styles.headerBadgeAccent : null,
-                ]}
-              >
-                <Text style={[styles.headerBadgeText, badgeTone === "live" ? styles.headerBadgeTextLive : null]} numberOfLines={1}>
-                  {badgeLabel}
-                </Text>
-              </View>
-            ) : null}
-          </>
-        )}
+      <View style={styles.brandAreaCompact}>
+        {brandWordmark}
+        {title ? (
+          <Text style={[styles.sectionTitleCompact, { color: isModuleVariant ? moduleTitleColor : (titleColor ?? COLORS.textSecondary) }]} numberOfLines={1}>
+            {title}
+          </Text>
+        ) : null}
       </View>
 
-      <View style={[styles.actions, isModuleVariant ? styles.moduleActionsCompact : null]}>
+      <View style={styles.actions}>
         {rightElement}
         {showSearch && (
-          <TouchableOpacity style={isModuleVariant ? styles.iconBtnModuleCompact : styles.iconBtnCompact} onPress={onSearch} activeOpacity={0.7}>
-            <Ionicons name="search" size={isModuleVariant ? 20 : 18} color={isModuleVariant ? stylesModule.icon : COLORS.textSecondary} />
+          <TouchableOpacity style={[styles.iconBtn, { width: actionSize, height: actionSize, borderRadius: actionSize / 2 }]} onPress={onSearch} activeOpacity={0.7}>
+            <Ionicons name="search" size={iconSize} color={COLORS.textSecondary} />
           </TouchableOpacity>
         )}
         {showNotification && (
-          <TouchableOpacity style={isModuleVariant ? styles.iconBtnModuleCompact : styles.iconBtnCompact} onPress={handleNotification} activeOpacity={0.7}>
-            <Ionicons name="notifications-outline" size={isModuleVariant ? 20 : 18} color={isModuleVariant ? stylesModule.icon : COLORS.textSecondary} />
+          <TouchableOpacity style={[styles.iconBtn, { width: actionSize, height: actionSize, borderRadius: actionSize / 2 }]} onPress={handleNotification} activeOpacity={0.7}>
+            <Ionicons name="notifications-outline" size={iconSize} color={COLORS.textSecondary} />
           </TouchableOpacity>
         )}
         {showFavorites && (
-          <TouchableOpacity style={isModuleVariant ? styles.iconBtnModuleCompact : styles.iconBtnCompact} onPress={handleFavorites} activeOpacity={0.7}>
-            <Ionicons name="heart-outline" size={isModuleVariant ? 20 : 18} color={isModuleVariant ? stylesModule.icon : COLORS.textSecondary} />
+          <TouchableOpacity style={[styles.iconBtn, { width: actionSize, height: actionSize, borderRadius: actionSize / 2 }]} onPress={handleFavorites} activeOpacity={0.7}>
+            <Ionicons name="heart-outline" size={iconSize} color={COLORS.textSecondary} />
           </TouchableOpacity>
         )}
         {showProfile && (
-          <TouchableOpacity style={isModuleVariant ? styles.profileBtnModuleCompact : styles.profileBtnCompact} onPress={handleProfile} activeOpacity={0.7}>
-            <Ionicons name="person" size={isModuleVariant ? 18 : 15} color={COLORS.accent} />
+          <TouchableOpacity style={[styles.profileBtn, { width: actionSize, height: actionSize, borderRadius: actionSize / 2 }]} onPress={handleProfile} activeOpacity={0.7}>
+            <Ionicons name="person" size={compact ? 16 : 17} color={COLORS.accent} />
           </TouchableOpacity>
         )}
       </View>
     </View>
   ) : (
     <View style={styles.contentRow}>
-      <View style={isModuleVariant ? styles.moduleBrand : styles.logo}>
-        {isModuleVariant ? (
-          <>
-            {brandWordmark}
-            {title ? <Text style={[styles.moduleSectionTitle, { color: moduleTitleColor }]}>{title}</Text> : null}
-          </>
-        ) : (
-          <>
-            <View style={styles.logoTopRow}>
-              <Text style={styles.logoText}><Text style={styles.logoTextAccent}>N</Text>EXORA</Text>
-              {badgeLabel ? (
-                <View
-                  style={[
-                    styles.headerBadge,
-                    badgeTone === "live" ? styles.headerBadgeLive : null,
-                    badgeTone === "accent" ? styles.headerBadgeAccent : null,
-                  ]}
-                >
-                  <Text style={[styles.headerBadgeText, badgeTone === "live" ? styles.headerBadgeTextLive : null]} numberOfLines={1}>
-                    {badgeLabel}
-                  </Text>
-                </View>
-              ) : null}
+      <View style={styles.brandArea}>
+        <View style={styles.brandTopRow}>
+          {brandWordmark}
+          {badgeLabel ? (
+            <View
+              style={[
+                styles.headerBadge,
+                badgeTone === "live" ? styles.headerBadgeLive : null,
+                badgeTone === "accent" ? styles.headerBadgeAccent : null,
+              ]}
+            >
+              <Text style={[styles.headerBadgeText, badgeTone === "live" ? styles.headerBadgeTextLive : null]} numberOfLines={1}>
+                {badgeLabel}
+              </Text>
             </View>
-            {title ? <Text style={[styles.sectionTitle, titleColor ? { color: titleColor } : null]}>{title}</Text> : null}
-          </>
-        )}
+          ) : null}
+        </View>
+        {title ? (
+          <Text style={[styles.sectionTitle, { color: isModuleVariant ? moduleTitleColor : (titleColor ?? COLORS.textSecondary) }]} numberOfLines={1}>
+            {title}
+          </Text>
+        ) : null}
       </View>
 
-      <View style={[styles.actions, isModuleVariant ? styles.moduleActions : null]}>
+      <View style={styles.actions}>
         {rightElement}
         {showSearch && (
-          <TouchableOpacity style={isModuleVariant ? styles.iconBtnModule : styles.iconBtn} onPress={onSearch} activeOpacity={0.7}>
-            <Ionicons name="search" size={isModuleVariant ? 27 : 22} color={isModuleVariant ? stylesModule.icon : COLORS.textSecondary} />
+          <TouchableOpacity style={[styles.iconBtn, { width: actionSize, height: actionSize, borderRadius: actionSize / 2 }]} onPress={onSearch} activeOpacity={0.7}>
+            <Ionicons name="search" size={iconSize} color={COLORS.textSecondary} />
           </TouchableOpacity>
         )}
         {showNotification && (
-          <TouchableOpacity style={isModuleVariant ? styles.iconBtnModule : styles.iconBtn} onPress={handleNotification} activeOpacity={0.7}>
-            <Ionicons name="notifications-outline" size={isModuleVariant ? 27 : 22} color={isModuleVariant ? stylesModule.icon : COLORS.textSecondary} />
+          <TouchableOpacity style={[styles.iconBtn, { width: actionSize, height: actionSize, borderRadius: actionSize / 2 }]} onPress={handleNotification} activeOpacity={0.7}>
+            <Ionicons name="notifications-outline" size={iconSize} color={COLORS.textSecondary} />
           </TouchableOpacity>
         )}
         {showFavorites && (
-          <TouchableOpacity style={isModuleVariant ? styles.iconBtnModule : styles.iconBtn} onPress={handleFavorites} activeOpacity={0.7}>
-            <Ionicons name="heart-outline" size={isModuleVariant ? 27 : 22} color={isModuleVariant ? stylesModule.icon : COLORS.textSecondary} />
+          <TouchableOpacity style={[styles.iconBtn, { width: actionSize, height: actionSize, borderRadius: actionSize / 2 }]} onPress={handleFavorites} activeOpacity={0.7}>
+            <Ionicons name="heart-outline" size={iconSize} color={COLORS.textSecondary} />
           </TouchableOpacity>
         )}
         {showProfile && (
-          <TouchableOpacity style={isModuleVariant ? styles.profileBtnModule : styles.profileBtn} onPress={handleProfile} activeOpacity={0.7}>
-            <Ionicons name="person" size={isModuleVariant ? 22 : 16} color={COLORS.accent} />
+          <TouchableOpacity style={[styles.profileBtn, { width: actionSize, height: actionSize, borderRadius: actionSize / 2 }]} onPress={handleProfile} activeOpacity={0.7}>
+            <Ionicons name="person" size={17} color={COLORS.accent} />
           </TouchableOpacity>
         )}
       </View>
@@ -179,7 +166,7 @@ export function NexoraHeader({
         styles.container,
         isModuleVariant && styles.containerModule,
         compact && styles.containerCompact,
-        { paddingTop: compact ? topPad + 4 : topPad + 8, maxWidth: containerMax, alignSelf: "center", width: "100%" },
+        { paddingTop: compact ? topPad + 2 : topPad + 5, maxWidth: containerMax, alignSelf: "center", width: "100%" },
       ]}
     >
       {isIOS && !isModuleVariant ? (
@@ -194,21 +181,17 @@ export function NexoraHeader({
   );
 }
 
-const stylesModule = {
-  icon: "rgba(255,255,255,0.68)",
-};
-
 const styles = StyleSheet.create({
   container: {
-    paddingHorizontal: 16,
-    paddingBottom: 4,
+    paddingHorizontal: 14,
+    paddingBottom: 2,
     backgroundColor: COLORS.background,
     borderBottomWidth: 1,
     borderBottomColor: COLORS.border,
   },
   containerModule: {
-    paddingHorizontal: 28,
-    paddingBottom: 10,
+    paddingHorizontal: 16,
+    paddingBottom: 4,
     borderBottomColor: "rgba(255,255,255,0.08)",
   },
   flatWrap: {
@@ -222,93 +205,53 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: 2,
-    paddingVertical: 8,
+    paddingHorizontal: 0,
+    paddingVertical: 6,
   },
-  logo: {
+  brandArea: {
     flexDirection: "column",
     alignItems: "flex-start",
     justifyContent: "center",
     gap: 2,
+    flex: 1,
+    minWidth: 0,
   },
-  moduleBrand: {
-    flexDirection: "column",
-    alignItems: "flex-start",
-    justifyContent: "center",
-    gap: 12,
-    paddingVertical: 10,
-  },
-  moduleBrandCompact: {
+  brandAreaCompact: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
+    gap: 8,
+    flex: 1,
+    minWidth: 0,
   },
-  moduleWordmarkWrap: {
-    flexDirection: "column",
-    alignItems: "flex-start",
-    justifyContent: "center",
-    gap: 5,
-  },
-  logoTopRow: {
+  brandTopRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 10,
+    gap: 8,
+    minWidth: 0,
   },
-  brandLockup: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-  },
-  logoText: {
-    fontSize: 20,
-    lineHeight: 22,
-    letterSpacing: 2,
-    fontFamily: "Inter_800ExtraBold",
-    color: COLORS.text,
-  },
-  logoTextAccent: {
-    color: COLORS.accent,
-  },
-  logoTextCompact: {
-    fontSize: 16,
-    lineHeight: 18,
-    letterSpacing: 1.5,
-  },
-  moduleWordmark: {
-    fontSize: 44,
-    lineHeight: 44,
-    letterSpacing: 9,
-    fontFamily: "Inter_800ExtraBold",
-    color: COLORS.text,
-  },
-  moduleWordmarkCompact: {
-    fontSize: 24,
-    lineHeight: 26,
-    letterSpacing: 5,
-  },
-  moduleWordmarkAccent: {
-    color: COLORS.accent,
-  },
-  moduleSectionTitle: {
+  brandWordmark: {
     fontSize: 18,
     lineHeight: 20,
-    letterSpacing: 5.5,
-    fontFamily: "Inter_700Bold",
-    textTransform: "uppercase",
+    letterSpacing: 2.4,
+    fontFamily: "Inter_800ExtraBold",
+    color: COLORS.text,
+    flexShrink: 1,
   },
-  moduleSectionTitleCompact: {
-    fontSize: 11,
-    lineHeight: 13,
+  brandWordmarkCompact: {
+    fontSize: 15,
+    lineHeight: 18,
+    letterSpacing: 1.9,
+  },
+  brandWordmarkModule: {
     letterSpacing: 2.8,
-    fontFamily: "Inter_700Bold",
-    textTransform: "uppercase",
   },
   sectionTitle: {
-    fontSize: 11,
-    fontFamily: "Inter_600SemiBold",
-    color: COLORS.textSecondary,
+    fontSize: 10,
+    lineHeight: 14,
+    fontFamily: "Inter_700Bold",
     letterSpacing: 1.4,
     textTransform: "uppercase",
+    flexShrink: 1,
   },
   headerBadge: {
     borderRadius: 999,
@@ -317,7 +260,7 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(255,255,255,0.08)",
     paddingHorizontal: 8,
     paddingVertical: 2,
-    maxWidth: 130,
+    maxWidth: 112,
   },
   headerBadgeLive: {
     borderColor: `${COLORS.live}55`,
@@ -340,18 +283,13 @@ const styles = StyleSheet.create({
   actions: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
-  },
-  moduleActions: {
-    gap: 14,
-  },
-  moduleActionsCompact: {
-    gap: 8,
+    gap: 6,
+    marginLeft: 10,
   },
   iconBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     backgroundColor: COLORS.cardElevated,
     borderWidth: 1,
     borderColor: COLORS.border,
@@ -363,20 +301,10 @@ const styles = StyleSheet.create({
     shadowRadius: 6,
     elevation: 3,
   },
-  iconBtnModule: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: "#181818",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.06)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
   profileBtn: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     backgroundColor: "rgba(229,9,20,0.10)",
     borderWidth: 1,
     borderColor: `${COLORS.accent}66`,
@@ -388,69 +316,16 @@ const styles = StyleSheet.create({
     shadowRadius: 5,
     elevation: 3,
   },
-  profileBtnModule: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: "rgba(255,255,255,0.03)",
-    borderWidth: 2,
-    borderColor: COLORS.accent,
-    alignItems: "center",
-    justifyContent: "center",
-  },
   containerCompact: {
-    paddingBottom: 4,
-  },
-  logoCompact: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
+    paddingBottom: 2,
   },
   sectionTitleCompact: {
-    fontSize: 13,
+    fontSize: 10,
+    lineHeight: 14,
     fontFamily: "Inter_700Bold",
     color: COLORS.textSecondary,
-    letterSpacing: 1.2,
+    letterSpacing: 1.1,
     textTransform: "uppercase",
-  },
-  iconBtnCompact: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    backgroundColor: COLORS.cardElevated,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  iconBtnModuleCompact: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    backgroundColor: "#181818",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.06)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  profileBtnCompact: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    backgroundColor: "rgba(229,9,20,0.11)",
-    borderWidth: 1,
-    borderColor: `${COLORS.accent}66`,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  profileBtnModuleCompact: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    backgroundColor: "rgba(255,255,255,0.03)",
-    borderWidth: 1.5,
-    borderColor: COLORS.accent,
-    alignItems: "center",
-    justifyContent: "center",
+    flexShrink: 1,
   },
 });

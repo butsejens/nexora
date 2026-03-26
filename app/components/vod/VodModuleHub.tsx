@@ -35,6 +35,7 @@ import {
   type VodStudioGroup,
 } from "@/lib/vod-module";
 import { withTimeout } from "@/lib/utils";
+import { ensureNamespaced } from "@/lib/id-namespace";
 
 type VodModuleHubProps = {
   initialPane?: VodModulePane;
@@ -58,6 +59,23 @@ type CatalogPayload = {
     nextCursorYear?: number | null;
     hasMore?: boolean;
   };
+};
+
+type CuratedCollectionPayload = {
+  id: string;
+  name: string;
+  itemCount: number;
+  items: VodModuleItem[];
+  poster?: string | null;
+  backdrop?: string | null;
+};
+
+type CuratedStudioPayload = {
+  id: string;
+  name: string;
+  logo?: string | null;
+  itemCount: number;
+  items: VodModuleItem[];
 };
 
 const MODULE_NAV = [
@@ -107,6 +125,15 @@ function dedupeModuleItems(items: VodModuleItem[]): VodModuleItem[] {
   return output;
 }
 
+function normalizeTitle(value: string): string {
+  return String(value || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
 async function fetchHomePayload(): Promise<HomePayload> {
   const [movieData, seriesData] = await Promise.all([
     fetchJson("/api/movies/trending"),
@@ -154,8 +181,8 @@ async function fetchCatalogChunk(cursorYear?: number | null): Promise<CatalogPay
   const params = new URLSearchParams({
     type: "all",
     years: "30",
-    chunkYears: "4",
-    pagesPerYear: "1",
+    chunkYears: "6",
+    pagesPerYear: "2",
   });
   if (cursorYear) params.set("cursorYear", String(cursorYear));
   const payload = await fetchJson(`/api/vod/catalog?${params.toString()}`);
@@ -163,6 +190,50 @@ async function fetchCatalogChunk(cursorYear?: number | null): Promise<CatalogPay
     items: dedupeModuleItems(((payload?.items || []) as any[]).map((item) => enrichVodModuleItem(item))),
     meta: payload?.meta,
   };
+}
+
+async function fetchCuratedCollections(): Promise<CuratedCollectionPayload[]> {
+  const collectionTargets = ["Star Wars", "Harry Potter", "Marvel", "The Lord of the Rings"];
+  const results = await Promise.all(
+    collectionTargets.map(async (target) => {
+      const payload = await fetchJson(`/api/vod/collection?title=${encodeURIComponent(target)}&depth=5`).catch(() => null);
+      const items = dedupeModuleItems(((payload?.items || []) as any[]).map((item) => enrichVodModuleItem(item))).slice(0, 40);
+      return {
+        id: String(payload?.collection?.id || target).toLowerCase(),
+        name: String(payload?.collection?.name || `${target} Collection`),
+        itemCount: Number(payload?.stats?.total || items.length || 0),
+        items,
+        poster: payload?.collection?.poster || null,
+        backdrop: payload?.collection?.backdrop || null,
+      };
+    })
+  );
+  return results.filter((item) => item.itemCount > 2);
+}
+
+async function fetchCuratedStudios(): Promise<CuratedStudioPayload[]> {
+  const studioTargets = [
+    { id: "420", name: "Marvel Studios" },
+    { id: "2", name: "Walt Disney Pictures" },
+    { id: "174", name: "Warner Bros. Pictures" },
+    { id: "33", name: "Universal Pictures" },
+    { id: "4", name: "Paramount Pictures" },
+    { id: "25", name: "20th Century Studios" },
+  ];
+  const results = await Promise.all(
+    studioTargets.map(async (target) => {
+      const payload = await fetchJson(`/api/vod/studio?id=${encodeURIComponent(target.id)}&name=${encodeURIComponent(target.name)}&depth=7`).catch(() => null);
+      const items = dedupeModuleItems(((payload?.items || []) as any[]).map((item) => enrichVodModuleItem(item))).slice(0, 60);
+      return {
+        id: String(payload?.studio?.id || target.id),
+        name: String(payload?.studio?.name || target.name),
+        logo: payload?.studio?.logo || null,
+        itemCount: Number(payload?.stats?.total || items.length || 0),
+        items,
+      };
+    })
+  );
+  return results.filter((item) => item.itemCount > 3);
 }
 
 function ModuleSection({ title, children, actionLabel, onAction }: { title: string; children: React.ReactNode; actionLabel?: string; onAction?: () => void }) {
@@ -258,21 +329,108 @@ export function VodModuleHub({ initialPane = "home", initialFilter = "all" }: Vo
     retry: 1,
   });
 
+  const catalogChunkThreeQuery = useQuery({
+    queryKey: ["vod-module-catalog", "chunk-3", catalogChunkTwoQuery.data?.meta?.nextCursorYear || "none"],
+    queryFn: () => fetchCatalogChunk(catalogChunkTwoQuery.data?.meta?.nextCursorYear || null),
+    enabled: activePane === "home" && Boolean(catalogChunkTwoQuery.data?.meta?.nextCursorYear),
+    staleTime: 30 * 60 * 1000,
+    gcTime: 60 * 60 * 1000,
+    retry: 1,
+  });
+
+  const catalogChunkFourQuery = useQuery({
+    queryKey: ["vod-module-catalog", "chunk-4", catalogChunkThreeQuery.data?.meta?.nextCursorYear || "none"],
+    queryFn: () => fetchCatalogChunk(catalogChunkThreeQuery.data?.meta?.nextCursorYear || null),
+    enabled: activePane === "home" && Boolean(catalogChunkThreeQuery.data?.meta?.nextCursorYear),
+    staleTime: 30 * 60 * 1000,
+    gcTime: 60 * 60 * 1000,
+    retry: 1,
+  });
+
+  const curatedCollectionsQuery = useQuery({
+    queryKey: ["vod-module-curated-collections"],
+    queryFn: fetchCuratedCollections,
+    enabled: activePane === "home",
+    staleTime: 60 * 60 * 1000,
+    gcTime: 2 * 60 * 60 * 1000,
+    retry: 1,
+  });
+
+  const curatedStudiosQuery = useQuery({
+    queryKey: ["vod-module-curated-studios"],
+    queryFn: fetchCuratedStudios,
+    enabled: activePane === "home",
+    staleTime: 60 * 60 * 1000,
+    gcTime: 2 * 60 * 60 * 1000,
+    retry: 1,
+  });
+
   useEffect(() => {
     if (activePane === "search") return;
     queryClient.prefetchQuery({ queryKey: ["vod-module-home"], queryFn: fetchHomePayload, staleTime: 15 * 60 * 1000 }).catch(() => undefined);
     queryClient.prefetchQuery({ queryKey: ["vod-module-catalog", "chunk-1"], queryFn: () => fetchCatalogChunk(null), staleTime: 30 * 60 * 1000 }).catch(() => undefined);
+    queryClient.prefetchQuery({ queryKey: ["vod-module-curated-collections"], queryFn: fetchCuratedCollections, staleTime: 60 * 60 * 1000 }).catch(() => undefined);
+    queryClient.prefetchQuery({ queryKey: ["vod-module-curated-studios"], queryFn: fetchCuratedStudios, staleTime: 60 * 60 * 1000 }).catch(() => undefined);
   }, [activePane, queryClient]);
 
   const allItems = useMemo(() => {
     const homeItems = homeQuery.data?.allItems || [];
     const chunkOne = catalogChunkOneQuery.data?.items || [];
     const chunkTwo = catalogChunkTwoQuery.data?.items || [];
-    return dedupeModuleItems([...homeItems, ...chunkOne, ...chunkTwo]);
-  }, [catalogChunkOneQuery.data?.items, catalogChunkTwoQuery.data?.items, homeQuery.data?.allItems]);
+    const chunkThree = catalogChunkThreeQuery.data?.items || [];
+    const chunkFour = catalogChunkFourQuery.data?.items || [];
+    const curatedCollectionItems = (curatedCollectionsQuery.data || []).flatMap((collection) => collection.items || []);
+    const curatedStudioItems = (curatedStudiosQuery.data || []).flatMap((studio) => studio.items || []);
+    return dedupeModuleItems([
+      ...homeItems,
+      ...chunkOne,
+      ...chunkTwo,
+      ...chunkThree,
+      ...chunkFour,
+      ...curatedCollectionItems,
+      ...curatedStudioItems,
+    ]);
+  }, [
+    catalogChunkFourQuery.data?.items,
+    catalogChunkOneQuery.data?.items,
+    catalogChunkThreeQuery.data?.items,
+    catalogChunkTwoQuery.data?.items,
+    curatedCollectionsQuery.data,
+    curatedStudiosQuery.data,
+    homeQuery.data?.allItems,
+  ]);
 
-  const collections = useMemo(() => buildCollectionGroups(allItems.filter((item) => item.type === "movie")).slice(0, 18), [allItems]);
-  const studios = useMemo(() => buildStudioGroups(allItems).slice(0, 18), [allItems]);
+  const collections = useMemo(() => {
+    const curated = (curatedCollectionsQuery.data || []).map((collection) => ({
+      key: `curated:${collection.id}`,
+      name: collection.name,
+      source: "fallback" as const,
+      collectionId: Number(collection.id) || undefined,
+      items: collection.items,
+      itemCount: collection.itemCount,
+      bannerUri: collection.backdrop || collection.items[0]?.backdrop || collection.items[0]?.poster || null,
+      posterUri: collection.poster || collection.items[0]?.poster || null,
+      fromYear: null,
+      toYear: null,
+    }));
+    const grouped = buildCollectionGroups(allItems);
+    return [...curated, ...grouped]
+      .filter((group, index, arr) => arr.findIndex((entry) => entry.key === group.key || normalizeTitle(entry.name) === normalizeTitle(group.name)) === index)
+      .slice(0, 20);
+  }, [allItems, curatedCollectionsQuery.data]);
+  const studios = useMemo(() => {
+    const curated = (curatedStudiosQuery.data || []).map((studio) => ({
+      id: Number(studio.id) || undefined,
+      name: studio.name,
+      logoUri: studio.logo || null,
+      items: studio.items,
+      itemCount: studio.itemCount,
+    }));
+    const grouped = buildStudioGroups(allItems);
+    return [...curated, ...grouped]
+      .filter((group, index, arr) => arr.findIndex((entry) => normalizeTitle(entry.name) === normalizeTitle(group.name)) === index)
+      .slice(0, 20);
+  }, [allItems, curatedStudiosQuery.data]);
   const genres = useMemo(() => buildCategoryRails(allItems, 24).slice(0, 14), [allItems]);
   const featured = homeQuery.data?.featured || null;
 
@@ -304,7 +462,12 @@ export function VodModuleHub({ initialPane = "home", initialFilter = "all" }: Vo
     return filterBySearchFilter(combined, searchFilter);
   }, [searchFilter, searchQuery.data]);
 
-  const favoriteItems = useMemo(() => allItems.filter((item) => favorites.includes(item.id)), [allItems, favorites]);
+  const favoriteItems = useMemo(() => {
+    return allItems.filter((item) => {
+      const mediaId = ensureNamespaced("media", item.id);
+      return favorites.includes(mediaId) || favorites.includes(item.id);
+    });
+  }, [allItems, favorites]);
   const historyPreview = useMemo(() => {
     return watchHistory.slice(0, 8).map((item: any) => enrichVodModuleItem({
       id: item.id,
@@ -466,7 +629,7 @@ export function VodModuleHub({ initialPane = "home", initialFilter = "all" }: Vo
               />
             ) : null}
 
-            {catalogChunkOneQuery.isFetching || catalogChunkTwoQuery.isFetching ? (
+            {catalogChunkOneQuery.isFetching || catalogChunkTwoQuery.isFetching || catalogChunkThreeQuery.isFetching || catalogChunkFourQuery.isFetching ? (
               <View style={styles.catalogLoadingRow}>
                 <ActivityIndicator color={COLORS.accent} size="small" />
                 <Text style={styles.catalogLoadingText}>Expanding 30-year catalog in the background...</Text>

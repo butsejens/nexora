@@ -637,9 +637,10 @@ export function resolveTeamLogoUri(
     return bestFuzzy.value;
   }
 
-  // National team fallback: try ESPN country logos
-  const countryCode = NATIONAL_TEAM_CODES[normalizeCountryName(normalized)] || NATIONAL_TEAM_CODES[normalized];
-  if (countryCode) {
+  // National team fallback: try strict country aliases (with youth/women suffix normalization)
+  for (const candidate of nationalTeamLookupCandidates(normalized, context?.country || null)) {
+    const countryCode = NATIONAL_TEAM_CODES[candidate];
+    if (!countryCode) continue;
     const value = `https://a.espncdn.com/i/teamlogos/countries/500/${countryCode}.png`;
     teamResolutionCache.set(cacheKey, { value, confidence: 0.9, updatedAt: Date.now() });
     scheduleResolutionPersist();
@@ -675,6 +676,22 @@ function clubAliasCandidates(teamName: string): string[] {
   if (alias === "arsenal") out.add("arsenal fc");
   if (alias === "psg") out.add("paris saint germain");
 
+  return [...out].filter(Boolean);
+}
+
+function nationalTeamLookupCandidates(teamName: string, contextCountry?: string | null): string[] {
+  const base = normalizeCountryName(teamName);
+  const trimmed = base
+    .replace(/\b(u\s?17|u\s?18|u\s?19|u\s?20|u\s?21|u\s?23)\b/g, " ")
+    .replace(/\b(women|woman|ladies|feminine|vrouw|dames|female)\b/g, " ")
+    .replace(/\b(national team|nationaal elftal|selection)\b/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  const out = new Set<string>();
+  if (base) out.add(base);
+  if (trimmed) out.add(trimmed);
+  if (contextCountry) out.add(normalizeCountryName(contextCountry));
   return [...out].filter(Boolean);
 }
 

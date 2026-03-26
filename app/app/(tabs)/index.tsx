@@ -39,10 +39,8 @@ import { t as tFn, getLanguage } from "@/lib/i18n";
 import { useTranslation } from "@/lib/useTranslation";
 import {
   ensureMatchNotificationPermission,
-  pushMatchNotification,
 } from "@/lib/match-notifications";
-import { cacheGetStale, cacheSet, CacheTTL } from "@/lib/services/cache-service";
-import { deriveMoodFromSportsHistory } from "@/lib/vod-curation";
+import { cacheGetStale, cachePeekStale, cacheSet, CacheTTL } from "@/lib/services/cache-service";
 
 /** Safely convert any value to string — prevents [object Object] rendering */
 // ── Sport design tokens ───────────────────────────────────────────────────────
@@ -919,7 +917,9 @@ export default function SportsScreen() {
   const [statusFilter] = useState<"all" | "live" | "upcoming">("all");
   const [sportCategory, setSportCategory] = useState<SportCategoryId>(preferredSportCategory);
   const [selectedDate, setSelectedDate] = useState<string>(todayUTC());
-  const [sportsView, setSportsView] = useState<"competitions" | "live" | "upcoming" | "menu">("competitions");
+  const [sportsView, setSportsView] = useState<"home" | "competitions" | "live" | "upcoming" | "menu">(
+    moviesEnabled ? "home" : "competitions",
+  );
   const [activeSportTool, setActiveSportTool] = useState<SportToolId>("football-predictions");
   const [sportsSearchActive, setSportsSearchActive] = useState(false);
   const [sportsSearchQuery, setSportsSearchQuery] = useState("");
@@ -933,9 +933,20 @@ export default function SportsScreen() {
     setSportCategory(sportsEnabled ? preferredSportCategory : "all");
   }, [preferredSportCategory, sportsEnabled]);
 
+  useEffect(() => {
+    if (!sportsEnabled) return;
+    if (moviesEnabled && sportsView === "competitions") {
+      setSportsView("home");
+      return;
+    }
+    if (!moviesEnabled && sportsView === "home") {
+      setSportsView("competitions");
+    }
+  }, [moviesEnabled, sportsEnabled, sportsView]);
+
   const liveQuery = useQuery({
     queryKey: ["sports", "live", selectedDate],
-    placeholderData: () => cacheGetStale<SportsPayload>(sportsLiveCacheKey(selectedDate)) || undefined,
+    placeholderData: () => cachePeekStale<SportsPayload>(sportsLiveCacheKey(selectedDate)) || undefined,
     queryFn: async () => {
       const date = encodeURIComponent(selectedDate);
       const candidates = [
@@ -943,7 +954,7 @@ export default function SportsScreen() {
         `/api/sports/by-date?date=${date}`,
         "/api/sports/live",
       ];
-      const stale = cacheGetStale<SportsPayload>(sportsLiveCacheKey(selectedDate));
+      const stale = await cacheGetStale<SportsPayload>(sportsLiveCacheKey(selectedDate));
       let best: SportsPayload = stale || { live: [], upcoming: [], finished: [] };
       for (const path of candidates) {
         try {
@@ -976,10 +987,10 @@ export default function SportsScreen() {
 
   const todayQuery = useQuery({
     queryKey: ["sports", "today", selectedDate],
-    placeholderData: () => cacheGetStale<SportsPayload>(sportsTodayCacheKey(selectedDate)) || undefined,
+    placeholderData: () => cachePeekStale<SportsPayload>(sportsTodayCacheKey(selectedDate)) || undefined,
     queryFn: async () => {
       const date = encodeURIComponent(selectedDate);
-      const stale = cacheGetStale<SportsPayload>(sportsTodayCacheKey(selectedDate));
+      const stale = await cacheGetStale<SportsPayload>(sportsTodayCacheKey(selectedDate));
       // Unified endpoint— eliminates redundant dual-fetch to same data
       try {
         const payload = await fetchSportsPayloadWithTimeout(`/api/sports/by-date?date=${date}`, 12000);
@@ -1009,10 +1020,10 @@ export default function SportsScreen() {
 
   const toolsQuery = useQuery({
     queryKey: ["sports", "menu-tools", selectedDate, sportCategory],
-    placeholderData: () => cacheGetStale<SportsMenuToolsPayload>(sportsToolsCacheKey(selectedDate, sportCategory)) || undefined,
+    placeholderData: () => cachePeekStale<SportsMenuToolsPayload>(sportsToolsCacheKey(selectedDate, sportCategory)) || undefined,
     queryFn: async () => {
       const key = sportsToolsCacheKey(selectedDate, sportCategory);
-      const stale = cacheGetStale<SportsMenuToolsPayload>(key);
+      const stale = await cacheGetStale<SportsMenuToolsPayload>(key);
       try {
         const payload = await fetchSportsMenuTools(`/api/sports/menu-tools?date=${encodeURIComponent(selectedDate)}&league=${encodeURIComponent(sportCategory)}`);
         cacheSet(key, payload, CacheTTL.MATCH_DETAIL);
@@ -1033,9 +1044,9 @@ export default function SportsScreen() {
 
   const highlightsQuery = useQuery({
     queryKey: ["sports", "highlights"],
-    placeholderData: () => cacheGetStale<any[]>(sportsHighlightsCacheKey) || undefined,
+    placeholderData: () => cachePeekStale<any[]>(sportsHighlightsCacheKey) || undefined,
     queryFn: async () => {
-      const stale = cacheGetStale<any[]>(sportsHighlightsCacheKey);
+      const stale = await cacheGetStale<any[]>(sportsHighlightsCacheKey);
       try {
         const json = await apiRequestJson<any>("/api/sports/highlights");
         const rows = Array.isArray(json?.highlights) ? json.highlights : [];
@@ -1554,6 +1565,7 @@ export default function SportsScreen() {
 
 
   const bottomPad = Platform.OS === "web" ? 44 : insets.bottom + 100;
+  const showHomeHub = sportsView === "home";
   const showLive = sportsView === "live" && statusFilter !== "upcoming";
   const showUpcoming = sportsView === "upcoming" && statusFilter !== "live";
   const showMenuSection = sportsView === "menu";
@@ -1561,6 +1573,7 @@ export default function SportsScreen() {
 
   // ── Sports sub-nav tabs ────────────────────────────────────────────────────
   const SPORTS_TABS = [
+    ...(moviesEnabled ? [{ id: "home" as const, label: "Home" }] : []),
     { id: "competitions" as const, label: t("sportsHome.explore") },
     { id: "live" as const,         label: t("sportsHome.live") },
     { id: "upcoming" as const,     label: t("sportsHome.matchday") },
@@ -1581,24 +1594,29 @@ export default function SportsScreen() {
 
   // Combined home — rendered when sports is disabled but movies/series are available
   if (!sportsEnabled) {
-    const headerTop = insets.top + 4;
     return (
       <View style={styles.container}>
-        <View style={[styles.combinedHeader, { paddingTop: headerTop }]}>
-          <Text style={styles.combinedHeaderTitle}><Text style={styles.combinedHeaderAccent}>N</Text>EXORA</Text>
-          <TouchableOpacity onPress={() => router.push("/profile")} activeOpacity={0.7} style={styles.combinedHeaderProfile}>
-            <Ionicons name="person" size={16} color={P.accent} />
-          </TouchableOpacity>
-        </View>
+        <NexoraHeader
+          title="HOME"
+          compact
+          showSearch
+          showNotification
+          showFavorites
+          showProfile
+          onSearch={() => router.push("/(tabs)/search")}
+          onNotification={() => router.push("/follow-center")}
+          onFavorites={() => router.push("/favorites")}
+          onProfile={() => router.push("/profile")}
+        />
         {moviesEnabled ? (
           <ScrollView
             showsVerticalScrollIndicator={false}
-            contentContainerStyle={{ paddingTop: headerTop + 52, paddingBottom: insets.bottom + 100 }}
+            contentContainerStyle={{ paddingTop: 12, paddingBottom: insets.bottom + 100 }}
           >
             <MediaHomeSections title="Entertainment for you" sportsMood={sportsMood} />
           </ScrollView>
         ) : (
-          <View style={{ flex: 1, paddingTop: headerTop + 52 }}>
+          <View style={{ flex: 1, paddingTop: 16 }}>
             <View style={styles.disabledContainer}>
               <Ionicons name="apps-outline" size={56} color={P.muted} />
               <Text style={styles.disabledTitle}>Nothing Enabled</Text>
@@ -1949,6 +1967,49 @@ export default function SportsScreen() {
               </View>
             )}
 
+          </>
+        )}
+
+        {showHomeHub && (
+          <>
+            {moviesEnabled && <MediaHomeSections title="Featured for you" sportsMood={sportsMood} />}
+
+            <SectionTitle
+              title={`🔴 ${t("sportsHome.liveNow")}`}
+              accent
+              count={sortedLive.length}
+              action={t("sportsHome.matchday")}
+              onAction={() => setSportsView("upcoming")}
+            />
+            {sortedLive.length > 0 ? (
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.carouselContent}>
+                {sortedLive.slice(0, 8).map((match: any) => (
+                  <LiveNowCard key={`home_live_${match.id}`} match={match} onPress={() => handleMatchPress(match)} />
+                ))}
+              </ScrollView>
+            ) : (
+              <View style={styles.fallbackPanel}>
+                <Text style={styles.fallbackText}>{t("sportsHome.noLive")}</Text>
+              </View>
+            )}
+
+            <SectionTitle
+              title={t("sportsHome.today")}
+              accent
+              action={t("sportsHome.allMatches")}
+              onAction={() => setSportsView("competitions")}
+            />
+            {todayCombined.length > 0 ? (
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.carouselContent}>
+                {todayCombined.slice(0, 10).map((match: any) => (
+                  <TodayMatchCard key={`home_today_${match.id}`} match={match} onPress={() => handleMatchPress(match)} />
+                ))}
+              </ScrollView>
+            ) : (
+              <View style={styles.fallbackPanel}>
+                <Text style={styles.fallbackText}>{t("sportsHome.noMatchesToday")}</Text>
+              </View>
+            )}
           </>
         )}
 

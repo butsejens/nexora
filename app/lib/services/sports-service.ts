@@ -81,7 +81,8 @@ export interface SportsHomeData {
  * Used by the main sports tab and the live badge.
  */
 export async function getSportsHome(): Promise<SportsHomeData> {
-  const raw = await safeFetch<any>("/api/sports/today", {});
+  const today = new Date().toISOString().slice(0, 10);
+  const raw = await safeFetch<any>(`/api/sports/by-date?date=${encodeURIComponent(today)}`, {});
   return normalizeSportsHomePayload(raw);
 }
 

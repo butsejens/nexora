@@ -443,7 +443,7 @@ function UpdateModal({
             await IntentLauncher.startActivityAsync("android.settings.MANAGE_UNKNOWN_APP_SOURCES", {
               data: `package:${packageId}`,
             });
-            Alert.alert("Installatie geblokkeerd", "Sta 'installeren van onbekende apps' toe voor Pulse en probeer opnieuw.");
+            Alert.alert("Installatie geblokkeerd", "Sta 'installeren van onbekende apps' toe voor NEXORA en probeer opnieuw.");
             return;
           }
         } catch {}

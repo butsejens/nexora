@@ -144,13 +144,35 @@ const PRIORITY_STUDIOS = [
 ];
 
 const FRANCHISE_FALLBACKS = [
-  { key: "star-wars", label: "Star Wars Collection", terms: ["star wars"] },
-  { key: "harry-potter", label: "Harry Potter Collection", terms: ["harry potter", "fantastic beasts"] },
+  { key: "star-wars", label: "Star Wars Collection", terms: ["star wars", "mandalorian", "book of boba fett", "ahsoka", "andor"] },
+  { key: "harry-potter", label: "Harry Potter Collection", terms: ["harry potter", "fantastic beasts", "hogwarts"] },
   { key: "fast-furious", label: "Fast & Furious Collection", terms: ["fast & furious", "fast and furious"] },
   { key: "lord-rings", label: "Middle-earth Collection", terms: ["lord of the rings", "the hobbit"] },
   { key: "mission-impossible", label: "Mission: Impossible Collection", terms: ["mission: impossible", "mission impossible"] },
   { key: "john-wick", label: "John Wick Collection", terms: ["john wick"] },
-  { key: "marvel", label: "Marvel Collection", terms: ["avengers", "captain america", "iron man", "thor", "guardians of the galaxy"] },
+  {
+    key: "marvel",
+    label: "Marvel Collection",
+    terms: [
+      "marvel",
+      "mcu",
+      "avengers",
+      "captain america",
+      "iron man",
+      "thor",
+      "guardians of the galaxy",
+      "black panther",
+      "doctor strange",
+      "wanda",
+      "loki",
+      "daredevil",
+    ],
+  },
+  { key: "dc", label: "DC Collection", terms: ["dc", "batman", "superman", "justice league", "wonder woman", "suicide squad", "joker"] },
+  { key: "jurassic", label: "Jurassic Collection", terms: ["jurassic park", "jurassic world"] },
+  { key: "transformers", label: "Transformers Collection", terms: ["transformers", "bumblebee"] },
+  { key: "pirates", label: "Pirates Of The Caribbean Collection", terms: ["pirates of the caribbean", "jack sparrow"] },
+  { key: "james-bond", label: "James Bond Collection", terms: ["james bond", "007"] },
 ];
 
 function normalizeText(value: string | null | undefined): string {
@@ -297,7 +319,7 @@ function resolveFallbackCollection(item: VodModuleItem): { key: string; name: st
 export function buildCollectionGroups(items: VodModuleItem[]): VodCollectionGroup[] {
   const groups = new Map<string, VodCollectionGroup>();
 
-  uniqueItems(items.filter((item) => item.type === "movie")).forEach((item) => {
+  uniqueItems(items).forEach((item) => {
     const fallback = resolveFallbackCollection(item);
     const collection = item.collection?.name
       ? {
@@ -351,10 +373,10 @@ export function buildCollectionGroups(items: VodModuleItem[]): VodCollectionGrou
       items: [...group.items].sort((left, right) => parseReleaseDate(left) - parseReleaseDate(right)),
       itemCount: group.items.length,
     }))
-    .filter((group) => group.items.length > 1)
+    .filter((group) => group.items.length > 2)
     .sort((left, right) => {
       if (right.items.length !== left.items.length) return right.items.length - left.items.length;
-      return (parseReleaseDate(right.items[0]) || 0) - (parseReleaseDate(left.items[0]) || 0);
+      return (parseReleaseDate(left.items[0]) || 0) - (parseReleaseDate(right.items[0]) || 0);
     });
 }
 
@@ -371,7 +393,7 @@ export function buildStudioGroups(items: VodModuleItem[]): VodStudioGroup[] {
       ? item.productionCompanies
       : (item.studios || []).map((name) => ({ id: 0, name, logo: null }));
 
-    companies.slice(0, 3).forEach((company) => {
+    companies.slice(0, 6).forEach((company) => {
       if (!company?.name) return;
       const key = normalizeText(company.name);
       const existing = groups.get(key);
@@ -395,9 +417,9 @@ export function buildStudioGroups(items: VodModuleItem[]): VodStudioGroup[] {
   return Array.from(groups.values())
     .map((group) => {
       const unique = uniqueItems(group.items);
-      return { ...group, items: unique.slice(0, 12), itemCount: unique.length };
+      return { ...group, items: unique.slice(0, 36), itemCount: unique.length };
     })
-    .filter((group) => group.itemCount >= 2)
+    .filter((group) => group.itemCount >= 3)
     .sort((left, right) => {
       const priorityDelta = studioPriority(left.name) - studioPriority(right.name);
       if (priorityDelta !== 0) return priorityDelta;

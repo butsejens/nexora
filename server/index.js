@@ -1398,6 +1398,85 @@ function asArray(value) {
   return value ? [value] : [];
 }
 
+function stripHtmlArtifacts(value) {
+  return String(value ?? "")
+    .replace(/<[^>]*>/g, " ")
+    .replace(/&nbsp;|&#160;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;|&apos;/gi, "'")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function parseTransferMoment(value) {
+  const raw = stripHtmlArtifacts(value);
+  if (!raw) return Number.MAX_SAFE_INTEGER;
+  const asDate = Date.parse(raw);
+  if (Number.isFinite(asDate)) return asDate;
+  const year = Number(raw.replace(/[^\d]/g, "").slice(0, 4));
+  if (Number.isFinite(year) && year > 1800 && year < 3000) return Date.UTC(year, 0, 1);
+  return Number.MAX_SAFE_INTEGER;
+}
+
+function normalizeTransferAction(role, fee, note) {
+  const text = `${String(fee || "")} ${String(note || "")}`.toLowerCase();
+  if (/end of loan|loan ended|returned|return from loan|einde huur|einde van huur/.test(text)) return "loan_end";
+  if (/loan|huur/.test(text)) return "loan";
+  if (String(role || "").toLowerCase() === "to") return "joined";
+  if (String(role || "").toLowerCase() === "from") return "left";
+  if (/free|gratis|free transfer/.test(text)) return "joined";
+  return "transfer_fee";
+}
+
+function transferActionLabel(action) {
+  if (action === "joined") return "Joined";
+  if (action === "left") return "Left";
+  if (action === "loan") return "Loan";
+  if (action === "loan_end") return "End of loan";
+  return "Transfer fee";
+}
+
+function normalizeFormerClubEvents(rows, options = {}) {
+  const limit = Number(options?.limit || 20);
+  const descending = options?.descending !== false;
+  const source = asArray(rows);
+  const seen = new Set();
+
+  const mapped = source
+    .map((item) => {
+      const name = stripHtmlArtifacts(item?.name || item?.team || item?.club || item?.to || item?.from);
+      if (!name) return null;
+      const role = String(item?.role || "").toLowerCase() === "to" ? "to" : "from";
+      const date = stripHtmlArtifacts(item?.date || item?.season || item?.year || "");
+      const fee = stripHtmlArtifacts(item?.fee || item?.transferFee || item?.value || "");
+      const note = stripHtmlArtifacts(item?.note || item?.description || item?.details || item?.transferType || "");
+      const action = normalizeTransferAction(role, fee, note);
+      const event = {
+        name,
+        role,
+        date,
+        fee: fee || null,
+        note: note || null,
+        action,
+        actionLabel: transferActionLabel(action),
+        moment: parseTransferMoment(date),
+      };
+      const dedupeKey = `${event.name}|${event.role}|${event.date}|${event.fee || ""}|${event.note || ""}`.toLowerCase();
+      if (seen.has(dedupeKey)) return null;
+      seen.add(dedupeKey);
+      return event;
+    })
+    .filter(Boolean)
+    .sort((a, b) => {
+      if (a.moment !== b.moment) return descending ? b.moment - a.moment : a.moment - b.moment;
+      const order = { joined: 0, loan: 1, loan_end: 2, left: 3, transfer_fee: 4 };
+      return (order[a.action] ?? 9) - (order[b.action] ?? 9);
+    });
+
+  return mapped.slice(0, Math.max(1, limit));
+}
+
 function pickString(...values) {
   for (const value of values) {
     const text = String(value ?? "").trim();
@@ -1446,27 +1525,20 @@ async function apifyRunActor(actorId, input = {}) {
 function mapFormerClubsFromApify(raw) {
   const rows = asArray(raw);
   const out = [];
-  const seen = new Set();
   for (const row of rows) {
     const from = pickString(row?.from, row?.fromClub, row?.outClub, row?.oldClub, row?.clubFrom);
     const to = pickString(row?.to, row?.toClub, row?.inClub, row?.newClub, row?.clubTo);
     const date = pickString(row?.date, row?.season, row?.year, row?.when);
+    const fee = pickString(row?.fee, row?.transferFee, row?.value);
+    const note = pickString(row?.note, row?.description, row?.details, row?.transferType);
     if (from) {
-      const key = `${from}_${date}_from`;
-      if (!seen.has(key)) {
-        seen.add(key);
-        out.push({ name: from, role: "from", date });
-      }
+      out.push({ name: from, role: "from", date, fee, note });
     }
     if (to) {
-      const key = `${to}_${date}_to`;
-      if (!seen.has(key)) {
-        seen.add(key);
-        out.push({ name: to, role: "to", date });
-      }
+      out.push({ name: to, role: "to", date, fee, note });
     }
   }
-  return out.slice(0, 12);
+  return normalizeFormerClubEvents(out, { limit: 12, descending: true });
 }
 
 function normalizeApifyPlayerItem(raw, requestedName, requestedTeam) {
@@ -1496,6 +1568,9 @@ function normalizeApifyPlayerItem(raw, requestedName, requestedTeam) {
   );
   const height = toMetersStringFromAny(read("height", "heightCm", "height_cm", "height_m"));
   const weight = toKgStringFromAny(read("weight", "weightKg", "weight_kg"));
+  const birthDate = pickString(read("birthDate", "dateOfBirth", "dob"));
+  const jerseyNumber = pickString(read("jerseyNumber", "shirtNumber", "number", "jersey"));
+  const contractUntil = pickString(read("contractUntil", "contractEnd", "contractEndDate"));
   const formerClubs = mapFormerClubsFromApify(read("formerClubs", "transfers", "transferHistory", "history"));
 
   return {
@@ -1510,6 +1585,9 @@ function normalizeApifyPlayerItem(raw, requestedName, requestedTeam) {
     sportContext,
     height,
     weight,
+    birthDate,
+    jerseyNumber,
+    contractUntil,
     marketValue,
     formerClubs,
   };
@@ -3339,21 +3417,15 @@ async function aiAnalyzePlayerProfile(player, context = {}) {
 function mapFormerClubs(transfers) {
   const clubs = [];
   for (const t of transfers || []) {
-    const outClub = String(t?.teams?.out?.name || "").trim();
-    const inClub = String(t?.teams?.in?.name || "").trim();
-    const date = String(t?.date || "").trim();
-    if (outClub) clubs.push({ name: outClub, role: "from", date });
-    if (inClub) clubs.push({ name: inClub, role: "to", date });
+    const outClub = stripHtmlArtifacts(t?.teams?.out?.name || t?.from || t?.fromClub || "");
+    const inClub = stripHtmlArtifacts(t?.teams?.in?.name || t?.to || t?.toClub || "");
+    const date = stripHtmlArtifacts(t?.date || t?.season || "");
+    const fee = stripHtmlArtifacts(t?.fee || t?.transferFee || t?.value || "");
+    const note = stripHtmlArtifacts(t?.note || t?.description || t?.details || "");
+    if (outClub) clubs.push({ name: outClub, role: "from", date, fee, note });
+    if (inClub) clubs.push({ name: inClub, role: "to", date, fee, note });
   }
-  const unique = [];
-  const seen = new Set();
-  for (const c of clubs) {
-    const key = `${c.name}_${c.date}`;
-    if (!c.name || seen.has(key)) continue;
-    seen.add(key);
-    unique.push(c);
-  }
-  return unique.slice(0, 12);
+  return normalizeFormerClubEvents(clubs, { limit: 12, descending: true });
 }
 
 function mapEspnRosterPlayer(player) {
@@ -4332,6 +4404,13 @@ function deterministicPrediction(payload) {
   const awayGoalDiff = toNum(context?.awayGoalDiff);
   const homeTopScorerGoals = toNum(context?.homeTopScorerGoals);
   const awayTopScorerGoals = toNum(context?.awayTopScorerGoals);
+  const homeFifaRank = toNum(context?.homeFifaRank);
+  const awayFifaRank = toNum(context?.awayFifaRank);
+  const homeMarketValue = toNum(context?.homeMarketValue);
+  const awayMarketValue = toNum(context?.awayMarketValue);
+  const homeLineupCertainty = toNum(context?.homeLineupCertainty);
+  const awayLineupCertainty = toNum(context?.awayLineupCertainty);
+  const isInternational = Boolean(context?.isInternational) || /fifa|nations|international|friendly|world cup|euro/i.test(String(payload?.league || context?.competitionContext || ""));
 
   const scoreEdge = (homeScore - awayScore) * 24;
   const shotEdge = (homeShots - awayShots) * 1.6;
@@ -4352,6 +4431,14 @@ function deterministicPrediction(payload) {
   const pointsEdge = (homePoints - awayPoints) * 0.18;
   const goalDiffEdge = (homeGoalDiff - awayGoalDiff) * 0.22;
   const topScorerEdge = (homeTopScorerGoals - awayTopScorerGoals) * 0.55;
+  const fifaRankEdge = (awayFifaRank > 0 && homeFifaRank > 0) ? (awayFifaRank - homeFifaRank) * 0.95 : 0;
+  const marketValueEdge = (homeMarketValue > 0 && awayMarketValue > 0)
+    ? clamp(((homeMarketValue - awayMarketValue) / Math.max(homeMarketValue, awayMarketValue)) * 22, -14, 14)
+    : 0;
+  const lineupCertaintyEdge = (homeLineupCertainty > 0 || awayLineupCertainty > 0)
+    ? ((homeLineupCertainty - awayLineupCertainty) * 9)
+    : 0;
+  const internationalBalanceEdge = isInternational ? 2.5 : 0;
 
   const events = Array.isArray(payload?.events) ? payload.events : [];
   const homeTag = String(payload?.homeTeam || "").toLowerCase();
@@ -4375,7 +4462,7 @@ function deterministicPrediction(payload) {
   const rawEdge = (
     scoreEdge + shotEdge + sotEdge + possEdge + cornerEdge + blockedEdge +
     offsidesEdge + savesEdge + cardEdge + yellowEdge + foulEdge + attackingEdge +
-    rankEdge + pointsEdge + goalDiffEdge + topScorerEdge + eventEdge + homeAdvantage
+    rankEdge + pointsEdge + goalDiffEdge + topScorerEdge + fifaRankEdge + marketValueEdge + lineupCertaintyEdge + internationalBalanceEdge + eventEdge + homeAdvantage
   ) * gamePhaseMultiplier;
 
   const sigmoid = (x) => 1 / (1 + Math.exp(-x / 20));
@@ -4407,9 +4494,12 @@ function deterministicPrediction(payload) {
   const hasXgInputs = (homeShots + awayShots + homeSot + awaySot) > 0;
   const hasContextInputs = Boolean(
     (homeRank > 0 && awayRank > 0) ||
+    (homeFifaRank > 0 && awayFifaRank > 0) ||
     homePoints || awayPoints ||
     homeGoalDiff || awayGoalDiff ||
-    homeTopScorerGoals || awayTopScorerGoals
+    homeTopScorerGoals || awayTopScorerGoals ||
+    homeMarketValue || awayMarketValue ||
+    homeLineupCertainty || awayLineupCertainty
   );
   const hasMatchSignal = Boolean(
     hasXgInputs ||
@@ -4436,6 +4526,9 @@ function deterministicPrediction(payload) {
   if (homeRed > 0 || awayRed > 0) keyFactors.push(`Rode kaarten: thuis ${homeRed} - uit ${awayRed}`);
   else if (homeCorners || awayCorners) keyFactors.push(`Hoekschoppen ${homeCorners || 0} - ${awayCorners || 0}`);
   if (homeRank > 0 && awayRank > 0) keyFactors.push(`Klassement #${homeRank} vs #${awayRank}`);
+  if (homeFifaRank > 0 && awayFifaRank > 0) keyFactors.push(`FIFA-ranking #${homeFifaRank} vs #${awayFifaRank}`);
+  if (homeMarketValue > 0 && awayMarketValue > 0) keyFactors.push(`Selectiewaarde proxy ${(homeMarketValue / 1_000_000).toFixed(0)}M vs ${(awayMarketValue / 1_000_000).toFixed(0)}M`);
+  if (homeLineupCertainty > 0 || awayLineupCertainty > 0) keyFactors.push(`Line-up zekerheid ${Math.round((homeLineupCertainty || 0) * 100)}% vs ${Math.round((awayLineupCertainty || 0) * 100)}%`);
   if (minute) keyFactors.push(`Wedstrijdminuut ${minute}`);
 
   const tacticalNotes = [];
@@ -4458,7 +4551,9 @@ function deterministicPrediction(payload) {
     tacticalNotes.push(homeFouls > awayFouls ? "Thuisploeg speelt met meer overtredingen, risico op kaarten." : "Uitploeg speelt met meer overtredingen, risico op kaarten.");
   }
   if (tacticalNotes.length === 0) {
-    tacticalNotes.push("Match is tactisch in evenwicht op basis van de huidige cijfers.");
+    tacticalNotes.push(isInternational
+      ? "Interland met hogere variantie: individuele kwaliteit en omschakelmomenten wegen zwaarder."
+      : "Match is tactisch in evenwicht op basis van de huidige cijfers.");
   }
 
   // Estimate next-goal probability based on shots on target frequency
@@ -4483,7 +4578,9 @@ function deterministicPrediction(payload) {
   const confidenceReason = confidence >= 72
     ? "Sterke statistische voorsprong in score, kansen en momentum."
     : confidence >= 58
-      ? "Meerdere signalen wijzen in dezelfde richting, maar met wedstrijdrisico."
+      ? (isInternational
+        ? "Meerdere signalen wijzen in dezelfde richting, met interland-variantie als risico."
+        : "Meerdere signalen wijzen in dezelfde richting, maar met wedstrijdrisico.")
       : "Wedstrijdbeeld is volatiel; uitkomst blijft open.";
 
   const edgeScore = clamp(Math.round(Math.abs(rawEdge)), 0, 100);
@@ -4508,7 +4605,9 @@ function deterministicPrediction(payload) {
     momentum: homePct > awayPct ? "Home" : awayPct > homePct ? "Away" : "Balanced",
     danger: homeSot > awaySot ? "Home Attack" : awaySot > homeSot ? "Away Attack" : "Balanced",
     riskLevel: confidence >= 70 ? "Low" : confidence >= 56 ? "Medium" : "High",
-    summary: "Analyse op basis van live score, schotkwaliteit, kaarten, event-impact en momentum (provider-onafhankelijke fallback).",
+    summary: isInternational
+      ? "Analyse op basis van score, schotkwaliteit, ranking/contextsignalen en wedstrijdmomentum (interland-geoptimaliseerde fallback)."
+      : "Analyse op basis van live score, schotkwaliteit, kaarten, event-impact en momentum (provider-onafhankelijke fallback).",
     keyFactors,
     tacticalNotes,
     h2hSummary: null,
@@ -4586,7 +4685,7 @@ function deterministicPrediction(payload) {
     updatedAt: new Date().toISOString(),
     insufficientData: !hasMatchSignal,
     unavailableReason: !hasMatchSignal
-      ? "Onvoldoende live-data voor analyse"
+      ? "Minimale wedstrijdsignalen beschikbaar; voorspelling gebruikt contextuele fallback"
       : !hasXgInputs
         ? "xG beperkt: voorspelling gebruikt score, events en klassement-context"
         : null,
@@ -4625,6 +4724,8 @@ async function enrichPredictPayloadContext(payload) {
   const homeTeam = String(base?.homeTeam || "");
   const awayTeam = String(base?.awayTeam || "");
   const context = base?.context && typeof base.context === "object" ? { ...base.context } : {};
+  const leagueToken = String(base?.espnLeague || base?.league || "").toLowerCase();
+  const international = /fifa|nations|international|friendly|world cup|euro/.test(leagueToken);
 
   if (!leagueName || !homeTeam || !awayTeam) {
     return { ...base, context };
@@ -4671,6 +4772,10 @@ async function enrichPredictPayloadContext(payload) {
       awayTopScorer: context.awayTopScorer ?? awayTopScorer?.name ?? null,
       homeTopScorerGoals: context.homeTopScorerGoals ?? homeTopScorer?.goals ?? null,
       awayTopScorerGoals: context.awayTopScorerGoals ?? awayTopScorer?.goals ?? null,
+      competitionContext: context.competitionContext ?? base?.league ?? null,
+      isInternational: context.isInternational ?? international,
+      homeLineupCertainty: context.homeLineupCertainty ?? null,
+      awayLineupCertainty: context.awayLineupCertainty ?? null,
     },
   };
 }
@@ -5846,6 +5951,8 @@ app.get("/api/sports/by-date", async (req, res) => {
   try {
     const payload = await getOrFetch(CACHE_KEY, ttlMs, async () => {
       // ESPN with limited nearest-day fallback for reliability + responsiveness.
+      const isPastRequest = date < todayYmd;
+      let bestFallback = null;
       for (const espnDate of buildScoreboardDateCandidates(date)) {
         try {
           const espn = await espnScoreboard(espnDate);
@@ -5864,10 +5971,28 @@ app.get("/api/sports/by-date", async (req, res) => {
               (async () => enrichMatchesWithSofaData(await enrichMatchLogos(upcomingRaw), espnDate))(),
               (async () => enrichMatchesWithSofaData(await enrichMatchLogos(finishedRaw), espnDate))(),
             ]);
-            return { date: espnDate, timezone: TZ, live, upcoming, finished, source: "espn" };
+
+            const candidatePayload = { date: espnDate, timezone: TZ, live, upcoming, finished, source: "espn" };
+            if (espnDate === date) return candidatePayload;
+
+            if (isPastRequest) {
+              // For historical dates, finished matches are the only reliable fallback signal.
+              if (finished.length > 0) return candidatePayload;
+              if (!bestFallback || finished.length > (bestFallback.finished?.length || 0)) {
+                bestFallback = candidatePayload;
+              }
+              continue;
+            }
+
+            // For current/future requests, prefer live/upcoming-rich payloads.
+            if ((live.length + upcoming.length) > 0) return candidatePayload;
+            if (!bestFallback || (live.length + upcoming.length + finished.length) > ((bestFallback.live?.length || 0) + (bestFallback.upcoming?.length || 0) + (bestFallback.finished?.length || 0))) {
+              bestFallback = candidatePayload;
+            }
           }
         } catch (_) {}
       }
+      if (bestFallback) return bestFallback;
       return { date, timezone: TZ, live: [], upcoming: [], finished: [], source: "espn" };
     });
 
@@ -7535,40 +7660,7 @@ app.get("/api/sports/player/:playerId", async (req, res) => {
       const apiSportsTransfers = mapFormerClubs(apiSports?.transfers || []);
       const apifyTransfers = apifyFallback?.formerClubs || [];
       const transferPool = tmTransfers.length ? tmTransfers : (apiSportsTransfers.length ? apiSportsTransfers : apifyTransfers);
-      const transferSeen = new Set();
-      const formerClubs = (transferPool || [])
-        .map((item) => {
-          const date = String(item?.date || item?.season || "").trim();
-          const role = String(item?.role || "").toLowerCase() === "to" ? "to" : "from";
-          const fee = String(item?.fee || item?.transferFee || "").trim();
-          const lowerFee = fee.toLowerCase();
-          const transferType = lowerFee.includes("loan") || lowerFee.includes("huur")
-            ? "loan"
-            : (lowerFee.includes("free") || lowerFee.includes("gratis") || fee === "-")
-              ? "free"
-              : "fee";
-          return {
-            ...item,
-            name: String(item?.name || item?.team || "").trim(),
-            role,
-            date,
-            fee,
-            transferType,
-          };
-        })
-        .filter((item) => {
-          if (!item?.name) return false;
-          const key = `${item.name}|${item.role}|${item.date}`;
-          if (transferSeen.has(key)) return false;
-          transferSeen.add(key);
-          return true;
-        })
-        .sort((a, b) => {
-          const aTime = Date.parse(a?.date || "") || Number.MAX_SAFE_INTEGER;
-          const bTime = Date.parse(b?.date || "") || Number.MAX_SAFE_INTEGER;
-          return aTime - bTime;
-        })
-        .slice(0, 20);
+      const formerClubs = normalizeFormerClubEvents(transferPool || [], { limit: 20, descending: true });
 
       const aiInsights = await Promise.race([
         aiAnalyzePlayerProfile(
@@ -8981,7 +9073,7 @@ app.get("/api/vod/collection", tmdbLimiter, async (req, res) => {
 
     const requestedId = Number(req.query.id || 0);
     const requestedTitle = String(req.query.title || "").trim();
-    const depth = clampInt(req.query.depth, 1, 5, 3);
+    const depth = clampInt(req.query.depth, 1, 8, 5);
     let collectionId = requestedId;
 
     if (!collectionId && requestedTitle) {
@@ -9028,7 +9120,13 @@ app.get("/api/vod/collection", tmdbLimiter, async (req, res) => {
         releaseDate: item.first_air_date || null,
       })));
 
-      fallbackItems = [...mappedMovies, ...mappedSeries];
+      fallbackItems = [...mappedMovies, ...mappedSeries]
+        .filter((item) => {
+          const normTitle = normalizeText(String(item?.title || ""));
+          const normQuery = normalizeText(fallbackQuery);
+          if (!normQuery) return true;
+          return normTitle.includes(normQuery) || normQuery.split(" ").some((token) => token.length >= 4 && normTitle.includes(token));
+        });
     }
 
     const items = sortMediaChronologically(dedupeMappedMedia([...tmdbCollectionItems, ...fallbackItems]));
@@ -9062,7 +9160,7 @@ app.get("/api/vod/studio", tmdbLimiter, async (req, res) => {
 
     const studioId = Number(req.query.id || 0);
     const studioName = String(req.query.name || "").trim();
-    const depth = clampInt(req.query.depth, 1, 6, 4);
+    const depth = clampInt(req.query.depth, 1, 10, 6);
     if (!studioId && !studioName) return res.json({ studio: null, items: [] });
 
     let resolvedStudioId = studioId;
@@ -9093,21 +9191,27 @@ app.get("/api/vod/studio", tmdbLimiter, async (req, res) => {
     }
 
     const pages = Array.from({ length: depth }, (_, index) => index + 1);
-    const [moviePages, seriesPages] = await Promise.all([
+    const [moviePopularPages, movieTopRatedPages, seriesPopularPages, seriesTopRatedPages] = await Promise.all([
       Promise.all(pages.map((page) =>
         tmdb(`/discover/movie?with_companies=${encodeURIComponent(resolvedStudioId)}&sort_by=popularity.desc&vote_count.gte=20&page=${page}`).catch(() => ({ results: [] }))
+      )),
+      Promise.all(pages.slice(0, Math.min(depth, 4)).map((page) =>
+        tmdb(`/discover/movie?with_companies=${encodeURIComponent(resolvedStudioId)}&sort_by=vote_average.desc&vote_count.gte=120&page=${page}`).catch(() => ({ results: [] }))
       )),
       Promise.all(pages.map((page) =>
         tmdb(`/discover/tv?with_companies=${encodeURIComponent(resolvedStudioId)}&sort_by=popularity.desc&vote_count.gte=10&page=${page}`).catch(() => ({ results: [] }))
       )),
+      Promise.all(pages.slice(0, Math.min(depth, 4)).map((page) =>
+        tmdb(`/discover/tv?with_companies=${encodeURIComponent(resolvedStudioId)}&sort_by=vote_average.desc&vote_count.gte=80&page=${page}`).catch(() => ({ results: [] }))
+      )),
     ]);
 
-    const movies = moviePages.flatMap((payload) => (payload?.results || []).map((item) => ({
+    const movies = [...moviePopularPages, ...movieTopRatedPages].flatMap((payload) => (payload?.results || []).map((item) => ({
       ...mapTrendingItem(item, "movie"),
       type: "movie",
       releaseDate: item.release_date || null,
     })));
-    const series = seriesPages.flatMap((payload) => (payload?.results || []).map((item) => ({
+    const series = [...seriesPopularPages, ...seriesTopRatedPages].flatMap((payload) => (payload?.results || []).map((item) => ({
       ...mapTrendingItem(item, "series"),
       type: "series",
       releaseDate: item.first_air_date || null,
@@ -9121,7 +9225,7 @@ app.get("/api/vod/studio", tmdbLimiter, async (req, res) => {
       studio: {
         id: resolvedStudioId,
         name: resolvedStudio?.name || studioName || "Studio",
-        logo: resolvedStudio?.logo_path ? `${TMDB_IMG_500}${resolvedStudio.logo_path}` : null,
+        logo: resolvedStudio?.logo_path ? `${TMDB_IMG_780}${resolvedStudio.logo_path}` : null,
         headquarters: resolvedStudio?.headquarters || null,
         originCountry: resolvedStudio?.origin_country || null,
         source: "tmdb",
@@ -9147,6 +9251,9 @@ app.get("/api/vod/catalog", tmdbLimiter, async (req, res) => {
     const chunkYears = clampInt(req.query.chunkYears, 1, 6, 3);
     const pagesPerYear = clampInt(req.query.pagesPerYear, 1, 3, 1);
     const { fromYear, toYear } = getThirtyYearWindow(requestedYears);
+    const cacheKey = `vod_catalog_${type}_${requestedYears}_${chunkYears}_${pagesPerYear}_${String(req.query.cursorYear || "start")}`;
+    const cached = cacheGet(cacheKey);
+    if (cached) return res.json(cached);
     const years = buildYearSequence(fromYear, toYear);
 
     const cursorYear = clampInt(req.query.cursorYear, fromYear, toYear, fromYear);
@@ -9189,7 +9296,7 @@ app.get("/api/vod/catalog", tmdbLimiter, async (req, res) => {
     const lastYear = selectedYears[selectedYears.length - 1] || cursorYear;
     const nextCursorYear = lastYear < toYear ? lastYear + 1 : null;
 
-    res.json({
+    const result = {
       items,
       meta: {
         mode: type,
@@ -9199,7 +9306,10 @@ app.get("/api/vod/catalog", tmdbLimiter, async (req, res) => {
         nextCursorYear,
         hasMore: Boolean(nextCursorYear),
       },
-    });
+    };
+
+    cacheSet(cacheKey, result, 30 * 60 * 1000);
+    res.json(result);
   } catch (e) {
     res.status(200).json({ items: [], meta: null, error: String(e?.message || e) });
   }

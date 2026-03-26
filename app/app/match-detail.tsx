@@ -28,7 +28,7 @@ import { resolveMatchBucket } from "@/lib/match-state";
 import { buildGroundedMatchAnalysis } from "@/lib/match-analysis-engine";
 import { toCanonicalMatch } from "@/lib/canonical-match";
 import { normalizeTeamName, tokenOverlapScore } from "@/lib/entity-normalization";
-import { cacheGetStale, cacheSet, CacheTTL } from "@/lib/services/cache-service";
+import { cacheGetStale, cachePeekStale, cacheSet, CacheTTL } from "@/lib/services/cache-service";
 const BLOCK_POPUP_JS = `
 (function(){
   // Patch removeChild to never throw — prevents DOMException crashes
@@ -272,10 +272,10 @@ export default function MatchDetailScreen() {
     refetch: refetchStream,
   } = useQuery({
     queryKey: ["match-stream", params.matchId, espnLeague],
-    placeholderData: () => cacheGetStale<any>(`sports:match-stream:${params.matchId}:${espnLeague}`) || undefined,
+    placeholderData: () => cachePeekStale<any>(`sports:match-stream:${params.matchId}:${espnLeague}`) || undefined,
     queryFn: async () => {
       const key = `sports:match-stream:${params.matchId}:${espnLeague}`;
-      const stale = cacheGetStale<any>(key);
+      const stale = await cacheGetStale<any>(key);
       try {
         const payload = await apiRequestJson<any>(`/api/sports/stream/${params.matchId}?league=${encodeURIComponent(espnLeague)}`);
         cacheSet(key, payload, 60_000);
@@ -307,10 +307,10 @@ export default function MatchDetailScreen() {
 
   const { data: matchDetail, isLoading: detailLoading } = useQuery({
     queryKey: ["match-detail", params.matchId, espnLeague],
-    placeholderData: () => cacheGetStale<any>(`sports:match-detail:${params.matchId}:${espnLeague}`) || undefined,
+    placeholderData: () => cachePeekStale<any>(`sports:match-detail:${params.matchId}:${espnLeague}`) || undefined,
     queryFn: async () => {
       const key = `sports:match-detail:${params.matchId}:${espnLeague}`;
-      const stale = cacheGetStale<any>(key);
+      const stale = await cacheGetStale<any>(key);
       try {
         const payload = await apiRequestJson<any>(`/api/sports/match/${params.matchId}?sport=${espnSport}&league=${espnLeague}`);
         cacheSet(key, payload, CacheTTL.MATCH_DETAIL);
@@ -430,10 +430,19 @@ export default function MatchDetailScreen() {
       const awayTopAssist = awayTag ? topAssistByTeam(awayTag) : null;
 
       const isLiveMode = mode === "live";
+      const isInternationalContext = /fifa|nations|international|friendly|euro|world cup|wereldkampioenschap/i.test(`${espnLeague} ${params.league || ""}`);
+      const homeLineupCertainty = homeLineupTeam?.lineupType === "official"
+        ? 0.95
+        : (Array.isArray(homeLineupTeam?.players) && homeLineupTeam.players.length >= 11 ? 0.72 : 0.5);
+      const awayLineupCertainty = awayLineupTeam?.lineupType === "official"
+        ? 0.95
+        : (Array.isArray(awayLineupTeam?.players) && awayLineupTeam.players.length >= 11 ? 0.72 : 0.5);
 
       const groundedFallback = buildGroundedMatchAnalysis({
         homeTeam: String(params.homeTeam || "Home"),
         awayTeam: String(params.awayTeam || "Away"),
+        competitionContext: String(params.league || espnLeague || ""),
+        isInternational: isInternationalContext,
         isLive: isLiveMode,
         minute: isLiveMode ? liveMinute ?? null : null,
         homeScore: Number(isLiveMode ? liveHomeScore ?? 0 : params.homeScore ?? 0),
@@ -452,6 +461,7 @@ export default function MatchDetailScreen() {
           topAssist: homeTopAssist?.name || null,
           topAssistCount: (homeTopAssist?.assists ?? Number(homeTopAssist?.displayValue || 0)) || null,
           formation: homeLineupTeam?.formation || null,
+          lineupCertainty: homeLineupCertainty,
         },
         away: {
           rank: awayStanding?.rank ?? null,
@@ -462,6 +472,7 @@ export default function MatchDetailScreen() {
           topAssist: awayTopAssist?.name || null,
           topAssistCount: (awayTopAssist?.assists ?? Number(awayTopAssist?.displayValue || 0)) || null,
           formation: awayLineupTeam?.formation || null,
+          lineupCertainty: awayLineupCertainty,
         },
       });
 
@@ -501,6 +512,11 @@ export default function MatchDetailScreen() {
             awayTopAssist: awayTopAssist?.name || null,
             homeTopAssistCount: (homeTopAssist?.assists ?? Number(homeTopAssist?.displayValue || 0)) || null,
             awayTopAssistCount: (awayTopAssist?.assists ?? Number(awayTopAssist?.displayValue || 0)) || null,
+            competitionContext: params.league || null,
+            isInternational: isInternationalContext,
+            venueContext: "home",
+            homeLineupCertainty,
+            awayLineupCertainty,
           },
         });
         const json = await res.json();

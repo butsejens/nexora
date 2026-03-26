@@ -6,6 +6,21 @@ function normalizeText(value: unknown): string {
   return String(value ?? "").trim();
 }
 
+function stripHtmlArtifacts(value: unknown): string {
+  const raw = String(value ?? "");
+  if (!raw) return "";
+  return raw
+    .replace(/<[^>]*>/g, " ")
+    .replace(/&nbsp;|&#160;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;|&apos;/gi, "'")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function pickFirstText(...values: unknown[]): string {
   for (const value of values) {
     const text = normalizeText(value);
@@ -80,7 +95,7 @@ function deriveAgeFromBirthDate(birthDate: unknown): number | null {
 }
 
 function parseMarketValue(value: unknown): number {
-  const text = normalizeText(value).toLowerCase().replace(/€/g, "").replace(/\s+/g, "");
+  const text = stripHtmlArtifacts(value).toLowerCase().replace(/€/g, "").replace(/\s+/g, "");
   if (!text) return 0;
   const n = Number(text.replace(/,/g, ".").replace(/[^\d.]/g, ""));
   if (!Number.isFinite(n)) return 0;
@@ -88,6 +103,24 @@ function parseMarketValue(value: unknown): number {
   if (text.includes("m")) return n * 1_000_000;
   if (text.includes("k")) return n * 1_000;
   return n;
+}
+
+function cleanMarketValueText(value: unknown): string | null {
+  const raw = stripHtmlArtifacts(value)
+    .replace(/[•|]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!raw) return null;
+  if (/^(n\/a|na|null|none|unknown|undefined|-)$/i.test(raw)) return null;
+  if (/^€/.test(raw)) return raw;
+  const numeric = parseMarketValue(raw);
+  if (numeric > 0) {
+    if (numeric >= 1_000_000_000) return `€${(numeric / 1_000_000_000).toFixed(2)}B`;
+    if (numeric >= 1_000_000) return `€${(numeric / 1_000_000).toFixed(2)}M`;
+    if (numeric >= 1_000) return `€${Math.round(numeric / 1_000)}K`;
+    return `€${Math.round(numeric)}`;
+  }
+  return raw;
 }
 
 function computeConfidence(signals: boolean[]): EnrichmentConfidence {
@@ -279,11 +312,39 @@ function enrichCompetitionMatches(matches: any[], leagueName?: string): any[] {
 }
 
 function compactAnalysisText(text: unknown, name: string, position: string): string {
-  const raw = normalizeText(text);
+  const raw = stripHtmlArtifacts(text);
   if (raw.length >= 50 && !/temporarily unavailable|not available|unknown/i.test(raw)) return raw;
   if (!name) return "Profile summary not available yet.";
   if (position) return `${name} is profiled as a ${position}. Detailed analysis will appear when richer verified data is available.`;
   return `${name} has a limited verified data profile. Core fields are shown and will improve as more competition data is synced.`;
+}
+
+function parseTransferDate(value: unknown): number {
+  const cleaned = stripHtmlArtifacts(value);
+  if (!cleaned) return Number.MAX_SAFE_INTEGER;
+  const asDate = Date.parse(cleaned);
+  if (Number.isFinite(asDate)) return asDate;
+  const year = Number(cleaned.replace(/[^\d]/g, "").slice(0, 4));
+  if (Number.isFinite(year) && year > 1800 && year < 3000) return Date.UTC(year, 0, 1);
+  return Number.MAX_SAFE_INTEGER;
+}
+
+function inferTransferAction(role: string, fee: string, note: string): "joined" | "left" | "loan" | "loan_end" | "transfer_fee" {
+  const text = `${fee} ${note}`.toLowerCase();
+  if (/end of loan|loan ended|returned|return from loan|einde huur|einde van huur/.test(text)) return "loan_end";
+  if (/loan|huur/.test(text)) return "loan";
+  if (/free|gratis|free transfer/.test(text)) return role === "to" ? "joined" : "left";
+  if (role === "to") return "joined";
+  if (role === "from") return "left";
+  return "transfer_fee";
+}
+
+function transferActionLabel(action: "joined" | "left" | "loan" | "loan_end" | "transfer_fee"): string {
+  if (action === "joined") return "Joined";
+  if (action === "left") return "Left";
+  if (action === "loan") return "Loan";
+  if (action === "loan_end") return "End of loan";
+  return "Transfer fee";
 }
 
 function deriveRatingFromContributions(
@@ -304,28 +365,29 @@ function normalizeFormerClubs(raw: any, leagueName?: string): any[] {
   const seen = new Set<string>();
   const rows = sourceRows
     .map((club: any) => {
-      const name = pickFirstText(club?.name, club?.team, club?.club, club?.to, club?.from);
+      const name = stripHtmlArtifacts(pickFirstText(club?.name, club?.team, club?.club, club?.to, club?.from));
       const role = String(club?.role || "").toLowerCase() === "to" ? "to" : "from";
-      const date = pickFirstText(club?.date, club?.season, club?.year);
-      const fee = pickFirstText(club?.fee, club?.transferFee, club?.value);
-      const key = `${name}|${role}|${date}|${fee}`.toLowerCase();
+      const date = stripHtmlArtifacts(pickFirstText(club?.date, club?.season, club?.year));
+      const fee = stripHtmlArtifacts(pickFirstText(club?.fee, club?.transferFee, club?.value));
+      const note = stripHtmlArtifacts(pickFirstText(club?.note, club?.description, club?.details, club?.transferType));
+      const key = `${name}|${role}|${date}|${fee}|${note}`.toLowerCase();
       if (!name || seen.has(key)) return null;
       seen.add(key);
-      const transferType = fee
-        ? /loan|huur/i.test(fee)
-          ? "loan"
-          : /free|gratis/i.test(fee)
-            ? "free"
-            : "fee"
-        : null;
+      const action = inferTransferAction(role, fee, note);
+      const moment = parseTransferDate(date);
+      const cleanedFee = cleanMarketValueText(fee) || fee || null;
 
       return {
         ...club,
         name,
         role,
         date,
-        fee,
-        transferType,
+        fee: cleanedFee,
+        note: note || null,
+        action,
+        actionLabel: transferActionLabel(action),
+        moment,
+        transferType: action,
         logo: resolveTeamLogoUri(name, club?.logo || null, { competition: leagueName || null }),
       };
     })
@@ -333,9 +395,9 @@ function normalizeFormerClubs(raw: any, leagueName?: string): any[] {
 
   return rows
     .sort((a, b) => {
-      const aTime = Date.parse(a?.date || "") || Number.MAX_SAFE_INTEGER;
-      const bTime = Date.parse(b?.date || "") || Number.MAX_SAFE_INTEGER;
-      return aTime - bTime;
+      if (a.moment !== b.moment) return b.moment - a.moment;
+      const order = { joined: 0, loan: 1, loan_end: 2, left: 3, transfer_fee: 4 } as Record<string, number>;
+      return (order[a.action] ?? 9) - (order[b.action] ?? 9);
     })
     .slice(0, 24);
 }
@@ -351,7 +413,7 @@ export function enrichPlayerProfilePayload(raw: any, seed?: { name?: string; tea
 
   const jerseyNumber = pickFirstText(raw?.jerseyNumber, raw?.shirtNumber, raw?.number, raw?.jersey);
   const contractUntil = pickFirstText(raw?.contractUntil, raw?.contract?.endDate, raw?.contractEndDate);
-  const marketValueText = pickFirstText(raw?.marketValue, raw?.market_value, raw?.estimatedMarketValue);
+  const marketValueText = cleanMarketValueText(pickFirstText(raw?.marketValue, raw?.market_value, raw?.estimatedMarketValue));
   const height = toFormattedHeight(raw?.height);
   const weight = toFormattedWeight(raw?.weight);
 

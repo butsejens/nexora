@@ -26,6 +26,7 @@ type MediaHomeSectionsProps = {
 type MediaPayload = {
   trendingMovies: VodModuleItem[];
   trendingSeries: VodModuleItem[];
+  catalogPicks: VodModuleItem[];
 };
 
 async function fetchJson(path: string) {
@@ -34,9 +35,10 @@ async function fetchJson(path: string) {
 }
 
 async function fetchMediaPayload(): Promise<MediaPayload> {
-  const [movieData, seriesData] = await Promise.all([
+  const [movieData, seriesData, catalogData] = await Promise.all([
     fetchJson("/api/movies/trending"),
     fetchJson("/api/series/trending"),
+    fetchJson("/api/vod/catalog?type=all&years=30&chunkYears=4&pagesPerYear=1"),
   ]);
 
   const trendingMovies = [
@@ -56,6 +58,9 @@ async function fetchMediaPayload(): Promise<MediaPayload> {
   return {
     trendingMovies,
     trendingSeries,
+    catalogPicks: (Array.isArray(catalogData?.items) ? catalogData.items : [])
+      .slice(0, 24)
+      .map((item: any) => enrichVodModuleItem(item)),
   };
 }
 
@@ -71,12 +76,12 @@ function SectionTitle({ title }: { title: string }) {
 function MediaRail({
   title,
   items,
-  favorites,
+  isFavorite,
   onToggleFavorite,
 }: {
   title: string;
   items: VodModuleItem[];
-  favorites: string[];
+  isFavorite: (id: string) => boolean;
   onToggleFavorite: (id: string) => void;
 }) {
   if (items.length === 0) return null;
@@ -109,7 +114,7 @@ function MediaRail({
                 isNew: item.isNew,
               }}
               showProgress={item.progress != null}
-              isFavorite={favorites.includes(id)}
+              isFavorite={isFavorite(id)}
               onFavorite={() => onToggleFavorite(id)}
               onPress={() => {
                 router.push({
@@ -131,7 +136,7 @@ function MediaRail({
 }
 
 export function MediaHomeSections({ title = "Entertainment for you", compact = false, sportsMood = "fun" }: MediaHomeSectionsProps) {
-  const { favorites, toggleFavorite, watchHistory } = useNexora();
+  const { isFavorite, toggleFavorite, watchHistory } = useNexora();
 
   const mediaQuery = useQuery({
     queryKey: ["home", "media-sections"],
@@ -158,10 +163,11 @@ export function MediaHomeSections({ title = "Entertainment for you", compact = f
     return [
       ...buildMoodRecommendations(sportsMood, movieCandidates as any, watchHistory as any, "movie", compact ? 6 : 8),
       ...buildMoodRecommendations(secondaryMood, seriesCandidates as any, watchHistory as any, "series", compact ? 6 : 8),
+      ...(mediaQuery.data?.catalogPicks || []).slice(0, compact ? 4 : 8),
     ]
       .slice(0, compact ? 8 : 12)
       .map((item: any) => enrichVodModuleItem({ ...item, type: item.season ? "series" : item.type || "movie" }));
-  }, [compact, sportsMood, mediaQuery.data?.trendingMovies, mediaQuery.data?.trendingSeries, watchHistory]);
+  }, [compact, mediaQuery.data?.catalogPicks, mediaQuery.data?.trendingMovies, mediaQuery.data?.trendingSeries, sportsMood, watchHistory]);
 
   return (
     <View style={styles.wrap}>
@@ -188,10 +194,10 @@ export function MediaHomeSections({ title = "Entertainment for you", compact = f
         </View>
       ) : null}
 
-      <MediaRail title="Continue watching" items={continueWatching} favorites={favorites} onToggleFavorite={toggleFavorite} />
-      <MediaRail title="Picked for you" items={recommended} favorites={favorites} onToggleFavorite={toggleFavorite} />
-      <MediaRail title="Trending movies" items={(mediaQuery.data?.trendingMovies || []).slice(0, compact ? 8 : 12)} favorites={favorites} onToggleFavorite={toggleFavorite} />
-      <MediaRail title="Trending series" items={(mediaQuery.data?.trendingSeries || []).slice(0, compact ? 8 : 12)} favorites={favorites} onToggleFavorite={toggleFavorite} />
+      <MediaRail title="Continue watching" items={continueWatching} isFavorite={isFavorite} onToggleFavorite={toggleFavorite} />
+      <MediaRail title="Picked for you" items={recommended} isFavorite={isFavorite} onToggleFavorite={toggleFavorite} />
+      <MediaRail title="Trending movies" items={(mediaQuery.data?.trendingMovies || []).slice(0, compact ? 8 : 12)} isFavorite={isFavorite} onToggleFavorite={toggleFavorite} />
+      <MediaRail title="Trending series" items={(mediaQuery.data?.trendingSeries || []).slice(0, compact ? 8 : 12)} isFavorite={isFavorite} onToggleFavorite={toggleFavorite} />
     </View>
   );
 }
