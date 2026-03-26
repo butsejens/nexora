@@ -39,6 +39,7 @@ type PremiumOnboardingFlowProps = {
 const STEP_TOTAL = 9;
 const MIN_FINISHING_SCREEN_MS = 1600;
 const MAX_PRELOAD_BLOCK_MS = 6500;
+const ABSOLUTE_ONBOARDING_FINISH_TIMEOUT_MS = 12000;
 
 const LOADING_MESSAGES = [
   "Sequencing your premium rails",
@@ -103,6 +104,7 @@ export function PremiumOnboardingFlow({ mode = "first-launch", onFinished }: Pre
   const [movieSignals, setMovieSignals] = useState<string[]>(["movies", "series"]);
   const [loadingMessageIndex, setLoadingMessageIndex] = useState(0);
   const [isFinishing, setIsFinishing] = useState(false);
+  const [uiProgress, setUiProgress] = useState(0);
 
   const stepOrder = useMemo(() => {
     const allSteps = Array.from({ length: STEP_TOTAL }, (_, index) => index + 1);
@@ -203,6 +205,38 @@ export function PremiumOnboardingFlow({ mode = "first-launch", onFinished }: Pre
     step,
   ]);
 
+  useEffect(() => {
+    if (step !== 9) {
+      setUiProgress(0);
+      return;
+    }
+
+    setUiProgress((value) => Math.max(value, 8));
+    const interval = setInterval(() => {
+      setUiProgress((value) => {
+        const target = Math.max(value, 92);
+        return Math.min(95, Math.round(value + Math.max(1, (target - value) * 0.08)));
+      });
+    }, 420);
+
+    return () => clearInterval(interval);
+  }, [step]);
+
+  useEffect(() => {
+    if (step !== 9) return;
+
+    const timeout = setTimeout(() => {
+      completeOnboarding();
+      onFinished?.();
+    }, ABSOLUTE_ONBOARDING_FINISH_TIMEOUT_MS);
+
+    return () => clearTimeout(timeout);
+  }, [completeOnboarding, onFinished, step]);
+
+  useEffect(() => {
+    setUiProgress((value) => Math.max(value, preload.progress));
+  }, [preload.progress]);
+
   const canAdvance = useMemo(() => {
     if (step === 1) return true;
     if (step === 2) return true;
@@ -232,7 +266,7 @@ export function PremiumOnboardingFlow({ mode = "first-launch", onFinished }: Pre
         badge={mode === "editor" ? "Updating experience" : "Finalizing setup"}
         title="Building your premium home"
         subtitle={preload.message || LOADING_MESSAGES[loadingMessageIndex]}
-        progress={Math.max(8, preload.progress)}
+        progress={Math.max(8, uiProgress)}
       />
     );
   }
