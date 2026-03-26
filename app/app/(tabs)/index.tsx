@@ -26,6 +26,7 @@ import {
   toLegacyMatchCard,
 } from "@/lib/canonical-match";
 import { useFollowState } from "@/context/UserStateContext";
+import { useOnboardingStore } from "@/store/onboarding-store";
 import { t as tFn, getLanguage } from "@/lib/i18n";
 import { useTranslation } from "@/lib/useTranslation";
 import {
@@ -896,6 +897,26 @@ const hlStyles = StyleSheet.create({
 export default function SportsScreen() {
   const insets = useSafeAreaInsets();
   const { width: screenWidth } = useWindowDimensions();
+  const sportsEnabled = useOnboardingStore((s) => s.sportsEnabled);
+
+  // Show disabled view if sports module is not enabled
+  if (!sportsEnabled) {
+    return (
+      <View style={[styles.disabledContainer, { paddingTop: insets.top }]}>
+        <Ionicons name="shield-off-outline" size={64} color={P.muted} />
+        <Text style={styles.disabledTitle}>Sports Disabled</Text>
+        <Text style={styles.disabledMessage}>Enable sports in settings to view live scores, predictions, and more.</Text>
+        <TouchableOpacity 
+          style={styles.enableButton}
+          onPress={() => router.push('/settings')}
+        >
+          <Ionicons name="settings" size={20} color={P.bg} />
+          <Text style={styles.enableButtonText}>Go to Settings</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
   const contentWidth = Math.min(screenWidth, 1200);
   const compCardWidth = Math.floor((Math.min(screenWidth, 480) - 16 * 2 - 10 * 3) / 4);
   const qc = useQueryClient();
@@ -1084,7 +1105,7 @@ export default function SportsScreen() {
   // This overlaps with the network data fetch so the server is already warm
   // by the time the real sports queries hit it.
   useEffect(() => {
-    void apiRequest("GET", "/health").catch(() => undefined);
+    void apiRequest("GET", "/api/sports/health").catch(() => undefined);
   // Only on mount
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -2285,6 +2306,42 @@ export default function SportsScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: P.bg },
+  disabledContainer: {
+    flex: 1,
+    backgroundColor: P.bg,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+    gap: 16,
+  },
+  disabledTitle: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: P.text,
+    marginTop: 16,
+  },
+  disabledMessage: {
+    fontSize: 14,
+    color: P.muted,
+    textAlign: 'center',
+    marginHorizontal: 16,
+    lineHeight: 20,
+  },
+  enableButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    backgroundColor: P.accent,
+    borderRadius: 12,
+    marginTop: 16,
+  },
+  enableButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: P.bg,
+  },
   scroll: { flex: 1 },
 
   /* ── Sub-nav tabs ── */

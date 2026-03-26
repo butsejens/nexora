@@ -10,12 +10,12 @@ import {
 import { Stack, router } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import React, { useEffect, useRef, useState } from "react";
-import { Platform, Linking } from "react-native";
+import { Platform, Linking, AppState } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
-import { queryClient, getApiBaseCandidates, apiRequest, apiRequestJson } from "@/lib/query-client";
+import { queryClient, getApiBaseCandidates, apiRequest, apiRequestJson, DEFAULT_RENDER_API_BASE } from "@/lib/query-client";
 import { startPlayerImageWarmup } from "@/lib/player-image-system";
 import { NexoraProvider } from "@/context/NexoraContext";
 import { UserStateProvider } from "@/context/UserStateContext";
@@ -573,6 +573,70 @@ export default function RootLayout() {
     });
     return () => sub.remove();
   }, []);
+
+  // ── AppState: foreground resume refresh + Render keep-alive ─────────────────
+  // When the app returns from background, stale sports data is refreshed in the
+  // background so screens show fresh content immediately.
+  // A keep-alive ping (every 4 min) prevents the Render free-tier from sleeping.
+  useEffect(() => {
+    if (!bootDone) return;
+
+    let keepAliveId: ReturnType<typeof setInterval> | null = null;
+    let lastRefreshAt = Date.now();
+    const RESUME_STALE_MS = 90_000;        // refresh if absent > 90 s
+    const KEEP_ALIVE_MS  = 4 * 60 * 1000; // ping Render every 4 minutes
+
+    function pingRender() {
+      // Prefer the hardcoded Render base so Cloudflare doesn't intercept the
+      // keep-alive (Cloudflare would just return a cached response, not waking
+      // the Render dyno).
+      const baseList = getApiBaseCandidates();
+      const renderBase =
+        baseList.find((b) => /onrender\.com/i.test(b)) ||
+        DEFAULT_RENDER_API_BASE;
+      fetch(`${renderBase}/api/sports/health`, { method: "GET" }).catch(() => {});
+    }
+
+    function startKeepAlive() {
+      if (keepAliveId) return;
+      keepAliveId = setInterval(pingRender, KEEP_ALIVE_MS);
+    }
+
+    function stopKeepAlive() {
+      if (keepAliveId) {
+        clearInterval(keepAliveId);
+        keepAliveId = null;
+      }
+    }
+
+    function onForeground() {
+      const now = Date.now();
+      if (now - lastRefreshAt >= RESUME_STALE_MS) {
+        lastRefreshAt = now;
+        logStartupEvent("background", "info", "AppState resume: scheduling sports refresh");
+        scheduleBackgroundStartupTask("resume-refresh", 15_000, async () => {
+          await prefetchHomeData();
+        });
+      }
+      startKeepAlive();
+    }
+
+    const sub = AppState.addEventListener("change", (state) => {
+      if (state === "active") {
+        onForeground();
+      } else {
+        stopKeepAlive();
+      }
+    });
+
+    // App is already active at mount — start keep-alive immediately.
+    startKeepAlive();
+
+    return () => {
+      sub.remove();
+      stopKeepAlive();
+    };
+  }, [bootDone]);
 
   const fontsReady = fontsLoaded || fontFallbackReady;
 

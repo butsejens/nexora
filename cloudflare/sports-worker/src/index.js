@@ -33,6 +33,15 @@ export default {
     const upstreamTimeoutMs = Number(env.UPSTREAM_TIMEOUT_MS || 15000);
     const upstreamMaxAttempts = Math.max(1, Number(env.UPSTREAM_MAX_ATTEMPTS || 2));
 
+    // Health and ping routes always bypass the cache and proxy directly to Render.
+    // This ensures keep-alive pings actually reach the upstream dyno and prevent
+    // Render free-tier spin-down even when KV/D1 caches are fully populated.
+    if (path === "/api/sports/health" || path === "/api/ping") {
+      logAnalytics(analytics, { trackingId, path, method, cacheState: "bypass", status: 0 });
+      const res = await proxyPass(request, upstreamUrl, upstreamTimeoutMs, 1);
+      return withCors(res, request, env);
+    }
+
     if (method !== "GET" && method !== "HEAD") {
       logAnalytics(analytics, { trackingId, path, method, cacheState: "passthrough", status: 0 });
       const upstream = await proxyPass(request, upstreamUrl, upstreamTimeoutMs, 1);

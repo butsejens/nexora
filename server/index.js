@@ -70,6 +70,13 @@ app.get("/api/sports/health", (_req, res) => {
   res.json({ ok: true, source: "espn", tz: TZ, uptime: Math.round(process.uptime()) });
 });
 
+// Lightweight keep-alive ping — intentionally minimal so Render dyno stays warm.
+// The app pings this every 4 minutes to prevent free-tier spin-down.
+app.get("/api/ping", (_req, res) => {
+  res.set("Cache-Control", "no-store");
+  res.json({ ok: true });
+});
+
 // -----------------------------
 // Cache (in-memory)
 // -----------------------------
@@ -8469,6 +8476,19 @@ function pickTrailerKey(videos) {
 }
 
 function mapTrendingItem(it, type) {
+  const genres = (it.genres || []).map((g) => (typeof g === 'string' ? g : g.name)).filter(Boolean);
+  const genreIds = Array.isArray(it.genre_ids) ? it.genre_ids : [];
+  
+  // Extract basic production companies for studio identification
+  const productionCompanies = (it.production_companies || [])
+    .map((company) => ({
+      id: Number(company.id),
+      name: company.name,
+      logo: company.logo_path ? `${TMDB_IMG_500}${company.logo_path}` : null,
+    }))
+    .filter((company) => company.id && company.name)
+    .slice(0, 3);
+
   return {
     id: String(it.id),
     tmdbId: Number(it.id),
@@ -8476,12 +8496,18 @@ function mapTrendingItem(it, type) {
     poster: it.poster_path ? `${TMDB_IMG_500}${it.poster_path}` : null,
     backdrop: it.backdrop_path ? `${TMDB_IMG_780}${it.backdrop_path}` : null,
     synopsis: it.overview || "",
+    overview: it.overview || "",
     year: (it.release_date || it.first_air_date || "").slice(0, 4),
+    releaseDate: it.release_date || it.first_air_date || null,
     imdb: it.vote_average ? String(Number(it.vote_average).toFixed(1)) : null,
     rating: it.vote_average ?? null,
-    genre: [],
+    genre: genres,
+    genreIds: genreIds,
     quality: "HD",
     type,
+    originalLanguage: it.original_language || null,
+    productionCompanies: productionCompanies,
+    popularity: it.popularity || null,
   };
 }
 

@@ -14,7 +14,7 @@ import type { IPTVChannel } from "@/context/NexoraContext";
 export interface SearchResult {
   id: string;
   title: string;
-  type: "movie" | "series" | "channel" | "iptv-movie" | "iptv-series";
+  type: "movie" | "series" | "channel" | "iptv-movie" | "iptv-series" | "team" | "match" | "competition" | "player";
   poster?: string | null;
   year?: number | null;
   group?: string;
@@ -22,6 +22,9 @@ export interface SearchResult {
   score: number; // relevance score
   tmdbId?: number;
   url?: string;
+  sport?: string;
+  subtitle?: string;
+  image?: string;
 }
 
 // In-memory search cache for <100ms responses
@@ -175,6 +178,57 @@ export function searchAll(
 
   searchResultCache.set(cacheKey, { results: final, ts: Date.now() });
   return final;
+}
+
+/**
+ * Search sports teams, matches, and competitions
+ */
+export function searchSports(
+  sportsData: Array<{
+    type: "team" | "match" | "competition" | "player";
+    id: string;
+    title: string;
+    subtitle?: string;
+    sport?: string;
+    image?: string;
+    league?: string;
+    year?: number;
+    rating?: number;
+  }>,
+  query: string,
+  limit = 50
+): SearchResult[] {
+  if (!query || query.length < 2) return [];
+  const q = query.trim();
+
+  const results: SearchResult[] = [];
+
+  for (const item of sportsData) {
+    const titleScore = fuzzyScore(q, item.title || "");
+    const subtitleScore = item.subtitle ? fuzzyScore(q, item.subtitle) * 0.7 : 0;
+    const sportScore = item.sport ? fuzzyScore(q, item.sport) * 0.5 : 0;
+    const leagueScore = item.league ? fuzzyScore(q, item.league) * 0.6 : 0;
+
+    const score = Math.max(titleScore, subtitleScore, sportScore, leagueScore);
+
+    if (score > 0) {
+      results.push({
+        id: item.id,
+        title: item.title,
+        type: item.type,
+        poster: item.image || null,
+        subtitle: item.subtitle,
+        sport: item.sport,
+        score: score + (item.rating ? item.rating * 0.1 : 0) + (item.image ? 2 : 0),
+        year: item.year,
+        rating: item.rating,
+      });
+    }
+  }
+
+  // Sort by score (highest first), then by title
+  results.sort((a, b) => b.score - a.score || (a.title || "").localeCompare(b.title || ""));
+  return results.slice(0, limit);
 }
 
 /**

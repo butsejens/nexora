@@ -354,16 +354,8 @@ export default function MatchDetailScreen() {
   const liveMinute = effectiveCanonical?.minute ?? (params.minute ? parseInt(params.minute) : undefined);
   // AI Prediction
   const requestPrediction = async (mode: "prematch" | "live") => {
-      const normalizeTeam = (value: unknown) => String(value || "")
-        .toLowerCase()
-        .normalize("NFD")
-        .replace(/[\u0300-\u036f]/g, "")
-        .replace(/[^a-z0-9 ]/g, " ")
-        .replace(/\s+/g, " ")
-        .trim();
-
-      const homeTag = normalizeTeam(params.homeTeam);
-      const awayTag = normalizeTeam(params.awayTeam);
+      const homeTag = normalizeTeamName(params.homeTeam);
+      const awayTag = normalizeTeamName(params.awayTeam);
 
       const [standingsData, scorersData, assistsData] = await Promise.all([
         (async () => {
@@ -406,10 +398,10 @@ export default function MatchDetailScreen() {
       const assisters = getLeaderboardRows("topassists", assistsData);
 
       const matchStanding = (teamName?: string) => {
-        const teamKey = normalizeTeam(teamName);
+        const teamKey = normalizeTeamName(teamName);
         if (!teamKey) return null;
         return standings.find((row: any) => {
-          const rowTeam = normalizeTeam(row?.team);
+          const rowTeam = normalizeTeamName(row?.team);
           return rowTeam === teamKey || rowTeam.includes(teamKey) || teamKey.includes(rowTeam);
         }) || null;
       };
@@ -419,7 +411,7 @@ export default function MatchDetailScreen() {
 
       const topByTeam = (tag: string) => scorers
         .filter((row: any) => {
-          const scorerTeam = normalizeTeam(row?.team);
+          const scorerTeam = normalizeTeamName(row?.team);
           return scorerTeam === tag || scorerTeam.includes(tag) || tag.includes(scorerTeam);
         })
         .sort((a: any, b: any) => Number(b?.goals || 0) - Number(a?.goals || 0))[0] || null;
@@ -429,7 +421,7 @@ export default function MatchDetailScreen() {
 
       const topAssistByTeam = (tag: string) => assisters
         .filter((row: any) => {
-          const assistTeam = normalizeTeam(row?.team);
+          const assistTeam = normalizeTeamName(row?.team);
           return assistTeam === tag || assistTeam.includes(tag) || tag.includes(assistTeam);
         })
         .sort((a: any, b: any) => Number(b?.assists || b?.displayValue || 0) - Number(a?.assists || a?.displayValue || 0))[0] || null;

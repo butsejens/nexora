@@ -7,6 +7,12 @@ type TeamContext = {
   topAssist?: string | null;
   topAssistCount?: number | null;
   formation?: string | null;
+  // Form and defensive signals
+  cleanSheets?: number | null;  // clean sheets this season
+  gamesPlayed?: number | null;  // used to compute clean-sheet rate
+  recentForm?: string | null;   // e.g. "WWDLL" (most recent last or first)
+  homeFormPts?: number | null;  // points accumulated in last 5 home games
+  awayFormPts?: number | null;  // points accumulated in last 5 away games
 };
 
 export type MatchAnalysisInput = {
@@ -23,6 +29,12 @@ export type MatchAnalysisInput = {
   events?: Array<{ type?: string; team?: string; minute?: number; detail?: string }>;
   home: TeamContext;
   away: TeamContext;
+  // Head-to-head record (from h2h API or historical data)
+  headToHead?: {
+    homeWins: number;
+    awayWins: number;
+    draws: number;
+  } | null;
 };
 
 export type MatchAnalysisOutput = {
@@ -73,6 +85,25 @@ function parseFormationBias(formation?: string | null): number {
   return clamp((attackers - defenders) * 0.04, -0.12, 0.12);
 }
 
+/**
+ * Converts a form string like "WWDLL" into total points (W=3, D=1, L=0).
+ * Accepts both most-recent-first and most-recent-last orderings.
+ */
+function parseFormString(form?: string | null): number | null {
+  if (!form) return null;
+  const chars = String(form)
+    .toUpperCase()
+    .replace(/[^WDL]/g, "")
+    .slice(0, 6); // last 6 results at most
+  if (!chars) return null;
+  let pts = 0;
+  for (const c of chars) {
+    if (c === "W") pts += 3;
+    else if (c === "D") pts += 1;
+  }
+  return pts;
+}
+
 function buildCoverageSignals(input: MatchAnalysisInput): boolean[] {
   return [
     input.home.rank != null && input.away.rank != null,
@@ -84,6 +115,9 @@ function buildCoverageSignals(input: MatchAnalysisInput): boolean[] {
     Array.isArray(input.events) && input.events.length > 0,
     num(input.homeScore) != null && num(input.awayScore) != null,
     Boolean(input.minute != null),
+    input.home.recentForm != null || input.away.recentForm != null,
+    input.home.cleanSheets != null || input.away.cleanSheets != null,
+    input.headToHead != null,
   ];
 }
 
@@ -156,6 +190,53 @@ export function buildGroundedMatchAnalysis(input: MatchAnalysisInput): MatchAnal
     }
   }
 
+  // ── Recent form (WWDLL → points) ─────────────────────────────────────────
+  const homeFormPts = parseFormString(input.home.recentForm);
+  const awayFormPts = parseFormString(input.away.recentForm);
+  if (homeFormPts != null || awayFormPts != null) {
+    const hf = homeFormPts ?? 9; // neutral assumption when missing
+    const af = awayFormPts ?? 9;
+    const formDelta = hf - af;
+    modelScore += clamp(formDelta * 0.018, -0.2, 0.2);
+    if (input.home.recentForm) factors.push(`${input.homeTeam} recent form: ${input.home.recentForm} (${hf} pts)`);
+    if (input.away.recentForm) factors.push(`${input.awayTeam} recent form: ${input.away.recentForm} (${af} pts)`);
+  }
+
+  // ── Venue-specific form ───────────────────────────────────────────────────
+  const hHomeFormPts = num(input.home.homeFormPts);
+  const aAwayFormPts = num(input.away.awayFormPts);
+  if (hHomeFormPts != null || aAwayFormPts != null) {
+    const hVenue = hHomeFormPts ?? 9;
+    const aVenue = aAwayFormPts ?? 9;
+    modelScore += clamp((hVenue - aVenue) * 0.012, -0.12, 0.12);
+    if (hHomeFormPts != null) tacticalNotes.push(`${input.homeTeam} home form: ${hHomeFormPts}/15 pts.`);
+    if (aAwayFormPts != null) tacticalNotes.push(`${input.awayTeam} away form: ${aAwayFormPts}/15 pts.`);
+  }
+
+  // ── Defensive solidity (clean-sheet rate) ─────────────────────────────────
+  const homeCS = num(input.home.cleanSheets);
+  const awayCS = num(input.away.cleanSheets);
+  const homeGP = num(input.home.gamesPlayed) ?? 1;
+  const awayGP = num(input.away.gamesPlayed) ?? 1;
+  if (homeCS != null || awayCS != null) {
+    const homeCSRate = homeCS != null ? homeCS / Math.max(homeGP, 1) : 0;
+    const awayCSRate = awayCS != null ? awayCS / Math.max(awayGP, 1) : 0;
+    modelScore += clamp((homeCSRate - awayCSRate) * 0.24, -0.14, 0.14);
+    if (homeCS != null) tacticalNotes.push(`${input.homeTeam} defensive record: ${homeCS} clean sheets.`);
+    if (awayCS != null) tacticalNotes.push(`${input.awayTeam} defensive record: ${awayCS} clean sheets.`);
+  }
+
+  // ── Head-to-head record ───────────────────────────────────────────────────
+  if (input.headToHead) {
+    const { homeWins, awayWins, draws } = input.headToHead;
+    const totalH2H = homeWins + awayWins + draws;
+    if (totalH2H >= 3) {
+      const h2hScore = (homeWins - awayWins) / totalH2H; // between -1 and +1
+      modelScore += clamp(h2hScore * 0.12, -0.12, 0.12);
+      factors.push(`H2H record: ${input.homeTeam} ${homeWins}W-${draws}D-${awayWins}L in last ${totalH2H} meetings`);
+    }
+  }
+
   const homeShots = readStat(input.stats?.home, ["shotsOnTarget", "shots_on_target", "shots"]);
   const awayShots = readStat(input.stats?.away, ["shotsOnTarget", "shots_on_target", "shots"]);
   const homePoss = readStat(input.stats?.home, ["possession", "possessionPct"]);
@@ -212,8 +293,28 @@ export function buildGroundedMatchAnalysis(input: MatchAnalysisInput): MatchAnal
     ? `${input.homeTeam} ${homeScore}-${awayScore} ${input.awayTeam}${minute != null ? ` at ${minute}'` : ""}. Momentum leans ${side === "draw" ? "neutral" : side === "home" ? input.homeTeam : input.awayTeam} on current signal balance.`
     : null;
 
+  // Post-match summary enriched with goal scorers from events if available
+  const goalEvents = Array.isArray(input.events)
+    ? input.events.filter((e) => /goal/i.test(e.type || ""))
+    : [];
+  const homeGoalScorers = goalEvents
+    .filter((e) => e.team === input.homeTeam || e.team === "home")
+    .map((e) => (e.detail ? `${e.detail} (${e.minute}')` : `(${e.minute}')`));
+  const awayGoalScorers = goalEvents
+    .filter((e) => e.team === input.awayTeam || e.team === "away")
+    .map((e) => (e.detail ? `${e.detail} (${e.minute}')` : `(${e.minute}')`));
+  const scorerLine =
+    homeGoalScorers.length || awayGoalScorers.length
+      ? ` Goals: ${[
+          homeGoalScorers.length ? `${input.homeTeam}: ${homeGoalScorers.join(", ")}` : "",
+          awayGoalScorers.length ? `${input.awayTeam}: ${awayGoalScorers.join(", ")}` : "",
+        ]
+          .filter(Boolean)
+          .join(" · ")}.`
+      : "";
+
   const postMatchSummary = !input.isLive && (homeScore > 0 || awayScore > 0)
-    ? `${input.homeTeam} ${homeScore}-${awayScore} ${input.awayTeam}. ${Math.abs(scoreDelta) <= 1 ? "Fine margins" : "Clear separation"} matched the model's pre-game indicators.`
+    ? `FT ${input.homeTeam} ${homeScore}-${awayScore} ${input.awayTeam}.${scorerLine} ${Math.abs(scoreDelta) <= 1 ? "Fine margins settled it" : scoreDelta === 0 ? "Sides shared the points" : `${side === "home" ? input.homeTeam : input.awayTeam} controlled proceedings`} — ${coverageRatio >= 0.75 ? "supported by full standings and scoring signals" : "based on available signals"}`
     : null;
 
   const confidenceReason = coverageRatio >= 0.75
