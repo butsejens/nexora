@@ -15,10 +15,10 @@ import {
   TouchableOpacity,
   StyleSheet,
   TextInput,
-  SafeAreaView,
   ActivityIndicator,
   Image,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery } from '@tanstack/react-query';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 
@@ -58,6 +58,7 @@ export function SearchTab({ onSelectResult }: SearchTabProps) {
   const [recentSearches, setRecentSearches] = useState<string[]>([]);
   const sportsEnabled = useOnboardingStore((s) => s.sportsEnabled);
   const moviesEnabled = useOnboardingStore((s) => s.moviesEnabled);
+    const insets = useSafeAreaInsets();
   const { iptvChannels } = useNexora();
 
   // Fetch sports data for search
@@ -273,9 +274,9 @@ export function SearchTab({ onSelectResult }: SearchTabProps) {
   const showResults = query.trim().length > 0;
 
   return (
-    <SafeAreaView style={styles.container}>
+    <View style={styles.container}>
       {/* Header with search input */}
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
         <View style={styles.searchInputContainer}>
           <Ionicons name="search" size={18} color={P.muted} />
           <TextInput
@@ -349,7 +350,7 @@ export function SearchTab({ onSelectResult }: SearchTabProps) {
           </View>
         )}
       </ScrollView>
-    </SafeAreaView>
+    </View>
   );
 }
 
@@ -425,7 +426,7 @@ const styles = StyleSheet.create({
   },
   header: {
     paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingBottom: 12,
     borderBottomWidth: 1,
     borderBottomColor: P.border,
   },

@@ -201,6 +201,8 @@ export function VodModuleHub({ initialPane = "home", initialFilter = "all" }: Vo
     queryFn: fetchHomePayload,
     staleTime: 15 * 60 * 1000,
     gcTime: 30 * 60 * 1000,
+    retry: 1,
+    refetchOnMount: false,
   });
 
   const searchQuery = useQuery({
@@ -387,14 +389,14 @@ export function VodModuleHub({ initialPane = "home", initialFilter = "all" }: Vo
       />
 
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        {homeQuery.isLoading ? (
+        {homeQuery.isLoading && !homeQuery.data ? (
           <View style={styles.loadingWrap}>
             <ActivityIndicator color={COLORS.accent} />
             <Text style={styles.loadingText}>Building premium catalog...</Text>
           </View>
         ) : null}
 
-        {!homeQuery.isLoading && activePane === "home" ? (
+        {activePane === "home" ? (
           <>
             {featured ? (
               <RealHeroBanner
@@ -453,7 +455,7 @@ export function VodModuleHub({ initialPane = "home", initialFilter = "all" }: Vo
           </>
         ) : null}
 
-        {!homeQuery.isLoading && activePane === "search" ? (
+          {activePane === "search" ? (
           <>
             <View style={styles.searchBox}>
               <Ionicons name="search" size={18} color={COLORS.textMuted} />
@@ -524,7 +526,7 @@ export function VodModuleHub({ initialPane = "home", initialFilter = "all" }: Vo
           </>
         ) : null}
 
-        {!homeQuery.isLoading && activePane === "more" ? (
+          {activePane === "more" ? (
           <>
             <ModuleSection title="Media">
               <View style={styles.menuGrid}>

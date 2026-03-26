@@ -196,6 +196,15 @@ export function NexoraProvider({ children }: { children: ReactNode }) {
           setHiddenChannels([]);
           setHiddenGroups([]);
           await AsyncStorage.setItem(schemaKey, "1");
+
+                // v4: clear stale/placeholder favorites
+                const schemaKeyV4 = "nexora_schema_v4";
+                const schemaV4 = await AsyncStorage.getItem(schemaKeyV4);
+                if (!schemaV4) {
+                  await AsyncStorage.removeItem("nexora_favorites");
+                  setFavorites([]);
+                  await AsyncStorage.setItem(schemaKeyV4, "1");
+                }
         }
 
         const keys = [
