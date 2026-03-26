@@ -135,7 +135,11 @@ export default function FavoritesScreen() {
 
   const tmdbSorted = useMemo(() => {
     const list = Array.isArray(tmdbData) ? tmdbData : [];
-    return [...list].sort((a: any, b: any) => {
+    return [...list].filter((item: any) => {
+      const t = String(item?.title || "").trim();
+      // Filter out placeholder/corrupted entries with generic titles or no title
+      return t && t !== "Movie" && t !== "Series" && t !== "Unknown";
+    }).sort((a: any, b: any) => {
       const ida = `${a?._type || ""}_${String(a?.id || "")}`;
       const idb = `${b?._type || ""}_${String(b?.id || "")}`;
       const pa = priorityMap[ida] || priorityMap[String(a?.id || "")];

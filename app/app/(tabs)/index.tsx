@@ -899,24 +899,6 @@ export default function SportsScreen() {
   const { width: screenWidth } = useWindowDimensions();
   const sportsEnabled = useOnboardingStore((s) => s.sportsEnabled);
 
-  // Show disabled view if sports module is not enabled
-  if (!sportsEnabled) {
-    return (
-      <View style={[styles.disabledContainer, { paddingTop: insets.top }]}>
-        <Ionicons name="shield-off-outline" size={64} color={P.muted} />
-        <Text style={styles.disabledTitle}>Sports Disabled</Text>
-        <Text style={styles.disabledMessage}>Enable sports in settings to view live scores, predictions, and more.</Text>
-        <TouchableOpacity 
-          style={styles.enableButton}
-          onPress={() => router.push('/settings')}
-        >
-          <Ionicons name="settings" size={20} color={P.bg} />
-          <Text style={styles.enableButtonText}>Go to Settings</Text>
-        </TouchableOpacity>
-      </View>
-    );
-  }
-
   const contentWidth = Math.min(screenWidth, 1200);
   const compCardWidth = Math.floor((Math.min(screenWidth, 480) - 16 * 2 - 10 * 3) / 4);
   const qc = useQueryClient();
@@ -1709,6 +1691,24 @@ export default function SportsScreen() {
   );
   const [catBarMeasuredHeight, setCatBarMeasuredHeight] = useState(showCompetitionsSection ? 57 : 0);
   const headerAreaHeight = headerContainerHeight + (showCompetitionsSection ? catBarMeasuredHeight : 0);
+
+    // Disabled view — rendered AFTER all hooks to satisfy Rules of Hooks
+    if (!sportsEnabled) {
+      return (
+        <View style={[styles.disabledContainer, { paddingTop: insets.top }]}>
+          <Ionicons name="shield-off-outline" size={64} color={P.muted} />
+          <Text style={styles.disabledTitle}>Sports Disabled</Text>
+          <Text style={styles.disabledMessage}>Enable sports in settings to view live scores, predictions, and more.</Text>
+          <TouchableOpacity
+            style={styles.enableButton}
+            onPress={() => router.push('/settings')}
+          >
+            <Ionicons name="settings" size={20} color={P.bg} />
+            <Text style={styles.enableButtonText}>Go to Settings</Text>
+          </TouchableOpacity>
+        </View>
+      );
+    }
 
   return (
     <View style={styles.container}>

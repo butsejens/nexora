@@ -1399,13 +1399,6 @@ const [showAddPlaylist, setShowAddPlaylist] = useState(false);
 
         <Section title="Personalization">
           <SettingRow
-            icon="sparkles-outline"
-            label={hasCompletedOnboarding ? "Edit onboarding" : "Finish onboarding"}
-            value={onboardingSummary || "Configure your premium modules"}
-            onPress={() => setShowOnboardingEditor(true)}
-          />
-          <Divider />
-          <SettingRow
             icon="football-outline"
             label="Sports module"
             value={onboardingSportsEnabled ? "Enabled" : "Hidden"}
