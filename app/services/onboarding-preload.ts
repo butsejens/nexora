@@ -42,7 +42,10 @@ function emitProgress(
 ) {
   const totalWeight = phases.reduce((sum, phase) => sum + phase.weight, 0);
   const completedWeight = phases.reduce((sum, phase) => sum + (completedIds.has(phase.id) ? phase.weight : 0), 0);
-  const progress = totalWeight > 0 ? Math.round((completedWeight / totalWeight) * 100) : 0;
+  const rawProgress = totalWeight > 0 ? Math.round((completedWeight / totalWeight) * 100) : 0;
+  const progress = overrideMessage === "Starting background setup"
+    ? Math.max(8, rawProgress)
+    : rawProgress;
   const nextPhase = phases.find((phase) => !completedIds.has(phase.id));
   onProgress?.({
     progress,
