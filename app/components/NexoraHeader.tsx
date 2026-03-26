@@ -12,6 +12,7 @@ interface Props {
   titleColor?: string;
   badgeLabel?: string;
   badgeTone?: "live" | "accent" | "neutral";
+  variant?: "default" | "module";
   compact?: boolean;
   showSearch?: boolean;
   showNotification?: boolean;
@@ -29,6 +30,7 @@ export function NexoraHeader({
   titleColor,
   badgeLabel,
   badgeTone = "neutral",
+  variant = "default",
   compact = false,
   showSearch = true,
   showNotification = false,
@@ -46,94 +48,132 @@ export function NexoraHeader({
   const containerMax = isTV ? 1400 : 980;
   const isIOS = Platform.OS === "ios";
   const topPad = Platform.OS === "web" ? 0 : insets.top;
+  const isModuleVariant = variant === "module";
 
   // Fallbacks: always navigate even if prop is not passed
   const handleNotification = onNotification ?? (() => router.push("/follow-center"));
   const handleFavorites = onFavorites ?? (() => router.push("/favorites"));
   const handleProfile = onProfile ?? (() => router.push("/profile"));
 
+  const moduleTitleColor = titleColor ?? COLORS.accent;
+
+  const brandWordmark = (
+    <Text style={[styles.moduleWordmark, compact ? styles.moduleWordmarkCompact : null]}>
+      <Text style={styles.moduleWordmarkAccent}>N</Text>
+      EXORA
+    </Text>
+  );
+
   const content = compact ? (
     <View style={styles.contentRow}>
-      <View style={styles.logoCompact}>
-        <PulseBrandMark size={28} showWordmark={false} />
-        {title ? <Text style={[styles.sectionTitleCompact, titleColor ? { color: titleColor } : null]}>{title}</Text> : null}
-        {badgeLabel ? (
-          <View
-            style={[
-              styles.headerBadge,
-              badgeTone === "live" ? styles.headerBadgeLive : null,
-              badgeTone === "accent" ? styles.headerBadgeAccent : null,
-            ]}
-          >
-            <Text style={[styles.headerBadgeText, badgeTone === "live" ? styles.headerBadgeTextLive : null]} numberOfLines={1}>
-              {badgeLabel}
-            </Text>
+      <View style={isModuleVariant ? styles.moduleBrandCompact : styles.logoCompact}>
+        {isModuleVariant ? (
+          <View style={styles.moduleWordmarkWrap}>
+            {brandWordmark}
+            {title ? <Text style={[styles.moduleSectionTitleCompact, { color: moduleTitleColor }]}>{title}</Text> : null}
           </View>
-        ) : null}
+        ) : (
+          <>
+            <PulseBrandMark size={28} showWordmark={false} />
+            {title ? <Text style={[styles.sectionTitleCompact, titleColor ? { color: titleColor } : null]}>{title}</Text> : null}
+            {badgeLabel ? (
+              <View
+                style={[
+                  styles.headerBadge,
+                  badgeTone === "live" ? styles.headerBadgeLive : null,
+                  badgeTone === "accent" ? styles.headerBadgeAccent : null,
+                ]}
+              >
+                <Text style={[styles.headerBadgeText, badgeTone === "live" ? styles.headerBadgeTextLive : null]} numberOfLines={1}>
+                  {badgeLabel}
+                </Text>
+              </View>
+            ) : null}
+          </>
+        )}
       </View>
 
-      <View style={styles.actions}>
+      <View style={[styles.actions, isModuleVariant ? styles.moduleActionsCompact : null]}>
         {rightElement}
         {showSearch && (
-          <TouchableOpacity style={styles.iconBtnCompact} onPress={onSearch} activeOpacity={0.7}>
-            <Ionicons name="search" size={18} color={COLORS.textSecondary} />
+          <TouchableOpacity style={isModuleVariant ? styles.iconBtnModuleCompact : styles.iconBtnCompact} onPress={onSearch} activeOpacity={0.7}>
+            <Ionicons name="search" size={isModuleVariant ? 20 : 18} color={isModuleVariant ? stylesModule.icon : COLORS.textSecondary} />
+          </TouchableOpacity>
+        )}
+        {showNotification && (
+          <TouchableOpacity style={isModuleVariant ? styles.iconBtnModuleCompact : styles.iconBtnCompact} onPress={handleNotification} activeOpacity={0.7}>
+            <Ionicons name="notifications-outline" size={isModuleVariant ? 20 : 18} color={isModuleVariant ? stylesModule.icon : COLORS.textSecondary} />
+          </TouchableOpacity>
+        )}
+        {showFavorites && (
+          <TouchableOpacity style={isModuleVariant ? styles.iconBtnModuleCompact : styles.iconBtnCompact} onPress={handleFavorites} activeOpacity={0.7}>
+            <Ionicons name="heart-outline" size={isModuleVariant ? 20 : 18} color={isModuleVariant ? stylesModule.icon : COLORS.textSecondary} />
           </TouchableOpacity>
         )}
         {showProfile && (
-          <TouchableOpacity style={styles.profileBtnCompact} onPress={handleProfile} activeOpacity={0.7}>
-            <Ionicons name="person" size={15} color={COLORS.accent} />
+          <TouchableOpacity style={isModuleVariant ? styles.profileBtnModuleCompact : styles.profileBtnCompact} onPress={handleProfile} activeOpacity={0.7}>
+            <Ionicons name="person" size={isModuleVariant ? 18 : 15} color={COLORS.accent} />
           </TouchableOpacity>
         )}
       </View>
     </View>
   ) : (
     <View style={styles.contentRow}>
-      <View style={styles.logo}>
-        <View style={styles.logoTopRow}>
-          <View style={styles.brandLockup}>
-            <PulseBrandMark size={34} showWordmark={false} />
-            <View>
-              <Text style={styles.logoText}>NEXORA</Text>
-              <Text style={styles.logoSubText}>Premium Streaming Hub</Text>
+      <View style={isModuleVariant ? styles.moduleBrand : styles.logo}>
+        {isModuleVariant ? (
+          <>
+            {brandWordmark}
+            {title ? <Text style={[styles.moduleSectionTitle, { color: moduleTitleColor }]}>{title}</Text> : null}
+          </>
+        ) : (
+          <>
+            <View style={styles.logoTopRow}>
+              <View style={styles.brandLockup}>
+                <PulseBrandMark size={34} showWordmark={false} />
+                <View>
+                  <Text style={styles.logoText}>NEXORA</Text>
+                  <Text style={styles.logoSubText}>Premium Streaming Hub</Text>
+                </View>
+              </View>
+              {badgeLabel ? (
+                <View
+                  style={[
+                    styles.headerBadge,
+                    badgeTone === "live" ? styles.headerBadgeLive : null,
+                    badgeTone === "accent" ? styles.headerBadgeAccent : null,
+                  ]}
+                >
+                  <Text style={[styles.headerBadgeText, badgeTone === "live" ? styles.headerBadgeTextLive : null]} numberOfLines={1}>
+                    {badgeLabel}
+                  </Text>
+                </View>
+              ) : null}
             </View>
-          </View>
-          {badgeLabel ? (
-            <View
-              style={[
-                styles.headerBadge,
-                badgeTone === "live" ? styles.headerBadgeLive : null,
-                badgeTone === "accent" ? styles.headerBadgeAccent : null,
-              ]}
-            >
-              <Text style={[styles.headerBadgeText, badgeTone === "live" ? styles.headerBadgeTextLive : null]} numberOfLines={1}>
-                {badgeLabel}
-              </Text>
-            </View>
-          ) : null}
-        </View>
-        {title ? <Text style={[styles.sectionTitle, titleColor ? { color: titleColor } : null]}>{title}</Text> : null}
+            {title ? <Text style={[styles.sectionTitle, titleColor ? { color: titleColor } : null]}>{title}</Text> : null}
+          </>
+        )}
       </View>
 
-      <View style={styles.actions}>
+      <View style={[styles.actions, isModuleVariant ? styles.moduleActions : null]}>
         {rightElement}
         {showSearch && (
-          <TouchableOpacity style={styles.iconBtn} onPress={onSearch} activeOpacity={0.7}>
-            <Ionicons name="search" size={22} color={COLORS.textSecondary} />
+          <TouchableOpacity style={isModuleVariant ? styles.iconBtnModule : styles.iconBtn} onPress={onSearch} activeOpacity={0.7}>
+            <Ionicons name="search" size={isModuleVariant ? 27 : 22} color={isModuleVariant ? stylesModule.icon : COLORS.textSecondary} />
           </TouchableOpacity>
         )}
         {showNotification && (
-          <TouchableOpacity style={styles.iconBtn} onPress={handleNotification} activeOpacity={0.7}>
-            <Ionicons name="notifications-outline" size={22} color={COLORS.textSecondary} />
+          <TouchableOpacity style={isModuleVariant ? styles.iconBtnModule : styles.iconBtn} onPress={handleNotification} activeOpacity={0.7}>
+            <Ionicons name="notifications-outline" size={isModuleVariant ? 27 : 22} color={isModuleVariant ? stylesModule.icon : COLORS.textSecondary} />
           </TouchableOpacity>
         )}
         {showFavorites && (
-          <TouchableOpacity style={styles.iconBtn} onPress={handleFavorites} activeOpacity={0.7}>
-            <Ionicons name="heart-outline" size={22} color={COLORS.textSecondary} />
+          <TouchableOpacity style={isModuleVariant ? styles.iconBtnModule : styles.iconBtn} onPress={handleFavorites} activeOpacity={0.7}>
+            <Ionicons name="heart-outline" size={isModuleVariant ? 27 : 22} color={isModuleVariant ? stylesModule.icon : COLORS.textSecondary} />
           </TouchableOpacity>
         )}
         {showProfile && (
-          <TouchableOpacity style={styles.profileBtn} onPress={handleProfile} activeOpacity={0.7}>
-            <Ionicons name="person" size={16} color={COLORS.accent} />
+          <TouchableOpacity style={isModuleVariant ? styles.profileBtnModule : styles.profileBtn} onPress={handleProfile} activeOpacity={0.7}>
+            <Ionicons name="person" size={isModuleVariant ? 22 : 16} color={COLORS.accent} />
           </TouchableOpacity>
         )}
       </View>
@@ -144,11 +184,12 @@ export function NexoraHeader({
     <View
       style={[
         styles.container,
+        isModuleVariant && styles.containerModule,
         compact && styles.containerCompact,
         { paddingTop: compact ? topPad + 4 : topPad + 8, maxWidth: containerMax, alignSelf: "center", width: "100%" },
       ]}
     >
-      {isIOS ? (
+      {isIOS && !isModuleVariant ? (
         <>
           <BlurView intensity={50} tint="dark" style={styles.bgBlur} />
           {content}
@@ -160,6 +201,10 @@ export function NexoraHeader({
   );
 }
 
+const stylesModule = {
+  icon: "rgba(255,255,255,0.68)",
+};
+
 const styles = StyleSheet.create({
   container: {
     paddingHorizontal: 16,
@@ -167,6 +212,11 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.background,
     borderBottomWidth: 1,
     borderBottomColor: COLORS.border,
+  },
+  containerModule: {
+    paddingHorizontal: 28,
+    paddingBottom: 14,
+    borderBottomColor: "rgba(255,255,255,0.08)",
   },
   flatWrap: {
     backgroundColor: "transparent",
@@ -187,6 +237,24 @@ const styles = StyleSheet.create({
     alignItems: "flex-start",
     justifyContent: "center",
     gap: 2,
+  },
+  moduleBrand: {
+    flexDirection: "column",
+    alignItems: "flex-start",
+    justifyContent: "center",
+    gap: 12,
+    paddingVertical: 10,
+  },
+  moduleBrandCompact: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  moduleWordmarkWrap: {
+    flexDirection: "column",
+    alignItems: "flex-start",
+    justifyContent: "center",
+    gap: 5,
   },
   logoTopRow: {
     flexDirection: "row",
@@ -211,6 +279,35 @@ const styles = StyleSheet.create({
     letterSpacing: 0.3,
     fontFamily: "Inter_600SemiBold",
     color: COLORS.textSecondary,
+  },
+  moduleWordmark: {
+    fontSize: 44,
+    lineHeight: 44,
+    letterSpacing: 9,
+    fontFamily: "Inter_800ExtraBold",
+    color: COLORS.text,
+  },
+  moduleWordmarkCompact: {
+    fontSize: 24,
+    lineHeight: 26,
+    letterSpacing: 5,
+  },
+  moduleWordmarkAccent: {
+    color: COLORS.accent,
+  },
+  moduleSectionTitle: {
+    fontSize: 18,
+    lineHeight: 20,
+    letterSpacing: 5.5,
+    fontFamily: "Inter_700Bold",
+    textTransform: "uppercase",
+  },
+  moduleSectionTitleCompact: {
+    fontSize: 11,
+    lineHeight: 13,
+    letterSpacing: 2.8,
+    fontFamily: "Inter_700Bold",
+    textTransform: "uppercase",
   },
   sectionTitle: {
     fontSize: 11,
@@ -251,6 +348,12 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 8,
   },
+  moduleActions: {
+    gap: 14,
+  },
+  moduleActionsCompact: {
+    gap: 8,
+  },
   iconBtn: {
     width: 40,
     height: 40,
@@ -266,6 +369,16 @@ const styles = StyleSheet.create({
     shadowRadius: 6,
     elevation: 3,
   },
+  iconBtnModule: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: "#181818",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.06)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
   profileBtn: {
     width: 38,
     height: 38,
@@ -280,6 +393,16 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.18,
     shadowRadius: 5,
     elevation: 3,
+  },
+  profileBtnModule: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: "rgba(255,255,255,0.03)",
+    borderWidth: 2,
+    borderColor: COLORS.accent,
+    alignItems: "center",
+    justifyContent: "center",
   },
   containerCompact: {
     paddingBottom: 4,
@@ -306,6 +429,16 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+  iconBtnModuleCompact: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: "#181818",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.06)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
   profileBtnCompact: {
     width: 34,
     height: 34,
@@ -313,6 +446,16 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(229,9,20,0.11)",
     borderWidth: 1,
     borderColor: `${COLORS.accent}66`,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  profileBtnModuleCompact: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: "rgba(255,255,255,0.03)",
+    borderWidth: 1.5,
+    borderColor: COLORS.accent,
     alignItems: "center",
     justifyContent: "center",
   },

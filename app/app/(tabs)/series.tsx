@@ -637,8 +637,11 @@ export default function SeriesScreen() {
   return (
     <View style={styles.container}>
       <NexoraHeader
-        title="Series"
-        showSearch showFavorites showProfile
+        variant="module"
+        title="SERIES"
+        titleColor={COLORS.accent}
+        showSearch showNotification showFavorites showProfile
+        onNotification={() => router.push("/follow-center")}
         onFavorites={() => router.push("/favorites")}
         onProfile={() => router.push("/profile")}
       />

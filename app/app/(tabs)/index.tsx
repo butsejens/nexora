@@ -1697,10 +1697,9 @@ export default function SportsScreen() {
         onLayout={(e) => setHeaderContainerHeight(e.nativeEvent.layout.height)}
       >
         <NexoraHeader
+          variant="module"
           title="SPORT"
           titleColor={P.accent}
-          badgeLabel={sortedLive.length > 0 ? `${sortedLive.length} live` : undefined}
-          badgeTone={sortedLive.length > 0 ? "live" : "accent"}
           compact={compactHeader}
           showSearch
           showNotification
