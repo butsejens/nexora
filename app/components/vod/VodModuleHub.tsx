@@ -28,7 +28,6 @@ import {
   enrichVodModuleItem,
   filterBySearchFilter,
   pickFeaturedItem,
-  type VodCategoryRail,
   type VodCollectionGroup,
   type VodModuleItem,
   type VodModulePane,
@@ -50,10 +49,15 @@ type HomePayload = {
   recentSeries: VodModuleItem[];
   topRatedMovies: VodModuleItem[];
   topRatedSeries: VodModuleItem[];
-  collections: VodCollectionGroup[];
-  studios: VodStudioGroup[];
-  genres: VodCategoryRail[];
   allItems: VodModuleItem[];
+};
+
+type CatalogPayload = {
+  items: VodModuleItem[];
+  meta?: {
+    nextCursorYear?: number | null;
+    hasMore?: boolean;
+  };
 };
 
 const MODULE_NAV = [
@@ -89,6 +93,20 @@ async function fetchDetail(type: "movie" | "series", id: string | number) {
   return data?.error ? null : data;
 }
 
+function dedupeModuleItems(items: VodModuleItem[]): VodModuleItem[] {
+  const seen = new Set<string>();
+  const output: VodModuleItem[] = [];
+  for (const item of items) {
+    const tmdbId = String(item.tmdbId || item.id || "").trim();
+    const title = String(item.title || "").trim().toLowerCase();
+    const key = tmdbId ? `${item.type}:${tmdbId}` : `${item.type}:${title}:${String(item.year || "")}`;
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    output.push(item);
+  }
+  return output;
+}
+
 async function fetchHomePayload(): Promise<HomePayload> {
   const [movieData, seriesData] = await Promise.all([
     fetchJson("/api/movies/trending"),
@@ -96,47 +114,54 @@ async function fetchHomePayload(): Promise<HomePayload> {
   ]);
 
   const movieSeeds = [
-    ...(movieData?.trending || []).slice(0, 8).map((item: any) => ({ ...item, isTrending: true })),
-    ...(movieData?.popular || []).slice(0, 8),
-    ...(movieData?.newReleases || []).slice(0, 8).map((item: any) => ({ ...item, isNew: true })),
-    ...(movieData?.topRated || []).slice(0, 8),
+    ...(movieData?.trending || []).slice(0, 14).map((item: any) => ({ ...item, isTrending: true })),
+    ...(movieData?.popular || []).slice(0, 14),
+    ...(movieData?.newReleases || []).slice(0, 14).map((item: any) => ({ ...item, isNew: true })),
+    ...(movieData?.topRated || []).slice(0, 14),
   ];
 
   const seriesSeeds = [
-    ...(seriesData?.trending || []).slice(0, 8).map((item: any) => ({ ...item, isTrending: true })),
-    ...(seriesData?.popular || []).slice(0, 8),
-    ...(seriesData?.newReleases || []).slice(0, 8).map((item: any) => ({ ...item, isNew: true })),
-    ...(seriesData?.topRated || []).slice(0, 8),
+    ...(seriesData?.trending || []).slice(0, 14).map((item: any) => ({ ...item, isTrending: true })),
+    ...(seriesData?.popular || []).slice(0, 14),
+    ...(seriesData?.newReleases || []).slice(0, 14).map((item: any) => ({ ...item, isNew: true })),
+    ...(seriesData?.topRated || []).slice(0, 14),
   ];
 
-  const movieSeedMap = new Map(movieSeeds.map((item: any) => [String(item.id), item]));
-  const seriesSeedMap = new Map(seriesSeeds.map((item: any) => [String(item.id), item]));
-
-  const [movieDetails, seriesDetails] = await Promise.all([
-    Promise.all(Array.from(movieSeedMap.keys()).slice(0, 20).map((id) => fetchDetail("movie", id))),
-    Promise.all(Array.from(seriesSeedMap.keys()).slice(0, 16).map((id) => fetchDetail("series", id))),
-  ]);
-
-  const enrichedMovies = Array.from(movieSeedMap.entries())
-    .map(([id, item], index) => enrichVodModuleItem(item, movieDetails[index] || undefined))
-    .filter((item) => item.title);
-  const enrichedSeries = Array.from(seriesSeedMap.entries())
-    .map(([id, item], index) => enrichVodModuleItem(item, seriesDetails[index] || undefined))
+  const enrichedMovies = dedupeModuleItems(
+    movieSeeds.map((item: any) => enrichVodModuleItem({ ...item, type: "movie" }))
+  )
     .filter((item) => item.title);
 
-  const allItems = [...enrichedMovies, ...enrichedSeries];
+  const enrichedSeries = dedupeModuleItems(
+    seriesSeeds.map((item: any) => enrichVodModuleItem({ ...item, type: "series" }))
+  )
+    .filter((item) => item.title);
+
+  const allItems = dedupeModuleItems([...enrichedMovies, ...enrichedSeries]);
   return {
     featured: pickFeaturedItem(allItems),
-    trendingMovies: enrichedMovies.filter((item) => item.isTrending).slice(0, 12),
-    trendingSeries: enrichedSeries.filter((item) => item.isTrending).slice(0, 12),
-    recentMovies: enrichedMovies.filter((item) => item.isNew).slice(0, 12),
-    recentSeries: enrichedSeries.filter((item) => item.isNew).slice(0, 12),
-    topRatedMovies: [...enrichedMovies].sort((a, b) => Number(b.rating || b.imdb || 0) - Number(a.rating || a.imdb || 0)).slice(0, 12),
-    topRatedSeries: [...enrichedSeries].sort((a, b) => Number(b.rating || b.imdb || 0) - Number(a.rating || a.imdb || 0)).slice(0, 12),
-    collections: buildCollectionGroups(enrichedMovies).slice(0, 10),
-    studios: buildStudioGroups(allItems).slice(0, 10),
-    genres: buildCategoryRails(allItems).slice(0, 10),
+    trendingMovies: enrichedMovies.filter((item) => item.isTrending).slice(0, 16),
+    trendingSeries: enrichedSeries.filter((item) => item.isTrending).slice(0, 16),
+    recentMovies: enrichedMovies.filter((item) => item.isNew).slice(0, 16),
+    recentSeries: enrichedSeries.filter((item) => item.isNew).slice(0, 16),
+    topRatedMovies: [...enrichedMovies].sort((a, b) => Number(b.rating || b.imdb || 0) - Number(a.rating || a.imdb || 0)).slice(0, 16),
+    topRatedSeries: [...enrichedSeries].sort((a, b) => Number(b.rating || b.imdb || 0) - Number(a.rating || a.imdb || 0)).slice(0, 16),
     allItems,
+  };
+}
+
+async function fetchCatalogChunk(cursorYear?: number | null): Promise<CatalogPayload> {
+  const params = new URLSearchParams({
+    type: "all",
+    years: "30",
+    chunkYears: "4",
+    pagesPerYear: "1",
+  });
+  if (cursorYear) params.set("cursorYear", String(cursorYear));
+  const payload = await fetchJson(`/api/vod/catalog?${params.toString()}`);
+  return {
+    items: dedupeModuleItems(((payload?.items || []) as any[]).map((item) => enrichVodModuleItem(item))),
+    meta: payload?.meta,
   };
 }
 
@@ -215,12 +240,40 @@ export function VodModuleHub({ initialPane = "home", initialFilter = "all" }: Vo
     staleTime: 10 * 60 * 1000,
   });
 
+  const catalogChunkOneQuery = useQuery({
+    queryKey: ["vod-module-catalog", "chunk-1"],
+    queryFn: () => fetchCatalogChunk(null),
+    enabled: activePane === "home" && Boolean(homeQuery.data),
+    staleTime: 30 * 60 * 1000,
+    gcTime: 60 * 60 * 1000,
+    retry: 1,
+  });
+
+  const catalogChunkTwoQuery = useQuery({
+    queryKey: ["vod-module-catalog", "chunk-2", catalogChunkOneQuery.data?.meta?.nextCursorYear || "none"],
+    queryFn: () => fetchCatalogChunk(catalogChunkOneQuery.data?.meta?.nextCursorYear || null),
+    enabled: activePane === "home" && Boolean(catalogChunkOneQuery.data?.meta?.nextCursorYear),
+    staleTime: 30 * 60 * 1000,
+    gcTime: 60 * 60 * 1000,
+    retry: 1,
+  });
+
   useEffect(() => {
     if (activePane === "search") return;
     queryClient.prefetchQuery({ queryKey: ["vod-module-home"], queryFn: fetchHomePayload, staleTime: 15 * 60 * 1000 }).catch(() => undefined);
+    queryClient.prefetchQuery({ queryKey: ["vod-module-catalog", "chunk-1"], queryFn: () => fetchCatalogChunk(null), staleTime: 30 * 60 * 1000 }).catch(() => undefined);
   }, [activePane, queryClient]);
 
-  const allItems = useMemo(() => homeQuery.data?.allItems || [], [homeQuery.data?.allItems]);
+  const allItems = useMemo(() => {
+    const homeItems = homeQuery.data?.allItems || [];
+    const chunkOne = catalogChunkOneQuery.data?.items || [];
+    const chunkTwo = catalogChunkTwoQuery.data?.items || [];
+    return dedupeModuleItems([...homeItems, ...chunkOne, ...chunkTwo]);
+  }, [catalogChunkOneQuery.data?.items, catalogChunkTwoQuery.data?.items, homeQuery.data?.allItems]);
+
+  const collections = useMemo(() => buildCollectionGroups(allItems.filter((item) => item.type === "movie")).slice(0, 18), [allItems]);
+  const studios = useMemo(() => buildStudioGroups(allItems).slice(0, 18), [allItems]);
+  const genres = useMemo(() => buildCategoryRails(allItems, 24).slice(0, 14), [allItems]);
   const featured = homeQuery.data?.featured || null;
 
   const recommended = useMemo(() => {
@@ -413,10 +466,17 @@ export function VodModuleHub({ initialPane = "home", initialFilter = "all" }: Vo
               />
             ) : null}
 
-            {homeQuery.data?.collections?.length ? (
+            {catalogChunkOneQuery.isFetching || catalogChunkTwoQuery.isFetching ? (
+              <View style={styles.catalogLoadingRow}>
+                <ActivityIndicator color={COLORS.accent} size="small" />
+                <Text style={styles.catalogLoadingText}>Expanding 30-year catalog in the background...</Text>
+              </View>
+            ) : null}
+
+            {collections.length ? (
               <ModuleSection title="Collections" actionLabel="See all" onAction={() => setActivePane("search")}>
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.collectionRow}>
-                  {homeQuery.data.collections.map((group) => (
+                  {collections.map((group) => (
                     <CollectionCard
                       key={group.key}
                       group={group}
@@ -427,10 +487,10 @@ export function VodModuleHub({ initialPane = "home", initialFilter = "all" }: Vo
               </ModuleSection>
             ) : null}
 
-            {homeQuery.data?.studios?.length ? (
+            {studios.length ? (
               <ModuleSection title="Studios">
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.studioRow}>
-                  {homeQuery.data.studios.map((group) => (
+                  {studios.map((group) => (
                     <StudioCard
                       key={`${group.id || group.name}`}
                       group={group}
@@ -447,7 +507,7 @@ export function VodModuleHub({ initialPane = "home", initialFilter = "all" }: Vo
               </ModuleSection>
             ))}
 
-            {(homeQuery.data?.genres || []).map((rail) => (
+            {genres.map((rail) => (
               <ModuleSection key={rail.key} title={rail.label}>
                 {renderRail(rail.items)}
               </ModuleSection>
@@ -483,7 +543,7 @@ export function VodModuleHub({ initialPane = "home", initialFilter = "all" }: Vo
             {deferredQuery.length < 2 ? (
               <ModuleSection title="Quick Browse">
                 <View style={styles.quickBrowseGrid}>
-                  {(homeQuery.data?.genres || []).slice(0, 8).map((rail) => (
+                  {genres.slice(0, 8).map((rail) => (
                     <TouchableOpacity key={rail.key} style={styles.quickBrowseCard} onPress={() => setQuery(rail.label)}>
                       <Text style={styles.quickBrowseTitle}>{rail.label}</Text>
                       <Text style={styles.quickBrowseMeta}>{rail.items.length} curated picks</Text>
@@ -605,6 +665,20 @@ const styles = StyleSheet.create({
   scrollContent: { paddingBottom: 170 },
   loadingWrap: { paddingTop: 80, alignItems: "center", gap: 12 },
   loadingText: { color: COLORS.textSecondary, fontFamily: "Inter_500Medium" },
+  catalogLoadingRow: {
+    marginHorizontal: 18,
+    marginBottom: 18,
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    backgroundColor: "rgba(229,9,20,0.08)",
+    borderWidth: 1,
+    borderColor: "rgba(229,9,20,0.22)",
+  },
+  catalogLoadingText: { color: COLORS.textSecondary, fontFamily: "Inter_500Medium", fontSize: 12 },
   section: { marginBottom: 28 },
   sectionHeader: {
     flexDirection: "row",

@@ -5,6 +5,7 @@ import * as FileSystem from "expo-file-system";
 import { parseM3UContentAsync } from "@/lib/parseM3U";
 import { fetchM3UText } from "@/lib/fetchM3U";
 import { trackWatchProgress } from "@/lib/services/user-state-service";
+import { namespaceId, ensureNamespaced, getRawId, getSource } from "@/lib/id-namespace";
 
 import { setLanguage as setI18nLanguage, type Language } from "@/lib/i18n";
 
@@ -289,24 +290,41 @@ export function NexoraProvider({ children }: { children: ReactNode }) {
     load();
   }, []);
 
-  const toggleFavorite = async (id: string) => {
+  const toggleFavorite = async (id: string, type?: "movie" | "series" | "channel" | "sport") => {
+    const source = getSource(id, type) || (type === "sport" ? "sports" : "media");
+    const namespacedId = ensureNamespaced(source, id);
+    
     setFavorites((prev) => {
-      const next = prev.includes(id) ? prev.filter((f) => f !== id) : [...prev, id];
+      const next = prev.includes(namespacedId) 
+        ? prev.filter((f) => f !== namespacedId) 
+        : [...prev, namespacedId];
       AsyncStorage.setItem("nexora_favorites", JSON.stringify(next)).catch(() => undefined);
       return next;
     });
   };
 
-  const isFavorite = (id: string) => favorites.includes(id);
+  const isFavorite = (id: string, type?: "movie" | "series" | "channel" | "sport") => {
+    const source = getSource(id, type) || (type === "sport" ? "sports" : "media");
+    const namespacedId = ensureNamespaced(source, id);
+    return favorites.includes(namespacedId);
+  };
 
   const addToHistory = async (item: WatchedItem) => {
-    const next = [item, ...watchHistory.filter(h => h.id !== item.id)].slice(0, 50);
+    // Namespace the ID to prevent collisions
+    const source = item.type === "sport" ? "sports" : "media";
+    const namespacedItem = {
+      ...item,
+      id: ensureNamespaced(source, item.id),
+      contentId: item.contentId ? ensureNamespaced(source, item.contentId) : undefined,
+    };
+    
+    const next = [namespacedItem, ...watchHistory.filter(h => h.id !== namespacedItem.id)].slice(0, 50);
     setWatchHistory(next);
     await AsyncStorage.setItem("nexora_history", JSON.stringify(next));
     // Bridge to user-state-service so mood derivation and continueWatching work
     if (item.duration && item.duration > 0) {
       trackWatchProgress({
-        contentId: item.contentId ?? item.id,
+        contentId: namespacedItem.contentId ?? namespacedItem.id,
         mediaType: item.type as "movie" | "series" | "channel" | "sport",
         title: item.title,
         posterUri: item.poster ?? null,
@@ -326,13 +344,16 @@ export function NexoraProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const updateProgress = async (id: string, currentTime: number, duration: number) => {
+  const updateProgress = async (id: string, currentTime: number, duration: number, type?: "movie" | "series" | "channel" | "sport") => {
     if (!id || !duration || duration <= 0) return;
+    const source = getSource(id, type) || (type === "sport" ? "sports" : "media");
+    const namespacedId = ensureNamespaced(source, id);
+    
     const progress = Math.min(1, Math.max(0, currentTime / duration));
-    const idx = watchHistory.findIndex(h => h.id === id || h.contentId === id);
+    const idx = watchHistory.findIndex(h => h.id === namespacedId || h.contentId === namespacedId);
     if (idx < 0) return;
     const updated = { ...watchHistory[idx], progress, currentTime, duration, lastWatched: new Date().toISOString() };
-    const next = [updated, ...watchHistory.filter(h => h.id !== id)].slice(0, 50);
+    const next = [updated, ...watchHistory.filter(h => h.id !== namespacedId)].slice(0, 50);
     setWatchHistory(next);
     await AsyncStorage.setItem("nexora_history", JSON.stringify(next));
     // Bridge to user-state-service

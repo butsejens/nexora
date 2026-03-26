@@ -9,23 +9,34 @@ type PulseBrandMarkProps = {
 };
 
 function PulseBrandMarkComponent({ size = 72, showWordmark = true, subtitle = null, wordmarkText = "NEXORA" }: PulseBrandMarkProps) {
-  const ringSize = size;
-  const coreSize = Math.round(size * 0.62);
-  const dotSize = Math.max(10, Math.round(size * 0.16));
+  const outerSize = size;
+  const innerSize = Math.round(size * 0.68);
+  const letterSize = Math.round(size * 0.42);
 
   return (
     <View style={styles.container}>
-      <View style={[styles.markShell, { width: ringSize, height: ringSize, borderRadius: ringSize / 2 }]}>
-        <View style={[styles.markRing, { borderRadius: ringSize / 2 }]} />
-        <View style={[styles.markCore, { width: coreSize, height: coreSize, borderRadius: coreSize / 2 }]}>
-          <View style={styles.pulseLine} />
-          <View style={[styles.pulseDot, { width: dotSize, height: dotSize, borderRadius: dotSize / 2 }]} />
+      {/* Outer glow ring */}
+      <View
+        style={[
+          styles.outerRing,
+          { width: outerSize, height: outerSize, borderRadius: outerSize / 2 },
+        ]}
+      >
+        {/* Inner accent circle */}
+        <View
+          style={[
+            styles.innerCircle,
+            { width: innerSize, height: innerSize, borderRadius: innerSize / 2 },
+          ]}
+        >
+          <Text style={[styles.letterMark, { fontSize: letterSize, lineHeight: letterSize * 1.1 }]}>N</Text>
         </View>
       </View>
+
       {showWordmark ? (
         <View style={styles.wordmarkWrap}>
           <Text style={styles.wordmark}>{wordmarkText}</Text>
-          <Text style={styles.wordmarkSub}>{subtitle || "Your premium streaming hub"}</Text>
+          {subtitle ? <Text style={styles.wordmarkSub}>{subtitle}</Text> : null}
         </View>
       ) : null}
     </View>
@@ -37,53 +48,49 @@ export const PulseBrandMark = memo(PulseBrandMarkComponent);
 const styles = StyleSheet.create({
   container: {
     alignItems: "center",
-    gap: 14,
+    gap: 16,
   },
-  markShell: {
+  outerRing: {
     alignItems: "center",
     justifyContent: "center",
-    position: "relative",
-  },
-  markRing: {
-    ...StyleSheet.absoluteFillObject,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.16)",
-    backgroundColor: "rgba(255,255,255,0.02)",
+    borderColor: "rgba(229,9,20,0.30)",
+    backgroundColor: "rgba(229,9,20,0.06)",
+    shadowColor: "#E50914",
+    shadowOpacity: 0.22,
+    shadowRadius: 28,
+    shadowOffset: { width: 0, height: 0 },
   },
-  markCore: {
+  innerCircle: {
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#FF5A5F",
-    shadowColor: "#FF5A5F",
-    shadowOpacity: 0.42,
-    shadowRadius: 24,
-    shadowOffset: { width: 0, height: 12 },
+    backgroundColor: "#E50914",
+    shadowColor: "#E50914",
+    shadowOpacity: 0.55,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 4 },
   },
-  pulseLine: {
-    width: "56%",
-    height: 3,
-    borderRadius: 999,
-    backgroundColor: "#0E1117",
-  },
-  pulseDot: {
-    position: "absolute",
-    right: "20%",
-    backgroundColor: "#0E1117",
+  letterMark: {
+    color: "#FFFFFF",
+    fontWeight: "900",
+    letterSpacing: -1,
+    includeFontPadding: false,
+    textAlignVertical: "center",
   },
   wordmarkWrap: {
     alignItems: "center",
-    gap: 4,
+    gap: 6,
   },
   wordmark: {
     color: "#F7F7FB",
     fontSize: 30,
     fontWeight: "900",
-    letterSpacing: 7,
+    letterSpacing: 8,
   },
   wordmarkSub: {
-    color: "rgba(247,247,251,0.72)",
-    fontSize: 12,
-    letterSpacing: 1.6,
+    color: "rgba(247,247,251,0.60)",
+    fontSize: 11,
+    letterSpacing: 2,
     textTransform: "uppercase",
   },
 });

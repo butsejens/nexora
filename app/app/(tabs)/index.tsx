@@ -8,6 +8,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { COLORS } from "@/constants/colors";
 import "@/constants/design-system";
+import { MediaHomeSections } from "@/components/home/MediaHomeSections";
 import { NexoraHeader } from "@/components/NexoraHeader";
 import { TeamLogo } from "@/components/TeamLogo";
 import { MatchRowCard } from "@/components/premium";
@@ -15,6 +16,13 @@ import { apiRequest, apiRequestJson } from "@/lib/query-client";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { resolveCompetitionBrand } from "@/lib/logo-manager";
+import {
+  createPersonalizationSnapshot,
+  getPreferredSportCategory,
+  matchBelongsToPreferredCompetition,
+  matchInvolvesPreferredTeam,
+  prioritizeMatchesForPersonalization,
+} from "@/lib/personalization";
 import { safeStr, toPct, flagFromIso2 } from "@/lib/utils";
 import { COUNTRY_COMPETITIONS, CountryCatalog, tierPriority } from "@/lib/country-data";
 import { resolveMatchBucket } from "@/lib/match-state";
@@ -30,18 +38,11 @@ import { useOnboardingStore } from "@/store/onboarding-store";
 import { t as tFn, getLanguage } from "@/lib/i18n";
 import { useTranslation } from "@/lib/useTranslation";
 import {
-  MatchSnapshot,
-  MatchSubscription,
   ensureMatchNotificationPermission,
-  initializeMatchNotifications,
-  loadMatchSnapshots,
-  loadMatchSubscriptions,
   pushMatchNotification,
-  saveMatchSnapshots,
-  saveMatchSubscriptions,
-  toEventHash,
 } from "@/lib/match-notifications";
-import { cacheGetStale, cacheSet, TTL } from "@/lib/app-cache";
+import { cacheGetStale, cacheSet, CacheTTL } from "@/lib/services/cache-service";
+import { deriveMoodFromSportsHistory } from "@/lib/vod-curation";
 
 /** Safely convert any value to string — prevents [object Object] rendering */
 // ── Sport design tokens ───────────────────────────────────────────────────────
@@ -279,8 +280,6 @@ function resolveEspnLeagueForMatch(match: any): string {
   if (direct) return direct;
   return espnLeagueByName[normalizeLeagueKey(String(match?.league || ""))] || "eng.1";
 }
-
-const interestingEventRegex = /(goal|kaart|card|halftime|half-time|break|einde|end|full time|kick[- ]?off|start)/i;
 
 function parseMatchTimestamp(match: any, selectedDate: string): number {
   const startDate = match?.startDate ? Date.parse(String(match.startDate)) : Number.NaN;
@@ -898,48 +897,41 @@ export default function SportsScreen() {
   const insets = useSafeAreaInsets();
   const { width: screenWidth } = useWindowDimensions();
   const sportsEnabled = useOnboardingStore((s) => s.sportsEnabled);
+  const moviesEnabled = useOnboardingStore((s) => s.moviesEnabled);
+  const selectedSports = useOnboardingStore((s) => s.selectedSports);
+  const selectedTeams = useOnboardingStore((s) => s.selectedTeams);
+  const selectedCompetitions = useOnboardingStore((s) => s.selectedCompetitions);
+  const notificationPreferences = useOnboardingStore((s) => s.notifications);
 
   const contentWidth = Math.min(screenWidth, 1200);
   const compCardWidth = Math.floor((Math.min(screenWidth, 480) - 16 * 2 - 10 * 3) / 4);
   const qc = useQueryClient();
   const { followedTeams, followedMatches, followMatchAction, unfollowMatchAction } = useFollowState();
   const { t } = useTranslation();
+  const preferredSportCategory = useMemo(() => {
+    const preferred = getPreferredSportCategory(selectedSports);
+    return SPORT_CATEGORIES.some((category) => category.id === preferred)
+      ? (preferred as SportCategoryId)
+      : "all";
+  }, [selectedSports]);
 
   const [refreshing, setRefreshing] = useState(false);
   const [statusFilter] = useState<"all" | "live" | "upcoming">("all");
-  const [sportCategory, setSportCategory] = useState<SportCategoryId>("all");
+  const [sportCategory, setSportCategory] = useState<SportCategoryId>(preferredSportCategory);
   const [selectedDate, setSelectedDate] = useState<string>(todayUTC());
   const [sportsView, setSportsView] = useState<"competitions" | "live" | "upcoming" | "menu">("competitions");
   const [activeSportTool, setActiveSportTool] = useState<SportToolId>("football-predictions");
   const [sportsSearchActive, setSportsSearchActive] = useState(false);
   const [sportsSearchQuery, setSportsSearchQuery] = useState("");
-  const [matchSubscriptions, setMatchSubscriptions] = useState<Record<string, MatchSubscription>>({});
-  const subscriptionsRef = useRef<Record<string, MatchSubscription>>({});
-  const matchSnapshotsRef = useRef<Record<string, MatchSnapshot>>({});
-  const notificationCooldownRef = useRef<Record<string, number>>({});
   const lastScrollYRef = useRef(0);
   const compactHeaderRef = useRef(false);
+  const hasManualSportCategoryRef = useRef(false);
   const [compactHeader, setCompactHeader] = useState(false);
 
   useEffect(() => {
-    let active = true;
-    (async () => {
-      await initializeMatchNotifications();
-      const [storedSubs, storedSnapshots] = await Promise.all([
-        loadMatchSubscriptions(),
-        loadMatchSnapshots(),
-      ]);
-      if (!active) return;
-      const byId = (storedSubs || []).reduce<Record<string, MatchSubscription>>((acc, sub) => {
-        if (sub?.id) acc[sub.id] = sub;
-        return acc;
-      }, {});
-      subscriptionsRef.current = byId;
-      setMatchSubscriptions(byId);
-      matchSnapshotsRef.current = storedSnapshots || {};
-    })();
-    return () => { active = false; };
-  }, []);
+    if (hasManualSportCategoryRef.current) return;
+    setSportCategory(sportsEnabled ? preferredSportCategory : "all");
+  }, [preferredSportCategory, sportsEnabled]);
 
   const liveQuery = useQuery({
     queryKey: ["sports", "live", selectedDate],
@@ -959,7 +951,7 @@ export default function SportsScreen() {
           const liveCount = Array.isArray(payload?.live) ? payload.live.length : 0;
           const total = liveCount + (payload?.upcoming?.length || 0) + (payload?.finished?.length || 0);
           if (liveCount > 0) {
-            cacheSet(sportsLiveCacheKey(selectedDate), payload, TTL.LIVE);
+            cacheSet(sportsLiveCacheKey(selectedDate), payload, CacheTTL.LIVE_MATCH);
             return payload;
           }
           if (total > ((best?.live?.length || 0) + (best?.upcoming?.length || 0) + (best?.finished?.length || 0))) {
@@ -969,7 +961,7 @@ export default function SportsScreen() {
           // Continue to next fallback endpoint.
         }
       }
-      cacheSet(sportsLiveCacheKey(selectedDate), best, TTL.LIVE);
+      cacheSet(sportsLiveCacheKey(selectedDate), best, CacheTTL.LIVE_MATCH);
       return best;
     },
     refetchInterval: 12_000,
@@ -979,6 +971,7 @@ export default function SportsScreen() {
     refetchOnReconnect: true,
     refetchOnMount: false,
     notifyOnChangeProps: ["data", "error"],
+    enabled: sportsEnabled,
   });
 
   const todayQuery = useQuery({
@@ -987,20 +980,12 @@ export default function SportsScreen() {
     queryFn: async () => {
       const date = encodeURIComponent(selectedDate);
       const stale = cacheGetStale<SportsPayload>(sportsTodayCacheKey(selectedDate));
-      // Run both endpoints in parallel — halves cold-start wait vs sequential.
-      const countPayload = (p: SportsPayload | null) =>
-        p ? (p.live?.length || 0) + (p.upcoming?.length || 0) + (p.finished?.length || 0) : 0;
+      // Unified endpoint— eliminates redundant dual-fetch to same data
       try {
-        const [byDateResult, todayResult] = await Promise.allSettled([
-          fetchSportsPayloadWithTimeout(`/api/sports/by-date?date=${date}`, 12000),
-          fetchSportsPayloadWithTimeout(`/api/sports/today?date=${date}`, 12000),
-        ]);
-        const byDate = byDateResult.status === "fulfilled" ? byDateResult.value : null;
-        const todayData = todayResult.status === "fulfilled" ? todayResult.value : null;
-        const best = countPayload(byDate) >= countPayload(todayData) ? byDate : todayData;
-        if (best && (countPayload(best) > 0 || best.error)) {
-          cacheSet(sportsTodayCacheKey(selectedDate), best, TTL.SPORTS_TODAY);
-          return best;
+        const payload = await fetchSportsPayloadWithTimeout(`/api/sports/by-date?date=${date}`, 12000);
+        if (payload && ((payload.live?.length || 0) + (payload.upcoming?.length || 0) + (payload.finished?.length || 0) > 0 || payload.error)) {
+          cacheSet(sportsTodayCacheKey(selectedDate), payload, CacheTTL.TODAY_SPORTS);
+          return payload;
         }
       } catch { /* fallback below */ }
       if (stale) return stale;
@@ -1019,6 +1004,7 @@ export default function SportsScreen() {
     refetchOnMount: false,
     refetchIntervalInBackground: true,
     notifyOnChangeProps: ["data", "error", "isLoading"],
+    enabled: sportsEnabled,
   });
 
   const toolsQuery = useQuery({
@@ -1029,7 +1015,7 @@ export default function SportsScreen() {
       const stale = cacheGetStale<SportsMenuToolsPayload>(key);
       try {
         const payload = await fetchSportsMenuTools(`/api/sports/menu-tools?date=${encodeURIComponent(selectedDate)}&league=${encodeURIComponent(sportCategory)}`);
-        cacheSet(key, payload, TTL.HIGHLIGHTS);
+        cacheSet(key, payload, CacheTTL.MATCH_DETAIL);
         return payload;
       } catch {
         return stale || { footballPredictions: [], dailyAccaPicks: [] };
@@ -1042,6 +1028,7 @@ export default function SportsScreen() {
     refetchOnReconnect: true,
     refetchOnMount: false,
     notifyOnChangeProps: ["data", "error", "isFetching"],
+    enabled: sportsEnabled,
   });
 
   const highlightsQuery = useQuery({
@@ -1052,7 +1039,7 @@ export default function SportsScreen() {
       try {
         const json = await apiRequestJson<any>("/api/sports/highlights");
         const rows = Array.isArray(json?.highlights) ? json.highlights : [];
-        cacheSet(sportsHighlightsCacheKey, rows, TTL.HIGHLIGHTS);
+        cacheSet(sportsHighlightsCacheKey, rows, CacheTTL.MATCH_DETAIL);
         return rows;
       } catch {
         return stale || [];
@@ -1062,6 +1049,7 @@ export default function SportsScreen() {
     refetchInterval: 10 * 60 * 1000,
     retry: shouldRetrySportsQuery,
     refetchOnMount: false,
+    enabled: sportsEnabled,
   });
   const realHighlights: any[] = useMemo(() => highlightsQuery.data || [], [highlightsQuery.data]);
   const replayAndHighlight = useMemo(() => splitReplayAndHighlightItems(realHighlights), [realHighlights]);
@@ -1179,9 +1167,38 @@ export default function SportsScreen() {
   const rawFinished = filterBySport(allFinished);
   const filterEmpty = sportCategory !== "all" && rawLive.length === 0 && rawUpcoming.length === 0 && rawFinished.length === 0;
 
-  const displayLive = rawLive;
-  const displayUpcoming = rawUpcoming;
-  const displayFinished = rawFinished;
+  const personalizationSnapshot = useMemo(() => createPersonalizationSnapshot({
+    sportsEnabled,
+    moviesEnabled,
+    notifications: notificationPreferences,
+    selectedSports,
+    selectedTeams,
+    selectedCompetitions,
+    followedTeams,
+    followedMatches,
+  }), [
+    followedMatches,
+    followedTeams,
+    moviesEnabled,
+    notificationPreferences,
+    selectedCompetitions,
+    selectedSports,
+    selectedTeams,
+    sportsEnabled,
+  ]);
+
+  const displayLive = useMemo(
+    () => prioritizeMatchesForPersonalization(rawLive, personalizationSnapshot),
+    [personalizationSnapshot, rawLive],
+  );
+  const displayUpcoming = useMemo(
+    () => prioritizeMatchesForPersonalization(rawUpcoming, personalizationSnapshot),
+    [personalizationSnapshot, rawUpcoming],
+  );
+  const displayFinished = useMemo(
+    () => prioritizeMatchesForPersonalization(rawFinished, personalizationSnapshot),
+    [personalizationSnapshot, rawFinished],
+  );
   const sortedLive = useMemo(() => sortMatchesByCompetitionAndTime(displayLive, selectedDate), [displayLive, selectedDate]);
   const sortedUpcoming = useMemo(() => sortMatchesByCompetitionAndTime(displayUpcoming, selectedDate), [displayUpcoming, selectedDate]);
   const sortedFinished = useMemo(() => sortMatchesByCompetitionAndTime(displayFinished, selectedDate), [displayFinished, selectedDate]);
@@ -1192,16 +1209,38 @@ export default function SportsScreen() {
     return [] as any[];
   }, [sortedFinished, sortedUpcoming]);
 
+  const personalizedMatches = useMemo(() => {
+    if (!sportsEnabled || !personalizationSnapshot.hasSportsPersonalization) return [];
+    return [...sortedLive, ...sortedUpcoming]
+      .filter((match) => (
+        matchInvolvesPreferredTeam(match, personalizationSnapshot) ||
+        matchBelongsToPreferredCompetition(match, personalizationSnapshot)
+      ))
+      .slice(0, 8);
+  }, [personalizationSnapshot, sortedLive, sortedUpcoming, sportsEnabled]);
+
   const myTeamMatches = useMemo(() => {
-    const followedNames = new Set(
-      followedTeams.map(t => t.teamName.toLowerCase()),
-    );
-    if (followedNames.size === 0) return [];
-    return [...sortedLive, ...sortedUpcoming].filter(m =>
-      followedNames.has(String(m?.homeTeam || "").toLowerCase()) ||
-      followedNames.has(String(m?.awayTeam || "").toLowerCase())
-    );
-  }, [followedTeams, sortedLive, sortedUpcoming]);
+    if (!sportsEnabled) return [];
+    return [...sortedLive, ...sortedUpcoming]
+      .filter((match) => matchInvolvesPreferredTeam(match, personalizationSnapshot))
+      .slice(0, 8);
+  }, [personalizationSnapshot, sortedLive, sortedUpcoming, sportsEnabled]);
+
+  // Bridge sports activity to VOD recommendations
+  const sportsMood = useMemo(() => {
+    const sportsHistoryCount = [...sortedLive, ...sortedUpcoming, ...sortedFinished].length;
+    const hasIntenseSports = [...sortedLive, ...sortedUpcoming]
+      .some((m: any) => {
+        const title = (m.league || m.competition || "").toLowerCase();
+        const desc = (m.description || "").toLowerCase();
+        return title.includes("derby") || title.includes("final") || title.includes("champions") || 
+               desc.includes("intense") || desc.includes("rival");
+      });
+    if (hasIntenseSports) return "thriller" as const;
+    if (followedTeams.length >= 2 && sportsHistoryCount >= 5) return "binge" as const;
+    if (sportsHistoryCount > 0) return "emotional" as const;
+    return "fun" as const;
+  }, [sortedLive, sortedUpcoming, sortedFinished, followedTeams.length]);
 
   const followedMatchIdSet = useMemo(() => {
     return new Set(
@@ -1221,16 +1260,6 @@ export default function SportsScreen() {
       String(m?.league || "").toLowerCase().includes(q)
     ).slice(0, 20);
   }, [sportsSearchQuery, sortedLive, sortedUpcoming, sortedFinished]);
-
-  const currentMatchesById = useMemo(() => {
-    const map = new Map<string, any>();
-    [...sortedUpcoming, ...sortedLive, ...sortedFinished].forEach((match) => {
-      const id = String(match?.id || "");
-      if (!id) return;
-      map.set(id, match);
-    });
-    return map;
-  }, [sortedFinished, sortedLive, sortedUpcoming]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -1458,7 +1487,7 @@ export default function SportsScreen() {
         staleTime: 30_000,
         queryFn: async () => {
           const payload = await apiRequestJson<any>(`/api/sports/match/${encodeURIComponent(matchId)}?sport=soccer&league=${encodeURIComponent(espnLeague)}`);
-          cacheSet(`sports:match-detail:${matchId}:${espnLeague}`, payload, TTL.DETAIL);
+          cacheSet(`sports:match-detail:${matchId}:${espnLeague}`, payload, CacheTTL.MATCH_DETAIL);
           return payload;
         },
       });
@@ -1499,56 +1528,12 @@ export default function SportsScreen() {
     });
   };
 
-  const setSubscriptionsAndPersist = useCallback(async (next: Record<string, MatchSubscription>) => {
-    subscriptionsRef.current = next;
-    setMatchSubscriptions(next);
-    await saveMatchSubscriptions(Object.values(next));
-  }, []);
-
-  const shouldNotify = useCallback((key: string, cooldownMs = 10_000) => {
-    const now = Date.now();
-    const lastAt = Number(notificationCooldownRef.current[key] || 0);
-    if (now - lastAt < cooldownMs) return false;
-    notificationCooldownRef.current[key] = now;
-    return true;
-  }, []);
-
-  const buildSmartScoreNotification = useCallback((sub: MatchSubscription, prevHome: number, prevAway: number, homeNow: number, awayNow: number) => {
-    const home = safeStr(sub.homeTeam) || "Home";
-    const away = safeStr(sub.awayTeam) || "Away";
-    const scoreLine = `${home} ${homeNow}-${awayNow} ${away}`;
-
-    if (homeNow > prevHome && awayNow === prevAway) {
-      const tookLead = homeNow > awayNow && prevHome <= prevAway;
-      const equalized = homeNow === awayNow && prevHome < prevAway;
-      const title = tookLead ? `${home} takes the lead 🔥` : equalized ? "Equalizer ⚡" : "Goal update";
-      return { title, body: scoreLine };
-    }
-    if (awayNow > prevAway && homeNow === prevHome) {
-      const tookLead = awayNow > homeNow && prevAway <= prevHome;
-      const equalized = awayNow === homeNow && prevAway < prevHome;
-      const title = tookLead ? `${away} takes the lead 🔥` : equalized ? "Equalizer ⚡" : "Goal update";
-      return { title, body: scoreLine };
-    }
-
-    const margin = Math.abs(homeNow - awayNow);
-    if (margin >= 2) {
-      const dominant = homeNow > awayNow ? home : away;
-      return { title: `${dominant} in control 📈`, body: scoreLine };
-    }
-    return { title: "Goal update", body: scoreLine };
-  }, []);
-
   const toggleMatchNotification = useCallback(async (match: any) => {
     const id = String(match?.id || "");
     if (!id) return;
     const currentlyOn = followedMatchIdSet.has(id);
     if (currentlyOn) {
       await unfollowMatchAction(id);
-      const next = { ...subscriptionsRef.current };
-      delete next[id];
-      await setSubscriptionsAndPersist(next);
-      await pushMatchNotification("Notifications disabled", `${safeStr(match.homeTeam)} - ${safeStr(match.awayTeam)}`, { matchId: id });
       return;
     }
     const permission = await ensureMatchNotificationPermission();
@@ -1556,113 +1541,16 @@ export default function SportsScreen() {
       Alert.alert("Notifications blocked", "Grant notification permission to receive match updates.");
       return;
     }
-    const next = {
-      ...subscriptionsRef.current,
-      [id]: { id, espnLeague: resolveEspnLeague(match), homeTeam: safeStr(match?.homeTeam) || "Home", awayTeam: safeStr(match?.awayTeam) || "Away" },
-    };
-    await setSubscriptionsAndPersist(next);
     await followMatchAction({
       matchId: id,
       homeTeam: safeStr(match?.homeTeam) || "Home",
       awayTeam: safeStr(match?.awayTeam) || "Away",
       competition: safeStr(match?.league) || null,
+      espnLeague: resolveEspnLeague(match),
       startTime: safeStr(match?.startDate || match?.startTime) || null,
       notificationsEnabled: true,
     });
-    await pushMatchNotification("Notifications enabled", `${safeStr(match.homeTeam)} - ${safeStr(match.awayTeam)} is being followed`, { matchId: id });
-  }, [followMatchAction, followedMatchIdSet, resolveEspnLeague, setSubscriptionsAndPersist, unfollowMatchAction]);
-
-  useEffect(() => {
-    const activeSubs = Object.values(matchSubscriptions);
-    if (activeSubs.length === 0) return;
-    let alive = true;
-    const poll = async () => {
-      const nextSnapshots = { ...matchSnapshotsRef.current };
-      let changed = false;
-      for (const sub of activeSubs.slice(0, 30)) {
-        try {
-          const feedMatch = currentMatchesById.get(String(sub.id));
-          if (feedMatch) {
-            const prev = nextSnapshots[sub.id];
-            const currentStatus = resolveMatchBucket({
-              status: feedMatch?.status,
-              minute: feedMatch?.minute,
-              homeScore: feedMatch?.homeScore,
-              awayScore: feedMatch?.awayScore,
-              startDate: feedMatch?.startDate,
-            });
-            const currentHomeScore = Number(feedMatch?.homeScore ?? 0);
-            const currentAwayScore = Number(feedMatch?.awayScore ?? 0);
-            if (prev) {
-              if (prev.status !== "live" && currentStatus === "live" && shouldNotify(`${sub.id}:start`, 20_000))
-                await pushMatchNotification("Match started", `${sub.homeTeam} - ${sub.awayTeam} has kicked off`, { matchId: sub.id });
-              if (prev.status !== "finished" && currentStatus === "finished" && shouldNotify(`${sub.id}:finished`, 20_000))
-                await pushMatchNotification("Match finished", `${sub.homeTeam} ${currentHomeScore}-${currentAwayScore} ${sub.awayTeam}`, { matchId: sub.id });
-              if (currentStatus === "live" && (prev.homeScore !== currentHomeScore || prev.awayScore !== currentAwayScore) && shouldNotify(`${sub.id}:score`, 10_000)) {
-                const msg = buildSmartScoreNotification(sub, Number(prev.homeScore || 0), Number(prev.awayScore || 0), currentHomeScore, currentAwayScore);
-                await pushMatchNotification(msg.title, msg.body, { matchId: sub.id });
-              }
-            }
-            nextSnapshots[sub.id] = { status: currentStatus, homeScore: currentHomeScore, awayScore: currentAwayScore, eventHashes: prev?.eventHashes || [] };
-            changed = true;
-            continue;
-          }
-          const league = encodeURIComponent(sub.espnLeague || "eng.1");
-          const res = await apiRequest("GET", `/api/sports/match/${encodeURIComponent(sub.id)}?league=${league}`);
-          const detail = await res.json();
-          if (!detail || !detail.id) continue;
-          const prev = nextSnapshots[sub.id];
-          const currentStatus = resolveMatchBucket({
-            status: detail?.status,
-            detail: detail?.status,
-            minute: detail?.minute,
-            homeScore: detail?.homeScore,
-            awayScore: detail?.awayScore,
-            startDate: detail?.startDate,
-          });
-          const currentHomeScore = Number(detail?.homeScore ?? 0);
-          const currentAwayScore = Number(detail?.awayScore ?? 0);
-          const keyEvents = Array.isArray(detail?.keyEvents) ? detail.keyEvents : [];
-          const eventHashes = keyEvents.filter((event: any) => interestingEventRegex.test(`${safeStr(event?.type)} ${safeStr(event?.detail)}`)).map((event: any) => toEventHash(event));
-          if (prev) {
-            if (prev.status !== "live" && currentStatus === "live" && shouldNotify(`${sub.id}:start`, 20_000))
-              await pushMatchNotification("Match started", `${safeStr(sub.homeTeam)} - ${safeStr(sub.awayTeam)} has kicked off`, { matchId: sub.id });
-            if (prev.status !== "finished" && currentStatus === "finished" && shouldNotify(`${sub.id}:finished`, 20_000))
-              await pushMatchNotification("Match finished", `${safeStr(sub.homeTeam)} ${currentHomeScore}-${currentAwayScore} ${safeStr(sub.awayTeam)}`, { matchId: sub.id });
-            if (currentStatus === "live" && (prev.homeScore !== currentHomeScore || prev.awayScore !== currentAwayScore) && shouldNotify(`${sub.id}:score`, 10_000)) {
-              const msg = buildSmartScoreNotification(sub, Number(prev.homeScore || 0), Number(prev.awayScore || 0), currentHomeScore, currentAwayScore);
-              await pushMatchNotification(msg.title, msg.body, { matchId: sub.id });
-            }
-            const seen = new Set(prev.eventHashes || []);
-            const newInterestingEvents = keyEvents.filter((event: any) => {
-              const hash = toEventHash(event);
-              if (seen.has(hash)) return false;
-              return interestingEventRegex.test(`${safeStr(event?.type)} ${safeStr(event?.detail)}`);
-            });
-            if (newInterestingEvents.length > 0 && shouldNotify(`${sub.id}:events`, 10_000)) {
-              const latest = newInterestingEvents[newInterestingEvents.length - 1];
-              const evTime = latest?.time ? `${latest.time} • ` : "";
-              const evType = safeStr(latest?.type || "Event");
-              const evDetail = safeStr(latest?.detail).trim();
-              const countPrefix = newInterestingEvents.length > 1 ? `+${newInterestingEvents.length} updates\n` : "";
-              const scoreLine = `${safeStr(sub.homeTeam)} ${currentHomeScore}-${currentAwayScore} ${safeStr(sub.awayTeam)}`;
-              const body = `${countPrefix}${scoreLine}\n${evTime}${evType}${evDetail ? `: ${evDetail}` : ""}`;
-              await pushMatchNotification("Match event", body, { matchId: sub.id });
-            }
-          }
-          nextSnapshots[sub.id] = { status: currentStatus, homeScore: currentHomeScore, awayScore: currentAwayScore, eventHashes };
-          changed = true;
-        } catch { /* keep polling */ }
-      }
-      if (changed && alive) {
-        matchSnapshotsRef.current = nextSnapshots;
-        await saveMatchSnapshots(nextSnapshots);
-      }
-    };
-    void poll();
-    const timer = setInterval(() => void poll(), 20_000);
-    return () => { alive = false; clearInterval(timer); };
-  }, [buildSmartScoreNotification, currentMatchesById, matchSubscriptions, shouldNotify]);
+  }, [followMatchAction, followedMatchIdSet, resolveEspnLeague, unfollowMatchAction]);
 
 
   const bottomPad = Platform.OS === "web" ? 44 : insets.bottom + 100;
@@ -1691,23 +1579,40 @@ export default function SportsScreen() {
   const [catBarMeasuredHeight, setCatBarMeasuredHeight] = useState(showCompetitionsSection ? 57 : 0);
   const headerAreaHeight = headerContainerHeight + (showCompetitionsSection ? catBarMeasuredHeight : 0);
 
-    // Disabled view — rendered AFTER all hooks to satisfy Rules of Hooks
-    if (!sportsEnabled) {
-      return (
-        <View style={[styles.disabledContainer, { paddingTop: insets.top }]}>
-          <Ionicons name="shield-off-outline" size={64} color={P.muted} />
-          <Text style={styles.disabledTitle}>Sports Disabled</Text>
-          <Text style={styles.disabledMessage}>Enable sports in settings to view live scores, predictions, and more.</Text>
-          <TouchableOpacity
-            style={styles.enableButton}
-            onPress={() => router.push('/settings')}
-          >
-            <Ionicons name="settings" size={20} color={P.bg} />
-            <Text style={styles.enableButtonText}>Go to Settings</Text>
+  // Combined home — rendered when sports is disabled but movies/series are available
+  if (!sportsEnabled) {
+    const headerTop = insets.top + 4;
+    return (
+      <View style={styles.container}>
+        <View style={[styles.combinedHeader, { paddingTop: headerTop }]}>
+          <Text style={styles.combinedHeaderTitle}><Text style={styles.combinedHeaderAccent}>N</Text>EXORA</Text>
+          <TouchableOpacity onPress={() => router.push("/profile")} activeOpacity={0.7} style={styles.combinedHeaderProfile}>
+            <Ionicons name="person" size={16} color={P.accent} />
           </TouchableOpacity>
         </View>
-      );
-    }
+        {moviesEnabled ? (
+          <ScrollView
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={{ paddingTop: headerTop + 52, paddingBottom: insets.bottom + 100 }}
+          >
+            <MediaHomeSections title="Entertainment for you" sportsMood={sportsMood} />
+          </ScrollView>
+        ) : (
+          <View style={{ flex: 1, paddingTop: headerTop + 52 }}>
+            <View style={styles.disabledContainer}>
+              <Ionicons name="apps-outline" size={56} color={P.muted} />
+              <Text style={styles.disabledTitle}>Nothing Enabled</Text>
+              <Text style={styles.disabledMessage}>Enable sports or movies in settings to get started.</Text>
+              <TouchableOpacity style={styles.enableButton} onPress={() => router.push("/settings")} activeOpacity={0.9}>
+                <Ionicons name="settings" size={18} color={P.bg} />
+                <Text style={styles.enableButtonText}>Open Settings</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
@@ -1718,7 +1623,7 @@ export default function SportsScreen() {
       >
         <NexoraHeader
           variant="module"
-          title="SPORT"
+          title={moviesEnabled ? "HOME" : "SPORT"}
           titleColor={P.accent}
           compact={compactHeader}
           showSearch
@@ -1782,7 +1687,10 @@ export default function SportsScreen() {
               return (
                 <TouchableOpacity
                   key={cat.id}
-                  onPress={() => setSportCategory(cat.id as SportCategoryId)}
+                  onPress={() => {
+                    hasManualSportCategoryRef.current = true;
+                    setSportCategory(cat.id as SportCategoryId);
+                  }}
                   activeOpacity={0.75}
                   style={[styles.sportCatPill, isActive && styles.sportCatPillActive]}
                 >
@@ -1813,6 +1721,7 @@ export default function SportsScreen() {
           </TouchableOpacity>
         </View>
       )}
+
       {sportsSearchActive && sportsSearchQuery.trim().length >= 2 && (
         <View style={styles.sportsSearchResults}>
           {sportsSearchResults.length === 0 ? (
@@ -1844,7 +1753,6 @@ export default function SportsScreen() {
         </View>
       )}
 
-      {/* ── Main scroll ── */}
       <ScrollView
         style={styles.scroll}
         showsVerticalScrollIndicator={false}
@@ -1853,7 +1761,6 @@ export default function SportsScreen() {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={P.accent} />}
         contentContainerStyle={{ paddingTop: headerAreaHeight, paddingBottom: bottomPad, width: contentWidth, alignSelf: "center" }}
       >
-        {/* ── Banners ── */}
         {filterEmpty && (
           <View style={styles.banner}>
             <Ionicons name="information-circle-outline" size={14} color={P.accent} />
@@ -1887,6 +1794,19 @@ export default function SportsScreen() {
         ══════════════════════════════════════════ */}
         {showCompetitionsSection && (
           <>
+            {moviesEnabled && <MediaHomeSections compact sportsMood={sportsMood} />}
+
+            {personalizedMatches.length > 0 && (
+              <>
+                <SectionTitle title="For you" accent />
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.carouselContent}>
+                  {personalizedMatches.map((match: any) => (
+                    <TodayMatchCard key={`personalized_${match.id}`} match={match} onPress={() => handleMatchPress(match)} />
+                  ))}
+                </ScrollView>
+              </>
+            )}
+
             {/* ── MIJN TEAMS ── */}
             {myTeamMatches.length > 0 && (
               <>
@@ -2305,6 +2225,49 @@ export default function SportsScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: P.bg },
+
+  /* ── Combined Home (sports disabled) ── */
+  combinedHeader: {
+    position: "absolute",
+    top: 0, left: 0, right: 0,
+    zIndex: 50,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 20,
+    paddingBottom: 10,
+    backgroundColor: P.bg,
+    borderBottomWidth: 1,
+    borderBottomColor: P.border,
+  },
+  combinedHeaderTitle: {
+    fontSize: 20,
+    fontFamily: "Inter_800ExtraBold",
+    letterSpacing: 2,
+    color: P.text,
+  },
+  combinedHeaderAccent: { color: P.accent },
+  combinedHeaderProfile: {
+    width: 36, height: 36, borderRadius: 18,
+    backgroundColor: "rgba(229,9,20,0.10)",
+    borderWidth: 1, borderColor: `${P.accent}66`,
+    alignItems: "center", justifyContent: "center",
+  },
+  combinedSection: {
+    flexDirection: "row", alignItems: "center", justifyContent: "space-between",
+    paddingHorizontal: 18, marginBottom: 12,
+  },
+  combinedSectionLeft: { flexDirection: "row", alignItems: "center", gap: 10 },
+  combinedAccentBar: { width: 3, height: 20, backgroundColor: P.accent, borderRadius: 2 },
+  combinedSectionTitle: { color: P.text, fontSize: 18, fontWeight: "800", letterSpacing: -0.2 },
+  combinedSeeAll: { color: P.accent, fontSize: 12, fontWeight: "700" },
+  combinedRail: { paddingHorizontal: 18, gap: 12 },
+  combinedCard: { width: 130, gap: 6 },
+  combinedCardPoster: { width: 130, height: 195, borderRadius: 12, backgroundColor: P.elevated },
+  combinedCardPosterPlaceholder: { backgroundColor: P.elevated },
+  combinedCardTitle: { color: P.text, fontSize: 12, fontWeight: "600", lineHeight: 16 },
+  combinedCardMeta: { color: P.muted, fontSize: 11, fontWeight: "500" },
+
   disabledContainer: {
     flex: 1,
     backgroundColor: P.bg,

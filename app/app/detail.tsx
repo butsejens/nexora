@@ -515,7 +515,6 @@ export default function DetailScreen() {
     setTrailerLoading(false);
     setTrailerUnavailable(true);
     setTrailerBlockedReason("blocked");
-    void openTrailerOutsideApp(activeTrailer?.key, "blocked");
     trailerAdvancingRef.current = false;
   };
 
@@ -958,7 +957,6 @@ export default function DetailScreen() {
                           setTrailerUnavailable(true);
                           setTrailerLoading(false);
                           setTrailerBlockedReason("error153");
-                          void openTrailerOutsideApp(activeTrailer?.key, "error153");
                           return;
                         }
                         if (msg.type === 'yt-error') advanceTrailer();

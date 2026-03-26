@@ -495,6 +495,7 @@ export interface FollowedMatch {
   homeTeam: string;
   awayTeam: string;
   competition?: string | null;
+  espnLeague?: string | null;
   startTime?: ISODateString | null;
   notificationsEnabled: boolean;
   followedAt: ISODateString;

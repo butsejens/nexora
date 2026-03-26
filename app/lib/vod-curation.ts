@@ -260,3 +260,53 @@ export function buildMoodRecommendations(
   scored.sort((a, b) => b.score - a.score);
   return scored.slice(0, limit).map((entry) => entry.item);
 }
+
+/**
+ * Bridge: Derive VOD mood from sports history and personalization
+ * 
+ * Maps sports activity patterns to narrative mood preferences:
+ * - Intense competitive sports (football derbies, MMA) → thriller genre
+ * - Rapid-fire replays, highlights → fun, fast-paced moods
+ * - Team follows, regular viewing → consistent emotional investment (emotional, binge)
+ * 
+ * Used to seed VOD recommendations when user has sports history but limited media history.
+ */
+export function deriveMoodFromSportsHistory(
+  sportsHistory: VodHistoryItem[],
+  followedTeamCount = 0,
+): VodMood {
+  if (!sportsHistory || sportsHistory.length === 0) return "fun";
+
+  const sports = sportsHistory.filter((h) => h.type === "sport");
+  if (sports.length === 0) return "fun";
+
+  const sportTitles = new Set(sports.map((s) => (s.title || "").toLowerCase()));
+  const titleText = Array.from(sportTitles).join(" ");
+
+  // Count activity patterns
+  const isHighIntensity =
+    titleText.includes("derby") ||
+    titleText.includes("rival") ||
+    titleText.includes("champions") ||
+    titleText.includes("final") ||
+    titleText.includes("mma") ||
+    titleText.includes("boxing");
+
+  const isTeamFollower = followedTeamCount >= 2;
+  const hasRegularViewing = sports.length >= 5;
+  const recentActivity = sports.some(
+    (s) => {
+      const lastWatched = s.lastWatched ? new Date(s.lastWatched) : null;
+      const daysDiff = lastWatched ? (Date.now() - lastWatched.getTime()) / (1000 * 60 * 60 * 24) : Infinity;
+      return daysDiff < 3;
+    }
+  );
+
+  // Map patterns → mood
+  if (isHighIntensity) return "thriller";
+  if (isTeamFollower && hasRegularViewing) return "binge";
+  if (recentActivity) return "emotional";
+  if (hasRegularViewing) return "smart";
+  return "fun";
+}
+
