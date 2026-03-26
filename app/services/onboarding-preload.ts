@@ -91,6 +91,17 @@ export function startOnboardingPreload(request: PreloadRequest): Promise<void> {
       return true;
     });
     const done = new Set<string>();
+
+    if (phases.length === 0) {
+      request.onProgress?.({
+        progress: 100,
+        message: "Experience ready",
+        completed: 0,
+        total: 0,
+      });
+      return;
+    }
+
     emitProgress(phases, done, request.onProgress, "Starting background setup");
 
     const today = new Date().toISOString().slice(0, 10);
