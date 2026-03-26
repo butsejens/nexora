@@ -26,7 +26,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { SPACING } from "@/constants/design-system";
 import { useFollowState } from "@/context/UserStateContext";
 import { TeamLogo } from "@/components/TeamLogo";
-import { getLeagueLogo, resolveTeamLogoUri } from "@/lib/logo-manager";
+import { resolveCompetitionBrand, resolveTeamLogoUri } from "@/lib/logo-manager";
 import type { FollowedTeam, FollowedMatch } from "@/lib/domain/models";
 
 // ── Palette ────────────────────────────────────────────────────────────────────
@@ -201,7 +201,7 @@ function FollowedMatchRow({
   onUnfollow: (matchId: string) => void;
   onPress: (match: FollowedMatch) => void;
 }) {
-  const compLogo = match.competition ? getLeagueLogo(match.competition) : null;
+  const compLogo = match.competition ? resolveCompetitionBrand({ name: match.competition }).logo : null;
   const startLabel = match.startTime
     ? (() => {
         try {

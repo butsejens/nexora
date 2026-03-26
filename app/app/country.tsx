@@ -8,7 +8,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { COLORS } from "@/constants/colors";
-import { getLeagueLogo } from "@/lib/logo-manager";
+import { resolveCompetitionBrand } from "@/lib/logo-manager";
 import { flagFromIso2 } from "@/lib/utils";
 import { t as tFn } from "@/lib/i18n";
 import {
@@ -125,7 +125,13 @@ export default function CountryScreen() {
 
             {/* Competition rows */}
             {section.items.map((comp, idx) => {
-              const logo = getLeagueLogo(comp.league);
+              const competitionBrand = resolveCompetitionBrand({
+                name: comp.league,
+                espnLeague: comp.espn,
+                countryCode: country.countryCode,
+                tier: comp.tier,
+              });
+              const logo = competitionBrand.logo;
               const isLast = idx === section.items.length - 1;
               return (
                 <TouchableOpacity

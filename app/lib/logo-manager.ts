@@ -1,4 +1,5 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { COUNTRY_COMPETITIONS, type CompetitionTier } from "@/lib/country-data";
 import {
   getEntityAliases,
   normalizeCompetitionName,
@@ -7,6 +8,22 @@ import {
   normalizeTeamName,
   tokenOverlapScore,
 } from "@/lib/entity-normalization";
+
+export type CompetitionLogoContext = {
+  espnLeague?: string | null;
+  countryCode?: string | null;
+  tier?: CompetitionTier | null;
+  aliases?: string[] | null;
+};
+
+export type ResolvedCompetitionBrand = {
+  name: string;
+  logo: string | number | null;
+  espnLeague: string | null;
+  countryCode: string | null;
+  tier: CompetitionTier | null;
+  confidence: number;
+};
 
 // Local logo assets
 const LOCAL_LOGOS = {
@@ -108,6 +125,185 @@ const LEAGUE_LOGO_MAP: Record<string, string | number> = {
   "EuroLeague":      "https://a.espncdn.com/i/leaguelogos/basketball/500/euroleague.png",
 };
 
+const COMPETITION_CATALOG = COUNTRY_COMPETITIONS.flatMap((country) =>
+  country.competitions.map((competition) => ({
+    ...competition,
+    countryCode: country.countryCode,
+    normalizedLeague: normalizeCompetitionName(competition.league),
+    aliases: getEntityAliases(competition.league, "competition"),
+  }))
+);
+
+const COMPETITION_CATALOG_BY_ESPN = new Map(
+  COMPETITION_CATALOG.map((competition) => [competition.espn, competition])
+);
+
+function getDirectLeagueLogo(leagueName?: string | null): string | number | null {
+  const rawName = String(leagueName || "").trim();
+  if (!rawName) return null;
+  const direct = LEAGUE_LOGO_MAP[rawName];
+  if (direct != null) return direct;
+  const canonical = normalizeCompetitionName(rawName);
+  for (const [name, logo] of Object.entries(LEAGUE_LOGO_MAP)) {
+    if (normalizeCompetitionName(name) === canonical) return logo;
+  }
+  return null;
+}
+
+function makeCompetitionCacheKey(rawName: string, context?: CompetitionLogoContext): string {
+  return [
+    normalizeCompetitionName(rawName),
+    String(context?.espnLeague || "").trim().toLowerCase(),
+    String(context?.countryCode || "").trim().toUpperCase(),
+    String(context?.tier || "").trim().toLowerCase(),
+  ].join("|");
+}
+
+function scoreCompetitionCandidate(
+  candidate: (typeof COMPETITION_CATALOG)[number],
+  aliases: string[],
+  context?: CompetitionLogoContext,
+): number {
+  const candidateAliases = new Set<string>(candidate.aliases);
+  let score = 0;
+
+  if (String(context?.espnLeague || "").trim() && candidate.espn === context?.espnLeague) {
+    return 1;
+  }
+
+  for (const alias of aliases) {
+    if (!alias) continue;
+    if (candidateAliases.has(alias) || candidate.normalizedLeague === alias) {
+      score = Math.max(score, 0.94);
+      continue;
+    }
+    score = Math.max(score, tokenOverlapScore(alias, candidate.normalizedLeague) * 0.78);
+  }
+
+  if (context?.countryCode && candidate.countryCode === String(context.countryCode).toUpperCase()) score += 0.14;
+  if (context?.tier && candidate.tier === context.tier) score += 0.09;
+  if (context?.countryCode && candidate.countryCode !== String(context.countryCode).toUpperCase()) score -= 0.08;
+
+  return score;
+}
+
+export function resolveCompetitionBrand(input: {
+  name?: string | null;
+  espnLeague?: string | null;
+  countryCode?: string | null;
+  tier?: CompetitionTier | null;
+  aliases?: string[] | null;
+}): ResolvedCompetitionBrand {
+  ensureResolutionHydrated();
+  const rawName = String(input?.name || "").trim();
+  const espnLeague = String(input?.espnLeague || "").trim() || null;
+  const catalogFromEspn = espnLeague ? COMPETITION_CATALOG_BY_ESPN.get(espnLeague) || null : null;
+  const countryCode = String(input?.countryCode || catalogFromEspn?.countryCode || "").trim().toUpperCase() || null;
+  const tier = (input?.tier || catalogFromEspn?.tier || null) as CompetitionTier | null;
+  const cacheKey = makeCompetitionCacheKey(rawName || catalogFromEspn?.league || "", {
+    espnLeague,
+    countryCode,
+    tier,
+  });
+
+  const cached = competitionResolutionCache.get(cacheKey);
+  const fallbackName = catalogFromEspn?.league || rawName;
+  if (cached && isFresh(cached.updatedAt)) {
+    return {
+      name: fallbackName,
+      logo: cached.value,
+      espnLeague,
+      countryCode,
+      tier,
+      confidence: cached.confidence,
+    };
+  }
+
+  if (catalogFromEspn) {
+    const logo = getDirectLeagueLogo(catalogFromEspn.league);
+    competitionResolutionCache.set(cacheKey, { value: logo, confidence: 1, updatedAt: Date.now() });
+    scheduleResolutionPersist();
+    return {
+      name: catalogFromEspn.league,
+      logo,
+      espnLeague: catalogFromEspn.espn,
+      countryCode: catalogFromEspn.countryCode,
+      tier: catalogFromEspn.tier,
+      confidence: 1,
+    };
+  }
+
+  const direct = getDirectLeagueLogo(rawName);
+  if (direct != null) {
+    competitionResolutionCache.set(cacheKey, { value: direct, confidence: 0.98, updatedAt: Date.now() });
+    scheduleResolutionPersist();
+    return {
+      name: rawName,
+      logo: direct,
+      espnLeague,
+      countryCode,
+      tier,
+      confidence: 0.98,
+    };
+  }
+
+  const aliases = [
+    ...getEntityAliases(rawName, "competition"),
+    ...((input?.aliases || []).map((alias) => normalizeCompetitionName(alias)) || []),
+  ].filter(Boolean);
+
+  let bestCatalog: { competition: (typeof COMPETITION_CATALOG)[number]; confidence: number } | null = null;
+  for (const competition of COMPETITION_CATALOG) {
+    const confidence = scoreCompetitionCandidate(competition, aliases, { espnLeague, countryCode, tier });
+    if (!bestCatalog || confidence > bestCatalog.confidence) {
+      bestCatalog = { competition, confidence };
+    }
+  }
+
+  if (bestCatalog && bestCatalog.confidence >= 0.8) {
+    const logo = getDirectLeagueLogo(bestCatalog.competition.league);
+    competitionResolutionCache.set(cacheKey, { value: logo, confidence: bestCatalog.confidence, updatedAt: Date.now() });
+    scheduleResolutionPersist();
+    return {
+      name: bestCatalog.competition.league,
+      logo,
+      espnLeague: bestCatalog.competition.espn,
+      countryCode: bestCatalog.competition.countryCode,
+      tier: bestCatalog.competition.tier,
+      confidence: bestCatalog.confidence,
+    };
+  }
+
+  let bestLogo: { value: string | number; confidence: number } | null = null;
+  for (const [name, logo] of Object.entries(LEAGUE_LOGO_MAP)) {
+    const candidate = normalizeCompetitionName(name);
+    let confidence = 0;
+    for (const alias of aliases) {
+      if (!alias) continue;
+      if (alias === candidate) confidence = Math.max(confidence, 0.92);
+      else confidence = Math.max(confidence, tokenOverlapScore(alias, candidate) * 0.76);
+    }
+    if (!bestLogo || confidence > bestLogo.confidence) bestLogo = { value: logo, confidence };
+  }
+
+  const resolvedLogo = bestLogo && bestLogo.confidence >= 0.82 ? bestLogo.value : null;
+  competitionResolutionCache.set(cacheKey, {
+    value: resolvedLogo,
+    confidence: bestLogo?.confidence || 0,
+    updatedAt: Date.now(),
+  });
+  scheduleResolutionPersist();
+
+  return {
+    name: fallbackName,
+    logo: resolvedLogo,
+    espnLeague,
+    countryCode,
+    tier,
+    confidence: bestLogo?.confidence || 0,
+  };
+}
+
 function normalizeName(value: string): string {
   return normalizeEntityText(value);
 }
@@ -185,43 +381,14 @@ export function sanitizeRemoteLogoUri(value?: string | null): string | null {
   }
 }
 
-export function getLeagueLogo(leagueName?: string): string | number | null {
-  ensureResolutionHydrated();
-  const rawName = String(leagueName || "").trim();
-  if (!rawName) return null;
-
-  const cacheKey = normalizeCompetitionName(rawName);
-  const cached = competitionResolutionCache.get(cacheKey);
-  if (cached && isFresh(cached.updatedAt)) return cached.value;
-
-  const aliases = getEntityAliases(rawName, "competition");
-  const direct = LEAGUE_LOGO_MAP[rawName];
-  if (direct != null) {
-    competitionResolutionCache.set(cacheKey, { value: direct, confidence: 1, updatedAt: Date.now() });
-    scheduleResolutionPersist();
-    return direct;
-  }
-
-  let best: { logo: string | number; confidence: number } | null = null;
-  for (const [name, logo] of Object.entries(LEAGUE_LOGO_MAP)) {
-    const candidate = normalizeCompetitionName(name);
-    let confidence = 0;
-    if (aliases.includes(candidate)) confidence = 0.92;
-    else {
-      const overlap = tokenOverlapScore(cacheKey, candidate);
-      if (overlap >= 0.86) confidence = 0.74 + overlap * 0.2;
-    }
-    if (!best || confidence > best.confidence) best = { logo, confidence };
-  }
-
-  const resolved = best && best.confidence >= 0.78 ? best.logo : null;
-  competitionResolutionCache.set(cacheKey, {
-    value: resolved,
-    confidence: best?.confidence || 0,
-    updatedAt: Date.now(),
-  });
-  scheduleResolutionPersist();
-  return resolved;
+export function getLeagueLogo(leagueName?: string, context?: CompetitionLogoContext): string | number | null {
+  return resolveCompetitionBrand({
+    name: leagueName,
+    espnLeague: context?.espnLeague,
+    countryCode: context?.countryCode,
+    tier: context?.tier,
+    aliases: context?.aliases,
+  }).logo;
 }
 
 // ESPN CDN team logo fallback: normalized name → ESPN team ID

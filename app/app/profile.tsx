@@ -25,6 +25,7 @@ import * as Updates from "expo-updates";
 import { COLORS } from "@/constants/colors";
 import { TYPOGRAPHY } from "@/constants/design-system";
 import { NexoraHeader } from "@/components/NexoraHeader";
+import { PremiumOnboardingFlow } from "@/features/onboarding/PremiumOnboardingFlow";
 import { SectionHeader, SurfaceCard } from "@/components/ui";
 import { useNexora } from "@/context/NexoraContext";
 import { useTranslation } from "@/lib/useTranslation";
@@ -35,6 +36,7 @@ import { parseM3UContentAsync } from "@/lib/parseM3U";
 import { SafeHaptics } from "@/lib/safeHaptics";
 import * as FileSystem from "expo-file-system/legacy";
 import * as IntentLauncher from "expo-intent-launcher";
+import { useOnboardingStore } from "@/store/onboarding-store";
 
 const CHANGELOG: { version: string; date: string; changes: string[] }[] = [
   {
@@ -744,6 +746,17 @@ const [showAddPlaylist, setShowAddPlaylist] = useState(false);
   const [showLangModal, setShowLangModal] = useState(false);
   const [showQualityModal, setShowQualityModal] = useState(false);
   const [showUpdateModal, setShowUpdateModal] = useState(openUpdate === "1");
+  const [showOnboardingEditor, setShowOnboardingEditor] = useState(false);
+  const {
+    hasCompletedOnboarding,
+    moviesEnabled: onboardingMoviesEnabled,
+    notifications: onboardingNotifications,
+    resetOnboarding,
+    selectedCompetitions,
+    selectedSports,
+    selectedTeams,
+    sportsEnabled: onboardingSportsEnabled,
+  } = useOnboardingStore();
 
   const bottomPad = Platform.OS === "web" ? 34 : insets.bottom + 90;
   const selectedLangLabel = LANGUAGES.find(l => l.code === audioLanguage)?.label || "Auto";
@@ -759,6 +772,13 @@ const [showAddPlaylist, setShowAddPlaylist] = useState(false);
   const softwareVersion = Updates.updateId
     ? `${configVersion}-${Updates.updateId.slice(0, 8)}`
     : configVersion;
+  const onboardingSummary = [
+    onboardingSportsEnabled ? `${selectedSports.length || 0} sports` : "Sports hidden",
+    onboardingSportsEnabled ? `${selectedTeams.length || 0} teams` : null,
+    onboardingSportsEnabled ? `${selectedCompetitions.length || 0} competitions` : null,
+    onboardingMoviesEnabled ? "Movies enabled" : "Movies hidden",
+  ].filter(Boolean).join(" · ");
+  const notificationSummary = Object.values(onboardingNotifications).filter(Boolean).length;
 
   const handleManualUpdateCheck = useCallback(() => {
     setShowUpdateModal(true);
@@ -1225,6 +1245,24 @@ const [showAddPlaylist, setShowAddPlaylist] = useState(false);
     );
   };
 
+  const handleResetOnboarding = () => {
+    Alert.alert(
+      "Reset onboarding",
+      "This will reopen the first-launch setup and clear your current onboarding selections.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Reset",
+          style: "destructive",
+          onPress: () => {
+            resetOnboarding();
+            setShowOnboardingEditor(false);
+          },
+        },
+      ],
+    );
+  };
+
   return (
     <View style={styles.container}>
       <NexoraHeader showSearch={false} showProfile   onProfile={() => router.push("/profile")}
@@ -1320,6 +1358,57 @@ const [showAddPlaylist, setShowAddPlaylist] = useState(false);
             </TouchableOpacity>
           </View>
         )}
+
+        <Section title="Personalization">
+          <SettingRow
+            icon="sparkles-outline"
+            label={hasCompletedOnboarding ? "Edit onboarding" : "Finish onboarding"}
+            value={onboardingSummary || "Configure your premium modules"}
+            onPress={() => setShowOnboardingEditor(true)}
+          />
+          <Divider />
+          <SettingRow
+            icon="football-outline"
+            label="Sports module"
+            value={onboardingSportsEnabled ? "Enabled" : "Hidden"}
+            rightElement={
+              <Switch
+                value={onboardingSportsEnabled}
+                onValueChange={(value) => useOnboardingStore.getState().setSportsEnabled(value)}
+                trackColor={{ false: COLORS.border, true: COLORS.accentGlow }}
+                thumbColor={onboardingSportsEnabled ? COLORS.accent : COLORS.textMuted}
+              />
+            }
+          />
+          <Divider />
+          <SettingRow
+            icon="film-outline"
+            label="Movies and series"
+            value={onboardingMoviesEnabled ? "Enabled" : "Hidden"}
+            rightElement={
+              <Switch
+                value={onboardingMoviesEnabled}
+                onValueChange={(value) => useOnboardingStore.getState().setMoviesEnabled(value)}
+                trackColor={{ false: COLORS.border, true: COLORS.accentGlow }}
+                thumbColor={onboardingMoviesEnabled ? COLORS.accent : COLORS.textMuted}
+              />
+            }
+          />
+          <Divider />
+          <SettingRow
+            icon="notifications-outline"
+            label="Onboarding notifications"
+            value={`${notificationSummary} active`}
+            onPress={() => setShowOnboardingEditor(true)}
+          />
+          <Divider />
+          <SettingRow
+            icon="refresh-outline"
+            label="Reset onboarding"
+            onPress={handleResetOnboarding}
+            danger
+          />
+        </Section>
 
         <Section title={t("settings.iptvPlaylists")}>
           {playlists.map((pl) => {
@@ -1699,6 +1788,10 @@ const [showAddPlaylist, setShowAddPlaylist] = useState(false);
         currentVersion={appVersion}
         onClose={() => setShowUpdateModal(false)}
       />
+
+      <Modal visible={showOnboardingEditor} animationType="slide" onRequestClose={() => setShowOnboardingEditor(false)}>
+        <PremiumOnboardingFlow mode="editor" onFinished={() => setShowOnboardingEditor(false)} />
+      </Modal>
 
       {/* M3U Upload Progress Modal */}
       <Modal visible={progressVisible} transparent animationType="fade">

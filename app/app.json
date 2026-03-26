@@ -1,9 +1,9 @@
 {
   "expo": {
-    "name": "NEXORA",
+    "name": "PULSE",
     "slug": "nexora-sports-stream",
-    "version": "2.5.2",
-    "runtimeVersion": "2.5.2",
+    "version": "2.5.3",
+    "runtimeVersion": "2.5.3",
     "updates": {
       "enabled": true,
       "checkAutomatically": "ON_LOAD",
@@ -15,7 +15,7 @@
     },
     "orientation": "default",
     "icon": "./assets/images/icon.png",
-    "scheme": "nexora",
+    "scheme": "pulse",
     "userInterfaceStyle": "dark",
     "newArchEnabled": true,
     "splash": {

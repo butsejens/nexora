@@ -7,6 +7,7 @@ import { COLORS } from "@/constants/colors";
 import { isTV } from "@/lib/platform";
 import { useTranslation } from "@/lib/useTranslation";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useOnboardingStore } from "@/store/onboarding-store";
 
 const SP_ACCENT = COLORS.accent;
 
@@ -65,6 +66,8 @@ export default function TabLayout() {
   const isIOS = Platform.OS === "ios";
   const { t } = useTranslation();
   const insets = useSafeAreaInsets();
+  const sportsEnabled = useOnboardingStore((state) => state.sportsEnabled);
+  const moviesEnabled = useOnboardingStore((state) => state.moviesEnabled);
   const tabMarginBottom = isIOS ? Math.max(14, insets.bottom - 10) : Math.max(12, insets.bottom || 12);
 
   // TV: sidebar-style — left rail with labels, no blur, larger hit areas
@@ -111,6 +114,7 @@ export default function TabLayout() {
         <Tabs.Screen
           name="movies"
           options={{
+            href: moviesEnabled ? undefined : null,
             title: t("tabs.films"),
             tabBarIcon: ({ focused }) => (
               <Ionicons
@@ -124,6 +128,7 @@ export default function TabLayout() {
         <Tabs.Screen
           name="series"
           options={{
+            href: moviesEnabled ? undefined : null,
             title: t("tabs.series"),
             tabBarIcon: ({ focused }) => (
               <Ionicons
@@ -201,6 +206,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="index"
         options={{
+            href: sportsEnabled ? undefined : null,
           title: t("tabs.sports"),
           tabBarIcon: ({ focused }) => (
             <TabIcon focused={focused} accentColor={SP_ACCENT}>
@@ -231,6 +237,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="movies"
         options={{
+            href: moviesEnabled ? undefined : null,
           title: t("tabs.movies"),
           tabBarIcon: ({ focused }) => (
             <TabIcon focused={focused} accentColor={COLORS.accent}>
@@ -246,6 +253,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="series"
         options={{
+            href: moviesEnabled ? undefined : null,
           title: t("tabs.series"),
           tabBarIcon: ({ focused }) => (
             <TabIcon focused={focused} accentColor={COLORS.accent}>

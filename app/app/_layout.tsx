@@ -20,8 +20,8 @@ import { startPlayerImageWarmup } from "@/lib/player-image-system";
 import { NexoraProvider } from "@/context/NexoraContext";
 import { UserStateProvider } from "@/context/UserStateContext";
 import { SafeAreaProvider } from "react-native-safe-area-context";
-import { NexoraIntro } from "@/components/NexoraIntro";
-import { NexoraBootScreen } from "@/components/NexoraBootScreen";
+import { PulseLaunchScreen } from "@/components/brand/PulseLaunchScreen";
+import { PremiumOnboardingFlow } from "@/features/onboarding/PremiumOnboardingFlow";
 import * as Updates from "expo-updates";
 import * as Notifications from "expo-notifications";
 import * as Application from "expo-application";
@@ -38,6 +38,7 @@ import {
 } from "@/lib/app-cache";
 import { initializeMatchNotifications } from "@/lib/match-notifications";
 import { fetchSportsLeagueResourceWithFallback } from "@/lib/sports-data";
+import { useOnboardingStore } from "@/store/onboarding-store";
 
 // ─── Persistent cache keys (must match what screens useQuery with) ────────────
 const PREFETCH_ENTRIES = (today: string) => [
@@ -213,7 +214,6 @@ SplashScreen.preventAutoHideAsync();
 
 // In-memory flags (reset on cold app start)
 let hasCompletedBootOnce = false;
-let hasShownIntroOnce = false;
 let hasCheckedOtaUpdateOnce = false;
 let hasCheckedServerUpdateOnce = false;
 
@@ -294,9 +294,9 @@ export default function RootLayout() {
     Inter_700Bold,
     Inter_800ExtraBold,
   });
+  const hasHydrated = useOnboardingStore((state) => state.hasHydrated);
+  const hasCompletedOnboarding = useOnboardingStore((state) => state.hasCompletedOnboarding);
 
-  // introFinished: skip on subsequent opens (hasShownIntroOnce stays true for app lifetime)
-  const [introFinished, setIntroFinished] = useState(hasShownIntroOnce);
   const [bootDone, setBootDone] = useState(hasCompletedBootOnce);
   const [bootProgress, setBootProgress] = useState(0);
   const [bootMessage, setBootMessage] = useState("Resources laden...");
@@ -397,19 +397,6 @@ export default function RootLayout() {
       clearInterval(progressTimer);
     };
   }, [fontsLoaded, fontFallbackReady]);
-
-  const handleIntroFinish = React.useCallback(() => {
-    hasShownIntroOnce = true;
-    setIntroFinished(true);
-  }, []);
-
-  // Safety: auto-finish intro after 7s (in case animation stalls)
-  useEffect(() => {
-    if (introFinished) return;
-    if (!fontsLoaded && !fontFallbackReady) return;
-    const safety = setTimeout(handleIntroFinish, 7000);
-    return () => clearTimeout(safety);
-  }, [fontsLoaded, fontFallbackReady, introFinished, handleIntroFinish]);
 
   // OTA check after boot.
   // Always check OTA first; whether a newer APK exists is handled separately.
@@ -513,17 +500,31 @@ export default function RootLayout() {
 
   // === RENDER PHASES ===
 
-  // Phase 1: Intro (first launch only, once fonts are ready)
-  if (!introFinished && fontsReady) {
-    return <NexoraIntro onFinish={handleIntroFinish} />;
-  }
-
-  // Phase 2: Boot / loading screen
+  let content: React.ReactNode;
   if (!bootDone) {
-    return <NexoraBootScreen progress={bootProgress} message={bootMessage} />;
+    content = (
+      <PulseLaunchScreen
+        badge="Starting Pulse"
+        title="Preparing your premium workspace"
+        subtitle={bootMessage}
+        progress={bootProgress}
+      />
+    );
+  } else if (!hasHydrated) {
+    content = (
+      <PulseLaunchScreen
+        badge="Restoring setup"
+        title="Syncing your preferences"
+        subtitle="Loading saved modules, notifications and personalized rails."
+        progress={96}
+      />
+    );
+  } else if (!hasCompletedOnboarding) {
+    content = <PremiumOnboardingFlow />;
+  } else {
+    content = <RootLayoutNav />;
   }
 
-  // Phase 3: App
   return (
     <ErrorBoundary>
       <QueryClientProvider client={queryClient}>
@@ -531,7 +532,7 @@ export default function RootLayout() {
           <GestureHandlerRootView style={{ flex: 1 }}>
             <NexoraProvider>
               <UserStateProvider>
-                <RootLayoutNav />
+                {content}
               </UserStateProvider>
             </NexoraProvider>
           </GestureHandlerRootView>
