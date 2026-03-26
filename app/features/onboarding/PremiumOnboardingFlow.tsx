@@ -239,7 +239,7 @@ export function PremiumOnboardingFlow({ mode = "first-launch", onFinished }: Pre
 
         {step === 1 ? (
           <View style={styles.heroCard}>
-            <PulseBrandMark size={86} subtitle="Premium media workspace" />
+            <PulseBrandMark size={86} wordmarkText="NEXORA" subtitle="Premium media workspace" />
             <Text style={styles.heroEyebrow}>One subscription layer. Zero noise.</Text>
             <Text style={styles.heroTitle}>All your content. One place.</Text>
             <Text style={styles.heroBody}>
