@@ -37,6 +37,8 @@ type PremiumOnboardingFlowProps = {
 };
 
 const STEP_TOTAL = 9;
+const MIN_FINISHING_SCREEN_MS = 1600;
+const MAX_PRELOAD_BLOCK_MS = 6500;
 
 const LOADING_MESSAGES = [
   "Sequencing your premium rails",
@@ -149,10 +151,12 @@ export function PremiumOnboardingFlow({ mode = "first-launch", onFinished }: Pre
     if (step !== 9 || isFinishing) return;
 
     let cancelled = false;
+    let minimumTimer: ReturnType<typeof setTimeout> | null = null;
+    let maximumTimer: ReturnType<typeof setTimeout> | null = null;
     setIsFinishing(true);
     setPreloadState({ status: "running", progress: 8, message: "Starting background setup" });
 
-    startOnboardingPreload({
+    const preloadTask = startOnboardingPreload({
       sportsEnabled,
       moviesEnabled,
       sports: selectedSports,
@@ -163,18 +167,28 @@ export function PremiumOnboardingFlow({ mode = "first-launch", onFinished }: Pre
         setPreloadState({ status: "running", progress: status.progress, message: status.message });
       },
     })
-      .catch(() => null)
-      .finally(() => {
-        const settle = 1200 + Math.round(Math.random() * 900);
-        setTimeout(() => {
-          if (cancelled) return;
-          completeOnboarding();
-          onFinished?.();
-        }, settle);
-      });
+      .catch(() => null);
+
+    const minimumDelay = new Promise<void>((resolve) => {
+      minimumTimer = setTimeout(resolve, MIN_FINISHING_SCREEN_MS);
+    });
+    const maximumDelay = new Promise<void>((resolve) => {
+      maximumTimer = setTimeout(resolve, MAX_PRELOAD_BLOCK_MS);
+    });
+
+    void Promise.all([
+      minimumDelay,
+      Promise.race([preloadTask, maximumDelay]),
+    ]).finally(() => {
+      if (cancelled) return;
+      completeOnboarding();
+      onFinished?.();
+    });
 
     return () => {
       cancelled = true;
+      if (minimumTimer) clearTimeout(minimumTimer);
+      if (maximumTimer) clearTimeout(maximumTimer);
     };
   }, [
     completeOnboarding,
