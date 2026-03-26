@@ -93,8 +93,8 @@ export function NexoraHeader({
           <View style={styles.brandLockup}>
             <PulseBrandMark size={34} showWordmark={false} />
             <View>
-              <Text style={styles.logoText}>PULSE</Text>
-              <Text style={styles.logoSubText}>Premium streaming hub</Text>
+              <Text style={styles.logoText}>NEXORA</Text>
+              <Text style={styles.logoSubText}>Premium Streaming Hub</Text>
             </View>
           </View>
           {badgeLabel ? (
@@ -191,24 +191,25 @@ const styles = StyleSheet.create({
   logoTopRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
+    gap: 10,
   },
   brandLockup: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 10,
+    gap: 12,
   },
   logoText: {
-    fontSize: 20,
-    letterSpacing: 3.6,
+    fontSize: 22,
+    lineHeight: 24,
+    letterSpacing: 0.9,
     fontFamily: "Inter_800ExtraBold",
     color: COLORS.text,
   },
   logoSubText: {
-    fontSize: 10,
-    letterSpacing: 1.6,
+    fontSize: 11,
+    lineHeight: 14,
+    letterSpacing: 0.3,
     fontFamily: "Inter_600SemiBold",
-    textTransform: "uppercase",
     color: COLORS.textSecondary,
   },
   sectionTitle: {
