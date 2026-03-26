@@ -23,6 +23,7 @@ import { NexoraProvider } from "@/context/NexoraContext";
 import { UserStateProvider } from "@/context/UserStateContext";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { PulseLaunchScreen } from "@/components/brand/PulseLaunchScreen";
+import { NexoraIntro } from "@/components/NexoraIntro";
 import { PremiumOnboardingFlow } from "@/features/onboarding/PremiumOnboardingFlow";
 import * as Updates from "expo-updates";
 import * as Notifications from "expo-notifications";
@@ -662,12 +663,7 @@ export default function RootLayout() {
   let content: React.ReactNode;
   if (!bootDone) {
     content = (
-      <PulseLaunchScreen
-        badge="Starting Nexora"
-        title="Preparing your premium workspace"
-        subtitle={bootMessage}
-        progress={bootProgress}
-      />
+      <NexoraIntro subtitle={bootMessage} />
     );
   } else if (!hasHydrated) {
     content = (

@@ -2,6 +2,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
+  Image,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -287,6 +288,10 @@ export function PremiumOnboardingFlow({ mode = "first-launch", onFinished }: Pre
 
         {step === 1 ? (
           <View style={styles.heroCard}>
+            <View style={styles.heroArtworkWrap}>
+              <Image source={require("../../assets/images/intro.png")} style={styles.heroArtwork} resizeMode="cover" />
+              <View style={styles.heroArtworkOverlay} />
+            </View>
             <PulseBrandMark size={86} subtitle="Your premium streaming hub" />
             <Text style={styles.heroEyebrow}>One subscription layer. Zero noise.</Text>
             <Text style={styles.heroTitle}>All your content. One place.</Text>
@@ -570,6 +575,23 @@ const styles = StyleSheet.create({
   heroCard: {
     paddingTop: 42,
     gap: 20,
+  },
+  heroArtworkWrap: {
+    width: "100%",
+    height: 220,
+    borderRadius: 28,
+    overflow: "hidden",
+    borderWidth: 1,
+    borderColor: COLORS.borderLight,
+    backgroundColor: COLORS.card,
+  },
+  heroArtwork: {
+    width: "100%",
+    height: "100%",
+  },
+  heroArtworkOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(9,11,16,0.28)",
   },
   heroEyebrow: {
     color: COLORS.accent,
