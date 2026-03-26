@@ -38,6 +38,7 @@ type OnboardingStore = {
   toggleCompetition: (competition: CompetitionPreference) => void;
   setNotifications: (notifications: Partial<NotificationPreferenceState>) => void;
   setPreloadState: (partial: Partial<PreloadState>) => void;
+  recoverPersistedState: () => Promise<void>;
   completeOnboarding: () => void;
   resetOnboarding: () => void;
 };
@@ -59,6 +60,36 @@ const defaultState = {
   notifications: DEFAULT_NOTIFICATION_PREFERENCES,
   preload: defaultPreload,
 };
+
+function normalizePersistedState(raw: unknown) {
+  const candidate = raw && typeof raw === "object"
+    ? (raw as Record<string, unknown>)
+    : {};
+
+  const notificationsCandidate = candidate.notifications && typeof candidate.notifications === "object"
+    ? (candidate.notifications as Partial<NotificationPreferenceState>)
+    : {};
+
+  return {
+    hasCompletedOnboarding: Boolean(candidate.hasCompletedOnboarding),
+    isEditorOpen: false,
+    sportsEnabled: typeof candidate.sportsEnabled === "boolean" ? candidate.sportsEnabled : defaultState.sportsEnabled,
+    moviesEnabled: typeof candidate.moviesEnabled === "boolean" ? candidate.moviesEnabled : defaultState.moviesEnabled,
+    selectedSports: Array.isArray(candidate.selectedSports)
+      ? candidate.selectedSports.filter((item): item is SportPreferenceKey => typeof item === "string")
+      : defaultState.selectedSports,
+    selectedTeams: Array.isArray(candidate.selectedTeams)
+      ? candidate.selectedTeams.filter((item): item is TeamPreference => Boolean(item && typeof item === "object"))
+      : defaultState.selectedTeams,
+    selectedCompetitions: Array.isArray(candidate.selectedCompetitions)
+      ? candidate.selectedCompetitions.filter((item): item is CompetitionPreference => Boolean(item && typeof item === "object"))
+      : defaultState.selectedCompetitions,
+    notifications: {
+      ...DEFAULT_NOTIFICATION_PREFERENCES,
+      ...notificationsCandidate,
+    },
+  };
+}
 
 export const useOnboardingStore = create<OnboardingStore>()(
   persist(
@@ -103,6 +134,32 @@ export const useOnboardingStore = create<OnboardingStore>()(
       setPreloadState: (partial) => set((state) => ({
         preload: { ...state.preload, ...partial },
       })),
+      recoverPersistedState: async () => {
+        try {
+          const raw = await AsyncStorage.getItem(ONBOARDING_STORAGE_KEY);
+          if (!raw) {
+            set({ hasHydrated: true });
+            return;
+          }
+
+          const parsed = JSON.parse(raw) as { state?: unknown } | unknown;
+          const persistedState = normalizePersistedState(
+            parsed && typeof parsed === "object" && "state" in (parsed as Record<string, unknown>)
+              ? (parsed as { state?: unknown }).state
+              : parsed,
+          );
+
+          set({
+            ...persistedState,
+            hasHydrated: true,
+          });
+        } catch {
+          set({
+            ...defaultState,
+            hasHydrated: true,
+          });
+        }
+      },
       completeOnboarding: () => set({
         hasCompletedOnboarding: true,
         isEditorOpen: false,
