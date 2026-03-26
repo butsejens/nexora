@@ -657,8 +657,11 @@ export default function MoviesScreen() {
   return (
     <View style={styles.container}>
       <NexoraHeader
-        title="Movies"
-        showSearch showFavorites showProfile
+        variant="module"
+        title="FILMS"
+        titleColor={COLORS.accent}
+        showSearch showNotification showFavorites showProfile
+        onNotification={() => router.push("/follow-center")}
         onFavorites={() => router.push("/favorites")}
         onProfile={() => router.push("/profile")}
       />
