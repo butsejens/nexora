@@ -13,6 +13,9 @@ type TeamContext = {
   recentForm?: string | null;   // e.g. "WWDLL" (most recent last or first)
   homeFormPts?: number | null;  // points accumulated in last 5 home games
   awayFormPts?: number | null;  // points accumulated in last 5 away games
+  fifaRank?: number | null;
+  marketValueProxy?: number | null;
+  lineupCertainty?: number | null; // 0..1
 };
 
 export type MatchAnalysisInput = {
@@ -35,6 +38,8 @@ export type MatchAnalysisInput = {
     awayWins: number;
     draws: number;
   } | null;
+  competitionContext?: string | null;
+  isInternational?: boolean;
 };
 
 export type MatchAnalysisOutput = {
@@ -155,6 +160,12 @@ export function buildGroundedMatchAnalysis(input: MatchAnalysisInput): MatchAnal
   const scorerDelta = (num(input.home.topScorerGoals) ?? 0) - (num(input.away.topScorerGoals) ?? 0);
   const assistDelta = (num(input.home.topAssistCount) ?? 0) - (num(input.away.topAssistCount) ?? 0);
   const formationDelta = parseFormationBias(input.home.formation) - parseFormationBias(input.away.formation);
+  const fifaDelta = (num(input.away.fifaRank) ?? 0) - (num(input.home.fifaRank) ?? 0);
+  const homeMv = num(input.home.marketValueProxy) ?? 0;
+  const awayMv = num(input.away.marketValueProxy) ?? 0;
+  const lineupDelta = (num(input.home.lineupCertainty) ?? 0) - (num(input.away.lineupCertainty) ?? 0);
+  const isInternationalContext = Boolean(input.isInternational)
+    || /fifa|nations|international|friendly|world cup|euro/i.test(String(input.competitionContext || ""));
 
   let modelScore = 0;
 
@@ -180,6 +191,22 @@ export function buildGroundedMatchAnalysis(input: MatchAnalysisInput): MatchAnal
 
   if (input.home.topAssistCount != null || input.away.topAssistCount != null) {
     modelScore += clamp(assistDelta * 0.016, -0.14, 0.14);
+  }
+
+  if (input.home.fifaRank != null && input.away.fifaRank != null) {
+    modelScore += clamp(fifaDelta * 0.022, -0.18, 0.18);
+    factors.push(`FIFA rank edge: ${input.homeTeam} #${input.home.fifaRank} vs ${input.awayTeam} #${input.away.fifaRank}`);
+  }
+
+  if (homeMv > 0 && awayMv > 0) {
+    const ratioEdge = (homeMv - awayMv) / Math.max(homeMv, awayMv);
+    modelScore += clamp(ratioEdge * 0.22, -0.16, 0.16);
+    factors.push(`Squad value proxy: ${input.homeTeam} ${(homeMv / 1_000_000).toFixed(0)}M vs ${input.awayTeam} ${(awayMv / 1_000_000).toFixed(0)}M`);
+  }
+
+  if ((input.home.lineupCertainty != null) || (input.away.lineupCertainty != null)) {
+    modelScore += clamp(lineupDelta * 0.12, -0.08, 0.08);
+    tacticalNotes.push(`Lineup certainty: ${input.homeTeam} ${Math.round((num(input.home.lineupCertainty) ?? 0) * 100)}% vs ${input.awayTeam} ${Math.round((num(input.away.lineupCertainty) ?? 0) * 100)}%.`);
   }
 
   if (input.home.formation || input.away.formation) {
@@ -235,6 +262,11 @@ export function buildGroundedMatchAnalysis(input: MatchAnalysisInput): MatchAnal
       modelScore += clamp(h2hScore * 0.12, -0.12, 0.12);
       factors.push(`H2H record: ${input.homeTeam} ${homeWins}W-${draws}D-${awayWins}L in last ${totalH2H} meetings`);
     }
+  }
+
+  if (isInternationalContext) {
+    modelScore = clamp(modelScore, -0.88, 0.88);
+    tacticalNotes.push("International match context increases variance; transitions and set pieces carry extra weight.");
   }
 
   const homeShots = readStat(input.stats?.home, ["shotsOnTarget", "shots_on_target", "shots"]);

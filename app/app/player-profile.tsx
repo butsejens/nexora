@@ -13,7 +13,7 @@ import { useTranslation } from "@/lib/useTranslation";
 import { t as tFn, getLanguage } from "@/lib/i18n";
 import { TeamLogo } from "@/components/TeamLogo";
 import { SectionHeader, StateBlock, SurfaceCard } from "@/components/ui/PremiumPrimitives";
-import { resolveClubHistoryLogoUri } from "@/lib/logo-manager";
+import { resolveClubHistoryLogoUri, resolveTeamLogoUri } from "@/lib/logo-manager";
 import {
   getBestCachedOrSeedPlayerImage,
   getCachedPlayerImage,
@@ -76,22 +76,15 @@ function formatDisplayDate(value: unknown): string {
   }).format(date);
 }
 
-function parseTransferMoment(value: unknown): number {
-  const raw = String(value || "").trim();
-  if (!raw) return Number.MAX_SAFE_INTEGER;
-  const asDate = Date.parse(raw);
-  if (Number.isFinite(asDate)) return asDate;
-  const year = Number(raw.replace(/[^\d]/g, "").slice(0, 4));
-  if (Number.isFinite(year) && year > 1800 && year < 3000) return Date.UTC(year, 0, 1);
-  return Number.MAX_SAFE_INTEGER;
-}
-
-function transferTypeLabel(fee: unknown): string {
-  const text = String(fee || "").trim().toLowerCase();
-  if (!text) return "Transfer";
-  if (text.includes("loan") || text.includes("huur")) return "Loan";
-  if (text.includes("free") || text.includes("gratis") || text === "-") return "Free transfer";
-  return "Transfer fee";
+function stripRichText(value: unknown): string {
+  return String(value ?? "")
+    .replace(/<[^>]*>/g, " ")
+    .replace(/&nbsp;|&#160;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;|&apos;/gi, "'")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function initialsFromName(name: string): string {
@@ -144,7 +137,7 @@ function normalizePlayerDto(raw: any, params: {
     currentClub: normalizeText(raw?.currentClub || params.team),
     currentClubLogo: raw?.currentClubLogo || null,
     formerClubs: Array.isArray(raw?.formerClubs) ? raw.formerClubs : [],
-    marketValue: normalizeText(raw?.marketValue || params.marketValue, safeTranslation("common.notAvailable", "Not available")),
+    marketValue: normalizeText(stripRichText(raw?.marketValue || params.marketValue), safeTranslation("common.notAvailable", "Not available")),
     isRealValue: Boolean(raw?.isRealValue),
     valueMethod: normalizeText(raw?.valueMethod),
     jerseyNumber: normalizeText(raw?.jerseyNumber, ""),
@@ -154,7 +147,7 @@ function normalizePlayerDto(raw: any, params: {
     profileMeta: raw?.profileMeta || null,
     strengths: Array.isArray(raw?.strengths) ? raw.strengths : [],
     weaknesses: Array.isArray(raw?.weaknesses) ? raw.weaknesses : [],
-    analysis: normalizeText(raw?.analysis, safeTranslation("playerProfile.analysisTempUnavailable", "Analysis is temporarily unavailable")),
+    analysis: normalizeText(stripRichText(raw?.analysis), safeTranslation("playerProfile.analysisTempUnavailable", "Analysis is temporarily unavailable")),
     source: normalizeText(raw?.source, "live-data"),
     updatedAt: raw?.updatedAt || null,
     offlineData: Boolean(raw?.offlineData),
@@ -321,14 +314,17 @@ export default function PlayerProfileScreen() {
     return rows
       .map((club: any) => ({
         ...club,
-        role: String(club?.role || "").toLowerCase() === "to" ? "in" : "out",
-        date: String(club?.date || "").trim(),
-        fee: String(club?.fee || "").trim(),
-        moment: parseTransferMoment(club?.date),
+        action: String(club?.action || "").trim().toLowerCase() || (String(club?.role || "").toLowerCase() === "to" ? "joined" : "left"),
+        actionLabel: String(club?.actionLabel || "").trim() || (String(club?.role || "").toLowerCase() === "to" ? "Joined" : "Left"),
+        date: stripRichText(club?.date),
+        fee: stripRichText(club?.fee),
+        note: stripRichText(club?.note),
+        moment: Number(club?.moment) || Date.parse(String(club?.date || "")) || Number.MAX_SAFE_INTEGER,
       }))
       .sort((a: any, b: any) => {
         if (a.moment !== b.moment) return b.moment - a.moment;
-        if (a.role !== b.role) return a.role === "out" ? -1 : 1;
+        const priority: Record<string, number> = { joined: 0, loan: 1, loan_end: 2, left: 3, transfer_fee: 4 };
+        if ((priority[a.action] ?? 9) !== (priority[b.action] ?? 9)) return (priority[a.action] ?? 9) - (priority[b.action] ?? 9);
         return String(a?.name || "").localeCompare(String(b?.name || ""));
       });
   }, [data?.formerClubs]);
@@ -401,7 +397,15 @@ export default function PlayerProfileScreen() {
               source={{ uri: photoUri }}
               style={[styles.photo, { backgroundColor: COLORS.card }]}
               resizeMode="cover"
-              onError={() => setPhotoFailed(true)}
+              onError={() => {
+                const fallback = getBestCachedOrSeedPlayerImage(playerImageSeed);
+                if (fallback && fallback !== photoUri) {
+                  setPhotoUri(fallback);
+                  setPhotoFailed(false);
+                } else {
+                  setPhotoFailed(true);
+                }
+              }}
             />
           ) : (
             <View style={[styles.photo, styles.photoFallback, { borderColor: badgeColor }]}> 
@@ -452,7 +456,7 @@ export default function PlayerProfileScreen() {
             {hasMeaningfulText(data?.nationality || params.nationality) ? <Row icon="earth" label={tx("playerProfile.nationality", "Nationality")} value={normalizeText(data?.nationality || params.nationality)} /> : null}
             {hasMeaningfulText(data?.position || params.position) ? <Row icon="soccer-field" label={tx("playerProfile.position", "Position")} value={normalizeText(data?.position || params.position)} /> : null}
             {hasMeaningfulText(data?.contractUntil) ? <Row icon="file-document-outline" label={tx("playerProfile.contractUntil", "Contract")} value={normalizeText(data?.contractUntil)} /> : null}
-            {hasMeaningfulText(data?.currentClub || params.team) ? <ClubRow label={tx("playerProfile.currentClub", "Current club")} value={normalizeText(data?.currentClub || params.team)} logo={data?.currentClubLogo} /> : null}
+            {hasMeaningfulText(data?.currentClub || params.team) ? <ClubRow label={tx("playerProfile.currentClub", "Current club")} value={normalizeText(data?.currentClub || params.team)} logo={data?.currentClubLogo} league={String(params.league || "")} /> : null}
             {hasMeaningfulText(data?.marketValue || params.marketValue) ? <Row icon="currency-eur" label={tx("playerProfile.marketValue", "Market value")} value={normalizeText(data?.marketValue || params.marketValue)} /> : null}
             {data?.updatedAt ? <Row icon="clock-outline" label={tx("playerProfile.lastUpdated", "Last updated")} value={formatUpdatedAt(data?.updatedAt)} /> : null}
           </Card>
@@ -508,7 +512,7 @@ export default function PlayerProfileScreen() {
               <View style={styles.timeline}>
                 {transferTimeline.map((club: any, idx: number) => {
                   const isLast = idx === transferTimeline.length - 1;
-                  const isJoin = club.role === "in";
+                  const isJoin = club.action === "joined" || club.action === "loan";
                   return (
                     <View key={`${club?.name || "club"}_${idx}`} style={styles.timelineItem}>
                       <View style={styles.timelineSide}>
@@ -527,10 +531,10 @@ export default function PlayerProfileScreen() {
                             <Text style={styles.timelineClub} numberOfLines={1}>{club?.name || tx("common.notAvailable", "Not available")}</Text>
                             <View style={styles.timelineMetaRow}>
                               <Text style={[styles.timelineLabel, isJoin ? styles.transferTagJoin : styles.transferTagLeave]}>
-                                {isJoin ? "Joined" : "Left"}
+                                {club?.actionLabel || (isJoin ? "Joined" : "Left")}
                               </Text>
                               {club?.date ? <Text style={styles.timelineDate}>{club.date}</Text> : null}
-                              {club?.fee ? <Text style={styles.timelineLabel}>{transferTypeLabel(club.fee)}</Text> : null}
+                              {club?.note ? <Text style={styles.timelineLabel}>{club.note}</Text> : null}
                             </View>
                             {club?.fee ? <Text style={styles.timelineFee}>{club.fee}</Text> : null}
                           </View>
@@ -569,12 +573,13 @@ function Row({ label, value, icon }: { label: string; value: string; icon?: keyo
   );
 }
 
-function ClubRow({ label, value, logo }: { label: string; value: string; logo?: string | null }) {
+function ClubRow({ label, value, logo, league }: { label: string; value: string; logo?: string | null; league?: string }) {
+  const resolvedLogo = resolveTeamLogoUri(value, logo || null, { competition: league || null });
   return (
     <View style={styles.row}>
       <Text style={styles.rowLabel}>{label}</Text>
       <View style={styles.clubValueRow}>
-        {logo ? <TeamLogo uri={logo} teamName={value} size={24} /> : null}
+        {resolvedLogo ? <TeamLogo uri={typeof resolvedLogo === "string" ? resolvedLogo : null} resolvedLogo={typeof resolvedLogo === "number" ? resolvedLogo : undefined} teamName={value} size={24} /> : null}
         <Text style={styles.rowValue} numberOfLines={2}>{value}</Text>
       </View>
     </View>

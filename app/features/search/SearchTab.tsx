@@ -66,7 +66,8 @@ export function SearchTab({ onSelectResult }: SearchTabProps) {
     queryKey: ['sports', 'search-data'],
     queryFn: async () => {
       try {
-        const response = await apiRequestJson<any>('/api/sports/today');
+        const today = new Date().toISOString().slice(0, 10);
+        const response = await apiRequestJson<any>(`/api/sports/by-date?date=${encodeURIComponent(today)}`);
         const matches = response?.upcoming || response?.live || [];
         const teams = new Set<string>();
         const competitions = new Set<string>();

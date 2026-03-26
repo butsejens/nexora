@@ -4,8 +4,8 @@ import { Platform } from "react-native";
 import * as FileSystem from "expo-file-system";
 import { parseM3UContentAsync } from "@/lib/parseM3U";
 import { fetchM3UText } from "@/lib/fetchM3U";
-import { trackWatchProgress } from "@/lib/services/user-state-service";
-import { namespaceId, ensureNamespaced, getRawId, getSource } from "@/lib/id-namespace";
+import { clearWatchHistory, trackWatchProgress } from "@/lib/services/user-state-service";
+import { ensureNamespaced, getSource } from "@/lib/id-namespace";
 
 import { setLanguage as setI18nLanguage, type Language } from "@/lib/i18n";
 
@@ -228,7 +228,10 @@ export function NexoraProvider({ children }: { children: ReactNode }) {
               .filter((entry) => entry && typeof entry === "object")
               .map((entry) => ({
                 ...entry,
-                id: String(entry.id || "").trim(),
+                id: ensureNamespaced(entry.type === "sport" ? "sports" : entry.type === "channel" ? "channel" : "media", String(entry.id || "").trim()),
+                contentId: entry.contentId
+                  ? ensureNamespaced(entry.type === "sport" ? "sports" : entry.type === "channel" ? "channel" : "media", String(entry.contentId || "").trim())
+                  : undefined,
                 title: String(entry.title || "").trim(),
                 type: entry.type || "movie",
               }))
@@ -318,7 +321,14 @@ export function NexoraProvider({ children }: { children: ReactNode }) {
       contentId: item.contentId ? ensureNamespaced(source, item.contentId) : undefined,
     };
     
-    const next = [namespacedItem, ...watchHistory.filter(h => h.id !== namespacedItem.id)].slice(0, 50);
+    const next = [
+      namespacedItem,
+      ...watchHistory.filter((h) => {
+        if (h.id === namespacedItem.id) return false;
+        if (h.contentId && namespacedItem.contentId && h.contentId === namespacedItem.contentId) return false;
+        return true;
+      }),
+    ].slice(0, 50);
     setWatchHistory(next);
     await AsyncStorage.setItem("nexora_history", JSON.stringify(next));
     // Bridge to user-state-service so mood derivation and continueWatching work
@@ -353,7 +363,10 @@ export function NexoraProvider({ children }: { children: ReactNode }) {
     const idx = watchHistory.findIndex(h => h.id === namespacedId || h.contentId === namespacedId);
     if (idx < 0) return;
     const updated = { ...watchHistory[idx], progress, currentTime, duration, lastWatched: new Date().toISOString() };
-    const next = [updated, ...watchHistory.filter(h => h.id !== namespacedId)].slice(0, 50);
+    const next = [
+      updated,
+      ...watchHistory.filter((h) => h.id !== namespacedId && h.contentId !== namespacedId),
+    ].slice(0, 50);
     setWatchHistory(next);
     await AsyncStorage.setItem("nexora_history", JSON.stringify(next));
     // Bridge to user-state-service
@@ -379,6 +392,7 @@ export function NexoraProvider({ children }: { children: ReactNode }) {
   const clearHistory = async () => {
     setWatchHistory([]);
     await AsyncStorage.removeItem("nexora_history");
+    await clearWatchHistory().catch(() => undefined);
   };
 
   const normalizeUrl = (url: string): string => {

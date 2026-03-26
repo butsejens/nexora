@@ -15,7 +15,7 @@ import { fetchSportsLeagueResourceWithFallback, getLeaderboardRows } from "@/lib
 import { dedupeCanonicalMatches, toCanonicalMatch, toLegacyMatchCard } from "@/lib/canonical-match";
 import { normalizeApiError } from "@/lib/error-messages";
 import { getBestCachedOrSeedPlayerImage, resolvePlayerImageUri } from "@/lib/player-image-system";
-import { resolveCompetitionBrand } from "@/lib/logo-manager";
+import { resolveCompetitionBrand, resolveTeamLogoUri } from "@/lib/logo-manager";
 import { TeamLogo } from "@/components/TeamLogo";
 import { useTranslation } from "@/lib/useTranslation";
 import { t as tFn } from "@/lib/i18n";
@@ -651,7 +651,9 @@ export default function CompetitionScreen() {
         ) : (
           <CompetitionStatsView data={compStatsData} league={leagueName} espnLeague={espnLeague} />
         )
-      )}      </View>    </View>
+      )}
+      </View>
+    </View>
   );
 }
 
@@ -802,7 +804,7 @@ function ScorerRow({ scorer, rank, league, espnLeague, statLabel, accentColor }:
 
   useEffect(() => {
     let disposed = false;
-    void resolvePlayerImageUri(seed, { allowNetwork: rank <= 3 }).then((uri) => {
+    void resolvePlayerImageUri(seed, { allowNetwork: rank <= 15 }).then((uri) => {
       if (disposed || !uri) return;
       setPhotoUri(uri);
       setPhotoFailed(false);
@@ -811,6 +813,11 @@ function ScorerRow({ scorer, rank, league, espnLeague, statLabel, accentColor }:
   }, [seed, rank]);
 
   const resolvedPhotoUri = !photoFailed ? photoUri || scorer?.photo || null : null;
+  const resolvedTeamLogo = resolveTeamLogoUri(
+    String(scorer?.team || ""),
+    scorer?.teamLogo || null,
+    { competition: String(espnLeague || league || "") }
+  );
 
   const handlePress = () => {
     if (!scorer.id) return;
@@ -830,7 +837,19 @@ function ScorerRow({ scorer, rank, league, espnLeague, statLabel, accentColor }:
     <TouchableOpacity style={styles.scorerRow} onPress={handlePress} activeOpacity={scorer.id ? 0.75 : 1}>
       <Text style={[styles.scorerRank, { color: rankColor }]}>{rank}</Text>
       {resolvedPhotoUri ? (
-        <Image source={{ uri: resolvedPhotoUri }} style={styles.scorerPhoto} onError={() => setPhotoFailed(true)} />
+        <Image
+          source={{ uri: resolvedPhotoUri }}
+          style={styles.scorerPhoto}
+          onError={() => {
+            const fallback = getBestCachedOrSeedPlayerImage(seed);
+            if (fallback && fallback !== resolvedPhotoUri) {
+              setPhotoUri(fallback);
+              setPhotoFailed(false);
+            } else {
+              setPhotoFailed(true);
+            }
+          }}
+        />
       ) : (
         <View style={[styles.scorerPhoto, styles.logoPlaceholder]}>
           <Ionicons name="person" size={16} color={COLORS.textMuted} />
@@ -839,7 +858,12 @@ function ScorerRow({ scorer, rank, league, espnLeague, statLabel, accentColor }:
       <View style={styles.scorerInfo}>
         <Text style={styles.scorerName} numberOfLines={1}>{scorer.name}</Text>
         <View style={styles.scorerTeamRow}>
-          <TeamLogo uri={scorer?.teamLogo || null} teamName={String(scorer?.team || "")} size={18} />
+          <TeamLogo
+            uri={typeof resolvedTeamLogo === "string" ? resolvedTeamLogo : null}
+            resolvedLogo={typeof resolvedTeamLogo === "number" ? resolvedTeamLogo : undefined}
+            teamName={String(scorer?.team || "")}
+            size={18}
+          />
           <Text style={styles.scorerTeam} numberOfLines={1}>{scorer.team}</Text>
         </View>
         {scorer.marketValue ? (

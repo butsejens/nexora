@@ -39,6 +39,13 @@ async function fetchSeasonEpisodes(seriesId: string, seasonNumber: number) {
   return res.json();
 }
 
+async function fetchRelatedTitles(id: string, type: "movie" | "series") {
+  const res = await apiRequest("GET", `/api/recommendations/similar/${encodeURIComponent(id)}?type=${type}`);
+  if (!res.ok) return { items: [] };
+  const data = await res.json();
+  return { items: Array.isArray(data?.items) ? data.items : [] };
+}
+
 function summarizeList(values: unknown, limit = 3): string {
   if (!Array.isArray(values)) return "";
   return values
@@ -360,6 +367,14 @@ export default function DetailScreen() {
     retryDelay: (attempt: number) => Math.min(1000 * 2 ** attempt, 5000),
   });
 
+  const relatedQuery = useQuery({
+    queryKey: ["detail-related", type, tmdbId || id],
+    queryFn: () => fetchRelatedTitles(String(tmdbId || id), type === "series" ? "series" : "movie"),
+    enabled: Boolean((tmdbId || id) && (type === "movie" || type === "series")),
+    staleTime: 20 * 60 * 1000,
+    retry: 1,
+  });
+
   // ── Fallback: search TMDB by title if IPTV has no tmdbId ─────────────────
   const searchTitle = iptvChannel?.title || iptvChannel?.name || paramTitle;
   const { data: searchData, isLoading: searchLoading, error: searchError } = useQuery({
@@ -449,6 +464,19 @@ export default function DetailScreen() {
     ].filter(Boolean) as { label: string; value: string }[];
     return items;
   }, [data, isMovie, t]);
+  const relatedItems = useMemo(() => {
+    const items = Array.isArray(relatedQuery.data?.items) ? relatedQuery.data.items : [];
+    const seen = new Set<string>();
+    const out: any[] = [];
+    for (const item of items) {
+      const relId = String(item?.tmdbId || item?.id || "").trim();
+      if (!relId || seen.has(relId)) continue;
+      seen.add(relId);
+      out.push(item);
+      if (out.length >= 14) break;
+    }
+    return out;
+  }, [relatedQuery.data?.items]);
 
   const openTrailer = () => {
     SafeHaptics.impactLight();
@@ -887,6 +915,45 @@ export default function DetailScreen() {
               )}
             </View>
           )}
+
+          {relatedItems.length > 0 ? (
+            <View style={styles.relatedSection}>
+              <Text style={styles.relatedTitle}>Related titles</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.relatedRow}>
+                {relatedItems.map((item: any) => {
+                  const relId = String(item?.tmdbId || item?.id || "");
+                  const relType = item?.type === "series" ? "series" : "movie";
+                  return (
+                    <TouchableOpacity
+                      key={`${relType}-${relId}`}
+                      style={styles.relatedCard}
+                      onPress={() => {
+                        router.push({
+                          pathname: "/detail",
+                          params: {
+                            id: relId,
+                            type: relType,
+                            title: item?.title,
+                            tmdbId: relId,
+                          },
+                        });
+                      }}
+                    >
+                      {item?.poster ? (
+                        <Image source={{ uri: item.poster }} style={styles.relatedPoster} />
+                      ) : (
+                        <View style={[styles.relatedPoster, styles.relatedPosterFallback]}>
+                          <Ionicons name="film-outline" size={18} color={COLORS.textMuted} />
+                        </View>
+                      )}
+                      <Text style={styles.relatedCardTitle} numberOfLines={2}>{String(item?.title || "Untitled")}</Text>
+                      <Text style={styles.relatedCardMeta} numberOfLines={1}>{String(item?.year || "")}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+            </View>
+          ) : null}
         </View>
         <View style={{ height: Platform.OS === "web" ? 34 : insets.bottom + 20 }} />
       </ScrollView>
@@ -1058,6 +1125,14 @@ const styles = StyleSheet.create({
   synopsis: { fontFamily: "Inter_400Regular", fontSize: 15, color: COLORS.textSecondary, lineHeight: 24, marginBottom: 16 },
   metadataGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10, marginBottom: 16, marginTop: 8 },
   metadataCard: { width: "47%", flexGrow: 1, minHeight: 80, padding: 14, borderRadius: 14, backgroundColor: "rgba(255,255,255,0.06)", borderWidth: 1, borderColor: "rgba(255,255,255,0.10)", gap: 6, justifyContent: "flex-start" },
+  relatedSection: { marginTop: 14, marginBottom: 8 },
+  relatedTitle: { color: COLORS.text, fontFamily: "Inter_700Bold", fontSize: 18, marginBottom: 10 },
+  relatedRow: { paddingRight: 12 },
+  relatedCard: { width: 120, marginRight: 10 },
+  relatedPoster: { width: 120, height: 170, borderRadius: 10, backgroundColor: COLORS.card },
+  relatedPosterFallback: { alignItems: "center", justifyContent: "center" },
+  relatedCardTitle: { marginTop: 7, color: COLORS.text, fontFamily: "Inter_600SemiBold", fontSize: 12, lineHeight: 16 },
+  relatedCardMeta: { marginTop: 2, color: COLORS.textMuted, fontFamily: "Inter_500Medium", fontSize: 11 },
   metadataLabel: { fontFamily: "Inter_600SemiBold", fontSize: 10, color: COLORS.textMuted, textTransform: "uppercase", letterSpacing: 1.0 },
   metadataValue: { fontFamily: "Inter_600SemiBold", fontSize: 14, color: COLORS.text, lineHeight: 20 },
   networkRow: { flexDirection: "row", marginBottom: 8 },

@@ -1,0 +1,17 @@
+export const ROUTES = {
+  home: "/(tabs)/home",
+  search: "/(tabs)/search",
+  more: "/(tabs)/more",
+  sportsMatchday: "/sports/matchday",
+  sportsLive: "/sports/live",
+  sportsCompetition: "/sports/competition",
+  sportsTeam: "/sports/team",
+  sportsPlayer: "/sports/player",
+  sportsMatch: "/sports/match",
+  mediaMovies: "/media/movies",
+  mediaSeries: "/media/series",
+  mediaCollection: "/media/collection",
+  mediaStudio: "/media/studio",
+  mediaDetail: "/media/detail",
+  onboarding: "/onboarding",
+} as const;

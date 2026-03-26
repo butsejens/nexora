@@ -115,6 +115,16 @@ export async function cacheGetStale<T>(key: string): Promise<T | null> {
   }
 }
 
+/**
+ * Synchronous stale read from the in-memory layer only.
+ * Use for render-time paths (e.g. React Query placeholderData).
+ */
+export function cachePeekStale<T>(key: string): T | null {
+  const inMem = mem.get(key);
+  if (!inMem) return null;
+  return inMem.value as T;
+}
+
 /** Check age of a cached entry in milliseconds (returns Infinity if not cached) */
 export async function cacheAge(key: string): Promise<number> {
   const inMem = mem.get(key);

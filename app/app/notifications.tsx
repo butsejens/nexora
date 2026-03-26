@@ -11,8 +11,9 @@ export default function NotificationsScreen() {
     <NotificationCenter
       onClose={() => router.back()}
       onNavigate={(screen, params) => {
+        const pathname = screen.startsWith("/") ? screen : `/${screen}`;
         router.push({
-          pathname: screen,
+          pathname: pathname as any,
           params,
         });
       }}

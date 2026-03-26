@@ -64,7 +64,6 @@ export default function TabLayout() {
   const isIOS = Platform.OS === "ios";
   const { t } = useTranslation();
   const insets = useSafeAreaInsets();
-  const sportsEnabled = useOnboardingStore((state) => state.sportsEnabled);
   const moviesEnabled = useOnboardingStore((state) => state.moviesEnabled);
   const tabMarginBottom = isIOS ? Math.max(14, insets.bottom - 10) : Math.max(12, insets.bottom || 12);
 
@@ -205,7 +204,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="index"
         options={{
-          href: (sportsEnabled || moviesEnabled) ? undefined : null,
+          href: undefined,
           title: t("tabs.home") || "Home",
           tabBarIcon: ({ focused }) => (
             <TabIcon focused={focused} accentColor={COLORS.accent}>

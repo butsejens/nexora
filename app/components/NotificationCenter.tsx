@@ -1,359 +1,321 @@
-/**
- * Notification Center Screen
- * Shows followed teams, alerts, and notification history
- */
+import React, { useMemo, useState } from "react";
+import { View, ScrollView, Text, TouchableOpacity, StyleSheet } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
+import { useFollowState } from "@/context/UserStateContext";
+import { useOnboardingStore } from "@/store/onboarding-store";
 
-import React, { useEffect, useState } from 'react';
-import {
-  View,
-  ScrollView,
-  Text,
-  TouchableOpacity,
-  StyleSheet,
-  SafeAreaView,
-} from 'react-native';
-import { designTokens } from '@/constants/design-tokens';
-import { Ionicons } from '@expo/vector-icons';
-import { useFollowState } from '@/context/UserStateContext';
-import { useOnboardingStore } from '@/store/onboarding-store';
-
-interface NotificationCenterProps {
+type NotificationCenterProps = {
   onClose: () => void;
   onNavigate: (screen: string, params?: any) => void;
-}
+};
+
+type TabKey = "followed" | "alerts" | "recent";
+
+const P = {
+  bg: "#09090D",
+  card: "#14141D",
+  text: "#FFFFFF",
+  muted: "#A2A2AF",
+  accent: "#E50914",
+  border: "rgba(255,255,255,0.09)",
+};
 
 export function NotificationCenter({ onClose, onNavigate }: NotificationCenterProps) {
   const { followedTeams, followedMatches, unfollowTeamAction, unfollowMatchAction } = useFollowState();
   const notificationPrefs = useOnboardingStore((state) => state.notifications);
-  const [selectedTab, setSelectedTab] = useState<'followed' | 'alerts'>('alerts');
+  const [activeTab, setActiveTab] = useState<TabKey>("followed");
 
-  const alertsEnabledCount = [notificationPrefs.matches, notificationPrefs.goals, notificationPrefs.lineups].filter(Boolean).length;
+  const alertsEnabledCount = [notificationPrefs.matches, notificationPrefs.goals, notificationPrefs.lineups, notificationPrefs.news].filter(Boolean).length;
 
-  const styles = StyleSheet.create({
-    container: {
-      flex: 1,
-      backgroundColor: designTokens.colors.background,
-    },
-    header: {
-      paddingHorizontal: designTokens.spacing.lg,
-      paddingVertical: designTokens.spacing.md,
-      borderBottomWidth: 1,
-      borderBottomColor: designTokens.colors.border,
-    },
-    headerTop: {
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      alignItems: 'center',
-      marginBottom: designTokens.spacing.md,
-    },
-    title: {
-      ...designTokens.typography.heading2,
-      color: designTokens.colors.textPrimary,
-    },
-    closeButton: {
-      padding: designTokens.spacing.sm,
-    },
-    tabs: {
-      flexDirection: 'row',
-      gap: designTokens.spacing.md,
-      borderBottomWidth: 1,
-      borderBottomColor: designTokens.colors.border,
-      marginHorizontal: -designTokens.spacing.lg,
-      paddingHorizontal: designTokens.spacing.lg,
-      marginTop: designTokens.spacing.md,
-    },
-    tab: {
-      paddingVertical: designTokens.spacing.md,
-      paddingHorizontal: designTokens.spacing.sm,
-      borderBottomWidth: 2,
-      borderBottomColor: 'transparent',
-    },
-    tabActive: {
-      borderBottomColor: designTokens.colors.primary,
-    },
-    tabText: {
-      ...designTokens.typography.body,
-      color: designTokens.colors.textTertiary,
-      fontWeight: '500',
-    },
-    tabTextActive: {
-      color: designTokens.colors.primary,
-      fontWeight: '600',
-    },
-    content: {
-      flex: 1,
-    },
-    emptyState: {
-      flex: 1,
-      justifyContent: 'center',
-      alignItems: 'center',
-      padding: designTokens.spacing.xl,
-    },
-    emptyIcon: {
-      marginBottom: designTokens.spacing.lg,
-    },
-    emptyText: {
-      ...designTokens.typography.bodyLarge,
-      color: designTokens.colors.textSecondary,
-      textAlign: 'center',
-      marginBottom: designTokens.spacing.sm,
-    },
-    emptySubtext: {
-      ...designTokens.typography.body,
-      color: designTokens.colors.textTertiary,
-      textAlign: 'center',
-    },
+  const recentItems = useMemo(() => {
+    return followedMatches
+      .slice()
+      .sort((a, b) => String(b.startTime || "").localeCompare(String(a.startTime || "")))
+      .slice(0, 8)
+      .map((match) => ({
+        id: String(match.matchId),
+        title: `${match.homeTeam} vs ${match.awayTeam}`,
+        subtitle: match.competition || "Match alert",
+      }));
+  }, [followedMatches]);
 
-    // Followed items
-    followedSection: {
-      padding: designTokens.spacing.lg,
-      borderBottomWidth: 1,
-      borderBottomColor: designTokens.colors.border,
-    },
-    sectionTitle: {
-      ...designTokens.typography.heading3,
-      color: designTokens.colors.textPrimary,
-      marginBottom: designTokens.spacing.md,
-    },
-    followedGrid: {
-      flexDirection: 'row',
-      flexWrap: 'wrap',
-      gap: designTokens.spacing.md,
-    },
-    followedCard: {
-      flex: 1,
-      minWidth: '45%',
-      backgroundColor: designTokens.colors.surface,
-      borderRadius: designTokens.radius.lg,
-      padding: designTokens.spacing.md,
-      borderWidth: 1,
-      borderColor: designTokens.colors.border,
-      alignItems: 'center',
-    },
-    followedCardImage: {
-      width: 48,
-      height: 48,
-      borderRadius: designTokens.radius.md,
-      backgroundColor: designTokens.colors.primaryDark,
-      justifyContent: 'center',
-      alignItems: 'center',
-      marginBottom: designTokens.spacing.sm,
-    },
-    followedCardName: {
-      ...designTokens.typography.bodySmall,
-      color: designTokens.colors.textPrimary,
-      fontWeight: '600',
-      textAlign: 'center',
-    },
-    unfollowButton: {
-      marginTop: designTokens.spacing.sm,
-      paddingVertical: 4,
-      paddingHorizontal: designTokens.spacing.sm,
-      backgroundColor: designTokens.colors.primaryDark,
-      borderRadius: designTokens.radius.md,
-    },
-    unfollowButtonText: {
-      ...designTokens.typography.labelSmall,
-      color: designTokens.colors.primary,
-    },
-
-    // Alerts summary
-    alertsContent: {
-      padding: designTokens.spacing.lg,
-      gap: designTokens.spacing.md,
-    },
-    alertCard: {
-      backgroundColor: designTokens.colors.surface,
-      borderRadius: designTokens.radius.lg,
-      padding: designTokens.spacing.md,
-      borderWidth: 1,
-      borderColor: designTokens.colors.border,
-    },
-    alertCardHeader: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      marginBottom: designTokens.spacing.sm,
-    },
-    alertTitle: {
-      ...designTokens.typography.bodyLarge,
-      color: designTokens.colors.textPrimary,
-      fontWeight: '600',
-    },
-    alertMessage: {
-      ...designTokens.typography.body,
-      color: designTokens.colors.textSecondary,
-      lineHeight: 20,
-    },
-    manageButton: {
-      marginTop: designTokens.spacing.sm,
-      alignSelf: 'flex-start',
-      paddingHorizontal: designTokens.spacing.md,
-      paddingVertical: designTokens.spacing.sm,
-      borderRadius: designTokens.radius.md,
-      backgroundColor: designTokens.colors.primaryDark,
-      borderWidth: 1,
-      borderColor: designTokens.colors.primary,
-    },
-    manageButtonText: {
-      ...designTokens.typography.body,
-      color: designTokens.colors.primary,
-      fontWeight: '600',
-    },
-    statusDot: {
-      width: 10,
-      height: 10,
-      borderRadius: designTokens.radius.full,
-      backgroundColor: designTokens.colors.primary,
-    },
-  });
-
-  const renderFollowedTab = () => (
-    <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-      {followedTeams.length > 0 && (
-        <View style={styles.followedSection}>
-          <Text style={styles.sectionTitle}>Followed Teams</Text>
-          <View style={styles.followedGrid}>
-            {followedTeams.map((team) => (
-              <View key={String(team.teamId)} style={styles.followedCard}>
-                <View style={styles.followedCardImage}>
-                  <Ionicons name="shield" size={24} color={designTokens.colors.primary} />
-                </View>
-                <Text style={styles.followedCardName} numberOfLines={2}>
-                  {team.teamName}
-                </Text>
-                <TouchableOpacity
-                  style={styles.unfollowButton}
-                  onPress={() => void unfollowTeamAction(team.teamId)}
-                >
-                  <Text style={styles.unfollowButtonText}>Unfollow</Text>
-                </TouchableOpacity>
-              </View>
-            ))}
-          </View>
-        </View>
-      )}
-
-      {followedMatches.length > 0 && (
-        <View style={styles.followedSection}>
-          <Text style={styles.sectionTitle}>Followed Matches</Text>
-          {followedMatches.map((match) => (
-            <TouchableOpacity
-              key={String(match.matchId)}
-              onPress={() => onNavigate('match-detail', { matchId: String(match.matchId), espnLeague: match.espnLeague || undefined })}
-              style={{
-                flexDirection: 'row',
-                alignItems: 'center',
-                paddingVertical: designTokens.spacing.md,
-                borderBottomWidth: 1,
-                borderBottomColor: designTokens.colors.border,
-              }}
-            >
-              <View
-                style={{
-                  flex: 1,
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  gap: designTokens.spacing.md,
-                }}
-              >
-                <Ionicons name="play-circle" size={24} color={designTokens.colors.primary} />
-                <View>
-                    <Text style={styles.alertTitle}>{match.homeTeam} vs {match.awayTeam}</Text>
-                    <Text style={styles.alertMessage}>{match.competition || 'Competition'}</Text>
-                </View>
-              </View>
-                <TouchableOpacity style={styles.unfollowButton} onPress={() => void unfollowMatchAction(match.matchId)}>
-                  <Text style={styles.unfollowButtonText}>Unfollow</Text>
-                </TouchableOpacity>
-              <Ionicons name="chevron-forward" size={20} color={designTokens.colors.textTertiary} />
-            </TouchableOpacity>
-          ))}
-        </View>
-      )}
-
-      {followedTeams.length === 0 && followedMatches.length === 0 && (
-        <View style={styles.emptyState}>
-          <Ionicons
-            name="star-outline"
-            size={48}
-            color={designTokens.colors.textTertiary}
-            style={styles.emptyIcon}
-          />
-          <Text style={styles.emptyText}>No followed teams or matches</Text>
-          <Text style={styles.emptySubtext}>Follow teams to get personalized alerts</Text>
-        </View>
-      )}
-    </ScrollView>
-  );
-
-  const renderAlertsTab = () => {
-    return (
-      <View style={styles.content}>
-        <ScrollView contentContainerStyle={styles.alertsContent} showsVerticalScrollIndicator={false}>
-          <View style={styles.alertCard}>
-            <View style={styles.alertCardHeader}>
-              <Text style={styles.alertTitle}>Match alert system</Text>
-              <View style={styles.statusDot} />
-            </View>
-            <Text style={styles.alertMessage}>
-              Live notifications are now driven by your followed matches and onboarding preferences.
-              Enabled categories: {alertsEnabledCount}/3.
-            </Text>
-            <TouchableOpacity style={styles.manageButton} onPress={() => onNavigate('follow-center')}>
-              <Text style={styles.manageButtonText}>Manage followed matches</Text>
-            </TouchableOpacity>
-          </View>
-
-          <View style={styles.alertCard}>
-            <View style={styles.alertCardHeader}>
-              <Text style={styles.alertTitle}>Current configuration</Text>
-              <Ionicons name="options" size={16} color={designTokens.colors.textSecondary} />
-            </View>
-            <Text style={styles.alertMessage}>
-              Matches: {notificationPrefs.matches ? 'On' : 'Off'}\nGoals: {notificationPrefs.goals ? 'On' : 'Off'}\nLineups: {notificationPrefs.lineups ? 'On' : 'Off'}
-            </Text>
-            <TouchableOpacity style={styles.manageButton} onPress={() => onNavigate('settings')}>
-              <Text style={styles.manageButtonText}>Open notification settings</Text>
-            </TouchableOpacity>
-          </View>
-        </ScrollView>
-      </View>
-    );
-  };
+  const followEmpty = followedTeams.length === 0 && followedMatches.length === 0;
 
   return (
-    <SafeAreaView style={styles.container}>
+    <View style={styles.screen}>
       <View style={styles.header}>
         <View style={styles.headerTop}>
           <Text style={styles.title}>Notifications</Text>
-          <TouchableOpacity style={styles.closeButton} onPress={onClose}>
-            <Ionicons name="close" size={24} color={designTokens.colors.textPrimary} />
+          <TouchableOpacity style={styles.iconBtn} onPress={onClose}>
+            <Ionicons name="close" size={20} color={P.text} />
           </TouchableOpacity>
         </View>
 
         <View style={styles.tabs}>
-          <TouchableOpacity
-            style={[styles.tab, selectedTab === 'alerts' && styles.tabActive]}
-            onPress={() => setSelectedTab('alerts')}
-          >
-            <Text style={[styles.tabText, selectedTab === 'alerts' && styles.tabTextActive]}>
-              Alerts
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.tab, selectedTab === 'followed' && styles.tabActive]}
-            onPress={() => setSelectedTab('followed')}
-          >
-            <Text style={[styles.tabText, selectedTab === 'followed' && styles.tabTextActive]}>
-              Followed
-            </Text>
-          </TouchableOpacity>
+          {[
+            { key: "followed", label: "Followed" },
+            { key: "alerts", label: "Alerts" },
+            { key: "recent", label: "Recent" },
+          ].map((tab) => {
+            const isActive = activeTab === (tab.key as TabKey);
+            return (
+              <TouchableOpacity
+                key={tab.key}
+                onPress={() => setActiveTab(tab.key as TabKey)}
+                style={[styles.tab, isActive && styles.tabActive]}
+              >
+                <Text style={[styles.tabText, isActive && styles.tabTextActive]}>{tab.label}</Text>
+              </TouchableOpacity>
+            );
+          })}
         </View>
       </View>
 
-      {selectedTab === 'alerts' && renderAlertsTab()}
-      {selectedTab === 'followed' && renderFollowedTab()}
-    </SafeAreaView>
+      {activeTab === "followed" && (
+        <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+          {followEmpty ? (
+            <View style={styles.emptyCard}>
+              <Ionicons name="notifications-off-outline" size={26} color={P.muted} />
+              <Text style={styles.emptyTitle}>No follows yet</Text>
+              <Text style={styles.emptyBody}>Follow teams or matches to receive updates in your bell center.</Text>
+            </View>
+          ) : (
+            <>
+              {followedTeams.length > 0 && (
+                <View style={styles.card}>
+                  <Text style={styles.cardTitle}>Followed Teams</Text>
+                  {followedTeams.map((team) => (
+                    <View key={String(team.teamId)} style={styles.row}>
+                      <View style={styles.rowTextWrap}>
+                        <Text style={styles.rowTitle}>{team.teamName}</Text>
+                        <Text style={styles.rowSub}>{team.competition || "Team updates"}</Text>
+                      </View>
+                      <TouchableOpacity style={styles.unfollowBtn} onPress={() => void unfollowTeamAction(team.teamId)}>
+                        <Text style={styles.unfollowText}>Unfollow</Text>
+                      </TouchableOpacity>
+                    </View>
+                  ))}
+                </View>
+              )}
+
+              {followedMatches.length > 0 && (
+                <View style={styles.card}>
+                  <Text style={styles.cardTitle}>Followed Matches</Text>
+                  {followedMatches.map((match) => (
+                    <TouchableOpacity
+                      key={String(match.matchId)}
+                      style={styles.row}
+                      onPress={() => onNavigate("match-detail", { matchId: String(match.matchId), espnLeague: match.espnLeague || undefined })}
+                    >
+                      <View style={styles.rowTextWrap}>
+                        <Text style={styles.rowTitle}>{match.homeTeam} vs {match.awayTeam}</Text>
+                        <Text style={styles.rowSub}>{match.competition || "Match"}</Text>
+                      </View>
+                      <TouchableOpacity style={styles.unfollowBtn} onPress={() => void unfollowMatchAction(match.matchId)}>
+                        <Text style={styles.unfollowText}>Unfollow</Text>
+                      </TouchableOpacity>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              )}
+            </>
+          )}
+        </ScrollView>
+      )}
+
+      {activeTab === "alerts" && (
+        <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>Alert Channels</Text>
+            <Text style={styles.body}>Enabled channels: {alertsEnabledCount}/4</Text>
+            <Text style={styles.body}>Match start: {notificationPrefs.matches ? "On" : "Off"}</Text>
+            <Text style={styles.body}>Goals: {notificationPrefs.goals ? "On" : "Off"}</Text>
+            <Text style={styles.body}>Lineups: {notificationPrefs.lineups ? "On" : "Off"}</Text>
+            <Text style={styles.body}>News: {notificationPrefs.news ? "On" : "Off"}</Text>
+            <TouchableOpacity style={styles.primaryBtn} onPress={() => onNavigate("settings")}> 
+              <Text style={styles.primaryBtnText}>Open Notification Settings</Text>
+            </TouchableOpacity>
+          </View>
+        </ScrollView>
+      )}
+
+      {activeTab === "recent" && (
+        <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+          {recentItems.length === 0 ? (
+            <View style={styles.emptyCard}>
+              <Ionicons name="time-outline" size={26} color={P.muted} />
+              <Text style={styles.emptyTitle}>No recent alerts</Text>
+              <Text style={styles.emptyBody}>Recent match-follow activity will appear here.</Text>
+            </View>
+          ) : (
+            <View style={styles.card}>
+              <Text style={styles.cardTitle}>Recent Items</Text>
+              {recentItems.map((item) => (
+                <View key={item.id} style={styles.row}>
+                  <View style={styles.rowTextWrap}>
+                    <Text style={styles.rowTitle}>{item.title}</Text>
+                    <Text style={styles.rowSub}>{item.subtitle}</Text>
+                  </View>
+                  <Ionicons name="ellipse" size={10} color={P.accent} />
+                </View>
+              ))}
+            </View>
+          )}
+        </ScrollView>
+      )}
+    </View>
   );
 }
+
+const styles = StyleSheet.create({
+  screen: {
+    flex: 1,
+    backgroundColor: P.bg,
+  },
+  header: {
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: P.border,
+  },
+  headerTop: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 10,
+  },
+  title: {
+    color: P.text,
+    fontSize: 22,
+    fontFamily: "Inter_800ExtraBold",
+  },
+  iconBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    borderWidth: 1,
+    borderColor: P.border,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(255,255,255,0.03)",
+  },
+  tabs: {
+    flexDirection: "row",
+    gap: 8,
+  },
+  tab: {
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderWidth: 1,
+    borderColor: P.border,
+    backgroundColor: "rgba(255,255,255,0.03)",
+  },
+  tabActive: {
+    borderColor: "rgba(229,9,20,0.42)",
+    backgroundColor: "rgba(229,9,20,0.16)",
+  },
+  tabText: {
+    color: P.muted,
+    fontSize: 12,
+    fontFamily: "Inter_600SemiBold",
+  },
+  tabTextActive: {
+    color: P.text,
+  },
+  content: {
+    padding: 16,
+    gap: 10,
+  },
+  card: {
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: P.border,
+    backgroundColor: P.card,
+    padding: 12,
+    gap: 6,
+  },
+  cardTitle: {
+    color: P.text,
+    fontSize: 13,
+    fontFamily: "Inter_700Bold",
+    marginBottom: 6,
+  },
+  row: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    justifyContent: "space-between",
+    borderTopWidth: 1,
+    borderTopColor: "rgba(255,255,255,0.05)",
+    paddingTop: 10,
+    paddingBottom: 4,
+  },
+  rowTextWrap: {
+    flex: 1,
+    minWidth: 0,
+  },
+  rowTitle: {
+    color: P.text,
+    fontSize: 13,
+    fontFamily: "Inter_600SemiBold",
+  },
+  rowSub: {
+    color: P.muted,
+    fontSize: 11,
+    fontFamily: "Inter_500Medium",
+    marginTop: 2,
+  },
+  unfollowBtn: {
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: "rgba(229,9,20,0.42)",
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    backgroundColor: "rgba(229,9,20,0.12)",
+  },
+  unfollowText: {
+    color: P.accent,
+    fontSize: 11,
+    fontFamily: "Inter_700Bold",
+  },
+  body: {
+    color: P.muted,
+    fontSize: 12,
+    lineHeight: 18,
+    fontFamily: "Inter_500Medium",
+  },
+  primaryBtn: {
+    marginTop: 10,
+    borderRadius: 10,
+    paddingVertical: 11,
+    backgroundColor: P.accent,
+    alignItems: "center",
+  },
+  primaryBtnText: {
+    color: "#09090D",
+    fontSize: 12,
+    fontFamily: "Inter_700Bold",
+  },
+  emptyCard: {
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: P.border,
+    backgroundColor: P.card,
+    padding: 18,
+    alignItems: "center",
+    gap: 8,
+  },
+  emptyTitle: {
+    color: P.text,
+    fontSize: 14,
+    fontFamily: "Inter_700Bold",
+  },
+  emptyBody: {
+    color: P.muted,
+    fontSize: 12,
+    textAlign: "center",
+    lineHeight: 18,
+    fontFamily: "Inter_500Medium",
+  },
+});
