@@ -1,5 +1,6 @@
 import { queryClient, apiRequestJson } from "@/lib/query-client";
 import type { CompetitionPreference, SportPreferenceKey, TeamPreference } from "@/services/onboarding-storage";
+import { logStartupEvent, runStartupTask } from "@/services/startup-orchestrator";
 
 export type PreloadPhase = {
   id: string;
@@ -31,6 +32,15 @@ const BASE_PHASES: PreloadPhase[] = [
   { id: "teams", label: "Warming favorite team context", weight: 14 },
   { id: "movies", label: "Preparing movie and series rails", weight: 14 },
 ];
+
+const PHASE_TIMEOUT_MS: Record<PreloadPhase["id"], number> = {
+  "sports-day": 4000,
+  "sports-live": 4000,
+  highlights: 4000,
+  competitions: 6500,
+  teams: 5000,
+  movies: 4000,
+};
 
 let activePreload: Promise<void> | null = null;
 
@@ -84,6 +94,34 @@ async function preloadTeamProfiles(teams: TeamPreference[], competitions: Compet
   );
 }
 
+async function runPreloadPhase(
+  phase: PreloadPhase,
+  task: () => Promise<void>,
+  onProgress?: (status: PreloadStatus) => void,
+  phases?: PreloadPhase[],
+  completedIds?: Set<string>,
+): Promise<void> {
+  const result = await runStartupTask({
+    scope: "onboarding-preload",
+    name: phase.id,
+    timeoutMs: PHASE_TIMEOUT_MS[phase.id],
+    run: task,
+  });
+
+  if (result.status !== "success") {
+    logStartupEvent("onboarding-preload", "warn", `Skipping blocked preload phase: ${phase.id}`, {
+      status: result.status,
+      error: result.error,
+      durationMs: result.durationMs,
+    });
+  }
+
+  if (phases && completedIds) {
+    completedIds.add(phase.id);
+    emitProgress(phases, completedIds, onProgress);
+  }
+}
+
 export function startOnboardingPreload(request: PreloadRequest): Promise<void> {
   if (activePreload) return activePreload;
 
@@ -96,6 +134,7 @@ export function startOnboardingPreload(request: PreloadRequest): Promise<void> {
     const done = new Set<string>();
 
     if (phases.length === 0) {
+      logStartupEvent("onboarding-preload", "info", "No preload phases required for current module selection");
       request.onProgress?.({
         progress: 100,
         message: "Experience ready",
@@ -106,46 +145,109 @@ export function startOnboardingPreload(request: PreloadRequest): Promise<void> {
     }
 
     emitProgress(phases, done, request.onProgress, "Starting background setup");
+    logStartupEvent("onboarding-preload", "info", "Starting onboarding preload", {
+      phaseCount: phases.length,
+      sportsEnabled: request.sportsEnabled,
+      moviesEnabled: request.moviesEnabled,
+    });
 
     const today = new Date().toISOString().slice(0, 10);
 
     if (request.sportsEnabled) {
-      await Promise.allSettled([
-        safePrefetchQuery(["sports", "today", today], `/api/sports/by-date?date=${today}`),
-      ]);
-      done.add("sports-day");
-      emitProgress(phases, done, request.onProgress);
+      const sportsDayPhase = phases.find((phase) => phase.id === "sports-day");
+      if (sportsDayPhase) {
+        await runPreloadPhase(
+          sportsDayPhase,
+          async () => {
+            await Promise.allSettled([
+              safePrefetchQuery(["sports", "today", today], `/api/sports/by-date?date=${today}`),
+            ]);
+          },
+          request.onProgress,
+          phases,
+          done,
+        );
+      }
 
-      await Promise.allSettled([
-        safePrefetchQuery(["sports", "live", today], `/api/sports/live?date=${today}`),
-      ]);
-      done.add("sports-live");
-      emitProgress(phases, done, request.onProgress);
+      const sportsLivePhase = phases.find((phase) => phase.id === "sports-live");
+      if (sportsLivePhase) {
+        await runPreloadPhase(
+          sportsLivePhase,
+          async () => {
+            await Promise.allSettled([
+              safePrefetchQuery(["sports", "live", today], `/api/sports/live?date=${today}`),
+            ]);
+          },
+          request.onProgress,
+          phases,
+          done,
+        );
+      }
 
-      await Promise.allSettled([
-        safePrefetchQuery(["sports", "highlights"], `/api/sports/highlights`),
-      ]);
-      done.add("highlights");
-      emitProgress(phases, done, request.onProgress);
+      const highlightsPhase = phases.find((phase) => phase.id === "highlights");
+      if (highlightsPhase) {
+        await runPreloadPhase(
+          highlightsPhase,
+          async () => {
+            await Promise.allSettled([
+              safePrefetchQuery(["sports", "highlights"], `/api/sports/highlights`),
+            ]);
+          },
+          request.onProgress,
+          phases,
+          done,
+        );
+      }
 
-      await Promise.allSettled(request.competitions.slice(0, 5).map((competition) => preloadCompetitionBundle(competition)));
-      done.add("competitions");
-      emitProgress(phases, done, request.onProgress);
+      const competitionsPhase = phases.find((phase) => phase.id === "competitions");
+      if (competitionsPhase) {
+        await runPreloadPhase(
+          competitionsPhase,
+          async () => {
+            await Promise.allSettled(request.competitions.slice(0, 5).map((competition) => preloadCompetitionBundle(competition)));
+          },
+          request.onProgress,
+          phases,
+          done,
+        );
+      }
 
-      await preloadTeamProfiles(request.teams, request.competitions);
-      done.add("teams");
-      emitProgress(phases, done, request.onProgress);
+      const teamsPhase = phases.find((phase) => phase.id === "teams");
+      if (teamsPhase) {
+        await runPreloadPhase(
+          teamsPhase,
+          async () => {
+            await preloadTeamProfiles(request.teams, request.competitions);
+          },
+          request.onProgress,
+          phases,
+          done,
+        );
+      }
     }
 
     if (request.moviesEnabled) {
-      await Promise.allSettled([
-        safePrefetchQuery(["movies", "trending"], `/api/movies/trending`),
-        safePrefetchQuery(["series", "trending"], `/api/series/trending`),
-      ]);
-      done.add("movies");
-      emitProgress(phases, done, request.onProgress);
+      const moviesPhase = phases.find((phase) => phase.id === "movies");
+      if (moviesPhase) {
+        await runPreloadPhase(
+          moviesPhase,
+          async () => {
+            await Promise.allSettled([
+              safePrefetchQuery(["movies", "trending"], `/api/movies/trending`),
+              safePrefetchQuery(["series", "trending"], `/api/series/trending`),
+            ]);
+          },
+          request.onProgress,
+          phases,
+          done,
+        );
+      }
     }
 
+    logStartupEvent("onboarding-preload", "info", "Onboarding preload finished", {
+      completed: done.size,
+      total: phases.length,
+    });
     emitProgress(phases, new Set(phases.map((phase) => phase.id)), request.onProgress, "Experience ready");
   })().finally(() => {
     activePreload = null;

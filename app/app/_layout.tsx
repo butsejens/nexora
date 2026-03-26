@@ -39,6 +39,7 @@ import {
 import { initializeMatchNotifications } from "@/lib/match-notifications";
 import { fetchSportsLeagueResourceWithFallback } from "@/lib/sports-data";
 import { useOnboardingStore } from "@/store/onboarding-store";
+import { logStartupEvent, runStartupTask } from "@/services/startup-orchestrator";
 
 // ─── Persistent cache keys (must match what screens useQuery with) ────────────
 const PREFETCH_ENTRIES = (today: string) => [
@@ -164,7 +165,7 @@ function seedQueryClientFromCache() {
 }
 
 // Prefetch key API data, writing results to both QueryClient and disk cache.
-function prefetchHomeData() {
+function prefetchHomeData(): Promise<void> {
   const today = new Date().toISOString().slice(0, 10);
   const date = encodeURIComponent(today);
 
@@ -208,6 +209,17 @@ function prefetchHomeData() {
     void apiRequest("GET", "/api/sports/prefetch-home").catch(() => undefined);
     void prefetchPopularCompetitionBundles();
   }, 0);
+
+  return phaseATask.then(() => undefined);
+}
+
+function scheduleBackgroundStartupTask(name: string, timeoutMs: number, run: () => Promise<void>) {
+  void runStartupTask({
+    scope: "background",
+    name,
+    timeoutMs,
+    run,
+  });
 }
 
 SplashScreen.preventAutoHideAsync();
@@ -220,6 +232,9 @@ let hasCheckedServerUpdateOnce = false;
 // Persistent boot flag key — written after first boot so subsequent cold
 // starts skip the boot screen entirely.
 const BOOT_FLAG_KEY = "nexora_booted_v1";
+const BOOT_CACHE_TIMEOUT_MS = 2500;
+const BOOT_FLAG_TIMEOUT_MS = 1200;
+const HYDRATION_TIMEOUT_MS = 2500;
 let otaCheckDone: Promise<boolean> | null = null;
 // Signals that the disk cache has been loaded into memory
 let diskCacheReady = false;
@@ -296,11 +311,13 @@ export default function RootLayout() {
   });
   const hasHydrated = useOnboardingStore((state) => state.hasHydrated);
   const hasCompletedOnboarding = useOnboardingStore((state) => state.hasCompletedOnboarding);
+  const recoverPersistedState = useOnboardingStore((state) => state.recoverPersistedState);
 
   const [bootDone, setBootDone] = useState(hasCompletedBootOnce);
   const [bootProgress, setBootProgress] = useState(0);
   const [bootMessage, setBootMessage] = useState("Resources laden...");
   const [fontFallbackReady, setFontFallbackReady] = useState(false);
+  const [hydrationRecovering, setHydrationRecovering] = useState(false);
   const bootStartedRef = useRef(false);
 
   // 3s font fallback (reduced from 7s – fonts rarely take this long)
@@ -352,18 +369,39 @@ export default function RootLayout() {
       try {
         // Step 1: load disk cache and immediately seed QueryClient
         if (!diskCacheReady) {
-          await preloadDiskCache();
-          seedQueryClientFromCache();
-          diskCacheReady = true;
+          const cacheResult = await runStartupTask({
+            scope: "boot",
+            name: "preload-disk-cache",
+            timeoutMs: BOOT_CACHE_TIMEOUT_MS,
+            run: async () => {
+              await preloadDiskCache();
+              seedQueryClientFromCache();
+              diskCacheReady = true;
+            },
+          });
+          if (cacheResult.status !== "success") {
+            logStartupEvent("boot", "warn", "Continuing without seeded disk cache", { status: cacheResult.status });
+          }
         }
 
         // Step 2: check persistent boot flag — if already booted once, skip
-        const bootFlag = await AsyncStorage.getItem(BOOT_FLAG_KEY).catch(() => null);
+        const bootFlagResult = await runStartupTask({
+          scope: "boot",
+          name: "read-boot-flag",
+          timeoutMs: BOOT_FLAG_TIMEOUT_MS,
+          run: async () => await AsyncStorage.getItem(BOOT_FLAG_KEY),
+        });
+        const bootFlag = bootFlagResult.status === "success" ? bootFlagResult.value : null;
         if (bootFlag) {
           hasCompletedBootOnce = true;
           // Still fire background refresh and warmup
-          prefetchHomeData();
-          startPlayerImageWarmup(queryClient).catch(() => undefined);
+          logStartupEvent("background", "info", "Scheduling cached-user warmup");
+          scheduleBackgroundStartupTask("prefetch-home-data", 7000, async () => {
+            await prefetchHomeData();
+          });
+          scheduleBackgroundStartupTask("player-image-warmup", 8000, async () => {
+            await startPlayerImageWarmup(queryClient);
+          });
           return; // completes in finally
         }
 
@@ -371,11 +409,20 @@ export default function RootLayout() {
         const candidates = getApiBaseCandidates();
         if (candidates.length > 0) {
           // Wake up server in background (fire and forget, no await)
-          fetch(`${candidates[0]}/health`).catch(() => null);
-          prefetchHomeData();
-          startPlayerImageWarmup(queryClient).catch(() => undefined);
+          logStartupEvent("background", "info", "Scheduling cold-start warmup", { candidates: candidates.length });
+          scheduleBackgroundStartupTask("wake-primary-api", 1500, async () => {
+            await fetch(`${candidates[0]}/health`);
+          });
+          scheduleBackgroundStartupTask("prefetch-home-data", 7000, async () => {
+            await prefetchHomeData();
+          });
+          scheduleBackgroundStartupTask("player-image-warmup", 8000, async () => {
+            await startPlayerImageWarmup(queryClient);
+          });
           // Initialize notification channels early so they're ready before any screen uses them
-          initializeMatchNotifications().catch(() => undefined);
+          scheduleBackgroundStartupTask("initialize-match-notifications", 3000, async () => {
+            await initializeMatchNotifications();
+          });
         }
 
         // Step 4: wait a minimal time so the boot screen briefly shows
@@ -397,6 +444,29 @@ export default function RootLayout() {
       clearInterval(progressTimer);
     };
   }, [fontsLoaded, fontFallbackReady]);
+
+  useEffect(() => {
+    if (!bootDone || hasHydrated) return;
+
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      if (cancelled || hasHydrated) return;
+      setHydrationRecovering(true);
+      logStartupEvent("hydration", "warn", "Persist hydration timed out, recovering onboarding state", {
+        timeoutMs: HYDRATION_TIMEOUT_MS,
+      });
+      void recoverPersistedState().finally(() => {
+        if (!cancelled) {
+          setHydrationRecovering(false);
+        }
+      });
+    }, HYDRATION_TIMEOUT_MS);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [bootDone, hasHydrated, recoverPersistedState]);
 
   // OTA check after boot.
   // Always check OTA first; whether a newer APK exists is handled separately.
@@ -521,9 +591,11 @@ export default function RootLayout() {
   } else if (!hasHydrated) {
     content = (
       <PulseLaunchScreen
-        badge="Restoring setup"
+        badge={hydrationRecovering ? "Recovering setup" : "Restoring setup"}
         title="Syncing your preferences"
-        subtitle="Loading saved modules, notifications and personalized rails."
+        subtitle={hydrationRecovering
+          ? "Saved startup data took too long. Recovering a safe state and continuing into the app."
+          : "Loading saved modules, notifications and personalized rails."}
         progress={96}
       />
     );
