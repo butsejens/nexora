@@ -790,6 +790,8 @@ const [showAddPlaylist, setShowAddPlaylist] = useState(false);
     notifications: onboardingNotifications,
     resetOnboarding,
     sportsEnabled: onboardingSportsEnabled,
+    iptvEnabled,
+    setIptvEnabled,
   } = useOnboardingStore();
 
   const bottomPad = Platform.OS === "web" ? 34 : insets.bottom + 90;
@@ -1387,7 +1389,7 @@ const [showAddPlaylist, setShowAddPlaylist] = useState(false);
           </View>
         )}
 
-        <Section title="Personalization">
+        <Section title="Modules">
           <SettingRow
             icon="football-outline"
             label="Sports module"
@@ -1417,8 +1419,24 @@ const [showAddPlaylist, setShowAddPlaylist] = useState(false);
           />
           <Divider />
           <SettingRow
+            icon="tv-outline"
+            label="IPTV"
+            value={iptvEnabled ? "Enabled" : "Hidden"}
+            rightElement={
+              <Switch
+                value={iptvEnabled}
+                onValueChange={setIptvEnabled}
+                trackColor={{ false: COLORS.border, true: COLORS.accentGlow }}
+                thumbColor={iptvEnabled ? COLORS.accent : COLORS.textMuted}
+              />
+            }
+          />
+        </Section>
+
+        <Section title="Personalization">
+          <SettingRow
             icon="notifications-outline"
-            label="Onboarding notifications"
+            label="Notification preferences"
             value={`${notificationSummary} active`}
             onPress={() => setShowOnboardingEditor(true)}
           />

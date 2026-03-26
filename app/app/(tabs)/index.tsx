@@ -8,7 +8,6 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { COLORS } from "@/constants/colors";
 import "@/constants/design-system";
-import { MediaHomeSections } from "@/components/home/MediaHomeSections";
 import { NexoraHeader } from "@/components/NexoraHeader";
 import { TeamLogo } from "@/components/TeamLogo";
 import { MatchRowCard } from "@/components/premium";
@@ -917,9 +916,7 @@ export default function SportsScreen() {
   const [statusFilter] = useState<"all" | "live" | "upcoming">("all");
   const [sportCategory, setSportCategory] = useState<SportCategoryId>(preferredSportCategory);
   const [selectedDate, setSelectedDate] = useState<string>(todayUTC());
-  const [sportsView, setSportsView] = useState<"home" | "competitions" | "live" | "upcoming" | "menu">(
-    moviesEnabled ? "home" : "competitions",
-  );
+  const [sportsView, setSportsView] = useState<"competitions" | "live" | "upcoming" | "menu">("competitions");
   const [activeSportTool, setActiveSportTool] = useState<SportToolId>("football-predictions");
   const [sportsSearchActive, setSportsSearchActive] = useState(false);
   const [sportsSearchQuery, setSportsSearchQuery] = useState("");
@@ -932,17 +929,6 @@ export default function SportsScreen() {
     if (hasManualSportCategoryRef.current) return;
     setSportCategory(sportsEnabled ? preferredSportCategory : "all");
   }, [preferredSportCategory, sportsEnabled]);
-
-  useEffect(() => {
-    if (!sportsEnabled) return;
-    if (moviesEnabled && sportsView === "competitions") {
-      setSportsView("home");
-      return;
-    }
-    if (!moviesEnabled && sportsView === "home") {
-      setSportsView("competitions");
-    }
-  }, [moviesEnabled, sportsEnabled, sportsView]);
 
   const liveQuery = useQuery({
     queryKey: ["sports", "live", selectedDate],
@@ -1236,22 +1222,6 @@ export default function SportsScreen() {
       .filter((match) => matchInvolvesPreferredTeam(match, personalizationSnapshot))
       .slice(0, 8);
   }, [personalizationSnapshot, sortedLive, sortedUpcoming, sportsEnabled]);
-
-  // Bridge sports activity to VOD recommendations
-  const sportsMood = useMemo(() => {
-    const sportsHistoryCount = [...sortedLive, ...sortedUpcoming, ...sortedFinished].length;
-    const hasIntenseSports = [...sortedLive, ...sortedUpcoming]
-      .some((m: any) => {
-        const title = (m.league || m.competition || "").toLowerCase();
-        const desc = (m.description || "").toLowerCase();
-        return title.includes("derby") || title.includes("final") || title.includes("champions") || 
-               desc.includes("intense") || desc.includes("rival");
-      });
-    if (hasIntenseSports) return "thriller" as const;
-    if (followedTeams.length >= 2 && sportsHistoryCount >= 5) return "binge" as const;
-    if (sportsHistoryCount > 0) return "emotional" as const;
-    return "fun" as const;
-  }, [sortedLive, sortedUpcoming, sortedFinished, followedTeams.length]);
 
   const followedMatchIdSet = useMemo(() => {
     return new Set(
@@ -1565,7 +1535,6 @@ export default function SportsScreen() {
 
 
   const bottomPad = Platform.OS === "web" ? 44 : insets.bottom + 100;
-  const showHomeHub = sportsView === "home";
   const showLive = sportsView === "live" && statusFilter !== "upcoming";
   const showUpcoming = sportsView === "upcoming" && statusFilter !== "live";
   const showMenuSection = sportsView === "menu";
@@ -1573,7 +1542,6 @@ export default function SportsScreen() {
 
   // ── Sports sub-nav tabs ────────────────────────────────────────────────────
   const SPORTS_TABS = [
-    ...(moviesEnabled ? [{ id: "home" as const, label: "Home" }] : []),
     { id: "competitions" as const, label: t("sportsHome.explore") },
     { id: "live" as const,         label: t("sportsHome.live") },
     { id: "upcoming" as const,     label: t("sportsHome.matchday") },
@@ -1592,12 +1560,13 @@ export default function SportsScreen() {
   const [catBarMeasuredHeight, setCatBarMeasuredHeight] = useState(showCompetitionsSection ? 57 : 0);
   const headerAreaHeight = headerContainerHeight + (showCompetitionsSection ? catBarMeasuredHeight : 0);
 
-  // Combined home — rendered when sports is disabled but movies/series are available
   if (!sportsEnabled) {
     return (
       <View style={styles.container}>
         <NexoraHeader
-          title="HOME"
+          variant="module"
+          title="SPORT"
+          titleColor={P.accent}
           compact
           showSearch
           showNotification
@@ -1608,26 +1577,15 @@ export default function SportsScreen() {
           onFavorites={() => router.push("/favorites")}
           onProfile={() => router.push("/profile")}
         />
-        {moviesEnabled ? (
-          <ScrollView
-            showsVerticalScrollIndicator={false}
-            contentContainerStyle={{ paddingTop: 12, paddingBottom: insets.bottom + 100 }}
-          >
-            <MediaHomeSections title="Entertainment for you" sportsMood={sportsMood} />
-          </ScrollView>
-        ) : (
-          <View style={{ flex: 1, paddingTop: 16 }}>
-            <View style={styles.disabledContainer}>
-              <Ionicons name="apps-outline" size={56} color={P.muted} />
-              <Text style={styles.disabledTitle}>Nothing Enabled</Text>
-              <Text style={styles.disabledMessage}>Enable sports or movies in settings to get started.</Text>
-              <TouchableOpacity style={styles.enableButton} onPress={() => router.push("/settings")} activeOpacity={0.9}>
-                <Ionicons name="settings" size={18} color={P.bg} />
-                <Text style={styles.enableButtonText}>Open Settings</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        )}
+        <View style={styles.disabledContainer}>
+          <Ionicons name="football-outline" size={56} color={P.accent} />
+          <Text style={styles.disabledTitle}>Sport is hidden</Text>
+          <Text style={styles.disabledMessage}>Enable the Sport module in Settings to access live matches, competitions, and matchday coverage.</Text>
+          <TouchableOpacity style={styles.enableButton} onPress={() => router.push("/settings")} activeOpacity={0.9}>
+            <Ionicons name="settings" size={18} color={P.bg} />
+            <Text style={styles.enableButtonText}>Open Settings</Text>
+          </TouchableOpacity>
+        </View>
       </View>
     );
   }
@@ -1641,7 +1599,7 @@ export default function SportsScreen() {
       >
         <NexoraHeader
           variant="module"
-          title={moviesEnabled ? "HOME" : "SPORT"}
+          title="SPORT"
           titleColor={P.accent}
           compact={compactHeader}
           showSearch
@@ -1812,8 +1770,6 @@ export default function SportsScreen() {
         ══════════════════════════════════════════ */}
         {showCompetitionsSection && (
           <>
-            {moviesEnabled && <MediaHomeSections compact sportsMood={sportsMood} />}
-
             {personalizedMatches.length > 0 && (
               <>
                 <SectionTitle title="For you" accent />
@@ -1849,7 +1805,7 @@ export default function SportsScreen() {
                 />
                 {liveFirstLoad ? (
                   <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.carouselContent}>
-                    {[1, 2].map(i => <View key={i} style={styles.liveSkeleton} />)}
+                    {[1, 2].map((i) => <View key={i} style={styles.liveSkeleton} />)}
                   </ScrollView>
                 ) : (
                   <ScrollView
@@ -1876,7 +1832,7 @@ export default function SportsScreen() {
                 />
                 {todayFirstLoad ? (
                   <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.carouselContent}>
-                    {[1, 2, 3].map(i => <View key={i} style={styles.todaySkeleton} />)}
+                    {[1, 2, 3].map((i) => <View key={i} style={styles.todaySkeleton} />)}
                   </ScrollView>
                 ) : (
                   <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.carouselContent}>
@@ -1967,49 +1923,6 @@ export default function SportsScreen() {
               </View>
             )}
 
-          </>
-        )}
-
-        {showHomeHub && (
-          <>
-            {moviesEnabled && <MediaHomeSections title="Featured for you" sportsMood={sportsMood} />}
-
-            <SectionTitle
-              title={`🔴 ${t("sportsHome.liveNow")}`}
-              accent
-              count={sortedLive.length}
-              action={t("sportsHome.matchday")}
-              onAction={() => setSportsView("upcoming")}
-            />
-            {sortedLive.length > 0 ? (
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.carouselContent}>
-                {sortedLive.slice(0, 8).map((match: any) => (
-                  <LiveNowCard key={`home_live_${match.id}`} match={match} onPress={() => handleMatchPress(match)} />
-                ))}
-              </ScrollView>
-            ) : (
-              <View style={styles.fallbackPanel}>
-                <Text style={styles.fallbackText}>{t("sportsHome.noLive")}</Text>
-              </View>
-            )}
-
-            <SectionTitle
-              title={t("sportsHome.today")}
-              accent
-              action={t("sportsHome.allMatches")}
-              onAction={() => setSportsView("competitions")}
-            />
-            {todayCombined.length > 0 ? (
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.carouselContent}>
-                {todayCombined.slice(0, 10).map((match: any) => (
-                  <TodayMatchCard key={`home_today_${match.id}`} match={match} onPress={() => handleMatchPress(match)} />
-                ))}
-              </ScrollView>
-            ) : (
-              <View style={styles.fallbackPanel}>
-                <Text style={styles.fallbackText}>{t("sportsHome.noMatchesToday")}</Text>
-              </View>
-            )}
           </>
         )}
 
@@ -2286,49 +2199,6 @@ export default function SportsScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: P.bg },
-
-  /* ── Combined Home (sports disabled) ── */
-  combinedHeader: {
-    position: "absolute",
-    top: 0, left: 0, right: 0,
-    zIndex: 50,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 20,
-    paddingBottom: 10,
-    backgroundColor: P.bg,
-    borderBottomWidth: 1,
-    borderBottomColor: P.border,
-  },
-  combinedHeaderTitle: {
-    fontSize: 20,
-    fontFamily: "Inter_800ExtraBold",
-    letterSpacing: 2,
-    color: P.text,
-  },
-  combinedHeaderAccent: { color: P.accent },
-  combinedHeaderProfile: {
-    width: 36, height: 36, borderRadius: 18,
-    backgroundColor: "rgba(229,9,20,0.10)",
-    borderWidth: 1, borderColor: `${P.accent}66`,
-    alignItems: "center", justifyContent: "center",
-  },
-  combinedSection: {
-    flexDirection: "row", alignItems: "center", justifyContent: "space-between",
-    paddingHorizontal: 18, marginBottom: 12,
-  },
-  combinedSectionLeft: { flexDirection: "row", alignItems: "center", gap: 10 },
-  combinedAccentBar: { width: 3, height: 20, backgroundColor: P.accent, borderRadius: 2 },
-  combinedSectionTitle: { color: P.text, fontSize: 18, fontWeight: "800", letterSpacing: -0.2 },
-  combinedSeeAll: { color: P.accent, fontSize: 12, fontWeight: "700" },
-  combinedRail: { paddingHorizontal: 18, gap: 12 },
-  combinedCard: { width: 130, gap: 6 },
-  combinedCardPoster: { width: 130, height: 195, borderRadius: 12, backgroundColor: P.elevated },
-  combinedCardPosterPlaceholder: { backgroundColor: P.elevated },
-  combinedCardTitle: { color: P.text, fontSize: 12, fontWeight: "600", lineHeight: 16 },
-  combinedCardMeta: { color: P.muted, fontSize: 11, fontWeight: "500" },
-
   disabledContainer: {
     flex: 1,
     backgroundColor: P.bg,

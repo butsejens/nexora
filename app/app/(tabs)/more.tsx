@@ -2,18 +2,16 @@ import React, { useMemo } from "react";
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router } from "expo-router";
-import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
-import { useOnboardingStore } from "@/store/onboarding-store";
+import { Ionicons } from "@expo/vector-icons";
 import { useFollowState } from "@/context/UserStateContext";
+import { useOnboardingStore } from "@/store/onboarding-store";
 
-type RowItem = {
+type MenuItem = {
   id: string;
   title: string;
   subtitle: string;
-  icon: string;
-  lib?: "ion" | "mci";
+  icon: keyof typeof Ionicons.glyphMap;
   route: string;
-  disabled?: boolean;
   badge?: string;
 };
 
@@ -26,51 +24,37 @@ const P = {
   border: "rgba(255,255,255,0.09)",
 };
 
-function ItemRow({ item }: { item: RowItem }) {
-  const disabled = Boolean(item.disabled);
-
+function Row({ item }: { item: MenuItem }) {
   return (
-    <TouchableOpacity
-      style={[styles.row, disabled && styles.rowDisabled]}
-      onPress={disabled ? undefined : () => router.push(item.route as any)}
-      activeOpacity={disabled ? 1 : 0.82}
-    >
-      <View style={styles.iconWrap}>
-        {item.lib === "mci" ? (
-          <MaterialCommunityIcons name={item.icon as any} size={18} color={P.accent} />
-        ) : (
-          <Ionicons name={item.icon as any} size={18} color={P.accent} />
-        )}
+    <TouchableOpacity style={styles.row} onPress={() => router.push(item.route as any)} activeOpacity={0.84}>
+      <View style={styles.rowIconWrap}>
+        <Ionicons name={item.icon} size={18} color={P.accent} />
       </View>
-
       <View style={styles.rowTextWrap}>
         <Text style={styles.rowTitle}>{item.title}</Text>
         <Text style={styles.rowSubtitle}>{item.subtitle}</Text>
       </View>
-
       {item.badge ? (
         <View style={styles.badge}>
           <Text style={styles.badgeText}>{item.badge}</Text>
         </View>
       ) : null}
-
-      {!disabled && <Ionicons name="chevron-forward" size={15} color={P.muted} />}
+      <Ionicons name="chevron-forward" size={15} color={P.muted} />
     </TouchableOpacity>
   );
 }
 
-function Section({ title, items }: { title: string; items: RowItem[] }) {
-  const visible = items.filter((item) => !item.disabled);
-  if (!visible.length) return null;
+function Section({ title, items }: { title: string; items: MenuItem[] }) {
+  if (!items.length) return null;
 
   return (
     <View style={styles.section}>
       <Text style={styles.sectionTitle}>{title}</Text>
       <View style={styles.sectionCard}>
-        {visible.map((item, index) => (
+        {items.map((item, index) => (
           <React.Fragment key={item.id}>
-            <ItemRow item={item} />
-            {index < visible.length - 1 && <View style={styles.divider} />}
+            <Row item={item} />
+            {index < items.length - 1 ? <View style={styles.divider} /> : null}
           </React.Fragment>
         ))}
       </View>
@@ -82,106 +66,111 @@ export default function MoreScreen() {
   const insets = useSafeAreaInsets();
   const sportsEnabled = useOnboardingStore((s) => s.sportsEnabled);
   const moviesEnabled = useOnboardingStore((s) => s.moviesEnabled);
+  const iptvEnabled = useOnboardingStore((s) => s.iptvEnabled);
   const { followedTeams, followedMatches } = useFollowState();
-
   const followCount = followedTeams.length + followedMatches.length;
 
-  const mediaItems = useMemo<RowItem[]>(
+  const mediaItems = useMemo<MenuItem[]>(
     () => [
       {
-        id: "movies",
-        title: "Movies",
-        subtitle: "Trending films and collections",
+        id: "films-series",
+        title: "Films & Series",
+        subtitle: "Trending films, episodes and curated picks",
         icon: "film-outline",
-        route: "/(tabs)/movies",
-        disabled: !moviesEnabled,
+        route: "/films-series",
       },
       {
-        id: "series",
-        title: "TV Shows",
-        subtitle: "Series and episodic rails",
-        icon: "layers-outline",
-        route: "/(tabs)/series",
-        disabled: !moviesEnabled,
+        id: "iptv",
+        title: "IPTV",
+        subtitle: "Open channels and playlist streams",
+        icon: "tv-outline",
+        route: "/iptv",
       },
       {
         id: "anime",
         title: "Anime",
-        subtitle: "Curated anime recommendations",
+        subtitle: "Anime discovery from media categories",
         icon: "sparkles-outline",
         route: "/media-category?type=anime",
-        disabled: !moviesEnabled,
       },
       {
         id: "manga",
         title: "Manga",
-        subtitle: "Manga discovery and reads",
+        subtitle: "Browse manga category rails",
         icon: "book-outline",
         route: "/media-category?type=manga",
-        disabled: !moviesEnabled,
       },
       {
         id: "music",
         title: "Music",
-        subtitle: "Soundtracks and music picks",
+        subtitle: "Soundtracks and music selections",
         icon: "musical-notes-outline",
         route: "/media-category?type=music",
-        disabled: !moviesEnabled,
-      },
-      {
-        id: "sports",
-        title: "Live Sports",
-        subtitle: "Live matches and score center",
-        icon: "soccer",
-        lib: "mci",
-        route: "/(tabs)",
-        disabled: !sportsEnabled,
       },
     ],
-    [moviesEnabled, sportsEnabled],
+    [],
   );
 
-  const libraryItems: RowItem[] = [
-    {
-      id: "watchlist",
-      title: "Watchlist",
-      subtitle: "Saved movies, shows and matches",
-      icon: "bookmark-outline",
-      route: "/favorites",
-    },
-    {
-      id: "history",
-      title: "History",
-      subtitle: "Recently watched content",
-      icon: "time-outline",
-      route: "/profile",
-    },
-    {
-      id: "notifications",
-      title: "Notifications",
-      subtitle: "Follows, alerts and match updates",
-      icon: "notifications-outline",
-      route: "/notifications",
-      badge: followCount > 0 ? String(followCount) : undefined,
-    },
-  ];
+  const sportItems = useMemo<MenuItem[]>(
+    () => [
+      {
+        id: "sport",
+        title: "Sport",
+        subtitle: "Live center, fixtures and competition data",
+        icon: "football-outline",
+        route: "/sport",
+      },
+    ],
+    [],
+  );
 
-  const systemItems: RowItem[] = [
-    {
-      id: "settings",
-      title: "Settings",
-      subtitle: "Modules, onboarding and preferences",
-      icon: "settings-outline",
-      route: "/settings",
-    },
-    {
-      id: "legal",
-      title: "Legal/DMCA",
-      subtitle: "Privacy, rights and takedown policy",
-      icon: "shield-checkmark-outline",
-      route: "/legal",
-    },
-  ];
+  const userItems = useMemo<MenuItem[]>(
+    () => [
+      {
+        id: "watchlist",
+        title: "Watchlist",
+        subtitle: "Saved titles and channels",
+        icon: "bookmark-outline",
+        route: "/watchlist",
+      },
+      {
+        id: "history",
+        title: "History",
+        subtitle: "Recently watched overview",
+        icon: "time-outline",
+        route: "/history",
+      },
+      {
+        id: "notifications",
+        title: "Notifications",
+        subtitle: "Follow alerts and updates",
+        icon: "notifications-outline",
+        route: "/notifications",
+        badge: followCount > 0 ? String(followCount) : undefined,
+      },
+    ],
+    [followCount],
+  );
+
+  const systemItems = useMemo<MenuItem[]>(
+    () => [
+      {
+        id: "settings",
+        title: "Settings",
+        subtitle: "Modules, onboarding and preferences",
+        icon: "settings-outline",
+        route: "/settings",
+      },
+      {
+        id: "legal",
+        title: "Legal/DMCA",
+        subtitle: "Privacy, rights and takedown policy",
+        icon: "shield-checkmark-outline",
+        route: "/legal",
+      },
+    ],
+    [],
+  );
 
   return (
     <View style={styles.screen}>
@@ -190,23 +179,27 @@ export default function MoreScreen() {
 
       <ScrollView
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingTop: insets.top + 12, paddingBottom: insets.bottom + 98, paddingHorizontal: 16 }}
+        contentContainerStyle={{
+          paddingTop: insets.top + 12,
+          paddingBottom: insets.bottom + 98,
+          paddingHorizontal: 16,
+        }}
       >
         <View style={styles.header}>
-          <Text style={styles.brand}>NEXORA</Text>
-          <Text style={styles.subtitle}>More</Text>
-          <View style={styles.pillsRow}>
-            <View style={[styles.pill, sportsEnabled ? styles.pillActive : styles.pillMuted]}>
-              <Text style={styles.pillText}>Sports {sportsEnabled ? "On" : "Off"}</Text>
-            </View>
-            <View style={[styles.pill, moviesEnabled ? styles.pillActive : styles.pillMuted]}>
-              <Text style={styles.pillText}>Media {moviesEnabled ? "On" : "Off"}</Text>
-            </View>
-          </View>
+          <Text style={styles.title}>NEXORA MENU</Text>
+          <Text style={styles.subtitle}>Central access across modules and account</Text>
         </View>
 
-        <Section title="MEDIA" items={mediaItems} />
-        <Section title="LIBRARY" items={libraryItems} />
+        <Section
+          title="MEDIA"
+          items={
+            moviesEnabled
+              ? (iptvEnabled ? mediaItems : mediaItems.filter((item) => item.id !== "iptv"))
+              : (iptvEnabled ? mediaItems.filter((item) => item.id === "iptv") : [])
+          }
+        />
+        <Section title="SPORT" items={sportsEnabled ? sportItems : []} />
+        <Section title="USER" items={userItems} />
         <Section title="SYSTEM" items={systemItems} />
       </ScrollView>
     </View>
@@ -214,10 +207,7 @@ export default function MoreScreen() {
 }
 
 const styles = StyleSheet.create({
-  screen: {
-    flex: 1,
-    backgroundColor: P.bg,
-  },
+  screen: { flex: 1, backgroundColor: P.bg },
   glowTop: {
     position: "absolute",
     top: -80,
@@ -240,42 +230,16 @@ const styles = StyleSheet.create({
     marginBottom: 18,
     gap: 6,
   },
-  brand: {
+  title: {
     color: P.text,
-    fontSize: 24,
-    letterSpacing: 2.6,
+    fontSize: 25,
+    letterSpacing: 1.8,
     fontFamily: "Inter_800ExtraBold",
   },
   subtitle: {
     color: P.muted,
     fontSize: 12,
-    letterSpacing: 1.5,
-    textTransform: "uppercase",
-    fontFamily: "Inter_600SemiBold",
-  },
-  pillsRow: {
-    flexDirection: "row",
-    gap: 8,
-    marginTop: 6,
-  },
-  pill: {
-    borderRadius: 99,
-    borderWidth: 1,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-  },
-  pillActive: {
-    borderColor: "rgba(229,9,20,0.38)",
-    backgroundColor: "rgba(229,9,20,0.13)",
-  },
-  pillMuted: {
-    borderColor: P.border,
-    backgroundColor: "rgba(255,255,255,0.04)",
-  },
-  pillText: {
-    color: P.text,
-    fontSize: 11,
-    fontFamily: "Inter_600SemiBold",
+    fontFamily: "Inter_500Medium",
   },
   section: {
     marginBottom: 16,
@@ -302,10 +266,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 12,
   },
-  rowDisabled: {
-    opacity: 0.44,
-  },
-  iconWrap: {
+  rowIconWrap: {
     width: 34,
     height: 34,
     borderRadius: 10,
@@ -313,7 +274,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     borderWidth: 1,
     borderColor: "rgba(229,9,20,0.32)",
-    backgroundColor: "rgba(229,9,20,0.10)",
+    backgroundColor: "rgba(229,9,20,0.1)",
   },
   rowTextWrap: {
     flex: 1,

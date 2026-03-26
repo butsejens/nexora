@@ -295,11 +295,11 @@ export function PremiumOnboardingFlow({ mode = "first-launch", onFinished }: Pre
             </Text>
             <View style={styles.heroPreviewRow}>
               <View style={styles.heroPreviewCard}>
-                <Text style={styles.heroPreviewTitle}>Live Sports</Text>
+                <Text style={styles.heroPreviewTitle}>Sport</Text>
                 <Text style={styles.heroPreviewText}>Scores, lineups, AI recaps and your favorite clubs first.</Text>
               </View>
               <View style={styles.heroPreviewCard}>
-                <Text style={styles.heroPreviewTitle}>Movies & Series</Text>
+                <Text style={styles.heroPreviewTitle}>Films & Series</Text>
                 <Text style={styles.heroPreviewText}>Continue-watching rails and premium picks ready on launch.</Text>
               </View>
             </View>

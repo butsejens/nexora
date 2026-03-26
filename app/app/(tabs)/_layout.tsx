@@ -7,7 +7,6 @@ import { COLORS } from "@/constants/colors";
 import { isTV } from "@/lib/platform";
 import { useTranslation } from "@/lib/useTranslation";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useOnboardingStore } from "@/store/onboarding-store";
 
 function TabIcon({
   focused,
@@ -20,15 +19,8 @@ function TabIcon({
 }) {
   return (
     <View style={tabIconStyles.wrap}>
-      {focused && (
-        <View style={[tabIconStyles.activeDot, { backgroundColor: accentColor }]} />
-      )}
-      <View
-        style={[
-          tabIconStyles.iconBg,
-          focused && { backgroundColor: accentColor + "28" },
-        ]}
-      >
+      {focused && <View style={[tabIconStyles.activeDot, { backgroundColor: accentColor }]} />}
+      <View style={[tabIconStyles.iconBg, focused && { backgroundColor: accentColor + "28" }]}>
         {children}
       </View>
     </View>
@@ -64,13 +56,12 @@ export default function TabLayout() {
   const isIOS = Platform.OS === "ios";
   const { t } = useTranslation();
   const insets = useSafeAreaInsets();
-  const moviesEnabled = useOnboardingStore((state) => state.moviesEnabled);
   const tabMarginBottom = isIOS ? Math.max(14, insets.bottom - 10) : Math.max(12, insets.bottom || 12);
 
-  // TV: sidebar-style — left rail with labels, no blur, larger hit areas
   if (isTV) {
     return (
       <Tabs
+        initialRouteName="home"
         screenOptions={{
           headerShown: false,
           tabBarShowLabel: true,
@@ -94,14 +85,13 @@ export default function TabLayout() {
           },
         }}
       >
-        {/* TV: Live TV first, then Movies, Series, Downloads — no Sports */}
         <Tabs.Screen
-          name="livetv"
+          name="home"
           options={{
-            title: t("tabs.livetv"),
+            title: t("tabs.home") || "Home",
             tabBarIcon: ({ focused }) => (
               <Ionicons
-                name={focused ? "tv" : "tv-outline"}
+                name={focused ? "home" : "home-outline"}
                 size={28}
                 color={focused ? COLORS.accent : COLORS.textMuted}
               />
@@ -109,13 +99,12 @@ export default function TabLayout() {
           }}
         />
         <Tabs.Screen
-          name="movies"
+          name="search"
           options={{
-            href: moviesEnabled ? undefined : null,
-            title: t("tabs.films"),
+            title: t("tabs.search") || "Search",
             tabBarIcon: ({ focused }) => (
               <Ionicons
-                name={focused ? "film" : "film-outline"}
+                name={focused ? "search" : "search-outline"}
                 size={28}
                 color={focused ? COLORS.accent : COLORS.textMuted}
               />
@@ -123,35 +112,24 @@ export default function TabLayout() {
           }}
         />
         <Tabs.Screen
-          name="series"
+          name="more"
           options={{
-            href: moviesEnabled ? undefined : null,
-            title: t("tabs.series"),
+            title: t("tabs.more") || "More",
             tabBarIcon: ({ focused }) => (
               <Ionicons
-                name={focused ? "layers" : "layers-outline"}
+                name={focused ? "ellipsis-horizontal" : "ellipsis-horizontal-outline"}
                 size={28}
                 color={focused ? COLORS.accent : COLORS.textMuted}
               />
             ),
           }}
         />
-        <Tabs.Screen
-          name="downloads"
-          options={{
-            title: t("tabs.downloads"),
-            tabBarIcon: ({ focused }) => (
-              <Ionicons
-                name={focused ? "arrow-down-circle" : "arrow-down-circle-outline"}
-                size={28}
-                color={focused ? COLORS.accent : COLORS.textMuted}
-              />
-            ),
-          }}
-        />
-        {/* Hide sports + settings + favorites on TV */}
+
         <Tabs.Screen name="index" options={{ href: null }} />
-        <Tabs.Screen name="settings" options={{ href: null }} />
+        <Tabs.Screen name="livetv" options={{ href: null }} />
+        <Tabs.Screen name="movies" options={{ href: null }} />
+        <Tabs.Screen name="series" options={{ href: null }} />
+        <Tabs.Screen name="downloads" options={{ href: null }} />
         <Tabs.Screen name="favorites" options={{ href: null }} />
       </Tabs>
     );
@@ -159,6 +137,7 @@ export default function TabLayout() {
 
   return (
     <Tabs
+      initialRouteName="home"
       screenOptions={{
         headerShown: false,
         tabBarShowLabel: false,
@@ -175,7 +154,6 @@ export default function TabLayout() {
           paddingBottom: 0,
           overflow: "hidden",
           elevation: 0,
-          // @ts-ignore
           shadowColor: "#000",
           shadowOffset: { width: 0, height: 4 },
           shadowOpacity: 0.18,
@@ -194,15 +172,12 @@ export default function TabLayout() {
               <View style={styles.glassOverlay} />
             </View>
           ) : isWeb ? (
-            <View
-              style={[StyleSheet.absoluteFill, { backgroundColor: "rgba(10,10,18,0.82)" }]}
-            />
+            <View style={[StyleSheet.absoluteFill, { backgroundColor: "rgba(10,10,18,0.82)" }]} />
           ) : null,
       }}
     >
-      {/* Home Tab - show when sports or movies enabled */}
       <Tabs.Screen
-        name="index"
+        name="home"
         options={{
           href: undefined,
           title: t("tabs.home") || "Home",
@@ -218,10 +193,10 @@ export default function TabLayout() {
         }}
       />
 
-      {/* Search Tab */}
       <Tabs.Screen
         name="search"
         options={{
+          href: undefined,
           title: t("tabs.search") || "Search",
           tabBarIcon: ({ focused }) => (
             <TabIcon focused={focused} accentColor={COLORS.accent}>
@@ -235,10 +210,10 @@ export default function TabLayout() {
         }}
       />
 
-      {/* More Tab */}
       <Tabs.Screen
         name="more"
         options={{
+          href: undefined,
           title: t("tabs.more") || "More",
           tabBarIcon: ({ focused }) => (
             <TabIcon focused={focused} accentColor={COLORS.accent}>
@@ -252,43 +227,12 @@ export default function TabLayout() {
         }}
       />
 
-      {/* Legacy routes - hidden but available for navigation */}
-      <Tabs.Screen
-        name="livetv"
-        options={{
-          href: null,
-        }}
-      />
-      <Tabs.Screen
-        name="movies"
-        options={{
-          href: null,
-        }}
-      />
-      <Tabs.Screen
-        name="series"
-        options={{
-          href: null,
-        }}
-      />
-      <Tabs.Screen
-        name="downloads"
-        options={{
-          href: null,
-        }}
-      />
-      <Tabs.Screen
-        name="settings"
-        options={{
-          href: null,
-        }}
-      />
-      <Tabs.Screen
-        name="favorites"
-        options={{
-          href: null,
-        }}
-      />
+      <Tabs.Screen name="index" options={{ href: null }} />
+      <Tabs.Screen name="livetv" options={{ href: null }} />
+      <Tabs.Screen name="movies" options={{ href: null }} />
+      <Tabs.Screen name="series" options={{ href: null }} />
+      <Tabs.Screen name="downloads" options={{ href: null }} />
+      <Tabs.Screen name="favorites" options={{ href: null }} />
     </Tabs>
   );
 }

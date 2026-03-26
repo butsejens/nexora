@@ -18,6 +18,7 @@ import { isTV } from "@/lib/platform";
 import { fetchEPG, getCurrentProgramme } from "@/lib/epg-manager";
 import type { EPGData } from "@/lib/epg-manager";
 import { searchIPTV } from "@/lib/search-engine";
+import { useOnboardingStore } from "@/store/onboarding-store";
 
 type IPTVTab = "live" | "movies" | "series";
 
@@ -142,6 +143,7 @@ function EmptyState() {
 export default function LiveTVScreen() {
   const insets = useSafeAreaInsets();
   const { iptvChannels, isLoadingPlaylist, isChannelVisible, toggleHideChannel, hasPremium } = useNexora();
+  const iptvEnabled = useOnboardingStore((s) => s.iptvEnabled);
   const isPremium = hasPremium("livetv");
 
   const [activeTab, setActiveTab] = useState<IPTVTab>("live");
@@ -248,6 +250,32 @@ export default function LiveTVScreen() {
     ],
     [liveChannels.length, iptvMovies.length, iptvSeries.length]
   );
+
+  if (!iptvEnabled) {
+    return (
+      <View style={styles.container}>
+        <NexoraHeader title="IPTV" showSearch={false} showFavorites showProfile
+          onFavorites={() => router.push("/favorites")} onProfile={() => router.push("/profile")} />
+        <SurfaceCard style={{ margin: 24, marginTop: 56, alignItems: "center", gap: 14 }} elevated>
+          <Ionicons name="tv-outline" size={48} color={COLORS.textMuted} />
+          <Text style={{ fontFamily: "Inter_700Bold", fontSize: 22, color: COLORS.text, textAlign: "center" }}>
+            IPTV is disabled
+          </Text>
+          <Text style={{ fontFamily: "Inter_400Regular", fontSize: 14, color: COLORS.textMuted, textAlign: "center", lineHeight: 20 }}>
+            Enable IPTV in Settings to access live channels and stream rails.
+          </Text>
+          <TouchableOpacity
+            style={{ flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: COLORS.accent, borderRadius: 24, paddingHorizontal: 22, paddingVertical: 12, marginTop: 6 }}
+            onPress={() => router.push("/settings")}
+            activeOpacity={0.85}
+          >
+            <Ionicons name="settings-outline" size={17} color={COLORS.background} />
+            <Text style={{ fontFamily: "Inter_700Bold", fontSize: 14, color: COLORS.background }}>Open Settings</Text>
+          </TouchableOpacity>
+        </SurfaceCard>
+      </View>
+    );
+  }
 
   if (!isPremium) {
     return (
