@@ -331,7 +331,7 @@ function AppShellContent({
   hydrationRecovering: boolean;
   hasCompletedOnboarding: boolean;
 }) {
-  const { isAuthenticated } = useNexora();
+  const { isAuthenticated, authReady } = useNexora();
 
   if (!bootDone) {
     return <NexoraIntro subtitle={bootMessage} />;
@@ -346,6 +346,17 @@ function AppShellContent({
           ? "Saved startup data took too long. Recovering a safe state and continuing into the app."
           : "Loading saved modules, notifications and personalized rails."}
         progress={96}
+      />
+    );
+  }
+
+  if (!authReady) {
+    return (
+      <PulseLaunchScreen
+        badge="Verifying login"
+        title="Checking secure session"
+        subtitle="Validating your authentication state before opening Nexora."
+        progress={98}
       />
     );
   }

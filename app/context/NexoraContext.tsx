@@ -6,6 +6,24 @@ import { parseM3UContentAsync } from "@/lib/parseM3U";
 import { fetchM3UText } from "@/lib/fetchM3U";
 import { clearWatchHistory, trackWatchProgress } from "@/lib/services/user-state-service";
 import { ensureNamespaced, getSource } from "@/lib/id-namespace";
+import {
+  authenticateWithEmail,
+  isFirebaseAuthConfigured,
+  signOutFirebaseUser,
+  watchAuthState,
+} from "@/lib/firebase-auth";
+import {
+  configurePurchases,
+  fetchCustomerInfo,
+  getCachedCustomerInfo,
+  hasPremiumEntitlement,
+  identifyPurchasesUser,
+  isPurchaseCancelled,
+  isPurchasesConfigured as purchasesSdkConfigured,
+  logoutPurchasesUser,
+  purchasePremiumPlan,
+  restorePremiumPurchases,
+} from "@/lib/purchases";
 
 import { setLanguage as setI18nLanguage, type Language } from "@/lib/i18n";
 
@@ -126,11 +144,13 @@ interface NexoraContextValue {
   deactivatePremium: () => Promise<void>;
   activatePremiumCategories: (cats: PremiumCategory[]) => Promise<void>;
   isAuthenticated: boolean;
+  authReady: boolean;
   authProvider: AuthProvider | null;
   authEmail: string | null;
-  signInWithProvider: (provider: Exclude<AuthProvider, "email">) => Promise<void>;
-  signInWithEmail: (email: string) => Promise<void>;
+  signInWithEmail: (email: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
+  purchasePremiumSubscription: (plan: "weekly" | "monthly" | "yearly") => Promise<{ ok: boolean; cancelled?: boolean; reason?: string }>;
+  restorePremiumAccess: () => Promise<{ ok: boolean; restored: boolean; reason?: string }>;
   dailyPredictionUnlocksRemaining: number;
   isPredictionUnlocked: (matchId: string) => boolean;
   unlockPredictionWithRewardedAd: (matchId: string) => Promise<{ ok: boolean; reason?: string }>;
@@ -190,6 +210,7 @@ export function NexoraProvider({ children }: { children: ReactNode }) {
   const [downloads, setDownloads] = useState<DownloadedItem[]>([]);
   const [avatarUri, setAvatarUriState] = useState<string | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [authReady, setAuthReady] = useState(false);
   const [authProvider, setAuthProvider] = useState<AuthProvider | null>(null);
   const [authEmail, setAuthEmail] = useState<string | null>(null);
   const [dailyPredictionUnlockState, setDailyPredictionUnlockState] = useState<DailyPredictionUnlockState>(() => normalizeDailyPredictionState());
@@ -249,13 +270,12 @@ export function NexoraProvider({ children }: { children: ReactNode }) {
           "nexora_favorites", "nexora_history", "nexora_playlists",
           "nexora_quality", "nexora_subtitles", "nexora_pin", "nexora_profile",
           "nexora_iptv_channels", "nexora_hidden_channels", "nexora_hidden_groups",
-          "nexora_premium", "nexora_premium_cats",
           "nexora_audio_lang", "nexora_autoplay", "nexora_dl_wifi", "nexora_notif",
           "nexora_downloads", "nexora_ui_lang",
-          "nexora_auth_session", "nexora_prediction_unlock_daily", "nexora_prediction_unlock_matches",
+          "nexora_prediction_unlock_daily", "nexora_prediction_unlock_matches",
         ];
-        const [favs, hist, pls, qual, subs, pin, prof, iptv, hidCh, hidGr, prem, cats,
-               audioLang, autoplay, dlWifi, notif, dlItems, uiLang, authSession, dailyUnlock, unlockedPredictions] =
+        const [favs, hist, pls, qual, subs, pin, prof, iptv, hidCh, hidGr,
+               audioLang, autoplay, dlWifi, notif, dlItems, uiLang, dailyUnlock, unlockedPredictions] =
           await AsyncStorage.multiGet(keys).then(r => r.map(([, v]) => v));
 
         if (favs) setFavorites(JSON.parse(favs));
@@ -292,21 +312,7 @@ export function NexoraProvider({ children }: { children: ReactNode }) {
         if (autoplay != null) setAutoplayEnabledState(autoplay === "true");
         if (dlWifi != null) setDownloadOverWifiState(dlWifi === "true");
         if (notif != null) setNotificationsEnabledState(notif === "true");
-        if (cats) {
-          setPremiumCategoriesState(JSON.parse(cats));
-        } else if (prem === "true") {
-          setPremiumCategoriesState(ALL_CATS);
-        }
         if (dlItems) setDownloads(JSON.parse(dlItems));
-        if (authSession) {
-          const parsed = JSON.parse(authSession);
-          const provider = parsed?.provider;
-          if (provider === "google" || provider === "apple" || provider === "email") {
-            setIsAuthenticated(true);
-            setAuthProvider(provider);
-            setAuthEmail(parsed?.email ? String(parsed.email) : null);
-          }
-        }
         if (dailyUnlock) {
           const normalized = normalizeDailyPredictionState(JSON.parse(dailyUnlock));
           setDailyPredictionUnlockState(normalized);
@@ -351,6 +357,60 @@ export function NexoraProvider({ children }: { children: ReactNode }) {
     };
 
     load();
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const hydratePurchasesCache = async () => {
+      const cachedCustomerInfo = await getCachedCustomerInfo();
+      if (!cancelled && hasPremiumEntitlement(cachedCustomerInfo)) {
+        setPremiumCategoriesState(ALL_CATS);
+      }
+    };
+
+    void hydratePurchasesCache();
+
+    if (!isFirebaseAuthConfigured()) {
+      setAuthReady(true);
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    const unsubscribe = watchAuthState(async (user) => {
+      if (cancelled) return;
+
+      const providerId = String(user?.providerData?.[0]?.providerId || "").toLowerCase();
+      const provider: AuthProvider | null = providerId.includes("google")
+        ? "google"
+        : providerId.includes("apple")
+          ? "apple"
+          : user?.email
+            ? "email"
+            : null;
+
+      setIsAuthenticated(Boolean(user));
+      setAuthProvider(provider);
+      setAuthEmail(user?.email || null);
+
+      if (user?.uid) {
+        await identifyPurchasesUser(user.uid);
+      } else if (purchasesSdkConfigured()) {
+        await configurePurchases(null);
+      }
+
+      const customerInfo = await fetchCustomerInfo();
+      if (!cancelled) {
+        setPremiumCategoriesState(hasPremiumEntitlement(customerInfo) ? ALL_CATS : []);
+        setAuthReady(true);
+      }
+    });
+
+    return () => {
+      cancelled = true;
+      unsubscribe();
+    };
   }, []);
 
   const toggleFavorite = async (id: string, type?: "movie" | "series" | "channel" | "sport") => {
@@ -598,31 +658,46 @@ export function NexoraProvider({ children }: { children: ReactNode }) {
     await AsyncStorage.removeItem("nexora_premium");
   };
 
-  const signInWithProvider = async (provider: Exclude<AuthProvider, "email">) => {
-    const session = { provider, email: null, signedInAt: new Date().toISOString() };
-    setIsAuthenticated(true);
-    setAuthProvider(provider);
-    setAuthEmail(null);
-    await AsyncStorage.setItem("nexora_auth_session", JSON.stringify(session));
-  };
-
-  const signInWithEmail = async (email: string) => {
-    const normalizedEmail = String(email || "").trim().toLowerCase();
-    if (!normalizedEmail || !normalizedEmail.includes("@")) {
-      throw new Error("Please enter a valid email address.");
-    }
-    const session = { provider: "email" as const, email: normalizedEmail, signedInAt: new Date().toISOString() };
-    setIsAuthenticated(true);
-    setAuthProvider("email");
-    setAuthEmail(normalizedEmail);
-    await AsyncStorage.setItem("nexora_auth_session", JSON.stringify(session));
+  const signInWithEmail = async (email: string, password: string) => {
+    await authenticateWithEmail(email, password);
   };
 
   const signOut = async () => {
+    await signOutFirebaseUser();
+    await logoutPurchasesUser();
     setIsAuthenticated(false);
     setAuthProvider(null);
     setAuthEmail(null);
-    await AsyncStorage.removeItem("nexora_auth_session");
+    setPremiumCategoriesState([]);
+  };
+
+  const purchasePremiumSubscription = async (plan: "weekly" | "monthly" | "yearly") => {
+    try {
+      const customerInfo = await purchasePremiumPlan(plan);
+      const hasPremiumAccess = hasPremiumEntitlement(customerInfo);
+      setPremiumCategoriesState(hasPremiumAccess ? ALL_CATS : []);
+      return hasPremiumAccess
+        ? { ok: true }
+        : { ok: false, reason: "Purchase completed but premium entitlement is not active yet." };
+    } catch (error) {
+      if (isPurchaseCancelled(error)) {
+        return { ok: false, cancelled: true };
+      }
+      return { ok: false, reason: String((error as any)?.message || "Purchase failed.") };
+    }
+  };
+
+  const restorePremiumAccess = async () => {
+    try {
+      const customerInfo = await restorePremiumPurchases();
+      const restored = hasPremiumEntitlement(customerInfo);
+      setPremiumCategoriesState(restored ? ALL_CATS : []);
+      return restored
+        ? { ok: true, restored: true }
+        : { ok: false, restored: false, reason: "No active premium purchase found to restore." };
+    } catch (error) {
+      return { ok: false, restored: false, reason: String((error as any)?.message || "Restore failed.") };
+    }
   };
 
   const normalizedUnlockState = normalizeDailyPredictionState(dailyPredictionUnlockState);
@@ -691,7 +766,7 @@ export function NexoraProvider({ children }: { children: ReactNode }) {
       "nexora_subtitles", "nexora_premium", "nexora_premium_cats",
       "nexora_audio_lang", "nexora_autoplay", "nexora_dl_wifi", "nexora_notif",
       "nexora_schema_v2", "nexora_schema_v3", "nexora_downloads", "nexora_ui_lang",
-      "nexora_auth_session", "nexora_prediction_unlock_daily", "nexora_prediction_unlock_matches",
+      "nexora_prediction_unlock_daily", "nexora_prediction_unlock_matches",
     ];
     try {
       await AsyncStorage.multiRemove(keys);
@@ -718,10 +793,13 @@ export function NexoraProvider({ children }: { children: ReactNode }) {
     setDownloads([]);
     setAvatarUriState(null);
     setIsAuthenticated(false);
+    setAuthReady(false);
     setAuthProvider(null);
     setAuthEmail(null);
     setDailyPredictionUnlockState(normalizeDailyPredictionState());
     setUnlockedPredictionIds([]);
+    await logoutPurchasesUser().catch(() => undefined);
+    await signOutFirebaseUser().catch(() => undefined);
     if (Platform.OS === "web" && typeof window !== "undefined") {
       setTimeout(() => window.location.reload(), 300);
     }
@@ -745,14 +823,15 @@ export function NexoraProvider({ children }: { children: ReactNode }) {
     activeProfile, setActiveProfile, profiles, avatarUri, setAvatarUri,
     isPremium, premiumCategories, hasPremium,
     activatePremium, deactivatePremium, activatePremiumCategories,
-     isAuthenticated, authProvider, authEmail, signInWithProvider, signInWithEmail, signOut,
+     isAuthenticated, authReady, authProvider, authEmail, signInWithEmail, signOut,
+     purchasePremiumSubscription, restorePremiumAccess,
      dailyPredictionUnlocksRemaining, isPredictionUnlocked, unlockPredictionWithRewardedAd,
     downloads, addDownload, removeDownload, isDownloaded, getDownload,
     resetAll,
   }), [favorites, watchHistory, playlists, iptvChannels, isLoadingPlaylist, hiddenChannels, hiddenGroups,
        selectedQuality, subtitlesEnabled, audioLanguage, uiLanguage, autoplayEnabled, downloadOverWifi,
        notificationsEnabled, parentalPin, activeProfile, premiumCategories, downloads, avatarUri,
-       isAuthenticated, authProvider, authEmail, dailyPredictionUnlockState, unlockedPredictionIds]);
+       isAuthenticated, authReady, authProvider, authEmail, dailyPredictionUnlockState, unlockedPredictionIds]);
 
   return <NexoraContext.Provider value={value}>{children}</NexoraContext.Provider>;
 }

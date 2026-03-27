@@ -19,7 +19,9 @@ import { RealContentCard } from "@/components/RealContentCard";
 import { MatchRowCard } from "@/components/premium";
 import { COLORS } from "@/constants/colors";
 import { useNexora } from "@/context/NexoraContext";
+import { useWatchProgress } from "@/context/UserStateContext";
 import { apiRequest } from "@/lib/query-client";
+import { cacheGetStale, cachePeekStale, cacheSet, CacheTTL } from "@/lib/services/cache-service";
 import { createContinueWatching } from "@/lib/vod-curation";
 import { enrichVodModuleItem } from "@/lib/vod-module";
 import { useOnboardingStore } from "@/store/onboarding-store";
@@ -32,6 +34,10 @@ type SportsPayload = {
 type HighlightsPayload = {
   highlights?: any[];
 };
+
+const homeSportsCacheKey = (date: string) => `home:sports:${date}`;
+const homeMediaCacheKey = "home:media:trending";
+const homeHighlightsCacheKey = "home:sports:highlights";
 
 async function fetchJson(path: string) {
   const response = await apiRequest("GET", path);
@@ -132,71 +138,127 @@ export default function CuratedHomeScreen() {
   const sportsEnabled = useOnboardingStore((s) => s.sportsEnabled);
   const moviesEnabled = useOnboardingStore((s) => s.moviesEnabled);
   const { watchHistory, isFavorite, toggleFavorite } = useNexora();
+  const { continueWatching: syncedContinueWatching } = useWatchProgress();
 
   const sportsQuery = useQuery({
     queryKey: ["home", "sports-curated", todayUTC()],
+    placeholderData: () => cachePeekStale<SportsPayload>(homeSportsCacheKey(todayUTC())) || undefined,
     queryFn: async (): Promise<SportsPayload> => {
-      const payload = await fetchJson(`/api/sports/live?date=${encodeURIComponent(todayUTC())}`);
-      return {
-        live: Array.isArray(payload?.live) ? payload.live : [],
-        upcoming: Array.isArray(payload?.upcoming) ? payload.upcoming : [],
-      };
+      const key = homeSportsCacheKey(todayUTC());
+      const stale = await cacheGetStale<SportsPayload>(key);
+      try {
+        const payload = await fetchJson(`/api/sports/live?date=${encodeURIComponent(todayUTC())}`);
+        const normalized = {
+          live: Array.isArray(payload?.live) ? payload.live : [],
+          upcoming: Array.isArray(payload?.upcoming) ? payload.upcoming : [],
+        };
+        cacheSet(key, normalized, CacheTTL.LIVE_MATCH);
+        return normalized;
+      } catch {
+        return stale || { live: [], upcoming: [] };
+      }
     },
     enabled: sportsEnabled,
-    staleTime: 60 * 1000,
-    refetchInterval: 60 * 1000,
+    staleTime: 10 * 1000,
+    refetchInterval: 12 * 1000,
     refetchIntervalInBackground: true,
-    retry: 1,
+    refetchOnReconnect: true,
+    retry: 2,
   });
 
   const mediaQuery = useQuery({
     queryKey: ["home", "media-curated"],
+    placeholderData: () => cachePeekStale<any>(homeMediaCacheKey) || undefined,
     queryFn: async () => {
-      const [movieData, seriesData] = await Promise.all([
-        fetchJson("/api/movies/trending"),
-        fetchJson("/api/series/trending"),
-      ]);
-      return {
-        movies: [
+      const stale = await cacheGetStale<any>(homeMediaCacheKey);
+      try {
+        const [movieData, seriesData] = await Promise.all([
+          fetchJson("/api/movies/trending"),
+          fetchJson("/api/series/trending"),
+        ]);
+        const movieItems = [
           ...(Array.isArray(movieData?.trending) ? movieData.trending : []),
           ...(Array.isArray(movieData?.popular) ? movieData.popular : []),
-        ].slice(0, 12).map((item: any) => toMediaItem(item, "movie")),
-        series: [
+        ];
+        const seriesItems = [
           ...(Array.isArray(seriesData?.trending) ? seriesData.trending : []),
           ...(Array.isArray(seriesData?.popular) ? seriesData.popular : []),
-        ].slice(0, 12).map((item: any) => toMediaItem(item, "series")),
-      };
+        ];
+
+        const data = {
+          movies: [
+            ...movieItems,
+          ].slice(0, 18).map((item: any) => toMediaItem(item, "movie")),
+          series: [
+            ...seriesItems,
+          ].slice(0, 18).map((item: any) => toMediaItem(item, "series")),
+          newReleases: [
+            ...movieItems.map((item: any) => ({ ...item, __kind: "movie" })),
+            ...seriesItems.map((item: any) => ({ ...item, __kind: "series" })),
+          ]
+            .filter((item: any) => {
+              const year = Number(item?.year || 0);
+              return year >= new Date().getFullYear() - 1;
+            })
+            .slice(0, 12)
+            .map((item: any) => toMediaItem(item, item?.__kind === "series" ? "series" : "movie")),
+        };
+
+        cacheSet(homeMediaCacheKey, data, CacheTTL.HOME_RAILS);
+        return data;
+      } catch {
+        return stale || { movies: [], series: [], newReleases: [] };
+      }
+
     },
+    retry: 2,
     enabled: moviesEnabled,
-    staleTime: 8 * 60 * 1000,
-    retry: 1,
+    staleTime: 45 * 1000,
+    refetchInterval: 90 * 1000,
+    refetchIntervalInBackground: true,
+    refetchOnReconnect: true,
   });
+
+  const mediaData = mediaQuery.data || cachePeekStale<any>(homeMediaCacheKey) || { movies: [], series: [], newReleases: [] };
 
   const highlightsQuery = useQuery({
     queryKey: ["home", "sports-highlights"],
+    placeholderData: () => cachePeekStale<any[]>(homeHighlightsCacheKey) || undefined,
     queryFn: async () => {
-      const payload = (await fetchJson("/api/sports/highlights")) as HighlightsPayload;
-      return Array.isArray(payload?.highlights) ? payload.highlights : [];
+      const stale = await cacheGetStale<any[]>(homeHighlightsCacheKey);
+      try {
+        const payload = (await fetchJson("/api/sports/highlights")) as HighlightsPayload;
+        const rows = Array.isArray(payload?.highlights) ? payload.highlights : [];
+        cacheSet(homeHighlightsCacheKey, rows, CacheTTL.MATCH_DETAIL);
+        return rows;
+      } catch {
+        return stale || [];
+      }
     },
     enabled: sportsEnabled,
-    staleTime: 10 * 60 * 1000,
-    refetchInterval: 10 * 60 * 1000,
-    retry: 1,
+    staleTime: 30 * 1000,
+    refetchInterval: 60 * 1000,
+    refetchIntervalInBackground: true,
+    retry: 2,
   });
 
   const continueWatching = useMemo(() => {
-    const movieRows = createContinueWatching(watchHistory as any, "movie", 6);
-    const seriesRows = createContinueWatching(watchHistory as any, "series", 6);
+    const baseHistory = Array.isArray(syncedContinueWatching) && syncedContinueWatching.length > 0
+      ? syncedContinueWatching
+      : (watchHistory as any);
+    const movieRows = createContinueWatching(baseHistory as any, "movie", 8);
+    const seriesRows = createContinueWatching(baseHistory as any, "series", 8);
     return [...movieRows, ...seriesRows]
       .slice(0, 8)
       .map((item: any) => enrichVodModuleItem({ ...item, type: item.season ? "series" : item.type || "movie" }));
-  }, [watchHistory]);
+  }, [syncedContinueWatching, watchHistory]);
 
   const liveMatches = sportsEnabled ? (sportsQuery.data?.live || []) : [];
   const upcomingMatches = sportsEnabled ? (sportsQuery.data?.upcoming || []) : [];
   const todayMatches = [...liveMatches, ...upcomingMatches].slice(0, 3);
-  const movieRail = moviesEnabled ? (mediaQuery.data?.movies || []).slice(0, 8) : [];
-  const seriesRail = moviesEnabled ? (mediaQuery.data?.series || []).slice(0, 8) : [];
+  const movieRail = moviesEnabled ? (mediaData?.movies || []).slice(0, 8) : [];
+  const seriesRail = moviesEnabled ? (mediaData?.series || []).slice(0, 8) : [];
+  const releasesRail = moviesEnabled ? (mediaData?.newReleases || []).slice(0, 8) : [];
   const replayAndHighlight = useMemo(
     () => splitReplayAndHighlightItems(sportsEnabled ? (highlightsQuery.data || []) : []),
     [highlightsQuery.data, sportsEnabled],
@@ -257,6 +319,7 @@ export default function CuratedHomeScreen() {
             onRefresh={() => {
               sportsQuery.refetch();
               mediaQuery.refetch();
+              highlightsQuery.refetch();
             }}
             tintColor={COLORS.accent}
           />
@@ -445,6 +508,38 @@ export default function CuratedHomeScreen() {
           </View>
         )}
 
+        {moviesEnabled && releasesRail.length > 0 && (
+          <View style={styles.section}>
+            <View style={styles.sectionHead}>
+              <Text style={styles.sectionLabel}>NEW RELEASES</Text>
+              <TouchableOpacity onPress={() => router.push("/films-series")}>
+                <Text style={styles.sectionAction}>Live updated</Text>
+              </TouchableOpacity>
+            </View>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.rail}>
+              {releasesRail.map((item: any) => (
+                <RealContentCard
+                  key={`release_${item.type}_${item.id}`}
+                  width={122}
+                  item={{
+                    id: String(item.id),
+                    title: item.title,
+                    year: Number(item.year || 0),
+                    imdb: Number(item.imdb || item.rating || 0),
+                    quality: item.quality || "HD",
+                    poster: item.poster || null,
+                    backdrop: item.backdrop || null,
+                    isTrending: true,
+                  }}
+                  isFavorite={isFavorite(String(item.id))}
+                  onFavorite={() => toggleFavorite(String(item.id))}
+                  onPress={() => router.push({ pathname: "/detail", params: { id: String(item.id), type: item.type, title: item.title } })}
+                />
+              ))}
+            </ScrollView>
+          </View>
+        )}
+
         {continueWatching.length > 0 && (
           <View style={styles.section}>
             <View style={styles.sectionHead}>
@@ -480,7 +575,7 @@ export default function CuratedHomeScreen() {
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: "#09090D" },
+  screen: { flex: 1, backgroundColor: COLORS.background },
   heroWrap: { paddingHorizontal: 16, paddingTop: 12, marginBottom: 18 },
   heroCard: {
     minHeight: 214,
@@ -488,7 +583,7 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.08)",
-    backgroundColor: "#151520",
+    backgroundColor: COLORS.card,
     justifyContent: "flex-end",
   },
   heroContent: { padding: 18, gap: 6 },

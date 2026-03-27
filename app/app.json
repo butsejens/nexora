@@ -26,6 +26,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.nexora.sportsstream",
+      "usesAppleSignIn": true,
       "infoPlist": {
         "NSAppTransportSecurity": {
           "NSAllowsArbitraryLoads": true
@@ -49,8 +50,10 @@
       "expo-router",
       "expo-font",
       "expo-web-browser",
+      "expo-apple-authentication",
       "expo-document-picker",
-      "expo-notifications"
+      "expo-notifications",
+      "react-native-google-mobile-ads"
     ],
     "experiments": {
       "typedRoutes": true,
