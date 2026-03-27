@@ -855,6 +855,7 @@ export default function PlayerScreen() {
   // ── Premium gate — block playback if user lacks entitlement ─────────────
   const contentCategory = type === "movie" ? "movies" : type === "series" ? "series" : null;
   const premiumBlocked = contentCategory && !hasPremium(contentCategory as any);
+  const normalizedTrailerKey = String(trailerKey || "").trim();
   const normalizedSeason = Number(season || "1") || 1;
   const normalizedEpisode = Number(episode || "1") || 1;
   const playbackHistoryId = type === "series"
@@ -1191,12 +1192,15 @@ export default function PlayerScreen() {
 
   // ── What to render ────────────────────────────────────────────────────────
   const embedUrl: string | null = (() => {
+    if (normalizedTrailerKey) {
+      return `https://www.youtube-nocookie.com/embed/${normalizedTrailerKey}?autoplay=1&rel=0&modestbranding=1&playsinline=1`;
+    }
     if (paramEmbedUrl) return paramEmbedUrl;
     if (allProvidersFailed) return null;
-    if (trailerKey) return `https://www.youtube-nocookie.com/embed/${trailerKey}?autoplay=1&rel=0&modestbranding=1&playsinline=1`;
     if (tmdbId) return getEmbedUrl(provider, tmdbId, type || "movie", season || "1", episode || "1");
     return null;
   })();
+  const trailerMode = !!normalizedTrailerKey;
 
   const hlsHtml: string | null = (effectiveStreamUrl && !useFallbackEmbed) ? buildHlsHtml(effectiveStreamUrl) : null;
   const embedUrlWithAutoplay: string | null = (!hlsHtml && embedUrl) ? withEmbedAutoplayParams(embedUrl) : null;
@@ -1205,7 +1209,7 @@ export default function PlayerScreen() {
   // ── onShouldStartLoadWithRequest ─────────────────────────────────────────
   // Block: ad domains, AND any top-frame navigation away from the embed domain.
   // Allow: sub-frame requests, streaming files, same-domain navigations.
-  const makeNavGuard = useCallback((currentEmbedUrl: string) => {
+  const makeNavGuard = useCallback((currentEmbedUrl: string, isTrailerMode: boolean) => {
     return (req: any) => {
       const url: string = req.url || "";
       if (!url || url.startsWith("about:") || url.startsWith("blob:") || url.startsWith("data:")) return true;
@@ -1228,6 +1232,16 @@ export default function PlayerScreen() {
         const embedHost = new URL(currentEmbedUrl).hostname;
         const reqHost   = new URL(url).hostname;
         const isSameDomain = reqHost === embedHost || reqHost.endsWith("." + embedHost);
+        if (isTrailerMode) {
+          const isYouTubeRelated =
+            reqHost.includes("youtube") ||
+            reqHost.includes("youtube-nocookie") ||
+            reqHost.includes("googlevideo") ||
+            reqHost.includes("ytimg");
+          if (/\.(m3u8|mp4|ts|webm|mpd|mkv)(\?|$)/i.test(url)) return true;
+          if (isYouTubeRelated) return true;
+          return false;
+        }
         const ALLOWED_HOST_SNIPPETS = [
           "vidsrc", "vidlink", "videasy", "autoembed", "moviesapi", "nontongo",
           "smashystream", "frembed", "jwplayer", "cloudflare", "m3u8", "hls", "stream",
@@ -1248,7 +1262,7 @@ export default function PlayerScreen() {
   // ── onNavigationStateChange — backup popup blocker ─────────────────────────
   // Fires AFTER navigation starts; stops loading if the URL left the embed domain.
   // Catches anything that slips past onShouldStartLoadWithRequest.
-  const makeNavStateGuard = useCallback((currentEmbedUrl: string) => {
+  const makeNavStateGuard = useCallback((currentEmbedUrl: string, isTrailerMode: boolean) => {
     return (navState: any) => {
       if (disposedRef.current) return;
       const url: string = navState.url || "";
@@ -1266,6 +1280,18 @@ export default function PlayerScreen() {
         const embedHost = new URL(currentEmbedUrl).hostname;
         const reqHost   = new URL(url).hostname;
         const isSameDomain = reqHost === embedHost || reqHost.endsWith("." + embedHost);
+        if (isTrailerMode) {
+          const isYouTubeRelated =
+            reqHost.includes("youtube") ||
+            reqHost.includes("youtube-nocookie") ||
+            reqHost.includes("googlevideo") ||
+            reqHost.includes("ytimg");
+          if (!isYouTubeRelated && !/\.(m3u8|mp4|ts|webm|mpd|mkv)(\?|$)/i.test(url)) {
+            embedWebviewRef.current?.stopLoading();
+            embedWebviewRef.current?.goBack();
+          }
+          return;
+        }
         const isKnownVideoHost = [
           "vidsrc", "vidlink", "videasy", "autoembed", "moviesapi", "nontongo",
           "smashystream", "frembed", "jwplayer", "cloudflare", "m3u8", "hls", "stream",
@@ -1379,8 +1405,8 @@ export default function PlayerScreen() {
             setStreamError(msg || "Stream could not be loaded");
             setStreamErrorRef(prev => prev || buildErrorReference("NX-PLY"));
           }}
-          onShouldStartLoadWithRequest={makeNavGuard(embedUrl)}
-          onNavigationStateChange={makeNavStateGuard(embedUrl)}
+          onShouldStartLoadWithRequest={makeNavGuard(embedUrl, trailerMode)}
+          onNavigationStateChange={makeNavStateGuard(embedUrl, trailerMode)}
           scalesPageToFit={false}
           onRenderProcessGone={handleWebViewCrash}
           onContentProcessDidTerminate={handleWebViewCrash}

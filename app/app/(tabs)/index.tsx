@@ -140,25 +140,6 @@ const SPORT_CATEGORIES = [
 ];
 type SportCategoryId = typeof SPORT_CATEGORIES[number]["id"];
 
-const SPORT_TOOL_CARDS = [
-  {
-    id: "football-predictions",
-    titleKey: "sports.predictions",
-    subtitleKey: "sports.predictionsDesc",
-    icon: "analytics-outline" as const,
-    accent: COLORS.accent,
-  },
-  {
-    id: "daily-acca-picks",
-    titleKey: "sports.dailyAcca",
-    subtitleKey: "sports.dailyAccaDesc",
-    icon: "ticket-outline" as const,
-    accent: COLORS.green,
-  },
-];
-
-type SportToolId = typeof SPORT_TOOL_CARDS[number]["id"];
-
 function buildMenuAnalysis(match: any) {
   const structured = buildGroundedMatchAnalysis({
     homeTeam: String(match?.homeTeam || "Home"),
@@ -917,7 +898,6 @@ export default function SportsScreen() {
   const [sportCategory, setSportCategory] = useState<SportCategoryId>(preferredSportCategory);
   const [selectedDate, setSelectedDate] = useState<string>(todayUTC());
   const [sportsView, setSportsView] = useState<"competitions" | "live" | "upcoming" | "menu">("competitions");
-  const [activeSportTool, setActiveSportTool] = useState<SportToolId>("football-predictions");
   const [sportsSearchActive, setSportsSearchActive] = useState(false);
   const [sportsSearchQuery, setSportsSearchQuery] = useState("");
   const lastScrollYRef = useRef(0);
@@ -1267,9 +1247,8 @@ export default function SportsScreen() {
 
   const sportToolSourceMatches = useMemo(() => {
     if (sortedUpcoming.length > 0) return sortedUpcoming;
-    if (sortedLive.length > 0) return sortedLive;
     return sortedFinished;
-  }, [sortedFinished, sortedLive, sortedUpcoming]);
+  }, [sortedFinished, sortedUpcoming]);
 
   // Group live matches by competition for the Live tab
   const groupedLive = useMemo(() => {
@@ -1294,52 +1273,41 @@ export default function SportsScreen() {
   const backendPredictions = useMemo(() => Array.isArray(toolsQuery.data?.footballPredictions) ? toolsQuery.data.footballPredictions : [], [toolsQuery.data?.footballPredictions]);
   const backendAcca = useMemo(() => Array.isArray(toolsQuery.data?.dailyAccaPicks) ? toolsQuery.data.dailyAccaPicks : [], [toolsQuery.data?.dailyAccaPicks]);
 
-  const activeToolRows = useMemo(() => {
-    if (activeSportTool === "football-predictions") {
-      return backendPredictions.length > 0
-        ? backendPredictions.slice(0, 8).map((item: any) => ({
-            key: `pred_${item.matchId}`,
-            title: `${safeStr(item.homeTeam)} vs ${safeStr(item.awayTeam)}`,
-            meta: `${safeStr(item.homePct)}% · ${safeStr(item.drawPct)}% · ${safeStr(item.awayPct)}% · ${safeStr(item.confidence)}% conf.`,
-            badges: buildHomeAwayBadges(item.homePct, item.awayPct, item.drawPct),
-            item,
-          }))
-        : sportMenuPreview.slice(0, 8).map(({ analysis }) => ({
-            key: `pred_${analysis.matchId}`,
-            title: `${safeStr(analysis.homeTeam)} vs ${safeStr(analysis.awayTeam)}`,
-            meta: `${analysis.homePct}% · ${analysis.drawPct}% · ${analysis.awayPct}% · ${analysis.confidence}% conf.`,
-            badges: buildHomeAwayBadges(analysis.homePct, analysis.awayPct, analysis.drawPct),
-            item: analysis,
-          }));
-    }
-    if (activeSportTool === "daily-acca-picks") {
-      return backendAcca.length > 0
-        ? backendAcca.slice(0, 8).map((item: any) => ({
-            key: `acca_${item.matchId}`,
-            title: `${safeStr(item.pickLabel)} · ${safeStr(item.homeTeam)} - ${safeStr(item.awayTeam)}`,
-            meta: `${safeStr(item.market)} · Confidence ${safeStr(item.confidence)}%`,
-            badges: buildHomeAwayBadges(item.homePct, item.awayPct, item.drawPct),
-            item,
-          }))
-        : sportMenuPreview.slice(0, 8).map(({ analysis }) => {
-            const side = analysis.homePct >= analysis.awayPct ? "1" : "2";
-            const confidence = Math.max(analysis.homePct, analysis.awayPct);
-            return {
-              key: `acca_${analysis.matchId}`,
-              title: `${side} · ${safeStr(analysis.homeTeam)} - ${safeStr(analysis.awayTeam)}`,
-              meta: `Confidence ${confidence}%`,
-              badges: buildHomeAwayBadges(analysis.homePct, analysis.awayPct, analysis.drawPct),
-              item: analysis,
-            };
-          });
-    }
-    return [];
-  }, [activeSportTool, backendAcca, backendPredictions, sportMenuPreview]);
+  const predictionRows = useMemo(() => {
+    return backendPredictions.length > 0
+      ? backendPredictions.slice(0, 8).map((item: any) => ({
+          key: `pred_${item.matchId}`,
+          title: `${safeStr(item.homeTeam)} vs ${safeStr(item.awayTeam)}`,
+          badges: buildHomeAwayBadges(item.homePct, item.awayPct, item.drawPct),
+          item,
+        }))
+      : sportMenuPreview.slice(0, 8).map(({ analysis }) => ({
+          key: `pred_${analysis.matchId}`,
+          title: `${safeStr(analysis.homeTeam)} vs ${safeStr(analysis.awayTeam)}`,
+          badges: buildHomeAwayBadges(analysis.homePct, analysis.awayPct, analysis.drawPct),
+          item: analysis,
+        }));
+  }, [backendPredictions, sportMenuPreview]);
 
-  const activeSportToolCard = useMemo(
-    () => SPORT_TOOL_CARDS.find((card) => card.id === activeSportTool) || SPORT_TOOL_CARDS[0],
-    [activeSportTool]
-  );
+  const accaRows = useMemo(() => {
+    return backendAcca.length > 0
+      ? backendAcca.slice(0, 6).map((item: any) => ({
+          key: `acca_${item.matchId}`,
+          title: `${safeStr(item.pickLabel)} · ${safeStr(item.homeTeam)} - ${safeStr(item.awayTeam)}`,
+          meta: `${safeStr(item.market)} · Confidence ${safeStr(item.confidence)}%`,
+          item,
+        }))
+      : sportMenuPreview.slice(0, 6).map(({ analysis }) => {
+          const side = analysis.homePct >= analysis.awayPct ? "1" : "2";
+          const confidence = Math.max(analysis.homePct, analysis.awayPct);
+          return {
+            key: `acca_${analysis.matchId}`,
+            title: `${side} · ${safeStr(analysis.homeTeam)} - ${safeStr(analysis.awayTeam)}`,
+            meta: `Confidence ${confidence}%`,
+            item: analysis,
+          };
+        });
+  }, [backendAcca, sportMenuPreview]);
 
   const nextLevelInsights = useMemo(() => {
     const parseScore = (m: any) => ({
@@ -1545,7 +1513,7 @@ export default function SportsScreen() {
     { id: "competitions" as const, label: t("sportsHome.explore") },
     { id: "live" as const,         label: t("sportsHome.live") },
     { id: "upcoming" as const,     label: t("sportsHome.matchday") },
-    { id: "menu" as const,         label: t("sportsHome.analyse") },
+    { id: "menu" as const,         label: "Insights" },
   ];
 
   // ── Today section matches ─────────────────────────────────────────────────
@@ -2047,34 +2015,16 @@ export default function SportsScreen() {
         ══════════════════════════════════════════ */}
         {showMenuSection && (
           <View style={styles.section}>
-            {/* Tool selector pills */}
-            <View style={styles.toolSelectorRow}>
-              {SPORT_TOOL_CARDS.map((card) => {
-                const isActive = activeSportTool === card.id;
-                return (
-                  <TouchableOpacity
-                    key={card.id}
-                    style={[styles.toolSelectorPill, isActive && { backgroundColor: card.accent, borderColor: card.accent }]}
-                    activeOpacity={0.85}
-                    onPress={() => setActiveSportTool(card.id)}
-                  >
-                    <Ionicons name={card.icon} size={14} color={isActive ? "#fff" : card.accent} />
-                    <Text style={[styles.toolSelectorLabel, isActive && styles.toolSelectorLabelActive]}>{tFn(card.titleKey)}</Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-
-            {/* Prediction cards */}
+            <SectionTitle title="Pre-match picks" accent />
             <View style={styles.analysePanel}>
               <View style={styles.analysePanelHead}>
                 <View style={styles.analysePanelTitle}>
-                  <Ionicons name={activeSportToolCard.icon} size={15} color={activeSportToolCard.accent} />
-                  <Text style={styles.analysePanelTitleText}>{tFn(activeSportToolCard.titleKey)}</Text>
+                  <Ionicons name="analytics-outline" size={15} color={P.accent} />
+                  <Text style={styles.analysePanelTitleText}>Upcoming match reads</Text>
                 </View>
-                <Text style={styles.analysePanelCount}>{activeToolRows.length} {t("sportsHome.picks")}</Text>
+                <Text style={styles.analysePanelCount}>{predictionRows.length} picks</Text>
               </View>
-              {activeToolRows.length > 0 ? activeToolRows.map((row: any) => {
+              {predictionRows.length > 0 ? predictionRows.map((row: any) => {
                 const homeBadge = row.badges?.[0];
                 const drawBadge = row.badges?.[2];
                 const awayBadge = row.badges?.[1];
@@ -2126,59 +2076,31 @@ export default function SportsScreen() {
               )}
             </View>
 
-            {/* Next Level Intelligence panel */}
-            <LinearGradient colors={["#0E1626", "#090D18"]} style={styles.nextLevelPanel}>
-              <View style={styles.nextLevelHead}>
-                <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-                  <Ionicons name="flash" size={16} color="#FFD166" />
-                  <Text style={styles.nextLevelTitle}>Next Level Intelligence</Text>
+            {accaRows.length > 0 ? (
+              <>
+                <SectionTitle title="Slip builder" accent />
+                <View style={styles.nextLevelPanel}>
+                  {accaRows.map((row: any) => (
+                    <TouchableOpacity
+                      key={row.key}
+                      style={styles.nextUpcomingRow}
+                      onPress={() => handleToolMatchPress(row.item)}
+                    >
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.nextUpcomingText} numberOfLines={1}>{row.title}</Text>
+                        <Text style={styles.nextUpcomingComp} numberOfLines={1}>{row.meta}</Text>
+                      </View>
+                      <Ionicons name="chevron-forward" size={12} color={COLORS.textMuted} />
+                    </TouchableOpacity>
+                  ))}
                 </View>
-                <Text style={styles.nextLevelSub}>Smart picks, momentum and hidden edges</Text>
-              </View>
+              </>
+            ) : null}
 
-              {nextLevelInsights.spotlight ? (
-                <TouchableOpacity
-                  style={styles.spotlightCard}
-                  onPress={() => {
-                    const item = nextLevelInsights.spotlight?.item;
-                    if (!item) return;
-                    handleToolMatchPress(item);
-                  }}
-                  activeOpacity={0.85}
-                >
-                  <View style={styles.spotlightTopRow}>
-                    <View style={styles.nextChip}><Text style={styles.nextChipText}>MATCH OF THE DAY</Text></View>
-                    <Ionicons name="flash" size={13} color="#FFD166" />
-                  </View>
-                  <Text style={styles.spotlightMain}>{nextLevelInsights.spotlight.subtitle}</Text>
-                  <Text style={styles.spotlightMeta}>{nextLevelInsights.spotlight.detail}</Text>
-                </TouchableOpacity>
-              ) : null}
-
-              <View style={styles.nextGrid}>
-                {nextLevelInsights.underdog ? (
-                  <TouchableOpacity style={styles.nextGridCard} onPress={() => handleToolMatchPress({ ...nextLevelInsights.underdog, id: nextLevelInsights.underdog.matchId })}>
-                    <Text style={styles.nextGridLabel}>Underdog Alert 😲</Text>
-                    <Text style={styles.nextGridValue} numberOfLines={2}>{safeStr(nextLevelInsights.underdog.homeTeam)} vs {safeStr(nextLevelInsights.underdog.awayTeam)}</Text>
-                  </TouchableOpacity>
-                ) : null}
-                {nextLevelInsights.hotStreak ? (
-                  <View style={styles.nextGridCard}>
-                    <Text style={styles.nextGridLabel}>Hot Streak 🔥</Text>
-                    <Text style={styles.nextGridValue} numberOfLines={2}>{nextLevelInsights.hotStreak[0]} · {nextLevelInsights.hotStreak[1].points} pts</Text>
-                  </View>
-                ) : null}
-                {nextLevelInsights.upset ? (
-                  <TouchableOpacity style={styles.nextGridCard} onPress={() => handleMatchPress(nextLevelInsights.upset)}>
-                    <Text style={styles.nextGridLabel}>Biggest Upset</Text>
-                    <Text style={styles.nextGridValue} numberOfLines={2}>{safeStr(nextLevelInsights.upset.homeTeam)} {Number(nextLevelInsights.upset.homeScore ?? 0)}-{Number(nextLevelInsights.upset.awayScore ?? 0)} {safeStr(nextLevelInsights.upset.awayTeam)}</Text>
-                  </TouchableOpacity>
-                ) : null}
-              </View>
-
-              {nextLevelInsights.bigMatches.length > 0 ? (
-                <View style={{ marginTop: 8, gap: 6 }}>
-                  <Text style={styles.nextUpcomingTitle}>Upcoming Big Matches</Text>
+            {nextLevelInsights.bigMatches.length > 0 ? (
+              <>
+                <SectionTitle title="Big matches" accent />
+                <View style={styles.nextLevelPanel}>
                   {nextLevelInsights.bigMatches.map((m: any, idx: number) => (
                     <TouchableOpacity key={`${m.id}_${idx}`} style={styles.nextUpcomingRow} onPress={() => handleMatchPress(m)}>
                       <Text style={styles.nextUpcomingText} numberOfLines={1}>{safeStr(m.homeTeam)} vs {safeStr(m.awayTeam)}</Text>
@@ -2187,8 +2109,8 @@ export default function SportsScreen() {
                     </TouchableOpacity>
                   ))}
                 </View>
-              ) : null}
-            </LinearGradient>
+              </>
+            ) : null}
           </View>
         )}
 

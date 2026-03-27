@@ -21,7 +21,6 @@ import { fetchSportsLeagueResourceWithFallback, getLeaderboardRows } from "@/lib
 import { safeStr } from "@/lib/utils";
 import { resolveCompetitionBrand } from "@/lib/logo-manager";
 import { SilentResetBoundary } from "@/components/SilentResetBoundary";
-import { useNexora } from "@/context/NexoraContext";
 import { t as tFn } from "@/lib/i18n";
 import { getBestCachedOrSeedPlayerImage, resolvePlayerImageUri } from "@/lib/player-image-system";
 import { resolveMatchBucket } from "@/lib/match-state";
@@ -76,10 +75,9 @@ const TABS = [
   { id: "lineups",  label: "matchDetail.lineups",     icon: "people-outline" },
   { id: "timeline", label: "matchDetail.timeline",    icon: "git-branch-outline" },
   { id: "highlights", label: "matchDetail.highlights", icon: "star-outline" },
-  { id: "ai",       label: "matchDetail.analysis",     icon: "analytics-outline" },
 ] as const;
 
-type TabId = "stream" | "stats" | "lineups" | "timeline" | "highlights" | "ai";
+type TabId = "stream" | "stats" | "lineups" | "timeline" | "highlights";
 
 function shouldRetryRequest(failureCount: number, error: unknown): boolean {
   if (failureCount >= 1) return false;
@@ -205,9 +203,7 @@ export default function MatchDetailScreen() {
 
   const insets = useSafeAreaInsets();
   const { width: screenWidth } = useWindowDimensions();
-  const { hasPremium } = useNexora();
-  const sportPremium = hasPremium("sport");
-  const resolvedInitialTab = (params.initialTab && ["stream", "stats", "lineups", "timeline", "highlights", "ai"].includes(params.initialTab)) ? params.initialTab as TabId : "stream";
+  const resolvedInitialTab = (params.initialTab && ["stream", "stats", "lineups", "timeline", "highlights"].includes(params.initialTab)) ? params.initialTab as TabId : "stream";
   const [activeTab, setActiveTab] = useState<TabId>(resolvedInitialTab);
   const [visitedTabs, setVisitedTabs] = useState<Record<TabId, boolean>>({
     stream: resolvedInitialTab === "stream",
@@ -215,15 +211,11 @@ export default function MatchDetailScreen() {
     lineups: resolvedInitialTab === "lineups",
     timeline: resolvedInitialTab === "timeline",
     highlights: resolvedInitialTab === "highlights",
-    ai: resolvedInitialTab === "ai",
   });
   const [lineupView, setLineupView] = useState<"pitch" | "list">("pitch");
   const [streamKey, setStreamKey] = useState(0);
   const [streamWebError, setStreamWebError] = useState<unknown>(null);
   const [streamErrorRef, setStreamErrorRef] = useState<string>("");
-  const [streamFinderActive, setStreamFinderActive] = useState(false);
-  const [streamFinderDone, setStreamFinderDone] = useState(false);
-  const streamFinderTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const paramCanonical = useMemo(() => toCanonicalMatch({
     id: params.matchId,
     homeTeam: params.homeTeam,
@@ -580,34 +572,13 @@ export default function MatchDetailScreen() {
     mutationFn: () => requestPrediction("prematch"),
   });
 
-  const {
-    data: livePrediction,
-    isPending: livePredictionLoading,
-    mutate: fetchLivePrediction,
-  } = useMutation({
-    mutationFn: () => requestPrediction("live"),
-  });
-
-  const prediction = (isLive ? (livePrediction || preMatchPrediction) : preMatchPrediction) as any;
-  const predLoading = isLive
-    ? Boolean(livePredictionLoading && !prediction)
-    : Boolean(preMatchLoading && !prediction);
+  const prematchInsightEnabled = !isLive && !isFinished;
+  const prediction = prematchInsightEnabled ? preMatchPrediction : null;
+  const predLoading = prematchInsightEnabled ? Boolean(preMatchLoading && !prediction) : false;
 
   const handleTabChange = (tab: TabId) => {
     setActiveTab(tab);
     setVisitedTabs((current) => (current[tab] ? current : { ...current, [tab]: true }));
-    if (tab === "stream" && isLive && !streamFinderDone) {
-      setStreamFinderActive(true);
-      if (streamFinderTimerRef.current) clearTimeout(streamFinderTimerRef.current);
-      streamFinderTimerRef.current = setTimeout(() => {
-        setStreamFinderActive(false);
-        setStreamFinderDone(true);
-      }, 3000);
-    }
-    if (tab === "ai") {
-      if (!preMatchPrediction && !preMatchLoading) fetchPreMatchPrediction();
-      if (isLive && !livePrediction && !livePredictionLoading) fetchLivePrediction();
-    }
     SafeHaptics.impactLight();
   };
 
@@ -619,45 +590,16 @@ export default function MatchDetailScreen() {
     setStreamKey(k => k + 1);
   };
 
-  // Auto-fetch AI predictions
   const hasFetchedPrematchRef = useRef(false);
-  const lastLivePredictionAtRef = useRef(0);
-
-  // Auto-activate AI stream finder on first mount when live match opens on stream tab
-  useEffect(() => {
-    let disposed = false;
-    if (isLive && activeTab === "stream" && !streamFinderDone) {
-      setStreamFinderActive(true);
-      streamFinderTimerRef.current = setTimeout(() => {
-        if (!disposed) {
-          setStreamFinderActive(false);
-          setStreamFinderDone(true);
-        }
-      }, 3000);
-    }
-    return () => {
-      disposed = true;
-      if (streamFinderTimerRef.current) clearTimeout(streamFinderTimerRef.current);
-    };
-  // Only run once on mount
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   useEffect(() => {
+    if (!prematchInsightEnabled) return;
     if (!detailLoading && !hasFetchedPrematchRef.current && !preMatchLoading) {
       hasFetchedPrematchRef.current = true;
       const t = setTimeout(() => fetchPreMatchPrediction(), 700);
       return () => clearTimeout(t);
     }
-  }, [detailLoading, preMatchLoading, fetchPreMatchPrediction]);
-
-  useEffect(() => {
-    if (!isLive || detailLoading) return;
-    const now = Date.now();
-    if (now - lastLivePredictionAtRef.current < 25_000) return;
-    lastLivePredictionAtRef.current = now;
-    fetchLivePrediction();
-  }, [isLive, detailLoading, liveMinute, liveHomeScore, liveAwayScore, fetchLivePrediction]);
+  }, [detailLoading, fetchPreMatchPrediction, preMatchLoading, prematchInsightEnabled]);
 
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const scoreFontSize = screenWidth < 350 ? 40 : screenWidth < 385 ? 44 : 48;
@@ -840,45 +782,32 @@ export default function MatchDetailScreen() {
         />
       </ScrollView>
 
-      {/* Mini AI strip — always visible below tab bar */}
-      {activeTab !== "ai" && (predLoading || (prediction && !prediction.error)) && (
-        <MiniAIPill
-          prediction={prediction}
-          homeTeam={params.homeTeam}
-          awayTeam={params.awayTeam}
-          loading={predLoading && !prediction}
-          onPress={() => handleTabChange("ai")}
-        />
-      )}
+      {prematchInsightEnabled && (predLoading || (prediction && !prediction.error)) ? (
+        <View style={styles.prematchInsightSection}>
+          <View style={styles.prematchInsightHeader}>
+            <Text style={styles.sectionLabel}>PRE-MATCH INSIGHT</Text>
+            {!predLoading && prediction && !prediction.error ? (
+              <TouchableOpacity style={styles.aiRefreshBtn} onPress={() => fetchPreMatchPrediction()}>
+                <Ionicons name="refresh-outline" size={13} color={COLORS.textMuted} />
+                <Text style={styles.aiRefreshText}>{tFn("matchDetail.preMatchRefresh")}</Text>
+              </TouchableOpacity>
+            ) : null}
+          </View>
+          {predLoading && !prediction ? (
+            <View style={styles.prematchInsightLoading}>
+              <ActivityIndicator size="small" color={COLORS.accent} />
+              <Text style={styles.aiLoadingText}>{tFn("matchDetail.preMatchLoading")}</Text>
+            </View>
+          ) : prediction && !prediction.error ? (
+            <AIPredictionView prediction={prediction} homeTeam={params.homeTeam} awayTeam={params.awayTeam} />
+          ) : null}
+        </View>
+      ) : null}
 
       {/* Stream Tab — always mounted, hidden when not active */}
       <View style={[styles.streamContainer, activeTab !== "stream" ? { display: "none" } : null]}>
           {isLive ? (
-            streamFinderActive ? (
-              /* AI Stream Finder loading overlay */
-              <View style={styles.streamFinderContainer}>
-                <LinearGradient colors={["#0d0d1a", "#120a14", "#0a0a12"]} style={styles.streamFinderBg}>
-                  <ActivityIndicator size="large" color={COLORS.accent} />
-                  <Text style={styles.streamFinderTitle}>{tFn("matchDetail.streamFinderTitle")}</Text>
-                  <Text style={styles.streamFinderSub}>{tFn("matchDetail.streamFinderSub")}</Text>
-                  <View style={styles.streamFinderSteps}>
-                    <View style={styles.streamFinderStep}>
-                      <Ionicons name="checkmark-circle" size={14} color={COLORS.green} />
-                      <Text style={styles.streamFinderStepText}>{tFn("matchDetail.streamStep1")}</Text>
-                    </View>
-                    <View style={styles.streamFinderStep}>
-                      <Ionicons name="radio-button-on" size={14} color={COLORS.accent} />
-                      <Text style={styles.streamFinderStepText}>{tFn("matchDetail.streamStep2")}</Text>
-                    </View>
-                    <View style={styles.streamFinderStep}>
-                      <Ionicons name="radio-button-off" size={14} color={COLORS.textMuted} />
-                      <Text style={[styles.streamFinderStepText, { color: COLORS.textMuted }]}>{tFn("matchDetail.streamStep3")}</Text>
-                    </View>
-                  </View>
-                </LinearGradient>
-              </View>
-            ) : (
-              <>
+            <>
                 <View style={styles.videoBox}>
                   <SilentResetBoundary>
                     <WebView key={streamKey} source={{ uri: streamUrl }}
@@ -942,7 +871,6 @@ export default function MatchDetailScreen() {
                   </TouchableOpacity>
                 </View>
               </>
-            )
           ) : (
             <View style={styles.notLiveContainer}>
               <Ionicons name="time-outline" size={48} color={COLORS.textMuted} />
@@ -1037,11 +965,13 @@ export default function MatchDetailScreen() {
               )}
 
               {lineupView === "pitch" && homeLineupTeam && awayLineupTeam ? (
-                <CombinedPitchView
-                  homeTeamData={homeLineupTeam}
-                  awayTeamData={awayLineupTeam}
-                  league={espnLeague}
-                />
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.lineupPitchScroller}>
+                  <CombinedPitchView
+                    homeTeamData={homeLineupTeam}
+                    awayTeamData={awayLineupTeam}
+                    league={espnLeague}
+                  />
+                </ScrollView>
               ) : (
                 orderedLineupTeams.map((team: any, ti: number) => (
                   <View key={ti} style={styles.lineupTeamSection}>
@@ -1050,22 +980,24 @@ export default function MatchDetailScreen() {
                     </View>
 
                     {lineupView === "pitch" ? (
-                      <LinearGradient
-                        colors={["#183c20", "#0f2f19", "#0b2413"]}
-                        style={styles.pitchCard}
-                      >
-                        <View style={styles.pitchCenterCircle} />
-                        <View style={styles.pitchHalfLine} />
-                        {buildFormationRows(team.players || [], team.formation).map((row, rowIndex) => (
-                          <View key={rowIndex} style={styles.pitchRow}>
-                            {row.map((p: any, pi: number) => (
-                              <View key={`${p.id || p.name}-${pi}`} style={styles.pitchPlayerWrap}>
-                                <PlayerRow player={p} sport={params.sport} compact teamName={team.team} league={espnLeague} />
-                              </View>
-                            ))}
-                          </View>
-                        ))}
-                      </LinearGradient>
+                      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.lineupPitchScroller}>
+                        <LinearGradient
+                          colors={["#183c20", "#0f2f19", "#0b2413"]}
+                          style={styles.pitchCard}
+                        >
+                          <View style={styles.pitchCenterCircle} />
+                          <View style={styles.pitchHalfLine} />
+                          {buildFormationRows(team.players || [], team.formation).map((row, rowIndex) => (
+                            <View key={rowIndex} style={styles.pitchRow}>
+                              {row.map((p: any, pi: number) => (
+                                <View key={`${p.id || p.name}-${pi}`} style={styles.pitchPlayerWrap}>
+                                  <PlayerRow player={p} sport={params.sport} compact teamName={team.team} league={espnLeague} />
+                                </View>
+                              ))}
+                            </View>
+                          ))}
+                        </LinearGradient>
+                      </ScrollView>
                     ) : (
                       <View style={styles.lineupListCard}>
                         <Text style={styles.lineupListLabel}>STARTING XI</Text>
@@ -1182,158 +1114,7 @@ export default function MatchDetailScreen() {
       </ScrollView>
       ) : null}
 
-      {/* AI Analysis Tab */}
-      {visitedTabs.ai ? (
-      <ScrollView style={[styles.tabContent, activeTab !== "ai" ? { display: "none" } : null]} contentContainerStyle={styles.tabContentInner} showsVerticalScrollIndicator={false}>
-        {!sportPremium ? (
-          <View style={{ gap: 16, alignItems: "center" }}>
-            <LinearGradient colors={["rgba(229,9,20,0.14)", "rgba(229,9,20,0.04)"]} style={{ borderRadius: 16, padding: 24, alignItems: "center", gap: 12 }}>
-              <Ionicons name="lock-closed" size={36} color={COLORS.accent} />
-              <Text style={{ fontFamily: "Inter_700Bold", fontSize: 18, color: COLORS.text, textAlign: "center" }}>{tFn("matchDetail.premiumAIAnalysis")}</Text>
-              <Text style={{ fontFamily: "Inter_400Regular", fontSize: 13, color: COLORS.textSecondary, textAlign: "center", lineHeight: 19 }}>{tFn("matchDetail.premiumAIDesc")}</Text>
-              <TouchableOpacity onPress={() => router.push("/premium")} style={{ backgroundColor: COLORS.accent, borderRadius: 12, paddingHorizontal: 28, paddingVertical: 12, marginTop: 4 }}>
-                <Text style={{ fontFamily: "Inter_600SemiBold", fontSize: 14, color: "#fff" }}>{tFn("matchDetail.activatePremium")}</Text>
-              </TouchableOpacity>
-            </LinearGradient>
-            {/* Blurred preview of what they'd get */}
-            <View style={{ opacity: 0.3, pointerEvents: "none" }}>
-              <View style={styles.aiMainCard}>
-                <View style={styles.aiHeader}>
-                  <MaterialCommunityIcons name="robot" size={20} color={COLORS.accent} />
-                  <Text style={styles.aiTitle}>AI Match Intelligence</Text>
-                </View>
-                <View style={{ flexDirection: "row", justifyContent: "space-around", paddingVertical: 16 }}>
-                  <View style={{ alignItems: "center" }}><Text style={{ fontFamily: "Inter_700Bold", fontSize: 24, color: COLORS.accent }}>45%</Text><Text style={{ fontFamily: "Inter_400Regular", fontSize: 11, color: COLORS.textMuted }}>Home</Text></View>
-                  <View style={{ alignItems: "center" }}><Text style={{ fontFamily: "Inter_700Bold", fontSize: 24, color: "#FFD700" }}>25%</Text><Text style={{ fontFamily: "Inter_400Regular", fontSize: 11, color: COLORS.textMuted }}>Draw</Text></View>
-                  <View style={{ alignItems: "center" }}><Text style={{ fontFamily: "Inter_700Bold", fontSize: 24, color: COLORS.live }}>30%</Text><Text style={{ fontFamily: "Inter_400Regular", fontSize: 11, color: COLORS.textMuted }}>Away</Text></View>
-                </View>
-              </View>
-            </View>
-          </View>
-        ) : (
-          <>
-          {preMatchLoading && !preMatchPrediction ? (
-            <View style={styles.aiLoading}>
-              <ActivityIndicator size="large" color={COLORS.accent} />
-              <Text style={styles.aiLoadingText}>{tFn("matchDetail.preMatchLoading")}</Text>
-              <Text style={[styles.aiLoadingText, { fontSize: 12, marginTop: 4 }]}>{tFn("matchDetail.preMatchBasis")}</Text>
-            </View>
-          ) : preMatchPrediction && !preMatchPrediction.error ? (
-            <>
-              <Text style={styles.sectionLabel}>{tFn("matchDetail.preMatchLabel")}</Text>
-              <AIPredictionView prediction={preMatchPrediction} homeTeam={params.homeTeam} awayTeam={params.awayTeam} />
-              <TouchableOpacity style={styles.aiRefreshBtn} onPress={() => fetchPreMatchPrediction()}>
-                <Ionicons name="refresh-outline" size={13} color={COLORS.textMuted} />
-                <Text style={styles.aiRefreshText}>{tFn("matchDetail.preMatchRefresh")}</Text>
-              </TouchableOpacity>
-            </>
-          ) : (
-            <View style={styles.aiWaitCard}>
-              <TouchableOpacity style={styles.aiTrigger} onPress={() => fetchPreMatchPrediction()}>
-                <LinearGradient colors={["rgba(229,9,20,0.12)", "rgba(229,9,20,0.04)"]} style={styles.aiTriggerGrad}>
-                  <MaterialCommunityIcons name="robot-outline" size={40} color={COLORS.accent} />
-                  <Text style={styles.aiTriggerTitle}>{tFn("matchDetail.preMatchTitle")}</Text>
-                  <Text style={styles.aiTriggerSub}>{tFn("matchDetail.preMatchSubtitle")}</Text>
-                  <View style={styles.aiTriggerBtn}>
-                    <Ionicons name="sparkles-outline" size={14} color="#fff" />
-                    <Text style={styles.aiTriggerBtnText}>{tFn("matchDetail.startPreMatch")}</Text>
-                  </View>
-                </LinearGradient>
-              </TouchableOpacity>
-            </View>
-          )}
-
-          {isLive ? (
-            livePredictionLoading && !livePrediction ? (
-              <View style={styles.aiLoading}>
-                <ActivityIndicator size="small" color={COLORS.live} />
-                <Text style={styles.aiLoadingText}>{tFn("matchDetail.liveLoading")}</Text>
-              </View>
-            ) : livePrediction && !livePrediction.error ? (
-              <>
-                <Text style={styles.sectionLabel}>{tFn("matchDetail.liveLabel")}</Text>
-                <AIPredictionView prediction={livePrediction} homeTeam={params.homeTeam} awayTeam={params.awayTeam} />
-                <TouchableOpacity style={styles.aiRefreshBtn} onPress={() => fetchLivePrediction()}>
-                  <Ionicons name="refresh-outline" size={13} color={COLORS.textMuted} />
-                  <Text style={styles.aiRefreshText}>{tFn("matchDetail.liveRefresh")}</Text>
-                </TouchableOpacity>
-              </>
-            ) : (
-              <View style={styles.aiWaitCard}>
-                {livePrediction?.error ? (
-                  <View style={styles.tipCard}>
-                    <MaterialCommunityIcons name="alert-circle-outline" size={16} color={COLORS.live} />
-                    <Text style={styles.tipText}>{safeStr(livePrediction.error)}</Text>
-                  </View>
-                ) : null}
-                <TouchableOpacity style={styles.aiTrigger} onPress={() => fetchLivePrediction()}>
-                  <LinearGradient colors={["rgba(229,9,20,0.12)", "rgba(229,9,20,0.04)"]} style={styles.aiTriggerGrad}>
-                    <MaterialCommunityIcons name="chart-timeline-variant" size={40} color={COLORS.live} />
-                    <Text style={styles.aiTriggerTitle}>{tFn("matchDetail.liveTitle")}</Text>
-                    <Text style={styles.aiTriggerSub}>{tFn("matchDetail.liveSubtitle")}</Text>
-                    <View style={styles.aiTriggerBtn}>
-                      <Ionicons name="pulse-outline" size={14} color="#fff" />
-                      <Text style={styles.aiTriggerBtnText}>{tFn("matchDetail.startLive")}</Text>
-                    </View>
-                  </LinearGradient>
-                </TouchableOpacity>
-              </View>
-            )
-          ) : (
-            <View style={styles.tipCard}>
-              <MaterialCommunityIcons name="information-outline" size={16} color={COLORS.accent} />
-              <Text style={styles.tipText}>{tFn("matchDetail.autoStartTip")}</Text>
-            </View>
-          )}
-          </>
-        )}
-        </ScrollView>
-      ) : null}
-
     </View>
-  );
-}
-
-function MiniAIPill({ prediction, homeTeam, awayTeam, loading, onPress }: any) {
-  if (loading) {
-    return (
-      <TouchableOpacity style={styles.miniAIPill} onPress={onPress} activeOpacity={0.8}>
-        <MaterialCommunityIcons name="robot-outline" size={13} color={COLORS.accent} />
-        <ActivityIndicator size="small" color={COLORS.accent} style={{ marginLeft: 4, marginRight: 4 }} />
-        <Text style={styles.miniAIPillLoadingText}>AI analyseert...</Text>
-        <Ionicons name="chevron-forward" size={12} color={COLORS.textMuted} />
-      </TouchableOpacity>
-    );
-  }
-  if (!prediction || prediction.error) return null;
-  const homeShort = (homeTeam || "").split(" ")[0];
-  const awayShort = (awayTeam || "").split(" ")[0];
-  const winner = prediction.prediction === "Home Win" ? homeShort :
-    prediction.prediction === "Away Win" ? awayShort : tFn("matchDetail.drawChance");
-  const winnerColor = prediction.prediction === "Home Win" ? COLORS.accent :
-    prediction.prediction === "Away Win" ? COLORS.live : "#FFD700";
-  return (
-    <TouchableOpacity style={styles.miniAIPill} onPress={onPress} activeOpacity={0.8}>
-      <MaterialCommunityIcons name="robot" size={13} color={COLORS.accent} />
-      <View style={styles.miniAIPillChances}>
-        <Text style={[styles.miniAIPillPct, { color: COLORS.accent }]}>{prediction.homePct}%</Text>
-        <Text style={styles.miniAIPillSep}>{homeShort}</Text>
-      </View>
-      <Text style={styles.miniAIPillDivider}>·</Text>
-      <View style={styles.miniAIPillChances}>
-        <Text style={[styles.miniAIPillPct, { color: "#FFD700" }]}>{prediction.drawPct}%</Text>
-        <Text style={styles.miniAIPillSep}>Gelijk</Text>
-      </View>
-      <Text style={styles.miniAIPillDivider}>·</Text>
-      <View style={styles.miniAIPillChances}>
-        <Text style={[styles.miniAIPillPct, { color: COLORS.live }]}>{prediction.awayPct}%</Text>
-        <Text style={styles.miniAIPillSep}>{awayShort}</Text>
-      </View>
-      <View style={styles.miniAIPillWinnerTag}>
-        <Text style={[styles.miniAIPillWinnerText, { color: winnerColor }]}>{winner}</Text>
-      </View>
-      <Ionicons name="chevron-forward" size={12} color={COLORS.textMuted} />
-    </TouchableOpacity>
   );
 }
 
@@ -3442,45 +3223,6 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.accentGlow,
   },
   serverBtnText: { fontFamily: "Inter_600SemiBold", fontSize: 13, color: COLORS.accent },
-  streamFinderContainer: { flex: 1 },
-  streamFinderBg: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    padding: 36,
-    gap: 16,
-  },
-  streamFinderTitle: {
-    fontFamily: "Inter_800ExtraBold",
-    fontSize: 20,
-    color: COLORS.text,
-    textAlign: "center",
-  },
-  streamFinderSub: {
-    fontFamily: "Inter_400Regular",
-    fontSize: 13,
-    color: COLORS.textMuted,
-    textAlign: "center",
-    lineHeight: 20,
-    maxWidth: 280,
-  },
-  streamFinderSteps: { gap: 10, marginTop: 8, width: "100%" },
-  streamFinderStep: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    backgroundColor: "rgba(255,255,255,0.05)",
-    borderRadius: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.07)",
-  },
-  streamFinderStepText: {
-    fontFamily: "Inter_500Medium",
-    fontSize: 13,
-    color: COLORS.text,
-  },
   notLiveContainer: { flex: 1, alignItems: "center", justifyContent: "center", gap: 16, padding: 36 },
   notLiveTitle: {
     fontFamily: "Inter_700Bold",
@@ -3498,6 +3240,28 @@ const styles = StyleSheet.create({
   },
   tabContent: { flex: 1 },
   tabContentInner: { paddingHorizontal: 16, paddingTop: 14, paddingBottom: 20, gap: 0 },
+  prematchInsightSection: {
+    paddingHorizontal: 16,
+    paddingTop: 14,
+    gap: 10,
+  },
+  prematchInsightHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
+  },
+  prematchInsightLoading: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    backgroundColor: COLORS.card,
+    borderRadius: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.07)",
+  },
   sectionLabel: {
     fontFamily: "Inter_700Bold",
     fontSize: 11,
@@ -3967,6 +3731,10 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
   },
   lineupTeamSection: { marginBottom: 22 },
+  lineupPitchScroller: {
+    paddingHorizontal: 4,
+    justifyContent: "center",
+  },
   lineupViewToggleRow: { flexDirection: "row", gap: 8, marginBottom: 16 },
   lineupViewBtn: {
     flexDirection: "row",
@@ -3990,6 +3758,8 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   pitchCard: {
+    width: 720,
+    minHeight: 368,
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.15)",
     borderRadius: 18,
@@ -4023,10 +3793,10 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "center",
     alignItems: "center",
-    gap: 4,
+    gap: 8,
     zIndex: 2,
   },
-  pitchPlayerWrap: { minWidth: 56, flex: 1, maxWidth: 92 },
+  pitchPlayerWrap: { minWidth: 92, maxWidth: 120 },
   lineupListCard: {
     backgroundColor: COLORS.card,
     borderWidth: 1,
@@ -4202,9 +3972,8 @@ const styles = StyleSheet.create({
     position: "relative",
     alignItems: "stretch",
     alignSelf: "center",
-    width: "100%",
-    maxWidth: 460,
-    minHeight: 472,
+    width: 760,
+    minHeight: 420,
   },
   pitchFieldBorder: {
     position: "absolute",
@@ -4385,7 +4154,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-around",
     gap: 3,
-    minHeight: 330,
+    minHeight: 280,
   },
   pitchMiddleDividerCol: {
     width: 28,
@@ -4411,15 +4180,15 @@ const styles = StyleSheet.create({
   pitchDotWrap: {
     alignItems: "center",
     gap: 4,
-    width: 64,
-    maxWidth: 64,
+    width: 56,
+    maxWidth: 56,
     flexShrink: 0,
     paddingVertical: 2,
   },
   pitchDotCircle: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
+    width: 34,
+    height: 34,
+    borderRadius: 10,
     borderWidth: 1.5,
     backgroundColor: "rgba(0,0,0,0.5)",
     alignItems: "center",
@@ -4432,22 +4201,22 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   pitchDotPhoto: {
-    width: 35,
-    height: 35,
+    width: 30,
+    height: 30,
     borderRadius: 6,
     position: "absolute",
   },
   pitchDotNum: {
     fontFamily: "Inter_800ExtraBold",
-    fontSize: 12,
+    fontSize: 11,
   },
   pitchDotName: {
     fontFamily: "Inter_500Medium",
-    fontSize: 8,
-    lineHeight: 10,
+    fontSize: 7,
+    lineHeight: 9,
     color: "rgba(255,255,255,0.88)",
     textAlign: "center",
-    maxWidth: 68,
+    maxWidth: 56,
   },
   // AI redesign styles
   chanceRow: {
@@ -4536,52 +4305,6 @@ const styles = StyleSheet.create({
     height: "100%",
     backgroundColor: COLORS.accent,
     borderRadius: 3,
-  },
-  // MiniAIPill styles
-  miniAIPill: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    backgroundColor: COLORS.card,
-    borderTopWidth: 1,
-    borderBottomWidth: 1,
-    borderColor: COLORS.border,
-    paddingHorizontal: 16,
-    paddingVertical: 9,
-    flexWrap: "nowrap",
-  },
-  miniAIPillChances: {
-    alignItems: "center",
-    gap: 1,
-  },
-  miniAIPillPct: {
-    fontFamily: "Inter_800ExtraBold",
-    fontSize: 13,
-  },
-  miniAIPillSep: {
-    fontFamily: "Inter_400Regular",
-    fontSize: 9,
-    color: COLORS.textMuted,
-  },
-  miniAIPillDivider: {
-    fontFamily: "Inter_400Regular",
-    fontSize: 14,
-    color: COLORS.border,
-  },
-  miniAIPillWinnerTag: {
-    flex: 1,
-    alignItems: "flex-end",
-  },
-  miniAIPillWinnerText: {
-    fontFamily: "Inter_700Bold",
-    fontSize: 11,
-    letterSpacing: 0.3,
-  },
-  miniAIPillLoadingText: {
-    fontFamily: "Inter_500Medium",
-    fontSize: 12,
-    color: COLORS.textMuted,
-    flex: 1,
   },
   // AI tab refresh button
   aiRefreshBtn: {

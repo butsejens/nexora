@@ -79,6 +79,7 @@ type CuratedStudioPayload = {
 type PlatformGroup = {
   key: string;
   label: string;
+  logoUri?: string | null;
   items: VodModuleItem[];
 };
 
@@ -88,6 +89,21 @@ const SEARCH_FILTERS: { key: VodSearchFilter; label: string }[] = [
   { key: "series", label: "TV Shows" },
   { key: "anime", label: "Anime" },
 ];
+
+const PLATFORM_BRAND_ASSETS: Record<string, { logoUri?: string | null }> = {
+  netflix: { logoUri: "https://logo.clearbit.com/netflix.com" },
+  disney: { logoUri: "https://logo.clearbit.com/disneyplus.com" },
+  prime: { logoUri: "https://logo.clearbit.com/primevideo.com" },
+  hbo: { logoUri: "https://logo.clearbit.com/max.com" },
+  apple: { logoUri: "https://logo.clearbit.com/tv.apple.com" },
+  paramount: { logoUri: "https://logo.clearbit.com/paramountplus.com" },
+  hulu: { logoUri: "https://logo.clearbit.com/hulu.com" },
+  peacock: { logoUri: "https://logo.clearbit.com/peacocktv.com" },
+  crunchyroll: { logoUri: "https://logo.clearbit.com/crunchyroll.com" },
+  lionsgate: { logoUri: "https://logo.clearbit.com/lionsgate.com" },
+  sony: { logoUri: "https://logo.clearbit.com/sonypictures.com" },
+  a24: { logoUri: "https://logo.clearbit.com/a24films.com" },
+};
 
 async function fetchJson(path: string) {
   const response = await withTimeout(apiRequest("GET", path), 15000);
@@ -182,7 +198,18 @@ async function fetchCatalogChunk(cursorYear?: number | null): Promise<CatalogPay
 }
 
 async function fetchCuratedCollections(): Promise<CuratedCollectionPayload[]> {
-  const collectionTargets = ["Star Wars", "Harry Potter", "Marvel", "The Lord of the Rings"];
+  const collectionTargets = [
+    "Star Wars",
+    "Harry Potter",
+    "Marvel",
+    "The Lord of the Rings",
+    "Mission Impossible",
+    "John Wick",
+    "Fast and Furious",
+    "Jurassic Park",
+    "DC",
+    "James Bond",
+  ];
   const results = await Promise.all(
     collectionTargets.map(async (target) => {
       const payload = await fetchJson(`/api/vod/collection?title=${encodeURIComponent(target)}&depth=5`).catch(() => null);
@@ -232,6 +259,13 @@ function buildPlatformGroups(items: VodModuleItem[]): PlatformGroup[] {
     { key: "prime", label: "Prime Video", aliases: ["amazon", "prime video", "amazon studios"] },
     { key: "hbo", label: "HBO", aliases: ["hbo", "max"] },
     { key: "apple", label: "Apple TV+", aliases: ["apple", "apple tv"] },
+    { key: "paramount", label: "Paramount+", aliases: ["paramount", "paramount+"] },
+    { key: "hulu", label: "Hulu", aliases: ["hulu", "fx productions", "searchlight"] },
+    { key: "peacock", label: "Peacock", aliases: ["peacock", "nbcuniversal", "focus features"] },
+    { key: "crunchyroll", label: "Crunchyroll", aliases: ["crunchyroll", "funimation", "anime"] },
+    { key: "lionsgate", label: "Lionsgate", aliases: ["lionsgate"] },
+    { key: "sony", label: "Sony", aliases: ["sony pictures", "columbia pictures", "screen gems"] },
+    { key: "a24", label: "A24", aliases: ["a24"] },
   ];
 
   const normalized = (value: unknown) => String(value || "").toLowerCase();
@@ -249,10 +283,13 @@ function buildPlatformGroups(items: VodModuleItem[]): PlatformGroup[] {
       return {
         key: provider.key,
         label: provider.label,
+        logoUri: PLATFORM_BRAND_ASSETS[provider.key]?.logoUri || null,
         items: dedupeModuleItems(filtered).slice(0, 24),
       };
     })
-    .filter((entry) => entry.items.length >= 3);
+    .filter((entry) => entry.items.length >= 2)
+    .sort((left, right) => right.items.length - left.items.length)
+    .slice(0, 10);
 }
 
 function ModuleSection({ title, children, actionLabel, onAction }: { title: string; children: React.ReactNode; actionLabel?: string; onAction?: () => void }) {
@@ -310,6 +347,9 @@ export function VodModuleHub({ initialPane = "home", initialFilter = "all" }: Vo
     initialPane === "more" ? "home" : initialPane
   );
   const [searchFilter, setSearchFilter] = useState<VodSearchFilter>(initialFilter);
+  const [genreFilter, setGenreFilter] = useState<string>("all");
+  const [yearFilter, setYearFilter] = useState<string>("all");
+  const [platformFilter, setPlatformFilter] = useState<string>("all");
   const [query, setQuery] = useState("");
   const deferredQuery = useDeferredValue(query.trim());
 
@@ -456,6 +496,53 @@ export function VodModuleHub({ initialPane = "home", initialFilter = "all" }: Vo
   const platforms = useMemo(() => buildPlatformGroups(allItems), [allItems]);
   const featured = homeQuery.data?.featured || null;
 
+  const availableGenres = useMemo(() => {
+    const labels = new Set<string>();
+    for (const item of allItems) {
+      for (const genre of item.genre || []) {
+        if (genre) labels.add(String(genre));
+      }
+    }
+    return ["all", ...Array.from(labels).sort((a, b) => a.localeCompare(b)).slice(0, 18)];
+  }, [allItems]);
+
+  const availablePlatforms = useMemo(() => {
+    return ["all", ...platforms.map((platform) => platform.label)];
+  }, [platforms]);
+
+  const applyAdvancedFilters = useMemo(() => {
+    return (items: VodModuleItem[]) => {
+      const normalizedPlatform = platformFilter.toLowerCase();
+      return items.filter((item) => {
+        if (genreFilter !== "all") {
+          const matchesGenre = (item.genre || []).some((genre) => String(genre).toLowerCase() === genreFilter.toLowerCase());
+          if (!matchesGenre) return false;
+        }
+
+        if (yearFilter !== "all") {
+          const itemYear = Number(String(item.year || "").slice(0, 4));
+          if (!Number.isFinite(itemYear)) return false;
+          if (yearFilter === "2020s" && itemYear < 2020) return false;
+          if (yearFilter === "2010s" && (itemYear < 2010 || itemYear > 2019)) return false;
+          if (yearFilter === "2000s" && (itemYear < 2000 || itemYear > 2009)) return false;
+          if (yearFilter === "classic" && itemYear >= 2000) return false;
+        }
+
+        if (platformFilter !== "all") {
+          const haystack = [
+            ...(item.studios || []),
+            ...((item.productionCompanies || []).map((company) => company?.name || "")),
+            ...(item.keywords || []),
+            item.title,
+          ].join(" ").toLowerCase();
+          if (!haystack.includes(normalizedPlatform)) return false;
+        }
+
+        return true;
+      });
+    };
+  }, [genreFilter, platformFilter, yearFilter]);
+
   const recommended = useMemo(() => {
     if (!allItems.length) return [];
     const movieCandidates = allItems
@@ -481,8 +568,13 @@ export function VodModuleHub({ initialPane = "home", initialFilter = "all" }: Vo
       ...((searchQuery.data?.movies || []) as any[]).map((item) => enrichVodModuleItem({ ...item, type: "movie" })),
       ...((searchQuery.data?.series || []) as any[]).map((item) => enrichVodModuleItem({ ...item, type: "series" })),
     ];
-    return filterBySearchFilter(combined, searchFilter);
-  }, [searchFilter, searchQuery.data]);
+    return applyAdvancedFilters(filterBySearchFilter(combined, searchFilter));
+  }, [applyAdvancedFilters, searchFilter, searchQuery.data]);
+
+  const filteredCatalogResults = useMemo(() => {
+    const typeFiltered = filterBySearchFilter(allItems, searchFilter);
+    return applyAdvancedFilters(typeFiltered).slice(0, 120);
+  }, [allItems, applyAdvancedFilters, searchFilter]);
 
 
   const warmDetailPayload = (item: VodModuleItem) => {
@@ -610,7 +702,7 @@ export function VodModuleHub({ initialPane = "home", initialFilter = "all" }: Vo
             ) : null}
 
             {collections.length ? (
-              <ModuleSection title="Collections" actionLabel="See all" onAction={() => setActivePane("search")}>
+              <ModuleSection title="Collections" actionLabel="See all" onAction={() => setActivePane("collections")}>
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.collectionRow}>
                   {collections.map((group) => (
                     <CollectionCard
@@ -659,8 +751,12 @@ export function VodModuleHub({ initialPane = "home", initialFilter = "all" }: Vo
                       onPress={() => {
                         setActivePane("search");
                         setQuery(platform.label);
+                        setPlatformFilter(platform.label);
                       }}
                     >
+                      <View style={styles.platformLogoWrap}>
+                        {platform.logoUri ? <Image source={{ uri: platform.logoUri }} style={styles.platformLogo} resizeMode="contain" /> : <Text style={styles.platformLogoFallback}>{platform.label.slice(0, 2).toUpperCase()}</Text>}
+                      </View>
                       <Text style={styles.platformTitle}>{platform.label}</Text>
                       <Text style={styles.platformMeta}>{platform.items.length} titles</Text>
                     </TouchableOpacity>
@@ -680,6 +776,35 @@ export function VodModuleHub({ initialPane = "home", initialFilter = "all" }: Vo
                 {renderRail(rail.items)}
               </ModuleSection>
             ))}
+          </>
+        ) : null}
+
+          {activePane === "collections" ? (
+          <>
+            <ModuleSection title="All Collections" actionLabel="Back" onAction={() => setActivePane("home")}>
+              <View style={styles.collectionsGrid}>
+                {collections.map((group) => (
+                  <View key={`grid-${group.key}`} style={styles.collectionGridItem}>
+                    <CollectionCard
+                      group={group}
+                      onPress={() => {
+                        queryClient.setQueryData(["vod-collection", String(group.collectionId || "") || group.name], {
+                          collection: {
+                            id: group.collectionId,
+                            name: group.name,
+                            poster: group.posterUri || null,
+                            backdrop: group.bannerUri || null,
+                          },
+                          items: group.items,
+                          stats: { total: group.itemCount },
+                        });
+                        router.push({ pathname: "/vod-collection", params: { id: String(group.collectionId || ""), name: group.name } });
+                      }}
+                    />
+                  </View>
+                ))}
+              </View>
+            </ModuleSection>
           </>
         ) : null}
 
@@ -708,6 +833,40 @@ export function VodModuleHub({ initialPane = "home", initialFilter = "all" }: Vo
               })}
             </ScrollView>
 
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterRow}>
+              {availableGenres.map((genre) => {
+                const active = genreFilter.toLowerCase() === genre.toLowerCase();
+                return (
+                  <TouchableOpacity key={`genre-${genre}`} style={[styles.filterChip, active && styles.filterChipActive]} onPress={() => setGenreFilter(genre)}>
+                    <Text style={[styles.filterChipText, active && styles.filterChipTextActive]}>{genre === "all" ? "All genres" : genre}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterRow}>
+              {["all", "2020s", "2010s", "2000s", "classic"].map((yearKey) => {
+                const active = yearFilter === yearKey;
+                const label = yearKey === "all" ? "All years" : yearKey;
+                return (
+                  <TouchableOpacity key={`year-${yearKey}`} style={[styles.filterChip, active && styles.filterChipActive]} onPress={() => setYearFilter(yearKey)}>
+                    <Text style={[styles.filterChipText, active && styles.filterChipTextActive]}>{label}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterRow}>
+              {availablePlatforms.map((platform) => {
+                const active = platformFilter.toLowerCase() === platform.toLowerCase();
+                return (
+                  <TouchableOpacity key={`platform-${platform}`} style={[styles.filterChip, active && styles.filterChipActive]} onPress={() => setPlatformFilter(platform)}>
+                    <Text style={[styles.filterChipText, active && styles.filterChipTextActive]}>{platform === "all" ? "All platforms" : platform}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+
             {deferredQuery.length < 2 ? (
               <ModuleSection title="Quick Browse">
                 <View style={styles.quickBrowseGrid}>
@@ -719,6 +878,36 @@ export function VodModuleHub({ initialPane = "home", initialFilter = "all" }: Vo
                   ))}
                 </View>
               </ModuleSection>
+            ) : null}
+
+            {deferredQuery.length < 2 ? (
+              filteredCatalogResults.length ? (
+                <ModuleSection title="Filtered catalog">
+                  <View style={styles.resultsGrid}>
+                    {filteredCatalogResults.map((item) => (
+                      <View key={`catalog-${item.type}-${item.id}`} style={styles.gridItem}>
+                        <RealContentCard
+                          item={{
+                            ...item,
+                            year: Number(item.year || 0) || undefined,
+                            imdb: Number(item.imdb || item.rating || 0) || undefined,
+                          } as any}
+                          onPress={() => goToDetail(item)}
+                          onFavorite={() => toggleFavorite(item.id)}
+                          isFavorite={isFavorite(item.id)}
+                          width={150}
+                        />
+                      </View>
+                    ))}
+                  </View>
+                </ModuleSection>
+              ) : (
+                <View style={styles.emptyWrap}>
+                  <Ionicons name="filter-outline" size={42} color={COLORS.textMuted} />
+                  <Text style={styles.emptyTitle}>No matches for current filters</Text>
+                  <Text style={styles.emptyText}>Try another genre, year, platform or media type.</Text>
+                </View>
+              )
             ) : searchQuery.isLoading ? (
               <View style={styles.loadingWrap}>
                 <ActivityIndicator color={COLORS.accent} />
@@ -826,6 +1015,19 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     marginRight: 10,
   },
+  platformLogoWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(255,255,255,0.92)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.18)",
+    marginBottom: 8,
+  },
+  platformLogo: { width: 26, height: 26 },
+  platformLogoFallback: { color: COLORS.background, fontFamily: "Inter_700Bold", fontSize: 10 },
   platformTitle: {
     color: COLORS.text,
     fontFamily: "Inter_700Bold",
@@ -877,6 +1079,15 @@ const styles = StyleSheet.create({
   quickBrowseMeta: { color: COLORS.textMuted, fontFamily: "Inter_500Medium", fontSize: 11 },
   resultsGrid: { flexDirection: "row", flexWrap: "wrap", paddingHorizontal: 18 },
   gridItem: { width: "50%", marginBottom: 18 },
+  collectionsGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    paddingHorizontal: 18,
+    gap: 12,
+  },
+  collectionGridItem: {
+    width: "100%",
+  },
   emptyWrap: { paddingTop: 90, alignItems: "center", gap: 10, paddingHorizontal: 28 },
   emptyTitle: { color: COLORS.text, fontFamily: "Inter_700Bold", fontSize: 20 },
   emptyText: { color: COLORS.textSecondary, fontFamily: "Inter_400Regular", textAlign: "center" },
