@@ -18,13 +18,13 @@ import { SafeHaptics } from "@/lib/safeHaptics";
 
 type PremiumPlan = "weekly" | "monthly" | "yearly";
 
-const PLANS: Array<{
+const PLANS: {
   id: PremiumPlan;
   label: string;
   price: string;
   subtext: string;
   highlight?: string;
-}> = [
+}[] = [
   { id: "weekly", label: "Weekly", price: "€2.99", subtext: "Flexible access" },
   { id: "monthly", label: "Monthly", price: "€7.99", subtext: "Best for active users" },
   { id: "yearly", label: "Yearly", price: "€59.99", subtext: "Lowest long-term cost", highlight: "Save 40%" },

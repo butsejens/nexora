@@ -177,6 +177,20 @@ function todayStorageDate(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
+async function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T | null> {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<null>((resolve) => {
+        timer = setTimeout(() => resolve(null), timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 function normalizeDailyPredictionState(raw?: Partial<DailyPredictionUnlockState> | null): DailyPredictionUnlockState {
   const today = todayStorageDate();
   if (!raw || raw.date !== today) {
@@ -381,7 +395,9 @@ export function NexoraProvider({ children }: { children: ReactNode }) {
       };
     }
 
-    const unsubscribe = watchAuthState(async (user) => {
+    let unsubscribe = () => undefined;
+    try {
+      unsubscribe = watchAuthState(async (user) => {
       if (cancelled) return;
 
       const providerId = String(user?.providerData?.[0]?.providerId || "").toLowerCase();
@@ -397,18 +413,36 @@ export function NexoraProvider({ children }: { children: ReactNode }) {
       setAuthProvider(provider);
       setAuthEmail(user?.email || null);
 
-      if (user?.uid) {
-        await identifyPurchasesUser(user.uid);
-      } else if (purchasesSdkConfigured()) {
-        await configurePurchases(null);
-      }
+      try {
+        if (user?.uid) {
+          await identifyPurchasesUser(user.uid);
+        } else if (purchasesSdkConfigured()) {
+          await configurePurchases(null);
+        }
 
-      const customerInfo = await fetchCustomerInfo();
-      if (!cancelled) {
-        setPremiumCategoriesState(hasPremiumEntitlement(customerInfo) ? ALL_CATS : []);
-        setAuthReady(true);
+        const customerInfo = await withTimeout(fetchCustomerInfo(), 2500);
+        if (!cancelled) {
+          setPremiumCategoriesState(hasPremiumEntitlement(customerInfo) ? ALL_CATS : []);
+        }
+      } catch {
+        if (!cancelled) {
+          setPremiumCategoriesState([]);
+        }
+      } finally {
+        if (!cancelled) {
+          setAuthReady(true);
+        }
       }
     });
+    } catch {
+      if (!cancelled) {
+        setIsAuthenticated(true);
+        setAuthProvider(null);
+        setAuthEmail(null);
+        setPremiumCategoriesState([]);
+        setAuthReady(true);
+      }
+    }
 
     return () => {
       cancelled = true;

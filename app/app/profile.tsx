@@ -37,6 +37,7 @@ import { SafeHaptics } from "@/lib/safeHaptics";
 import * as FileSystem from "expo-file-system/legacy";
 import * as IntentLauncher from "expo-intent-launcher";
 import { useOnboardingStore } from "@/store/onboarding-store";
+import { getUpdateDiagnosticsAsync } from "@/services/update-diagnostics";
 
 const CHANGELOG: { version: string; date: string; changes: string[] }[] = [
   {
@@ -785,6 +786,7 @@ const [showAddPlaylist, setShowAddPlaylist] = useState(false);
   const [showQualityModal, setShowQualityModal] = useState(false);
   const [showUpdateModal, setShowUpdateModal] = useState(openUpdate === "1");
   const [showOnboardingEditor, setShowOnboardingEditor] = useState(false);
+  const [lastRollbackLabel, setLastRollbackLabel] = useState("Geen rollback gedetecteerd");
   const {
     moviesEnabled: onboardingMoviesEnabled,
     notifications: onboardingNotifications,
@@ -809,6 +811,23 @@ const [showAddPlaylist, setShowAddPlaylist] = useState(false);
     ? `${configVersion}-${Updates.updateId.slice(0, 8)}`
     : configVersion;
   const notificationSummary = Object.values(onboardingNotifications).filter(Boolean).length;
+
+  React.useEffect(() => {
+    let mounted = true;
+    void getUpdateDiagnosticsAsync().then((diagnostics) => {
+      if (!mounted) return;
+      const rollback = diagnostics.lastRollback;
+      if (!rollback) {
+        setLastRollbackLabel("Geen rollback gedetecteerd");
+        return;
+      }
+      const current = rollback.currentUpdateId ? rollback.currentUpdateId.slice(0, 8) : "embedded";
+      setLastRollbackLabel(`${rollback.detectedAt.slice(0, 19)} | ${rollback.previousUpdateId.slice(0, 8)} -> ${current}`);
+    });
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   const handleManualUpdateCheck = useCallback(() => {
     setShowUpdateModal(true);
@@ -1785,6 +1804,24 @@ const [showAddPlaylist, setShowAddPlaylist] = useState(false);
           <SettingRow icon="phone-portrait-outline" label={t("settings.appVersion")} value={appVersion} />
           <Divider />
           <SettingRow icon="code-slash-outline" label={t("settings.softwareVersion")} value={softwareVersion} />
+          <Divider />
+          <SettingRow
+            icon="git-branch-outline"
+            label="Update channel"
+            value={String(Updates.channel || "unknown")}
+          />
+          <Divider />
+          <SettingRow
+            icon="server-outline"
+            label="Bundle bron"
+            value={Updates.isEmbeddedLaunch ? "Embedded (geen OTA)" : Updates.updateId ? `OTA: ${Updates.updateId.slice(0, 8)}` : "Onbekend"}
+          />
+          <Divider />
+          <SettingRow
+            icon="alert-circle-outline"
+            label="Laatste rollback"
+            value={lastRollbackLabel}
+          />
           <Divider />
           <SettingRow
             icon="cloud-download-outline"
