@@ -12,6 +12,7 @@ import { router } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
 import { useQuery } from "@tanstack/react-query";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { Ionicons } from "@expo/vector-icons";
 
 import { NexoraHeader } from "@/components/NexoraHeader";
 import { RealContentCard } from "@/components/RealContentCard";
@@ -26,6 +27,10 @@ import { useOnboardingStore } from "@/store/onboarding-store";
 type SportsPayload = {
   live?: any[];
   upcoming?: any[];
+};
+
+type HighlightsPayload = {
+  highlights?: any[];
 };
 
 async function fetchJson(path: string) {
@@ -83,6 +88,25 @@ function resolveEspnLeague(match: any): string {
     "uefa conference league": "uefa.europa.conf",
   };
   return map[league] || "eng.1";
+}
+
+function splitReplayAndHighlightItems(items: any[]): { replays: any[]; highlights: any[] } {
+  const replayTokens = /(replay|full\s*match|full\s*game|extended\s*highlights|highlights\s*\+\s*goals)/i;
+  const replays: any[] = [];
+  const highlights: any[] = [];
+
+  for (const item of Array.isArray(items) ? items : []) {
+    const title = String(item?.title || "");
+    const competition = String(item?.competition || "");
+    const descriptor = `${title} ${competition}`;
+    if (replayTokens.test(descriptor)) {
+      replays.push(item);
+      continue;
+    }
+    highlights.push(item);
+  }
+
+  return { replays, highlights };
 }
 
 function toMatchParams(match: any) {
@@ -148,6 +172,18 @@ export default function CuratedHomeScreen() {
     retry: 1,
   });
 
+  const highlightsQuery = useQuery({
+    queryKey: ["home", "sports-highlights"],
+    queryFn: async () => {
+      const payload = (await fetchJson("/api/sports/highlights")) as HighlightsPayload;
+      return Array.isArray(payload?.highlights) ? payload.highlights : [];
+    },
+    enabled: sportsEnabled,
+    staleTime: 10 * 60 * 1000,
+    refetchInterval: 10 * 60 * 1000,
+    retry: 1,
+  });
+
   const continueWatching = useMemo(() => {
     const movieRows = createContinueWatching(watchHistory as any, "movie", 6);
     const seriesRows = createContinueWatching(watchHistory as any, "series", 6);
@@ -161,6 +197,12 @@ export default function CuratedHomeScreen() {
   const todayMatches = [...liveMatches, ...upcomingMatches].slice(0, 3);
   const movieRail = moviesEnabled ? (mediaQuery.data?.movies || []).slice(0, 8) : [];
   const seriesRail = moviesEnabled ? (mediaQuery.data?.series || []).slice(0, 8) : [];
+  const replayAndHighlight = useMemo(
+    () => splitReplayAndHighlightItems(sportsEnabled ? (highlightsQuery.data || []) : []),
+    [highlightsQuery.data, sportsEnabled],
+  );
+  const replayItems = replayAndHighlight.replays.slice(0, 8);
+  const highlightItems = replayAndHighlight.highlights.slice(0, 8);
 
   const heroSport = sportsEnabled ? (liveMatches[0] || upcomingMatches[0]) : null;
   const heroMedia = moviesEnabled ? (movieRail[0] || seriesRail[0] || null) : null;
@@ -175,6 +217,21 @@ export default function CuratedHomeScreen() {
     : `${heroMedia?.type === "series" ? "Series" : "Film"}${heroMedia?.year ? ` · ${heroMedia.year}` : ""}`;
 
   const heroImage = heroIsSport ? null : (heroMedia?.backdrop || heroMedia?.poster || null);
+
+  const openReplay = (item: any, fallbackId: string) => {
+    const rawUrl = String(item?.embedUrl || item?.matchUrl || item?.url || "").trim();
+    if (!rawUrl) return;
+    router.push({
+      pathname: "/player",
+      params: {
+        embedUrl: rawUrl,
+        title: String(item?.title || `${String(item?.homeTeam || "Home")} vs ${String(item?.awayTeam || "Away")}`),
+        type: "sport",
+        contentId: `sport_replay_${fallbackId}`,
+      },
+    });
+  };
+
   return (
     <View style={styles.screen}>
       <NexoraHeader
@@ -267,6 +324,60 @@ export default function CuratedHomeScreen() {
                 onPress={() => router.push({ pathname: "/match-detail", params: toMatchParams(match) })}
               />
             )) : <Text style={styles.emptyText}>No matches scheduled yet.</Text>}
+          </View>
+        )}
+
+        {sportsEnabled && (replayItems.length > 0 || highlightItems.length > 0) && (
+          <View style={styles.section}>
+            <View style={styles.sectionHead}>
+              <Text style={styles.sectionLabel}>HIGHLIGHTS & REPLAYS</Text>
+            </View>
+
+            {replayItems.length > 0 && (
+              <>
+                <Text style={styles.subSectionLabel}>Replays</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.rail}>
+                  {replayItems.map((item: any, idx: number) => {
+                    const thumb = String(item?.thumbnail || "").trim();
+                    return (
+                      <TouchableOpacity key={`replay_${item?.id || idx}`} style={styles.highlightCard} activeOpacity={0.86} onPress={() => openReplay(item, String(item?.id || idx))}>
+                        {thumb ? <Image source={{ uri: thumb }} style={styles.highlightThumb} resizeMode="cover" /> : <View style={styles.highlightThumbFallback} />}
+                        <View style={styles.highlightOverlay}>
+                          <View style={styles.highlightBadge}>
+                            <Ionicons name="play-circle" size={12} color="#fff" />
+                            <Text style={styles.highlightBadgeText}>Replay</Text>
+                          </View>
+                          <Text style={styles.highlightTitle} numberOfLines={2}>{String(item?.title || "Replay")}</Text>
+                        </View>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </ScrollView>
+              </>
+            )}
+
+            {highlightItems.length > 0 && (
+              <>
+                <Text style={styles.subSectionLabel}>Highlights</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.rail}>
+                  {highlightItems.map((item: any, idx: number) => {
+                    const thumb = String(item?.thumbnail || "").trim();
+                    return (
+                      <TouchableOpacity key={`highlight_${item?.id || idx}`} style={styles.highlightCard} activeOpacity={0.86} onPress={() => openReplay(item, String(item?.id || idx))}>
+                        {thumb ? <Image source={{ uri: thumb }} style={styles.highlightThumb} resizeMode="cover" /> : <View style={styles.highlightThumbFallback} />}
+                        <View style={styles.highlightOverlay}>
+                          <View style={styles.highlightBadge}>
+                            <Ionicons name="star" size={11} color="#F9D923" />
+                            <Text style={styles.highlightBadgeText}>Highlight</Text>
+                          </View>
+                          <Text style={styles.highlightTitle} numberOfLines={2}>{String(item?.title || "Highlight")}</Text>
+                        </View>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </ScrollView>
+              </>
+            )}
           </View>
         )}
 
@@ -419,6 +530,58 @@ const styles = StyleSheet.create({
     fontSize: 12,
     paddingHorizontal: 18,
     paddingVertical: 12,
+  },
+  subSectionLabel: {
+    color: "rgba(255,255,255,0.78)",
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 12,
+    paddingHorizontal: 18,
+    marginBottom: 8,
+  },
+  highlightCard: {
+    width: 220,
+    height: 126,
+    borderRadius: 14,
+    overflow: "hidden",
+    backgroundColor: "#11131B",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.08)",
+    marginRight: 10,
+  },
+  highlightThumb: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  highlightThumbFallback: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "#161A24",
+  },
+  highlightOverlay: {
+    flex: 1,
+    justifyContent: "flex-end",
+    padding: 10,
+    backgroundColor: "rgba(0,0,0,0.35)",
+  },
+  highlightBadge: {
+    alignSelf: "flex-start",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    backgroundColor: "rgba(0,0,0,0.45)",
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    marginBottom: 8,
+  },
+  highlightBadgeText: {
+    color: "#FFFFFF",
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 11,
+  },
+  highlightTitle: {
+    color: "#FFFFFF",
+    fontFamily: "Inter_700Bold",
+    fontSize: 12,
+    lineHeight: 16,
   },
   rail: { paddingHorizontal: 18, paddingBottom: 8 },
 });

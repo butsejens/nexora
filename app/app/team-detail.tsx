@@ -5,13 +5,12 @@ import {
 } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
+import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { useQuery } from "@tanstack/react-query";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { COLORS } from "@/constants/colors";
 import { apiRequest } from "@/lib/query-client";
-import { fetchSportsLeagueResourceWithFallback, getLeaderboardRows } from "@/lib/sports-data";
 import { enrichTeamDetailPayload } from "@/lib/sports-enrichment";
 import { normalizeApiError } from "@/lib/error-messages";
 import { TeamLogo } from "@/components/TeamLogo";
@@ -93,17 +92,6 @@ function positionLabel(pos: string, positionName?: string): string {
   const i18nKey = POSITION_KEY_MAP[key];
   if (i18nKey) return tFn(`teamDetail.positions.${i18nKey}`);
   return POSITION_LABELS_FALLBACK[key] || key || tFn("teamDetail.unknown");
-}
-
-function isLeagueCode(value: unknown): boolean {
-  const text = String(value || "").trim().toLowerCase();
-  if (!text) return false;
-  return /^[a-z]{3,6}\.\d$/i.test(text) || /^[a-z]{3,6}\.[a-z0-9_]+$/i.test(text);
-}
-
-function cleanLeagueLabel(value: unknown): string {
-  const text = String(value || "").trim();
-  return isLeagueCode(text) ? "" : text;
 }
 
 export default function TeamDetailScreen() {
@@ -205,34 +193,6 @@ export default function TeamDetailScreen() {
     retry: 1,
   });
 
-  const isNationalTeam = league.includes("fifa");
-
-  const { data: scorersData } = useQuery({
-    queryKey: ["topscorers", league],
-    queryFn: async () => {
-      return fetchSportsLeagueResourceWithFallback("topscorers", {
-        leagueName: data?.leagueName || leagueParam,
-        espnLeague: league,
-        sequential: true,
-      });
-    },
-    enabled: !!league && !isNationalTeam,
-    staleTime: 5 * 60 * 1000,
-  });
-
-  const { data: assistsData } = useQuery({
-    queryKey: ["topassists", league],
-    queryFn: async () => {
-      return fetchSportsLeagueResourceWithFallback("topassists", {
-        leagueName: data?.leagueName || leagueParam,
-        espnLeague: league,
-        sequential: true,
-      });
-    },
-    enabled: !!league && !isNationalTeam,
-    staleTime: 5 * 60 * 1000,
-  });
-
   const teamName = String(data?.name || teamNameParam || "Team");
   const hasRenderableTeamData = Boolean(
     data && (
@@ -244,16 +204,20 @@ export default function TeamDetailScreen() {
   );
 
   const players: any[] = useMemo(() => data?.players || [], [data?.players]);
+  const playersWithPhoto = useMemo(
+    () => players.filter((p) => Boolean(p?.photo || p?.theSportsDbPhoto)),
+    [players]
+  );
 
   const positionGroups = useMemo(() => {
     const groups: Record<string, any[]> = {};
-    for (const p of players) {
+    for (const p of playersWithPhoto) {
       const pos = p.position || "?";
       if (!groups[pos]) groups[pos] = [];
       groups[pos].push(p);
     }
     return groups;
-  }, [players]);
+  }, [playersWithPhoto]);
 
   const positions = Object.keys(positionGroups).sort((a, b) => {
     const ia = POSITION_ORDER.indexOf(a);
@@ -274,7 +238,7 @@ export default function TeamDetailScreen() {
   };
 
   const filteredPlayers = useMemo(() => {
-    const scoped = posFilter === "all" ? [...players] : players.filter(p => p.position === posFilter);
+    const scoped = posFilter === "all" ? [...playersWithPhoto] : playersWithPhoto.filter(p => p.position === posFilter);
     scoped.sort((a, b) => {
       switch (sortKey) {
         case "value_desc":
@@ -293,32 +257,7 @@ export default function TeamDetailScreen() {
       }
     });
     return scoped;
-  }, [players, posFilter, sortKey]);
-
-  const realValueCount = players.filter(p => p.isRealValue).length;
-  const topScorerForTeam = (getLeaderboardRows("topscorers", scorersData) as any[]).find((s) => {
-    const team = String(s?.team || "").toLowerCase();
-    const current = String(data?.name || teamNameParam || "").toLowerCase();
-    const goals = Number(s?.goals ?? s?.displayValue ?? 0);
-    return team && current && (team.includes(current) || current.includes(team)) && Number.isFinite(goals) && goals > 0;
-  });
-
-  const topAssistForTeam = (getLeaderboardRows("topassists", assistsData) as any[]).find((s) => {
-    const team = String(s?.team || "").toLowerCase();
-    const current = String(data?.name || teamNameParam || "").toLowerCase();
-    const assists = Number(s?.assists ?? s?.displayValue ?? 0);
-    return team && current && (team.includes(current) || current.includes(team)) && Number.isFinite(assists) && assists > 0;
-  });
-
-  const topScorerValue = Number(topScorerForTeam?.displayValue || topScorerForTeam?.goals || 0);
-  const hasTopScorer = Boolean(topScorerForTeam?.name) && Number.isFinite(topScorerValue) && topScorerValue > 0;
-  const topAssistValue = Number(topAssistForTeam?.displayValue || topAssistForTeam?.assists || 0);
-  const enrichedTopAssistValue = Number((data as any)?.topAssist?.assists || 0);
-  const hasTopAssistFromPayload = Boolean((data as any)?.topAssist?.name) && Number.isFinite(enrichedTopAssistValue) && enrichedTopAssistValue > 0;
-  const hasTopAssist = hasTopAssistFromPayload || (Boolean(topAssistForTeam?.name) && Number.isFinite(topAssistValue) && topAssistValue > 0);
-  const topAssistName = hasTopAssistFromPayload ? String((data as any)?.topAssist?.name || "") : String(topAssistForTeam?.name || "");
-  const topAssistStat = hasTopAssistFromPayload ? enrichedTopAssistValue : topAssistValue;
-  const leagueLabel = cleanLeagueLabel(data?.leagueName || "") || cleanLeagueLabel(leagueParam);
+  }, [playersWithPhoto, posFilter, sortKey]);
 
   const handleToggleFollow = useCallback(async () => {
     if (isFollowing) {
@@ -379,51 +318,15 @@ export default function TeamDetailScreen() {
 
         {data ? (
         <View style={styles.teamHeaderContent}>
-          <TeamLogo
-            uri={data.logo || logoParam || null}
-            teamName={teamName}
-            size={72}
-          />
+          <View style={styles.teamPosterWrap}>
+            <View style={styles.teamPosterGlow} />
+            <TeamLogo
+              uri={data.logo || logoParam || null}
+              teamName={teamName}
+              size={118}
+            />
+          </View>
           {data.shortName ? <Text style={styles.teamShort}>{data.shortName}</Text> : null}
-
-          {/* League position row */}
-          {data.leagueRank ? (
-            <View style={styles.rankBadge}>
-              <MaterialCommunityIcons name="trophy-outline" size={14} color="#FFD700" />
-              <Text style={styles.rankText}>
-                #{data.leagueRank}{leagueLabel ? ` ${leagueLabel}` : ""}
-                {data.leaguePoints ? `  ·  ${data.leaguePoints} pts` : ""}
-                {data.leaguePlayed ? `  ·  ${t("teamDetail.matchesPlayed", { count: String(data.leaguePlayed) })}` : ""}
-              </Text>
-            </View>
-          ) : null}
-
-          {(realValueCount > 0 || data.squadMarketValue) ? (
-            <View style={styles.tmBadge}>
-              <MaterialCommunityIcons name="currency-eur" size={11} color="#00C896" />
-              <Text style={styles.tmBadgeText}>
-                {data.squadMarketValue ? t("teamDetail.clubValue", { value: data.squadMarketValue }) : t("teamDetail.marketValues", { count: String(realValueCount) })}
-              </Text>
-            </View>
-          ) : null}
-
-          {hasTopScorer ? (
-            <View style={styles.topScorerBadge}>
-              <MaterialCommunityIcons name="trophy-outline" size={13} color={COLORS.gold} />
-              <Text style={styles.topScorerText}>
-                {t("teamDetail.topScorerLabel", { name: topScorerForTeam.name, goals: String(topScorerValue) })}
-              </Text>
-            </View>
-          ) : null}
-
-          {hasTopAssist ? (
-            <View style={styles.topAssistBadge}>
-              <MaterialCommunityIcons name="target" size={13} color="#4FC3F7" />
-              <Text style={styles.topAssistText}>
-                {`${topAssistName} · ${topAssistStat} A`}
-              </Text>
-            </View>
-          ) : null}
         </View>
         ) : null}
       </LinearGradient>
@@ -482,7 +385,7 @@ export default function TeamDetailScreen() {
                     onPress={() => setPosFilter("all")}
                   >
                     <Text style={[styles.filterChipText, posFilter === "all" && styles.filterChipTextActive]}>
-                      {t("teamDetail.all")} ({players.length})
+                      {t("teamDetail.all")} ({playersWithPhoto.length})
                     </Text>
                   </TouchableOpacity>
                   {positions.map(pos => (
@@ -553,7 +456,7 @@ const PlayerCard = React.memo(function PlayerCard({ player, teamName, league }: 
 
   useEffect(() => {
     let cancelled = false;
-    void resolvePlayerImageUri(seed, { allowNetwork: false }).then((uri) => {
+    void resolvePlayerImageUri(seed, { allowNetwork: true }).then((uri) => {
       if (cancelled || !uri) return;
       setResolvedPhoto(uri);
       setImageFailed(false);
@@ -566,13 +469,13 @@ const PlayerCard = React.memo(function PlayerCard({ player, teamName, league }: 
   const posColor = POSITION_COLORS[player.position] || COLORS.accent;
   const rawName = String(player?.name || "").trim();
   const safeName = rawName || tFn("teamDetail.unknown");
-  const initials = safeName.split(/\s+/).filter(Boolean).slice(0, 2).map((p: string) => p[0]).join("").toUpperCase() || "?";
+  const jerseyValue = String(player?.jersey || "-").trim() || "-";
 
   return (
     <View style={styles.playerCard}>
       <View style={styles.playerTopRow}>
         <View style={[styles.jerseyBadge, { borderColor: posColor }]}> 
-          <Text style={[styles.jerseyNum, { color: posColor }]}>{player.jersey || (player.position || "-")}</Text>
+          <Text style={[styles.jerseyNum, { color: posColor }]}>{jerseyValue}</Text>
         </View>
 
         {photoUri ? (
@@ -586,7 +489,7 @@ const PlayerCard = React.memo(function PlayerCard({ player, teamName, league }: 
           />
         ) : (
           <View style={[styles.playerPhoto, styles.photoPlaceholder]}>
-            <Text style={styles.playerInitials}>{initials}</Text>
+            <Ionicons name="person" size={16} color={COLORS.textMuted} />
           </View>
         )}
 
@@ -664,6 +567,24 @@ const styles = StyleSheet.create({
   },
   followBtnText: { fontFamily: "Inter_700Bold", fontSize: 12, color: COLORS.text, letterSpacing: 0.2 },
   teamHeaderContent: { alignItems: "center", gap: 10, paddingTop: 2 },
+  teamPosterWrap: {
+    width: 138,
+    height: 138,
+    borderRadius: 30,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(8,16,26,0.36)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.16)",
+    overflow: "hidden",
+  },
+  teamPosterGlow: {
+    position: "absolute",
+    width: 126,
+    height: 126,
+    borderRadius: 63,
+    backgroundColor: "rgba(0,126,255,0.12)",
+  },
   teamBigLogo: { width: 84, height: 84, borderRadius: 16 },
   logoPlaceholder: { backgroundColor: COLORS.card, alignItems: "center", justifyContent: "center" },
   logoPlaceholderText: { fontFamily: "Inter_700Bold", fontSize: 22, color: COLORS.text },
