@@ -10,6 +10,7 @@ import { ensureNamespaced, getSource } from "@/lib/id-namespace";
 import { setLanguage as setI18nLanguage, type Language } from "@/lib/i18n";
 
 export type PremiumCategory = "sport" | "movies" | "series" | "livetv";
+export type AuthProvider = "google" | "apple" | "email";
 
 export interface DownloadedItem {
   id: string;
@@ -124,6 +125,15 @@ interface NexoraContextValue {
   activatePremium: () => Promise<void>;
   deactivatePremium: () => Promise<void>;
   activatePremiumCategories: (cats: PremiumCategory[]) => Promise<void>;
+  isAuthenticated: boolean;
+  authProvider: AuthProvider | null;
+  authEmail: string | null;
+  signInWithProvider: (provider: Exclude<AuthProvider, "email">) => Promise<void>;
+  signInWithEmail: (email: string) => Promise<void>;
+  signOut: () => Promise<void>;
+  dailyPredictionUnlocksRemaining: number;
+  isPredictionUnlocked: (matchId: string) => boolean;
+  unlockPredictionWithRewardedAd: (matchId: string) => Promise<{ ok: boolean; reason?: string }>;
   downloads: DownloadedItem[];
   addDownload: (item: DownloadedItem) => Promise<void>;
   removeDownload: (id: string) => Promise<void>;
@@ -131,11 +141,33 @@ interface NexoraContextValue {
   getDownload: (contentId: string) => DownloadedItem | undefined;
 }
 
+type DailyPredictionUnlockState = {
+  date: string;
+  used: number;
+  matchId: string | null;
+};
+
 const NexoraContext = createContext<NexoraContextValue | null>(null);
 
 // Constant outside component — never recreated
 const ALL_CATS: PremiumCategory[] = ["sport", "movies", "series", "livetv"];
 const profiles = ["Main"];
+
+function todayStorageDate(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function normalizeDailyPredictionState(raw?: Partial<DailyPredictionUnlockState> | null): DailyPredictionUnlockState {
+  const today = todayStorageDate();
+  if (!raw || raw.date !== today) {
+    return { date: today, used: 0, matchId: null };
+  }
+  return {
+    date: today,
+    used: Number(raw.used || 0) > 0 ? 1 : 0,
+    matchId: raw.matchId ? String(raw.matchId) : null,
+  };
+}
 
 export function NexoraProvider({ children }: { children: ReactNode }) {
   const [favorites, setFavorites] = useState<string[]>([]);
@@ -157,6 +189,11 @@ export function NexoraProvider({ children }: { children: ReactNode }) {
   const [premiumCategories, setPremiumCategoriesState] = useState<PremiumCategory[]>([]);
   const [downloads, setDownloads] = useState<DownloadedItem[]>([]);
   const [avatarUri, setAvatarUriState] = useState<string | null>(null);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [authProvider, setAuthProvider] = useState<AuthProvider | null>(null);
+  const [authEmail, setAuthEmail] = useState<string | null>(null);
+  const [dailyPredictionUnlockState, setDailyPredictionUnlockState] = useState<DailyPredictionUnlockState>(() => normalizeDailyPredictionState());
+  const [unlockedPredictionIds, setUnlockedPredictionIds] = useState<string[]>([]);
 
   const isPremium = ALL_CATS.every(c => premiumCategories.includes(c));
   const hasPremium = (cat: PremiumCategory) => premiumCategories.includes(cat);
@@ -215,9 +252,10 @@ export function NexoraProvider({ children }: { children: ReactNode }) {
           "nexora_premium", "nexora_premium_cats",
           "nexora_audio_lang", "nexora_autoplay", "nexora_dl_wifi", "nexora_notif",
           "nexora_downloads", "nexora_ui_lang",
+          "nexora_auth_session", "nexora_prediction_unlock_daily", "nexora_prediction_unlock_matches",
         ];
         const [favs, hist, pls, qual, subs, pin, prof, iptv, hidCh, hidGr, prem, cats,
-               audioLang, autoplay, dlWifi, notif, dlItems, uiLang] =
+               audioLang, autoplay, dlWifi, notif, dlItems, uiLang, authSession, dailyUnlock, unlockedPredictions] =
           await AsyncStorage.multiGet(keys).then(r => r.map(([, v]) => v));
 
         if (favs) setFavorites(JSON.parse(favs));
@@ -260,6 +298,28 @@ export function NexoraProvider({ children }: { children: ReactNode }) {
           setPremiumCategoriesState(ALL_CATS);
         }
         if (dlItems) setDownloads(JSON.parse(dlItems));
+        if (authSession) {
+          const parsed = JSON.parse(authSession);
+          const provider = parsed?.provider;
+          if (provider === "google" || provider === "apple" || provider === "email") {
+            setIsAuthenticated(true);
+            setAuthProvider(provider);
+            setAuthEmail(parsed?.email ? String(parsed.email) : null);
+          }
+        }
+        if (dailyUnlock) {
+          const normalized = normalizeDailyPredictionState(JSON.parse(dailyUnlock));
+          setDailyPredictionUnlockState(normalized);
+          if (normalized.used > 0 && normalized.matchId) {
+            setUnlockedPredictionIds([normalized.matchId]);
+          }
+        }
+        if (unlockedPredictions) {
+          const parsed = JSON.parse(unlockedPredictions);
+          if (Array.isArray(parsed)) {
+            setUnlockedPredictionIds(parsed.map((id) => String(id)).filter(Boolean).slice(0, 1));
+          }
+        }
 
         const savedAvatar = await AsyncStorage.getItem("nexora_avatar");
         if (savedAvatar) setAvatarUriState(savedAvatar);
@@ -538,6 +598,72 @@ export function NexoraProvider({ children }: { children: ReactNode }) {
     await AsyncStorage.removeItem("nexora_premium");
   };
 
+  const signInWithProvider = async (provider: Exclude<AuthProvider, "email">) => {
+    const session = { provider, email: null, signedInAt: new Date().toISOString() };
+    setIsAuthenticated(true);
+    setAuthProvider(provider);
+    setAuthEmail(null);
+    await AsyncStorage.setItem("nexora_auth_session", JSON.stringify(session));
+  };
+
+  const signInWithEmail = async (email: string) => {
+    const normalizedEmail = String(email || "").trim().toLowerCase();
+    if (!normalizedEmail || !normalizedEmail.includes("@")) {
+      throw new Error("Please enter a valid email address.");
+    }
+    const session = { provider: "email" as const, email: normalizedEmail, signedInAt: new Date().toISOString() };
+    setIsAuthenticated(true);
+    setAuthProvider("email");
+    setAuthEmail(normalizedEmail);
+    await AsyncStorage.setItem("nexora_auth_session", JSON.stringify(session));
+  };
+
+  const signOut = async () => {
+    setIsAuthenticated(false);
+    setAuthProvider(null);
+    setAuthEmail(null);
+    await AsyncStorage.removeItem("nexora_auth_session");
+  };
+
+  const normalizedUnlockState = normalizeDailyPredictionState(dailyPredictionUnlockState);
+  const dailyPredictionUnlocksRemaining = hasPremium("sport") ? 999 : Math.max(0, 1 - normalizedUnlockState.used);
+
+  const isPredictionUnlocked = (matchId: string) => {
+    if (hasPremium("sport")) return true;
+    const normalizedId = String(matchId || "").trim();
+    if (!normalizedId) return false;
+    if (normalizedUnlockState.used === 0) return false;
+    return normalizedUnlockState.matchId === normalizedId || unlockedPredictionIds.includes(normalizedId);
+  };
+
+  const unlockPredictionWithRewardedAd = async (matchId: string): Promise<{ ok: boolean; reason?: string }> => {
+    const normalizedId = String(matchId || "").trim();
+    if (!normalizedId) return { ok: false, reason: "Invalid match id." };
+    if (hasPremium("sport")) {
+      return { ok: true };
+    }
+
+    const current = normalizeDailyPredictionState(dailyPredictionUnlockState);
+    if (current.used >= 1 && current.matchId !== normalizedId) {
+      return { ok: false, reason: "Free daily unlock already used. Upgrade to premium for unlimited access." };
+    }
+
+    const nextState: DailyPredictionUnlockState = {
+      date: todayStorageDate(),
+      used: 1,
+      matchId: normalizedId,
+    };
+    setDailyPredictionUnlockState(nextState);
+    setUnlockedPredictionIds([normalizedId]);
+    await AsyncStorage.multiSet([
+      ["nexora_prediction_unlock_daily", JSON.stringify(nextState)],
+      ["nexora_prediction_unlock_matches", JSON.stringify([normalizedId])],
+    ]);
+
+    // Optional backend sync can be added later when unlock endpoint is available.
+    return { ok: true };
+  };
+
   const addDownload = async (item: DownloadedItem) => {
     const next = [item, ...downloads.filter(d => d.contentId !== item.contentId)];
     setDownloads(next);
@@ -565,6 +691,7 @@ export function NexoraProvider({ children }: { children: ReactNode }) {
       "nexora_subtitles", "nexora_premium", "nexora_premium_cats",
       "nexora_audio_lang", "nexora_autoplay", "nexora_dl_wifi", "nexora_notif",
       "nexora_schema_v2", "nexora_schema_v3", "nexora_downloads", "nexora_ui_lang",
+      "nexora_auth_session", "nexora_prediction_unlock_daily", "nexora_prediction_unlock_matches",
     ];
     try {
       await AsyncStorage.multiRemove(keys);
@@ -590,6 +717,11 @@ export function NexoraProvider({ children }: { children: ReactNode }) {
     setPremiumCategoriesState([]);
     setDownloads([]);
     setAvatarUriState(null);
+    setIsAuthenticated(false);
+    setAuthProvider(null);
+    setAuthEmail(null);
+    setDailyPredictionUnlockState(normalizeDailyPredictionState());
+    setUnlockedPredictionIds([]);
     if (Platform.OS === "web" && typeof window !== "undefined") {
       setTimeout(() => window.location.reload(), 300);
     }
@@ -613,11 +745,14 @@ export function NexoraProvider({ children }: { children: ReactNode }) {
     activeProfile, setActiveProfile, profiles, avatarUri, setAvatarUri,
     isPremium, premiumCategories, hasPremium,
     activatePremium, deactivatePremium, activatePremiumCategories,
+     isAuthenticated, authProvider, authEmail, signInWithProvider, signInWithEmail, signOut,
+     dailyPredictionUnlocksRemaining, isPredictionUnlocked, unlockPredictionWithRewardedAd,
     downloads, addDownload, removeDownload, isDownloaded, getDownload,
     resetAll,
   }), [favorites, watchHistory, playlists, iptvChannels, isLoadingPlaylist, hiddenChannels, hiddenGroups,
        selectedQuality, subtitlesEnabled, audioLanguage, uiLanguage, autoplayEnabled, downloadOverWifi,
-       notificationsEnabled, parentalPin, activeProfile, premiumCategories, downloads, avatarUri]);
+       notificationsEnabled, parentalPin, activeProfile, premiumCategories, downloads, avatarUri,
+       isAuthenticated, authProvider, authEmail, dailyPredictionUnlockState, unlockedPredictionIds]);
 
   return <NexoraContext.Provider value={value}>{children}</NexoraContext.Provider>;
 }

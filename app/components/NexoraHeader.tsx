@@ -1,10 +1,12 @@
 import React from "react";
-import { View, Text, StyleSheet, TouchableOpacity, Platform, useWindowDimensions } from "react-native";
+import { View, Text, StyleSheet, Platform, useWindowDimensions } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { BlurView } from "expo-blur";
 import { COLORS } from "@/constants/colors";
+import { ScalePress } from "@/components/ui/ScalePress";
+import { useUiStore } from "@/store/uiStore";
 
 interface Props {
   title?: string;
@@ -13,6 +15,7 @@ interface Props {
   badgeTone?: "live" | "accent" | "neutral";
   variant?: "default" | "module";
   compact?: boolean;
+  showMenu?: boolean;
   showSearch?: boolean;
   showNotification?: boolean;
   showFavorites?: boolean;
@@ -40,6 +43,7 @@ export function NexoraHeader({
   onFavorites,
   onProfile,
   rightElement,
+  showMenu = true,
 }: Props) {
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
@@ -49,11 +53,13 @@ export function NexoraHeader({
   const isIOS = Platform.OS === "ios";
   const topPad = Platform.OS === "web" ? 0 : insets.top;
   const isModuleVariant = variant === "module";
+  const openMenu = useUiStore((state) => state.openNexoraMenu);
 
   // Fallbacks: always navigate even if prop is not passed
   const handleNotification = onNotification ?? (() => router.push("/follow-center"));
   const handleFavorites = onFavorites ?? (() => router.push("/favorites"));
   const handleProfile = onProfile ?? (() => router.push("/profile"));
+  const handleMenu = () => openMenu();
 
   const moduleTitleColor = titleColor ?? COLORS.accent;
   const iconSize = compact ? 17 : isTablet ? 20 : 18;
@@ -86,25 +92,30 @@ export function NexoraHeader({
 
       <View style={styles.actions}>
         {rightElement}
+        {showMenu && (
+          <ScalePress style={[styles.iconBtn, { width: actionSize, height: actionSize, borderRadius: actionSize / 2 }]} onPress={handleMenu}>
+            <Ionicons name="menu" size={iconSize} color={COLORS.textSecondary} />
+          </ScalePress>
+        )}
         {showSearch && (
-          <TouchableOpacity style={[styles.iconBtn, { width: actionSize, height: actionSize, borderRadius: actionSize / 2 }]} onPress={onSearch} activeOpacity={0.7}>
+          <ScalePress style={[styles.iconBtn, { width: actionSize, height: actionSize, borderRadius: actionSize / 2 }]} onPress={onSearch}>
             <Ionicons name="search" size={iconSize} color={COLORS.textSecondary} />
-          </TouchableOpacity>
+          </ScalePress>
         )}
         {showNotification && (
-          <TouchableOpacity style={[styles.iconBtn, { width: actionSize, height: actionSize, borderRadius: actionSize / 2 }]} onPress={handleNotification} activeOpacity={0.7}>
+          <ScalePress style={[styles.iconBtn, { width: actionSize, height: actionSize, borderRadius: actionSize / 2 }]} onPress={handleNotification}>
             <Ionicons name="notifications-outline" size={iconSize} color={COLORS.textSecondary} />
-          </TouchableOpacity>
+          </ScalePress>
         )}
         {showFavorites && (
-          <TouchableOpacity style={[styles.iconBtn, { width: actionSize, height: actionSize, borderRadius: actionSize / 2 }]} onPress={handleFavorites} activeOpacity={0.7}>
+          <ScalePress style={[styles.iconBtn, { width: actionSize, height: actionSize, borderRadius: actionSize / 2 }]} onPress={handleFavorites}>
             <Ionicons name="heart-outline" size={iconSize} color={COLORS.textSecondary} />
-          </TouchableOpacity>
+          </ScalePress>
         )}
         {showProfile && (
-          <TouchableOpacity style={[styles.profileBtn, { width: actionSize, height: actionSize, borderRadius: actionSize / 2 }]} onPress={handleProfile} activeOpacity={0.7}>
+          <ScalePress style={[styles.profileBtn, { width: actionSize, height: actionSize, borderRadius: actionSize / 2 }]} onPress={handleProfile}>
             <Ionicons name="person" size={compact ? 16 : 17} color={COLORS.accent} />
-          </TouchableOpacity>
+          </ScalePress>
         )}
       </View>
     </View>
@@ -136,25 +147,30 @@ export function NexoraHeader({
 
       <View style={styles.actions}>
         {rightElement}
+        {showMenu && (
+          <ScalePress style={[styles.iconBtn, { width: actionSize, height: actionSize, borderRadius: actionSize / 2 }]} onPress={handleMenu}>
+            <Ionicons name="menu" size={iconSize} color={COLORS.textSecondary} />
+          </ScalePress>
+        )}
         {showSearch && (
-          <TouchableOpacity style={[styles.iconBtn, { width: actionSize, height: actionSize, borderRadius: actionSize / 2 }]} onPress={onSearch} activeOpacity={0.7}>
+          <ScalePress style={[styles.iconBtn, { width: actionSize, height: actionSize, borderRadius: actionSize / 2 }]} onPress={onSearch}>
             <Ionicons name="search" size={iconSize} color={COLORS.textSecondary} />
-          </TouchableOpacity>
+          </ScalePress>
         )}
         {showNotification && (
-          <TouchableOpacity style={[styles.iconBtn, { width: actionSize, height: actionSize, borderRadius: actionSize / 2 }]} onPress={handleNotification} activeOpacity={0.7}>
+          <ScalePress style={[styles.iconBtn, { width: actionSize, height: actionSize, borderRadius: actionSize / 2 }]} onPress={handleNotification}>
             <Ionicons name="notifications-outline" size={iconSize} color={COLORS.textSecondary} />
-          </TouchableOpacity>
+          </ScalePress>
         )}
         {showFavorites && (
-          <TouchableOpacity style={[styles.iconBtn, { width: actionSize, height: actionSize, borderRadius: actionSize / 2 }]} onPress={handleFavorites} activeOpacity={0.7}>
+          <ScalePress style={[styles.iconBtn, { width: actionSize, height: actionSize, borderRadius: actionSize / 2 }]} onPress={handleFavorites}>
             <Ionicons name="heart-outline" size={iconSize} color={COLORS.textSecondary} />
-          </TouchableOpacity>
+          </ScalePress>
         )}
         {showProfile && (
-          <TouchableOpacity style={[styles.profileBtn, { width: actionSize, height: actionSize, borderRadius: actionSize / 2 }]} onPress={handleProfile} activeOpacity={0.7}>
+          <ScalePress style={[styles.profileBtn, { width: actionSize, height: actionSize, borderRadius: actionSize / 2 }]} onPress={handleProfile}>
             <Ionicons name="person" size={17} color={COLORS.accent} />
-          </TouchableOpacity>
+          </ScalePress>
         )}
       </View>
     </View>

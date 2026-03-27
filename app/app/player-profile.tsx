@@ -7,6 +7,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { useQuery } from "@tanstack/react-query";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { COLORS } from "@/constants/colors";
+import { NexoraCollapsingHeader } from "@/components/layout/NexoraCollapsingHeader";
 import { normalizeApiError } from "@/lib/error-messages";
 import { enrichPlayerProfilePayload } from "@/lib/sports-enrichment";
 import { useTranslation } from "@/lib/useTranslation";
@@ -330,7 +331,6 @@ export default function PlayerProfileScreen() {
   }, [data?.formerClubs]);
 
   const scrollY = useRef(new Animated.Value(0)).current;
-  const heroOpacity = scrollY.interpolate({ inputRange: [0, 120], outputRange: [1, 1], extrapolate: "clamp" });
 
   const overviewFacts = useMemo(() => {
     const facts = [
@@ -381,44 +381,43 @@ export default function PlayerProfileScreen() {
 
   return (
     <View style={styles.container}>
-      <LinearGradient colors={[COLORS.card, COLORS.background]} style={[styles.header, { paddingTop: insets.top + 10, zIndex: 30, elevation: 30 }]}> 
-        <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
-          <Ionicons name="chevron-back" size={24} color={COLORS.text} />
-        </TouchableOpacity>
-
-        {/* Player name — always visible */}
-        <Text style={styles.name} numberOfLines={2}>{normalizeText(data?.name || params.name, tx("playerProfile.player", "Player"))}</Text>
-
-        {/* Collapsible hero details — fades on scroll */}
-        <Animated.View style={{ opacity: heroOpacity }}>
-        <View style={styles.hero}>
-          {photoUri && !photoFailed ? (
-            <Image
-              source={{ uri: photoUri }}
-              style={[styles.photo, { backgroundColor: COLORS.card }]}
-              resizeMode="cover"
-              onError={() => {
-                const fallback = getBestCachedOrSeedPlayerImage(playerImageSeed);
-                if (fallback && fallback !== photoUri) {
-                  setPhotoUri(fallback);
-                  setPhotoFailed(false);
-                } else {
-                  setPhotoFailed(true);
-                }
-              }}
-            />
-          ) : (
-            <View style={[styles.photo, styles.photoFallback, { borderColor: badgeColor }]}> 
-              <Text style={styles.photoInitials}>{initials}</Text>
+      <View style={{ zIndex: 30, elevation: 30 }}>
+        <NexoraCollapsingHeader
+          scrollY={scrollY}
+          topInset={insets.top}
+          title={normalizeText(data?.name || params.name, tx("playerProfile.player", "Player"))}
+          subtitle={`${normalizeText(data?.position || params.position)} ${normalizeText(data?.nationality || params.nationality, "") ? `• ${normalizeText(data?.nationality || params.nationality)}` : ""}`.trim()}
+          onBack={() => router.back()}
+          backgroundColor={COLORS.card}
+          heroContent={
+            <View style={styles.hero}>
+              {photoUri && !photoFailed ? (
+                <Image
+                  source={{ uri: photoUri }}
+                  style={[styles.photo, { backgroundColor: COLORS.card }]}
+                  resizeMode="cover"
+                  onError={() => {
+                    const fallback = getBestCachedOrSeedPlayerImage(playerImageSeed);
+                    if (fallback && fallback !== photoUri) {
+                      setPhotoUri(fallback);
+                      setPhotoFailed(false);
+                    } else {
+                      setPhotoFailed(true);
+                    }
+                  }}
+                />
+              ) : (
+                <View style={[styles.photo, styles.photoFallback, { borderColor: badgeColor }]}> 
+                  <Text style={styles.photoInitials}>{initials}</Text>
+                </View>
+              )}
+              <Text style={[styles.value, data?.isRealValue ? styles.valueReal : null]}>
+                {normalizeText(data?.marketValue || params.marketValue, tx("playerProfile.valueUnknown", "Value unavailable"))}
+              </Text>
             </View>
-          )}
-          <Text style={styles.meta} numberOfLines={2}>{normalizeText(data?.position || params.position)} {normalizeText(data?.nationality || params.nationality, "") ? `· ${normalizeText(data?.nationality || params.nationality)}` : ""}</Text>
-          <Text style={[styles.value, data?.isRealValue ? styles.valueReal : null]}>
-            {normalizeText(data?.marketValue || params.marketValue, tx("playerProfile.valueUnknown", "Value unavailable"))}
-          </Text>
-        </View>
-        </Animated.View>
-      </LinearGradient>
+          }
+        />
+      </View>
 
       {isLoading ? (
         <View style={styles.loading}>

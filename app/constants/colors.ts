@@ -1,10 +1,10 @@
 export const COLORS = {
-  // Core backgrounds — cinematic pure black
-  background:   "#000000",
-  surface:      "#0A0A0A",
-  card:         "#111111",
-  cardElevated: "#1A1A1A",
-  cardBright:   "#222222",
+  // Core backgrounds — Nexora premium dark system
+  background:   "#050505",
+  surface:      "#080B12",
+  card:         "#0B0F1A",
+  cardElevated: "#12192A",
+  cardBright:   "#1A2338",
 
   // Accent — Netflix-inspired red
   accent:          "#E50914",
@@ -12,19 +12,19 @@ export const COLORS = {
   accentGlow:      "rgba(229, 9, 20, 0.22)",
   accentGlowStrong:"rgba(229, 9, 20, 0.40)",
 
-  // Live indicator
-  live:     "#E50914",
-  liveGlow: "rgba(229, 9, 20, 0.28)",
+  // Live indicator (subtle green)
+  live:     "#22C55E",
+  liveGlow: "rgba(34, 197, 94, 0.22)",
 
   // Text hierarchy
   text:          "#FFFFFF",
-  textSecondary: "#A0A0A0",
-  textMuted:     "#555555",
-  textFaint:     "#333333",
+  textSecondary: "#A1A1AA",
+  textMuted:     "#71717A",
+  textFaint:     "#3F3F46",
 
   // Borders
-  border:      "#1A1A1A",
-  borderLight: "#2A2A2A",
+  border:      "#1F2937",
+  borderLight: "#374151",
   borderGlow:  "rgba(229, 9, 20, 0.20)",
 
   // Status
@@ -34,13 +34,13 @@ export const COLORS = {
   yellow:"#FFB300",
 
   // Overlays
-  overlay:      "rgba(0, 0, 0, 0.90)",
-  overlayLight: "rgba(17, 17, 17, 0.80)",
-  overlayCard:  "rgba(0, 0, 0, 0.60)",
+  overlay:      "rgba(5, 5, 5, 0.92)",
+  overlayLight: "rgba(11, 15, 26, 0.84)",
+  overlayCard:  "rgba(5, 5, 5, 0.64)",
 
   // Tab bar
-  tabBar:       "#000000",
-  tabBarBorder: "#1A1A1A",
+  tabBar:       "#050505",
+  tabBarBorder: "#1F2937",
 };
 
 export default {
