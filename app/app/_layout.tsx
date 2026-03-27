@@ -239,8 +239,8 @@ SplashScreen.preventAutoHideAsync();
 
 // In-memory flags (reset on cold app start)
 let hasCompletedBootOnce = false;
-let hasCheckedOtaUpdateOnce = false;
 let hasCheckedServerUpdateOnce = false;
+const ENABLE_AUTO_APK_UPDATE_ON_BOOT = false;
 
 // Persistent boot flag key — written after first boot so subsequent cold
 // starts skip the boot screen entirely.
@@ -248,7 +248,6 @@ const BOOT_FLAG_KEY = "nexora_booted_v1";
 const BOOT_CACHE_TIMEOUT_MS = 2500;
 const BOOT_FLAG_TIMEOUT_MS = 1200;
 const HYDRATION_TIMEOUT_MS = 2500;
-let otaCheckDone: Promise<boolean> | null = null;
 // Signals that the disk cache has been loaded into memory
 let diskCacheReady = false;
 
@@ -488,46 +487,17 @@ export default function RootLayout() {
     };
   }, [bootDone, hasHydrated, recoverPersistedState]);
 
-  // OTA check after boot.
-  // Always check OTA first; whether a newer APK exists is handled separately.
-  useEffect(() => {
-    if (!bootDone) return;
-    if (hasCheckedOtaUpdateOnce) return;
-    hasCheckedOtaUpdateOnce = true;
-
-    const run = async (): Promise<boolean> => {
-      try {
-        if (__DEV__) return false;
-        if (!Updates.isEnabled) return false;
-        const update = await Updates.checkForUpdateAsync();
-        if (!update.isAvailable) return false;
-        await Updates.fetchUpdateAsync();
-        await Updates.reloadAsync();
-        return true; // won't actually reach here due to reload
-      } catch {
-        return false;
-      }
-    };
-
-    otaCheckDone = run();
-  }, [bootDone]);
-
-  // Server update check — auto-downloads and installs APK when a newer version is available.
-  // Waits for OTA check to finish first: if OTA handled it, skip.
+  // Server update check — optional auto-download/install path for Android APK updates.
+  // Disabled by default to avoid startup loops or unintended version overrides.
   useEffect(() => {
     if (!bootDone) return;
     if (hasCheckedServerUpdateOnce) return;
+    if (!ENABLE_AUTO_APK_UPDATE_ON_BOOT) return;
     hasCheckedServerUpdateOnce = true;
 
     const run = async () => {
       try {
         if (__DEV__) return;
-
-        // Wait for OTA check — if it downloaded + reloaded, we never reach here.
-        if (otaCheckDone) {
-          const otaHandled = await otaCheckDone;
-          if (otaHandled) return;
-        }
 
         const res = await apiRequest("GET", "/api/app-version");
         const data = await res.json() as { version: string; apkUrl?: string; directApkUrl?: string };
