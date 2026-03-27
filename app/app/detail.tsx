@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState, useRef } from "react";
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  Image, Modal, Platform, Alert, ActivityIndicator, Linking,
+  Image, Modal, Platform, Alert, ActivityIndicator,
 } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -312,7 +312,6 @@ export default function DetailScreen() {
   const [trailerLoading, setTrailerLoading] = useState(false);
   const [trailerUnavailable, setTrailerUnavailable] = useState(false);
   const [trailerBlockedReason, setTrailerBlockedReason] = useState<"none" | "error153" | "blocked">("none");
-  const [openingExternalTrailer, setOpeningExternalTrailer] = useState(false);
   const trailerAdvancingRef = useRef(false);
   const [activeTab, setActiveTab] = useState<"overview" | "cast" | "seasons">("overview");
   const [selectedSeasonNumber, setSelectedSeasonNumber] = useState<number | null>(null);
@@ -502,7 +501,6 @@ export default function DetailScreen() {
     setTrailerLoading(true);
     setTrailerUnavailable(false);
     setTrailerBlockedReason("none");
-    setOpeningExternalTrailer(false);
     trailerAdvancingRef.current = false;
     setShowTrailer(true);
   };
@@ -512,28 +510,8 @@ export default function DetailScreen() {
     setTrailerLoading(false);
     setTrailerUnavailable(false);
     setTrailerBlockedReason("none");
-    setOpeningExternalTrailer(false);
     setTrailerIndex(0);
     trailerAdvancingRef.current = false;
-  };
-
-  const openTrailerOutsideApp = async (key?: string, reason: "error153" | "blocked" = "blocked") => {
-    const trailerKey = String(key || "").trim();
-    if (!trailerKey) return false;
-    setOpeningExternalTrailer(true);
-    setTrailerBlockedReason(reason);
-    try {
-      const appUrl = `youtube://watch?v=${encodeURIComponent(trailerKey)}`;
-      const webUrl = `https://www.youtube.com/watch?v=${encodeURIComponent(trailerKey)}`;
-      const canOpenApp = await Linking.canOpenURL(appUrl);
-      await Linking.openURL(canOpenApp ? appUrl : webUrl);
-      setShowTrailer(false);
-      return true;
-    } catch {
-      return false;
-    } finally {
-      setOpeningExternalTrailer(false);
-    }
   };
 
   const openTrailerInPlayer = () => {
@@ -542,7 +520,7 @@ export default function DetailScreen() {
     router.push({
       pathname: "/player",
       params: {
-        embedUrl: `https://www.youtube.com/watch?v=${encodeURIComponent(key)}`,
+        trailerKey: key,
         title: `${String(data?.title || "Trailer")} Trailer`,
         type: "trailer",
         contentId: `trailer_${String(data?.id || id)}_${key}`,
@@ -1097,20 +1075,6 @@ export default function DetailScreen() {
                       <Text style={styles.trailerInAppText}>Play trailer in app</Text>
                     </TouchableOpacity>
                   ) : null}
-                  <TouchableOpacity
-                    style={styles.trailerOpenExternalBtn}
-                    onPress={() => void openTrailerOutsideApp(activeTrailer?.key, trailerBlockedReason === "error153" ? "error153" : "blocked")}
-                    disabled={openingExternalTrailer}
-                  >
-                    {openingExternalTrailer ? (
-                      <ActivityIndicator size="small" color={COLORS.background} />
-                    ) : (
-                      <Ionicons name="logo-youtube" size={16} color={COLORS.background} />
-                    )}
-                    <Text style={styles.trailerOpenExternalText}>
-                      {trailerBlockedReason === "error153" ? "Open in YouTube" : "Open trailer externally"}
-                    </Text>
-                  </TouchableOpacity>
                 </View>
               )}
             </View>
@@ -1228,8 +1192,6 @@ const styles = StyleSheet.create({
   trailerFallbackTitle: { fontFamily: "Inter_600SemiBold", fontSize: 15, color: COLORS.text, textAlign: "center" },
   trailerInAppBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, marginTop: 2, backgroundColor: "rgba(255,255,255,0.08)", borderRadius: 10, borderWidth: 1, borderColor: "rgba(255,255,255,0.14)", paddingVertical: 10, paddingHorizontal: 14 },
   trailerInAppText: { fontFamily: "Inter_600SemiBold", fontSize: 13, color: COLORS.text },
-  trailerOpenExternalBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, marginTop: 4, backgroundColor: COLORS.accent, borderRadius: 10, paddingVertical: 10, paddingHorizontal: 14 },
-  trailerOpenExternalText: { fontFamily: "Inter_600SemiBold", fontSize: 13, color: COLORS.background },
   downloadingText: { fontFamily: "Inter_600SemiBold", fontSize: 14, color: COLORS.text },
   progressTrack: { width: "100%", height: 6, backgroundColor: COLORS.border, borderRadius: 3, overflow: "hidden" },
   progressFill: { height: "100%", backgroundColor: COLORS.accent, borderRadius: 3 },

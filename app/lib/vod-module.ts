@@ -1,7 +1,7 @@
 import { dedupeVodItems } from "@/lib/vod-curation";
 
 export type VodModuleMediaType = "movie" | "series";
-export type VodModulePane = "home" | "search" | "more";
+export type VodModulePane = "home" | "search" | "collections" | "more";
 export type VodSearchFilter = "all" | "movie" | "series" | "anime";
 
 export type VodCompany = {
@@ -141,6 +141,12 @@ const PRIORITY_STUDIOS = [
   "Netflix",
   "HBO",
   "Apple TV+",
+  "Amazon MGM Studios",
+  "A24",
+  "Lionsgate",
+  "Sony Pictures",
+  "Columbia Pictures",
+  "Crunchyroll",
 ];
 
 const FRANCHISE_FALLBACKS = [
@@ -373,7 +379,7 @@ export function buildCollectionGroups(items: VodModuleItem[]): VodCollectionGrou
       items: [...group.items].sort((left, right) => parseReleaseDate(left) - parseReleaseDate(right)),
       itemCount: group.items.length,
     }))
-    .filter((group) => group.items.length > 2)
+    .filter((group) => group.items.length > 1)
     .sort((left, right) => {
       if (right.items.length !== left.items.length) return right.items.length - left.items.length;
       return (parseReleaseDate(left.items[0]) || 0) - (parseReleaseDate(right.items[0]) || 0);
@@ -419,7 +425,7 @@ export function buildStudioGroups(items: VodModuleItem[]): VodStudioGroup[] {
       const unique = uniqueItems(group.items);
       return { ...group, items: unique.slice(0, 36), itemCount: unique.length };
     })
-    .filter((group) => group.itemCount >= 3)
+    .filter((group) => group.itemCount >= 2)
     .sort((left, right) => {
       const priorityDelta = studioPriority(left.name) - studioPriority(right.name);
       if (priorityDelta !== 0) return priorityDelta;
