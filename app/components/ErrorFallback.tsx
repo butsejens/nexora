@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { reloadAppAsync } from "expo";
 import {
+  Alert,
   StyleSheet,
   View,
   Pressable,
@@ -13,6 +14,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import { t } from "@/lib/i18n";
+import { buildDiagnosticCode, buildDiagnosticReport } from "@/services/update-diagnostics";
 
 export type ErrorFallbackProps = {
   error: Error;
@@ -34,6 +36,10 @@ export function ErrorFallback({ error, resetError }: ErrorFallbackProps) {
   };
 
   const [isModalVisible, setIsModalVisible] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  const diagnosticCode = buildDiagnosticCode(error?.message || "runtime-error");
+  const diagnosticReport = buildDiagnosticReport("runtime-error", error);
 
   const handleRestart = async () => {
     try {
@@ -50,6 +56,12 @@ export function ErrorFallback({ error, resetError }: ErrorFallbackProps) {
       details += `Stack Trace:\n${error.stack}`;
     }
     return details;
+  };
+
+  const handleCopyDiagnostics = async () => {
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1600);
+    Alert.alert("Diagnostiek", "Selecteer de fouttekst handmatig en kopieer deze.");
   };
 
   const monoFont = Platform.select({
@@ -88,12 +100,30 @@ export function ErrorFallback({ error, resetError }: ErrorFallbackProps) {
         </Text>
 
         {/* DEBUG: show error in release to diagnose crash */}
+        <View style={styles.codeChip}>
+          <Text selectable style={styles.codeChipText}>{diagnosticCode}</Text>
+        </View>
         <ScrollView style={{ maxHeight: 200, marginTop: 12 }}>
           <Text selectable style={{ color: "#FF6B6B", fontSize: 11, fontFamily: Platform.OS === "android" ? "monospace" : "Menlo" }}>
-            {error.message}
-            {error.stack ? `\n\n${error.stack}` : ""}
+            {diagnosticReport}
           </Text>
         </ScrollView>
+
+        <Pressable
+          onPress={handleCopyDiagnostics}
+          style={({ pressed }) => [
+            styles.copyButton,
+            {
+              backgroundColor: copied ? "#16A34A" : theme.backgroundSecondary,
+              opacity: pressed ? 0.9 : 1,
+            },
+          ]}
+        >
+          <Feather name={copied ? "check" : "copy"} size={16} color={theme.text} />
+          <Text style={[styles.copyButtonText, { color: theme.text }]}> 
+            {copied ? "Gekopieerd" : "Kopieer foutcode"}
+          </Text>
+        </Pressable>
 
         <Pressable
           onPress={handleRestart}
@@ -244,6 +274,33 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     textAlign: "center",
     fontSize: 16,
+  },
+  codeChip: {
+    marginTop: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: "rgba(239,68,68,0.16)",
+    borderWidth: 1,
+    borderColor: "rgba(239,68,68,0.4)",
+  },
+  codeChipText: {
+    color: "#FCA5A5",
+    fontSize: 12,
+    fontFamily: Platform.OS === "android" ? "monospace" : "Menlo",
+  },
+  copyButton: {
+    marginTop: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderRadius: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  copyButtonText: {
+    fontSize: 13,
+    fontWeight: "700",
   },
   modalOverlay: {
     flex: 1,

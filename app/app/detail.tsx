@@ -312,7 +312,6 @@ export default function DetailScreen() {
   const [trailerIndex, setTrailerIndex] = useState(0);
   const [trailerLoading, setTrailerLoading] = useState(false);
   const [trailerUnavailable, setTrailerUnavailable] = useState(false);
-  const [trailerBlockedReason, setTrailerBlockedReason] = useState<"none" | "error153" | "blocked">("none");
   const trailerAdvancingRef = useRef(false);
   const [activeTab, setActiveTab] = useState<"overview" | "cast" | "seasons">("overview");
   const [selectedSeasonNumber, setSelectedSeasonNumber] = useState<number | null>(null);
@@ -502,7 +501,6 @@ export default function DetailScreen() {
     setTrailerIndex(0);
     setTrailerLoading(true);
     setTrailerUnavailable(false);
-    setTrailerBlockedReason("none");
     trailerAdvancingRef.current = false;
     setShowTrailer(true);
   };
@@ -511,7 +509,6 @@ export default function DetailScreen() {
     setShowTrailer(false);
     setTrailerLoading(false);
     setTrailerUnavailable(false);
-    setTrailerBlockedReason("none");
     setTrailerIndex(0);
     trailerAdvancingRef.current = false;
   };
@@ -555,7 +552,6 @@ export default function DetailScreen() {
     }
     setTrailerLoading(false);
     setTrailerUnavailable(true);
-    setTrailerBlockedReason("blocked");
     trailerAdvancingRef.current = false;
   };
 
@@ -1065,7 +1061,6 @@ export default function DetailScreen() {
                         if (msg.type === 'yt-error-153') {
                           setTrailerUnavailable(true);
                           setTrailerLoading(false);
-                          setTrailerBlockedReason("error153");
                           return;
                         }
                         if (msg.type === 'yt-error') advanceTrailer();

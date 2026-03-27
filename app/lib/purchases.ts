@@ -24,6 +24,14 @@ function getPurchasesModule() {
   return purchasesModuleCache;
 }
 
+function isUsablePurchasesModule(Purchases: any) {
+  if (!Purchases) return false;
+  return (
+    typeof Purchases.configure === "function" &&
+    typeof Purchases.getCustomerInfo === "function"
+  );
+}
+
 function getRevenueCatApiKey() {
   return Platform.OS === "ios"
     ? ENV.purchases.iosApiKey
@@ -37,23 +45,26 @@ export function isPurchasesConfigured() {
 export async function configurePurchases(appUserId?: string | null) {
   const Purchases = getPurchasesModule();
   const apiKey = getRevenueCatApiKey();
-  if (!apiKey || purchasesConfigured || !Purchases) return;
+  if (!apiKey || purchasesConfigured || !isUsablePurchasesModule(Purchases)) return;
 
-  if (Purchases.LOG_LEVEL?.WARN != null) {
+  if (Purchases.LOG_LEVEL?.WARN != null && typeof Purchases.setLogLevel === "function") {
     Purchases.setLogLevel(Purchases.LOG_LEVEL.WARN);
   }
-  await Purchases.configure({ apiKey, appUserID: appUserId || undefined });
-  purchasesConfigured = true;
+  try {
+    await Purchases.configure({ apiKey, appUserID: appUserId || undefined });
+    purchasesConfigured = true;
+  } catch {
+    purchasesConfigured = false;
+  }
 }
 
 export async function identifyPurchasesUser(appUserId?: string | null) {
   const Purchases = getPurchasesModule();
-  if (!Purchases) return;
+  if (!isUsablePurchasesModule(Purchases)) return;
   if (!isPurchasesConfigured()) return;
   await configurePurchases(appUserId);
-  if (appUserId) {
-    await Purchases.logIn(appUserId).catch(() => undefined);
-  }
+  if (!appUserId || typeof Purchases.logIn !== "function") return;
+  await Purchases.logIn(appUserId).catch(() => undefined);
 }
 
 export async function getCachedCustomerInfo(): Promise<CustomerInfo | null> {
@@ -79,7 +90,7 @@ async function cacheCustomerInfo(info: CustomerInfo | null) {
 
 export async function fetchCustomerInfo(): Promise<CustomerInfo | null> {
   const Purchases = getPurchasesModule();
-  if (!Purchases) {
+  if (!isUsablePurchasesModule(Purchases)) {
     return await getCachedCustomerInfo();
   }
   if (!isPurchasesConfigured()) {
@@ -103,10 +114,14 @@ export function hasPremiumEntitlement(customerInfo: CustomerInfo | null) {
 
 export async function getCurrentOffering(): Promise<PurchasesOffering | null> {
   const Purchases = getPurchasesModule();
-  if (!Purchases) return null;
+  if (!isUsablePurchasesModule(Purchases)) return null;
   if (!isPurchasesConfigured()) return null;
-  const offerings = await Purchases.getOfferings();
-  return offerings.current || null;
+  try {
+    const offerings = await Purchases.getOfferings();
+    return offerings.current || null;
+  } catch {
+    return null;
+  }
 }
 
 function pickPackageFromOffering(offering: PurchasesOffering | null, plan: "weekly" | "monthly" | "yearly") {
@@ -118,7 +133,7 @@ function pickPackageFromOffering(offering: PurchasesOffering | null, plan: "week
 
 export async function purchasePremiumPlan(plan: "weekly" | "monthly" | "yearly") {
   const Purchases = getPurchasesModule();
-  if (!Purchases) {
+  if (!isUsablePurchasesModule(Purchases)) {
     throw new Error("Purchases module is unavailable in this app build.");
   }
   if (!isPurchasesConfigured()) {
@@ -138,7 +153,7 @@ export async function purchasePremiumPlan(plan: "weekly" | "monthly" | "yearly")
 
 export async function restorePremiumPurchases() {
   const Purchases = getPurchasesModule();
-  if (!Purchases) {
+  if (!isUsablePurchasesModule(Purchases)) {
     throw new Error("Purchases module is unavailable in this app build.");
   }
   if (!isPurchasesConfigured()) {
@@ -152,9 +167,11 @@ export async function restorePremiumPurchases() {
 
 export async function logoutPurchasesUser() {
   const Purchases = getPurchasesModule();
-  if (!Purchases) return;
+  if (!isUsablePurchasesModule(Purchases)) return;
   if (!isPurchasesConfigured()) return;
-  await Purchases.logOut().catch(() => undefined);
+  if (typeof Purchases.logOut === "function") {
+    await Purchases.logOut().catch(() => undefined);
+  }
   await cacheCustomerInfo(null);
 }
 

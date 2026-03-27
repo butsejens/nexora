@@ -1475,7 +1475,7 @@ export default function SportsScreen() {
     });
   }, [qc, resolveEspnLeague]);
 
-  const handleToolMatchPress = (item: any) => {
+  const handleToolMatchPress = useCallback((item: any) => {
     handleMatchPress({
       ...item,
       id: item?.id || item?.matchId,
@@ -1487,7 +1487,7 @@ export default function SportsScreen() {
       awayTeamLogo: item?.awayTeamLogo || "",
       minute: item?.minute || "",
     });
-  };
+  }, [handleMatchPress]);
 
   const closeLockedPredictionModal = useCallback(() => {
     if (rewardedAdRunning) return;
@@ -2107,7 +2107,11 @@ export default function SportsScreen() {
                         setLockedPredictionRow(row);
                         return;
                       }
-                      row.item ? handleToolMatchPress(row.item) : handleMatchPress(row.match);
+                      if (row.item) {
+                        handleToolMatchPress(row.item);
+                      } else {
+                        handleMatchPress(row.match);
+                      }
                     }}
                     activeOpacity={0.82}
                   >

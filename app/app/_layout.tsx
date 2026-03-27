@@ -10,7 +10,7 @@ import {
 import { Stack, router } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import React, { useEffect, useRef, useState } from "react";
-import { Platform, Linking, AppState } from "react-native";
+import { Platform, Linking, AppState, View, Text, Pressable, ScrollView } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import { GestureHandlerRootView } from "react-native-gesture-handler";
@@ -44,6 +44,7 @@ import { initializeMatchNotifications } from "@/lib/match-notifications";
 import { fetchSportsLeagueResourceWithFallback } from "@/lib/sports-data";
 import { useOnboardingStore } from "@/store/onboarding-store";
 import { logStartupEvent, runStartupTask } from "@/services/startup-orchestrator";
+import { buildDiagnosticCode, buildDiagnosticReport, recordLaunchSnapshot } from "@/services/update-diagnostics";
 
 // ─── Persistent cache keys (must match what screens useQuery with) ────────────
 const PREFETCH_ENTRIES = (today: string) => [
@@ -253,6 +254,27 @@ const HYDRATION_TIMEOUT_MS = 2500;
 // Signals that the disk cache has been loaded into memory
 let diskCacheReady = false;
 
+// ── OTA update diagnostics ────────────────────────────────────────────────────
+// Log current update state to console on every cold start for crash log visibility.
+function logUpdateDiagnostics() {
+  try {
+    const info: Record<string, unknown> = {
+      appVersion: Constants.expoConfig?.version || "unknown",
+      runtimeVersion: String(Updates.runtimeVersion || "unknown"),
+      updateId: Updates.updateId || "embedded",
+      channel: Updates.channel || "unknown",
+      isEmbedded: Updates.isEmbeddedLaunch,
+      createdAt: Updates.createdAt?.toISOString() || "unknown",
+      isEnabled: Updates.isEnabled,
+    };
+    console.info("[nexora:update] active bundle diagnostics", info);
+    logStartupEvent("boot", "info", "update-diagnostics", info);
+    void recordLaunchSnapshot();
+  } catch (e) {
+    console.warn("[nexora:update] failed to read update diagnostics", e);
+  }
+}
+
 function compareVersions(a: string, b: string): number {
   const pa = String(a || "")
     .split(".")
@@ -324,14 +346,63 @@ function AppShellContent({
   hasHydrated,
   hydrationRecovering,
   hasCompletedOnboarding,
+  bootStalled,
 }: {
   bootDone: boolean;
   bootMessage: string;
   hasHydrated: boolean;
   hydrationRecovering: boolean;
   hasCompletedOnboarding: boolean;
+  bootStalled: boolean;
 }) {
   const { isAuthenticated, authReady } = useNexora();
+
+  const [copied, setCopied] = useState(false);
+  const startupDiagnosticCode = buildDiagnosticCode("startup-stall");
+  const startupDiagnosticReport = buildDiagnosticReport("startup-stall");
+
+  const showStartupDiagnosticsReady = () => {
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1600);
+  };
+
+  if (bootStalled) {
+    return (
+      <View style={{ flex: 1, backgroundColor: COLORS.background, paddingHorizontal: 16, paddingTop: 64, paddingBottom: 32 }}>
+        <Text style={{ color: COLORS.accent, fontFamily: "Inter_800ExtraBold", fontSize: 18 }}>Opstart vastgelopen</Text>
+        <Text style={{ color: COLORS.textSecondary, marginTop: 8, fontFamily: "Inter_500Medium", lineHeight: 22 }}>
+          De app lijkt vast te lopen tijdens opstart. Kopieer onderstaande foutcode en plak deze in de chat.
+        </Text>
+
+        <View style={{ marginTop: 12, alignSelf: "flex-start", paddingVertical: 6, paddingHorizontal: 10, borderRadius: 999, backgroundColor: "rgba(229,9,20,0.16)", borderWidth: 1, borderColor: "rgba(229,9,20,0.45)" }}>
+          <Text selectable style={{ color: "#FCA5A5", fontFamily: Platform.OS === "android" ? "monospace" : "Menlo", fontSize: 12 }}>
+            {startupDiagnosticCode}
+          </Text>
+        </View>
+
+        <Pressable
+          onPress={showStartupDiagnosticsReady}
+          style={({ pressed }) => ({
+            marginTop: 14,
+            alignSelf: "flex-start",
+            paddingVertical: 10,
+            paddingHorizontal: 14,
+            borderRadius: 10,
+            backgroundColor: copied ? "#16A34A" : COLORS.card,
+            opacity: pressed ? 0.9 : 1,
+          })}
+        >
+          <Text style={{ color: COLORS.text, fontFamily: "Inter_700Bold" }}>{copied ? "Klaar om te delen" : "Gebruik de tekst hieronder"}</Text>
+        </Pressable>
+
+        <ScrollView style={{ marginTop: 14, borderRadius: 12, borderWidth: 1, borderColor: COLORS.border, backgroundColor: COLORS.card, padding: 12 }}>
+          <Text selectable style={{ color: COLORS.textSecondary, fontFamily: Platform.OS === "android" ? "monospace" : "Menlo", fontSize: 11, lineHeight: 16 }}>
+            {startupDiagnosticReport}
+          </Text>
+        </ScrollView>
+      </View>
+    );
+  }
 
   if (!bootDone) {
     return <NexoraIntro subtitle={bootMessage} />;
@@ -385,10 +456,10 @@ export default function RootLayout() {
   const recoverPersistedState = useOnboardingStore((state) => state.recoverPersistedState);
 
   const [bootDone, setBootDone] = useState(hasCompletedBootOnce);
-  const [bootProgress, setBootProgress] = useState(0);
   const [bootMessage, setBootMessage] = useState("Resources laden...");
   const [fontFallbackReady, setFontFallbackReady] = useState(false);
   const [hydrationRecovering, setHydrationRecovering] = useState(false);
+  const [bootStalled, setBootStalled] = useState(false);
   const bootStartedRef = useRef(false);
 
   // 3s font fallback (reduced from 7s – fonts rarely take this long)
@@ -421,6 +492,13 @@ export default function RootLayout() {
     bootStartedRef.current = true;
 
     let mounted = true;
+    const stallTimer = setTimeout(() => {
+      if (!mounted) return;
+      if (!hasCompletedBootOnce) {
+        setBootStalled(true);
+        logStartupEvent("boot", "error", "boot-stalled-timeout", { timeoutMs: 15000 });
+      }
+    }, 15000);
     const messages = [
       "Interface voorbereiden...",
       "Content laden...",
@@ -431,13 +509,15 @@ export default function RootLayout() {
     // Progress bar animates quickly — boot completes in ~1-1.5s
     const progressTimer = setInterval(() => {
       if (!mounted) return;
-      setBootProgress((p) => Math.min(92, p + Math.max(4, Math.round((100 - p) * 0.22))));
       messageIndex = Math.min(messages.length - 1, messageIndex + 1);
       setBootMessage(messages[messageIndex]);
     }, 300);
 
     (async () => {
       try {
+        // Step 0: log current bundle/update state for diagnostics
+        logUpdateDiagnostics();
+
         // Step 1: load disk cache and immediately seed QueryClient
         if (!diskCacheReady) {
           const cacheResult = await runStartupTask({
@@ -504,10 +584,11 @@ export default function RootLayout() {
         await new Promise((resolve) => setTimeout(resolve, 800));
       } finally {
         if (!mounted) return;
+        clearTimeout(stallTimer);
         clearInterval(progressTimer);
-        setBootProgress(100);
         setBootMessage("Klaar");
         hasCompletedBootOnce = true;
+        setBootStalled(false);
         // Persist so next cold start skips the boot screen
         AsyncStorage.setItem(BOOT_FLAG_KEY, "1").catch(() => null);
         setBootDone(true);
@@ -516,6 +597,7 @@ export default function RootLayout() {
 
     return () => {
       mounted = false;
+      clearTimeout(stallTimer);
       clearInterval(progressTimer);
     };
   }, [fontsLoaded, fontFallbackReady]);
@@ -699,6 +781,7 @@ export default function RootLayout() {
                   hasHydrated={hasHydrated}
                   hydrationRecovering={hydrationRecovering}
                   hasCompletedOnboarding={hasCompletedOnboarding}
+                  bootStalled={bootStalled}
                 />
                 <NexoraMenuOverlay />
               </UserStateProvider>

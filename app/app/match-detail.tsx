@@ -680,7 +680,10 @@ export default function MatchDetailScreen() {
 
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const scoreFontSize = screenWidth < 350 ? 40 : screenWidth < 385 ? 44 : 48;
-  const timelineEvents = Array.isArray(matchDetail?.timeline) ? matchDetail.timeline : [];
+  const timelineEvents = useMemo(
+    () => (Array.isArray(matchDetail?.timeline) ? matchDetail.timeline : []),
+    [matchDetail?.timeline],
+  );
   const orderedLineupTeams = useMemo(
     () => orderLineupTeams(matchDetail?.starters || [], String(params.homeTeam || ""), String(params.awayTeam || "")),
     [matchDetail?.starters, params.homeTeam, params.awayTeam]
@@ -1181,9 +1184,9 @@ export default function MatchDetailScreen() {
                 <View style={[styles.nxTimelineFill, { width: `${timelineProgressPct}%` }]} />
               </View>
               <View style={styles.nxTimelineRangeRow}>
-                <Text style={styles.nxTimelineRangeText}>0'</Text>
-                <Text style={styles.nxTimelineRangeText}>45'</Text>
-                <Text style={styles.nxTimelineRangeText}>90+'</Text>
+                <Text style={styles.nxTimelineRangeText}>0&#39;</Text>
+                <Text style={styles.nxTimelineRangeText}>45&#39;</Text>
+                <Text style={styles.nxTimelineRangeText}>90+&#39;</Text>
               </View>
             </View>
 
@@ -2078,7 +2081,6 @@ function MatchHeatmapInner({ homeTeam, awayTeam, homeStats, awayStats }: { homeT
     shotDots.push({ x: 59 + rng() * 33, y: 16 + rng() * 66, color: "#5B8DEF", onTarget });
   }
 
-  const LINE = "rgba(255,255,255,0.4)";
   const intensityToColor = (intensity: number, side: "home" | "away", dominanceBoost = 0) => {
     const alpha = Math.max(0.08, Math.min(0.56, (intensity + dominanceBoost) * 0.56));
     return side === "home"
