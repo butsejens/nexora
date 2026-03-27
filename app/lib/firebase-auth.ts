@@ -1,4 +1,3 @@
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Platform } from "react-native";
 import { initializeApp, getApps, getApp } from "firebase/app";
 import {
@@ -6,8 +5,6 @@ import {
   GoogleAuthProvider,
   OAuthProvider,
   createUserWithEmailAndPassword,
-  getReactNativePersistence,
-  initializeAuth,
   onAuthStateChanged,
   signInWithCredential,
   signInWithEmailAndPassword,
@@ -41,14 +38,9 @@ const firebaseApp = hasFirebaseConfig()
 function createFirebaseAuth() {
   if (!firebaseApp) return null;
   if (Platform.OS === "web") return getAuth(firebaseApp);
-
-  try {
-    return initializeAuth(firebaseApp, {
-      persistence: getReactNativePersistence(AsyncStorage),
-    });
-  } catch {
-    return getAuth(firebaseApp);
-  }
+  // Native builds can differ in available Firebase RN auth entrypoints.
+  // Use safe default auth init to avoid launch regressions on OTA updates.
+  return getAuth(firebaseApp);
 }
 
 export const firebaseAuth = createFirebaseAuth();

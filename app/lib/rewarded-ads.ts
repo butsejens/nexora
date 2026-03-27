@@ -1,17 +1,35 @@
-import {
-  AdEventType,
-  RewardedAd,
-  RewardedAdEventType,
-  TestIds,
-} from "react-native-google-mobile-ads";
-
 import { ENV } from "@/constants/env";
 
+let adsModuleCache: any | null | undefined;
+
+function getAdsModule() {
+  if (adsModuleCache !== undefined) return adsModuleCache;
+  try {
+    adsModuleCache = require("react-native-google-mobile-ads");
+  } catch {
+    adsModuleCache = null;
+  }
+  return adsModuleCache;
+}
+
 function getRewardedUnitId() {
-  return ENV.ads.rewardedUnitId || TestIds.REWARDED;
+  const ads = getAdsModule();
+  return ENV.ads.rewardedUnitId || ads?.TestIds?.REWARDED || "test-rewarded";
 }
 
 export async function showRewardedUnlockAd(): Promise<{ rewarded: boolean; amount?: number; type?: string }> {
+  const ads = getAdsModule();
+  if (!ads) {
+    return { rewarded: false };
+  }
+
+  const AdEventType = ads.AdEventType;
+  const RewardedAd = ads.RewardedAd;
+  const RewardedAdEventType = ads.RewardedAdEventType;
+  if (!AdEventType || !RewardedAd || !RewardedAdEventType) {
+    return { rewarded: false };
+  }
+
   const unitId = getRewardedUnitId();
   const rewarded = RewardedAd.createForAdRequest(unitId, {
     requestNonPersonalizedAdsOnly: true,

@@ -1,11 +1,9 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Platform } from "react-native";
-import Purchases, {
-  LOG_LEVEL,
-  PURCHASES_ERROR_CODE,
-  type CustomerInfo,
-  type PurchasesOffering,
-  type PurchasesPackage,
+import type {
+  CustomerInfo,
+  PurchasesOffering,
+  PurchasesPackage,
 } from "react-native-purchases";
 
 import { ENV } from "@/constants/env";
@@ -13,6 +11,18 @@ import { ENV } from "@/constants/env";
 const CUSTOMER_INFO_CACHE_KEY = "nexora_customer_info_cache_v1";
 
 let purchasesConfigured = false;
+let purchasesModuleCache: any | null | undefined;
+
+function getPurchasesModule() {
+  if (purchasesModuleCache !== undefined) return purchasesModuleCache;
+  try {
+    const mod = require("react-native-purchases");
+    purchasesModuleCache = mod?.default || mod;
+  } catch {
+    purchasesModuleCache = null;
+  }
+  return purchasesModuleCache;
+}
 
 function getRevenueCatApiKey() {
   return Platform.OS === "ios"
@@ -25,15 +35,20 @@ export function isPurchasesConfigured() {
 }
 
 export async function configurePurchases(appUserId?: string | null) {
+  const Purchases = getPurchasesModule();
   const apiKey = getRevenueCatApiKey();
-  if (!apiKey || purchasesConfigured) return;
+  if (!apiKey || purchasesConfigured || !Purchases) return;
 
-  Purchases.setLogLevel(LOG_LEVEL.WARN);
+  if (Purchases.LOG_LEVEL?.WARN != null) {
+    Purchases.setLogLevel(Purchases.LOG_LEVEL.WARN);
+  }
   await Purchases.configure({ apiKey, appUserID: appUserId || undefined });
   purchasesConfigured = true;
 }
 
 export async function identifyPurchasesUser(appUserId?: string | null) {
+  const Purchases = getPurchasesModule();
+  if (!Purchases) return;
   if (!isPurchasesConfigured()) return;
   await configurePurchases(appUserId);
   if (appUserId) {
@@ -63,6 +78,10 @@ async function cacheCustomerInfo(info: CustomerInfo | null) {
 }
 
 export async function fetchCustomerInfo(): Promise<CustomerInfo | null> {
+  const Purchases = getPurchasesModule();
+  if (!Purchases) {
+    return await getCachedCustomerInfo();
+  }
   if (!isPurchasesConfigured()) {
     return await getCachedCustomerInfo();
   }
@@ -83,6 +102,8 @@ export function hasPremiumEntitlement(customerInfo: CustomerInfo | null) {
 }
 
 export async function getCurrentOffering(): Promise<PurchasesOffering | null> {
+  const Purchases = getPurchasesModule();
+  if (!Purchases) return null;
   if (!isPurchasesConfigured()) return null;
   const offerings = await Purchases.getOfferings();
   return offerings.current || null;
@@ -96,6 +117,10 @@ function pickPackageFromOffering(offering: PurchasesOffering | null, plan: "week
 }
 
 export async function purchasePremiumPlan(plan: "weekly" | "monthly" | "yearly") {
+  const Purchases = getPurchasesModule();
+  if (!Purchases) {
+    throw new Error("Purchases module is unavailable in this app build.");
+  }
   if (!isPurchasesConfigured()) {
     throw new Error("Purchases are not configured.");
   }
@@ -112,6 +137,10 @@ export async function purchasePremiumPlan(plan: "weekly" | "monthly" | "yearly")
 }
 
 export async function restorePremiumPurchases() {
+  const Purchases = getPurchasesModule();
+  if (!Purchases) {
+    throw new Error("Purchases module is unavailable in this app build.");
+  }
   if (!isPurchasesConfigured()) {
     throw new Error("Purchases are not configured.");
   }
@@ -122,12 +151,16 @@ export async function restorePremiumPurchases() {
 }
 
 export async function logoutPurchasesUser() {
+  const Purchases = getPurchasesModule();
+  if (!Purchases) return;
   if (!isPurchasesConfigured()) return;
   await Purchases.logOut().catch(() => undefined);
   await cacheCustomerInfo(null);
 }
 
 export function isPurchaseCancelled(error: unknown) {
+  const Purchases = getPurchasesModule();
+  const cancelledCode = Number(Purchases?.PURCHASES_ERROR_CODE?.PURCHASE_CANCELLED_ERROR);
   const code = Number((error as any)?.code);
-  return code === PURCHASES_ERROR_CODE.PURCHASE_CANCELLED_ERROR;
+  return Number.isFinite(cancelledCode) ? code === cancelledCode : false;
 }
