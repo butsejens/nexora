@@ -1,12 +1,9 @@
 import React, { useEffect } from "react";
 import { Image, StyleSheet, Text, View } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
-import { Video, ResizeMode } from "expo-av";
 import Animated, {
   FadeIn,
   FadeInDown,
-  useSharedValue,
-  withTiming,
 } from "react-native-reanimated";
 
 type NexoraIntroProps = {
@@ -20,28 +17,16 @@ export function NexoraIntro({
   subtitle = "ALL YOUR CONTENT. ONE PLACE.",
   autoFinishMs = null,
 }: NexoraIntroProps) {
-  const overlayOpacity = useSharedValue(0);
-
   useEffect(() => {
-    overlayOpacity.value = withTiming(1, { duration: 650 });
-
     if (autoFinishMs != null && onFinish) {
       const timer = setTimeout(() => onFinish(), autoFinishMs);
       return () => clearTimeout(timer);
     }
-  }, [autoFinishMs, onFinish, overlayOpacity]);
+  }, [autoFinishMs, onFinish]);
 
   return (
     <View style={styles.container}>
-      <Video
-        source={require("../assets/videos/intro.mp4")}
-        style={StyleSheet.absoluteFill}
-        shouldPlay
-        isLooping
-        isMuted
-        resizeMode={ResizeMode.COVER}
-      />
-      <LinearGradient colors={["rgba(0,0,0,0.30)", "rgba(0,0,0,0.72)"]} style={StyleSheet.absoluteFill} />
+      <LinearGradient colors={["#050505", "#0B0F17"]} style={StyleSheet.absoluteFill} />
 
       <View style={styles.center}>
         <Animated.View entering={FadeIn.duration(420)} style={styles.logoWrap}>
