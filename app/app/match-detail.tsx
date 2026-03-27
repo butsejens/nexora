@@ -784,6 +784,7 @@ export default function MatchDetailScreen() {
               ) : isFinished ? (
                 <>
                   <Text style={[styles.score, { fontSize: scoreFontSize }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>{liveHomeScore} - {liveAwayScore}</Text>
+                  <Text style={[styles.finishedLabel, { color: "#FFD34D" }]}>FT</Text>
                 </>
               ) : isPostponed ? (
                 <>
@@ -1601,6 +1602,20 @@ function MatchHeatmapInner({ homeTeam, awayTeam, homeStats, awayStats }: { homeT
   const aMidIntensity = Math.min(1, (aPoss / 100) * 0.95 + ((aShots + aCorners) / Math.max(maxShots + maxCorners, 1)) * 0.25 + 0.08);
   const aAttackIntensity = Math.min(1, ((aInsideBox || aOnTarget) / Math.max(maxShots, 1)) * 1.35 + (aCorners / Math.max(maxCorners, 1)) * 0.18 + 0.1);
 
+  const homeControl = (hPoss * 1.15) + (hShots * 2.1) + (hOnTarget * 2.8) + (hCorners * 1.25);
+  const awayControl = (aPoss * 1.15) + (aShots * 2.1) + (aOnTarget * 2.8) + (aCorners * 1.25);
+  const controlTotal = Math.max(1, homeControl + awayControl);
+  const controlDiff = (homeControl - awayControl) / controlTotal;
+  const splitShift = Math.max(-14, Math.min(14, Math.round(controlDiff * 100 * 0.38)));
+  const splitPct = 50 + splitShift;
+  const homeZoneWidth = splitPct / 3;
+  const awayZoneWidth = (100 - splitPct) / 3;
+
+  const homeStarts = [0, homeZoneWidth, homeZoneWidth * 2];
+  const awayStarts = [splitPct, splitPct + awayZoneWidth, splitPct + awayZoneWidth * 2];
+  const homeSpreadBoost = Math.max(0, controlDiff) * 0.22;
+  const awaySpreadBoost = Math.max(0, -controlDiff) * 0.22;
+
   const shotDots: { x: number; y: number; color: string; onTarget: boolean }[] = [];
   const seedRng = (s: number) => { let v = s; return () => { v = (v * 16807 + 0) % 2147483647; return (v & 0x7fffffff) / 0x7fffffff; }; };
   const rng = seedRng(hShots * 100 + aShots * 7 + hOnTarget * 33);
@@ -1615,12 +1630,21 @@ function MatchHeatmapInner({ homeTeam, awayTeam, homeStats, awayStats }: { homeT
   }
 
   const LINE = "rgba(255,255,255,0.4)";
-  const intensityToColor = (intensity: number, side: "home" | "away") => {
-    const alpha = Math.max(0.08, Math.min(0.48, intensity * 0.56));
+  const intensityToColor = (intensity: number, side: "home" | "away", dominanceBoost = 0) => {
+    const alpha = Math.max(0.08, Math.min(0.56, (intensity + dominanceBoost) * 0.56));
     return side === "home"
       ? `rgba(229,9,20,${alpha.toFixed(2)})`
       : `rgba(70,130,255,${alpha.toFixed(2)})`;
   };
+
+  const dynamicZones = [
+    { left: homeStarts[0], width: homeZoneWidth, color: intensityToColor(hDefIntensity, "home", homeSpreadBoost * 0.35), label: "DEF" },
+    { left: homeStarts[1], width: homeZoneWidth, color: intensityToColor(hMidIntensity, "home", homeSpreadBoost * 0.55), label: "MID" },
+    { left: homeStarts[2], width: homeZoneWidth, color: intensityToColor(hAttackIntensity, "home", homeSpreadBoost), label: "ATT" },
+    { left: awayStarts[0], width: awayZoneWidth, color: intensityToColor(aAttackIntensity, "away", awaySpreadBoost), label: "ATT" },
+    { left: awayStarts[1], width: awayZoneWidth, color: intensityToColor(aMidIntensity, "away", awaySpreadBoost * 0.55), label: "MID" },
+    { left: awayStarts[2], width: awayZoneWidth, color: intensityToColor(aDefIntensity, "away", awaySpreadBoost * 0.35), label: "DEF" },
+  ];
   const laneCards = [
     { label: "Defense", home: hDefIntensity, away: aDefIntensity },
     { label: "Midfield", home: hMidIntensity, away: aMidIntensity },
@@ -1636,7 +1660,7 @@ function MatchHeatmapInner({ homeTeam, awayTeam, homeStats, awayStats }: { homeT
         </View>
         <View style={{ flex: 1 }}>
           <Text style={heatmapStyles.headerTitle}>FIELD CONTROL</Text>
-          <Text style={heatmapStyles.headerSub}>Home controls the left half, visitors the right half</Text>
+          <Text style={heatmapStyles.headerSub}>Dominant team pushes control deeper into the opposite half</Text>
         </View>
       </View>
 
@@ -1654,12 +1678,19 @@ function MatchHeatmapInner({ homeTeam, awayTeam, homeStats, awayStats }: { homeT
 
       <View style={heatmapStyles.pitch}>
         <LinearGradient colors={["#081711", "#0c2519", "#113225", "#113225", "#0c2519", "#081711"]} style={heatmapStyles.pitchGradient}>
-          <View style={[heatmapStyles.horizontalZone, heatmapStyles.homeZoneDefense, { backgroundColor: intensityToColor(hDefIntensity, "home") }]} />
-          <View style={[heatmapStyles.horizontalZone, heatmapStyles.homeZoneMidfield, { backgroundColor: intensityToColor(hMidIntensity, "home") }]} />
-          <View style={[heatmapStyles.horizontalZone, heatmapStyles.homeZoneAttack, { backgroundColor: intensityToColor(hAttackIntensity, "home") }]} />
-          <View style={[heatmapStyles.horizontalZone, heatmapStyles.awayZoneAttack, { backgroundColor: intensityToColor(aAttackIntensity, "away") }]} />
-          <View style={[heatmapStyles.horizontalZone, heatmapStyles.awayZoneMidfield, { backgroundColor: intensityToColor(aMidIntensity, "away") }]} />
-          <View style={[heatmapStyles.horizontalZone, heatmapStyles.awayZoneDefense, { backgroundColor: intensityToColor(aDefIntensity, "away") }]} />
+          {dynamicZones.map((zone, idx) => (
+            <View
+              key={`zone_${idx}`}
+              style={[
+                heatmapStyles.horizontalZone,
+                {
+                  left: `${zone.left}%`,
+                  width: `${zone.width}%`,
+                  backgroundColor: zone.color,
+                },
+              ]}
+            />
+          ))}
 
           <View style={heatmapStyles.fieldBorder} />
           <View style={heatmapStyles.fieldMidline} />
@@ -1676,12 +1707,11 @@ function MatchHeatmapInner({ homeTeam, awayTeam, homeStats, awayStats }: { homeT
           <View style={heatmapStyles.leftArc} />
           <View style={heatmapStyles.rightArc} />
 
-          <View style={[heatmapStyles.zoneLabelChip, { left: "8%" }]}><Text style={heatmapStyles.zoneLabel}>DEF</Text></View>
-          <View style={[heatmapStyles.zoneLabelChip, { left: "24%" }]}><Text style={heatmapStyles.zoneLabel}>MID</Text></View>
-          <View style={[heatmapStyles.zoneLabelChip, { left: "40%" }]}><Text style={heatmapStyles.zoneLabel}>ATT</Text></View>
-          <View style={[heatmapStyles.zoneLabelChip, { right: "40%" }]}><Text style={heatmapStyles.zoneLabel}>ATT</Text></View>
-          <View style={[heatmapStyles.zoneLabelChip, { right: "24%" }]}><Text style={heatmapStyles.zoneLabel}>MID</Text></View>
-          <View style={[heatmapStyles.zoneLabelChip, { right: "8%" }]}><Text style={heatmapStyles.zoneLabel}>DEF</Text></View>
+          {dynamicZones.map((zone, idx) => (
+            <View key={`zone_label_${idx}`} style={[heatmapStyles.zoneLabelChip, { left: `${zone.left + (zone.width / 2) - 4}%` }]}>
+              <Text style={heatmapStyles.zoneLabel}>{zone.label}</Text>
+            </View>
+          ))}
 
           {/* Shot dots overlay */}
           {shotDots.map((dot, i) => (
@@ -2556,9 +2586,10 @@ function PitchDot({ player, color, teamName, league, rowSize = 4 }: { player: an
   const [imageFailed, setImageFailed] = React.useState(false);
   const currentPhoto = !imageFailed ? resolvedPhoto : null;
   const showPhoto = Boolean(currentPhoto);
-  const tightRow = rowSize >= 5;
-  const circleSize = tightRow ? 32 : 38;
-  const wrapSize = tightRow ? 52 : 62;
+  const tightRow = rowSize >= 4;
+  const circleSize = tightRow ? 34 : 40;
+  const wrapSize = tightRow ? 58 : 68;
+  const showName = rowSize <= 3;
 
   useEffect(() => {
     setResolvedPhoto(getBestCachedOrSeedPlayerImage(seed));
@@ -2587,11 +2618,9 @@ function PitchDot({ player, color, teamName, league, rowSize = 4 }: { player: an
             }}
           />
         ) : null}
-        {!showPhoto ? (
-          <Text style={[styles.pitchDotNum, { color, fontSize: tightRow ? 10 : 12 }]}>{player.jersey || "—"}</Text>
-        ) : null}
+        {!showPhoto ? <Ionicons name="person" size={tightRow ? 13 : 15} color={COLORS.textMuted} /> : null}
       </View>
-      <Text style={[styles.pitchDotName, tightRow ? { fontSize: 7 } : null]} numberOfLines={1}>{shortPlayerName(player.name)}</Text>
+      {showName ? <Text style={styles.pitchDotName} numberOfLines={1}>{shortPlayerName(player.name)}</Text> : null}
     </View>
   );
 }
@@ -4175,7 +4204,7 @@ const styles = StyleSheet.create({
     alignSelf: "center",
     width: "100%",
     maxWidth: 460,
-    minHeight: 420,
+    minHeight: 472,
   },
   pitchFieldBorder: {
     position: "absolute",
@@ -4296,6 +4325,7 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     gap: 10,
     zIndex: 2,
+    marginBottom: 2,
   },
   pitchTopTeamCard: {
     flex: 1,
@@ -4311,9 +4341,9 @@ const styles = StyleSheet.create({
   },
   pitchTopTeamName: {
     fontFamily: "Inter_700Bold",
-    fontSize: 11,
+    fontSize: 10,
     textTransform: "uppercase",
-    letterSpacing: 0.7,
+    letterSpacing: 0.5,
   },
   pitchTopTeamMeta: {
     fontFamily: "Inter_500Medium",
@@ -4341,21 +4371,21 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "stretch",
     zIndex: 2,
-    gap: 10,
+    gap: 6,
   },
   pitchHalfSide: {
     flex: 1,
     flexDirection: "row",
     alignItems: "stretch",
     justifyContent: "space-evenly",
-    gap: 6,
+    gap: 4,
   },
   pitchVerticalColumn: {
     flex: 1,
     alignItems: "center",
-    justifyContent: "space-evenly",
-    gap: 4,
-    minHeight: 284,
+    justifyContent: "space-around",
+    gap: 3,
+    minHeight: 330,
   },
   pitchMiddleDividerCol: {
     width: 28,
@@ -4414,8 +4444,10 @@ const styles = StyleSheet.create({
   pitchDotName: {
     fontFamily: "Inter_500Medium",
     fontSize: 8,
+    lineHeight: 10,
     color: "rgba(255,255,255,0.88)",
     textAlign: "center",
+    maxWidth: 68,
   },
   // AI redesign styles
   chanceRow: {

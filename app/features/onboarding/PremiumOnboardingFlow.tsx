@@ -12,7 +12,6 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { PulseBrandMark } from "@/components/brand/PulseBrandMark";
 import { PulseLaunchScreen } from "@/components/brand/PulseLaunchScreen";
 import { COLORS } from "@/constants/colors";
 import {
@@ -66,18 +65,31 @@ function ChoiceChip({
   label,
   onPress,
   sublabel,
+  compact = false,
 }: {
   active: boolean;
   label: string;
   sublabel?: string;
   onPress: () => void;
+  compact?: boolean;
 }) {
   return (
-    <Pressable onPress={onPress} style={[styles.choiceChip, active ? styles.choiceChipActive : null]}>
+    <Pressable onPress={onPress} style={[styles.choiceChip, compact ? styles.choiceChipCompact : null, active ? styles.choiceChipActive : null]}>
       <Text style={[styles.choiceChipLabel, active ? styles.choiceChipLabelActive : null]}>{label}</Text>
       {sublabel ? <Text style={[styles.choiceChipSublabel, active ? styles.choiceChipSublabelActive : null]}>{sublabel}</Text> : null}
     </Pressable>
   );
+}
+
+function dedupeById<T extends { id: string }>(rows: T[]): T[] {
+  const seen = new Set<string>();
+  const out: T[] = [];
+  for (const row of rows) {
+    if (!row?.id || seen.has(row.id)) continue;
+    seen.add(row.id);
+    out.push(row);
+  }
+  return out;
 }
 
 export function PremiumOnboardingFlow({ mode = "first-launch", onFinished }: PremiumOnboardingFlowProps) {
@@ -119,23 +131,31 @@ export function PremiumOnboardingFlow({ mode = "first-launch", onFinished }: Pre
   const visualStep = Math.max(1, stepOrder.indexOf(step) + 1);
 
   const teamSuggestions = useMemo(
-    () => getSmartTeamSuggestions(selectedSports, localeSignals, 8),
+    () => dedupeById(getSmartTeamSuggestions(selectedSports, localeSignals, 8) as TeamPreference[]),
     [localeSignals, selectedSports],
   );
-  const teamSearchResults = useMemo(
-    () => (teamQuery.trim() ? searchTeams(teamQuery, selectedSports, localeSignals, 18) : getTeamSeedsForSports(selectedSports).slice(0, 18)),
-    [localeSignals, selectedSports, teamQuery],
-  );
+  const teamSearchResults = useMemo(() => {
+    const base = teamQuery.trim()
+      ? searchTeams(teamQuery, selectedSports, localeSignals, 18)
+      : getTeamSeedsForSports(selectedSports).slice(0, 18);
+    const withoutSuggested = dedupeById(base as TeamPreference[]).filter(
+      (team) => !teamSuggestions.some((suggested) => suggested.id === team.id),
+    );
+    return withoutSuggested;
+  }, [localeSignals, selectedSports, teamQuery, teamSuggestions]);
   const competitionSuggestions = useMemo(
-    () => getSmartCompetitionSuggestions(selectedSports, localeSignals, 8),
+    () => dedupeById(getSmartCompetitionSuggestions(selectedSports, localeSignals, 8) as CompetitionPreference[]),
     [localeSignals, selectedSports],
   );
-  const competitionResults = useMemo(
-    () => (competitionQuery.trim()
+  const competitionResults = useMemo(() => {
+    const base = competitionQuery.trim()
       ? searchCompetitions(competitionQuery, selectedSports, localeSignals, 14)
-      : getCompetitionSeedsForSports(selectedSports).slice(0, 14)),
-    [competitionQuery, localeSignals, selectedSports],
-  );
+      : getCompetitionSeedsForSports(selectedSports).slice(0, 14);
+    const withoutSuggested = dedupeById(base as CompetitionPreference[]).filter(
+      (competition) => !competitionSuggestions.some((suggested) => suggested.id === competition.id),
+    );
+    return withoutSuggested;
+  }, [competitionQuery, competitionSuggestions, localeSignals, selectedSports]);
 
   useEffect(() => {
     if (step !== 9) return;
@@ -276,7 +296,7 @@ export function PremiumOnboardingFlow({ mode = "first-launch", onFinished }: Pre
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.backgroundOrbTop} />
       <View style={styles.backgroundOrbBottom} />
-      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false} scrollEnabled={step > 2}>
         <View style={styles.headerRow}>
           <StepDots step={visualStep} total={stepOrder.length} />
           {step > 1 ? (
@@ -288,11 +308,9 @@ export function PremiumOnboardingFlow({ mode = "first-launch", onFinished }: Pre
 
         {step === 1 ? (
           <View style={styles.heroCard}>
-            <View style={styles.heroArtworkWrap}>
-              <Image source={require("../../assets/images/intro.png")} style={styles.heroArtwork} resizeMode="cover" />
-              <View style={styles.heroArtworkOverlay} />
+            <View style={styles.heroLogoWrap}>
+              <Image source={require("../../assets/images/logo.png")} style={styles.heroLogo} resizeMode="cover" />
             </View>
-            <PulseBrandMark size={86} subtitle="Your premium streaming hub" />
             <Text style={styles.heroEyebrow}>One subscription layer. Zero noise.</Text>
             <Text style={styles.heroTitle}>All your content. One place.</Text>
             <Text style={styles.heroBody}>
@@ -361,14 +379,14 @@ export function PremiumOnboardingFlow({ mode = "first-launch", onFinished }: Pre
             <View style={styles.selectionWrap}>
               {teamSuggestions.map((team) => {
                 const active = selectedTeams.some((item) => item.id === team.id);
-                return <ChoiceChip key={team.id} active={active} label={team.name} sublabel={team.competition || getSportLabel(team.sport)} onPress={() => toggleTeam(team)} />;
+                return <ChoiceChip compact key={team.id} active={active} label={team.name} sublabel={team.competition || getSportLabel(team.sport)} onPress={() => toggleTeam(team)} />;
               })}
             </View>
             <Text style={styles.listLabel}>Browse all</Text>
             <View style={styles.selectionWrap}>
-              {teamSearchResults.map((team) => {
+              {teamSearchResults.slice(0, 12).map((team) => {
                 const active = selectedTeams.some((item) => item.id === team.id);
-                return <ChoiceChip key={team.id} active={active} label={team.name} sublabel={team.competition || getSportLabel(team.sport)} onPress={() => toggleTeam(team)} />;
+                return <ChoiceChip compact key={team.id} active={active} label={team.name} sublabel={team.competition || getSportLabel(team.sport)} onPress={() => toggleTeam(team)} />;
               })}
             </View>
           </View>
@@ -392,14 +410,14 @@ export function PremiumOnboardingFlow({ mode = "first-launch", onFinished }: Pre
             <View style={styles.selectionWrap}>
               {competitionSuggestions.map((competition) => {
                 const active = selectedCompetitions.some((item) => item.id === competition.id);
-                return <ChoiceChip key={competition.id} active={active} label={competition.name} sublabel={getSportLabel(competition.sport)} onPress={() => toggleCompetition(competition)} />;
+                return <ChoiceChip compact key={competition.id} active={active} label={competition.name} sublabel={getSportLabel(competition.sport)} onPress={() => toggleCompetition(competition)} />;
               })}
             </View>
             <Text style={styles.listLabel}>Browse all</Text>
             <View style={styles.selectionWrap}>
-              {competitionResults.map((competition) => {
+              {competitionResults.slice(0, 10).map((competition) => {
                 const active = selectedCompetitions.some((item) => item.id === competition.id);
-                return <ChoiceChip key={competition.id} active={active} label={competition.name} sublabel={getSportLabel(competition.sport)} onPress={() => toggleCompetition(competition)} />;
+                return <ChoiceChip compact key={competition.id} active={active} label={competition.name} sublabel={getSportLabel(competition.sport)} onPress={() => toggleCompetition(competition)} />;
               })}
             </View>
           </View>
@@ -576,22 +594,19 @@ const styles = StyleSheet.create({
     paddingTop: 42,
     gap: 20,
   },
-  heroArtworkWrap: {
-    width: "100%",
-    height: 220,
-    borderRadius: 28,
+  heroLogoWrap: {
+    width: 132,
+    height: 132,
+    borderRadius: 30,
+    alignSelf: "center",
     overflow: "hidden",
     borderWidth: 1,
     borderColor: COLORS.borderLight,
     backgroundColor: COLORS.card,
   },
-  heroArtwork: {
+  heroLogo: {
     width: "100%",
     height: "100%",
-  },
-  heroArtworkOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(9,11,16,0.28)",
   },
   heroEyebrow: {
     color: COLORS.accent,
@@ -672,6 +687,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 14,
     gap: 6,
+  },
+  choiceChipCompact: {
+    width: "48%",
+    minHeight: 92,
+    justifyContent: "space-between",
   },
   choiceChipActive: {
     backgroundColor: COLORS.accent,

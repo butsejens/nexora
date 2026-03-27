@@ -222,7 +222,7 @@ function MatchRowCardInner({
                   </Text>
                   <View style={s.statusRow}>
                     {live ? <LivePulse /> : null}
-                    <Text style={[s.statusBelow, live ? s.statusBelowLive : null]}>{stateLabel}</Text>
+                    <Text style={[s.statusBelow, live ? s.statusBelowLive : null, finished ? s.statusBelowFinished : null]}>{stateLabel}</Text>
                   </View>
                 </>
               ) : (
@@ -465,6 +465,9 @@ const s = StyleSheet.create({
   },
   statusBelowLive: {
     color: COLORS.live,
+  },
+  statusBelowFinished: {
+    color: '#FFD34D',
   },
   pulseWrap: {
     width: 14,

@@ -427,13 +427,31 @@ export default function DetailScreen() {
   const detailErrorRef = useMemo(() => buildErrorReference("NX-DTL"), []);
   const isMovie = type === "movie";
   const fav = isFavorite(id);
+
+  const trailerKeyFromUrl = useMemo(() => {
+    const rawUrl = String((data as any)?.trailerUrl || "").trim();
+    if (!rawUrl) return "";
+    try {
+      const parsed = new URL(rawUrl);
+      const byQuery = parsed.searchParams.get("v");
+      if (byQuery) return byQuery.trim();
+      const pathParts = parsed.pathname.split("/").filter(Boolean);
+      return String(pathParts[pathParts.length - 1] || "").trim();
+    } catch {
+      const match = rawUrl.match(/(?:v=|youtu\.be\/|embed\/)([A-Za-z0-9_-]{6,})/i);
+      return match?.[1] ? String(match[1]).trim() : "";
+    }
+  }, [data]);
+
   const trailerCandidates = useMemo(() => {
     if (Array.isArray((data as any)?.trailerCandidates) && (data as any).trailerCandidates.length > 0) {
       return (data as any).trailerCandidates.filter((candidate: any) => String(candidate?.key || "").trim());
     }
     const fallbackKey = String((data as any)?.trailerKey || "").trim();
-    return fallbackKey ? [{ key: fallbackKey, site: "youtube", type: "Trailer" }] : [];
-  }, [data]);
+    const parsedKey = trailerKeyFromUrl;
+    const key = fallbackKey || parsedKey;
+    return key ? [{ key, site: "youtube", type: "Trailer" }] : [];
+  }, [data, trailerKeyFromUrl]);
   const activeTrailer = trailerCandidates[trailerIndex] || null;
 
   // Cycle through embed providers when one fails (e.g. YouTube error 153)
@@ -516,6 +534,21 @@ export default function DetailScreen() {
     } finally {
       setOpeningExternalTrailer(false);
     }
+  };
+
+  const openTrailerInPlayer = () => {
+    const key = String(activeTrailer?.key || "").trim();
+    if (!key) return;
+    router.push({
+      pathname: "/player",
+      params: {
+        embedUrl: `https://www.youtube.com/watch?v=${encodeURIComponent(key)}`,
+        title: `${String(data?.title || "Trailer")} Trailer`,
+        type: "trailer",
+        contentId: `trailer_${String(data?.id || id)}_${key}`,
+      },
+    });
+    setShowTrailer(false);
   };
 
   const advanceTrailer = () => {
@@ -743,7 +776,7 @@ export default function DetailScreen() {
               <TouchableOpacity style={styles.playBtn} onPress={() => goToPlayer()} activeOpacity={0.85}>
                 <View style={styles.playBtnInner}>
                   <Ionicons name="play" size={22} color="#FFFFFF" />
-                  <Text style={styles.playBtnText}>Play</Text>
+                  <Text style={styles.playBtnText} numberOfLines={1}>Play</Text>
                 </View>
               </TouchableOpacity>
             ) : (
@@ -1055,6 +1088,15 @@ export default function DetailScreen() {
                 <View style={styles.trailerFallbackState}>
                   <Ionicons name="videocam-off-outline" size={34} color={COLORS.textMuted} />
                   <Text style={styles.trailerFallbackTitle}>{t("detail.trailerUnavailable")}</Text>
+                  {activeTrailer?.key ? (
+                    <TouchableOpacity
+                      style={styles.trailerInAppBtn}
+                      onPress={openTrailerInPlayer}
+                    >
+                      <Ionicons name="play-circle-outline" size={16} color={COLORS.text} />
+                      <Text style={styles.trailerInAppText}>Play trailer in app</Text>
+                    </TouchableOpacity>
+                  ) : null}
                   <TouchableOpacity
                     style={styles.trailerOpenExternalBtn}
                     onPress={() => void openTrailerOutsideApp(activeTrailer?.key, trailerBlockedReason === "error153" ? "error153" : "blocked")}
@@ -1105,8 +1147,8 @@ const styles = StyleSheet.create({
   genreRow: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginBottom: 16 },
   genrePill: { backgroundColor: "rgba(255,255,255,0.06)", borderRadius: 6, paddingHorizontal: 10, paddingVertical: 5, borderWidth: 0.5, borderColor: "rgba(255,255,255,0.08)" },
   genrePillText: { fontFamily: "Inter_500Medium", fontSize: 11, color: COLORS.textSecondary },
-  actionButtons: { flexDirection: "row", gap: 10, marginBottom: 20, alignItems: "center" },
-  playBtn: { flex: 1, borderRadius: 12, overflow: "hidden", minWidth: 0 },
+  actionButtons: { flexDirection: "row", flexWrap: "wrap", gap: 10, marginBottom: 20, alignItems: "center" },
+  playBtn: { flex: 1, borderRadius: 12, overflow: "hidden", minWidth: 148 },
   playBtnInner: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, paddingVertical: 14, paddingHorizontal: 16, backgroundColor: COLORS.accent, borderRadius: 12, shadowColor: COLORS.accent, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.45, shadowRadius: 12, elevation: 8 },
   lockedBtnInner: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, paddingVertical: 14, paddingHorizontal: 12, backgroundColor: "rgba(229,9,20,0.35)", borderRadius: 12, borderWidth: 1, borderColor: "rgba(229,9,20,0.5)" },
   playBtnText: { fontFamily: "Inter_800ExtraBold", fontSize: 16, color: "#FFFFFF", flexShrink: 1, letterSpacing: 0.5 },
@@ -1184,6 +1226,8 @@ const styles = StyleSheet.create({
   trailerStatusText: { fontFamily: "Inter_500Medium", fontSize: 13, color: COLORS.text },
   trailerFallbackState: { minHeight: 260, alignItems: "center", justifyContent: "center", gap: 12, padding: 24 },
   trailerFallbackTitle: { fontFamily: "Inter_600SemiBold", fontSize: 15, color: COLORS.text, textAlign: "center" },
+  trailerInAppBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, marginTop: 2, backgroundColor: "rgba(255,255,255,0.08)", borderRadius: 10, borderWidth: 1, borderColor: "rgba(255,255,255,0.14)", paddingVertical: 10, paddingHorizontal: 14 },
+  trailerInAppText: { fontFamily: "Inter_600SemiBold", fontSize: 13, color: COLORS.text },
   trailerOpenExternalBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, marginTop: 4, backgroundColor: COLORS.accent, borderRadius: 10, paddingVertical: 10, paddingHorizontal: 14 },
   trailerOpenExternalText: { fontFamily: "Inter_600SemiBold", fontSize: 13, color: COLORS.background },
   downloadingText: { fontFamily: "Inter_600SemiBold", fontSize: 14, color: COLORS.text },

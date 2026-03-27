@@ -9,6 +9,7 @@ import { COLORS } from "@/constants/colors";
 import { apiRequest } from "@/lib/query-client";
 import { enrichTeamDetailPayload } from "@/lib/sports-enrichment";
 import { TeamLogo } from "@/components/TeamLogo";
+import { resolveCompetitionBrand } from "@/lib/logo-manager";
 import {
   getBestCachedOrSeedPlayerImage,
   resolvePlayerImageUri,
@@ -80,6 +81,33 @@ function cleanLeagueLabel(primary: unknown, fallback: unknown): string {
   const second = String(fallback || "").trim();
   if (second && !isLeagueCode(second)) return second;
   return second || first || "";
+}
+
+function guessCountryFromLeagueCode(leagueCode: string): string {
+  const code = String(leagueCode || "").toLowerCase();
+  if (code.startsWith("bel.")) return "Belgium";
+  if (code.startsWith("eng.")) return "England";
+  if (code.startsWith("esp.")) return "Spain";
+  if (code.startsWith("ita.")) return "Italy";
+  if (code.startsWith("ger.")) return "Germany";
+  if (code.startsWith("fra.")) return "France";
+  if (code.startsWith("ned.")) return "Netherlands";
+  if (code.startsWith("por.")) return "Portugal";
+  if (code.startsWith("tur.")) return "Turkey";
+  if (code.startsWith("fifa") || code.startsWith("uefa")) return "International";
+  return "";
+}
+
+function parseRecord(record: unknown): { wins: number; draws: number; losses: number } {
+  const text = String(record || "").trim();
+  if (!text) return { wins: 0, draws: 0, losses: 0 };
+  const match = text.match(/(\d+)\s*[-/]\s*(\d+)\s*[-/]\s*(\d+)/);
+  if (!match) return { wins: 0, draws: 0, losses: 0 };
+  return {
+    wins: Number(match[1] || 0),
+    draws: Number(match[2] || 0),
+    losses: Number(match[3] || 0),
+  };
 }
 
 function roleForPosition(player: any): "gk" | "def" | "mid" | "att" {
@@ -212,7 +240,7 @@ function TopPlayerRow({ player, teamName, league }: { player: any; teamName: str
         <Image source={{ uri }} style={[styles.playerPhoto, isCompact ? styles.playerPhotoCompact : null]} onError={() => setFailed(true)} />
       ) : (
         <View style={[styles.playerPhoto, styles.playerPhotoFallback, isCompact ? styles.playerPhotoCompact : null]}>
-          <Text style={styles.playerPhotoInitials}>{String(player?.name || "?").slice(0, 2).toUpperCase()}</Text>
+          <Ionicons name="person" size={14} color={P.muted} />
         </View>
       )}
       <View style={styles.playerInfo}>
@@ -287,6 +315,30 @@ export default function TeamInfoScreen() {
   }, [players]);
 
   const leagueLabel = cleanLeagueLabel(data?.leagueName, league);
+  const competitionBrand = useMemo(
+    () => resolveCompetitionBrand({ name: String(data?.leagueName || leagueLabel || league), espnLeague: String(league || "") }),
+    [data?.leagueName, league, leagueLabel],
+  );
+  const seasonStats = useMemo(() => {
+    const fromRecord = parseRecord(data?.record);
+    const played = toNumber(data?.leaguePlayed ?? data?.played ?? data?.matchesPlayed);
+    const wins = toNumber(data?.wins ?? fromRecord.wins);
+    const draws = toNumber(data?.draws ?? fromRecord.draws);
+    const losses = toNumber(data?.losses ?? fromRecord.losses);
+    const points = toNumber(data?.leaguePoints ?? data?.points);
+    const goalsFor = toNumber(data?.goalsFor);
+    const goalsAgainst = toNumber(data?.goalsAgainst);
+    const goalDiff = goalsFor - goalsAgainst;
+    const ppg = played > 0 && points > 0 ? (points / played).toFixed(2) : "-";
+    const winRate = played > 0 && wins >= 0 ? `${Math.round((wins / played) * 100)}%` : "-";
+    return { played, wins, draws, losses, points, goalsFor, goalsAgainst, goalDiff, ppg, winRate };
+  }, [data]);
+  const resolvedCountry = useMemo(() => {
+    const raw = String(data?.country || "").trim();
+    const team = String(data?.name || teamName || "").trim().toLowerCase();
+    if (raw && raw.toLowerCase() !== team && !isLeagueCode(raw)) return raw;
+    return guessCountryFromLeagueCode(league) || "Unknown";
+  }, [data?.country, data?.name, league, teamName]);
   const topScorerLabel = String(data?.topScorer?.name || "").trim()
     ? `${data.topScorer.name}${data?.topScorer?.goals ? ` · ${data.topScorer.goals}G` : ""}`
     : "";
@@ -312,9 +364,12 @@ export default function TeamInfoScreen() {
 
       <ScrollView contentContainerStyle={styles.content}>
         <View style={[styles.hero, { borderColor: `${heroColor}44` }]}>
-          <TeamLogo uri={data?.logo} teamName={data?.name || teamName} size={72} />
+          <View style={styles.posterLogoWrap}>
+            <View style={styles.posterLogoGlow} />
+            <TeamLogo uri={data?.logo} teamName={data?.name || teamName} size={118} />
+          </View>
           <Text style={styles.teamName}>{data?.name || teamName}</Text>
-          {leagueLabel ? <Text style={styles.league} numberOfLines={1}>{leagueLabel}</Text> : null}
+          {competitionBrand?.name ? <Text style={styles.league} numberOfLines={1}>{competitionBrand.name}</Text> : null}
           {data?.leagueRank && (
             <View style={[styles.rankBadge, { backgroundColor: `${heroColor}22`, borderColor: heroColor }]}>
               <Text style={[styles.rankText, { color: heroColor }]}>#{data.leagueRank}</Text>
@@ -323,9 +378,28 @@ export default function TeamInfoScreen() {
         </View>
 
         <View style={styles.card}>
+          <Text style={styles.cardTitle}>Club Highlights</Text>
+          <Line label="League Position" value={data?.leagueRank ? `#${data.leagueRank}` : ""} icon="trophy-outline" />
+          <Line label="Points" value={seasonStats.points > 0 ? String(seasonStats.points) : ""} icon="star-outline" />
+          <Line label="Matches" value={seasonStats.played > 0 ? String(seasonStats.played) : ""} icon="soccer" />
+          <Line label="Club Value" value={String(data?.squadMarketValue || "")} icon="currency-eur" />
+          <Line label="Top Scorer" value={topScorerLabel} icon="trophy" />
+          <Line label="Top Assist" value={topAssistLabel} icon="target" />
+        </View>
+
+        <View style={styles.card}>
           <Text style={styles.cardTitle}>General Info</Text>
-          <Line label="League" value={leagueLabel} icon="soccer-field" />
-          <Line label="Country" value={String(data?.country || "")} icon="earth" />
+          <View style={styles.line}>
+            <View style={styles.lineLeft}>
+              <MaterialCommunityIcons name="soccer-field" size={14} color="#9D9DAA" />
+              <Text style={styles.label}>League</Text>
+            </View>
+            <View style={styles.leagueValueRow}>
+              <TeamLogo uri={typeof competitionBrand?.logo === "string" ? competitionBrand.logo : null} resolvedLogo={typeof competitionBrand?.logo === "number" ? competitionBrand.logo : undefined} teamName={competitionBrand?.name || leagueLabel} size={18} />
+              <Text style={styles.value} numberOfLines={1}>{competitionBrand?.name || leagueLabel}</Text>
+            </View>
+          </View>
+          <Line label="Country" value={resolvedCountry} icon="earth" />
           <Line label="Founded" value={data?.founded ? String(data.founded) : ""} icon="calendar-outline" />
           <Line label="Venue" value={String(data?.venue || "")} icon="home-city-outline" />
           <Line label="Stadium capacity" value={data?.stadiumCapacity ? Number(data.stadiumCapacity).toLocaleString() : ""} icon="stadium" />
@@ -337,22 +411,25 @@ export default function TeamInfoScreen() {
           <View style={styles.statGridContainer}>
             <View style={styles.statGridItem}>
               <Text style={styles.statGridLabel}>Played</Text>
-              <Text style={styles.statGridValue}>{data?.leaguePlayed ?? "—"}</Text>
+              <Text style={styles.statGridValue}>{seasonStats.played || "-"}</Text>
             </View>
             <View style={styles.statGridItem}>
               <Text style={styles.statGridLabel}>Wins</Text>
-              <Text style={[styles.statGridValue, { color: "#4CAF82" }]}>{data?.wins ?? "—"}</Text>
+              <Text style={[styles.statGridValue, { color: "#4CAF82" }]}>{seasonStats.wins || "-"}</Text>
             </View>
             <View style={styles.statGridItem}>
               <Text style={styles.statGridLabel}>Draws</Text>
-              <Text style={[styles.statGridValue, { color: "#FFB400" }]}>{data?.draws ?? "—"}</Text>
+              <Text style={[styles.statGridValue, { color: "#FFB400" }]}>{seasonStats.draws || "-"}</Text>
             </View>
             <View style={styles.statGridItem}>
               <Text style={styles.statGridLabel}>Losses</Text>
-              <Text style={[styles.statGridValue, { color: "#FF5252" }]}>{data?.losses ?? "—"}</Text>
+              <Text style={[styles.statGridValue, { color: "#FF5252" }]}>{seasonStats.losses || "-"}</Text>
             </View>
           </View>
-          <Line label="Points" value={data?.leaguePoints ? String(data.leaguePoints) : ""} icon="star-outline" />
+          <Line label="Points" value={seasonStats.points > 0 ? String(seasonStats.points) : ""} icon="star-outline" />
+          <Line label="Goal Difference" value={Number.isFinite(seasonStats.goalDiff) ? String(seasonStats.goalDiff) : ""} icon="plus-minus" />
+          <Line label="Points per match" value={seasonStats.ppg} icon="chart-line" />
+          <Line label="Win rate" value={seasonStats.winRate} icon="percent" />
           <Line label="Record" value={String(data?.record || "")} icon="format-list-text" />
         </View>
 
@@ -365,8 +442,8 @@ export default function TeamInfoScreen() {
 
         <View style={styles.card}>
           <Text style={styles.cardTitle}>Performance</Text>
-          <Line label="Goals For" value={data?.goalsFor != null ? String(data.goalsFor) : ""} icon="soccer" />
-          <Line label="Goals Against" value={data?.goalsAgainst != null ? String(data.goalsAgainst) : ""} icon="shield-outline" />
+          <Line label="Goals For" value={seasonStats.goalsFor > 0 ? String(seasonStats.goalsFor) : ""} icon="soccer" />
+          <Line label="Goals Against" value={seasonStats.goalsAgainst > 0 ? String(seasonStats.goalsAgainst) : ""} icon="shield-outline" />
           <Line label="Clean Sheets" value={data?.cleanSheets != null ? String(data.cleanSheets) : ""} icon="check-circle-outline" />
           <Line label="Top Scorer" value={topScorerLabel} icon="trophy-outline" />
           <Line label="Top Assist" value={topAssistLabel} icon="target" />
@@ -374,14 +451,14 @@ export default function TeamInfoScreen() {
           <Line label="Club Value" value={String(data?.squadMarketValue || "")} icon="currency-eur" />
         </View>
 
-        {(data?.goalsFor != null || data?.goalsAgainst != null || data?.cleanSheets != null) ? (
+        {(seasonStats.goalsFor != null || seasonStats.goalsAgainst != null || data?.cleanSheets != null) ? (
           <View style={styles.statsRow}>
             <View style={styles.statCard}>
-              <Text style={styles.statValue}>{data?.goalsFor ?? 0}</Text>
+              <Text style={styles.statValue}>{seasonStats.goalsFor ?? 0}</Text>
               <Text style={styles.statLabel}>Goals For</Text>
             </View>
             <View style={styles.statCard}>
-              <Text style={styles.statValue}>{data?.goalsAgainst ?? 0}</Text>
+              <Text style={styles.statValue}>{seasonStats.goalsAgainst ?? 0}</Text>
               <Text style={styles.statLabel}>Goals Against</Text>
             </View>
             <View style={styles.statCard}>
@@ -435,6 +512,24 @@ const styles = StyleSheet.create({
   title: { fontFamily: "Inter_700Bold", fontSize: 18, color: COLORS.text },
   content: { padding: 16, gap: 12, paddingBottom: 44 },
   hero: { alignItems: "center", gap: 10, paddingVertical: 18, paddingHorizontal: 16, borderRadius: 18, backgroundColor: P.card, borderWidth: 1, borderColor: P.border },
+  posterLogoWrap: {
+    width: 136,
+    height: 136,
+    borderRadius: 30,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(255,255,255,0.04)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.14)",
+    overflow: "hidden",
+  },
+  posterLogoGlow: {
+    position: "absolute",
+    width: 122,
+    height: 122,
+    borderRadius: 61,
+    backgroundColor: "rgba(0,126,255,0.10)",
+  },
   teamName: { fontFamily: "Inter_700Bold", fontSize: 22, color: P.text },
   league: { fontFamily: "Inter_500Medium", fontSize: 12, color: P.muted },
   rankBadge: { borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6, borderWidth: 1, marginTop: 4 },
@@ -442,6 +537,7 @@ const styles = StyleSheet.create({
   card: { backgroundColor: P.card, borderRadius: 16, padding: 14, gap: 10, borderWidth: 1, borderColor: P.border },
   cardTitle: { fontFamily: "Inter_700Bold", fontSize: 13, color: P.text, marginBottom: 2 },
   lineLeft: { flexDirection: "row", alignItems: "center", gap: 6, flex: 1, minWidth: 0 },
+  leagueValueRow: { flexDirection: "row", alignItems: "center", gap: 6, flex: 1, justifyContent: "flex-end", minWidth: 0 },
   line: { flexDirection: "row", alignItems: "flex-start", gap: 10, paddingVertical: 7 },
   label: { fontFamily: "Inter_500Medium", fontSize: 12, color: P.muted, flexShrink: 1 },
   value: { fontFamily: "Inter_600SemiBold", fontSize: 12, color: P.text, textAlign: "right", flex: 1, minWidth: 0 },

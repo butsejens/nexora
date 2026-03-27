@@ -297,15 +297,6 @@ export default function CompetitionScreen() {
 
   const { t } = useTranslation();
 
-  const tabs: { id: TabId; label: string; icon: string }[] = [
-    ...(!isCup ? [{ id: "standings" as TabId, label: t("competition.standings"), icon: "list-outline" }] : []),
-    { id: "matches" as TabId, label: t("competition.matches"), icon: "football-outline" },
-    { id: "teams" as TabId, label: t("competition.teams") || "Teams", icon: "people-outline" },
-    { id: "scorers" as TabId, label: t("competition.topScorers"), icon: "trophy-outline" },
-    { id: "assists" as TabId, label: t("competition.topAssists") || "Assists", icon: "arrow-redo-outline" },
-    ...(!isCup ? [{ id: "stats" as TabId, label: t("competition.stats") || "Stats", icon: "stats-chart-outline" }] : []),
-  ];
-
   return (
     <View style={styles.container}>
       {/* Header */}
@@ -351,21 +342,7 @@ export default function CompetitionScreen() {
       </LinearGradient>
       </View>
 
-      {/* Tabs */}
-      <View style={styles.tabBar}>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tabBarScroll}>
-        {tabs.map(tab => (
-          <TouchableOpacity
-            key={tab.id}
-            style={[styles.tab, activeTab === tab.id && styles.tabActive]}
-            onPress={() => setActiveTab(tab.id)}
-          >
-            <Ionicons name={tab.icon as any} size={15} color={activeTab === tab.id ? COLORS.accent : COLORS.textMuted} />
-            <Text style={[styles.tabText, activeTab === tab.id && styles.tabTextActive]} numberOfLines={1}>{tab.label}</Text>
-          </TouchableOpacity>
-        ))}
-        </ScrollView>
-      </View>
+      {/* Tabs intentionally hidden for cleaner standings-first layout */}
 
       {/* Content area */}
       <View style={{ flex: 1 }}>
@@ -658,7 +635,6 @@ export default function CompetitionScreen() {
 }
 
 function StandingsRow({ team, rank, league, espnLeague }: { team: any; rank: number; league: string; espnLeague: string }) {
-  const isTop3 = rank <= 3;
   const isTopZone = rank <= 4;
   const rankColor = rank === 1 ? COLORS.gold : rank <= 3 ? COLORS.accent : COLORS.text;
 
@@ -680,7 +656,7 @@ function StandingsRow({ team, rank, league, espnLeague }: { team: any; rank: num
 
   return (
     <TouchableOpacity
-      style={[styles.standingsRow, isTop3 && styles.standingsRowTop]}
+      style={styles.standingsRow}
       onPress={handlePress}
       activeOpacity={0.7}
     >

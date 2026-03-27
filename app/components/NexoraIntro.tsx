@@ -1,10 +1,11 @@
 import React, { useEffect } from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { Image, StyleSheet, Text, View } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
+import { Video, ResizeMode } from "expo-av";
 import Animated, {
-  useAnimatedStyle,
+  FadeIn,
+  FadeInDown,
   useSharedValue,
-  withDelay,
   withTiming,
 } from "react-native-reanimated";
 
@@ -19,52 +20,36 @@ export function NexoraIntro({
   subtitle = "ALL YOUR CONTENT. ONE PLACE.",
   autoFinishMs = null,
 }: NexoraIntroProps) {
-  const nOpacity = useSharedValue(0);
-  const nScale = useSharedValue(0.8);
-  const textOpacity = useSharedValue(0);
-  const textX = useSharedValue(30);
-  const subOpacity = useSharedValue(0);
+  const overlayOpacity = useSharedValue(0);
 
   useEffect(() => {
-    nOpacity.value = withTiming(1, { duration: 500 });
-    nScale.value = withTiming(1, { duration: 600 });
-
-    textOpacity.value = withDelay(400, withTiming(1, { duration: 500 }));
-    textX.value = withDelay(400, withTiming(0, { duration: 500 }));
-
-    subOpacity.value = withDelay(900, withTiming(1, { duration: 400 }));
+    overlayOpacity.value = withTiming(1, { duration: 650 });
 
     if (autoFinishMs != null && onFinish) {
       const timer = setTimeout(() => onFinish(), autoFinishMs);
       return () => clearTimeout(timer);
     }
-  }, [autoFinishMs, nOpacity, nScale, onFinish, subOpacity, textOpacity, textX]);
-
-  const nStyle = useAnimatedStyle(() => ({
-    opacity: nOpacity.value,
-    transform: [{ scale: nScale.value }],
-  }));
-
-  const textStyle = useAnimatedStyle(() => ({
-    opacity: textOpacity.value,
-    transform: [{ translateX: textX.value }],
-  }));
-
-  const subStyle = useAnimatedStyle(() => ({
-    opacity: subOpacity.value,
-  }));
+  }, [autoFinishMs, onFinish, overlayOpacity]);
 
   return (
     <View style={styles.container}>
-      <LinearGradient colors={["#050505", "#0B0B12"]} style={StyleSheet.absoluteFill} />
+      <Video
+        source={require("../assets/videos/intro.mp4")}
+        style={StyleSheet.absoluteFill}
+        shouldPlay
+        isLooping
+        isMuted
+        resizeMode={ResizeMode.COVER}
+      />
+      <LinearGradient colors={["rgba(0,0,0,0.30)", "rgba(0,0,0,0.72)"]} style={StyleSheet.absoluteFill} />
 
       <View style={styles.center}>
-        <View style={styles.row}>
-          <Animated.Text style={[styles.n, nStyle]}>N</Animated.Text>
-          <Animated.Text style={[styles.text, textStyle]}>EXORA</Animated.Text>
-        </View>
-
-        <Animated.Text style={[styles.sub, subStyle]}>{subtitle}</Animated.Text>
+        <Animated.View entering={FadeIn.duration(420)} style={styles.logoWrap}>
+          <Image source={require("../assets/images/logo.png")} style={styles.logo} resizeMode="contain" />
+        </Animated.View>
+        <Animated.Text entering={FadeInDown.delay(120).duration(360)} style={styles.sub}>
+          {subtitle}
+        </Animated.Text>
       </View>
     </View>
   );
@@ -77,24 +62,27 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
-  center: { alignItems: "center", paddingHorizontal: 24, gap: 16 },
-  row: { flexDirection: "row", alignItems: "center", gap: 16 },
-  n: {
-    fontSize: 110,
-    fontWeight: "900",
-    color: "#E50914",
-    textShadowColor: "rgba(229,9,20,0.4)",
-    textShadowRadius: 25,
+  center: {
+    alignItems: "center",
+    paddingHorizontal: 24,
+    gap: 16,
+    width: "100%",
   },
-  text: {
-    fontSize: 90,
-    fontWeight: "800",
-    color: "#FFF",
-    letterSpacing: 8,
+  logoWrap: {
+    width: 182,
+    height: 182,
+    borderRadius: 46,
+    overflow: "hidden",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.18)",
+    backgroundColor: "rgba(0,0,0,0.52)",
   },
+  logo: { width: "100%", height: "100%" },
   sub: {
-    color: "#AAA",
-    letterSpacing: 3,
+    color: "rgba(255,255,255,0.88)",
+    letterSpacing: 2,
+    fontSize: 12,
+    fontWeight: "700",
     textAlign: "center",
   },
 });
