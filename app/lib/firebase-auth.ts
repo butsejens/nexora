@@ -6,6 +6,7 @@ import {
   GoogleAuthProvider,
   OAuthProvider,
   createUserWithEmailAndPassword,
+  getReactNativePersistence,
   initializeAuth,
   onAuthStateChanged,
   signInWithCredential,
@@ -13,7 +14,6 @@ import {
   signOut,
   type User,
 } from "firebase/auth";
-import { getReactNativePersistence } from "firebase/auth/react-native";
 
 import { ENV } from "@/constants/env";
 
