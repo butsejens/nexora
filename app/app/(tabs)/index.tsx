@@ -1594,7 +1594,7 @@ export default function SportsScreen() {
       <View style={styles.container}>
         <NexoraHeader
           variant="module"
-          title="SPORT"
+          title="NEXORA SPORT"
           titleColor={P.accent}
           compact
           showSearch
@@ -1628,7 +1628,7 @@ export default function SportsScreen() {
       >
         <NexoraHeader
           variant="module"
-          title="SPORT"
+          title="NEXORA SPORT"
           titleColor={P.accent}
           compact={compactHeader}
           showSearch

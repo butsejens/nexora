@@ -756,12 +756,11 @@ export default function MatchDetailScreen() {
       return acc;
     }, { goals: 0, yellow: 0, red: 0, subs: 0, penalties: 0 });
   }, [orderedTimelineEvents]);
+  const safePrediction = prediction && !prediction.error ? prediction : null;
   const formCards = [
     { key: "home-form", label: `${homeTeamName} form`, value: safePrediction?.formHome || "- - - - -" },
     { key: "away-form", label: `${awayTeamName} form`, value: safePrediction?.formAway || "- - - - -" },
   ];
-
-  const safePrediction = prediction && !prediction.error ? prediction : null;
   const homePct = Math.max(0, Math.min(100, Number(safePrediction?.homePct || 0)));
   const drawPct = Math.max(0, Math.min(100, Number(safePrediction?.drawPct || 0)));
   const awayPct = Math.max(0, Math.min(100, Number(safePrediction?.awayPct || 0)));

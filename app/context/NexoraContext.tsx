@@ -372,6 +372,9 @@ export function NexoraProvider({ children }: { children: ReactNode }) {
     void hydratePurchasesCache();
 
     if (!isFirebaseAuthConfigured()) {
+      setIsAuthenticated(true);
+      setAuthProvider(null);
+      setAuthEmail(null);
       setAuthReady(true);
       return () => {
         cancelled = true;

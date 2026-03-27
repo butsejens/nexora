@@ -1295,7 +1295,13 @@ const [showAddPlaylist, setShowAddPlaylist] = useState(false);
 
   return (
     <View style={styles.container}>
-      <NexoraHeader showSearch={false} showProfile   onProfile={() => router.push("/profile")}
+      <NexoraHeader
+        variant="module"
+        title="SETTINGS"
+        titleColor={COLORS.accent}
+        showSearch={false}
+        showProfile
+        onProfile={() => router.push("/profile")}
       />
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: bottomPad }}>
