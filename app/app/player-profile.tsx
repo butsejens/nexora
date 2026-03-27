@@ -437,7 +437,7 @@ export default function PlayerProfileScreen() {
         <Animated.ScrollView
           contentContainerStyle={styles.content}
           showsVerticalScrollIndicator={false}
-          onScroll={Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], { useNativeDriver: true })}
+          onScroll={Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], { useNativeDriver: false })}
           scrollEventThrottle={16}
         >
           <Card title={tx("playerProfile.overview", "Overview")}>

@@ -91,11 +91,12 @@ export function getApiBaseCandidates(): string[] {
     // defaulting to localhost. Prefer the production API unless the build
     // explicitly configured something else.
     if (!__DEV__) {
+      const safeExplicitList = explicitList.filter((candidate) => !isLoopbackHost(candidate));
       const safeExplicit = explicit && !isLoopbackHost(explicit) ? explicit : "";
       return unique([
         lastWorkingApiBase,
         safeExplicit,
-        ...explicitList,
+        ...safeExplicitList,
         DEFAULT_RENDER_API_BASE,
       ]);
     }
@@ -163,10 +164,14 @@ export function getSportsApiBaseCandidates(): string[] {
 
   // Production/default: explicit edge-first for sports, then Render/general fallbacks.
   // Avoid hardcoded worker domains that can silently go stale.
+  const safeExplicit = !__DEV__ && isLoopbackHost(explicit) ? "" : explicit;
+  const safeExplicitList = !__DEV__
+    ? explicitList.filter((candidate) => !isLoopbackHost(candidate))
+    : explicitList;
   return unique([
     lastWorkingSportsApiBase,
-    explicit,
-    ...explicitList,
+    safeExplicit,
+    ...safeExplicitList,
     DEFAULT_RENDER_API_BASE,
     ...getApiBaseCandidates(),
   ]);

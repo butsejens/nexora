@@ -124,7 +124,7 @@ export default function TeamDetailScreen() {
   const handleScroll = useMemo(() => Animated.event(
     [{ nativeEvent: { contentOffset: { y: scrollY } } }],
     {
-      useNativeDriver: true,
+      useNativeDriver: false,
       listener: (e: any) => {
         const currentY = e.nativeEvent.contentOffset.y;
         const diff = currentY - lastScrollY.current;

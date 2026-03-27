@@ -44,6 +44,75 @@ async function fetchJson(path: string) {
   return response.json();
 }
 
+function uniqueItemsByKey<T>(items: T[], getKey: (item: T, index: number) => string): T[] {
+  const seen = new Set<string>();
+  const result: T[] = [];
+  for (let index = 0; index < items.length; index += 1) {
+    const item = items[index];
+    const key = getKey(item, index);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    result.push(item);
+  }
+  return result;
+}
+
+function buildSportsPayload(payloads: Array<any | null | undefined>): SportsPayload {
+  const live = uniqueItemsByKey(
+    payloads.flatMap((payload) => (Array.isArray(payload?.live) ? payload.live : [])),
+    (item, index) => String(item?.id || `${item?.homeTeam || "home"}_${item?.awayTeam || "away"}_${item?.startDate || index}`),
+  );
+  const upcoming = uniqueItemsByKey(
+    payloads.flatMap((payload) => (Array.isArray(payload?.upcoming) ? payload.upcoming : [])),
+    (item, index) => String(item?.id || `${item?.homeTeam || "home"}_${item?.awayTeam || "away"}_${item?.startDate || index}`),
+  );
+
+  return { live, upcoming };
+}
+
+function buildHomeMediaData(movieData: any, seriesData: any) {
+  const movieItems = [
+    ...(Array.isArray(movieData?.trending) ? movieData.trending : []),
+    ...(Array.isArray(movieData?.popular) ? movieData.popular : []),
+  ];
+  const seriesItems = [
+    ...(Array.isArray(seriesData?.trending) ? seriesData.trending : []),
+    ...(Array.isArray(seriesData?.popular) ? seriesData.popular : []),
+  ];
+
+  return {
+    movies: movieItems.slice(0, 18).map((item: any) => toMediaItem(item, "movie")),
+    series: seriesItems.slice(0, 18).map((item: any) => toMediaItem(item, "series")),
+    newReleases: [
+      ...movieItems.map((item: any) => ({ ...item, __kind: "movie" })),
+      ...seriesItems.map((item: any) => ({ ...item, __kind: "series" })),
+    ]
+      .filter((item: any) => {
+        const year = Number(item?.year || 0);
+        return year >= new Date().getFullYear() - 1;
+      })
+      .slice(0, 12)
+      .map((item: any) => toMediaItem(item, item?.__kind === "series" ? "series" : "movie")),
+  };
+}
+
+function getCachedHomeSportsPayload(date: string): SportsPayload {
+  const direct = cachePeekStale<SportsPayload>(homeSportsCacheKey(date));
+  if (direct) return direct;
+
+  const todayPayload = cachePeekStale<any>(`sports:today:${date}`);
+  const livePayload = cachePeekStale<any>(`sports:live:${date}`);
+  return buildSportsPayload([livePayload, todayPayload]);
+}
+
+function getCachedHomeMediaData() {
+  const direct = cachePeekStale<any>(homeMediaCacheKey);
+  if (direct) return direct;
+  const moviePayload = cachePeekStale<any>("movies:trending");
+  const seriesPayload = cachePeekStale<any>("series:trending");
+  return buildHomeMediaData(moviePayload, seriesPayload);
+}
+
 function todayUTC() {
   return new Date().toISOString().slice(0, 10);
 }
@@ -142,21 +211,25 @@ export default function CuratedHomeScreen() {
 
   const sportsQuery = useQuery({
     queryKey: ["home", "sports-curated", todayUTC()],
-    placeholderData: () => cachePeekStale<SportsPayload>(homeSportsCacheKey(todayUTC())) || undefined,
+    placeholderData: () => getCachedHomeSportsPayload(todayUTC()),
     queryFn: async (): Promise<SportsPayload> => {
       const key = homeSportsCacheKey(todayUTC());
-      const stale = await cacheGetStale<SportsPayload>(key);
-      try {
-        const payload = await fetchJson(`/api/sports/live?date=${encodeURIComponent(todayUTC())}`);
-        const normalized = {
-          live: Array.isArray(payload?.live) ? payload.live : [],
-          upcoming: Array.isArray(payload?.upcoming) ? payload.upcoming : [],
-        };
-        cacheSet(key, normalized, CacheTTL.LIVE_MATCH);
+      const stale = (await cacheGetStale<SportsPayload>(key)) || getCachedHomeSportsPayload(todayUTC());
+      const [liveResult, todayResult] = await Promise.allSettled([
+        fetchJson(`/api/sports/live?date=${encodeURIComponent(todayUTC())}`),
+        fetchJson(`/api/sports/by-date?date=${encodeURIComponent(todayUTC())}`),
+      ]);
+
+      const livePayload = liveResult.status === "fulfilled" ? liveResult.value : null;
+      const todayPayload = todayResult.status === "fulfilled" ? todayResult.value : null;
+      const normalized = buildSportsPayload([livePayload, todayPayload]);
+
+      if (normalized.live.length > 0 || normalized.upcoming.length > 0) {
+        cacheSet(key, normalized, CacheTTL.TODAY_SPORTS);
         return normalized;
-      } catch {
-        return stale || { live: [], upcoming: [] };
       }
+
+      return stale || { live: [], upcoming: [] };
     },
     enabled: sportsEnabled,
     staleTime: 10 * 1000,
@@ -168,47 +241,24 @@ export default function CuratedHomeScreen() {
 
   const mediaQuery = useQuery({
     queryKey: ["home", "media-curated"],
-    placeholderData: () => cachePeekStale<any>(homeMediaCacheKey) || undefined,
+    placeholderData: () => getCachedHomeMediaData(),
     queryFn: async () => {
-      const stale = await cacheGetStale<any>(homeMediaCacheKey);
-      try {
-        const [movieData, seriesData] = await Promise.all([
-          fetchJson("/api/movies/trending"),
-          fetchJson("/api/series/trending"),
-        ]);
-        const movieItems = [
-          ...(Array.isArray(movieData?.trending) ? movieData.trending : []),
-          ...(Array.isArray(movieData?.popular) ? movieData.popular : []),
-        ];
-        const seriesItems = [
-          ...(Array.isArray(seriesData?.trending) ? seriesData.trending : []),
-          ...(Array.isArray(seriesData?.popular) ? seriesData.popular : []),
-        ];
+      const stale = (await cacheGetStale<any>(homeMediaCacheKey)) || getCachedHomeMediaData();
+      const [movieResult, seriesResult] = await Promise.allSettled([
+        fetchJson("/api/movies/trending"),
+        fetchJson("/api/series/trending"),
+      ]);
 
-        const data = {
-          movies: [
-            ...movieItems,
-          ].slice(0, 18).map((item: any) => toMediaItem(item, "movie")),
-          series: [
-            ...seriesItems,
-          ].slice(0, 18).map((item: any) => toMediaItem(item, "series")),
-          newReleases: [
-            ...movieItems.map((item: any) => ({ ...item, __kind: "movie" })),
-            ...seriesItems.map((item: any) => ({ ...item, __kind: "series" })),
-          ]
-            .filter((item: any) => {
-              const year = Number(item?.year || 0);
-              return year >= new Date().getFullYear() - 1;
-            })
-            .slice(0, 12)
-            .map((item: any) => toMediaItem(item, item?.__kind === "series" ? "series" : "movie")),
-        };
+      const movieData = movieResult.status === "fulfilled" ? movieResult.value : null;
+      const seriesData = seriesResult.status === "fulfilled" ? seriesResult.value : null;
+      const data = buildHomeMediaData(movieData, seriesData);
 
+      if (data.movies.length > 0 || data.series.length > 0 || data.newReleases.length > 0) {
         cacheSet(homeMediaCacheKey, data, CacheTTL.HOME_RAILS);
         return data;
-      } catch {
-        return stale || { movies: [], series: [], newReleases: [] };
       }
+
+      return stale || { movies: [], series: [], newReleases: [] };
 
     },
     retry: 2,
@@ -219,7 +269,7 @@ export default function CuratedHomeScreen() {
     refetchOnReconnect: true,
   });
 
-  const mediaData = mediaQuery.data || cachePeekStale<any>(homeMediaCacheKey) || { movies: [], series: [], newReleases: [] };
+  const mediaData = mediaQuery.data || getCachedHomeMediaData() || { movies: [], series: [], newReleases: [] };
 
   const highlightsQuery = useQuery({
     queryKey: ["home", "sports-highlights"],
@@ -351,7 +401,7 @@ export default function CuratedHomeScreen() {
               {heroImage ? <Image source={{ uri: heroImage }} style={StyleSheet.absoluteFill} resizeMode="cover" /> : null}
               <LinearGradient colors={["rgba(9,9,13,0.15)", "rgba(9,9,13,0.9)"]} style={StyleSheet.absoluteFill} />
               <View style={styles.heroContent}>
-                <Text style={styles.heroEyebrow}>{heroIsSport ? "SPORT SPOTLIGHT" : "CURATED PICK"}</Text>
+                <Text style={styles.heroEyebrow}>{heroIsSport ? "MATCHDAY PICK" : "CURATED PICK"}</Text>
                 <Text style={styles.heroTitle} numberOfLines={2}>{heroTitle}</Text>
                 <Text style={styles.heroMeta}>{heroMeta}</Text>
               </View>
@@ -363,7 +413,7 @@ export default function CuratedHomeScreen() {
             <View style={styles.sectionHead}>
               <Text style={styles.sectionLabel}>SPORT</Text>
               <TouchableOpacity onPress={() => router.push("/sport")}>
-                <Text style={styles.sectionAction}>Open sport module</Text>
+                <Text style={styles.sectionAction}>Open match center</Text>
               </TouchableOpacity>
             </View>
             {todayMatches.length > 0 ? todayMatches.map((match: any) => (
@@ -386,7 +436,7 @@ export default function CuratedHomeScreen() {
                 }}
                 onPress={() => router.push({ pathname: "/match-detail", params: toMatchParams(match) })}
               />
-            )) : <Text style={styles.emptyText}>No matches scheduled yet.</Text>}
+            )) : <Text style={styles.emptyText}>No live or upcoming matches available right now.</Text>}
           </View>
         )}
 
