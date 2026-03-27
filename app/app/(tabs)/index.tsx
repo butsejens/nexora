@@ -1621,6 +1621,8 @@ export default function SportsScreen() {
 
   return (
     <View style={styles.container}>
+      <View style={styles.bgGlowTop} />
+      <View style={styles.bgGlowBottom} />
       {/* Header — always visible */}
       <View
         style={{ position: "absolute", top: 0, left: 0, right: 0, zIndex: 50 }}
@@ -2250,6 +2252,24 @@ export default function SportsScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: P.bg },
+  bgGlowTop: {
+    position: "absolute",
+    top: -140,
+    left: -80,
+    width: 300,
+    height: 300,
+    borderRadius: 300,
+    backgroundColor: "rgba(229,9,20,0.10)",
+  },
+  bgGlowBottom: {
+    position: "absolute",
+    right: -90,
+    bottom: 120,
+    width: 260,
+    height: 260,
+    borderRadius: 260,
+    backgroundColor: "rgba(229,9,20,0.06)",
+  },
   disabledContainer: {
     flex: 1,
     backgroundColor: P.bg,
@@ -2290,7 +2310,7 @@ const styles = StyleSheet.create({
 
   /* ── Sub-nav tabs ── */
   subNav: {
-    backgroundColor: P.bg,
+    backgroundColor: "transparent",
     borderBottomWidth: 1,
     borderBottomColor: P.border,
   },
@@ -2298,29 +2318,32 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     paddingHorizontal: 18,
     paddingTop: 8,
-    paddingBottom: 0,
-    gap: 18,
+    paddingBottom: 8,
+    gap: 8,
     alignItems: "center",
   },
   subNavItem: {
-    paddingHorizontal: 0,
-    paddingVertical: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
     alignItems: "center",
     flexDirection: "row",
-    gap: 7,
-    borderBottomWidth: 2,
-    borderBottomColor: "transparent",
+    gap: 6,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.10)",
+    backgroundColor: "rgba(255,255,255,0.05)",
   },
   subNavItemActive: {
-    borderBottomColor: P.accent,
+    borderColor: "rgba(229,9,20,0.55)",
+    backgroundColor: "rgba(229,9,20,0.16)",
   },
   subNavText: {
     color: P.muted,
-    fontSize: 13,
-    fontWeight: "600",
+    fontSize: 12,
+    fontWeight: "700",
     letterSpacing: 0.2,
   },
-  subNavTextActive: { color: "#fff", fontWeight: "700" },
+  subNavTextActive: { color: "#fff", fontWeight: "800" },
   subNavLiveBadge: {
     backgroundColor: `${P.live}28`,
     borderRadius: 10,
