@@ -16,8 +16,8 @@ type MenuItem = {
 };
 
 const P = {
-  bg: "#09090D",
-  card: "#14141D",
+  bg: "#050505",
+  card: "#0B0F1A",
   accent: "#E50914",
   text: "#FFFFFF",
   muted: "#9797A5",

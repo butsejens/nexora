@@ -42,6 +42,7 @@ import {
   ensureMatchNotificationPermission,
 } from "@/lib/match-notifications";
 import { cacheGetStale, cachePeekStale, cacheSet, CacheTTL } from "@/lib/services/cache-service";
+import { showRewardedUnlockAd } from "@/lib/rewarded-ads";
 
 /** Safely convert any value to string — prevents [object Object] rendering */
 // ── Sport design tokens ───────────────────────────────────────────────────────
@@ -890,7 +891,6 @@ export default function SportsScreen() {
   const { followedTeams, followedMatches, followMatchAction, unfollowMatchAction } = useFollowState();
   const {
     hasPremium,
-    activatePremiumCategories,
     dailyPredictionUnlocksRemaining,
     isPredictionUnlocked,
     unlockPredictionWithRewardedAd,
@@ -911,22 +911,11 @@ export default function SportsScreen() {
   const [sportsSearchActive, setSportsSearchActive] = useState(false);
   const [sportsSearchQuery, setSportsSearchQuery] = useState("");
   const [lockedPredictionRow, setLockedPredictionRow] = useState<any | null>(null);
-  const [rewardedAdCountdown, setRewardedAdCountdown] = useState(0);
   const [rewardedAdRunning, setRewardedAdRunning] = useState(false);
   const lastScrollYRef = useRef(0);
-  const adCountdownTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const compactHeaderRef = useRef(false);
   const hasManualSportCategoryRef = useRef(false);
   const [compactHeader, setCompactHeader] = useState(false);
-
-  useEffect(() => {
-    return () => {
-      if (adCountdownTimerRef.current) {
-        clearInterval(adCountdownTimerRef.current);
-        adCountdownTimerRef.current = null;
-      }
-    };
-  }, []);
 
   useEffect(() => {
     if (hasManualSportCategoryRef.current) return;
@@ -1503,11 +1492,6 @@ export default function SportsScreen() {
   const closeLockedPredictionModal = useCallback(() => {
     if (rewardedAdRunning) return;
     setLockedPredictionRow(null);
-    setRewardedAdCountdown(0);
-    if (adCountdownTimerRef.current) {
-      clearInterval(adCountdownTimerRef.current);
-      adCountdownTimerRef.current = null;
-    }
   }, [rewardedAdRunning]);
 
   const handleWatchAdUnlock = useCallback(async () => {
@@ -1527,39 +1511,18 @@ export default function SportsScreen() {
 
     if (rewardedAdRunning) return;
 
-    const adLengthSeconds = 30 + Math.floor(Math.random() * 31);
     setRewardedAdRunning(true);
-    setRewardedAdCountdown(adLengthSeconds);
 
-    if (adCountdownTimerRef.current) {
-      clearInterval(adCountdownTimerRef.current);
-      adCountdownTimerRef.current = null;
-    }
-
-    adCountdownTimerRef.current = setInterval(() => {
-      setRewardedAdCountdown((prev) => {
-        if (prev <= 1) {
-          if (adCountdownTimerRef.current) {
-            clearInterval(adCountdownTimerRef.current);
-            adCountdownTimerRef.current = null;
-          }
-          return 0;
-        }
-        return prev - 1;
-      });
-    }, 1000);
-
-    await new Promise((resolve) => setTimeout(resolve, adLengthSeconds * 1000));
-
-    if (adCountdownTimerRef.current) {
-      clearInterval(adCountdownTimerRef.current);
-      adCountdownTimerRef.current = null;
+    const adResult = await showRewardedUnlockAd().catch((error) => ({ rewarded: false, error } as any));
+    if (!adResult?.rewarded) {
+      setRewardedAdRunning(false);
+      Alert.alert("Ad not completed", "The unlock is only granted after the rewarded video finishes successfully.");
+      return;
     }
 
     const matchId = String(row.item?.matchId || row.item?.id || "").trim();
     const unlockResult = await unlockPredictionWithRewardedAd(matchId);
     setRewardedAdRunning(false);
-    setRewardedAdCountdown(0);
 
     if (!unlockResult.ok) {
       Alert.alert("Unlock unavailable", unlockResult.reason || "Unable to unlock this prediction right now.");
@@ -1571,12 +1534,9 @@ export default function SportsScreen() {
   }, [dailyPredictionUnlocksRemaining, hasPremium, handleToolMatchPress, lockedPredictionRow, rewardedAdRunning, unlockPredictionWithRewardedAd]);
 
   const handlePremiumUnlock = useCallback(async () => {
-    const row = lockedPredictionRow;
-    if (!row) return;
-    await activatePremiumCategories(["sport"]);
     setLockedPredictionRow(null);
-    handleToolMatchPress(row.item);
-  }, [activatePremiumCategories, handleToolMatchPress, lockedPredictionRow]);
+    router.push("/premium");
+  }, []);
 
   const toggleMatchNotification = useCallback(async (match: any) => {
     const id = String(match?.id || "");
@@ -2260,7 +2220,7 @@ export default function SportsScreen() {
             >
               <Ionicons name="play-circle" size={18} color="#FFFFFF" />
               <Text style={styles.unlockPrimaryBtnText}>
-                {rewardedAdRunning ? `Watching ad... ${rewardedAdCountdown}s` : "Watch Ad"}
+                {rewardedAdRunning ? "Loading rewarded ad..." : "Watch Ad"}
               </Text>
             </TouchableOpacity>
 

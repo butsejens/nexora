@@ -81,12 +81,16 @@ const TABS = [
 const EXPERIENCE_TABS = [
   { id: "prematch", label: "Prematch" },
   { id: "predictions", label: "Predictions ⚡ AI" },
+  { id: "stats", label: "Stats" },
+  { id: "lineups", label: "Lineups" },
+  { id: "timeline", label: "Timeline" },
+  { id: "h2h", label: "H2H" },
   { id: "power", label: "Power" },
   { id: "success", label: "Success Rate" },
 ] as const;
 
 type TabId = "stream" | "stats" | "lineups" | "timeline" | "highlights";
-type ExperienceTabId = "prematch" | "predictions" | "power" | "success";
+type ExperienceTabId = "prematch" | "predictions" | "stats" | "lineups" | "timeline" | "h2h" | "power" | "success";
 
 function shouldRetryRequest(failureCount: number, error: unknown): boolean {
   if (failureCount >= 1) return false;
@@ -583,9 +587,22 @@ export default function MatchDetailScreen() {
     mutationFn: () => requestPrediction("prematch"),
   });
 
+  const {
+    data: livePrediction,
+    isPending: livePredictionLoading,
+    mutate: fetchLivePrediction,
+  } = useMutation({
+    mutationFn: () => requestPrediction("live"),
+  });
+
   const prematchInsightEnabled = !isLive && !isFinished;
-  const prediction = prematchInsightEnabled ? preMatchPrediction : null;
-  const predLoading = prematchInsightEnabled ? Boolean(preMatchLoading && !prediction) : false;
+  const liveInsightEnabled = isLive || isHalfTime;
+  const prediction = liveInsightEnabled ? livePrediction : prematchInsightEnabled ? preMatchPrediction : null;
+  const predLoading = liveInsightEnabled
+    ? Boolean(livePredictionLoading && !livePrediction)
+    : prematchInsightEnabled
+      ? Boolean(preMatchLoading && !preMatchPrediction)
+      : false;
 
   const handleTabChange = (tab: TabId) => {
     setActiveTab(tab);
@@ -610,6 +627,7 @@ export default function MatchDetailScreen() {
   }, []);
 
   const hasFetchedPrematchRef = useRef(false);
+  const lastLivePredictionSignatureRef = useRef("");
 
   useEffect(() => {
     if (!prematchInsightEnabled) return;
@@ -619,6 +637,46 @@ export default function MatchDetailScreen() {
       return () => clearTimeout(t);
     }
   }, [detailLoading, fetchPreMatchPrediction, preMatchLoading, prematchInsightEnabled]);
+
+  useEffect(() => {
+    if (!liveInsightEnabled || detailLoading) return;
+
+    fetchLivePrediction();
+    const id = setInterval(() => {
+      fetchLivePrediction();
+    }, 12_000);
+
+    return () => clearInterval(id);
+  }, [detailLoading, fetchLivePrediction, liveInsightEnabled, matchDetail?.homeScore, matchDetail?.awayScore, matchDetail?.minute, matchDetail?.statusDetail]);
+
+  useEffect(() => {
+    if (!liveInsightEnabled) return;
+    if (detailLoading || livePredictionLoading) return;
+    const signature = [
+      String(params.matchId || ""),
+      String(liveMinute ?? ""),
+      String(liveHomeScore ?? ""),
+      String(liveAwayScore ?? ""),
+      String(Array.isArray(matchDetail?.keyEvents) ? matchDetail.keyEvents.length : 0),
+    ].join(":");
+    if (signature === lastLivePredictionSignatureRef.current) return;
+    lastLivePredictionSignatureRef.current = signature;
+    const t = setTimeout(() => fetchLivePrediction(), livePrediction ? 250 : 700);
+    return () => clearTimeout(t);
+  }, [
+    detailLoading,
+    fetchLivePrediction,
+    isHalfTime,
+    isLive,
+    liveAwayScore,
+    liveHomeScore,
+    liveInsightEnabled,
+    liveMinute,
+    livePrediction,
+    livePredictionLoading,
+    matchDetail?.keyEvents,
+    params.matchId,
+  ]);
 
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const scoreFontSize = screenWidth < 350 ? 40 : screenWidth < 385 ? 44 : 48;
@@ -684,6 +742,24 @@ export default function MatchDetailScreen() {
   const highlightMoments = Array.isArray(highlightSummary?.topMoments) ? highlightSummary.topMoments : [];
   const highlightRecap = Array.isArray(highlightSummary?.recap) ? highlightSummary.recap : [];
   const redesignEnabled = String(params.initialTab || "") !== "legacy";
+  const orderedTimelineEvents = useMemo(() => sortTimelineForRender(timelineEvents), [timelineEvents]);
+  const timelineProgressMinute = Math.max(0, Math.min(120, Number(liveMinute || 0)));
+  const timelineProgressPct = Math.max(0, Math.min(100, Math.round((timelineProgressMinute / 90) * 100)));
+  const timelineEventCounts = useMemo(() => {
+    return orderedTimelineEvents.reduce((acc, event: any) => {
+      const kind = String(event?.kind || event?.type || "").toLowerCase();
+      if (kind.includes("goal")) acc.goals += 1;
+      if (kind.includes("yellow")) acc.yellow += 1;
+      if (kind.includes("red")) acc.red += 1;
+      if (kind.includes("sub") || kind.includes("substitut")) acc.subs += 1;
+      if (kind.includes("pen") || kind.includes("penalty")) acc.penalties += 1;
+      return acc;
+    }, { goals: 0, yellow: 0, red: 0, subs: 0, penalties: 0 });
+  }, [orderedTimelineEvents]);
+  const formCards = [
+    { key: "home-form", label: `${homeTeamName} form`, value: safePrediction?.formHome || "- - - - -" },
+    { key: "away-form", label: `${awayTeamName} form`, value: safePrediction?.formAway || "- - - - -" },
+  ];
 
   const safePrediction = prediction && !prediction.error ? prediction : null;
   const homePct = Math.max(0, Math.min(100, Number(safePrediction?.homePct || 0)));
@@ -910,17 +986,54 @@ export default function MatchDetailScreen() {
           >
             <View style={styles.nxSectionHeadRow}>
               <Text style={styles.nxSectionTitle}>AI Predictions</Text>
-              <TouchableOpacity style={styles.aiRefreshBtn} onPress={() => fetchPreMatchPrediction()}>
+              <TouchableOpacity style={styles.aiRefreshBtn} onPress={() => liveInsightEnabled ? fetchLivePrediction() : fetchPreMatchPrediction()}>
                 <Ionicons name="refresh-outline" size={13} color={COLORS.textMuted} />
-                <Text style={styles.aiRefreshText}>{tFn("matchDetail.preMatchRefresh")}</Text>
+                <Text style={styles.aiRefreshText}>{liveInsightEnabled ? "Live refresh" : tFn("matchDetail.preMatchRefresh")}</Text>
               </TouchableOpacity>
             </View>
+
+            {safePrediction ? (
+              <View style={styles.nxCard}>
+                <Text style={styles.nxCardKicker}>{liveInsightEnabled ? "Live AI coach" : "AI summary"}</Text>
+                <Text style={styles.nxCardTitle}>{safePrediction.prediction || "Model updating"}</Text>
+                <Text style={styles.nxBodyText}>{safePrediction.live_shift_summary || safePrediction.summary || "AI is analyzing the match context."}</Text>
+              </View>
+            ) : null}
 
             <View style={styles.nxGridWrap}>
               {predictionSummaryCards.map((card) => (
                 <View key={card.key} style={[styles.nxGridCard, { borderColor: `${card.accent}44` }]}>
                   <Text style={styles.nxGridLabel}>{card.label}</Text>
                   <Text style={[styles.nxGridValue, { color: card.accent }]} numberOfLines={2}>{card.value}</Text>
+                </View>
+              ))}
+            </View>
+
+            <Text style={styles.nxSectionTitle}>Live AI Model</Text>
+            <View style={styles.nxGridWrap}>
+              <View style={styles.nxGridCard}>
+                <Text style={styles.nxGridLabel}>Win probability</Text>
+                <Text style={styles.nxGridValue}>{normHomePct}% / {normDrawPct}% / {normAwayPct}%</Text>
+              </View>
+              <View style={styles.nxGridCard}>
+                <Text style={styles.nxGridLabel}>Expected goals</Text>
+                <Text style={styles.nxGridValue}>{Number(safePrediction?.xgHome || 0).toFixed(1)} - {Number(safePrediction?.xgAway || 0).toFixed(1)}</Text>
+              </View>
+              <View style={styles.nxGridCard}>
+                <Text style={styles.nxGridLabel}>Momentum shift</Text>
+                <Text style={styles.nxGridValue}>{safePrediction?.momentum || "Balanced"}</Text>
+              </View>
+              <View style={styles.nxGridCard}>
+                <Text style={styles.nxGridLabel}>Form analysis</Text>
+                <Text style={styles.nxGridValue}>{safePrediction?.formGuide?.homeForm ? "Live model + form" : "Recent form blended"}</Text>
+              </View>
+            </View>
+
+            <View style={styles.nxGridWrap}>
+              {formCards.map((card) => (
+                <View key={card.key} style={styles.nxGridCard}>
+                  <Text style={styles.nxGridLabel}>{card.label}</Text>
+                  <Text style={styles.nxGridValue}>{card.value}</Text>
                 </View>
               ))}
             </View>
@@ -953,6 +1066,178 @@ export default function MatchDetailScreen() {
                   <Ionicons name="lock-closed" size={18} color="#E50914" />
                   <Text style={styles.nxLockText}>Tap to unlock</Text>
                 </BlurView>
+              </View>
+            ) : null}
+          </ScrollView>
+        ) : null}
+
+        {activeExperienceTab === "stats" ? (
+          <ScrollView
+            style={styles.tabContent}
+            contentContainerStyle={styles.nxContentWrap}
+            showsVerticalScrollIndicator={false}
+            onScroll={handleExperienceScroll}
+            scrollEventThrottle={16}
+          >
+            <Text style={styles.nxSectionTitle}>Stats</Text>
+            {detailLoading ? (
+              <LoadingState />
+            ) : matchDetail ? (
+              <>
+                <StatsBars
+                  homeTeam={params.homeTeam}
+                  awayTeam={params.awayTeam}
+                  homeStats={matchDetail.homeStats || {}}
+                  awayStats={matchDetail.awayStats || {}}
+                />
+                <MatchHeatmap
+                  homeTeam={params.homeTeam}
+                  awayTeam={params.awayTeam}
+                  homeStats={matchDetail.homeStats || {}}
+                  awayStats={matchDetail.awayStats || {}}
+                />
+              </>
+            ) : (
+              <EmptyState icon="stats-chart-outline" text={tFn("matchDetail.statsUnavailable")} />
+            )}
+          </ScrollView>
+        ) : null}
+
+        {activeExperienceTab === "lineups" ? (
+          <ScrollView
+            style={styles.tabContent}
+            contentContainerStyle={styles.nxContentWrap}
+            showsVerticalScrollIndicator={false}
+            onScroll={handleExperienceScroll}
+            scrollEventThrottle={16}
+          >
+            <Text style={styles.nxSectionTitle}>Lineups</Text>
+            <View style={styles.lineupViewToggleRow}>
+              <TouchableOpacity
+                style={[styles.lineupViewBtn, lineupView === "pitch" ? styles.lineupViewBtnActive : null]}
+                onPress={() => setLineupView("pitch")}
+              >
+                <Ionicons name="football-outline" size={14} color={lineupView === "pitch" ? COLORS.accent : COLORS.textMuted} />
+                <Text style={[styles.lineupViewBtnText, lineupView === "pitch" ? styles.lineupViewBtnTextActive : null]}>Pitch</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.lineupViewBtn, lineupView === "list" ? styles.lineupViewBtnActive : null]}
+                onPress={() => setLineupView("list")}
+              >
+                <Ionicons name="list-outline" size={14} color={lineupView === "list" ? COLORS.accent : COLORS.textMuted} />
+                <Text style={[styles.lineupViewBtnText, lineupView === "list" ? styles.lineupViewBtnTextActive : null]}>List</Text>
+              </TouchableOpacity>
+            </View>
+
+            {detailLoading ? (
+              <LoadingState />
+            ) : orderedLineupTeams.length > 0 ? (
+              <>
+                {homeLineupTeam && awayLineupTeam ? (
+                  lineupView === "pitch" ? (
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.lineupPitchScroller}>
+                      <CombinedPitchView
+                        homeTeamData={homeLineupTeam}
+                        awayTeamData={awayLineupTeam}
+                        league={espnLeague}
+                      />
+                    </ScrollView>
+                  ) : (
+                    orderedLineupTeams.map((team: any, ti: number) => (
+                      <View key={ti} style={styles.lineupTeamSection}>
+                        <View style={styles.lineupHeaderRow}>
+                          <Text style={styles.sectionLabel}>{team.team?.toUpperCase()}</Text>
+                        </View>
+                        <View style={styles.lineupListCard}>
+                          <Text style={styles.lineupListLabel}>STARTING XI</Text>
+                          {(team.players || []).filter((p: any) => p?.starter !== false).map((p: any, i: number) => (
+                            <PlayerRow key={`st_${p?.id || p?.name || i}`} player={p} sport={params.sport} teamName={team.team} league={espnLeague} />
+                          ))}
+                        </View>
+                      </View>
+                    ))
+                  )
+                ) : null}
+              </>
+            ) : (
+              <EmptyState icon="people-outline" text={tFn("matchDetail.lineupsUnavailable")} />
+            )}
+          </ScrollView>
+        ) : null}
+
+        {activeExperienceTab === "timeline" ? (
+          <ScrollView
+            style={styles.tabContent}
+            contentContainerStyle={styles.nxContentWrap}
+            showsVerticalScrollIndicator={false}
+            onScroll={handleExperienceScroll}
+            scrollEventThrottle={16}
+          >
+            <View style={styles.nxCard}>
+              <View style={styles.nxSectionHeadRow}>
+                <Text style={styles.nxCardTitle}>Real-time timeline</Text>
+                <Text style={styles.nxTimelineMinute}>{isFinished ? "FT" : `${timelineProgressMinute || 0}'`}</Text>
+              </View>
+              <View style={styles.nxTimelineTrack}>
+                <View style={[styles.nxTimelineFill, { width: `${timelineProgressPct}%` }]} />
+              </View>
+              <View style={styles.nxTimelineRangeRow}>
+                <Text style={styles.nxTimelineRangeText}>0'</Text>
+                <Text style={styles.nxTimelineRangeText}>45'</Text>
+                <Text style={styles.nxTimelineRangeText}>90+'</Text>
+              </View>
+            </View>
+
+            <View style={styles.nxGridWrap}>
+              <View style={styles.nxGridCard}><Text style={styles.nxGridLabel}>⚽ Goals</Text><Text style={styles.nxGridValue}>{timelineEventCounts.goals}</Text></View>
+              <View style={styles.nxGridCard}><Text style={styles.nxGridLabel}>🟨 Yellow</Text><Text style={styles.nxGridValue}>{timelineEventCounts.yellow}</Text></View>
+              <View style={styles.nxGridCard}><Text style={styles.nxGridLabel}>🟥 Red</Text><Text style={styles.nxGridValue}>{timelineEventCounts.red}</Text></View>
+              <View style={styles.nxGridCard}><Text style={styles.nxGridLabel}>🔁 Subs</Text><Text style={styles.nxGridValue}>{timelineEventCounts.subs}</Text></View>
+              <View style={styles.nxGridCard}><Text style={styles.nxGridLabel}>⚡ Penalty</Text><Text style={styles.nxGridValue}>{timelineEventCounts.penalties}</Text></View>
+            </View>
+
+            {orderedTimelineEvents.length > 0 ? (
+              <MatchTimeline
+                events={orderedTimelineEvents}
+                homeTeam={params.homeTeam}
+                awayTeam={params.awayTeam}
+              />
+            ) : (
+              <EmptyState icon="git-branch-outline" text={tFn("matchDetail.timelineUnavailable")} />
+            )}
+          </ScrollView>
+        ) : null}
+
+        {activeExperienceTab === "h2h" ? (
+          <ScrollView
+            style={styles.tabContent}
+            contentContainerStyle={styles.nxContentWrap}
+            showsVerticalScrollIndicator={false}
+            onScroll={handleExperienceScroll}
+            scrollEventThrottle={16}
+          >
+            <Text style={styles.nxSectionTitle}>H2H</Text>
+            {safePrediction?.h2hSummary ? (
+              <View style={styles.nxCard}>
+                <Text style={styles.nxCardKicker}>Head to head</Text>
+                <Text style={styles.nxBodyText}>{safePrediction.h2hSummary}</Text>
+              </View>
+            ) : (
+              <View style={styles.nxLockedCard}>
+                <Text style={styles.nxGridLabel}>Head to head data</Text>
+                <Text style={styles.nxBodyText}>Vergelijkbare ontmoetingen, trendlines en contextuele edge.</Text>
+                <BlurView intensity={45} tint="dark" style={styles.nxLockOverlay}>
+                  <Ionicons name="lock-closed" size={18} color="#E50914" />
+                  <Text style={styles.nxLockText}>Tap to unlock</Text>
+                </BlurView>
+              </View>
+            )}
+
+            {safePrediction?.formGuide?.homeForm || safePrediction?.formGuide?.awayForm ? (
+              <View style={styles.nxCard}>
+                <Text style={styles.nxCardKicker}>Form analysis</Text>
+                {safePrediction?.formGuide?.homeForm ? <Text style={styles.nxBodyText}>{homeTeamName}: {safePrediction.formGuide.homeForm}</Text> : null}
+                {safePrediction?.formGuide?.awayForm ? <Text style={[styles.nxBodyText, { marginTop: 10 }]}>{awayTeamName}: {safePrediction.formGuide.awayForm}</Text> : null}
               </View>
             ) : null}
           </ScrollView>
@@ -3549,6 +3834,33 @@ const styles = StyleSheet.create({
     fontFamily: "Inter_500Medium",
     fontSize: 12,
     color: "#B9C2D7",
+  },
+  nxTimelineMinute: {
+    fontFamily: "Inter_700Bold",
+    fontSize: 16,
+    color: "#FF5E66",
+  },
+  nxTimelineTrack: {
+    height: 8,
+    borderRadius: 999,
+    backgroundColor: "rgba(255,255,255,0.08)",
+    overflow: "hidden",
+    marginTop: 6,
+  },
+  nxTimelineFill: {
+    height: "100%",
+    borderRadius: 999,
+    backgroundColor: "#E50914",
+  },
+  nxTimelineRangeRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginTop: 8,
+  },
+  nxTimelineRangeText: {
+    fontFamily: "Inter_500Medium",
+    fontSize: 11,
+    color: "#8F9AAF",
   },
   nxGridWrap: {
     flexDirection: "row",

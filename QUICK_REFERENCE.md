@@ -1,5 +1,12 @@
 # NEXORA MEDIA SYSTEM - QUICK REFERENCE
 
+## Auth + Monetization Rollout
+
+For production rollout of the new real login and premium stack, use:
+
+- `app/.env.example`
+- `app/AUTH_MONETIZATION_PRODUCTION_CHECKLIST.md`
+
 ## 🎯 What Changed?
 
 ### Single Production Change
