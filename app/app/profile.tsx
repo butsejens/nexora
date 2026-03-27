@@ -1295,6 +1295,8 @@ const [showAddPlaylist, setShowAddPlaylist] = useState(false);
 
   return (
     <View style={styles.container}>
+      <View style={styles.bgGlowTop} />
+      <View style={styles.bgGlowBottom} />
       <NexoraHeader
         variant="module"
         title="SETTINGS"
@@ -1305,7 +1307,10 @@ const [showAddPlaylist, setShowAddPlaylist] = useState(false);
       />
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: bottomPad }}>
-        <Text style={styles.heroHeadline}>{t("settings.subtitle")}</Text>
+        <View style={styles.heroCard}>
+          <Text style={styles.heroKicker}>NEXORA SETTINGS</Text>
+          <Text style={styles.heroHeadline}>{t("settings.subtitle")}</Text>
+        </View>
         <View style={styles.profileSection}>
           <TouchableOpacity
             style={styles.avatarContainer}
@@ -1911,22 +1916,59 @@ const styles = StyleSheet.create({
   progressPct: { color: COLORS.textSecondary, marginTop: 10, fontSize: 12 },
 
   container: { flex: 1, backgroundColor: COLORS.background },
-  heroHeadline: {
-    fontFamily: "Inter_800ExtraBold",
-    fontSize: 20,
-    lineHeight: 28,
-    color: COLORS.text,
-    textAlign: "center",
-    marginHorizontal: 24,
-    marginTop: 8,
-    marginBottom: 12,
+  bgGlowTop: {
+    position: "absolute",
+    top: -130,
+    left: -90,
+    width: 280,
+    height: 280,
+    borderRadius: 280,
+    backgroundColor: "rgba(229,9,20,0.12)",
   },
-  section: { marginHorizontal: 20, marginBottom: 24 },
-  sectionContent: {
-    backgroundColor: COLORS.overlayLight,
+  bgGlowBottom: {
+    position: "absolute",
+    right: -100,
+    bottom: 120,
+    width: 250,
+    height: 250,
+    borderRadius: 250,
+    backgroundColor: "rgba(229,9,20,0.08)",
+  },
+  heroCard: {
+    marginHorizontal: 20,
+    marginTop: 12,
+    marginBottom: 12,
     borderRadius: 18,
     borderWidth: 1,
     borderColor: COLORS.borderLight,
+    backgroundColor: COLORS.overlayLight,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    gap: 5,
+  },
+  heroKicker: {
+    fontFamily: "Inter_700Bold",
+    fontSize: 10,
+    letterSpacing: 1.4,
+    textTransform: "uppercase",
+    color: COLORS.accent,
+  },
+  heroHeadline: {
+    fontFamily: "Inter_800ExtraBold",
+    fontSize: 18,
+    lineHeight: 24,
+    color: COLORS.text,
+    textAlign: "left",
+    marginHorizontal: 0,
+    marginTop: 0,
+    marginBottom: 0,
+  },
+  section: { marginHorizontal: 20, marginBottom: 20 },
+  sectionContent: {
+    backgroundColor: COLORS.cardElevated,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: COLORS.border,
     overflow: "hidden",
     padding: 0,
   },
