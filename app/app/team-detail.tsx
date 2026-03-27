@@ -6,10 +6,10 @@ import {
 import { router, useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
-import { LinearGradient } from "expo-linear-gradient";
 import { useQuery } from "@tanstack/react-query";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { COLORS } from "@/constants/colors";
+import { NexoraCollapsingHeader } from "@/components/layout/NexoraCollapsingHeader";
 import { apiRequest } from "@/lib/query-client";
 import { enrichTeamDetailPayload } from "@/lib/sports-enrichment";
 import { normalizeApiError } from "@/lib/error-messages";
@@ -204,6 +204,12 @@ export default function TeamDetailScreen() {
   );
 
   const players: any[] = useMemo(() => data?.players || [], [data?.players]);
+  const headerSubtitle = useMemo(() => {
+    const leagueName = String(data?.leagueName || "").trim();
+    const country = String(data?.country || "").trim();
+    if (leagueName && country) return `${leagueName} • ${country}`;
+    return leagueName || country;
+  }, [data?.country, data?.leagueName]);
   const playersWithPhoto = useMemo(
     () => players.filter((p) => Boolean(p?.photo || p?.theSportsDbPhoto)),
     [players]
@@ -274,62 +280,53 @@ export default function TeamDetailScreen() {
 
   return (
     <View style={styles.container}>
-      {/* Header — always visible: back button + team name stay, hero details fade */}
       <View style={{ zIndex: 30, elevation: 30 }}>
-      <LinearGradient
-        colors={[
-          /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/.test(data?.color || "") ? data.color : "#1a3a6b",
-          /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/.test(data?.color || "") ? `${data.color}CC` : "rgba(26,58,107,0.8)",
-          /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/.test(data?.color || "") ? `${data.color}66` : "rgba(26,58,107,0.4)",
-          COLORS.background,
-        ] as any}
-        locations={[0, 0.35, 0.7, 1]}
-        style={[styles.header, { paddingTop: topPad + 8 }]}
-      >
-        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-          <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
-            <Ionicons name="chevron-back" size={24} color={COLORS.text} />
-          </TouchableOpacity>
-          <Text style={[styles.teamTitle, { flex: 1, marginHorizontal: 8 }]} numberOfLines={1}>{data?.name || teamNameParam}</Text>
-          <View style={styles.headerActions}>
-            <TouchableOpacity
-              style={styles.infoBtn}
-              onPress={() => router.push({
-                pathname: "/team-info",
-                params: {
-                  teamId: teamIdParam,
-                  teamName: data?.name || teamNameParam,
-                  sport: sport,
-                  league,
-                },
-              })}
-              activeOpacity={0.75}
-            >
-              <Ionicons name="information-circle-outline" size={18} color={COLORS.text} />
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.followBtn} onPress={() => void handleToggleFollow()} activeOpacity={0.75}>
-              <Ionicons name={isFollowing ? "heart" : "heart-outline"} size={16} color={isFollowing ? COLORS.accent : COLORS.text} />
-              <Text style={[styles.followBtnText, isFollowing && { color: COLORS.accent }]}>
-                {isFollowing ? t("teamDetail.following") : t("teamDetail.follow")}
-              </Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-
-        {data ? (
-        <View style={styles.teamHeaderContent}>
-          <View style={styles.teamPosterWrap}>
-            <View style={styles.teamPosterGlow} />
-            <TeamLogo
-              uri={data.logo || logoParam || null}
-              teamName={teamName}
-              size={118}
-            />
-          </View>
-          {data.shortName ? <Text style={styles.teamShort}>{data.shortName}</Text> : null}
-        </View>
-        ) : null}
-      </LinearGradient>
+        <NexoraCollapsingHeader
+          scrollY={scrollY}
+          topInset={topPad}
+          title={data?.name || teamNameParam}
+          subtitle={headerSubtitle}
+          onBack={() => router.back()}
+          backgroundColor={COLORS.cardElevated}
+          rightActions={
+            <View style={styles.headerActions}>
+              <TouchableOpacity
+                style={styles.infoBtn}
+                onPress={() => router.push({
+                  pathname: "/team-info",
+                  params: {
+                    teamId: teamIdParam,
+                    teamName: data?.name || teamNameParam,
+                    sport: sport,
+                    league,
+                  },
+                })}
+                activeOpacity={0.75}
+              >
+                <Ionicons name="information-circle-outline" size={18} color={COLORS.text} />
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.followBtn} onPress={() => void handleToggleFollow()} activeOpacity={0.75}>
+                <Ionicons name={isFollowing ? "heart" : "heart-outline"} size={16} color={isFollowing ? COLORS.accent : COLORS.text} />
+                <Text style={[styles.followBtnText, isFollowing && { color: COLORS.accent }]}>
+                  {isFollowing ? t("teamDetail.following") : t("teamDetail.follow")}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          }
+          heroContent={data ? (
+            <View style={styles.teamHeaderContent}>
+              <View style={styles.teamPosterWrap}>
+                <View style={styles.teamPosterGlow} />
+                <TeamLogo
+                  uri={data.logo || logoParam || null}
+                  teamName={teamName}
+                  size={118}
+                />
+              </View>
+              {data.shortName ? <Text style={styles.teamShort}>{data.shortName}</Text> : null}
+            </View>
+          ) : null}
+        />
       </View>
 
       {isLoading ? (

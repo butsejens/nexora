@@ -1,7 +1,7 @@
 import React, { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import {
   View, Text, StyleSheet, ScrollView,
-  RefreshControl, Platform, TouchableOpacity, TextInput, Alert, AppState,
+  RefreshControl, Platform, TouchableOpacity, TextInput, Alert, AppState, Modal,
   Image, useWindowDimensions } from "react-native";
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -14,6 +14,7 @@ import { MatchRowCard } from "@/components/premium";
 import { apiRequest, apiRequestJson } from "@/lib/query-client";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
+import { BlurView } from "expo-blur";
 import { resolveCompetitionBrand } from "@/lib/logo-manager";
 import {
   createPersonalizationSnapshot,
@@ -33,6 +34,7 @@ import {
   toLegacyMatchCard,
 } from "@/lib/canonical-match";
 import { useFollowState } from "@/context/UserStateContext";
+import { useNexora } from "@/context/NexoraContext";
 import { useOnboardingStore } from "@/store/onboarding-store";
 import { t as tFn, getLanguage } from "@/lib/i18n";
 import { useTranslation } from "@/lib/useTranslation";
@@ -591,10 +593,10 @@ const LiveNowCard = React.memo(LiveNowCardBase);
 const liveCardStyles = StyleSheet.create({
   wrap: { marginRight: 10 },
   card: {
-    width: 284, height: 166, borderRadius: 16, overflow: "hidden",
-    borderWidth: 1, borderColor: `${P.accent}44`,
-    shadowColor: P.accent, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.35, shadowRadius: 12,
-    elevation: 8, padding: 12,
+    width: 284, height: 166, borderRadius: 18, overflow: "hidden",
+    borderWidth: 1, borderColor: "rgba(229,9,20,0.34)",
+    shadowColor: "#E50914", shadowOffset: { width: 0, height: 5 }, shadowOpacity: 0.28, shadowRadius: 10,
+    elevation: 7, padding: 12, backgroundColor: "#0B0F1A",
   },
   accentBorder: {
     position: "absolute", left: 0, top: 0, bottom: 0, width: 3,
@@ -605,8 +607,8 @@ const liveCardStyles = StyleSheet.create({
   leagueName: { color: P.muted, fontSize: 10, fontWeight: "600", textAlign: "center", marginBottom: 8, maxWidth: 120 },
   livePill: {
     flexDirection: "row", alignItems: "center", gap: 4,
-    backgroundColor: `${P.live}22`, borderRadius: 8, paddingHorizontal: 7, paddingVertical: 3,
-    borderWidth: 1, borderColor: `${P.live}55`,
+    backgroundColor: "rgba(229,9,20,0.22)", borderRadius: 999, paddingHorizontal: 8, paddingVertical: 3,
+    borderWidth: 1, borderColor: "rgba(229,9,20,0.6)",
   },
   liveDot: { width: 5, height: 5, borderRadius: 3, backgroundColor: P.live },
   liveText: { color: P.live, fontSize: 9, fontWeight: "700", letterSpacing: 0.8 },
@@ -693,9 +695,9 @@ const TodayMatchCard = React.memo(TodayMatchCardInner);
 const todayCardStyles = StyleSheet.create({
   wrap: { marginRight: 8 },
   card: {
-    width: 184, borderRadius: 14, backgroundColor: P.card, padding: 11,
-    borderWidth: 1, borderColor: P.border,
-    shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.3, shadowRadius: 6, elevation: 4,
+    width: 184, borderRadius: 16, backgroundColor: "#0B0F1A", padding: 11,
+    borderWidth: 1, borderColor: "rgba(255,255,255,0.08)",
+    shadowColor: "#000", shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.18, shadowRadius: 7, elevation: 4,
   },
   leagueIcon: { width: 18, height: 18, marginBottom: 6 },
   leagueName: { color: P.muted, fontSize: 9, fontWeight: "600", textAlign: "center", minHeight: 22, marginBottom: 8 },
@@ -709,7 +711,8 @@ const todayCardStyles = StyleSheet.create({
   liveScore: { color: P.live, fontSize: 16, fontWeight: "800" },
   liveTag: {
     flexDirection: "row", alignItems: "center", gap: 3,
-    backgroundColor: `${P.live}22`, borderRadius: 6, paddingHorizontal: 5, paddingVertical: 2, marginTop: 3,
+    backgroundColor: "rgba(229,9,20,0.18)", borderRadius: 999, paddingHorizontal: 6, paddingVertical: 2, marginTop: 3,
+    borderWidth: 1, borderColor: "rgba(229,9,20,0.45)",
   },
   liveDot: { width: 4, height: 4, borderRadius: 2, backgroundColor: P.live },
   liveTagText: { color: P.live, fontSize: 8, fontWeight: "700" },
@@ -885,6 +888,13 @@ export default function SportsScreen() {
   const compCardWidth = Math.floor((Math.min(screenWidth, 480) - 16 * 2 - 10 * 3) / 4);
   const qc = useQueryClient();
   const { followedTeams, followedMatches, followMatchAction, unfollowMatchAction } = useFollowState();
+  const {
+    hasPremium,
+    activatePremiumCategories,
+    dailyPredictionUnlocksRemaining,
+    isPredictionUnlocked,
+    unlockPredictionWithRewardedAd,
+  } = useNexora();
   const { t } = useTranslation();
   const preferredSportCategory = useMemo(() => {
     const preferred = getPreferredSportCategory(selectedSports);
@@ -900,10 +910,23 @@ export default function SportsScreen() {
   const [sportsView, setSportsView] = useState<"competitions" | "live" | "upcoming" | "menu">("competitions");
   const [sportsSearchActive, setSportsSearchActive] = useState(false);
   const [sportsSearchQuery, setSportsSearchQuery] = useState("");
+  const [lockedPredictionRow, setLockedPredictionRow] = useState<any | null>(null);
+  const [rewardedAdCountdown, setRewardedAdCountdown] = useState(0);
+  const [rewardedAdRunning, setRewardedAdRunning] = useState(false);
   const lastScrollYRef = useRef(0);
+  const adCountdownTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const compactHeaderRef = useRef(false);
   const hasManualSportCategoryRef = useRef(false);
   const [compactHeader, setCompactHeader] = useState(false);
+
+  useEffect(() => {
+    return () => {
+      if (adCountdownTimerRef.current) {
+        clearInterval(adCountdownTimerRef.current);
+        adCountdownTimerRef.current = null;
+      }
+    };
+  }, []);
 
   useEffect(() => {
     if (hasManualSportCategoryRef.current) return;
@@ -1477,6 +1500,84 @@ export default function SportsScreen() {
     });
   };
 
+  const closeLockedPredictionModal = useCallback(() => {
+    if (rewardedAdRunning) return;
+    setLockedPredictionRow(null);
+    setRewardedAdCountdown(0);
+    if (adCountdownTimerRef.current) {
+      clearInterval(adCountdownTimerRef.current);
+      adCountdownTimerRef.current = null;
+    }
+  }, [rewardedAdRunning]);
+
+  const handleWatchAdUnlock = useCallback(async () => {
+    const row = lockedPredictionRow;
+    if (!row) return;
+
+    if (hasPremium("sport")) {
+      setLockedPredictionRow(null);
+      handleToolMatchPress(row.item);
+      return;
+    }
+
+    if (dailyPredictionUnlocksRemaining <= 0) {
+      Alert.alert("Daily unlock used", "Your free unlock was already used today. Upgrade to premium for unlimited prediction unlocks.");
+      return;
+    }
+
+    if (rewardedAdRunning) return;
+
+    const adLengthSeconds = 30 + Math.floor(Math.random() * 31);
+    setRewardedAdRunning(true);
+    setRewardedAdCountdown(adLengthSeconds);
+
+    if (adCountdownTimerRef.current) {
+      clearInterval(adCountdownTimerRef.current);
+      adCountdownTimerRef.current = null;
+    }
+
+    adCountdownTimerRef.current = setInterval(() => {
+      setRewardedAdCountdown((prev) => {
+        if (prev <= 1) {
+          if (adCountdownTimerRef.current) {
+            clearInterval(adCountdownTimerRef.current);
+            adCountdownTimerRef.current = null;
+          }
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    await new Promise((resolve) => setTimeout(resolve, adLengthSeconds * 1000));
+
+    if (adCountdownTimerRef.current) {
+      clearInterval(adCountdownTimerRef.current);
+      adCountdownTimerRef.current = null;
+    }
+
+    const matchId = String(row.item?.matchId || row.item?.id || "").trim();
+    const unlockResult = await unlockPredictionWithRewardedAd(matchId);
+    setRewardedAdRunning(false);
+    setRewardedAdCountdown(0);
+
+    if (!unlockResult.ok) {
+      Alert.alert("Unlock unavailable", unlockResult.reason || "Unable to unlock this prediction right now.");
+      return;
+    }
+
+    setLockedPredictionRow(null);
+    handleToolMatchPress(row.item);
+  }, [dailyPredictionUnlocksRemaining, hasPremium, handleToolMatchPress, lockedPredictionRow, rewardedAdRunning, unlockPredictionWithRewardedAd]);
+
+  const handlePremiumUnlock = useCallback(async () => {
+    const row = lockedPredictionRow;
+    if (!row) return;
+    await activatePremiumCategories(["sport"]);
+    setLockedPredictionRow(null);
+    handleToolMatchPress(row.item);
+  }, [activatePremiumCategories, handleToolMatchPress, lockedPredictionRow]);
+
   const toggleMatchNotification = useCallback(async (match: any) => {
     const id = String(match?.id || "");
     if (!id) return;
@@ -2025,6 +2126,8 @@ export default function SportsScreen() {
                 <Text style={styles.analysePanelCount}>{predictionRows.length} picks</Text>
               </View>
               {predictionRows.length > 0 ? predictionRows.map((row: any) => {
+                  const rowMatchId = String(row.item?.matchId || row.item?.id || "").trim();
+                  const rowLocked = !hasPremium("sport") && !isPredictionUnlocked(rowMatchId);
                 const homeBadge = row.badges?.[0];
                 const drawBadge = row.badges?.[2];
                 const awayBadge = row.badges?.[1];
@@ -2037,12 +2140,24 @@ export default function SportsScreen() {
                   <TouchableOpacity
                     key={row.key}
                     style={styles.predCard}
-                    onPress={() => row.item ? handleToolMatchPress(row.item) : handleMatchPress(row.match)}
+                    onPress={() => {
+                      if (rowLocked) {
+                        setLockedPredictionRow(row);
+                        return;
+                      }
+                      row.item ? handleToolMatchPress(row.item) : handleMatchPress(row.match);
+                    }}
                     activeOpacity={0.82}
                   >
+                    {rowLocked && (
+                      <View style={styles.predLockedBadge}>
+                        <Ionicons name="lock-closed" size={11} color="#E50914" />
+                        <Text style={styles.predLockedBadgeText}>Locked</Text>
+                      </View>
+                    )}
                     <View style={styles.predCardTeamRow}>
                       <Text style={styles.predCardTeams} numberOfLines={1}>{row.title}</Text>
-                      <Ionicons name="chevron-forward" size={13} color={P.muted} />
+                      <Ionicons name={rowLocked ? "lock-closed-outline" : "chevron-forward"} size={13} color={rowLocked ? "#E50914" : P.muted} />
                     </View>
                     {/* Probability bar */}
                     {total > 0 && (
@@ -2115,6 +2230,60 @@ export default function SportsScreen() {
         )}
 
       </ScrollView>
+
+      <Modal
+        transparent
+        animationType="fade"
+        visible={Boolean(lockedPredictionRow)}
+        onRequestClose={closeLockedPredictionModal}
+      >
+        <View style={styles.unlockOverlay}>
+          <BlurView intensity={70} tint="dark" style={StyleSheet.absoluteFill} />
+          <View style={styles.unlockModalCard}>
+            <Text style={styles.unlockModalTitle}>Unlock Prediction</Text>
+            <Text style={styles.unlockModalText}>Watch ad to unlock this match</Text>
+            <Text style={styles.unlockModalText}>Or upgrade to premium</Text>
+
+            {!hasPremium("sport") && (
+              <Text style={styles.unlockDailyNote}>
+                {dailyPredictionUnlocksRemaining > 0
+                  ? `Free unlocks left today: ${dailyPredictionUnlocksRemaining}`
+                  : "Daily free unlock used"}
+              </Text>
+            )}
+
+            <TouchableOpacity
+              style={[styles.unlockPrimaryBtn, (rewardedAdRunning || (!hasPremium("sport") && dailyPredictionUnlocksRemaining <= 0)) && styles.unlockBtnDisabled]}
+              onPress={handleWatchAdUnlock}
+              disabled={rewardedAdRunning || (!hasPremium("sport") && dailyPredictionUnlocksRemaining <= 0)}
+              activeOpacity={0.86}
+            >
+              <Ionicons name="play-circle" size={18} color="#FFFFFF" />
+              <Text style={styles.unlockPrimaryBtnText}>
+                {rewardedAdRunning ? `Watching ad... ${rewardedAdCountdown}s` : "Watch Ad"}
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.unlockSecondaryBtn}
+              onPress={handlePremiumUnlock}
+              activeOpacity={0.86}
+            >
+              <Ionicons name="sparkles-outline" size={16} color="#D0D0D8" />
+              <Text style={styles.unlockSecondaryBtnText}>Get Premium</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.unlockCloseBtn}
+              onPress={closeLockedPredictionModal}
+              disabled={rewardedAdRunning}
+              activeOpacity={0.82}
+            >
+              <Text style={styles.unlockCloseBtnText}>Not now</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -2168,29 +2337,30 @@ const styles = StyleSheet.create({
   subNavContent: {
     flexDirection: "row",
     paddingHorizontal: 18,
-    paddingTop: 10,
-    paddingBottom: 12,
-    gap: 9,
+    paddingTop: 8,
+    paddingBottom: 0,
+    gap: 18,
     alignItems: "center",
   },
   subNavItem: {
-    paddingHorizontal: 18,
+    paddingHorizontal: 0,
     paddingVertical: 10,
-    borderRadius: 24,
     alignItems: "center",
     flexDirection: "row",
     gap: 7,
+    borderBottomWidth: 2,
+    borderBottomColor: "transparent",
   },
   subNavItemActive: {
-    backgroundColor: P.accent,
+    borderBottomColor: P.accent,
   },
   subNavText: {
     color: P.muted,
     fontSize: 13,
-    fontWeight: "700",
+    fontWeight: "600",
     letterSpacing: 0.2,
   },
-  subNavTextActive: { color: "#fff" },
+  subNavTextActive: { color: "#fff", fontWeight: "700" },
   subNavLiveBadge: {
     backgroundColor: `${P.live}28`,
     borderRadius: 10,
@@ -2537,8 +2707,28 @@ const styles = StyleSheet.create({
   analysePanelTitleText: { color: P.text, fontSize: 14, fontWeight: "800" },
   analysePanelCount: { color: P.muted, fontSize: 12, fontWeight: "600" },
   predCard: {
+    position: "relative",
     paddingHorizontal: 14, paddingVertical: 12,
     borderBottomWidth: 1, borderBottomColor: P.border, gap: 8,
+  },
+  predLockedBadge: {
+    position: "absolute",
+    top: 10,
+    right: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: "rgba(229,9,20,0.5)",
+    backgroundColor: "rgba(229,9,20,0.14)",
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  predLockedBadgeText: {
+    color: "#F46F76",
+    fontSize: 10,
+    fontWeight: "700",
   },
   predCardTeamRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   predCardTeams: { color: P.text, fontSize: 13, fontWeight: "700", flex: 1, marginRight: 8 },
@@ -2563,6 +2753,85 @@ const styles = StyleSheet.create({
     backgroundColor: "#4CAF82",
   },
   predConfPct: { color: "#4CAF82", fontSize: 11, fontWeight: "800", width: 34, textAlign: "right" },
+
+  unlockOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(5,5,8,0.72)",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 22,
+  },
+  unlockModalCard: {
+    width: "100%",
+    maxWidth: 380,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.12)",
+    backgroundColor: "#12131A",
+    padding: 18,
+    gap: 10,
+  },
+  unlockModalTitle: {
+    color: "#FFFFFF",
+    fontSize: 22,
+    fontWeight: "800",
+  },
+  unlockModalText: {
+    color: "#B9BAC7",
+    fontSize: 14,
+    lineHeight: 20,
+    fontWeight: "500",
+  },
+  unlockDailyNote: {
+    color: "#8E90A0",
+    fontSize: 12,
+    marginTop: 2,
+  },
+  unlockPrimaryBtn: {
+    marginTop: 6,
+    minHeight: 50,
+    borderRadius: 12,
+    backgroundColor: "#E50914",
+    alignItems: "center",
+    justifyContent: "center",
+    flexDirection: "row",
+    gap: 8,
+  },
+  unlockPrimaryBtnText: {
+    color: "#FFFFFF",
+    fontSize: 15,
+    fontWeight: "700",
+  },
+  unlockSecondaryBtn: {
+    minHeight: 48,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.2)",
+    backgroundColor: "#1C1D27",
+    alignItems: "center",
+    justifyContent: "center",
+    flexDirection: "row",
+    gap: 8,
+  },
+  unlockSecondaryBtnText: {
+    color: "#D0D0D8",
+    fontSize: 15,
+    fontWeight: "700",
+  },
+  unlockCloseBtn: {
+    minHeight: 40,
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 2,
+  },
+  unlockCloseBtnText: {
+    color: "#8E90A0",
+    fontSize: 13,
+    fontWeight: "600",
+  },
+  unlockBtnDisabled: {
+    opacity: 0.55,
+  },
 
   nextLevelPanel: {
     marginHorizontal: 18,

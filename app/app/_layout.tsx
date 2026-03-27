@@ -17,12 +17,14 @@ import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { MatchAlertsBridge } from "@/components/MatchAlertsBridge";
 import { PersonalizationBridge } from "@/components/PersonalizationBridge";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { RequiredLoginGate } from "@/components/auth/RequiredLoginGate";
 import { queryClient, getApiBaseCandidates, apiRequest, apiRequestJson, DEFAULT_RENDER_API_BASE } from "@/lib/query-client";
 import { startPlayerImageWarmup } from "@/lib/player-image-system";
-import { NexoraProvider } from "@/context/NexoraContext";
+import { NexoraProvider, useNexora } from "@/context/NexoraContext";
 import { UserStateProvider } from "@/context/UserStateContext";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { PulseLaunchScreen } from "@/components/brand/PulseLaunchScreen";
+import { NexoraMenuOverlay } from "@/components/navigation/NexoraMenuOverlay";
 import { NexoraIntro } from "@/components/NexoraIntro";
 import { PremiumOnboardingFlow } from "@/features/onboarding/PremiumOnboardingFlow";
 import * as Updates from "expo-updates";
@@ -314,6 +316,49 @@ function RootLayoutNav() {
       <Stack.Screen name="media-category" options={{ headerShown: false }} />
     </Stack>
   );
+}
+
+function AppShellContent({
+  bootDone,
+  bootMessage,
+  hasHydrated,
+  hydrationRecovering,
+  hasCompletedOnboarding,
+}: {
+  bootDone: boolean;
+  bootMessage: string;
+  hasHydrated: boolean;
+  hydrationRecovering: boolean;
+  hasCompletedOnboarding: boolean;
+}) {
+  const { isAuthenticated } = useNexora();
+
+  if (!bootDone) {
+    return <NexoraIntro subtitle={bootMessage} />;
+  }
+
+  if (!hasHydrated) {
+    return (
+      <PulseLaunchScreen
+        badge={hydrationRecovering ? "Recovering setup" : "Restoring setup"}
+        title="Syncing your preferences"
+        subtitle={hydrationRecovering
+          ? "Saved startup data took too long. Recovering a safe state and continuing into the app."
+          : "Loading saved modules, notifications and personalized rails."}
+        progress={96}
+      />
+    );
+  }
+
+  if (!isAuthenticated) {
+    return <RequiredLoginGate />;
+  }
+
+  if (!hasCompletedOnboarding) {
+    return <PremiumOnboardingFlow />;
+  }
+
+  return <RootLayoutNav />;
 }
 
 export default function RootLayout() {
@@ -628,30 +673,6 @@ export default function RootLayout() {
     };
   }, [bootDone]);
 
-  // === RENDER PHASES ===
-
-  let content: React.ReactNode;
-  if (!bootDone) {
-    content = (
-      <NexoraIntro subtitle={bootMessage} />
-    );
-  } else if (!hasHydrated) {
-    content = (
-      <PulseLaunchScreen
-        badge={hydrationRecovering ? "Recovering setup" : "Restoring setup"}
-        title="Syncing your preferences"
-        subtitle={hydrationRecovering
-          ? "Saved startup data took too long. Recovering a safe state and continuing into the app."
-          : "Loading saved modules, notifications and personalized rails."}
-        progress={96}
-      />
-    );
-  } else if (!hasCompletedOnboarding) {
-    content = <PremiumOnboardingFlow />;
-  } else {
-    content = <RootLayoutNav />;
-  }
-
   return (
     <ErrorBoundary>
       <QueryClientProvider client={queryClient}>
@@ -661,7 +682,14 @@ export default function RootLayout() {
               <UserStateProvider>
                 <PersonalizationBridge />
                 <MatchAlertsBridge />
-                {content}
+                <AppShellContent
+                  bootDone={bootDone}
+                  bootMessage={bootMessage}
+                  hasHydrated={hasHydrated}
+                  hydrationRecovering={hydrationRecovering}
+                  hasCompletedOnboarding={hasCompletedOnboarding}
+                />
+                <NexoraMenuOverlay />
               </UserStateProvider>
             </NexoraProvider>
           </GestureHandlerRootView>

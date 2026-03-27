@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState, useRef } from "react";
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  Image, Modal, Platform, Alert, ActivityIndicator,
+  Image, Modal, Platform, Alert, ActivityIndicator, Animated,
 } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -11,6 +11,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import * as FileSystem from "expo-file-system/legacy";
 import { WebView } from "react-native-webview";
 import { COLORS } from "@/constants/colors";
+import { NexoraCollapsingHeader } from "@/components/layout/NexoraCollapsingHeader";
 import { apiRequest } from "@/lib/query-client";
 import { useNexora } from "@/context/NexoraContext";
 import { SafeHaptics } from "@/lib/safeHaptics";
@@ -318,6 +319,7 @@ export default function DetailScreen() {
   const [seasonEpisodes, setSeasonEpisodes] = useState<Record<number, any[]>>({});
   const [seasonLoading, setSeasonLoading] = useState<Record<number, boolean>>({});
   const [seasonError, setSeasonError] = useState<Record<number, string>>({});
+  const scrollY = useRef(new Animated.Value(0)).current;
 
   // ── For IPTV items: get channel data from context first ───────────────────
   const iptvChannel = isIptv === "true"
@@ -681,7 +683,48 @@ export default function DetailScreen() {
 
   return (
     <View style={styles.container}>
-      <ScrollView showsVerticalScrollIndicator={false} bounces={false}>
+      <View style={{ zIndex: 30, elevation: 30 }}>
+        <NexoraCollapsingHeader
+          scrollY={scrollY}
+          topInset={Platform.OS === "web" ? 59 : insets.top}
+          title={String(data?.title || paramTitle || "Detail")}
+          subtitle={`${type === "series" ? "Series" : "Movie"}${data?.year ? ` • ${String(data.year)}` : ""}`}
+          onBack={() => router.back()}
+          rightActions={
+            <TouchableOpacity
+              style={styles.headerFavoriteBtn}
+              onPress={() => {
+                toggleFavorite(id);
+                SafeHaptics.impactLight();
+              }}
+              activeOpacity={0.8}
+            >
+              <Ionicons name={fav ? "heart" : "heart-outline"} size={18} color={fav ? COLORS.accent : COLORS.text} />
+            </TouchableOpacity>
+          }
+          heroContent={
+            <View style={styles.detailHeaderHeroMeta}>
+              {data.tagline ? <Text style={styles.heroTagline} numberOfLines={1}>{data.tagline}</Text> : null}
+              <View style={styles.heroMetaRow}>
+                {data.imdb ? (
+                  <View style={styles.heroRatingPill}>
+                    <MaterialCommunityIcons name="star" size={12} color="#F5C518" />
+                    <Text style={styles.heroRatingText}>{data.imdb}</Text>
+                  </View>
+                ) : null}
+                {data.duration ? <Text style={styles.heroMetaText}>{data.duration}</Text> : null}
+              </View>
+            </View>
+          }
+        />
+      </View>
+
+      <Animated.ScrollView
+        showsVerticalScrollIndicator={false}
+        bounces={false}
+        onScroll={Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], { useNativeDriver: false })}
+        scrollEventThrottle={16}
+      >
         <View style={styles.hero}>
           {data.backdrop ? (
             <Image source={{ uri: data.backdrop }} style={styles.backdrop} resizeMode="cover" />
@@ -700,18 +743,6 @@ export default function DetailScreen() {
             style={styles.heroGradient}
             locations={[0, 0.4, 0.7, 1]}
           />
-          <TouchableOpacity
-            style={[styles.backBtn, { top: Platform.OS === "web" ? 67 : insets.top + 8 }]}
-            onPress={() => router.back()}
-          >
-            <Ionicons name="chevron-back" size={24} color={COLORS.text} />
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.favBtn, { top: Platform.OS === "web" ? 67 : insets.top + 8 }]}
-            onPress={() => { toggleFavorite(id); SafeHaptics.impactLight(); }}
-          >
-            <Ionicons name={fav ? "heart" : "heart-outline"} size={22} color={fav ? COLORS.live : COLORS.text} />
-          </TouchableOpacity>
           {isIptv === "true" && (
             <View style={styles.iptvBadge}>
               <MaterialCommunityIcons name="play-network" size={11} color={COLORS.accent} />
@@ -967,7 +998,7 @@ export default function DetailScreen() {
           ) : null}
         </View>
         <View style={{ height: Platform.OS === "web" ? 34 : insets.bottom + 20 }} />
-      </ScrollView>
+      </Animated.ScrollView>
 
       <DownloadModal
         visible={showDownload}
@@ -1096,6 +1127,17 @@ const styles = StyleSheet.create({
   backdrop: { width: "100%", height: "100%" },
   heroTopGradient: { position: "absolute", top: 0, left: 0, right: 0, height: 100 },
   heroGradient: { ...StyleSheet.absoluteFillObject },
+  detailHeaderHeroMeta: { gap: 6 },
+  headerFavoriteBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.overlayCard,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   heroTitleOverlay: { position: "absolute", bottom: 0, left: 0, right: 0, paddingHorizontal: 20, paddingBottom: 4 },
   heroContentTitle: { fontFamily: "Inter_800ExtraBold", fontSize: 28, color: COLORS.text, lineHeight: 32, marginBottom: 4 },
   heroTagline: { fontFamily: "Inter_400Regular", fontSize: 13, color: "rgba(255,255,255,0.6)", fontStyle: "italic", marginBottom: 8 },

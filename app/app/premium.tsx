@@ -6,7 +6,6 @@ import {
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
-import { LinearGradient } from "expo-linear-gradient";
 import { COLORS } from "@/constants/colors";
 import { useNexora } from "@/context/NexoraContext";
 import type { PremiumCategory } from "@/context/NexoraContext";
@@ -167,14 +166,14 @@ export default function PremiumScreen() {
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: bottomPad }}>
 
         {/* Header */}
-        <LinearGradient colors={["#111111", COLORS.background]} style={[styles.header, { paddingTop: topPad + 16 }]}>
+        <View style={[styles.header, { paddingTop: topPad + 16 }]}> 
           <TouchableOpacity style={styles.closeBtn} onPress={() => router.back()}>
             <Ionicons name="close" size={22} color={COLORS.textSecondary} />
           </TouchableOpacity>
 
-          <LinearGradient colors={["#FFD700", "#FF8C00"]} style={styles.crownBadge}>
+          <View style={styles.crownBadge}>
             <MaterialCommunityIcons name="crown" size={32} color="#fff" />
-          </LinearGradient>
+          </View>
 
           <Text style={styles.headerTitle}>{t("premium.title")}</Text>
           <Text style={styles.headerSub}>{t("premium.subtitle")}</Text>
@@ -193,7 +192,17 @@ export default function PremiumScreen() {
               })}
             </View>
           )}
-        </LinearGradient>
+        </View>
+
+        <View style={styles.coreBenefitsCard}>
+          <View style={styles.coreBenefitsHeader}>
+            <Ionicons name="sparkles" size={16} color="#F3C96A" />
+            <Text style={styles.coreBenefitsTitle}>Premium unlock</Text>
+          </View>
+          <Text style={styles.coreBenefitItem}>All predictions and premium modules unlocked</Text>
+          <Text style={styles.coreBenefitItem}>No ad interruptions in sports insights</Text>
+          <Text style={styles.coreBenefitItem}>Extra AI data, tactical edges and deeper context</Text>
+        </View>
 
         {/* Category tiles */}
         <View style={styles.section}>
@@ -235,12 +244,9 @@ export default function PremiumScreen() {
                     </View>
                   )}
 
-                  <LinearGradient
-                    colors={[`${cat.color}22`, `${cat.color}08`]}
-                    style={styles.catIconBg}
-                  >
+                  <View style={[styles.catIconBg, { backgroundColor: `${cat.color}1A` }]}>
                     <MaterialCommunityIcons name={cat.icon as any} size={26} color={cat.color} />
-                  </LinearGradient>
+                  </View>
 
                   <Text style={styles.catLabel}>{tFn(cat.labelKey)}</Text>
                   <Text style={[styles.catPrice, { color: cat.color }]}>
@@ -325,12 +331,7 @@ export default function PremiumScreen() {
           activeOpacity={0.85}
           disabled={loading || selected.length === 0}
         >
-          <LinearGradient
-            colors={selected.length > 0 ? ["#FFD700", "#FF8C00"] : [COLORS.card, COLORS.card]}
-            style={styles.ctaBtnGrad}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
-          >
+          <View style={[styles.ctaBtnSolid, selected.length === 0 ? styles.ctaBtnSolidDisabled : styles.ctaBtnSolidActive]}>
             {loading ? (
               <Text style={[styles.ctaBtnText, selected.length === 0 && { color: COLORS.textMuted }]}>{t("premium.activating")}</Text>
             ) : selected.length === 0 ? (
@@ -343,7 +344,7 @@ export default function PremiumScreen() {
                 </Text>
               </>
             )}
-          </LinearGradient>
+          </View>
         </TouchableOpacity>
 
         <Text style={styles.trialNote}>✓ {t("premium.freeTrial")}</Text>
@@ -354,9 +355,9 @@ export default function PremiumScreen() {
           {CATEGORIES.map(cat => (
             <View key={cat.id} style={styles.featureGroup}>
               <View style={styles.featureGroupHeader}>
-                <LinearGradient colors={[`${cat.color}33`, `${cat.color}11`]} style={styles.featureGroupIcon}>
+                <View style={[styles.featureGroupIcon, { backgroundColor: `${cat.color}20` }]}>
                   <MaterialCommunityIcons name={cat.icon as any} size={16} color={cat.color} />
-                </LinearGradient>
+                </View>
                 <Text style={[styles.featureGroupLabel, { color: cat.color }]}>{tFn(cat.labelKey)}</Text>
                 <Text style={styles.featureGroupPrice}>€{cat.priceMonthly.toFixed(2)}{t("premium.perMonth")}</Text>
               </View>
@@ -383,7 +384,15 @@ export default function PremiumScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
-  header: { alignItems: "center", paddingBottom: 28, paddingHorizontal: 24, gap: 8 },
+  header: {
+    alignItems: "center",
+    paddingBottom: 28,
+    paddingHorizontal: 24,
+    gap: 8,
+    backgroundColor: "#0F1016",
+    borderBottomWidth: 1,
+    borderBottomColor: "rgba(255,255,255,0.08)",
+  },
   closeBtn: {
     position: "absolute", top: 20, right: 20,
     width: 34, height: 34, borderRadius: 17,
@@ -393,9 +402,26 @@ const styles = StyleSheet.create({
   crownBadge: {
     width: 68, height: 68, borderRadius: 34,
     alignItems: "center", justifyContent: "center", marginBottom: 4,
-    shadowColor: "#FFD700", shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.5, shadowRadius: 16,
+    backgroundColor: "#A47A2B",
+    borderWidth: 1,
+    borderColor: "rgba(243,201,106,0.55)",
+    shadowColor: "#F3C96A", shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.28, shadowRadius: 14,
   },
+  coreBenefitsCard: {
+    marginHorizontal: 16,
+    marginTop: 14,
+    marginBottom: 6,
+    borderRadius: 16,
+    backgroundColor: "#151722",
+    borderWidth: 1,
+    borderColor: "rgba(243,201,106,0.28)",
+    padding: 14,
+    gap: 8,
+  },
+  coreBenefitsHeader: { flexDirection: "row", alignItems: "center", gap: 7 },
+  coreBenefitsTitle: { color: "#F3C96A", fontFamily: "Inter_700Bold", fontSize: 14 },
+  coreBenefitItem: { color: "#D5D7E2", fontFamily: "Inter_500Medium", fontSize: 13, lineHeight: 18 },
   headerTitle: { fontFamily: "Inter_800ExtraBold", fontSize: 26, color: COLORS.text, textAlign: "center" },
   headerSub: { fontFamily: "Inter_400Regular", fontSize: 14, color: COLORS.textSecondary, textAlign: "center" },
   activeBadgesRow: { flexDirection: "row", flexWrap: "wrap", gap: 8, justifyContent: "center", marginTop: 8 },
@@ -458,9 +484,15 @@ const styles = StyleSheet.create({
   priceTotalPeriod: { fontFamily: "Inter_400Regular", fontSize: 11, color: COLORS.textMuted },
   ctaBtn: { marginHorizontal: 16, borderRadius: 16, overflow: "hidden", marginBottom: 10 },
   ctaBtnDisabled: { opacity: 0.5 },
-  ctaBtnGrad: {
+  ctaBtnSolid: {
     flexDirection: "row", alignItems: "center", justifyContent: "center",
     gap: 8, paddingVertical: 16,
+  },
+  ctaBtnSolidActive: {
+    backgroundColor: "#E50914",
+  },
+  ctaBtnSolidDisabled: {
+    backgroundColor: COLORS.card,
   },
   ctaBtnText: { fontFamily: "Inter_700Bold", fontSize: 17, color: "#fff" },
   trialNote: {

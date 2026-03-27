@@ -7,6 +7,7 @@ import { router, useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
+import { BlurView } from "expo-blur";
 import WebView from "react-native-webview";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { COLORS } from "@/constants/colors";
@@ -77,7 +78,15 @@ const TABS = [
   { id: "highlights", label: "matchDetail.highlights", icon: "star-outline" },
 ] as const;
 
+const EXPERIENCE_TABS = [
+  { id: "prematch", label: "Prematch" },
+  { id: "predictions", label: "Predictions ⚡ AI" },
+  { id: "power", label: "Power" },
+  { id: "success", label: "Success Rate" },
+] as const;
+
 type TabId = "stream" | "stats" | "lineups" | "timeline" | "highlights";
+type ExperienceTabId = "prematch" | "predictions" | "power" | "success";
 
 function shouldRetryRequest(failureCount: number, error: unknown): boolean {
   if (failureCount >= 1) return false;
@@ -216,6 +225,8 @@ export default function MatchDetailScreen() {
   const [streamKey, setStreamKey] = useState(0);
   const [streamWebError, setStreamWebError] = useState<unknown>(null);
   const [streamErrorRef, setStreamErrorRef] = useState<string>("");
+  const [activeExperienceTab, setActiveExperienceTab] = useState<ExperienceTabId>("prematch");
+  const [isHeaderCollapsed, setIsHeaderCollapsed] = useState(false);
   const paramCanonical = useMemo(() => toCanonicalMatch({
     id: params.matchId,
     homeTeam: params.homeTeam,
@@ -590,6 +601,14 @@ export default function MatchDetailScreen() {
     setStreamKey(k => k + 1);
   };
 
+  const handleExperienceScroll = useMemo(() => {
+    return (event: any) => {
+      const y = Number(event?.nativeEvent?.contentOffset?.y || 0);
+      const next = y > 44;
+      setIsHeaderCollapsed((prev) => (prev === next ? prev : next));
+    };
+  }, []);
+
   const hasFetchedPrematchRef = useRef(false);
 
   useEffect(() => {
@@ -664,6 +683,371 @@ export default function MatchDetailScreen() {
   const highlightSummary = matchDetail?.highlights || null;
   const highlightMoments = Array.isArray(highlightSummary?.topMoments) ? highlightSummary.topMoments : [];
   const highlightRecap = Array.isArray(highlightSummary?.recap) ? highlightSummary.recap : [];
+  const redesignEnabled = String(params.initialTab || "") !== "legacy";
+
+  const safePrediction = prediction && !prediction.error ? prediction : null;
+  const homePct = Math.max(0, Math.min(100, Number(safePrediction?.homePct || 0)));
+  const drawPct = Math.max(0, Math.min(100, Number(safePrediction?.drawPct || 0)));
+  const awayPct = Math.max(0, Math.min(100, Number(safePrediction?.awayPct || 0)));
+  const normalizedTotal = homePct + drawPct + awayPct;
+  const normHomePct = normalizedTotal > 0 ? Math.round((homePct / normalizedTotal) * 100) : 34;
+  const normDrawPct = normalizedTotal > 0 ? Math.round((drawPct / normalizedTotal) * 100) : 33;
+  const normAwayPct = 100 - normHomePct - normDrawPct;
+
+  const homeDcPct = Number.isFinite(Number(safePrediction?.doubleChanceHomePct))
+    ? Math.round(Number(safePrediction?.doubleChanceHomePct))
+    : Math.max(normHomePct, Math.round(normHomePct + normDrawPct * 0.6));
+  const awayDcPct = Number.isFinite(Number(safePrediction?.doubleChanceAwayPct))
+    ? Math.round(Number(safePrediction?.doubleChanceAwayPct))
+    : Math.max(normAwayPct, Math.round(normAwayPct + normDrawPct * 0.6));
+  const bttsPct = Number.isFinite(Number(safePrediction?.bothTeamsToScorePct))
+    ? Math.round(Number(safePrediction?.bothTeamsToScorePct))
+    : 50;
+  const over25Pct = Number.isFinite(Number(safePrediction?.over25Pct))
+    ? Math.round(Number(safePrediction?.over25Pct))
+    : 50;
+  const under25Pct = 100 - over25Pct;
+  const over15Pct = Math.max(35, Math.min(92, over25Pct + 16));
+  const under35Pct = Math.max(22, Math.min(86, under25Pct + 18));
+  const confidencePct = Math.max(0, Math.min(100, Number(safePrediction?.confidence || 0)));
+  const edgeScorePct = Math.max(0, Math.min(100, Number(safePrediction?.edgeScore || 0)));
+
+  const predictionSummaryCards = [
+    { key: "optimal", label: "Optimal", value: safePrediction?.tip || safePrediction?.prediction || "No pick yet", accent: "#E50914", locked: false },
+    { key: "winner", label: "Match winner", value: safePrediction?.prediction || "Pending", accent: "#FF5A5F", locked: false },
+    { key: "double", label: "Double chance", value: `${homeDcPct}% 1X · ${awayDcPct}% X2`, accent: "#F04B3A", locked: false },
+    { key: "btts", label: "Both teams score", value: `${bttsPct}%`, accent: "#D9462A", locked: false },
+    { key: "ou", label: "Over/Under", value: `Over 2.5: ${over25Pct}%`, accent: "#B83C2A", locked: false },
+  ];
+
+  const detailedInfoRows = [
+    { key: "one", label: "1", value: `${normHomePct}%` },
+    { key: "draw", label: "X", value: `${normDrawPct}%` },
+    { key: "two", label: "2", value: `${normAwayPct}%` },
+    { key: "oneX", label: "1X", value: `${homeDcPct}%` },
+    { key: "xTwo", label: "X2", value: `${awayDcPct}%` },
+    { key: "goals", label: "Goals", value: `O2.5 ${over25Pct}%` },
+  ];
+
+  const successDataCoverage = Math.round(
+    [safePrediction?.homePct, safePrediction?.drawPct, safePrediction?.awayPct, safePrediction?.confidence, safePrediction?.over25Pct, safePrediction?.bothTeamsToScorePct]
+      .filter((value) => value !== null && value !== undefined).length / 6 * 100
+  );
+  const successSignalStrength = Math.max(40, Math.round((confidencePct * 0.65) + (edgeScorePct * 0.35)));
+
+  if (redesignEnabled) {
+    return (
+      <View style={styles.container}>
+        <LinearGradient
+          colors={["#111521", "#0B0F1A", "#080B12"]}
+          style={[styles.header, styles.nxHeader, { paddingTop: topPad + 8 }, isHeaderCollapsed ? styles.nxHeaderCollapsed : null]}
+        >
+          <View style={styles.heroTopRow}>
+            <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
+              <Ionicons name="chevron-back" size={22} color="#FFFFFF" />
+            </TouchableOpacity>
+            {(isLive || isHalfTime) ? (
+              <View style={styles.nxLiveGlowPill}>
+                <View style={styles.nxLiveDot} />
+                <Text style={styles.nxLiveText}>{isHalfTime ? "HALF TIME" : `LIVE ${liveMinute ? `${liveMinute}'` : ""}`}</Text>
+              </View>
+            ) : (
+              <View style={styles.nxUpcomingPill}>
+                <Text style={styles.nxUpcomingText}>{isFinished ? "FINISHED" : "UPCOMING"}</Text>
+              </View>
+            )}
+            <TouchableOpacity
+              style={styles.heroActionBtn}
+              onPress={() => {
+                SafeHaptics.impactLight();
+                router.push("/follow-center");
+              }}
+            >
+              <Ionicons name="notifications-outline" size={20} color="#FFFFFF" />
+            </TouchableOpacity>
+          </View>
+
+          <View style={[styles.matchHeader, isHeaderCollapsed ? styles.nxMatchHeaderCollapsed : null]}>
+            <View style={styles.competitionRowCenterOnly}>
+              <View style={styles.competitionCenter}>
+                {leagueLogoUri ? (
+                  <TeamLogo uri={leagueLogoUri} teamName={competitionName} size={isHeaderCollapsed ? 20 : 24} />
+                ) : (
+                  <View style={styles.leagueFallbackIcon}>
+                    <Ionicons name="trophy-outline" size={14} color={COLORS.textMuted} />
+                  </View>
+                )}
+                <Text style={styles.leagueName} numberOfLines={1}>{competitionBrand.name || competitionName}</Text>
+              </View>
+            </View>
+
+            <View style={styles.scoreRow}>
+              <TeamSide
+                name={homeTeamName}
+                logo={matchDetail?.homeTeamLogo || params.homeTeamLogo}
+                onPress={() => {
+                  const fallbackTeamId = `name:${encodeURIComponent(homeTeamName || "")}`;
+                  router.push({
+                    pathname: "/team-detail",
+                    params: {
+                      teamId: matchDetail?.homeTeamId || fallbackTeamId,
+                      teamName: homeTeamName,
+                      logo: matchDetail?.homeTeamLogo || params.homeTeamLogo || "",
+                      sport: espnSport,
+                      league: espnLeague,
+                    },
+                  });
+                }}
+              />
+              <View style={styles.scoreCenter}>
+                {(isLive || isHalfTime || isFinished) ? (
+                  <Text style={[styles.score, { fontSize: isHeaderCollapsed ? Math.max(34, scoreFontSize - 10) : scoreFontSize }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>
+                    {liveHomeScore} - {liveAwayScore}
+                  </Text>
+                ) : (
+                  <>
+                    <Text style={styles.scheduledDate} numberOfLines={1}>{kickoffDate || "Datum volgt"}</Text>
+                    <Text style={styles.vsText}>VS</Text>
+                    <Text style={styles.scheduledTime} numberOfLines={1}>{kickoffTime || "--:--"}</Text>
+                  </>
+                )}
+              </View>
+              <TeamSide
+                name={awayTeamName}
+                logo={matchDetail?.awayTeamLogo || params.awayTeamLogo}
+                onPress={() => {
+                  const fallbackTeamId = `name:${encodeURIComponent(awayTeamName || "")}`;
+                  router.push({
+                    pathname: "/team-detail",
+                    params: {
+                      teamId: matchDetail?.awayTeamId || fallbackTeamId,
+                      teamName: awayTeamName,
+                      logo: matchDetail?.awayTeamLogo || params.awayTeamLogo || "",
+                      sport: espnSport,
+                      league: espnLeague,
+                    },
+                  });
+                }}
+              />
+            </View>
+          </View>
+        </LinearGradient>
+
+        <View style={styles.nxTabBarWrap}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.nxTabBarInner}>
+            {EXPERIENCE_TABS.map((tab) => {
+              const active = activeExperienceTab === tab.id;
+              return (
+                <TouchableOpacity
+                  key={tab.id}
+                  onPress={() => {
+                    setActiveExperienceTab(tab.id);
+                    SafeHaptics.impactLight();
+                  }}
+                  style={styles.nxTabItem}
+                  activeOpacity={0.85}
+                >
+                  <Text style={[styles.nxTabLabel, active ? styles.nxTabLabelActive : null]}>{tab.label}</Text>
+                  <View style={[styles.nxTabUnderline, active ? styles.nxTabUnderlineActive : null]} />
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+        </View>
+
+        {activeExperienceTab === "prematch" ? (
+          <ScrollView
+            style={styles.tabContent}
+            contentContainerStyle={styles.nxContentWrap}
+            showsVerticalScrollIndicator={false}
+            onScroll={handleExperienceScroll}
+            scrollEventThrottle={16}
+          >
+            <View style={styles.nxCard}>
+              <Text style={styles.nxCardKicker}>Prematch</Text>
+              <Text style={styles.nxCardTitle}>Match Context</Text>
+              <View style={styles.nxMetaRow}>
+                <Ionicons name="calendar-outline" size={14} color="#8F98AE" />
+                <Text style={styles.nxMetaText}>{kickoffDate || "Datum volgt"} · {kickoffTime || "--:--"}</Text>
+              </View>
+              {!!matchDetail?.venue && (
+                <View style={styles.nxMetaRow}>
+                  <Ionicons name="location-outline" size={14} color="#8F98AE" />
+                  <Text style={styles.nxMetaText}>{matchDetail.venue}</Text>
+                </View>
+              )}
+            </View>
+
+            {safePrediction ? (
+              <View style={styles.nxCard}>
+                <Text style={styles.nxCardKicker}>AI Read</Text>
+                <Text style={styles.nxCardTitle}>{safePrediction.prediction || "No prediction yet"}</Text>
+                <Text style={styles.nxBodyText}>{safePrediction.summary || tFn("matchDetail.preMatchLoading")}</Text>
+              </View>
+            ) : (
+              <View style={styles.nxCard}>
+                <Text style={styles.nxCardKicker}>AI Read</Text>
+                {predLoading ? (
+                  <View style={styles.prematchInsightLoading}>
+                    <ActivityIndicator size="small" color={COLORS.accent} />
+                    <Text style={styles.aiLoadingText}>{tFn("matchDetail.preMatchLoading")}</Text>
+                  </View>
+                ) : (
+                  <Text style={styles.nxBodyText}>Prediction wordt opgebouwd op basis van recente vorm, context en teamdata.</Text>
+                )}
+              </View>
+            )}
+          </ScrollView>
+        ) : null}
+
+        {activeExperienceTab === "predictions" ? (
+          <ScrollView
+            style={styles.tabContent}
+            contentContainerStyle={styles.nxContentWrap}
+            showsVerticalScrollIndicator={false}
+            onScroll={handleExperienceScroll}
+            scrollEventThrottle={16}
+          >
+            <View style={styles.nxSectionHeadRow}>
+              <Text style={styles.nxSectionTitle}>AI Predictions</Text>
+              <TouchableOpacity style={styles.aiRefreshBtn} onPress={() => fetchPreMatchPrediction()}>
+                <Ionicons name="refresh-outline" size={13} color={COLORS.textMuted} />
+                <Text style={styles.aiRefreshText}>{tFn("matchDetail.preMatchRefresh")}</Text>
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.nxGridWrap}>
+              {predictionSummaryCards.map((card) => (
+                <View key={card.key} style={[styles.nxGridCard, { borderColor: `${card.accent}44` }]}>
+                  <Text style={styles.nxGridLabel}>{card.label}</Text>
+                  <Text style={[styles.nxGridValue, { color: card.accent }]} numberOfLines={2}>{card.value}</Text>
+                </View>
+              ))}
+            </View>
+
+            <Text style={styles.nxSectionTitle}>Detailed Information</Text>
+            <View style={styles.nxGridWrap}>
+              {detailedInfoRows.map((row) => (
+                <View key={row.key} style={styles.nxGridCard}>
+                  <Text style={styles.nxGridLabel}>{row.label}</Text>
+                  <Text style={styles.nxGridValue}>{row.value}</Text>
+                </View>
+              ))}
+            </View>
+
+            <View style={styles.nxGoalsCard}>
+              <Text style={styles.nxCardKicker}>Goals grid</Text>
+              <View style={styles.nxGoalsGrid}>
+                <View style={styles.nxGoalPill}><Text style={styles.nxGoalPillText}>Over 1.5 · {over15Pct}%</Text></View>
+                <View style={styles.nxGoalPill}><Text style={styles.nxGoalPillText}>Over 2.5 · {over25Pct}%</Text></View>
+                <View style={styles.nxGoalPill}><Text style={styles.nxGoalPillText}>Under 2.5 · {under25Pct}%</Text></View>
+                <View style={styles.nxGoalPill}><Text style={styles.nxGoalPillText}>Under 3.5 · {under35Pct}%</Text></View>
+              </View>
+            </View>
+
+            {!safePrediction ? (
+              <View style={styles.nxLockedCard}>
+                <Text style={styles.nxGridLabel}>Premium detail</Text>
+                <Text style={styles.nxBodyText}>Verdiepende layers worden zichtbaar zodra prediction data klaar is.</Text>
+                <BlurView intensity={45} tint="dark" style={styles.nxLockOverlay}>
+                  <Ionicons name="lock-closed" size={18} color="#E50914" />
+                  <Text style={styles.nxLockText}>Tap to unlock</Text>
+                </BlurView>
+              </View>
+            ) : null}
+          </ScrollView>
+        ) : null}
+
+        {activeExperienceTab === "power" ? (
+          <ScrollView
+            style={styles.tabContent}
+            contentContainerStyle={styles.nxContentWrap}
+            showsVerticalScrollIndicator={false}
+            onScroll={handleExperienceScroll}
+            scrollEventThrottle={16}
+          >
+            <Text style={styles.nxSectionTitle}>Power</Text>
+            <View style={styles.nxGridWrap}>
+              <View style={styles.nxGridCard}>
+                <Text style={styles.nxGridLabel}>Model edge</Text>
+                <Text style={styles.nxGridValue}>{edgeScorePct}/100</Text>
+              </View>
+              <View style={styles.nxGridCard}>
+                <Text style={styles.nxGridLabel}>Confidence</Text>
+                <Text style={styles.nxGridValue}>{confidencePct}%</Text>
+              </View>
+              <View style={styles.nxGridCard}>
+                <Text style={styles.nxGridLabel}>Win tilt</Text>
+                <Text style={styles.nxGridValue}>{Math.abs(normHomePct - normAwayPct)}%</Text>
+              </View>
+              <View style={styles.nxGridCard}>
+                <Text style={styles.nxGridLabel}>Goals pressure</Text>
+                <Text style={styles.nxGridValue}>{Math.round((over25Pct + bttsPct) / 2)}%</Text>
+              </View>
+            </View>
+
+            {matchDetail ? (
+              <>
+                <StatsBars
+                  homeTeam={params.homeTeam}
+                  awayTeam={params.awayTeam}
+                  homeStats={matchDetail.homeStats || {}}
+                  awayStats={matchDetail.awayStats || {}}
+                />
+                <MatchHeatmap
+                  homeTeam={params.homeTeam}
+                  awayTeam={params.awayTeam}
+                  homeStats={matchDetail.homeStats || {}}
+                  awayStats={matchDetail.awayStats || {}}
+                />
+              </>
+            ) : (
+              <EmptyState icon="stats-chart-outline" text={tFn("matchDetail.statsUnavailable")} />
+            )}
+          </ScrollView>
+        ) : null}
+
+        {activeExperienceTab === "success" ? (
+          <ScrollView
+            style={styles.tabContent}
+            contentContainerStyle={styles.nxContentWrap}
+            showsVerticalScrollIndicator={false}
+            onScroll={handleExperienceScroll}
+            scrollEventThrottle={16}
+          >
+            <Text style={styles.nxSectionTitle}>Success Rate</Text>
+            <View style={styles.nxGridWrap}>
+              <View style={styles.nxGridCard}>
+                <Text style={styles.nxGridLabel}>AI confidence</Text>
+                <Text style={styles.nxGridValue}>{confidencePct}%</Text>
+              </View>
+              <View style={styles.nxGridCard}>
+                <Text style={styles.nxGridLabel}>Data coverage</Text>
+                <Text style={styles.nxGridValue}>{successDataCoverage}%</Text>
+              </View>
+              <View style={styles.nxGridCard}>
+                <Text style={styles.nxGridLabel}>Signal strength</Text>
+                <Text style={styles.nxGridValue}>{successSignalStrength}%</Text>
+              </View>
+              <View style={styles.nxGridCard}>
+                <Text style={styles.nxGridLabel}>Risk band</Text>
+                <Text style={styles.nxGridValue}>{safePrediction?.riskLevel || "Balanced"}</Text>
+              </View>
+            </View>
+
+            <View style={styles.nxLockedCard}>
+              <Text style={styles.nxGridLabel}>Historical hit-rate</Text>
+              <Text style={styles.nxBodyText}>Team-specifieke accuratesse over vergelijkbare matchprofielen.</Text>
+              <BlurView intensity={45} tint="dark" style={styles.nxLockOverlay}>
+                <Ionicons name="lock-closed" size={18} color="#E50914" />
+                <Text style={styles.nxLockText}>Tap to unlock</Text>
+              </BlurView>
+            </View>
+          </ScrollView>
+        ) : null}
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
@@ -3011,6 +3395,250 @@ function EmptyState({ icon, text }: { icon: any; text: string }) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
+  nxHeader: {
+    borderBottomWidth: 1,
+    borderBottomColor: "rgba(255,255,255,0.08)",
+  },
+  nxHeaderCollapsed: {
+    paddingBottom: 4,
+  },
+  nxMatchHeaderCollapsed: {
+    gap: 8,
+    paddingBottom: 4,
+  },
+  nxLiveGlowPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderWidth: 1,
+    borderColor: "rgba(229,9,20,0.65)",
+    backgroundColor: "rgba(229,9,20,0.18)",
+    // @ts-ignore
+    shadowColor: "#E50914",
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.6,
+    shadowRadius: 9,
+    elevation: 6,
+  },
+  nxLiveDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+    backgroundColor: "#FF3040",
+  },
+  nxLiveText: {
+    color: "#FF6B71",
+    fontFamily: "Inter_700Bold",
+    fontSize: 10,
+    letterSpacing: 0.8,
+  },
+  nxUpcomingPill: {
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.15)",
+    backgroundColor: "rgba(255,255,255,0.05)",
+  },
+  nxUpcomingText: {
+    color: "#A5AEC4",
+    fontFamily: "Inter_700Bold",
+    fontSize: 10,
+    letterSpacing: 0.8,
+  },
+  nxTabBarWrap: {
+    backgroundColor: "#0B0F1A",
+    borderBottomWidth: 1,
+    borderBottomColor: "rgba(255,255,255,0.08)",
+  },
+  nxTabBarInner: {
+    flexDirection: "row",
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    gap: 18,
+  },
+  nxTabItem: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 6,
+  },
+  nxTabLabel: {
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 13,
+    color: "#93A0BA",
+  },
+  nxTabLabelActive: {
+    color: "#FFFFFF",
+  },
+  nxTabUnderline: {
+    marginTop: 7,
+    width: "100%",
+    minWidth: 18,
+    height: 2,
+    borderRadius: 2,
+    backgroundColor: "transparent",
+  },
+  nxTabUnderlineActive: {
+    backgroundColor: "#E50914",
+  },
+  nxContentWrap: {
+    paddingHorizontal: 16,
+    paddingTop: 14,
+    paddingBottom: 28,
+    gap: 12,
+  },
+  nxSectionHeadRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
+  },
+  nxSectionTitle: {
+    fontFamily: "Inter_700Bold",
+    fontSize: 12,
+    color: "#E8EDF9",
+    letterSpacing: 1,
+    textTransform: "uppercase",
+    marginTop: 2,
+    marginBottom: 4,
+  },
+  nxCard: {
+    backgroundColor: "#0B0F1A",
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.08)",
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    // @ts-ignore
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 5 },
+    shadowOpacity: 0.2,
+    shadowRadius: 10,
+    elevation: 5,
+  },
+  nxCardKicker: {
+    fontFamily: "Inter_700Bold",
+    fontSize: 10,
+    color: "#9AA5BF",
+    letterSpacing: 1,
+    textTransform: "uppercase",
+    marginBottom: 5,
+  },
+  nxCardTitle: {
+    fontFamily: "Inter_700Bold",
+    fontSize: 16,
+    color: "#FFFFFF",
+    marginBottom: 8,
+  },
+  nxBodyText: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 13,
+    color: "#A8B1C8",
+    lineHeight: 20,
+  },
+  nxMetaRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginTop: 4,
+  },
+  nxMetaText: {
+    fontFamily: "Inter_500Medium",
+    fontSize: 12,
+    color: "#B9C2D7",
+  },
+  nxGridWrap: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "space-between",
+    gap: 10,
+  },
+  nxGridCard: {
+    width: "48.5%",
+    minHeight: 82,
+    backgroundColor: "#0B0F1A",
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.08)",
+    paddingHorizontal: 12,
+    paddingVertical: 11,
+    justifyContent: "space-between",
+    // @ts-ignore
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.16,
+    shadowRadius: 9,
+    elevation: 4,
+  },
+  nxGridLabel: {
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 11,
+    color: "#94A0BB",
+    letterSpacing: 0.4,
+  },
+  nxGridValue: {
+    fontFamily: "Inter_700Bold",
+    fontSize: 14,
+    color: "#FFFFFF",
+    marginTop: 8,
+  },
+  nxGoalsCard: {
+    backgroundColor: "#0B0F1A",
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.08)",
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+  },
+  nxGoalsGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    marginTop: 4,
+  },
+  nxGoalPill: {
+    backgroundColor: "rgba(229,9,20,0.12)",
+    borderColor: "rgba(229,9,20,0.32)",
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  nxGoalPillText: {
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 11,
+    color: "#F0B0B5",
+  },
+  nxLockedCard: {
+    position: "relative",
+    minHeight: 106,
+    backgroundColor: "#0B0F1A",
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.08)",
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    overflow: "hidden",
+  },
+  nxLockOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    borderWidth: 1,
+    borderColor: "rgba(229,9,20,0.45)",
+    borderRadius: 18,
+    backgroundColor: "rgba(9,12,20,0.25)",
+  },
+  nxLockText: {
+    fontFamily: "Inter_700Bold",
+    fontSize: 12,
+    color: "#F3636D",
+    letterSpacing: 0.3,
+  },
   header: { paddingHorizontal: 20, paddingBottom: 10 },
   heroTopRow: {
     width: "100%",
