@@ -2,8 +2,10 @@ import { useEffect, useMemo, useRef } from "react";
 
 import { useNexora } from "@/context/NexoraContext";
 import { useFollowState } from "@/context/UserStateContext";
-import { apiRequest } from "@/lib/query-client";
 import { resolveMatchBucket } from "@/lib/match-state";
+import { fetchFollowedMatchSnapshot } from "@/services/realtime-engine";
+import { logRealtimeEvent } from "@/services/realtime-telemetry";
+import { createWebsocketService } from "@/services/websocketService";
 import {
   initializeMatchNotifications,
   loadMatchSnapshots,
@@ -102,6 +104,26 @@ export function MatchAlertsBridge() {
     };
 
     let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const websocketUrl = String(process.env.EXPO_PUBLIC_SPORTS_WS_URL || "").trim();
+    const socket = websocketUrl
+      ? createWebsocketService(websocketUrl, { name: "match-alerts" })
+      : null;
+
+    const computePollInterval = () => {
+      const snapshots = Object.values(snapshotsRef.current);
+      const hasLiveMatch = snapshots.some((snapshot) => snapshot?.status === "live");
+      return hasLiveMatch ? 8_000 : 25_000;
+    };
+
+    const scheduleNextPoll = () => {
+      if (cancelled) return;
+      const nextMs = computePollInterval();
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => {
+        void poll();
+      }, nextMs);
+    };
 
     const poll = async () => {
       const nextSnapshots = { ...snapshotsRef.current };
@@ -113,9 +135,7 @@ export function MatchAlertsBridge() {
           if (!id) return;
 
           try {
-            const league = encodeURIComponent(match.espnLeague || "eng.1");
-            const response = await apiRequest("GET", `/api/sports/match/${encodeURIComponent(id)}?league=${league}`);
-            const detail = await response.json();
+            const detail = await fetchFollowedMatchSnapshot(id, match.espnLeague || "eng.1");
             if (!detail || !detail.id) return;
 
             const previous = nextSnapshots[id];
@@ -196,16 +216,32 @@ export function MatchAlertsBridge() {
         snapshotsRef.current = nextSnapshots;
         await saveMatchSnapshots(nextSnapshots);
       }
+
+      logRealtimeEvent("realtime", "match-alerts-poll", {
+        trackedMatches: alertMatches.length,
+        changed,
+        nextPollMs: computePollInterval(),
+      });
+
+      scheduleNextPoll();
     };
 
     void poll();
-    const timer = setInterval(() => {
-      void poll();
-    }, 20_000);
+    const unsubscribe = socket
+      ? socket.subscribe(() => {
+          logRealtimeEvent("realtime", "match-alerts-websocket-refresh", {
+            trackedMatches: alertMatches.length,
+          });
+          void poll();
+        })
+      : undefined;
+    socket?.connect();
 
     return () => {
       cancelled = true;
-      clearInterval(timer);
+      if (timer) clearTimeout(timer);
+      unsubscribe?.();
+      socket?.close();
     };
   }, [alertMatches, notificationPrefs.goals, notificationPrefs.lineups, notificationPrefs.matches, notificationsEnabled]);
 

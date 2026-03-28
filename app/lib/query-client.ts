@@ -2,6 +2,7 @@ import { fetch } from "expo/fetch";
 import { Platform, AppState } from "react-native";
 import { QueryClient, QueryFunction, focusManager } from "@tanstack/react-query";
 import Constants from "expo-constants";
+import { logRealtimeEvent } from "@/services/realtime-telemetry";
 
 // ── React Native: wire React Query's focusManager to AppState ────────────────
 // This keeps React Query's internal "focused" state accurate so that any query
@@ -256,6 +257,7 @@ export async function apiRequest(
   route: string,
   data?: unknown | undefined,
 ): Promise<Response> {
+  const startedAt = Date.now();
   if (route.startsWith("http://") || route.startsWith("https://")) {
     const isSports = isSportsRoute(route);
     const res = await fetchWithTimeout(route, {
@@ -264,6 +266,15 @@ export async function apiRequest(
       body: data ? JSON.stringify(data) : undefined,
     }, undefined, isSports);
     await throwIfResNotOk(res);
+    logRealtimeEvent("fetch", "api-request", {
+      method,
+      route,
+      baseUrl: route,
+      status: res.status,
+      durationMs: Date.now() - startedAt,
+      isSports,
+      transport: "absolute",
+    });
     return res;
   }
 
@@ -276,8 +287,10 @@ export async function apiRequest(
 
   let lastError: unknown;
   const isSports = isSportsRoute(route);
+  let attempt = 0;
 
   for (const baseUrl of baseUrls) {
+    attempt += 1;
     const url = `${baseUrl}${route}`;
     try {
       const res = await fetchWithTimeout(url, {
@@ -290,14 +303,41 @@ export async function apiRequest(
       // the next candidate (for example Cloudflare -> Render fallback).
       if (shouldTryNextBaseForResponse(route, res)) {
         lastError = new Error(`${res.status} from ${baseUrl}`);
+        logRealtimeEvent("fetch", "api-request-fallback", {
+          method,
+          route,
+          baseUrl,
+          status: res.status,
+          durationMs: Date.now() - startedAt,
+          attempt,
+          reason: "response-fallback",
+        });
         continue;
       }
 
       await throwIfResNotOk(res);
       markWorkingBaseForRoute(route, baseUrl);
+      logRealtimeEvent("fetch", "api-request", {
+        method,
+        route,
+        baseUrl,
+        status: res.status,
+        durationMs: Date.now() - startedAt,
+        attempt,
+        isSports,
+      });
       return res;
     } catch (e: any) {
       lastError = e;
+      logRealtimeEvent("fetch", "api-request-error", {
+        method,
+        route,
+        baseUrl,
+        durationMs: Date.now() - startedAt,
+        attempt,
+        isSports,
+        error: e instanceof Error ? e.message : String(e || "unknown"),
+      });
       if (e instanceof RangeError) {
         continue;
       }

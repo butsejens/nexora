@@ -148,6 +148,7 @@ export default function CountryScreen() {
                           sport: "soccer",
                           league: comp.espn,
                           espnLeague: comp.espn,
+                          countryCode: country.countryCode,
                         },
                       });
                     } else {

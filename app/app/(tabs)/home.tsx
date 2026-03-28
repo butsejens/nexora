@@ -14,16 +14,20 @@ import { useQuery } from "@tanstack/react-query";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 
+import { useRenderTelemetry } from "@/hooks/useRenderTelemetry";
 import { NexoraHeader } from "@/components/NexoraHeader";
 import { RealContentCard } from "@/components/RealContentCard";
 import { MatchRowCard } from "@/components/premium";
 import { COLORS } from "@/constants/colors";
 import { useNexora } from "@/context/NexoraContext";
 import { useWatchProgress } from "@/context/UserStateContext";
-import { apiRequest } from "@/lib/query-client";
-import { cacheGetStale, cachePeekStale, cacheSet, CacheTTL } from "@/lib/services/cache-service";
-import { createContinueWatching } from "@/lib/vod-curation";
-import { enrichVodModuleItem } from "@/lib/vod-module";
+import {
+  buildContinueWatchingRows,
+  buildHighlightsQuery,
+  buildHomeSportsQuery,
+  buildVodHomeQuery,
+  deriveCuratedHomeMedia,
+} from "@/services/realtime-engine";
 import { useOnboardingStore } from "@/store/onboarding-store";
 
 type SportsPayload = {
@@ -31,94 +35,8 @@ type SportsPayload = {
   upcoming?: any[];
 };
 
-type HighlightsPayload = {
-  highlights?: any[];
-};
-
-const homeSportsCacheKey = (date: string) => `home:sports:${date}`;
-const homeMediaCacheKey = "home:media:trending";
-const homeHighlightsCacheKey = "home:sports:highlights";
-
-async function fetchJson(path: string) {
-  const response = await apiRequest("GET", path);
-  return response.json();
-}
-
-function uniqueItemsByKey<T>(items: T[], getKey: (item: T, index: number) => string): T[] {
-  const seen = new Set<string>();
-  const result: T[] = [];
-  for (let index = 0; index < items.length; index += 1) {
-    const item = items[index];
-    const key = getKey(item, index);
-    if (!key || seen.has(key)) continue;
-    seen.add(key);
-    result.push(item);
-  }
-  return result;
-}
-
-function buildSportsPayload(payloads: Array<any | null | undefined>): SportsPayload {
-  const live = uniqueItemsByKey(
-    payloads.flatMap((payload) => (Array.isArray(payload?.live) ? payload.live : [])),
-    (item, index) => String(item?.id || `${item?.homeTeam || "home"}_${item?.awayTeam || "away"}_${item?.startDate || index}`),
-  );
-  const upcoming = uniqueItemsByKey(
-    payloads.flatMap((payload) => (Array.isArray(payload?.upcoming) ? payload.upcoming : [])),
-    (item, index) => String(item?.id || `${item?.homeTeam || "home"}_${item?.awayTeam || "away"}_${item?.startDate || index}`),
-  );
-
-  return { live, upcoming };
-}
-
-function buildHomeMediaData(movieData: any, seriesData: any) {
-  const movieItems = [
-    ...(Array.isArray(movieData?.trending) ? movieData.trending : []),
-    ...(Array.isArray(movieData?.popular) ? movieData.popular : []),
-  ];
-  const seriesItems = [
-    ...(Array.isArray(seriesData?.trending) ? seriesData.trending : []),
-    ...(Array.isArray(seriesData?.popular) ? seriesData.popular : []),
-  ];
-
-  return {
-    movies: movieItems.slice(0, 18).map((item: any) => toMediaItem(item, "movie")),
-    series: seriesItems.slice(0, 18).map((item: any) => toMediaItem(item, "series")),
-    newReleases: [
-      ...movieItems.map((item: any) => ({ ...item, __kind: "movie" })),
-      ...seriesItems.map((item: any) => ({ ...item, __kind: "series" })),
-    ]
-      .filter((item: any) => {
-        const year = Number(item?.year || 0);
-        return year >= new Date().getFullYear() - 1;
-      })
-      .slice(0, 12)
-      .map((item: any) => toMediaItem(item, item?.__kind === "series" ? "series" : "movie")),
-  };
-}
-
-function getCachedHomeSportsPayload(date: string): SportsPayload {
-  const direct = cachePeekStale<SportsPayload>(homeSportsCacheKey(date));
-  if (direct) return direct;
-
-  const todayPayload = cachePeekStale<any>(`sports:today:${date}`);
-  const livePayload = cachePeekStale<any>(`sports:live:${date}`);
-  return buildSportsPayload([livePayload, todayPayload]);
-}
-
-function getCachedHomeMediaData() {
-  const direct = cachePeekStale<any>(homeMediaCacheKey);
-  if (direct) return direct;
-  const moviePayload = cachePeekStale<any>("movies:trending");
-  const seriesPayload = cachePeekStale<any>("series:trending");
-  return buildHomeMediaData(moviePayload, seriesPayload);
-}
-
 function todayUTC() {
   return new Date().toISOString().slice(0, 10);
-}
-
-function toMediaItem(item: any, type: "movie" | "series") {
-  return enrichVodModuleItem({ ...item, type });
 }
 
 function normalizeLeagueLabel(value: unknown): string {
@@ -203,104 +121,22 @@ function toMatchParams(match: any) {
 }
 
 export default function CuratedHomeScreen() {
+  useRenderTelemetry("CuratedHomeScreen");
+
   const insets = useSafeAreaInsets();
   const sportsEnabled = useOnboardingStore((s) => s.sportsEnabled);
   const moviesEnabled = useOnboardingStore((s) => s.moviesEnabled);
   const { watchHistory, isFavorite, toggleFavorite } = useNexora();
   const { continueWatching: syncedContinueWatching } = useWatchProgress();
 
-  const sportsQuery = useQuery({
-    queryKey: ["home", "sports-curated", todayUTC()],
-    placeholderData: () => getCachedHomeSportsPayload(todayUTC()),
-    queryFn: async (): Promise<SportsPayload> => {
-      const key = homeSportsCacheKey(todayUTC());
-      const stale = (await cacheGetStale<SportsPayload>(key)) || getCachedHomeSportsPayload(todayUTC());
-      const [liveResult, todayResult] = await Promise.allSettled([
-        fetchJson(`/api/sports/live?date=${encodeURIComponent(todayUTC())}`),
-        fetchJson(`/api/sports/by-date?date=${encodeURIComponent(todayUTC())}`),
-      ]);
+  const sportsQuery = useQuery(buildHomeSportsQuery(todayUTC(), sportsEnabled));
+  const mediaQuery = useQuery(buildVodHomeQuery(moviesEnabled));
+  const highlightsQuery = useQuery(buildHighlightsQuery(sportsEnabled));
 
-      const livePayload = liveResult.status === "fulfilled" ? liveResult.value : null;
-      const todayPayload = todayResult.status === "fulfilled" ? todayResult.value : null;
-      const normalized = buildSportsPayload([livePayload, todayPayload]);
-
-      if (normalized.live.length > 0 || normalized.upcoming.length > 0) {
-        cacheSet(key, normalized, CacheTTL.TODAY_SPORTS);
-        return normalized;
-      }
-
-      return stale || { live: [], upcoming: [] };
-    },
-    enabled: sportsEnabled,
-    staleTime: 10 * 1000,
-    refetchInterval: 12 * 1000,
-    refetchIntervalInBackground: true,
-    refetchOnReconnect: true,
-    retry: 2,
-  });
-
-  const mediaQuery = useQuery({
-    queryKey: ["home", "media-curated"],
-    placeholderData: () => getCachedHomeMediaData(),
-    queryFn: async () => {
-      const stale = (await cacheGetStale<any>(homeMediaCacheKey)) || getCachedHomeMediaData();
-      const [movieResult, seriesResult] = await Promise.allSettled([
-        fetchJson("/api/movies/trending"),
-        fetchJson("/api/series/trending"),
-      ]);
-
-      const movieData = movieResult.status === "fulfilled" ? movieResult.value : null;
-      const seriesData = seriesResult.status === "fulfilled" ? seriesResult.value : null;
-      const data = buildHomeMediaData(movieData, seriesData);
-
-      if (data.movies.length > 0 || data.series.length > 0 || data.newReleases.length > 0) {
-        cacheSet(homeMediaCacheKey, data, CacheTTL.HOME_RAILS);
-        return data;
-      }
-
-      return stale || { movies: [], series: [], newReleases: [] };
-
-    },
-    retry: 2,
-    enabled: moviesEnabled,
-    staleTime: 45 * 1000,
-    refetchInterval: 90 * 1000,
-    refetchIntervalInBackground: true,
-    refetchOnReconnect: true,
-  });
-
-  const mediaData = mediaQuery.data || getCachedHomeMediaData() || { movies: [], series: [], newReleases: [] };
-
-  const highlightsQuery = useQuery({
-    queryKey: ["home", "sports-highlights"],
-    placeholderData: () => cachePeekStale<any[]>(homeHighlightsCacheKey) || undefined,
-    queryFn: async () => {
-      const stale = await cacheGetStale<any[]>(homeHighlightsCacheKey);
-      try {
-        const payload = (await fetchJson("/api/sports/highlights")) as HighlightsPayload;
-        const rows = Array.isArray(payload?.highlights) ? payload.highlights : [];
-        cacheSet(homeHighlightsCacheKey, rows, CacheTTL.MATCH_DETAIL);
-        return rows;
-      } catch {
-        return stale || [];
-      }
-    },
-    enabled: sportsEnabled,
-    staleTime: 30 * 1000,
-    refetchInterval: 60 * 1000,
-    refetchIntervalInBackground: true,
-    retry: 2,
-  });
+  const mediaData = deriveCuratedHomeMedia(mediaQuery.data);
 
   const continueWatching = useMemo(() => {
-    const baseHistory = Array.isArray(syncedContinueWatching) && syncedContinueWatching.length > 0
-      ? syncedContinueWatching
-      : (watchHistory as any);
-    const movieRows = createContinueWatching(baseHistory as any, "movie", 8);
-    const seriesRows = createContinueWatching(baseHistory as any, "series", 8);
-    return [...movieRows, ...seriesRows]
-      .slice(0, 8)
-      .map((item: any) => enrichVodModuleItem({ ...item, type: item.season ? "series" : item.type || "movie" }));
+    return buildContinueWatchingRows(watchHistory as any, syncedContinueWatching as any, 8);
   }, [syncedContinueWatching, watchHistory]);
 
   const liveMatches = sportsEnabled ? (sportsQuery.data?.live || []) : [];

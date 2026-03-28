@@ -3152,7 +3152,439 @@ function CombinedPitchViewInner({ homeTeamData, awayTeamData, league }: { homeTe
 
 const CombinedPitchView = React.memo(CombinedPitchViewInner);
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
+
+function FormBubbles({ form }: { form: string }) {
+
+  const homeShortName = homeTeam;
+  const awayShortName = awayTeam;
+
+  return (
+    <View style={{ gap: 12 }}>
+      {/* Main prediction card */}
+      <LinearGradient colors={["rgba(0,212,255,0.12)", "rgba(0,212,255,0.04)"]} style={styles.aiMainCard}>
+        <View style={styles.aiHeader}>
+          <MaterialCommunityIcons name="robot" size={20} color={COLORS.accent} />
+          <Text style={styles.aiTitle}>AI Match Intelligence</Text>
+          <View style={styles.aiConfidenceBadge}>
+            <Text style={styles.aiConfidenceText}>{prediction.confidence}% zekerheid</Text>
+          </View>
+        </View>
+
+        {/* Confidence meter bar */}
+        {prediction.confidence != null && (
+          <View style={{ marginBottom: 12, gap: 4 }}>
+            <View style={{ height: 4, backgroundColor: "rgba(255,255,255,0.1)", borderRadius: 2, overflow: "hidden" }}>
+              <View style={{
+                height: "100%",
+                width: `${Math.min(100, Number(prediction.confidence) || 0)}%`,
+                borderRadius: 2,
+                backgroundColor: Number(prediction.confidence) >= 70 ? "#4CAF82" :
+                                 Number(prediction.confidence) >= 50 ? "#FFB833" : "#FF5252",
+              }} />
+            </View>
+          </View>
+        )}
+
+        {prediction?.providerError && prediction?.insufficientData ? (
+          <View style={styles.aiWarnCard}>
+            <MaterialCommunityIcons name="alert-outline" size={14} color={COLORS.gold} />
+            <Text style={styles.aiWarnText}>{tFn("matchDetail.insufficientData")}</Text>
+          </View>
+        ) : null}
+
+        <Text style={[styles.aiPrediction, { color: winnerColor }]}>
+          {prediction.prediction === "Home Win" ? tFn("matchDetail.wins", { team: homeTeam }) :
+           prediction.prediction === "Away Win" ? tFn("matchDetail.wins", { team: awayTeam }) : tFn("matchDetail.draw")}
+        </Text>
+
+        {prediction.predictedScore && (
+          <Text style={styles.aiScore}>{tFn("matchDetail.expectedScore")} {prediction.predictedScore}</Text>
+        )}
+
+        {prediction.confidenceReason ? (
+          <View style={styles.aiWarnCard}>
+            <MaterialCommunityIcons name="information-outline" size={14} color={COLORS.accent} />
+            <Text style={styles.aiWarnText}>{prediction.confidenceReason}</Text>
+          </View>
+        ) : null}
+
+        {/* 3-column Win / Draw / Loss chances */}
+        <View style={styles.chanceRow}>
+          <View style={[styles.chanceBlock, { borderColor: `${COLORS.accent}44` }]}>
+            <Text style={[styles.chancePct, { color: COLORS.accent }]}>{normPcts.homePct}%</Text>
+            <Text style={styles.chanceLabel} numberOfLines={1}>{homeShortName}</Text>
+            <Text style={styles.chanceSubLabel}>Wint</Text>
+          </View>
+          <View style={[styles.chanceBlock, { borderColor: "rgba(255,215,0,0.3)" }]}>
+            <Text style={[styles.chancePct, { color: "#FFD700" }]}>{normPcts.drawPct}%</Text>
+            <Text style={styles.chanceLabel}>Gelijk</Text>
+            <Text style={styles.chanceSubLabel}>Kans</Text>
+          </View>
+          <View style={[styles.chanceBlock, { borderColor: `${COLORS.live}44` }]}>
+            <Text style={[styles.chancePct, { color: COLORS.live }]}>{normPcts.awayPct}%</Text>
+            <Text style={styles.chanceLabel} numberOfLines={1}>{awayShortName}</Text>
+            <Text style={styles.chanceSubLabel}>Wint</Text>
+          </View>
+        </View>
+
+        {/* xG row */}
+        {hasXgData ? (
+          <View style={styles.xgRow}>
+            <View style={{ alignItems: "center", flex: 1 }}>
+              <Text style={styles.xgValue}>{prediction.xgHome}</Text>
+              <Text style={styles.xgLabel}>xG {homeShortName}</Text>
+            </View>
+            <View style={{ alignItems: "center" }}>
+              <Text style={{ fontFamily: "Inter_600SemiBold", fontSize: 11, color: COLORS.textMuted }}>Expected Goals</Text>
+            </View>
+            <View style={{ alignItems: "center", flex: 1 }}>
+              <Text style={[styles.xgValue, { color: COLORS.live }]}>{prediction.xgAway}</Text>
+              <Text style={styles.xgLabel}>xG {awayShortName}</Text>
+            </View>
+          </View>
+        ) : (
+          <View style={styles.aiWarnCard}>
+            <MaterialCommunityIcons name="information-outline" size={14} color={COLORS.textMuted} />
+            <Text style={styles.aiWarnText}>xG: {tFn("matchDetail.insufficientDataShort")}</Text>
+          </View>
+        )}
+      </LinearGradient>
+
+      {(hasMarketMetrics || hasEdgeScore) ? (
+        <View style={styles.infoCard}>
+          <Text style={styles.infoCardTitle}>SMART MARKETS</Text>
+          <View style={styles.marketGrid}>
+            {Number.isFinite(bttsPct) ? (
+              <View style={styles.marketCard}>
+                <Text style={styles.marketLabel}>BTTS</Text>
+                <Text style={styles.marketValue}>{Math.round(bttsPct)}%</Text>
+                <Text style={styles.marketSub}>{tFn("matchDetail.btts")}</Text>
+              </View>
+            ) : null}
+            {Number.isFinite(over25Pct) ? (
+              <View style={styles.marketCard}>
+                <Text style={styles.marketLabel}>Over 2.5</Text>
+                <Text style={styles.marketValue}>{Math.round(over25Pct)}%</Text>
+                <Text style={styles.marketSub}>{tFn("matchDetail.totalGoals")}</Text>
+              </View>
+            ) : null}
+            {Number.isFinite(homeDcPct) ? (
+              <View style={styles.marketCard}>
+                <Text style={styles.marketLabel}>1X</Text>
+                <Text style={styles.marketValue}>{Math.round(homeDcPct)}%</Text>
+                <Text style={styles.marketSub}>{homeShortName} {tFn("matchDetail.orDraw")}</Text>
+              </View>
+            ) : null}
+            {Number.isFinite(awayDcPct) ? (
+              <View style={styles.marketCard}>
+                <Text style={styles.marketLabel}>X2</Text>
+                <Text style={styles.marketValue}>{Math.round(awayDcPct)}%</Text>
+                <Text style={styles.marketSub}>{awayShortName} {tFn("matchDetail.orDraw")}</Text>
+              </View>
+            ) : null}
+          </View>
+          {hasEdgeScore ? (
+            <View style={styles.edgeRow}>
+              <Text style={styles.edgeLabel}>Model edge</Text>
+              <Text style={styles.edgeValue}>{Math.round(edgeScore)}/100</Text>
+            </View>
+          ) : null}
+        </View>
+      ) : null}
+
+      <View style={styles.infoCard}>
+        <Text style={styles.infoCardTitle}>{tFn("matchDetail.aiSignals")}</Text>
+        <View style={styles.marketGrid}>
+          <View style={styles.marketCard}>
+            <Text style={styles.marketLabel}>{tFn("matchDetail.winTilt")}</Text>
+            <Text style={styles.marketValue}>{winGapPct}%</Text>
+            <Text style={styles.marketSub}>{tFn("matchDetail.winTiltSub")}</Text>
+          </View>
+          <View style={styles.marketCard}>
+            <Text style={styles.marketLabel}>{tFn("matchDetail.volatility")}</Text>
+            <Text style={styles.marketValue}>{volatilityScore}%</Text>
+            <Text style={styles.marketSub}>{tFn("matchDetail.volatilityDesc")}</Text>
+          </View>
+          {totalXg !== null ? (
+            <View style={styles.marketCard}>
+              <Text style={styles.marketLabel}>{tFn("matchDetail.goalExpectancy")}</Text>
+              <Text style={styles.marketValue}>{totalXg.toFixed(2)}</Text>
+              <Text style={styles.marketSub}>{tFn("matchDetail.expectedTotalXg")}</Text>
+            </View>
+          ) : null}
+          <View style={styles.marketCard}>
+            <Text style={styles.marketLabel}>{tFn("matchDetail.aiBand")}</Text>
+            <Text style={[styles.marketValue, { color: recommendationColor }]}>{recommendationLabel}</Text>
+            <Text style={styles.marketSub}>{tFn("matchDetail.modelEstimate")}</Text>
+          </View>
+        </View>
+      </View>
+
+      {/* Next goal probability */}
+      {prediction.nextGoalProbability != null && (
+        <View style={styles.nextGoalCard}>
+          <View style={styles.nextGoalHeader}>
+            <MaterialCommunityIcons name="soccer" size={14} color={COLORS.accent} />
+            <Text style={styles.nextGoalTitle}>{tFn("matchDetail.nextGoalChance")}</Text>
+            <Text style={styles.nextGoalPct}>{prediction.nextGoalProbability}%</Text>
+          </View>
+          <View style={styles.nextGoalBar}>
+            <View style={[styles.nextGoalFill, { width: `${Math.min(100, prediction.nextGoalProbability)}%` as any }]} />
+          </View>
+        </View>
+      )}
+
+      {/* Meta row: momentum, danger, risk */}
+      <View style={{ flexDirection: "row", gap: 8 }}>
+        {prediction.momentum && (
+          <View style={[styles.metaBadge, { flex: 1 }]}>
+            <MaterialCommunityIcons name="trending-up" size={14} color={COLORS.accent} />
+            <Text style={styles.metaBadgeLabel}>{tFn("matchDetail.momentum")}</Text>
+            <Text style={styles.metaBadgeValue}>{prediction.momentum}</Text>
+          </View>
+        )}
+        {prediction.danger && (
+          <View style={[styles.metaBadge, { flex: 1 }]}>
+            <MaterialCommunityIcons name="alert-circle-outline" size={14} color={COLORS.live} />
+            <Text style={styles.metaBadgeLabel}>{tFn("matchDetail.danger")}</Text>
+            <Text style={styles.metaBadgeValue}>{prediction.danger.replace(" Attack", "")}</Text>
+          </View>
+        )}
+        {prediction.riskLevel && (
+          <View style={[styles.metaBadge, { flex: 1 }]}>
+            <MaterialCommunityIcons name="shield-outline" size={14} color={riskColor} />
+            <Text style={styles.metaBadgeLabel}>{tFn("matchDetail.risk")}</Text>
+            <Text style={[styles.metaBadgeValue, { color: riskColor }]}>{prediction.riskLevel}</Text>
+          </View>
+        )}
+      </View>
+
+      {/* Summary */}
+      {prediction.summary && (
+        <View style={styles.infoCard}>
+          <Text style={styles.infoCardTitle}>{tFn("matchDetail.tacticalAnalysis")}</Text>
+          <Text style={styles.aiSummary}>{prediction.summary}</Text>
+        </View>
+      )}
+
+      {/* Key factors */}
+      {prediction.keyFactors?.length > 0 && (
+        <View style={styles.infoCard}>
+          <Text style={styles.infoCardTitle}>{tFn("matchDetail.keyFactors")}</Text>
+          {prediction.keyFactors.map((f: string, i: number) => (
+            <View key={i} style={styles.factorRow}>
+              <View style={styles.factorDot} />
+              <Text style={styles.factorText}>{f}</Text>
+            </View>
+          ))}
+        </View>
+      )}
+
+      {/* Tactical notes */}
+      {prediction.tacticalNotes?.length > 0 && (
+        <View style={styles.infoCard}>
+          <Text style={styles.infoCardTitle}>{tFn("matchDetail.tacticalNotes")}</Text>
+          {prediction.tacticalNotes.map((n: string, i: number) => (
+            <View key={i} style={styles.factorRow}>
+              <MaterialCommunityIcons name="chess-rook" size={12} color={COLORS.accent} />
+              <Text style={[styles.factorText, { marginLeft: 4 }]}>{n}</Text>
+            </View>
+          ))}
+        </View>
+      )}
+
+      {/* Formation + Pressure index */}
+      {(prediction.formation || prediction.pressureIndex != null) && (
+        <View style={styles.infoCard}>
+          <Text style={styles.infoCardTitle}>FORMATIE & PRESSING</Text>
+          {prediction.formation && (
+            <View style={styles.factorRow}>
+              <MaterialCommunityIcons name="soccer-field" size={13} color={COLORS.accent} />
+              <Text style={[styles.factorText, { marginLeft: 4 }]}>{prediction.formation}</Text>
+            </View>
+          )}
+          {prediction.pressureIndex != null && (
+            <View style={[styles.factorRow, { marginTop: 6 }]}>
+              <Text style={[styles.infoCardTitle, { fontSize: 10, marginBottom: 0 }]}>PRESSING THUISPLOEG</Text>
+              <View style={{ flex: 1, height: 6, backgroundColor: "rgba(255,255,255,0.08)", borderRadius: 3, marginLeft: 8, overflow: "hidden" }}>
+                <View style={{ width: `${Math.min(100, Number(prediction.pressureIndex) || 0)}%`, height: "100%", backgroundColor: COLORS.accent, borderRadius: 3 }} />
+              </View>
+              <Text style={[styles.factorText, { marginLeft: 6, minWidth: 28, textAlign: "right" }]}>{Number(prediction.pressureIndex) || 0}</Text>
+            </View>
+          )}
+        </View>
+      )}
+
+      {/* Form bubbles */}
+      {(prediction.formHome || prediction.formAway) && (
+        <View style={styles.formRow}>
+          {prediction.formHome && (
+            <View style={[styles.formCard, { flex: 1 }]}>
+              <Text style={styles.formTeamName}>{homeShortName}</Text>
+              <FormBubbles form={prediction.formHome} />
+            </View>
+          )}
+          {prediction.formAway && (
+            <View style={[styles.formCard, { flex: 1 }]}>
+              <Text style={styles.formTeamName}>{awayShortName}</Text>
+              <FormBubbles form={prediction.formAway} />
+            </View>
+          )}
+        </View>
+      )}
+
+      {/* H2H */}
+      {prediction.h2hSummary && (
+        <View style={styles.tipCard}>
+          <MaterialCommunityIcons name="history" size={15} color={COLORS.accent} />
+          <Text style={styles.tipText}>{prediction.h2hSummary}</Text>
+        </View>
+      )}
+
+      {/* Match Insight */}
+      {prediction.matchInsight && (
+        <View style={styles.infoCard}>
+          <Text style={styles.infoCardTitle}>MATCH INSIGHT</Text>
+          <Text style={styles.aiSummary}>{prediction.matchInsight}</Text>
+        </View>
+      )}
+
+      {/* Form Guide — detailed descriptions */}
+      {prediction.formGuide && (prediction.formGuide.homeForm || prediction.formGuide.awayForm) && (
+        <View style={styles.infoCard}>
+          <Text style={styles.infoCardTitle}>FORM GUIDE</Text>
+          {prediction.formGuide.homeForm && (
+            <View style={{ marginBottom: 10 }}>
+              <Text style={[styles.factorText, { color: COLORS.accent, fontFamily: "Inter_600SemiBold", marginBottom: 4 }]}>{homeShortName}</Text>
+              <Text style={styles.aiSummary}>{prediction.formGuide.homeForm}</Text>
+            </View>
+          )}
+          {prediction.formGuide.awayForm && (
+            <View>
+              <Text style={[styles.factorText, { color: COLORS.live, fontFamily: "Inter_600SemiBold", marginBottom: 4 }]}>{awayShortName}</Text>
+              <Text style={styles.aiSummary}>{prediction.formGuide.awayForm}</Text>
+            </View>
+          )}
+        </View>
+      )}
+
+      {/* Tactical Edge — strengths vs weaknesses */}
+      {prediction.tacticalEdge && (
+        <View style={styles.infoCard}>
+          <Text style={styles.infoCardTitle}>TACTICAL EDGE</Text>
+          <View style={{ flexDirection: "row", gap: 10 }}>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.factorText, { color: COLORS.accent, fontFamily: "Inter_600SemiBold", marginBottom: 6, textAlign: "center" }]}>{homeShortName}</Text>
+              {(prediction.tacticalEdge.homeStrengths || []).map((s: string, i: number) => (
+                <View key={`hs-${i}`} style={{ flexDirection: "row", alignItems: "center", gap: 4, marginBottom: 4 }}>
+                  <MaterialCommunityIcons name="arrow-up-bold" size={11} color="#4CAF50" />
+                  <Text style={[styles.factorText, { fontSize: 12 }]}>{s}</Text>
+                </View>
+              ))}
+              {(prediction.tacticalEdge.homeWeaknesses || []).map((w: string, i: number) => (
+                <View key={`hw-${i}`} style={{ flexDirection: "row", alignItems: "center", gap: 4, marginBottom: 4 }}>
+                  <MaterialCommunityIcons name="arrow-down-bold" size={11} color={COLORS.live} />
+                  <Text style={[styles.factorText, { fontSize: 12 }]}>{w}</Text>
+                </View>
+              ))}
+            </View>
+            <View style={{ width: 1, backgroundColor: "rgba(255,255,255,0.08)" }} />
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.factorText, { color: COLORS.live, fontFamily: "Inter_600SemiBold", marginBottom: 6, textAlign: "center" }]}>{awayShortName}</Text>
+              {(prediction.tacticalEdge.awayStrengths || []).map((s: string, i: number) => (
+                <View key={`as-${i}`} style={{ flexDirection: "row", alignItems: "center", gap: 4, marginBottom: 4 }}>
+                  <MaterialCommunityIcons name="arrow-up-bold" size={11} color="#4CAF50" />
+                  <Text style={[styles.factorText, { fontSize: 12 }]}>{s}</Text>
+                </View>
+              ))}
+              {(prediction.tacticalEdge.awayWeaknesses || []).map((w: string, i: number) => (
+                <View key={`aw-${i}`} style={{ flexDirection: "row", alignItems: "center", gap: 4, marginBottom: 4 }}>
+                  <MaterialCommunityIcons name="arrow-down-bold" size={11} color={COLORS.live} />
+                  <Text style={[styles.factorText, { fontSize: 12 }]}>{w}</Text>
+                </View>
+              ))}
+            </View>
+          </View>
+        </View>
+      )}
+
+      {/* Attacking & Defensive Strength Bars */}
+      {prediction.attackingStrength && prediction.defensiveStrength && (
+        <View style={styles.infoCard}>
+          <Text style={styles.infoCardTitle}>KRACHT VERGELIJKING</Text>
+          <View style={{ gap: 12 }}>
+            <View>
+              <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 4 }}>
+                <Text style={[styles.factorText, { fontSize: 12 }]}>Aanvalskracht</Text>
+                <Text style={[styles.factorText, { fontSize: 12 }]}>{homeShortName} {prediction.attackingStrength.home} — {prediction.attackingStrength.away} {awayShortName}</Text>
+              </View>
+              <View style={{ flexDirection: "row", gap: 4, height: 8 }}>
+                <View style={{ flex: prediction.attackingStrength.home, backgroundColor: COLORS.accent, borderRadius: 4 }} />
+                <View style={{ flex: prediction.attackingStrength.away, backgroundColor: "#5B8DEF", borderRadius: 4 }} />
+              </View>
+            </View>
+            <View>
+              <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 4 }}>
+                <Text style={[styles.factorText, { fontSize: 12 }]}>Defensieve sterkte</Text>
+                <Text style={[styles.factorText, { fontSize: 12 }]}>{homeShortName} {prediction.defensiveStrength.home} — {prediction.defensiveStrength.away} {awayShortName}</Text>
+              </View>
+              <View style={{ flexDirection: "row", gap: 4, height: 8 }}>
+                <View style={{ flex: prediction.defensiveStrength.home, backgroundColor: COLORS.accent, borderRadius: 4 }} />
+                <View style={{ flex: prediction.defensiveStrength.away, backgroundColor: "#5B8DEF", borderRadius: 4 }} />
+              </View>
+            </View>
+          </View>
+        </View>
+      )}
+
+      {/* Player Impact */}
+      {prediction.playerImpact && prediction.playerImpact.length > 0 && (
+        <View style={styles.infoCard}>
+          <Text style={styles.infoCardTitle}>SPELER IMPACT</Text>
+          {prediction.playerImpact.map((p: any, i: number) => (
+            <View key={`pi-${i}`} style={[styles.factorRow, { marginBottom: 6 }]}>
+              <MaterialCommunityIcons name="account-star" size={13} color={p.team === "home" ? COLORS.accent : "#5B8DEF"} />
+              <Text style={[styles.factorText, { marginLeft: 4 }]}>
+                <Text style={{ fontFamily: "Inter_600SemiBold", color: p.team === "home" ? COLORS.accent : "#5B8DEF" }}>{p.name}</Text>
+                {" — "}{p.impact}
+              </Text>
+            </View>
+          ))}
+        </View>
+      )}
+
+      {/* Match Pattern */}
+      {prediction.matchPattern && (
+        <View style={styles.tipCard}>
+          <MaterialCommunityIcons name="chart-timeline-variant" size={15} color={COLORS.accent} />
+          <Text style={styles.tipText}>{prediction.matchPattern}</Text>
+        </View>
+      )}
+
+      {/* AI Prediction Explanation */}
+      {prediction.predictionExplanation && (
+        <View style={styles.infoCard}>
+          <Text style={styles.infoCardTitle}>AI VOORSPELLING ONDERBOUWING</Text>
+          <Text style={styles.aiSummary}>{prediction.predictionExplanation}</Text>
+        </View>
+      )}
+
+      {/* Tip */}
+      {prediction.tip && (
+        <View style={[styles.tipCard, { borderColor: "rgba(255,215,0,0.3)", backgroundColor: "rgba(255,215,0,0.06)" }]}>
+          <MaterialCommunityIcons name="lightbulb-outline" size={16} color="#FFD700" />
+          <Text style={[styles.tipText, { color: "#FFD700" }]}>{prediction.tip}</Text>
+        </View>
+      )}
+
+      <Text style={styles.aiDisclaimer}>
+        {tFn("matchDetail.aiDisclaimer")}
+      </Text>
+    </View>
+  );
+}
+
+// eslint-disable-next-line @typescript-eslint/no-redeclare
 function FormBubbles({ form }: { form: string }) {
   return (
     <View style={styles.formBubbles}>
