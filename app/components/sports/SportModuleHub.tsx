@@ -7,7 +7,7 @@
  * No overlaps, no glitching, clean architecture.
  */
 
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useMemo, useEffect } from "react";
 import {
   View, Text, StyleSheet, ScrollView, RefreshControl, TouchableOpacity,
 } from "react-native";
@@ -20,10 +20,13 @@ import { NexoraHeader } from "@/components/NexoraHeader";
 import { useOnboardingStore } from "@/store/onboarding-store";
 import { useTranslation } from "@/lib/useTranslation";
 import { buildSportLiveQuery, buildSportScheduleQuery } from "@/services/realtime-engine";
+import { useFollowState } from "@/context/UserStateContext";
 import {
   LiveMatchCard,
   UpcomingMatchCard,
 } from "@/components/sports/SportCards";
+import { resolveMatchCompetitionLabel, resolveMatchEspnLeagueCode } from "@/lib/sports-competition";
+import { loadMatchInteractions, rankMatchesForUser, recordMatchInteraction } from "@/lib/ai";
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // TYPES & DATA STRUCTURES
@@ -47,7 +50,7 @@ const DS = {
   bg: "#09090D",
   card: "#12121A",
   elevated: "#1C1C28",
-  accent: "#E50914",
+  accent: "#4CAF82",
   live: "#FF3040",
   text: "#FFFFFF",
   muted: "#9D9DAA",
@@ -60,20 +63,38 @@ const DS = {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 function toSportCardMatch(match: any) {
-  if (!match?.homeTeam || typeof match.homeTeam === "string") return match;
-  return {
-    ...match,
-    league: match?.competition?.displayName || match?.league || "League",
-    espnLeague: match?.competition?.espnSlug || match?.espnLeague || "",
-    homeTeam: match?.homeTeam?.name || "Home",
-    awayTeam: match?.awayTeam?.name || "Away",
-    homeTeamLogo: match?.homeTeam?.logo || null,
-    awayTeamLogo: match?.awayTeam?.logo || null,
-    homeScore: match?.score?.home ?? match?.homeScore,
-    awayScore: match?.score?.away ?? match?.awayScore,
-    startTime: match?.startTime || null,
-    minute: match?.minute ?? null,
-  };
+  // Match is already normalized from normalizeMatchFromServer
+  // homeTeam/awayTeam are objects with {id, name, logo, score}
+  // No transformation needed if it's already a flat card format
+  if (typeof match?.homeTeam === "string") {
+    // Already flattened card format - return as-is
+    return match;
+  }
+
+  // For normalized Match objects, flatten into card format
+  if (match?.homeTeam && typeof match.homeTeam === "object") {
+    return {
+      ...match,
+      id: match.id || `match-${Date.now()}`,
+      league: resolveMatchCompetitionLabel(match),
+      espnLeague: resolveMatchEspnLeagueCode(match),
+      // Extract team names from normalized structure
+      homeTeam: String(match?.homeTeam?.name || "").trim() || "",
+      awayTeam: String(match?.awayTeam?.name || "").trim() || "",
+      homeTeamId: match?.homeTeam?.id || "",
+      awayTeamId: match?.awayTeam?.id || "",
+      homeTeamLogo: match?.homeTeam?.logo || null,
+      awayTeamLogo: match?.awayTeam?.logo || null,
+      homeScore: match?.score?.home ?? match?.homeScore ?? 0,
+      awayScore: match?.score?.away ?? match?.awayScore ?? 0,
+      startTime: match?.startTime || null,
+      minute: match?.minute ?? null,
+      status: match?.status || "unknown",
+    };
+  }
+
+  // Fallback for unexpected formats - pass through as-is
+  return match;
 }
 
 function toSportCardPayload(payload: SportsPayload): SportsPayload {
@@ -82,6 +103,79 @@ function toSportCardPayload(payload: SportsPayload): SportsPayload {
     live: Array.isArray(payload?.live) ? payload.live.map(toSportCardMatch) : [],
     upcoming: Array.isArray(payload?.upcoming) ? payload.upcoming.map(toSportCardMatch) : [],
     finished: Array.isArray(payload?.finished) ? payload.finished.map(toSportCardMatch) : [],
+  };
+}
+
+/**
+ * Extract team name from various data formats
+ * Prioritizes real team names over fallback text
+ * Returns empty string rather than generic "Home"/"Away" to indicate missing data
+ */
+function getTeamName(team: unknown, fallback: string = ""): string {
+  if (typeof team === "string") {
+    const trimmed = team.trim();
+    // Don't return generic single-word names without more context
+    if (trimmed && trimmed !== "Home" && trimmed !== "Away" && trimmed.length > 0) {
+      return trimmed;
+    }
+    return fallback;
+  }
+
+  if (team && typeof team === "object") {
+    const obj = team as any;
+    const name = String(obj?.name ?? obj?.displayName ?? obj?.teamName ?? "").trim();
+    if (name && name !== "Home" && name !== "Away" && name.length > 0) {
+      return name;
+    }
+  }
+
+  return fallback;
+}
+
+function getTeamLogo(match: any, side: "home" | "away"): string {
+  const direct = side === "home" ? match?.homeTeamLogo : match?.awayTeamLogo;
+  if (typeof direct === "string" && direct.trim()) return direct;
+  const teamObj = side === "home" ? match?.homeTeam : match?.awayTeam;
+  if (teamObj && typeof teamObj === "object") {
+    const nestedLogo = String((teamObj as any)?.logo || "").trim();
+    if (nestedLogo) return nestedLogo;
+  }
+  return "";
+}
+
+function getScore(match: any, side: "home" | "away"): number {
+  const direct = side === "home" ? match?.homeScore : match?.awayScore;
+  if (Number.isFinite(Number(direct))) return Number(direct);
+  const nested = side === "home" ? match?.score?.home : match?.score?.away;
+  if (Number.isFinite(Number(nested))) return Number(nested);
+  return 0;
+}
+
+function toMatchDetailParams(match: any) {
+  const normalized = toSportCardMatch(match);
+  
+  // Ensure we have real team names - use empty string for missing rather than "Home"/"Away"
+  const homeTeamName = getTeamName(normalized?.homeTeam, "");
+  const awayTeamName = getTeamName(normalized?.awayTeam, "");
+  
+  return {
+    matchId: String(normalized?.id || "").trim(),
+    homeTeam: homeTeamName,
+    awayTeam: awayTeamName,
+    homeTeamId: String(normalized?.homeTeamId || normalized?.homeTeam?.id || "").trim(),
+    awayTeamId: String(normalized?.awayTeamId || normalized?.awayTeam?.id || "").trim(),
+    homeTeamLogo: getTeamLogo(normalized, "home"),
+    awayTeamLogo: getTeamLogo(normalized, "away"),
+    homeScore: String(getScore(normalized, "home")),
+    awayScore: String(getScore(normalized, "away")),
+    league: String(normalized?.league || "").trim(),
+    espnLeague: String(normalized?.espnLeague || "").trim(),
+    competitionId: normalized?.competition?.id || "",
+    minute: String(normalized?.minute ?? ""),
+    status: String(normalized?.status || "unknown").trim(),
+    sport: String(normalized?.sport || "football").trim(),
+    startDate: String(normalized?.startTime || normalized?.startDate || "").trim(),
+    statusDetail: String(normalized?.statusDetail || normalized?.detail || "").trim(),
   };
 }
 
@@ -112,6 +206,10 @@ export function SportModuleHub({ initialPane = "explore" }: SportModuleHubProps)
 
   // ─ Data Queries ──────────────────────────────────────────────────────────────
   const sportsEnabled = useOnboardingStore((s) => s.sportsEnabled);
+  const selectedTeams = useOnboardingStore((s) => s.selectedTeams);
+  const selectedCompetitions = useOnboardingStore((s) => s.selectedCompetitions);
+  const { followedTeams } = useFollowState();
+  const [matchInteractions, setMatchInteractions] = useState<any>(null);
 
   const liveQuery = useQuery({
     ...buildSportLiveQuery(sportsEnabled),
@@ -122,6 +220,45 @@ export function SportModuleHub({ initialPane = "explore" }: SportModuleHubProps)
     ...buildSportScheduleQuery(selectedDate, sportsEnabled),
     select: toSportCardPayload,
   });
+
+  useEffect(() => {
+    let mounted = true;
+    loadMatchInteractions().then((value) => {
+      if (mounted) setMatchInteractions(value);
+    }).catch(() => {
+      if (mounted) setMatchInteractions(null);
+    });
+    return () => { mounted = false; };
+  }, []);
+
+  const allMatches = useMemo(
+    () => [...(liveQuery.data?.live || []), ...(todayQuery.data?.upcoming || [])],
+    [liveQuery.data?.live, todayQuery.data?.upcoming],
+  );
+  const favoriteTeamNames = useMemo(
+    () => [
+      ...followedTeams.map((team) => String(team?.teamName || "")),
+      ...selectedTeams.map((team) => String(team?.name || "")),
+    ].filter(Boolean),
+    [followedTeams, selectedTeams],
+  );
+  const preferredLeagues = useMemo(
+    () => selectedCompetitions.map((competition) => String(competition?.name || competition?.id || "")).filter(Boolean),
+    [selectedCompetitions],
+  );
+  const rankedFeed = useMemo(() => {
+    return rankMatchesForUser({
+      matches: allMatches,
+      favoriteTeams: favoriteTeamNames,
+      preferredLeagues,
+      interactions: matchInteractions,
+    }).slice(0, 8);
+  }, [allMatches, favoriteTeamNames, preferredLeagues, matchInteractions]);
+
+  const openMatch = useCallback((match: any) => {
+    void recordMatchInteraction(match).then(() => loadMatchInteractions().then(setMatchInteractions).catch(() => undefined)).catch(() => undefined);
+    router.push({ pathname: "/match-detail", params: toMatchDetailParams(match) });
+  }, []);
 
   // ─ Pull to refresh ───────────────────────────────────────────────────────────
   const handleRefresh = useCallback(async () => {
@@ -141,17 +278,15 @@ export function SportModuleHub({ initialPane = "explore" }: SportModuleHubProps)
       <View style={styles.container}>
         <NexoraHeader
           variant="module"
-          title="NEXORA SPORT"
+          title="SPORT"
           titleColor={DS.accent}
           compact
           showSearch
           showNotification
           showFavorites
-          showProfile
-          onSearch={() => router.push("/(tabs)/search")}
+          onSearch={() => router.navigate("/(tabs)/search")}
           onNotification={() => router.push("/follow-center")}
           onFavorites={() => router.push("/favorites")}
-          onProfile={() => router.push("/profile")}
         />
         <View style={styles.disabledContainer}>
           <Ionicons name="football-outline" size={56} color={DS.accent} />
@@ -178,17 +313,15 @@ export function SportModuleHub({ initialPane = "explore" }: SportModuleHubProps)
       <View style={styles.headerContainer}>
         <NexoraHeader
           variant="module"
-          title="NEXORA SPORT"
+          title="SPORT"
           titleColor={DS.accent}
           compact
           showSearch
           showNotification
           showFavorites
-          showProfile
-          onSearch={() => router.push("/(tabs)/search")}
+          onSearch={() => router.navigate("/(tabs)/search")}
           onNotification={() => router.push("/follow-center")}
           onFavorites={() => router.push("/favorites")}
-          onProfile={() => router.push("/profile")}
         />
 
         {/* Pane Navigation */}
@@ -238,10 +371,18 @@ export function SportModuleHub({ initialPane = "explore" }: SportModuleHubProps)
         scrollEventThrottle={16}
         showsVerticalScrollIndicator={false}
       >
-        {activePane === "explore" && <ExplorePane />}
-        {activePane === "live" && <LivePane matches={liveQuery.data?.live || []} />}
-        {activePane === "matchday" && <MatchdayPane matches={todayQuery.data?.upcoming || []} />}
-        {activePane === "insights" && <InsightsPane />}
+        {activePane === "explore" && (
+          <ExplorePane
+            liveMatches={liveQuery.data?.live || []}
+            upcomingMatches={todayQuery.data?.upcoming || []}
+            rankedFeed={rankedFeed}
+            isLoading={Boolean(liveQuery.isLoading || todayQuery.isLoading)}
+            onOpenMatch={openMatch}
+          />
+        )}
+        {activePane === "live" && <LivePane matches={liveQuery.data?.live || []} onOpenMatch={openMatch} />}
+        {activePane === "matchday" && <MatchdayPane matches={todayQuery.data?.upcoming || []} onOpenMatch={openMatch} />}
+        {activePane === "insights" && <InsightsPane rankedFeed={rankedFeed} onOpenMatch={openMatch} />}
       </ScrollView>
     </View>
   );
@@ -251,23 +392,157 @@ export function SportModuleHub({ initialPane = "explore" }: SportModuleHubProps)
 // PANE COMPONENTS
 // ═══════════════════════════════════════════════════════════════════════════════
 
-function ExplorePane() {
+interface ExplorePaneProps {
+  liveMatches: any[];
+  upcomingMatches: any[];
+  rankedFeed: { match: any; reasons: string[]; isTrending: boolean; isUpsetPotential: boolean }[];
+  isLoading: boolean;
+  onOpenMatch: (match: any) => void;
+}
+
+function ExplorePane({ liveMatches, upcomingMatches, rankedFeed, isLoading, onOpenMatch }: ExplorePaneProps) {
   const { t } = useTranslation();
+
+  // Group upcoming matches by competition
+  const upcomingByLeague: Record<string, any[]> = upcomingMatches.reduce((acc, match) => {
+    const rawLeague = String(match?.league || "").trim();
+    const league = rawLeague && rawLeague !== "Competition" ? rawLeague : "Other Competitions";
+    if (!acc[league]) acc[league] = [];
+    (acc[league] as any[]).push(match);
+    return acc;
+  }, {} as Record<string, any[]>);
+
+  // Sort leagues by number of matches and convert to proper types
+  const sortedLeagues: [string, any[]][] = Object.entries(upcomingByLeague)
+    .sort((a, b) => {
+      const lenA = Array.isArray(a[1]) ? a[1].length : 0;
+      const lenB = Array.isArray(b[1]) ? b[1].length : 0;
+      return lenB - lenA;
+    })
+    .slice(0, 3)
+    .map(([league, matches]) => [league, Array.isArray(matches) ? matches : []]);
+
+  // Featured match = first live match, or first upcoming
+  const featuredMatch = rankedFeed[0]?.match || liveMatches[0] || upcomingMatches[0];
+
   return (
     <View style={{ paddingBottom: 40 }}>
       <SectionTitle title={t("sportsHome.explore")} />
-      <View style={{ paddingHorizontal: 18, paddingVertical: 20 }}>
-        <Text style={styles.placeholderText}>{t("sportsHome.exploreSports")}</Text>
+
+      {/* Summary Cards */}
+      <View style={styles.exploreSummary}>
+        <View style={styles.exploreSummaryCard}>
+          <Text style={styles.exploreSummaryLabel}>Live</Text>
+          <Text style={styles.exploreSummaryValue}>{liveMatches.length}</Text>
+        </View>
+        <View style={styles.exploreSummaryCard}>
+          <Text style={styles.exploreSummaryLabel}>Today</Text>
+          <Text style={styles.exploreSummaryValue}>{upcomingMatches.length}</Text>
+        </View>
       </View>
+
+      {/* Loading State */}
+      {isLoading ? (
+        <View style={{ paddingHorizontal: 18, paddingVertical: 12 }}>
+          <Text style={styles.placeholderText}>Loading football data...</Text>
+        </View>
+      ) : null}
+
+      {/* Empty State */}
+      {!isLoading && liveMatches.length === 0 && upcomingMatches.length === 0 ? (
+        <View style={{ paddingHorizontal: 18, paddingVertical: 12 }}>
+          <Text style={styles.placeholderText}>{t("sportsHome.exploreSports")}</Text>
+        </View>
+      ) : null}
+
+      {/* Featured Match - if available */}
+      {!isLoading && featuredMatch ? (
+        <>
+          <SectionTitle title="Featured" />
+          <View style={styles.matchList}>
+            {liveMatches && liveMatches[0] ? (
+              <LiveMatchCard
+                match={liveMatches[0]}
+                onPress={() => onOpenMatch(liveMatches[0])}
+              />
+            ) : upcomingMatches && upcomingMatches[0] ? (
+              <UpcomingMatchCard
+                match={upcomingMatches[0]}
+                onPress={() => onOpenMatch(upcomingMatches[0])}
+              />
+            ) : null}
+          </View>
+        </>
+      ) : null}
+
+      {!isLoading && rankedFeed.length > 0 ? (
+        <>
+          <SectionTitle title="Smart Match Feed" count={rankedFeed.length} />
+          <View style={styles.matchList}>
+            {rankedFeed.slice(0, 4).map((entry, idx) => (
+              <View key={`${String(entry?.match?.id || idx)}_smart`}>
+                <UpcomingMatchCard
+                  match={entry.match}
+                  onPress={() => onOpenMatch(entry.match)}
+                />
+                <View style={styles.smartTagsRow}>
+                  {entry.isTrending ? <Text style={styles.smartTag}>Trending</Text> : null}
+                  {entry.isUpsetPotential ? <Text style={styles.smartTag}>Upset</Text> : null}
+                  {(entry.reasons || []).slice(0, 2).map((reason, reasonIdx) => (
+                    <Text key={`${reason}_${reasonIdx}`} style={styles.smartTag}>{reason}</Text>
+                  ))}
+                </View>
+              </View>
+            ))}
+          </View>
+        </>
+      ) : null}
+
+      {/* Matches by League */}
+      {!isLoading && sortedLeagues.length > 0 ? (
+        <>
+          {sortedLeagues.map(([league, leagueMatches]) => (
+            <View key={league}>
+              <SectionTitle 
+                title={league || "Other Competitions"} 
+                count={Array.isArray(leagueMatches) ? leagueMatches.length : 0}
+              />
+              <View style={styles.matchList}>
+                {Array.isArray(leagueMatches) && leagueMatches.slice(0, 3).map((match, idx) => (
+                  <UpcomingMatchCard
+                    key={`${match.id}-${idx}-${league}`}
+                    match={match}
+                    onPress={() => onOpenMatch(match)}
+                  />
+                ))}
+              </View>
+            </View>
+          ))}
+        </>
+      ) : null}
+
+      {/* View All Link */}
+      {!isLoading && (upcomingMatches.length > 3 || liveMatches.length > 0) ? (
+        <TouchableOpacity 
+          style={styles.viewAllButton}
+          onPress={() => {
+            // Can add navigation to full match list here
+          }}
+          activeOpacity={0.7}
+        >
+          <Text style={styles.viewAllText}>View Full Schedule →</Text>
+        </TouchableOpacity>
+      ) : null}
     </View>
   );
 }
 
 interface LivePaneProps {
   matches: any[];
+  onOpenMatch: (match: any) => void;
 }
 
-function LivePane({ matches }: LivePaneProps) {
+function LivePane({ matches, onOpenMatch }: LivePaneProps) {
   const { t } = useTranslation();
 
   if (!matches || matches.length === 0) {
@@ -284,7 +559,11 @@ function LivePane({ matches }: LivePaneProps) {
       <SectionTitle title={t("sportsHome.live")} count={matches.length} />
       <View style={styles.matchList}>
         {matches.map((match, idx) => (
-          <LiveMatchCard key={`${match.id}-${idx}`} match={match} onPress={() => {}} />
+          <LiveMatchCard
+            key={`${match.id}-${idx}`}
+            match={match}
+            onPress={() => onOpenMatch(match)}
+          />
         ))}
       </View>
     </View>
@@ -293,9 +572,10 @@ function LivePane({ matches }: LivePaneProps) {
 
 interface MatchdayPaneProps {
   matches: any[];
+  onOpenMatch: (match: any) => void;
 }
 
-function MatchdayPane({ matches }: MatchdayPaneProps) {
+function MatchdayPane({ matches, onOpenMatch }: MatchdayPaneProps) {
   const { t } = useTranslation();
 
   if (!matches || matches.length === 0) {
@@ -312,19 +592,36 @@ function MatchdayPane({ matches }: MatchdayPaneProps) {
       <SectionTitle title={t("sportsHome.matchday")} count={matches.length} />
       <View style={styles.matchList}>
         {matches.map((match, idx) => (
-          <UpcomingMatchCard key={`${match.id}-${idx}`} match={match} onPress={() => {}} />
+          <UpcomingMatchCard
+            key={`${match.id}-${idx}`}
+            match={match}
+            onPress={() => onOpenMatch(match)}
+          />
         ))}
       </View>
     </View>
   );
 }
 
-function InsightsPane() {
+function InsightsPane({ rankedFeed, onOpenMatch }: { rankedFeed: { match: any }[]; onOpenMatch: (match: any) => void }) {
   return (
     <View style={{ paddingBottom: 40 }}>
       <SectionTitle title="Insights" />
       <View style={{ paddingHorizontal: 18, paddingVertical: 20 }}>
-        <Text style={styles.placeholderText}>Analysis & predictions coming soon</Text>
+        <Text style={styles.placeholderText}>AI modules live: ranking, momentum, match story and smart notifications.</Text>
+        <TouchableOpacity style={styles.highlightsButton} onPress={() => router.push("/highlights")} activeOpacity={0.8}>
+          <Ionicons name="flash-outline" size={14} color={DS.bg} />
+          <Text style={styles.highlightsButtonText}>Open Auto Highlights Feed</Text>
+        </TouchableOpacity>
+        {rankedFeed[0]?.match ? (
+          <TouchableOpacity style={styles.insightPickCard} onPress={() => onOpenMatch(rankedFeed[0].match)} activeOpacity={0.86}>
+            <Text style={styles.insightPickKicker}>AI Matchday Pick</Text>
+            <Text style={styles.insightPickTitle}>
+              {String(rankedFeed[0].match?.homeTeam || "Home")} vs {String(rankedFeed[0].match?.awayTeam || "Away")}
+            </Text>
+            <Text style={styles.insightPickMeta}>{String(rankedFeed[0].match?.league || "Competition")}</Text>
+          </TouchableOpacity>
+        ) : null}
       </View>
     </View>
   );
@@ -389,7 +686,7 @@ const styles = StyleSheet.create({
     width: 400,
     height: 400,
     borderRadius: 200,
-    backgroundColor: "rgba(229,9,20,0.08)",
+    backgroundColor: "rgba(76,175,130,0.08)",
     transform: [{ translateX: -200 }],
     zIndex: 1,
   },
@@ -478,12 +775,12 @@ const styles = StyleSheet.create({
     fontFamily: "Inter_800ExtraBold",
   },
   countBadge: {
-    backgroundColor: "rgba(229,9,20,0.15)",
+    backgroundColor: "rgba(76,175,130,0.15)",
     borderRadius: 12,
     paddingHorizontal: 8,
     paddingVertical: 2,
     borderWidth: 1,
-    borderColor: "rgba(229,9,20,0.3)",
+    borderColor: "rgba(76,175,130,0.3)",
     marginLeft: 8,
   },
   countText: {
@@ -500,6 +797,51 @@ const styles = StyleSheet.create({
   matchList: {
     paddingHorizontal: 18,
     gap: 12,
+  },
+  smartTagsRow: {
+    marginTop: -2,
+    marginBottom: 8,
+    paddingLeft: 2,
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 6,
+  },
+  smartTag: {
+    color: "rgba(255,255,255,0.85)",
+    fontSize: 10,
+    fontFamily: "Inter_600SemiBold",
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: "rgba(229,9,20,0.3)",
+    backgroundColor: "rgba(229,9,20,0.16)",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  exploreSummary: {
+    paddingHorizontal: 18,
+    flexDirection: "row",
+    gap: 10,
+    marginBottom: 12,
+  },
+  exploreSummaryCard: {
+    flex: 1,
+    backgroundColor: DS.card,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: DS.border,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  exploreSummaryLabel: {
+    fontSize: 12,
+    color: DS.muted,
+    fontFamily: "Inter_600SemiBold",
+  },
+  exploreSummaryValue: {
+    marginTop: 6,
+    fontSize: 20,
+    color: DS.text,
+    fontFamily: "Inter_800ExtraBold",
   },
 
   // ─────────────────────────────────────────────────────────────────────────────
@@ -522,6 +864,47 @@ const styles = StyleSheet.create({
     fontWeight: "500",
     color: DS.muted,
     fontFamily: "Inter_500Medium",
+  },
+  highlightsButton: {
+    marginTop: 14,
+    alignSelf: "flex-start",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    borderRadius: 999,
+    backgroundColor: DS.accent,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  highlightsButtonText: {
+    color: DS.bg,
+    fontFamily: "Inter_700Bold",
+    fontSize: 12,
+  },
+  insightPickCard: {
+    marginTop: 14,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "rgba(229,9,20,0.25)",
+    backgroundColor: "rgba(229,9,20,0.12)",
+    padding: 12,
+    gap: 4,
+  },
+  insightPickKicker: {
+    color: DS.accent,
+    fontFamily: "Inter_700Bold",
+    fontSize: 10,
+    letterSpacing: 0.8,
+  },
+  insightPickTitle: {
+    color: DS.text,
+    fontFamily: "Inter_700Bold",
+    fontSize: 14,
+  },
+  insightPickMeta: {
+    color: DS.muted,
+    fontFamily: "Inter_500Medium",
+    fontSize: 11,
   },
 
   // ─────────────────────────────────────────────────────────────────────────────
@@ -563,5 +946,27 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     color: DS.bg,
     fontFamily: "Inter_700Bold",
+  },
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // VIEW ALL BUTTON
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  viewAllButton: {
+    marginTop: 16,
+    marginHorizontal: 18,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: DS.accent,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  viewAllText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: DS.accent,
+    fontFamily: "Inter_600SemiBold",
   },
 });

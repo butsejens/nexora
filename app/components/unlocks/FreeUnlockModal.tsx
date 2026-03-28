@@ -243,7 +243,7 @@ export const FreeUnlockModal = React.memo(function FreeUnlockModal({
                           <Ionicons name="alert-circle" size={32} color="#FFB74D" />
                           <Text style={styles.expiredText}>Daily unlocks exhausted</Text>
                         </View>
-                        <Text style={styles.description}>You've used your free prediction unlock for today.</Text>
+                        <Text style={styles.description}>You&apos;ve used your free prediction unlock for today.</Text>
                         <View style={styles.countdownBox}>
                           <Ionicons name="time-outline" size={20} color={COLORS.accent} />
                           <View style={styles.countdownText}>
@@ -282,7 +282,7 @@ export const FreeUnlockModal = React.memo(function FreeUnlockModal({
                       )}
 
                       <TouchableOpacity style={styles.methodCard}>
-                        <View style={styles.methodIcon} style={{ backgroundColor: "rgba(229,9,20,0.2)" }}>
+                        <View style={[styles.methodIcon, { backgroundColor: "rgba(229,9,20,0.2)" }]}>
                           <MaterialCommunityIcons name="crown" size={24} color={COLORS.accent} />
                         </View>
                         <View style={styles.methodInfo}>

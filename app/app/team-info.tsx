@@ -1,14 +1,13 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, useWindowDimensions } from "react-native";
+import { View, Text, StyleSheet, ScrollView, Image, useWindowDimensions } from "react-native";
 import { useLocalSearchParams, router } from "expo-router";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery } from "@tanstack/react-query";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
-import { LinearGradient } from "expo-linear-gradient";
 import { COLORS } from "@/constants/colors";
 import { apiRequest } from "@/lib/query-client";
 import { enrichTeamDetailPayload } from "@/lib/sports-enrichment";
 import { TeamLogo } from "@/components/TeamLogo";
+import { NexoraSimpleHeader } from "@/components/NexoraSimpleHeader";
 import { resolveCompetitionBrand } from "@/lib/logo-manager";
 import {
   getBestCachedOrSeedPlayerImage,
@@ -256,7 +255,6 @@ function TopPlayerRow({ player, teamName, league }: { player: any; teamName: str
 }
 
 export default function TeamInfoScreen() {
-  const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{ teamId?: string; teamName?: string; league?: string; sport?: string }>();
   const teamId = asParam(params.teamId, "");
   const teamName = asParam(params.teamName, "Team");
@@ -350,17 +348,7 @@ export default function TeamInfoScreen() {
 
   return (
     <View style={styles.container}>
-      <LinearGradient
-        colors={[`${heroColor}22`, COLORS.background]}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 0, y: 1 }}
-        style={[styles.header, { paddingTop: insets.top + 8, borderBottomColor: `${heroColor}33` }]}
-      >
-        <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
-          <Ionicons name="chevron-back" size={22} color={COLORS.text} />
-        </TouchableOpacity>
-        <Text style={styles.title}>Team Info</Text>
-      </LinearGradient>
+      <NexoraSimpleHeader title={data?.name || teamName} />
 
       <ScrollView contentContainerStyle={styles.content}>
         <View style={[styles.hero, { borderColor: `${heroColor}44` }]}>
@@ -507,9 +495,6 @@ const P = { bg: "#09090D", card: "#12121A", elevated: "#1C1C28", accent: "#E5091
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
-  header: { flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 16, paddingBottom: 14, borderBottomWidth: 1 },
-  backBtn: { width: 38, height: 38, borderRadius: 19, alignItems: "center", justifyContent: "center", backgroundColor: P.card },
-  title: { fontFamily: "Inter_700Bold", fontSize: 18, color: COLORS.text },
   content: { padding: 16, gap: 12, paddingBottom: 44 },
   hero: { alignItems: "center", gap: 10, paddingVertical: 18, paddingHorizontal: 16, borderRadius: 18, backgroundColor: P.card, borderWidth: 1, borderColor: P.border },
   posterLogoWrap: {

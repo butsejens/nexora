@@ -1,13 +1,12 @@
-import React, { useCallback, useEffect, useMemo, useState, useRef } from "react";
-import { View, Text, StyleSheet, Image, Animated } from "react-native";
-import { router, useLocalSearchParams } from "expo-router";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { View, Text, StyleSheet, Image, ScrollView } from "react-native";
+import { useLocalSearchParams } from "expo-router";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { useQuery } from "@tanstack/react-query";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { COLORS } from "@/constants/colors";
-import { NexoraCollapsingHeader } from "@/components/layout/NexoraCollapsingHeader";
+import { NexoraSimpleHeader } from "@/components/NexoraSimpleHeader";
 import { normalizeApiError } from "@/lib/error-messages";
 import { enrichPlayerProfilePayload } from "@/lib/sports-enrichment";
 import { useTranslation } from "@/lib/useTranslation";
@@ -156,7 +155,6 @@ function normalizePlayerDto(raw: any, params: {
 }
 
 export default function PlayerProfileScreen() {
-  const insets = useSafeAreaInsets();
   const { ts } = useTranslation();
   const params = useLocalSearchParams<{
     playerId?: string;
@@ -330,8 +328,6 @@ export default function PlayerProfileScreen() {
       });
   }, [data?.formerClubs]);
 
-  const scrollY = useRef(new Animated.Value(0)).current;
-
   const overviewFacts = useMemo(() => {
     const facts = [
       { icon: "person-outline" as const, label: tx("playerProfile.age", "Age"), value: data?.age ? tx("playerProfile.years", `${String(data.age)} years`, { age: String(data.age) }) : "" },
@@ -381,15 +377,27 @@ export default function PlayerProfileScreen() {
 
   return (
     <View style={styles.container}>
-      <View style={{ zIndex: 30, elevation: 30 }}>
-        <NexoraCollapsingHeader
-          scrollY={scrollY}
-          topInset={insets.top}
-          title={normalizeText(data?.name || params.name, tx("playerProfile.player", "Player"))}
-          subtitle={`${normalizeText(data?.position || params.position)} ${normalizeText(data?.nationality || params.nationality, "") ? `• ${normalizeText(data?.nationality || params.nationality)}` : ""}`.trim()}
-          onBack={() => router.back()}
-          backgroundColor={COLORS.card}
-          heroContent={
+      <NexoraSimpleHeader
+        title={normalizeText(data?.name || params.name, tx("playerProfile.player", "Player"))}
+      />
+
+      {isLoading ? (
+        <View style={styles.loading}>
+          <StateBlock loading title={tx("playerProfile.loading", "Loading player profile") } message={tx("playerProfile.analysisTempUnavailable", "Analysis is temporarily unavailable")} />
+        </View>
+      ) : error || !data || (!hasRenderablePlayerData && (data as any)?.error) ? (
+        <View style={styles.loading}>
+          <StateBlock
+            icon="alert-circle-outline"
+            title={tx("playerProfile.analysisUnavailable", "Player profile unavailable")}
+            message={normalizeApiError(error || (data as any)?.error).userMessage}
+            actionLabel={tx("teamDetail.retry", "Retry")}
+            onAction={() => refetch()}
+          />
+        </View>
+      ) : (
+        <>
+          <View style={styles.heroCard}>
             <View style={styles.hero}>
               {photoUri && !photoFailed ? (
                 <Image
@@ -411,35 +419,17 @@ export default function PlayerProfileScreen() {
                   <Text style={styles.photoInitials}>{initials}</Text>
                 </View>
               )}
+              <Text style={styles.meta}>{`${normalizeText(data?.position || params.position)} ${normalizeText(data?.nationality || params.nationality, "") ? `• ${normalizeText(data?.nationality || params.nationality)}` : ""}`.trim()}</Text>
               <Text style={[styles.value, data?.isRealValue ? styles.valueReal : null]}>
                 {normalizeText(data?.marketValue || params.marketValue, tx("playerProfile.valueUnknown", "Value unavailable"))}
               </Text>
             </View>
-          }
-        />
-      </View>
+          </View>
 
-      {isLoading ? (
-        <View style={styles.loading}>
-          <StateBlock loading title={tx("playerProfile.loading", "Loading player profile") } message={tx("playerProfile.analysisTempUnavailable", "Analysis is temporarily unavailable")} />
-        </View>
-      ) : error || !data || (!hasRenderablePlayerData && (data as any)?.error) ? (
-        <View style={styles.loading}>
-          <StateBlock
-            icon="alert-circle-outline"
-            title={tx("playerProfile.analysisUnavailable", "Player profile unavailable")}
-            message={normalizeApiError(error || (data as any)?.error).userMessage}
-            actionLabel={tx("teamDetail.retry", "Retry")}
-            onAction={() => refetch()}
-          />
-        </View>
-      ) : (
-        <Animated.ScrollView
-          contentContainerStyle={styles.content}
-          showsVerticalScrollIndicator={false}
-          onScroll={Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], { useNativeDriver: false })}
-          scrollEventThrottle={16}
-        >
+          <ScrollView
+            contentContainerStyle={styles.content}
+            showsVerticalScrollIndicator={false}
+          >
           <Card title={tx("playerProfile.overview", "Overview")}>
             {overviewFacts.length > 0 ? (
               <View style={styles.quickFactsGrid}>
@@ -545,7 +535,8 @@ export default function PlayerProfileScreen() {
               </View>
             )}
           </Card>
-        </Animated.ScrollView>
+          </ScrollView>
+        </>
       )}
     </View>
   );
@@ -660,7 +651,16 @@ const styles = StyleSheet.create({
   loadingText: { fontFamily: "Inter_400Regular", fontSize: 13, color: COLORS.textMuted },
   retryBtn: { marginTop: 8, paddingHorizontal: 20, paddingVertical: 10, borderRadius: 18, backgroundColor: COLORS.accent },
   retryBtnText: { fontFamily: "Inter_600SemiBold", fontSize: 14, color: "#fff" },
-  content: { padding: 18, gap: 12, paddingBottom: 46 },
+  heroCard: {
+    marginHorizontal: 18,
+    marginTop: 14,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.12)",
+    backgroundColor: COLORS.cardElevated,
+    overflow: "hidden",
+  },
+  content: { padding: 18, gap: 12, paddingBottom: 46, paddingTop: 12 },
   card: { backgroundColor: COLORS.overlayLight, gap: 9 },
   row: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", borderBottomWidth: 1, borderBottomColor: COLORS.border, paddingVertical: 9 },
   rowLabelWrap: { flexDirection: "row", alignItems: "center", gap: 6 },

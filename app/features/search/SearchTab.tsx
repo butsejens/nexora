@@ -7,7 +7,7 @@
  * - IPTV: Live channels
  */
 
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import {
   View,
   ScrollView,
@@ -26,16 +26,30 @@ import { COLORS } from '@/constants/colors';
 import { useOnboardingStore } from '@/store/onboarding-store';
 import { apiRequestJson } from '@/lib/query-client';
 import { useNexora } from '@/context/NexoraContext';
+import { resolveMatchCompetitionLabel, resolveMatchEspnLeagueCode } from '@/lib/sports-competition';
+import { resolveCompetitionBrand, resolveTeamLogoUri } from '@/lib/logo-manager';
+import { detectLocaleSignals, searchCompetitions, searchTeams } from '@/services/onboarding-ai';
 
 interface SearchResult {
   id: string;
   title: string;
   subtitle?: string;
-  type: 'team' | 'player' | 'match' | 'show' | 'movie' | 'competition' | 'channel';
+  type: 'team' | 'player' | 'match' | 'series' | 'movie' | 'competition' | 'channel';
   image?: string;
   sport?: string;
   poster?: string;
   rating?: number;
+  teamId?: string;
+  matchId?: string;
+  espnLeague?: string;
+  league?: string;
+  homeTeam?: string;
+  awayTeam?: string;
+  homeTeamLogo?: string;
+  awayTeamLogo?: string;
+  status?: string;
+  minute?: string;
+  sportKey?: string;
 }
 
 interface SearchTabProps {
@@ -52,8 +66,48 @@ const P = {
   border: COLORS.border,
 };
 
+function teamNameFromValue(value: unknown, fallback = ''): string {
+  if (typeof value === 'string') return value.trim() || fallback;
+  if (value && typeof value === 'object') {
+    const v = value as any;
+    const name = String(v?.name || v?.displayName || '').trim();
+    return name || fallback;
+  }
+  return fallback;
+}
+
+function toResolvableTeamId(rawId: unknown, teamName: unknown): string {
+  const id = String(rawId || '').trim();
+  if (/^name:/i.test(id)) return id;
+  if (/^\d+$/.test(id)) return id;
+  const name = String(teamName || '').trim();
+  if (!name) return id;
+  return `name:${encodeURIComponent(name)}`;
+}
+
+function guessEspnLeagueCode(rawLeague: unknown): string {
+  const league = String(rawLeague || '').trim().toLowerCase();
+  if (!league) return '';
+  if (league.includes('premier league')) return 'eng.1';
+  if (league.includes('championship')) return 'eng.2';
+  if (league.includes('la liga')) return 'esp.1';
+  if (league.includes('bundesliga')) return 'ger.1';
+  if (league.includes('serie a')) return 'ita.1';
+  if (league.includes('ligue 1')) return 'fra.1';
+  if (league.includes('jupiler pro league')) return 'bel.1';
+  if (league.includes('challenger pro league')) return 'bel.2';
+  if (league.includes('eredivisie')) return 'ned.1';
+  if (league.includes('uefa champions')) return 'uefa.champions';
+  if (league.includes('uefa europa league')) return 'uefa.europa';
+  if (league.includes('conference league')) return 'uefa.europa.conf';
+  if (league.includes('nations league')) return 'uefa.nations';
+  if (league.includes('world cup')) return 'fifa.world';
+  return '';
+}
+
 export function SearchTab({ onSelectResult }: SearchTabProps) {
   const [query, setQuery] = useState('');
+  const [debouncedQuery, setDebouncedQuery] = useState('');
   const [results, setResults] = useState<SearchResult[]>([]);
   const [recentSearches, setRecentSearches] = useState<string[]>([]);
   const sportsEnabled = useOnboardingStore((s) => s.sportsEnabled);
@@ -62,34 +116,123 @@ export function SearchTab({ onSelectResult }: SearchTabProps) {
   const insets = useSafeAreaInsets();
   const { iptvChannels } = useNexora();
 
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedQuery(query.trim());
+    }, 220);
+    return () => clearTimeout(timer);
+  }, [query]);
+
   // Fetch sports data for search
   const sportsQuery = useQuery({
     queryKey: ['sports', 'search-data'],
     queryFn: async () => {
       try {
-        const today = new Date().toISOString().slice(0, 10);
-        const response = await apiRequestJson<any>(`/api/sports/by-date?date=${encodeURIComponent(today)}`);
-        const matches = response?.upcoming || response?.live || [];
-        const teams = new Set<string>();
-        const competitions = new Set<string>();
-        
-        // Extract unique teams and competitions from matches
-        (matches || []).forEach((m: any) => {
-          if (m.homeTeam) teams.add(m.homeTeam);
-          if (m.awayTeam) teams.add(m.awayTeam);
-          if (m.league) competitions.add(m.league);
+        // Fetch matches for yesterday, today, and tomorrow for broader team coverage
+        const dateOffsets = [-1, 0, 1];
+        const matchArrays = await Promise.all(
+          dateOffsets.map(async (offset) => {
+            const d = new Date();
+            d.setDate(d.getDate() + offset);
+            const dateStr = d.toISOString().slice(0, 10);
+            try {
+              const response = await apiRequestJson<any>(`/api/sports/by-date?date=${encodeURIComponent(dateStr)}`);
+              return [
+                ...(Array.isArray(response?.live) ? response.live : []),
+                ...(Array.isArray(response?.upcoming) ? response.upcoming : []),
+                ...(Array.isArray(response?.finished) ? response.finished : []),
+              ];
+            } catch {
+              return [];
+            }
+          }),
+        );
+        const matches = matchArrays.flat();
+
+        const teamsById = new Map<string, { id: string; name: string; sportKey: string; league?: string; espnLeague?: string; logo?: string }>();
+        const competitionsById = new Map<string, { id: string; name: string; espnLeague: string; sportKey: string }>();
+
+        for (const m of matches) {
+          const sportKey = String(m?.sport || 'soccer');
+          const homeName = teamNameFromValue(m?.homeTeam, '').trim();
+          const awayName = teamNameFromValue(m?.awayTeam, '').trim();
+          const homeId = toResolvableTeamId(m?.homeTeamId, homeName);
+          const awayId = toResolvableTeamId(m?.awayTeamId, awayName);
+          const leagueName = resolveMatchCompetitionLabel(m);
+          const espnLeague = resolveMatchEspnLeagueCode(m);
+          if (homeName && homeId && !teamsById.has(homeId)) {
+            teamsById.set(homeId, {
+              id: homeId,
+              name: homeName,
+              sportKey,
+              league: leagueName,
+              espnLeague,
+              logo: String(m?.homeTeamLogo || '').trim() || undefined,
+            });
+          }
+          if (awayName && awayId && !teamsById.has(awayId)) {
+            teamsById.set(awayId, {
+              id: awayId,
+              name: awayName,
+              sportKey,
+              league: leagueName,
+              espnLeague,
+              logo: String(m?.awayTeamLogo || '').trim() || undefined,
+            });
+          }
+          if (leagueName && leagueName !== 'Competition') {
+            const compId = espnLeague || leagueName;
+            if (!competitionsById.has(compId)) {
+              competitionsById.set(compId, {
+                id: compId,
+                name: leagueName,
+                espnLeague: espnLeague || 'eng.1',
+                sportKey,
+              });
+            }
+          }
+        }
+
+        // Fetch top scorers from major leagues to index player names
+        const PLAYER_LEAGUES = ['eng.1', 'esp.1', 'ger.1', 'ita.1', 'fra.1', 'bel.1', 'bel.2', 'ned.1', 'por.1', 'tur.1', 'uefa.champions', 'uefa.europa'];
+        const playerResults = await Promise.allSettled(
+          PLAYER_LEAGUES.map((league) =>
+            apiRequestJson<any>(`/api/sports/topscorers/${encodeURIComponent(league)}`),
+          ),
+        );
+        const players: { id: string; name: string; teamName: string; league: string; espnLeague: string; photo?: string }[] = [];
+        const seenPlayerIds = new Set<string>();
+        playerResults.forEach((result, i) => {
+          if (result.status !== 'fulfilled') return;
+          const scorers: any[] = result.value?.scorers || result.value?.players || [];
+          const espnLeague = PLAYER_LEAGUES[i];
+          scorers.forEach((s: any) => {
+            const name = String(s?.name || s?.displayName || s?.shortName || '').trim();
+            const playerId = String(s?.id || `player:${name}`).trim();
+            if (!name || seenPlayerIds.has(playerId)) return;
+            seenPlayerIds.add(playerId);
+            players.push({
+              id: playerId,
+              name,
+              teamName: String(s?.teamName || s?.team?.name || '').trim(),
+              league: String(s?.league || espnLeague),
+              espnLeague,
+              photo: String(s?.photo || s?.headshot || s?.image || '').trim() || undefined,
+            });
+          });
         });
 
         return {
-          teams: Array.from(teams),
-          competitions: Array.from(competitions),
-          matches: matches,
+          teams: Array.from(teamsById.values()),
+          competitions: Array.from(competitionsById.values()),
+          matches: matches.slice(0, 120),
+          players,
         };
       } catch {
-        return { teams: [], competitions: [], matches: [] };
+        return { teams: [], competitions: [], matches: [], players: [] };
       }
     },
-    staleTime: 5 * 60 * 1000, // 5 minutes
+    staleTime: 5 * 60 * 1000,
     enabled: sportsEnabled,
   });
 
@@ -112,6 +255,17 @@ export function SearchTab({ onSelectResult }: SearchTabProps) {
     enabled: moviesEnabled,
   });
 
+  // Dynamic query-based media search for full catalog coverage.
+  const mediaSearchQuery = useQuery({
+    queryKey: ['media', 'search-live', debouncedQuery],
+    queryFn: async () => {
+      if (debouncedQuery.length < 2) return { movies: [], series: [] };
+      return apiRequestJson<any>(`/api/search/multi?query=${encodeURIComponent(debouncedQuery)}`);
+    },
+    enabled: moviesEnabled && debouncedQuery.length >= 2,
+    staleTime: 30 * 1000,
+  });
+
   // Build searchable sports items
   const sportsItems = useMemo(() => {
     const items: SearchResult[] = [];
@@ -119,24 +273,85 @@ export function SearchTab({ onSelectResult }: SearchTabProps) {
     if (!data) return items;
 
     // Teams
-    (data.teams || []).forEach((team: string) => {
+    (data.teams || []).forEach((team: any) => {
       items.push({
-        id: `team-${team}`,
-        title: team,
+        id: toResolvableTeamId(team?.id, team?.name),
+        title: String(team?.name || ''),
         type: 'team',
         sport: 'Football',
         subtitle: 'Football Team',
+        image: (() => {
+          const rawLogo = String(team?.logo || '').trim();
+          if (rawLogo) return rawLogo;
+          const resolved = resolveTeamLogoUri(String(team?.name || ''), null);
+          return typeof resolved === 'string' ? resolved : undefined;
+        })(),
+        teamId: toResolvableTeamId(team?.id, team?.name),
+        sportKey: String(team?.sportKey || 'soccer'),
+        league: String(team?.league || ''),
+        espnLeague: String(team?.espnLeague || guessEspnLeagueCode(team?.league) || ''),
       });
     });
 
     // Competitions
-    (data.competitions || []).forEach((comp: string) => {
+    (data.competitions || []).forEach((comp: any) => {
       items.push({
-        id: `comp-${comp}`,
-        title: comp,
+        id: String(comp?.id || ''),
+        title: String(comp?.name || ''),
         type: 'competition',
         sport: 'Football',
         subtitle: 'Competition',
+        image: (() => {
+          const brand = resolveCompetitionBrand({
+            name: String(comp?.name || ''),
+            espnLeague: String(comp?.espnLeague || ''),
+          });
+          return typeof brand?.logo === 'string' ? brand.logo : undefined;
+        })(),
+        espnLeague: String(comp?.espnLeague || guessEspnLeagueCode(comp?.name) || 'eng.1'),
+        sportKey: String(comp?.sportKey || 'soccer'),
+      });
+    });
+
+    // Players
+    (data.players || []).forEach((player: any) => {
+      items.push({
+        id: String(player?.id || ''),
+        title: String(player?.name || ''),
+        type: 'player',
+        sport: 'Football',
+        subtitle: player?.teamName ? `${player.teamName}` : 'Player',
+        image: player?.photo || undefined,
+        espnLeague: String(player?.espnLeague || ''),
+        league: String(player?.league || ''),
+        sportKey: 'soccer',
+      });
+    });
+
+    // Matches
+    (data.matches || []).slice(0, 50).forEach((match: any) => {
+      const matchId = String(match?.id || '').trim();
+      if (!matchId) return;
+      const homeTeam = teamNameFromValue(match?.homeTeam, 'Home');
+      const awayTeam = teamNameFromValue(match?.awayTeam, 'Away');
+      const league = resolveMatchCompetitionLabel(match);
+      const espnLeague = resolveMatchEspnLeagueCode(match);
+      items.push({
+        id: matchId,
+        matchId,
+        title: `${homeTeam} vs ${awayTeam}`,
+        subtitle: league || 'Match',
+        type: 'match',
+        sport: 'Football',
+        homeTeam,
+        awayTeam,
+        homeTeamLogo: String(match?.homeTeamLogo || ''),
+        awayTeamLogo: String(match?.awayTeamLogo || ''),
+        status: String(match?.status || 'upcoming'),
+        minute: String(match?.minute || ''),
+        espnLeague,
+        league,
+        sportKey: String(match?.sport || 'soccer'),
       });
     });
 
@@ -146,42 +361,88 @@ export function SearchTab({ onSelectResult }: SearchTabProps) {
   // Build searchable media items
   const mediaItems = useMemo(() => {
     const items: SearchResult[] = [];
-    const data = mediaQuery.data;
-    if (!data) return items;
+    const data = (debouncedQuery.length >= 2 ? mediaSearchQuery.data : mediaQuery.data) || { movies: [], series: [] };
 
     // Movies
-    (data.movies || []).slice(0, 20).forEach((movie: any) => {
+    (data.movies || []).slice(0, 80).forEach((movie: any) => {
       items.push({
-        id: `movie-${movie.id}`,
+        id: String(movie.id),
         title: movie.title || movie.name || '',
         type: 'movie',
-        poster: movie.poster_path ? `https://image.tmdb.org/t/p/w200${movie.poster_path}` : undefined,
+        poster: movie.poster_path
+          ? `https://image.tmdb.org/t/p/w342${movie.poster_path}`
+          : (movie.backdrop_path ? `https://image.tmdb.org/t/p/w342${movie.backdrop_path}` : undefined),
         rating: movie.vote_average,
         subtitle: String(movie.release_date || '').slice(0, 4),
       });
     });
 
     // Series
-    (data.series || []).slice(0, 20).forEach((show: any) => {
+    (data.series || []).slice(0, 80).forEach((show: any) => {
       items.push({
-        id: `show-${show.id}`,
+        id: String(show.id),
         title: show.name || show.title || '',
-        type: 'show',
-        poster: show.poster_path ? `https://image.tmdb.org/t/p/w200${show.poster_path}` : undefined,
+        type: 'series',
+        poster: show.poster_path
+          ? `https://image.tmdb.org/t/p/w342${show.poster_path}`
+          : (show.backdrop_path ? `https://image.tmdb.org/t/p/w342${show.backdrop_path}` : undefined),
         rating: show.vote_average,
-        subtitle: 'TV Series',
+        subtitle: String(show.first_air_date || '').slice(0, 4) || 'TV Series',
       });
     });
 
     return items;
-  }, [mediaQuery.data]);
+  }, [debouncedQuery.length, mediaQuery.data, mediaSearchQuery.data]);
+
+  const curatedSportsItems = useMemo(() => {
+    if (!sportsEnabled || debouncedQuery.length < 2) return [] as SearchResult[];
+    const localeSignals = detectLocaleSignals();
+    const teams = searchTeams(debouncedQuery, ['football'], localeSignals, 60);
+    const competitions = searchCompetitions(debouncedQuery, ['football'], localeSignals, 40);
+
+    const teamItems: SearchResult[] = teams.map((team) => ({
+      id: toResolvableTeamId(team.id, team.name),
+      title: String(team.name || ''),
+      type: 'team',
+      sport: String(team.sport || 'soccer'),
+      subtitle: String(team.competition || 'Football Team'),
+      image: (() => {
+        const resolved = resolveTeamLogoUri(String(team.name || ''), null);
+        return typeof resolved === 'string' ? resolved : undefined;
+      })(),
+      teamId: toResolvableTeamId(team.id, team.name),
+      sportKey: String(team.sport || 'soccer'),
+      league: String(team.competition || ''),
+      espnLeague: String((team as any)?.espnLeague || guessEspnLeagueCode(team.competition) || ''),
+    }));
+
+    const competitionItems: SearchResult[] = competitions.map((competition) => ({
+      id: String(competition.id || ''),
+      title: String(competition.name || ''),
+      type: 'competition',
+      sport: String(competition.sport || 'soccer'),
+      subtitle: 'Competition',
+      image: (() => {
+        const brand = resolveCompetitionBrand({
+          name: String(competition.name || ''),
+          espnLeague: String(competition.espnLeague || ''),
+        });
+        return typeof brand?.logo === 'string' ? brand.logo : undefined;
+      })(),
+      sportKey: String(competition.sport || 'soccer'),
+      espnLeague: String(competition.espnLeague || 'eng.1'),
+      league: String(competition.name || ''),
+    }));
+
+    return [...teamItems, ...competitionItems];
+  }, [debouncedQuery, sportsEnabled]);
 
   // Build searchable IPTV items
   const iptvItems = useMemo(() => {
     if (!iptvEnabled) return [];
     if (!iptvChannels || iptvChannels.length === 0) return [];
-    return iptvChannels.slice(0, 30).map((channel: any) => ({
-      id: `channel-${channel.id}`,
+    return iptvChannels.map((channel: any) => ({
+      id: String(channel.id),
       title: channel.name || channel.title || '',
       type: 'channel' as const,
       subtitle: channel.group,
@@ -202,6 +463,7 @@ export function SearchTab({ onSelectResult }: SearchTabProps) {
     // Add sports results
     if (sportsEnabled) {
       allItems.push(...sportsItems);
+      allItems.push(...curatedSportsItems);
     }
 
     // Add media results
@@ -215,21 +477,34 @@ export function SearchTab({ onSelectResult }: SearchTabProps) {
     }
 
     // Filter by query
+    const tokenize = (value: string) => String(value || '').toLowerCase().trim().split(/\s+/).filter(Boolean);
+    const queryTokens = tokenize(q);
+
     const filtered = allItems.filter((item) => {
-      const titleMatch = item.title.toLowerCase().includes(q);
-      const subtitleMatch = item.subtitle?.toLowerCase().includes(q);
-      const sportMatch = item.sport?.toLowerCase().includes(q);
-      return titleMatch || subtitleMatch || sportMatch;
+      const haystack = [
+        item.title,
+        item.subtitle || '',
+        item.sport || '',
+        item.league || '',
+        item.espnLeague || '',
+      ]
+        .join(' ')
+        .toLowerCase();
+
+      if (!haystack) return false;
+      if (haystack.includes(q)) return true;
+      if (!queryTokens.length) return false;
+      return queryTokens.every((token) => haystack.includes(token));
     });
 
     // Sort by type priority and relevance
     const typeOrder: Record<string, number> = {
       team: 0,
-      competition: 1,
-      movie: 2,
-      show: 3,
-      channel: 4,
-      player: 5,
+      player: 1,
+      competition: 2,
+      movie: 3,
+      series: 4,
+      channel: 5,
       match: 6,
     };
 
@@ -253,8 +528,17 @@ export function SearchTab({ onSelectResult }: SearchTabProps) {
       return a.title.localeCompare(b.title);
     });
 
-    setResults(filtered.slice(0, 50));
-  }, [sportsEnabled, moviesEnabled, iptvEnabled, sportsItems, mediaItems, iptvItems]);
+    // De-duplicate cross-source matches by title+type.
+    const seen = new Set<string>();
+    const deduped = filtered.filter((item) => {
+      const key = `${item.type}:${item.title.toLowerCase()}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+
+    setResults(deduped.slice(0, 80));
+  }, [sportsEnabled, moviesEnabled, iptvEnabled, sportsItems, curatedSportsItems, mediaItems, iptvItems]);
 
   const handleSearch = useCallback((text: string) => {
     setQuery(text);
@@ -275,7 +559,7 @@ export function SearchTab({ onSelectResult }: SearchTabProps) {
     setResults([]);
   };
 
-  const isLoading = sportsQuery.isLoading || mediaQuery.isLoading;
+  const isLoading = sportsQuery.isLoading || mediaQuery.isLoading || mediaSearchQuery.isLoading;
   const showResults = query.trim().length > 0;
 
   return (
@@ -286,7 +570,7 @@ export function SearchTab({ onSelectResult }: SearchTabProps) {
           <Ionicons name="search" size={18} color={P.muted} />
           <TextInput
             style={styles.searchInput}
-            placeholder="Search sports, films, shows..."
+            placeholder="Search players, teams, leagues, films, series..."
             placeholderTextColor={P.muted}
             value={query}
             onChangeText={handleSearch}
@@ -347,7 +631,7 @@ export function SearchTab({ onSelectResult }: SearchTabProps) {
           <View style={styles.resultsList}>
             {results.map((result) => (
               <SearchResultItem
-                key={result.id}
+                key={`${result.type}:${result.id || result.title}`}
                 result={result}
                 onPress={() => handleSelectResult(result)}
               />
@@ -370,7 +654,7 @@ function SearchResultItem({
     team: 'soccer',
     competition: 'trophy-outline',
     movie: 'film',
-    show: 'television-classic',
+    series: 'television-classic',
     channel: 'antenna',
     player: 'account',
     match: 'soccer',
@@ -380,12 +664,14 @@ function SearchResultItem({
     ? 'mci'
     : 'ion';
 
+  const mediaUri = result.poster || result.image;
+
   return (
     <TouchableOpacity onPress={onPress} style={styles.resultItem}>
       <View style={styles.resultIconContainer}>
-        {result.poster ? (
+        {mediaUri ? (
           <Image
-            source={{ uri: result.poster }}
+            source={{ uri: mediaUri }}
             style={styles.resultPoster}
             resizeMode="cover"
           />

@@ -24,6 +24,8 @@
     "server": "npm run secrets:auto:ensure && npm run security:env-check && npm -w server run dev",
     "server:start": "npm run secrets:auto:ensure && npm run security:env-check && npm -w server start",
     "app": "npm run secrets:auto:ensure && npm run security:env-check && npm -w app start",
+    "app:tunnel": "npm run secrets:auto:ensure && npm run security:env-check && npm -w app run start:tunnel",
+    "app:restart:8080": "npm run secrets:auto:ensure && npm run security:env-check && npm -w app run start:restart:8080",
     "cloudflare:deploy": "npm --prefix cloudflare/sports-worker exec wrangler -- deploy --config cloudflare/sports-worker/wrangler.toml",
     "cloudflare:deploy:dry-run": "npm --prefix cloudflare/sports-worker exec wrangler -- deploy --config cloudflare/sports-worker/wrangler.toml --dry-run",
     "android": "expo run:android",

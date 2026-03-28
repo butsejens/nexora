@@ -1,4 +1,4 @@
-import React, { useMemo } from "react";
+import React, { useMemo, useState, useCallback, useEffect } from "react";
 import {
   Image,
   RefreshControl,
@@ -20,7 +20,7 @@ import { RealContentCard } from "@/components/RealContentCard";
 import { MatchRowCard } from "@/components/premium";
 import { COLORS } from "@/constants/colors";
 import { useNexora } from "@/context/NexoraContext";
-import { useWatchProgress } from "@/context/UserStateContext";
+import { useFollowState, useWatchProgress } from "@/context/UserStateContext";
 import {
   buildContinueWatchingRows,
   buildHighlightsQuery,
@@ -29,58 +29,16 @@ import {
   deriveCuratedHomeMedia,
 } from "@/services/realtime-engine";
 import { useOnboardingStore } from "@/store/onboarding-store";
-
-type SportsPayload = {
-  live?: any[];
-  upcoming?: any[];
-};
+import { resolveMatchCompetitionLabel, resolveMatchEspnLeagueCode } from "@/lib/sports-competition";
+import {
+  loadMatchInteractions,
+  rankMatchesForUser,
+  recordMatchInteraction,
+  selectHighlightsForFeed,
+} from "@/lib/ai";
 
 function todayUTC() {
   return new Date().toISOString().slice(0, 10);
-}
-
-function normalizeLeagueLabel(value: unknown): string {
-  return String(value || "").trim().toLowerCase();
-}
-
-function looksDomesticLeague(label: string): boolean {
-  return /premier|laliga|la liga|bundesliga|serie a|ligue 1|championship|eredivisie|pro league|super lig|primeira/.test(label);
-}
-
-function isLikelyInternationalMatch(match: any): boolean {
-  const league = normalizeLeagueLabel(match?.league);
-  if (/friendly|friendlies|international|fifa|nations|world cup|euro/.test(league)) return true;
-  const homeLogo = String(match?.homeTeamLogo || "").toLowerCase();
-  const awayLogo = String(match?.awayTeamLogo || "").toLowerCase();
-  return homeLogo.includes("/countries/") && awayLogo.includes("/countries/");
-}
-
-function resolveLeagueLabel(match: any): string {
-  const rawLeague = String(match?.league || "").trim();
-  const normalized = normalizeLeagueLabel(rawLeague);
-  if (isLikelyInternationalMatch(match) && (!rawLeague || looksDomesticLeague(normalized))) {
-    return "International Friendly";
-  }
-  return rawLeague || "International Friendly";
-}
-
-function resolveEspnLeague(match: any): string {
-  const direct = String(match?.espnLeague || "").trim();
-  if (direct) return direct;
-  const league = normalizeLeagueLabel(resolveLeagueLabel(match));
-  if (/friendly|international|fifa|nations|world cup|euro/.test(league)) return "fifa.world";
-  const map: Record<string, string> = {
-    "premier league": "eng.1",
-    "la liga": "esp.1",
-    "bundesliga": "ger.1",
-    "serie a": "ita.1",
-    "ligue 1": "fra.1",
-    "jupiler pro league": "bel.1",
-    "uefa champions league": "uefa.champions",
-    "uefa europa league": "uefa.europa",
-    "uefa conference league": "uefa.europa.conf",
-  };
-  return map[league] || "eng.1";
 }
 
 function splitReplayAndHighlightItems(items: any[]): { replays: any[]; highlights: any[] } {
@@ -102,18 +60,49 @@ function splitReplayAndHighlightItems(items: any[]): { replays: any[]; highlight
   return { replays, highlights };
 }
 
+function getTeamName(team: unknown, fallback: string): string {
+  if (typeof team === "string") return team || fallback;
+  if (team && typeof team === "object") {
+    const name = String((team as any)?.name || (team as any)?.displayName || "").trim();
+    return name || fallback;
+  }
+  return fallback;
+}
+
+function getTeamLogo(match: any, side: "home" | "away"): string {
+  const direct = side === "home" ? match?.homeTeamLogo : match?.awayTeamLogo;
+  if (typeof direct === "string" && direct.trim()) return direct;
+  const teamObj = side === "home" ? match?.homeTeam : match?.awayTeam;
+  if (teamObj && typeof teamObj === "object") {
+    const logo = String((teamObj as any)?.logo || "").trim();
+    if (logo) return logo;
+  }
+  return "";
+}
+
+function getScore(match: any, side: "home" | "away"): number {
+  const direct = side === "home" ? match?.homeScore : match?.awayScore;
+  if (Number.isFinite(Number(direct))) return Number(direct);
+  const scoreObj = match?.score;
+  if (scoreObj && typeof scoreObj === "object") {
+    const nested = side === "home" ? scoreObj?.home : scoreObj?.away;
+    if (Number.isFinite(Number(nested))) return Number(nested);
+  }
+  return 0;
+}
+
 function toMatchParams(match: any) {
-  const league = resolveLeagueLabel(match);
+  const league = resolveMatchCompetitionLabel(match);
   return {
     matchId: String(match?.id || ""),
-    homeTeam: String(match?.homeTeam || "Home"),
-    awayTeam: String(match?.awayTeam || "Away"),
-    homeTeamLogo: String(match?.homeTeamLogo || ""),
-    awayTeamLogo: String(match?.awayTeamLogo || ""),
-    homeScore: String(match?.homeScore ?? 0),
-    awayScore: String(match?.awayScore ?? 0),
+    homeTeam: getTeamName(match?.homeTeam, "Home"),
+    awayTeam: getTeamName(match?.awayTeam, "Away"),
+    homeTeamLogo: getTeamLogo(match, "home"),
+    awayTeamLogo: getTeamLogo(match, "away"),
+    homeScore: String(getScore(match, "home")),
+    awayScore: String(getScore(match, "away")),
     league,
-    espnLeague: resolveEspnLeague(match),
+    espnLeague: resolveMatchEspnLeagueCode(match),
     minute: String(match?.minute ?? ""),
     status: String(match?.status || "upcoming"),
     sport: String(match?.sport || "football"),
@@ -126,8 +115,12 @@ export default function CuratedHomeScreen() {
   const insets = useSafeAreaInsets();
   const sportsEnabled = useOnboardingStore((s) => s.sportsEnabled);
   const moviesEnabled = useOnboardingStore((s) => s.moviesEnabled);
+  const selectedTeams = useOnboardingStore((s) => s.selectedTeams);
+  const selectedCompetitions = useOnboardingStore((s) => s.selectedCompetitions);
   const { watchHistory, isFavorite, toggleFavorite } = useNexora();
+  const { followedTeams } = useFollowState();
   const { continueWatching: syncedContinueWatching } = useWatchProgress();
+  const [matchInteractions, setMatchInteractions] = useState<any>(null);
 
   const sportsQuery = useQuery(buildHomeSportsQuery(todayUTC(), sportsEnabled));
   const mediaQuery = useQuery(buildVodHomeQuery(moviesEnabled));
@@ -139,9 +132,45 @@ export default function CuratedHomeScreen() {
     return buildContinueWatchingRows(watchHistory as any, syncedContinueWatching as any, 8);
   }, [syncedContinueWatching, watchHistory]);
 
-  const liveMatches = sportsEnabled ? (sportsQuery.data?.live || []) : [];
-  const upcomingMatches = sportsEnabled ? (sportsQuery.data?.upcoming || []) : [];
-  const todayMatches = [...liveMatches, ...upcomingMatches].slice(0, 3);
+  useEffect(() => {
+    let mounted = true;
+    loadMatchInteractions().then((value) => {
+      if (mounted) setMatchInteractions(value);
+    }).catch(() => {
+      if (mounted) setMatchInteractions(null);
+    });
+    return () => { mounted = false; };
+  }, []);
+
+  const liveMatches = useMemo(() => (sportsEnabled ? (sportsQuery.data?.live || []) : []), [sportsEnabled, sportsQuery.data?.live]);
+  const upcomingMatches = useMemo(() => (sportsEnabled ? (sportsQuery.data?.upcoming || []) : []), [sportsEnabled, sportsQuery.data?.upcoming]);
+  const allSmartCandidates = useMemo(
+    () => (sportsEnabled ? [...liveMatches, ...upcomingMatches] : []),
+    [liveMatches, sportsEnabled, upcomingMatches],
+  );
+  const favoriteTeamNames = [
+    ...followedTeams.map((team) => String(team?.teamName || "")),
+    ...selectedTeams.map((team) => String(team?.name || "")),
+  ].filter(Boolean);
+  const preferredLeagues = selectedCompetitions.map((competition) => String(competition?.name || competition?.id || "")).filter(Boolean);
+  const rankedSmartFeed = useMemo(() => {
+    return rankMatchesForUser({
+      matches: allSmartCandidates,
+      favoriteTeams: favoriteTeamNames,
+      preferredLeagues,
+      interactions: matchInteractions,
+    }).slice(0, 6);
+  }, [allSmartCandidates, favoriteTeamNames, preferredLeagues, matchInteractions]);
+  const todayMatches = rankedSmartFeed.slice(0, 3).map((entry) => entry.match);
+
+  const [notifiedMatchIds, setNotifiedMatchIds] = useState<Set<string>>(new Set());
+  const toggleMatchNotification = useCallback((matchId: string) => {
+    setNotifiedMatchIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(matchId)) { next.delete(matchId); } else { next.add(matchId); }
+      return next;
+    });
+  }, []);
   const movieRail = moviesEnabled ? (mediaData?.movies || []).slice(0, 8) : [];
   const seriesRail = moviesEnabled ? (mediaData?.series || []).slice(0, 8) : [];
   const releasesRail = moviesEnabled ? (mediaData?.newReleases || []).slice(0, 8) : [];
@@ -150,18 +179,24 @@ export default function CuratedHomeScreen() {
     [highlightsQuery.data, sportsEnabled],
   );
   const replayItems = replayAndHighlight.replays.slice(0, 8);
-  const highlightItems = replayAndHighlight.highlights.slice(0, 8);
+  const highlightItems = useMemo(() => {
+    return selectHighlightsForFeed({
+      highlights: replayAndHighlight.highlights,
+      favoriteTeams: favoriteTeamNames,
+      preferredLeagues,
+    }).map((entry) => entry.item).slice(0, 8);
+  }, [favoriteTeamNames, preferredLeagues, replayAndHighlight.highlights]);
 
-  const heroSport = sportsEnabled ? (liveMatches[0] || upcomingMatches[0]) : null;
+  const heroSport = sportsEnabled ? (rankedSmartFeed[0]?.match || liveMatches[0] || upcomingMatches[0]) : null;
   const heroMedia = moviesEnabled ? (movieRail[0] || seriesRail[0] || null) : null;
   const heroIsSport = Boolean(heroSport);
 
   const heroTitle = heroIsSport
-    ? `${String(heroSport?.homeTeam || "Home")} vs ${String(heroSport?.awayTeam || "Away")}`
+    ? `${getTeamName(heroSport?.homeTeam, "Home")} vs ${getTeamName(heroSport?.awayTeam, "Away")}`
     : String(heroMedia?.title || "Welcome to NEXORA");
 
   const heroMeta = heroIsSport
-    ? String(heroSport?.league || "Sport")
+    ? `AI Matchday Pick · ${resolveMatchCompetitionLabel(heroSport)}`
     : `${heroMedia?.type === "series" ? "Series" : "Film"}${heroMedia?.year ? ` · ${heroMedia.year}` : ""}`;
 
   const heroImage = heroIsSport ? null : (heroMedia?.backdrop || heroMedia?.poster || null);
@@ -173,12 +208,17 @@ export default function CuratedHomeScreen() {
       pathname: "/player",
       params: {
         embedUrl: rawUrl,
-        title: String(item?.title || `${String(item?.homeTeam || "Home")} vs ${String(item?.awayTeam || "Away")}`),
+        title: String(item?.title || `${getTeamName(item?.homeTeam, "Home")} vs ${getTeamName(item?.awayTeam, "Away")}`),
         type: "sport",
         contentId: `sport_replay_${fallbackId}`,
       },
     });
   };
+
+  const openMatchDetail = useCallback((match: any) => {
+    void recordMatchInteraction(match).then(() => loadMatchInteractions().then(setMatchInteractions).catch(() => undefined)).catch(() => undefined);
+    router.push({ pathname: "/match-detail", params: toMatchParams(match) });
+  }, []);
 
   return (
     <View style={styles.screen}>
@@ -190,11 +230,9 @@ export default function CuratedHomeScreen() {
         showSearch
         showNotification
         showFavorites
-        showProfile
-        onSearch={() => router.push("/(tabs)/search")}
+        onSearch={() => router.navigate("/(tabs)/search")}
         onNotification={() => router.push("/follow-center")}
         onFavorites={() => router.push("/favorites")}
-        onProfile={() => router.push("/profile")}
       />
 
       <ScrollView
@@ -217,7 +255,7 @@ export default function CuratedHomeScreen() {
             activeOpacity={0.9}
             onPress={() => {
               if (heroIsSport && heroSport) {
-                router.push({ pathname: "/match-detail", params: toMatchParams(heroSport) });
+                openMatchDetail(heroSport);
                 return;
               }
               if (heroMedia) {
@@ -235,7 +273,30 @@ export default function CuratedHomeScreen() {
           >
             <View style={styles.heroCard}>
               {heroImage ? <Image source={{ uri: heroImage }} style={StyleSheet.absoluteFill} resizeMode="cover" /> : null}
-              <LinearGradient colors={["rgba(9,9,13,0.15)", "rgba(9,9,13,0.9)"]} style={StyleSheet.absoluteFill} />
+              {heroIsSport && heroSport ? (
+                <>
+                  {getTeamLogo(heroSport, "home") ? (
+                    <Image
+                      source={{ uri: getTeamLogo(heroSport, "home") }}
+                      style={styles.heroTeamLogoLeft}
+                      resizeMode="contain"
+                    />
+                  ) : null}
+                  {getTeamLogo(heroSport, "away") ? (
+                    <Image
+                      source={{ uri: getTeamLogo(heroSport, "away") }}
+                      style={styles.heroTeamLogoRight}
+                      resizeMode="contain"
+                    />
+                  ) : null}
+                  <LinearGradient
+                    colors={["rgba(9,24,18,0.55)", "rgba(9,9,13,0.92)"]}
+                    style={StyleSheet.absoluteFill}
+                  />
+                </>
+              ) : (
+                <LinearGradient colors={["rgba(9,9,13,0.15)", "rgba(9,9,13,0.9)"]} style={StyleSheet.absoluteFill} />
+              )}
               <View style={styles.heroContent}>
                 <Text style={styles.heroEyebrow}>{heroIsSport ? "MATCHDAY PICK" : "CURATED PICK"}</Text>
                 <Text style={styles.heroTitle} numberOfLines={2}>{heroTitle}</Text>
@@ -244,6 +305,49 @@ export default function CuratedHomeScreen() {
             </View>
           </TouchableOpacity>
         </View>
+
+        {sportsEnabled && rankedSmartFeed.length > 0 && (
+          <View style={styles.section}>
+            <View style={styles.sectionHead}>
+              <Text style={styles.sectionLabel}>SMART MATCH FEED</Text>
+              <TouchableOpacity onPress={() => router.push("/sport")}>
+                <Text style={styles.sectionAction}>AI powered</Text>
+              </TouchableOpacity>
+            </View>
+            {rankedSmartFeed.slice(0, 4).map((entry: any) => (
+              <View key={`smart_${String(entry?.match?.id || "")}`} style={styles.smartCardWrap}>
+                <MatchRowCard
+                  match={{
+                    id: String(entry?.match?.id || ""),
+                    homeTeam: getTeamName(entry?.match?.homeTeam, "Home"),
+                    awayTeam: getTeamName(entry?.match?.awayTeam, "Away"),
+                    homeTeamLogo: getTeamLogo(entry?.match, "home"),
+                    awayTeamLogo: getTeamLogo(entry?.match, "away"),
+                    homeScore: getScore(entry?.match, "home"),
+                    awayScore: getScore(entry?.match, "away"),
+                    status: String(entry?.match?.status || "upcoming") as any,
+                    minute: Number(entry?.match?.minute ?? 0),
+                    startTime: String(entry?.match?.startDate || entry?.match?.startTime || ""),
+                    league: resolveMatchCompetitionLabel(entry?.match),
+                    espnLeague: resolveMatchEspnLeagueCode(entry?.match),
+                    sport: String(entry?.match?.sport || "football"),
+                    possession: entry?.match?.possession,
+                    redCards: entry?.match?.redCards,
+                  }}
+                  onPress={() => openMatchDetail(entry?.match)}
+                />
+                <View style={styles.smartReasonRow}>
+                  {entry?.isTrending ? <Text style={styles.smartReasonTag}>Trending</Text> : null}
+                  {entry?.isUpsetPotential ? <Text style={styles.smartReasonTag}>Upset Potential</Text> : null}
+                  {(entry?.reasons || []).slice(0, 2).map((reason: string) => (
+                    <Text key={`${String(entry?.match?.id || "")}_${reason}`} style={styles.smartReasonTag}>{reason}</Text>
+                  ))}
+                </View>
+              </View>
+            ))}
+          </View>
+        )}
+
         {sportsEnabled && (
           <View style={styles.section}>
             <View style={styles.sectionHead}>
@@ -257,20 +361,22 @@ export default function CuratedHomeScreen() {
                 key={String(match?.id || `${match?.homeTeam}_${match?.awayTeam}`)}
                 match={{
                   id: String(match?.id || ""),
-                  homeTeam: String(match?.homeTeam || "Home"),
-                  awayTeam: String(match?.awayTeam || "Away"),
-                  homeTeamLogo: match?.homeTeamLogo || "",
-                  awayTeamLogo: match?.awayTeamLogo || "",
-                  homeScore: Number(match?.homeScore ?? 0),
-                  awayScore: Number(match?.awayScore ?? 0),
+                  homeTeam: getTeamName(match?.homeTeam, "Home"),
+                  awayTeam: getTeamName(match?.awayTeam, "Away"),
+                  homeTeamLogo: getTeamLogo(match, "home"),
+                  awayTeamLogo: getTeamLogo(match, "away"),
+                  homeScore: getScore(match, "home"),
+                  awayScore: getScore(match, "away"),
                   status: String(match?.status || "upcoming") as any,
                   minute: Number(match?.minute ?? 0),
-                  startTime: String(match?.startDate || ""),
-                  league: resolveLeagueLabel(match),
-                  espnLeague: resolveEspnLeague(match),
+                  startTime: String(match?.startDate || match?.startTime || ""),
+                  league: resolveMatchCompetitionLabel(match),
+                  espnLeague: resolveMatchEspnLeagueCode(match),
                   sport: String(match?.sport || "football"),
                 }}
                 onPress={() => router.push({ pathname: "/match-detail", params: toMatchParams(match) })}
+                onNotificationToggle={() => toggleMatchNotification(String(match?.id || ""))}
+                isNotificationOn={notifiedMatchIds.has(String(match?.id || ""))}
               />
             )) : <Text style={styles.emptyText}>No live or upcoming matches available right now.</Text>}
           </View>
@@ -280,6 +386,9 @@ export default function CuratedHomeScreen() {
           <View style={styles.section}>
             <View style={styles.sectionHead}>
               <Text style={styles.sectionLabel}>HIGHLIGHTS & REPLAYS</Text>
+              <TouchableOpacity onPress={() => router.push("/highlights")}> 
+                <Text style={styles.sectionAction}>Open full feed</Text>
+              </TouchableOpacity>
             </View>
 
             {replayItems.length > 0 && (
@@ -472,6 +581,24 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.card,
     justifyContent: "flex-end",
   },
+  heroTeamLogoLeft: {
+    position: "absolute",
+    left: -24,
+    top: "50%",
+    width: 180,
+    height: 180,
+    marginTop: -90,
+    opacity: 0.18,
+  },
+  heroTeamLogoRight: {
+    position: "absolute",
+    right: -24,
+    top: "50%",
+    width: 180,
+    height: 180,
+    marginTop: -90,
+    opacity: 0.18,
+  },
   heroContent: { padding: 18, gap: 6 },
   heroEyebrow: {
     color: COLORS.accent,
@@ -505,6 +632,28 @@ const styles = StyleSheet.create({
     letterSpacing: 0.6,
   },
   sectionAction: { color: COLORS.accent, fontFamily: "Inter_600SemiBold", fontSize: 12 },
+  smartCardWrap: {
+    marginBottom: 8,
+  },
+  smartReasonRow: {
+    paddingHorizontal: 18,
+    marginTop: -2,
+    marginBottom: 8,
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 6,
+  },
+  smartReasonTag: {
+    color: "rgba(255,255,255,0.82)",
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 10,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: "rgba(229,9,20,0.3)",
+    backgroundColor: "rgba(229,9,20,0.16)",
+  },
   emptyText: {
     color: COLORS.textMuted,
     fontFamily: "Inter_500Medium",

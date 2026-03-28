@@ -4,9 +4,9 @@ import {
   Text,
   StyleSheet,
   TouchableOpacity,
-  Image,
   Animated,
 } from "react-native";
+import { Image as ExpoImage } from "expo-image";
 import { router } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
@@ -53,8 +53,10 @@ interface Props {
 
 export const RealContentCard = React.memo(function RealContentCard({ item, onPress, onFavorite, isFavorite, width = 130, showProgress }: Props) {
   const [imageError, setImageError] = useState(false);
+  const [imageLoaded, setImageLoaded] = useState(false);
   const [focused, setFocused] = useState(false);
   const scaleAnim = useRef(new Animated.Value(1)).current;
+  const shimmerAnim = useRef(new Animated.Value(0.5)).current;
   const cardWidth = isTV ? Math.max(width, 180) : width;
   const height = Math.round(cardWidth * 1.56);
   const hasProgress = showProgress && item.progress != null && item.progress > 0;
@@ -69,6 +71,18 @@ export const RealContentCard = React.memo(function RealContentCard({ item, onPre
     Animated.spring(scaleAnim, { toValue: 1, useNativeDriver: true, friction: 6, tension: 100 }).start();
   }, [scaleAnim]);
 
+  useEffect(() => {
+    if (imageLoaded || !item.poster || imageError) return;
+    const anim = Animated.loop(
+      Animated.sequence([
+        Animated.timing(shimmerAnim, { toValue: 1, duration: 850, useNativeDriver: true }),
+        Animated.timing(shimmerAnim, { toValue: 0.5, duration: 850, useNativeDriver: true }),
+      ])
+    );
+    anim.start();
+    return () => anim.stop();
+  }, [imageLoaded, item.poster, imageError, shimmerAnim]);
+
   return (
     <Animated.View style={{ width: cardWidth, marginRight: isTV ? 20 : 14, transform: [{ scale: scaleAnim }] }}>
       <TouchableOpacity
@@ -82,12 +96,27 @@ export const RealContentCard = React.memo(function RealContentCard({ item, onPre
       >
         <View style={[styles.poster, { width: cardWidth, height }, focused && styles.posterFocused]}>
           {item.poster && !imageError ? (
-            <Image
-              source={{ uri: item.poster }}
-              style={StyleSheet.absoluteFill}
-              resizeMode="cover"
-              onError={() => setImageError(true)}
-            />
+            <>
+              {!imageLoaded && (
+                <Animated.View style={[StyleSheet.absoluteFill, { opacity: shimmerAnim }]}>
+                  <LinearGradient
+                    colors={["rgba(255,255,255,0.03)", "rgba(255,255,255,0.09)", "rgba(255,255,255,0.03)"]}
+                    style={StyleSheet.absoluteFill}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                  />
+                </Animated.View>
+              )}
+              <ExpoImage
+                source={{ uri: item.poster }}
+                style={StyleSheet.absoluteFill}
+                contentFit="cover"
+                cachePolicy="memory-disk"
+                transition={120}
+                onLoad={() => setImageLoaded(true)}
+                onError={() => setImageError(true)}
+              />
+            </>
           ) : (
             <>
               <LinearGradient
@@ -170,8 +199,11 @@ export const RealContentCard = React.memo(function RealContentCard({ item, onPre
 
 export const RealHeroBanner = React.memo(function RealHeroBanner({ item, onPlay, onInfo, trailerKey }: { item: ContentItem; onPlay: () => void; onInfo?: () => void; trailerKey?: string | null }) {
   const [imageError, setImageError] = useState(false);
+  const [heroImageLoaded, setHeroImageLoaded] = useState(false);
   const [showTrailer, setShowTrailer] = useState(false);
   const trailerTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const heroShimmerAnim = useRef(new Animated.Value(0.5)).current;
+  const backdropUri = item.backdrop || item.poster;
 
   // Auto-start trailer preview after 2 seconds (Netflix-style)
   useEffect(() => {
@@ -184,7 +216,17 @@ export const RealHeroBanner = React.memo(function RealHeroBanner({ item, onPlay,
     };
   }, [trailerKey, item.id]);
 
-  const backdropUri = item.backdrop || item.poster;
+  useEffect(() => {
+    if (heroImageLoaded || !backdropUri || imageError) return;
+    const anim = Animated.loop(
+      Animated.sequence([
+        Animated.timing(heroShimmerAnim, { toValue: 1, duration: 950, useNativeDriver: true }),
+        Animated.timing(heroShimmerAnim, { toValue: 0.5, duration: 950, useNativeDriver: true }),
+      ])
+    );
+    anim.start();
+    return () => anim.stop();
+  }, [heroImageLoaded, backdropUri, heroShimmerAnim, imageError]);
 
   return (
     <View style={styles.heroBannerWrapper}>
@@ -194,12 +236,27 @@ export const RealHeroBanner = React.memo(function RealHeroBanner({ item, onPlay,
       >
         <View style={styles.heroBanner}>
           {backdropUri && !imageError ? (
-            <Image
-              source={{ uri: backdropUri }}
-              style={StyleSheet.absoluteFill}
-              resizeMode="cover"
-              onError={() => setImageError(true)}
-            />
+            <>
+              {!heroImageLoaded && (
+                <Animated.View style={[StyleSheet.absoluteFill, { opacity: heroShimmerAnim }]}>
+                  <LinearGradient
+                    colors={["rgba(255,255,255,0.03)", "rgba(255,255,255,0.08)", "rgba(255,255,255,0.03)"]}
+                    style={StyleSheet.absoluteFill}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                  />
+                </Animated.View>
+              )}
+              <ExpoImage
+                source={{ uri: backdropUri }}
+                style={StyleSheet.absoluteFill}
+                contentFit="cover"
+                cachePolicy="memory-disk"
+                transition={140}
+                onLoad={() => setHeroImageLoaded(true)}
+                onError={() => setImageError(true)}
+              />
+            </>
           ) : (
             <LinearGradient
               colors={[item.color || COLORS.card, `${item.color || COLORS.cardElevated}CC`, COLORS.background]}
@@ -222,11 +279,13 @@ export const RealHeroBanner = React.memo(function RealHeroBanner({ item, onPlay,
                 });
               }}
             >
-              <Image
+              <ExpoImage
                 source={{ uri: `https://img.youtube.com/vi/${trailerKey}/maxresdefault.jpg` }}
                 style={StyleSheet.absoluteFill}
-                resizeMode="cover"
-                onError={(e) => {
+                contentFit="cover"
+                cachePolicy="memory-disk"
+                transition={120}
+                onError={() => {
                   // fallback handled by parent image error state
                 }}
               />

@@ -30,6 +30,8 @@ import { cacheGetStale, cachePeekStale, cacheSet, CacheTTL } from "@/lib/service
 import { getCompetitionInsights, getMatchDetailRaw, getMatchStream, sportKeys } from "@/lib/services/sports-service";
 import { useNexora } from "@/context/NexoraContext";
 import { showRewardedUnlockAd } from "@/lib/rewarded-ads";
+import { buildAiMatchStory, calculateMomentum, filterStatsByMode, getStatsMode, setStatsMode, type StatsMode } from "@/lib/ai";
+import { MomentumBar } from "@/components/sports/MomentumBar";
 const BLOCK_POPUP_JS = `
 (function(){
   // Patch removeChild to never throw — prevents DOMException crashes
@@ -86,12 +88,11 @@ const EXPERIENCE_TABS = [
   { id: "lineups", label: "Lineups" },
   { id: "timeline", label: "Timeline" },
   { id: "h2h", label: "H2H" },
-  { id: "power", label: "Power" },
   { id: "success", label: "Success Rate" },
 ] as const;
 
 type TabId = "stream" | "stats" | "lineups" | "timeline" | "highlights";
-type ExperienceTabId = "prematch" | "predictions" | "stats" | "lineups" | "timeline" | "h2h" | "power" | "success";
+type ExperienceTabId = "prematch" | "predictions" | "stats" | "lineups" | "timeline" | "h2h" | "success";
 
 function shouldRetryRequest(failureCount: number, error: unknown): boolean {
   if (failureCount >= 1) return false;
@@ -232,8 +233,9 @@ export default function MatchDetailScreen() {
   const [streamWebError, setStreamWebError] = useState<unknown>(null);
   const [streamErrorRef, setStreamErrorRef] = useState<string>("");
   const [activeExperienceTab, setActiveExperienceTab] = useState<ExperienceTabId>("prematch");
-  const [isHeaderCollapsed, setIsHeaderCollapsed] = useState(false);
   const [rewardedAdRunning, setRewardedAdRunning] = useState(false);
+  const [statsMode, setStatsModeState] = useState<StatsMode>("basic");
+  const [aiStoryCollapsed, setAiStoryCollapsed] = useState(true);
   const paramCanonical = useMemo(() => toCanonicalMatch({
     id: params.matchId,
     homeTeam: params.homeTeam,
@@ -292,7 +294,7 @@ export default function MatchDetailScreen() {
       "Eerste Divisie": "ned.2",
       "KNVB Beker": "ned.knvb_beker",
     };
-    return map[params.league] || "eng.1";
+    return map[params.league] || "";
   }, [likelyInternationalFromParams, params.espnLeague, params.league]);
   const {
     data: streamData,
@@ -532,11 +534,15 @@ export default function MatchDetailScreen() {
   };
 
   const handleExperienceScroll = useMemo(() => {
-    return (event: any) => {
-      const y = Number(event?.nativeEvent?.contentOffset?.y || 0);
-      const next = y > 44;
-      setIsHeaderCollapsed((prev) => (prev === next ? prev : next));
-    };
+    return (_event: any) => {};
+  }, []);
+
+  useEffect(() => {
+    let mounted = true;
+    getStatsMode().then((mode) => {
+      if (mounted) setStatsModeState(mode);
+    }).catch(() => undefined);
+    return () => { mounted = false; };
   }, []);
 
   const hasFetchedPrematchRef = useRef(false);
@@ -672,6 +678,24 @@ export default function MatchDetailScreen() {
       return acc;
     }, { goals: 0, yellow: 0, red: 0, subs: 0, penalties: 0 });
   }, [orderedTimelineEvents]);
+  const momentumModel = useMemo(() => calculateMomentum({
+    homeStats: matchDetail?.homeStats || {},
+    awayStats: matchDetail?.awayStats || {},
+  }), [matchDetail?.awayStats, matchDetail?.homeStats]);
+  const aiStory = useMemo(() => buildAiMatchStory({
+    homeTeam: homeTeamName,
+    awayTeam: awayTeamName,
+    homeScore: Number(liveHomeScore || 0),
+    awayScore: Number(liveAwayScore || 0),
+    timeline: orderedTimelineEvents,
+    homeStats: matchDetail?.homeStats || {},
+    awayStats: matchDetail?.awayStats || {},
+  }), [awayTeamName, homeTeamName, liveAwayScore, liveHomeScore, matchDetail?.awayStats, matchDetail?.homeStats, orderedTimelineEvents]);
+  const scopedStats = useMemo(() => filterStatsByMode(
+    (matchDetail?.homeStats || {}) as Record<string, unknown>,
+    (matchDetail?.awayStats || {}) as Record<string, unknown>,
+    statsMode,
+  ), [matchDetail?.awayStats, matchDetail?.homeStats, statsMode]);
   const predictionError = Boolean((prediction as any)?.error);
   const safePrediction = prediction && !predictionError ? prediction : null;
   const predictionMatchId = String(params.matchId || effectiveCanonical?.id || `${params.homeTeam}-${params.awayTeam}-${params.startDate || ""}`);
@@ -761,7 +785,7 @@ export default function MatchDetailScreen() {
       <View style={styles.container}>
         <LinearGradient
           colors={["#111521", "#0B0F1A", "#080B12"]}
-          style={[styles.header, styles.nxHeader, { paddingTop: topPad + 8 }, isHeaderCollapsed ? styles.nxHeaderCollapsed : null]}
+          style={[styles.header, styles.nxHeader, { paddingTop: topPad + 8 }]}
         >
           <View style={styles.heroTopRow}>
             <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
@@ -788,11 +812,11 @@ export default function MatchDetailScreen() {
             </TouchableOpacity>
           </View>
 
-          <View style={[styles.matchHeader, isHeaderCollapsed ? styles.nxMatchHeaderCollapsed : null]}>
+          <View style={styles.matchHeader}>
             <View style={styles.competitionRowCenterOnly}>
               <View style={styles.competitionCenter}>
                 {leagueLogoUri ? (
-                  <TeamLogo uri={leagueLogoUri} teamName={competitionName} size={isHeaderCollapsed ? 20 : 24} />
+                  <TeamLogo uri={leagueLogoUri} teamName={competitionName} size={24} />
                 ) : (
                   <View style={styles.leagueFallbackIcon}>
                     <Ionicons name="trophy-outline" size={14} color={COLORS.textMuted} />
@@ -822,7 +846,7 @@ export default function MatchDetailScreen() {
               />
               <View style={styles.scoreCenter}>
                 {(isLive || isHalfTime || isFinished) ? (
-                  <Text style={[styles.score, { fontSize: isHeaderCollapsed ? Math.max(34, scoreFontSize - 10) : scoreFontSize }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>
+                  <Text style={[styles.score, { fontSize: scoreFontSize }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>
                     {liveHomeScore} - {liveAwayScore}
                   </Text>
                 ) : (
@@ -851,8 +875,43 @@ export default function MatchDetailScreen() {
                 }}
               />
             </View>
+
+            {momentumModel.hasData ? (
+              <View style={styles.headerMomentumWrap}>
+                <MomentumBar
+                  model={momentumModel}
+                  homeLabel={homeTeamName.slice(0, 3).toUpperCase() || "HOM"}
+                  awayLabel={awayTeamName.slice(0, 3).toUpperCase() || "AWY"}
+                />
+              </View>
+            ) : null}
           </View>
         </LinearGradient>
+
+        {aiStory.available ? (
+          <View style={styles.aiStoryWrap}>
+            <TouchableOpacity
+              activeOpacity={0.82}
+              style={styles.aiStoryHeader}
+              onPress={() => setAiStoryCollapsed((value) => !value)}
+            >
+              <View style={styles.aiStoryTitleWrap}>
+                <Ionicons name="sparkles-outline" size={15} color={COLORS.accent} />
+                <Text style={styles.aiStoryTitle}>{aiStory.title}</Text>
+              </View>
+              <Ionicons name={aiStoryCollapsed ? "chevron-down" : "chevron-up"} size={16} color={COLORS.textMuted} />
+            </TouchableOpacity>
+            {!aiStoryCollapsed ? (
+              <View style={styles.aiStoryBody}>
+                <Text style={styles.aiStoryText}>{aiStory.summary}</Text>
+                {aiStory.turningPoint ? <Text style={styles.aiStoryTurning}>{aiStory.turningPoint}</Text> : null}
+                {(aiStory.bullets || []).slice(0, 3).map((line) => (
+                  <Text key={line} style={styles.aiStoryBullet}>• {line}</Text>
+                ))}
+              </View>
+            ) : null}
+          </View>
+        ) : null}
 
         <View style={styles.nxTabBarWrap}>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.nxTabBarInner}>
@@ -1091,22 +1150,63 @@ export default function MatchDetailScreen() {
             onScroll={handleExperienceScroll}
             scrollEventThrottle={16}
           >
-            <Text style={styles.nxSectionTitle}>Stats</Text>
+            <View style={styles.statsModeRow}>
+              <Text style={styles.nxSectionTitle}>Stats</Text>
+              <View style={styles.statsModeToggleWrap}>
+                <TouchableOpacity
+                  style={[styles.statsModeBtn, statsMode === "basic" ? styles.statsModeBtnActive : null]}
+                  onPress={() => {
+                    setStatsModeState("basic");
+                    void setStatsMode("basic");
+                  }}
+                >
+                  <Text style={[styles.statsModeBtnText, statsMode === "basic" ? styles.statsModeBtnTextActive : null]}>Basic</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.statsModeBtn, statsMode === "pro" ? styles.statsModeBtnActive : null]}
+                  onPress={() => {
+                    setStatsModeState("pro");
+                    void setStatsMode("pro");
+                  }}
+                >
+                  <Text style={[styles.statsModeBtnText, statsMode === "pro" ? styles.statsModeBtnTextActive : null]}>Pro</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+            {scopedStats.isReduced ? <Text style={styles.statsModeHint}>Basic mode shows the core match signals. Switch to Pro for xG and advanced metrics.</Text> : null}
             {detailLoading ? (
               <LoadingState />
             ) : matchDetail ? (
               <>
+                <View style={styles.nxGridWrap}>
+                  <View style={styles.nxGridCard}>
+                    <Text style={styles.nxGridLabel}>Model edge</Text>
+                    <Text style={styles.nxGridValue}>{edgeScorePct}/100</Text>
+                  </View>
+                  <View style={styles.nxGridCard}>
+                    <Text style={styles.nxGridLabel}>Confidence</Text>
+                    <Text style={styles.nxGridValue}>{confidencePct}%</Text>
+                  </View>
+                  <View style={styles.nxGridCard}>
+                    <Text style={styles.nxGridLabel}>Win tilt</Text>
+                    <Text style={styles.nxGridValue}>{Math.abs(normHomePct - normAwayPct)}%</Text>
+                  </View>
+                  <View style={styles.nxGridCard}>
+                    <Text style={styles.nxGridLabel}>Goals pressure</Text>
+                    <Text style={styles.nxGridValue}>{Math.round((over25Pct + bttsPct) / 2)}%</Text>
+                  </View>
+                </View>
                 <StatsBars
                   homeTeam={params.homeTeam}
                   awayTeam={params.awayTeam}
-                  homeStats={matchDetail.homeStats || {}}
-                  awayStats={matchDetail.awayStats || {}}
+                  homeStats={scopedStats.homeStats || {}}
+                  awayStats={scopedStats.awayStats || {}}
                 />
                 <MatchHeatmap
                   homeTeam={params.homeTeam}
                   awayTeam={params.awayTeam}
-                  homeStats={matchDetail.homeStats || {}}
-                  awayStats={matchDetail.awayStats || {}}
+                  homeStats={scopedStats.homeStats || {}}
+                  awayStats={scopedStats.awayStats || {}}
                 />
               </>
             ) : (
@@ -1252,55 +1352,6 @@ export default function MatchDetailScreen() {
                 {safePrediction?.formGuide?.awayForm ? <Text style={[styles.nxBodyText, { marginTop: 10 }]}>{awayTeamName}: {safePrediction.formGuide.awayForm}</Text> : null}
               </View>
             ) : null}
-          </ScrollView>
-        ) : null}
-
-        {activeExperienceTab === "power" ? (
-          <ScrollView
-            style={styles.tabContent}
-            contentContainerStyle={styles.nxContentWrap}
-            showsVerticalScrollIndicator={false}
-            onScroll={handleExperienceScroll}
-            scrollEventThrottle={16}
-          >
-            <Text style={styles.nxSectionTitle}>Power</Text>
-            <View style={styles.nxGridWrap}>
-              <View style={styles.nxGridCard}>
-                <Text style={styles.nxGridLabel}>Model edge</Text>
-                <Text style={styles.nxGridValue}>{edgeScorePct}/100</Text>
-              </View>
-              <View style={styles.nxGridCard}>
-                <Text style={styles.nxGridLabel}>Confidence</Text>
-                <Text style={styles.nxGridValue}>{confidencePct}%</Text>
-              </View>
-              <View style={styles.nxGridCard}>
-                <Text style={styles.nxGridLabel}>Win tilt</Text>
-                <Text style={styles.nxGridValue}>{Math.abs(normHomePct - normAwayPct)}%</Text>
-              </View>
-              <View style={styles.nxGridCard}>
-                <Text style={styles.nxGridLabel}>Goals pressure</Text>
-                <Text style={styles.nxGridValue}>{Math.round((over25Pct + bttsPct) / 2)}%</Text>
-              </View>
-            </View>
-
-            {matchDetail ? (
-              <>
-                <StatsBars
-                  homeTeam={params.homeTeam}
-                  awayTeam={params.awayTeam}
-                  homeStats={matchDetail.homeStats || {}}
-                  awayStats={matchDetail.awayStats || {}}
-                />
-                <MatchHeatmap
-                  homeTeam={params.homeTeam}
-                  awayTeam={params.awayTeam}
-                  homeStats={matchDetail.homeStats || {}}
-                  awayStats={matchDetail.awayStats || {}}
-                />
-              </>
-            ) : (
-              <EmptyState icon="stats-chart-outline" text={tFn("matchDetail.statsUnavailable")} />
-            )}
           </ScrollView>
         ) : null}
 
@@ -2855,7 +2906,7 @@ function StatsBarsInner({ homeTeam, awayTeam, homeStats, awayStats }: { homeTeam
           <Text style={styles.statsVsLabel}>VS</Text>
           <View style={[styles.statsTeamSide, { justifyContent: "flex-end" }]}>
             <Text style={[styles.statsTeamName, { textAlign: "right" }]} numberOfLines={1}>{safeStr(awayTeam)}</Text>
-            <View style={[styles.statsLegendDot, { backgroundColor: "#5B8DEF" }]} />
+            <View style={[styles.statsLegendDot, { backgroundColor: "#2DD4FF" }]} />
           </View>
         </View>
         {dedupedStats.length > 0 && (() => {
@@ -3257,6 +3308,59 @@ const styles = StyleSheet.create({
     fontSize: 10,
     letterSpacing: 0.8,
   },
+  headerMomentumWrap: {
+    marginTop: 8,
+    paddingHorizontal: 8,
+  },
+  aiStoryWrap: {
+    marginHorizontal: 16,
+    marginTop: 6,
+    marginBottom: 6,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "rgba(229,9,20,0.24)",
+    backgroundColor: "rgba(229,9,20,0.11)",
+    overflow: "hidden",
+  },
+  aiStoryHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  aiStoryTitleWrap: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  aiStoryTitle: {
+    color: "#FFFFFF",
+    fontFamily: "Inter_700Bold",
+    fontSize: 13,
+  },
+  aiStoryBody: {
+    paddingHorizontal: 12,
+    paddingBottom: 12,
+    gap: 6,
+  },
+  aiStoryText: {
+    color: "rgba(255,255,255,0.88)",
+    fontFamily: "Inter_500Medium",
+    fontSize: 12,
+    lineHeight: 18,
+  },
+  aiStoryTurning: {
+    color: "#FF979B",
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 11,
+  },
+  aiStoryBullet: {
+    color: "rgba(255,255,255,0.72)",
+    fontFamily: "Inter_500Medium",
+    fontSize: 11,
+    lineHeight: 16,
+  },
   nxTabBarWrap: {
     backgroundColor: "#0B0F1A",
     borderBottomWidth: 1,
@@ -3265,7 +3369,7 @@ const styles = StyleSheet.create({
   nxTabBarInner: {
     flexDirection: "row",
     paddingHorizontal: 16,
-    paddingVertical: 10,
+    paddingVertical: 6,
     gap: 18,
   },
   nxTabItem: {
@@ -3294,7 +3398,7 @@ const styles = StyleSheet.create({
   },
   nxContentWrap: {
     paddingHorizontal: 16,
-    paddingTop: 14,
+    paddingTop: 10,
     paddingBottom: 28,
     gap: 12,
   },
@@ -3303,6 +3407,44 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     gap: 10,
+  },
+  statsModeRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+  statsModeToggleWrap: {
+    flexDirection: "row",
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.12)",
+    borderRadius: 999,
+    padding: 2,
+    backgroundColor: "rgba(255,255,255,0.04)",
+  },
+  statsModeBtn: {
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  statsModeBtnActive: {
+    backgroundColor: "rgba(229,9,20,0.2)",
+  },
+  statsModeBtnText: {
+    color: "#9CA7BF",
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 11,
+  },
+  statsModeBtnTextActive: {
+    color: "#FFFFFF",
+  },
+  statsModeHint: {
+    color: "rgba(255,255,255,0.7)",
+    fontFamily: "Inter_500Medium",
+    fontSize: 11,
+    lineHeight: 16,
+    marginTop: -4,
   },
   nxSectionTitle: {
     fontFamily: "Inter_700Bold",
@@ -3803,16 +3945,16 @@ const styles = StyleSheet.create({
   },
   momentumTrack: {
     flexDirection: "row",
-    height: 5,
+    height: 6,
     borderRadius: 3,
     overflow: "hidden",
     backgroundColor: "rgba(255,255,255,0.06)",
   },
-  momentumHome: { height: 5, backgroundColor: COLORS.accent, borderRadius: 3 },
-  momentumAway: { height: 5, backgroundColor: "#5B8DEF", borderRadius: 3 },
+  momentumHome: { height: 6, backgroundColor: COLORS.accent, borderRadius: 3 },
+  momentumAway: { height: 6, backgroundColor: COLORS.cyan, borderRadius: 3 },
   momentumFooter: { flexDirection: "row", justifyContent: "space-between", marginTop: 2 },
   momentumHomeLabel: { fontFamily: "Inter_600SemiBold", fontSize: 10, color: COLORS.accent },
-  momentumAwayLabel: { fontFamily: "Inter_600SemiBold", fontSize: 10, color: "#5B8DEF" },
+  momentumAwayLabel: { fontFamily: "Inter_600SemiBold", fontSize: 10, color: COLORS.cyan },
   statsVsLabel: {
     fontFamily: "Inter_800ExtraBold",
     fontSize: 11,
@@ -3885,7 +4027,7 @@ const styles = StyleSheet.create({
     textAlign: "right",
   },
   statValHome: { color: COLORS.accent },
-  statValAway: { color: "#5B8DEF" },
+  statValAway: { color: "#2DD4FF" },
   statValWinner: {
     color: COLORS.text,
     fontFamily: "Inter_800ExtraBold",
@@ -3904,28 +4046,28 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     width: "100%",
-    height: 7,
+    height: 9,
   },
   statBarHalf: {
     flex: 1,
     flexDirection: "row",
-    height: 7,
-    borderRadius: 3.5,
+    height: 9,
+    borderRadius: 4.5,
     overflow: "hidden",
     backgroundColor: "rgba(255,255,255,0.05)",
   },
   statBarHomeFill: {
-    height: 7,
+    height: 9,
     backgroundColor: COLORS.accent,
-    borderRadius: 3.5,
+    borderRadius: 4.5,
   },
   statBarCenterGap: {
     width: 4,
   },
   statBarAwayFill: {
-    height: 7,
-    backgroundColor: "#5B8DEF",
-    borderRadius: 3.5,
+    height: 9,
+    backgroundColor: "#2DD4FF",
+    borderRadius: 4.5,
   },
   statDivider: {
     height: StyleSheet.hairlineWidth,

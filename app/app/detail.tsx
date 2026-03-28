@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState, useRef } from "react";
+import React, { useMemo, useState, useRef } from "react";
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   Image, Modal, Platform, Alert, ActivityIndicator, Animated,
@@ -9,9 +9,7 @@ import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import * as FileSystem from "expo-file-system/legacy";
-import { WebView } from "react-native-webview";
 import { COLORS } from "@/constants/colors";
-import { NexoraCollapsingHeader } from "@/components/layout/NexoraCollapsingHeader";
 import { apiRequest } from "@/lib/query-client";
 import { useNexora } from "@/context/NexoraContext";
 import { SafeHaptics } from "@/lib/safeHaptics";
@@ -308,11 +306,6 @@ export default function DetailScreen() {
   const { t } = useTranslation();
 
   const [showDownload, setShowDownload] = useState(false);
-  const [showTrailer, setShowTrailer] = useState(false);
-  const [trailerIndex, setTrailerIndex] = useState(0);
-  const [trailerLoading, setTrailerLoading] = useState(false);
-  const [trailerUnavailable, setTrailerUnavailable] = useState(false);
-  const trailerAdvancingRef = useRef(false);
   const [activeTab, setActiveTab] = useState<"overview" | "cast" | "seasons">("overview");
   const [selectedSeasonNumber, setSelectedSeasonNumber] = useState<number | null>(null);
   const [seasonEpisodes, setSeasonEpisodes] = useState<Record<number, any[]>>({});
@@ -445,26 +438,32 @@ export default function DetailScreen() {
 
   const trailerCandidates = useMemo(() => {
     if (Array.isArray((data as any)?.trailerCandidates) && (data as any).trailerCandidates.length > 0) {
-      return (data as any).trailerCandidates.filter((candidate: any) => String(candidate?.key || "").trim());
+      return (data as any).trailerCandidates
+        .map((candidate: any) => {
+          const rawKey = String(candidate?.key || candidate?.youtubeKey || "").trim();
+          if (rawKey) return { ...candidate, key: rawKey };
+          const rawUrl = String(candidate?.url || candidate?.trailerUrl || "").trim();
+          if (!rawUrl) return null;
+          try {
+            const parsed = new URL(rawUrl);
+            const byQuery = parsed.searchParams.get("v");
+            if (byQuery) return { ...candidate, key: byQuery.trim() };
+            const pathParts = parsed.pathname.split("/").filter(Boolean);
+            const byPath = String(pathParts[pathParts.length - 1] || "").trim();
+            return byPath ? { ...candidate, key: byPath } : null;
+          } catch {
+            const match = rawUrl.match(/(?:v=|youtu\.be\/|embed\/)([A-Za-z0-9_-]{6,})/i);
+            return match?.[1] ? { ...candidate, key: String(match[1]).trim() } : null;
+          }
+        })
+        .filter((candidate: any) => String(candidate?.key || "").trim());
     }
     const fallbackKey = String((data as any)?.trailerKey || "").trim();
     const parsedKey = trailerKeyFromUrl;
     const key = fallbackKey || parsedKey;
     return key ? [{ key, site: "youtube", type: "Trailer" }] : [];
   }, [data, trailerKeyFromUrl]);
-  const activeTrailer = trailerCandidates[trailerIndex] || null;
-
-  // Cycle through embed providers when one fails (e.g. YouTube error 153)
-  const EMBED_PROVIDERS = [
-    (key: string) => `https://www.youtube-nocookie.com/embed/${encodeURIComponent(key)}?autoplay=1&hl=en&cc_lang_pref=en&rel=0&modestbranding=1&playsinline=1`,
-    (key: string) => `https://www.youtube.com/embed/${encodeURIComponent(key)}?autoplay=1&hl=en&cc_lang_pref=en&rel=0&modestbranding=1&playsinline=1`,
-    (key: string) => `https://inv.nadeko.net/embed/${encodeURIComponent(key)}?autoplay=1`,
-  ];
-  const [embedVariant, setEmbedVariant] = useState(0);
-  useEffect(() => { setEmbedVariant(0); }, [trailerIndex]);
-  const trailerEmbedUrl = activeTrailer?.key
-    ? (EMBED_PROVIDERS[embedVariant] || EMBED_PROVIDERS[0])(String(activeTrailer.key))
-    : null;
+  const primaryTrailer = trailerCandidates[0] || null;
   const metadataItems = useMemo(() => {
     const originalTitle = String((data as any)?.originalTitle || "").trim();
     const title = String((data as any)?.title || "").trim();
@@ -498,23 +497,7 @@ export default function DetailScreen() {
 
   const openTrailer = () => {
     SafeHaptics.impactLight();
-    setTrailerIndex(0);
-    setTrailerLoading(true);
-    setTrailerUnavailable(false);
-    trailerAdvancingRef.current = false;
-    setShowTrailer(true);
-  };
-
-  const closeTrailer = () => {
-    setShowTrailer(false);
-    setTrailerLoading(false);
-    setTrailerUnavailable(false);
-    setTrailerIndex(0);
-    trailerAdvancingRef.current = false;
-  };
-
-  const openTrailerInPlayer = () => {
-    const key = String(activeTrailer?.key || "").trim();
+    const key = String(primaryTrailer?.key || "").trim();
     if (!key) return;
     router.push({
       pathname: "/player",
@@ -523,36 +506,9 @@ export default function DetailScreen() {
         title: `${String(data?.title || "Trailer")} Trailer`,
         type: "trailer",
         contentId: `trailer_${String(data?.id || id)}_${key}`,
+        embedUrl: String((primaryTrailer as any)?.url || (data as any)?.trailerUrl || "").trim() || undefined,
       },
     });
-    setShowTrailer(false);
-  };
-
-  const advanceTrailer = () => {
-    if (trailerAdvancingRef.current) return;
-    trailerAdvancingRef.current = true;
-    // Try next embed provider for the same trailer key first
-    if (embedVariant + 1 < EMBED_PROVIDERS.length) {
-      setTimeout(() => {
-        setEmbedVariant((v) => v + 1);
-        setTrailerLoading(true);
-        trailerAdvancingRef.current = false;
-      }, 600);
-      return;
-    }
-    // All providers exhausted for this key — try next trailer candidate
-    const nextIndex = trailerIndex + 1;
-    if (nextIndex < trailerCandidates.length) {
-      setTimeout(() => {
-        setTrailerIndex(nextIndex);
-        setTrailerLoading(true);
-        trailerAdvancingRef.current = false;
-      }, 800);
-      return;
-    }
-    setTrailerLoading(false);
-    setTrailerUnavailable(true);
-    trailerAdvancingRef.current = false;
   };
 
   const resolvedSeriesId = String((data as any)?.tmdbId || tmdbId || id || "").trim();
@@ -677,43 +633,33 @@ export default function DetailScreen() {
 
   const tabs = isMovie ? ["overview", "cast"] : ["overview", "cast", "seasons"];
 
+  // Sticky bar fades in after scrolling past the hero
+  const stickyOpacity = scrollY.interpolate({
+    inputRange: [240, 320],
+    outputRange: [0, 1],
+    extrapolate: "clamp",
+  });
+
+  const heroHeight = (Platform.OS === "web" ? 59 : insets.top) + 320;
+
   return (
     <View style={styles.container}>
-      <View style={{ zIndex: 30, elevation: 30 }}>
-        <NexoraCollapsingHeader
-          scrollY={scrollY}
-          topInset={Platform.OS === "web" ? 59 : insets.top}
-          title={String(data?.title || paramTitle || "Detail")}
-          subtitle={`${type === "series" ? "Series" : "Movie"}${data?.year ? ` • ${String(data.year)}` : ""}`}
-          onBack={() => router.back()}
-          rightActions={
-            <TouchableOpacity
-              style={styles.headerFavoriteBtn}
-              onPress={() => {
-                toggleFavorite(id);
-                SafeHaptics.impactLight();
-              }}
-              activeOpacity={0.8}
-            >
-              <Ionicons name={fav ? "heart" : "heart-outline"} size={18} color={fav ? COLORS.accent : COLORS.text} />
-            </TouchableOpacity>
-          }
-          heroContent={
-            <View style={styles.detailHeaderHeroMeta}>
-              {data.tagline ? <Text style={styles.heroTagline} numberOfLines={1}>{data.tagline}</Text> : null}
-              <View style={styles.heroMetaRow}>
-                {data.imdb ? (
-                  <View style={styles.heroRatingPill}>
-                    <MaterialCommunityIcons name="star" size={12} color="#F5C518" />
-                    <Text style={styles.heroRatingText}>{data.imdb}</Text>
-                  </View>
-                ) : null}
-                {data.duration ? <Text style={styles.heroMetaText}>{data.duration}</Text> : null}
-              </View>
-            </View>
-          }
-        />
-      </View>
+      {/* Sticky header — fades in when user scrolls past hero */}
+      <Animated.View
+        style={[styles.stickyBar, { opacity: stickyOpacity, paddingTop: (Platform.OS === "web" ? 59 : insets.top) + 10 }]}
+        pointerEvents="box-none"
+      >
+        <TouchableOpacity style={styles.stickyBackBtn} onPress={() => router.back()}>
+          <Ionicons name="chevron-back" size={22} color={COLORS.text} />
+        </TouchableOpacity>
+        <Text style={styles.stickyTitle} numberOfLines={1}>{String(data?.title || paramTitle || "")}</Text>
+        <TouchableOpacity
+          style={styles.stickyFavBtn}
+          onPress={() => { toggleFavorite(id); SafeHaptics.impactLight(); }}
+        >
+          <Ionicons name={fav ? "heart" : "heart-outline"} size={18} color={fav ? COLORS.accent : COLORS.text} />
+        </TouchableOpacity>
+      </Animated.View>
 
       <Animated.ScrollView
         showsVerticalScrollIndicator={false}
@@ -721,7 +667,7 @@ export default function DetailScreen() {
         onScroll={Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], { useNativeDriver: false })}
         scrollEventThrottle={16}
       >
-        <View style={styles.hero}>
+        <View style={[styles.hero, { height: heroHeight }]}>
           {data.backdrop ? (
             <Image source={{ uri: data.backdrop }} style={styles.backdrop} resizeMode="cover" />
           ) : data.poster ? (
@@ -729,9 +675,9 @@ export default function DetailScreen() {
           ) : (
             <View style={[styles.backdrop, { backgroundColor: COLORS.card }]} />
           )}
-          {/* Top vignette */}
+          {/* Top vignette — darkens backdrop so back button is readable */}
           <LinearGradient
-            colors={["rgba(0,0,0,0.5)", "transparent"]}
+            colors={["rgba(0,0,0,0.65)", "rgba(0,0,0,0.15)", "transparent"]}
             style={styles.heroTopGradient}
           />
           <LinearGradient
@@ -745,6 +691,18 @@ export default function DetailScreen() {
               <Text style={styles.iptvBadgeText}>IPTV</Text>
             </View>
           )}
+          {/* Floating navigation buttons over hero */}
+          <View style={[styles.heroButtons, { paddingTop: (Platform.OS === "web" ? 59 : insets.top) + 8 }]}>
+            <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
+              <Ionicons name="chevron-back" size={22} color={COLORS.text} />
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.favBtn}
+              onPress={() => { toggleFavorite(id); SafeHaptics.impactLight(); }}
+            >
+              <Ionicons name={fav ? "heart" : "heart-outline"} size={18} color={fav ? COLORS.accent : COLORS.text} />
+            </TouchableOpacity>
+          </View>
           {/* Title overlay on hero */}
           <View style={styles.heroTitleOverlay}>
             <Text style={styles.heroContentTitle} numberOfLines={2}>{data.title}</Text>
@@ -1010,102 +968,6 @@ export default function DetailScreen() {
         year={data.year ? Number(data.year) : null}
       />
 
-      {/* In-app Trailer Modal */}
-      <Modal visible={showTrailer} transparent animationType="fade" onRequestClose={closeTrailer}>
-          <View style={styles.trailerModalOverlay}>
-            <View style={styles.trailerModalContent}>
-              <TouchableOpacity style={styles.trailerCloseBtn} onPress={closeTrailer}>
-                <Ionicons name="close" size={24} color={COLORS.text} />
-              </TouchableOpacity>
-              {trailerEmbedUrl && !trailerUnavailable ? (
-                <>
-                  <WebView
-                    key={`trailer-${trailerIndex}-${embedVariant}`}
-                    source={{ uri: trailerEmbedUrl }}
-                    style={styles.trailerWebView}
-                    allowsFullscreenVideo
-                    allowsInlineMediaPlayback
-                    mediaPlaybackRequiresUserAction={false}
-                    javaScriptEnabled
-                    incognito
-                    injectedJavaScript={`
-                      (function() {
-                        var check = setInterval(function() {
-                          var err = document.querySelector('.ytp-error, .ytp-error-content-wrap, .ytp-error-content-wrap-reason');
-                          var consent = document.querySelector('form[action*="consent"], .consent-page, #consent-bump');
-                          var bodyText = (document.body && document.body.innerText ? document.body.innerText : '').toLowerCase();
-                          if (bodyText.indexOf('error 153') >= 0 || bodyText.indexOf('playback on other websites has been disabled') >= 0) {
-                            clearInterval(check);
-                            window.ReactNativeWebView.postMessage(JSON.stringify({type:'yt-error-153'}));
-                            return;
-                          }
-                          if ((err && err.offsetHeight > 0) || consent) {
-                            clearInterval(check);
-                            window.ReactNativeWebView.postMessage(JSON.stringify({type:'yt-error'}));
-                          }
-                        }, 1200);
-                        setTimeout(function() { clearInterval(check); }, 15000);
-                        // Timeout: if video hasn't started after 12s, report error
-                        setTimeout(function() {
-                          var vid = document.querySelector('video');
-                          if (!vid || vid.paused || vid.readyState < 2) {
-                            window.ReactNativeWebView.postMessage(JSON.stringify({type:'yt-error'}));
-                          }
-                        }, 12000);
-                      })();
-                      true;
-                    `}
-                    onMessage={(event: any) => {
-                      try {
-                        const msg = JSON.parse(event.nativeEvent.data);
-                        if (msg.type === 'yt-error-153') {
-                          setTrailerUnavailable(true);
-                          setTrailerLoading(false);
-                          return;
-                        }
-                        if (msg.type === 'yt-error') advanceTrailer();
-                      } catch {}
-                    }}
-                    onLoadStart={() => {
-                      setTrailerLoading(true);
-                      setTrailerUnavailable(false);
-                    }}
-                    onLoadEnd={() => setTrailerLoading(false)}
-                    onError={advanceTrailer}
-                    onHttpError={(e: any) => {
-                      const status = e?.nativeEvent?.statusCode;
-                      if (status && status >= 500) {
-                        advanceTrailer();
-                      } else if (status === 404 || status === 403) {
-                        advanceTrailer();
-                      }
-                    }}
-                  />
-                  {trailerLoading ? (
-                    <View style={styles.trailerStatusOverlay}>
-                      <ActivityIndicator size="small" color={COLORS.accent} />
-                      <Text style={styles.trailerStatusText}>{t("detail.trailerLoading")}</Text>
-                    </View>
-                  ) : null}
-                </>
-              ) : (
-                <View style={styles.trailerFallbackState}>
-                  <Ionicons name="videocam-off-outline" size={34} color={COLORS.textMuted} />
-                  <Text style={styles.trailerFallbackTitle}>{t("detail.trailerUnavailable")}</Text>
-                  {activeTrailer?.key ? (
-                    <TouchableOpacity
-                      style={styles.trailerInAppBtn}
-                      onPress={openTrailerInPlayer}
-                    >
-                      <Ionicons name="play-circle-outline" size={16} color={COLORS.text} />
-                      <Text style={styles.trailerInAppText}>Play trailer in app</Text>
-                    </TouchableOpacity>
-                  ) : null}
-                </View>
-              )}
-            </View>
-          </View>
-        </Modal>
     </View>
   );
 }
@@ -1118,9 +980,9 @@ const styles = StyleSheet.create({
   backBtnLoading: { flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 16, paddingVertical: 10, borderRadius: 10, borderWidth: 1, borderColor: COLORS.border },
   backBtnLoadingText: { color: COLORS.textMuted, fontFamily: "Inter_500Medium", fontSize: 14 },
   errorRefText: { color: COLORS.textMuted, fontFamily: "Inter_400Regular", fontSize: 11, marginTop: 6 },
-  hero: { height: 380, position: "relative" },
+  hero: { position: "relative" },
   backdrop: { width: "100%", height: "100%" },
-  heroTopGradient: { position: "absolute", top: 0, left: 0, right: 0, height: 100 },
+  heroTopGradient: { position: "absolute", top: 0, left: 0, right: 0, height: 140 },
   heroGradient: { ...StyleSheet.absoluteFillObject },
   detailHeaderHeroMeta: { gap: 6 },
   headerFavoriteBtn: {
@@ -1133,15 +995,60 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  heroTitleOverlay: { position: "absolute", bottom: 0, left: 0, right: 0, paddingHorizontal: 20, paddingBottom: 4 },
+  heroTitleOverlay: { position: "absolute", bottom: 0, left: 0, right: 0, paddingHorizontal: 20, paddingBottom: 12 },
+  heroButtons: {
+    position: "absolute",
+    top: 0, left: 0, right: 0,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    paddingHorizontal: 16,
+    zIndex: 2,
+  },
+  backBtn: {
+    width: 38, height: 38, borderRadius: 19,
+    backgroundColor: "rgba(0,0,0,0.45)",
+    alignItems: "center", justifyContent: "center",
+    borderWidth: 0.5, borderColor: "rgba(255,255,255,0.14)",
+  },
+  favBtn: {
+    width: 38, height: 38, borderRadius: 19,
+    backgroundColor: "rgba(0,0,0,0.45)",
+    alignItems: "center", justifyContent: "center",
+    borderWidth: 0.5, borderColor: "rgba(255,255,255,0.14)",
+  },
+  stickyBar: {
+    position: "absolute",
+    top: 0, left: 0, right: 0,
+    zIndex: 30,
+    backgroundColor: COLORS.background,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingHorizontal: 14,
+    paddingBottom: 12,
+  },
+  stickyBackBtn: {
+    width: 36, height: 36, borderRadius: 18,
+    alignItems: "center", justifyContent: "center",
+  },
+  stickyTitle: {
+    flex: 1,
+    fontFamily: "Inter_700Bold",
+    fontSize: 16,
+    color: COLORS.text,
+  },
+  stickyFavBtn: {
+    width: 36, height: 36, borderRadius: 18,
+    alignItems: "center", justifyContent: "center",
+  },
   heroContentTitle: { fontFamily: "Inter_800ExtraBold", fontSize: 28, color: COLORS.text, lineHeight: 32, marginBottom: 4 },
   heroTagline: { fontFamily: "Inter_400Regular", fontSize: 13, color: "rgba(255,255,255,0.6)", fontStyle: "italic", marginBottom: 8 },
   heroMetaRow: { flexDirection: "row", alignItems: "center", gap: 10, flexWrap: "wrap" },
   heroMetaText: { fontFamily: "Inter_500Medium", fontSize: 13, color: COLORS.textSecondary },
   heroRatingPill: { flexDirection: "row", alignItems: "center", gap: 3 },
   heroRatingText: { fontFamily: "Inter_700Bold", fontSize: 13, color: "#F5C518" },
-  backBtn: { position: "absolute", left: 16, width: 38, height: 38, borderRadius: 19, backgroundColor: "rgba(0,0,0,0.4)", alignItems: "center", justifyContent: "center" },
-  favBtn: { position: "absolute", right: 16, width: 38, height: 38, borderRadius: 19, backgroundColor: "rgba(0,0,0,0.4)", alignItems: "center", justifyContent: "center" },
   iptvBadge: { position: "absolute", bottom: 16, left: 16, flexDirection: "row", alignItems: "center", gap: 5, backgroundColor: "rgba(0,212,255,0.15)", borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4, borderWidth: 1, borderColor: COLORS.accent },
   iptvBadgeText: { fontFamily: "Inter_600SemiBold", fontSize: 11, color: COLORS.accent },
   infoSection: { paddingHorizontal: 16, paddingTop: 12 },
@@ -1219,16 +1126,6 @@ const styles = StyleSheet.create({
   downloadBtn: { flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: COLORS.accent, borderRadius: 14, paddingVertical: 14, paddingHorizontal: 32, marginTop: 4, width: "100%", justifyContent: "center" },
   downloadBtnText: { fontFamily: "Inter_700Bold", fontSize: 15, color: COLORS.background },
   progressContainer: { width: "100%", gap: 10, alignItems: "center" },
-  trailerModalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.84)", justifyContent: "center", padding: 16 },
-  trailerModalContent: { backgroundColor: COLORS.cardElevated, borderRadius: 18, overflow: "hidden", minHeight: 260 },
-  trailerCloseBtn: { position: "absolute", top: 12, right: 12, zIndex: 2, width: 36, height: 36, borderRadius: 18, backgroundColor: "rgba(0,0,0,0.45)", alignItems: "center", justifyContent: "center" },
-  trailerWebView: { width: "100%", aspectRatio: 16 / 9, backgroundColor: COLORS.background },
-  trailerStatusOverlay: { ...StyleSheet.absoluteFillObject, alignItems: "center", justifyContent: "center", gap: 10, backgroundColor: "rgba(0,0,0,0.22)" },
-  trailerStatusText: { fontFamily: "Inter_500Medium", fontSize: 13, color: COLORS.text },
-  trailerFallbackState: { minHeight: 260, alignItems: "center", justifyContent: "center", gap: 12, padding: 24 },
-  trailerFallbackTitle: { fontFamily: "Inter_600SemiBold", fontSize: 15, color: COLORS.text, textAlign: "center" },
-  trailerInAppBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, marginTop: 2, backgroundColor: "rgba(255,255,255,0.08)", borderRadius: 10, borderWidth: 1, borderColor: "rgba(255,255,255,0.14)", paddingVertical: 10, paddingHorizontal: 14 },
-  trailerInAppText: { fontFamily: "Inter_600SemiBold", fontSize: 13, color: COLORS.text },
   downloadingText: { fontFamily: "Inter_600SemiBold", fontSize: 14, color: COLORS.text },
   progressTrack: { width: "100%", height: 6, backgroundColor: COLORS.border, borderRadius: 3, overflow: "hidden" },
   progressFill: { height: "100%", backgroundColor: COLORS.accent, borderRadius: 3 },

@@ -5,6 +5,7 @@ import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useFollowState } from "@/context/UserStateContext";
 import { useOnboardingStore } from "@/store/onboarding-store";
+import { NexoraHeader } from "@/components/NexoraHeader";
 
 type MenuItem = {
   id: string;
@@ -127,6 +128,13 @@ export default function MoreScreen() {
   const userItems = useMemo<MenuItem[]>(
     () => [
       {
+        id: "premium",
+        title: "Premium",
+        subtitle: "AI analysis + full access from €2.99/week",
+        icon: "diamond-outline",
+        route: "/premium",
+      },
+      {
         id: "watchlist",
         title: "Watchlist",
         subtitle: "Saved titles and channels",
@@ -177,19 +185,22 @@ export default function MoreScreen() {
       <View style={styles.glowTop} />
       <View style={styles.glowBottom} />
 
+      <NexoraHeader
+        variant="module"
+        title="MENU"
+        titleColor={P.accent}
+        compact
+        showSearch={false}
+      />
+
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{
-          paddingTop: insets.top + 12,
+          paddingTop: 16,
           paddingBottom: insets.bottom + 98,
           paddingHorizontal: 16,
         }}
       >
-        <View style={styles.header}>
-          <Text style={styles.title}>NEXORA MENU</Text>
-          <Text style={styles.subtitle}>Central access across modules and account</Text>
-        </View>
-
         <Section
           title="MEDIA"
           items={
@@ -226,26 +237,11 @@ const styles = StyleSheet.create({
     borderRadius: 210,
     backgroundColor: "rgba(229,9,20,0.08)",
   },
-  header: {
-    marginBottom: 18,
-    gap: 6,
-  },
-  title: {
-    color: P.text,
-    fontSize: 25,
-    letterSpacing: 1.8,
-    fontFamily: "Inter_800ExtraBold",
-  },
-  subtitle: {
-    color: P.muted,
-    fontSize: 12,
-    fontFamily: "Inter_500Medium",
-  },
   section: {
     marginBottom: 16,
   },
   sectionTitle: {
-    color: P.accent,
+    color: P.text,
     fontSize: 10,
     letterSpacing: 1.9,
     marginBottom: 10,

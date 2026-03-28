@@ -6,7 +6,6 @@
  */
 
 import React from "react";
-import { useOnboardingStore } from "@/store/onboarding-store";
 import { SportModuleHub } from "@/components/sports/SportModuleHub";
 
 /**

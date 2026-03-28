@@ -1,78 +1,15 @@
-import React, { useCallback, useMemo, useState } from "react";
-import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator } from "react-native";
-import { LinearGradient } from "expo-linear-gradient";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import React from "react";
 import { router } from "expo-router";
-import { COLORS } from "@/constants/colors";
-import { Ionicons } from "@expo/vector-icons";
-import { useNexora } from "@/context/NexoraContext";
-import { PremiumSettingsHub } from "@/components/settings/PremiumSettingsHub";
-import { PremiumAuthFlow } from "@/components/auth/PremiumAuthFlow";
 import { EnhancedPaywall } from "@/components/paywall/EnhancedPaywall";
-import { FreeUnlockModal } from "@/components/unlocks/FreeUnlockModal";
-import { usePremiumProduct } from "@/hooks/usePremiumProduct";
+import { useUiStore } from "@/store/uiStore";
 
-/** Main Premium Product Screen (Settings) */
+/** Main Premium Product Screen */
 export default function PremiumScreen() {
-  const insets = useSafeAreaInsets();
-  const context = useNexora();
-  const premium = usePremiumProduct();
+  const closeMenu = useUiStore((state) => state.closeNexoraMenu);
 
-  const [showPaywall, setShowPaywall] = useState(false);
-  const [showFreeUnlock, setShowFreeUnlock] = useState(false);
+  React.useEffect(() => {
+    closeMenu();
+  }, [closeMenu]);
 
-  const handleLogout = useCallback(() => {
-    premium.handleLogout();
-    router.back();
-  }, [premium, router]);
-
-  const handlePremiumUpgrade = useCallback(() => {
-    setShowPaywall(true);
-  }, []);
-
-  const handlePremiumUpgradeSuccess = useCallback(() => {
-    setShowPaywall(false);
-    // Refresh premium status (in real app, this would sync with Firebase/RevenueCat)
-  }, []);
-
-  // Show auth flow if not authenticated
-  if (premium.authState === "unauthenticated") {
-    return (
-      <PremiumAuthFlow
-        onAuthSuccess={() => {
-          premium.initializeAuth();
-        }}
-      />
-    );
-  }
-
-  // Show loading state
-  if (premium.authState === "loading") {
-    return (
-      <View style={{ flex: 1, backgroundColor: COLORS.background, justifyContent: "center", alignItems: "center" }}>
-        <ActivityIndicator size="large" color={COLORS.accent} />
-        <Text style={{ marginTop: 16, color: COLORS.text, fontFamily: "Inter_600SemiBold" }}>Loading Premium...</Text>
-      </View>
-    );
-  }
-
-  // Show authenticated user the settings hub
-  return (
-    <View style={{ flex: 1 }}>
-      <PremiumSettingsHub onLogout={handleLogout} />
-
-      {/* Premium Paywall Modal */}
-      <EnhancedPaywall
-        visible={showPaywall}
-        onDismiss={() => setShowPaywall(false)}
-        onUpgradeSuccess={handlePremiumUpgradeSuccess}
-      />
-
-      {/* Free Unlock Modal */}
-      <FreeUnlockModal
-        visible={showFreeUnlock}
-        onDismiss={() => setShowFreeUnlock(false)}
-      />
-    </View>
-  );
+  return <EnhancedPaywall visible onDismiss={() => router.back()} />;
 }

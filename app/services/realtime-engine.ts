@@ -73,7 +73,7 @@ export const realtimePolicies = {
   sportsHighlights: { ttlMs: CacheTTL.MATCH_DETAIL, staleTime: 60_000, refetchInterval: 60_000 },
   matchDetailLive: { ttlMs: CacheTTL.MATCH_DETAIL, staleTime: 8_000, refetchInterval: 8_000 },
   vodHome: { ttlMs: CacheTTL.HOME_RAILS, staleTime: 90_000, refetchInterval: 5 * 60_000 },
-  vodCatalog: { ttlMs: CacheTTL.HOME_RAILS, staleTime: 15 * 60_000, refetchInterval: false },
+  vodCatalog: { ttlMs: CacheTTL.HOME_RAILS, staleTime: 15 * 60_000, refetchInterval: false as const },
   collections: { ttlMs: CacheTTL.HOME_RAILS, staleTime: 30 * 60_000, refetchInterval: 60 * 60_000 },
   mediaSections: { ttlMs: CacheTTL.HOME_RAILS, staleTime: 2 * 60_000, refetchInterval: 10 * 60_000 },
 };
@@ -155,6 +155,7 @@ async function fetchWithPersistentCache<T>(config: RealtimeQueryConfig<T>): Prom
 }
 
 export function buildRealtimeQueryOptions<T>(config: RealtimeQueryConfig<T>) {
+  const interval = config.refetchInterval;
   return {
     queryKey: config.queryKey,
     placeholderData: () => {
@@ -172,10 +173,10 @@ export function buildRealtimeQueryOptions<T>(config: RealtimeQueryConfig<T>) {
     gcTime: config.gcTime,
     retry: config.retry ?? 1,
     enabled: config.enabled,
-    refetchInterval: typeof config.refetchInterval === "function"
-      ? ({ state }: any) => config.refetchInterval(state?.data)
-      : config.refetchInterval,
-    refetchIntervalInBackground: Boolean(config.refetchInterval),
+    refetchInterval: typeof interval === "function"
+      ? (query: any) => interval(query?.state?.data as T | undefined)
+      : interval,
+    refetchIntervalInBackground: Boolean(interval),
     refetchOnReconnect: config.refetchOnReconnect ?? true,
     refetchOnMount: config.refetchOnMount ?? false,
   };

@@ -153,27 +153,37 @@ export function normalizeMatchFromEspn(raw: any, competitionId: CompetitionId): 
 export function normalizeMatchFromServer(raw: any): Match {
   const competition = normalizeCompetitionId({
     espnSlug: ensureStr(raw.espnLeague ?? raw.competition?.espnSlug ?? ""),
-    displayName: ensureStr(raw.leagueName ?? raw.competition?.displayName ?? ""),
+    displayName: ensureStr(raw.leagueName ?? raw.league ?? raw.competition?.displayName ?? ""),
     country: raw.competition?.country,
   });
+
+  // Extract home team name - prioritize object.name over string or fallback
+  const homeTeamName = typeof raw.homeTeam === "string"
+    ? ensureStr(raw.homeTeam)  // If it's already a string, use it directly (no "Home" fallback)
+    : ensureStr(raw.homeTeam?.name ?? raw.homeTeamName);  // Extract name from object or use homeTeamName field
+
+  // Extract away team name - same logic
+  const awayTeamName = typeof raw.awayTeam === "string"
+    ? ensureStr(raw.awayTeam)  // If it's already a string, use it directly (no "Away" fallback)
+    : ensureStr(raw.awayTeam?.name ?? raw.awayTeamName);  // Extract name from object or use awayTeamName field
 
   return {
     id: ensureStr(raw.id, `m-${Date.now()}`),
     espnId: raw.espnId ?? raw.id ?? null,
     sofascoreId: raw.sofascoreId ?? null,
     homeTeam: {
-      id: ensureStr(raw.homeTeam?.id ?? raw.homeTeamId, "ht"),
-      name: ensureStr(raw.homeTeam?.name ?? raw.homeTeamName, "Home"),
-      logo: raw.homeTeam?.logo ?? null,
+      id: ensureStr(typeof raw.homeTeam === "object" ? raw.homeTeam?.id : raw.homeTeamId, ""),
+      name: homeTeamName,  // No "Home" fallback
+      logo: (typeof raw.homeTeam === "object" ? raw.homeTeam?.logo : null) ?? raw.homeTeamLogo ?? null,
       score: ensureInt(raw.score?.home ?? raw.homeScore),
-      logoSource: raw.homeTeam?.logoSource ?? "espn",
+      logoSource: (raw.homeTeam as any)?.logoSource ?? "espn",
     },
     awayTeam: {
-      id: ensureStr(raw.awayTeam?.id ?? raw.awayTeamId, "at"),
-      name: ensureStr(raw.awayTeam?.name ?? raw.awayTeamName, "Away"),
-      logo: raw.awayTeam?.logo ?? null,
+      id: ensureStr(typeof raw.awayTeam === "object" ? raw.awayTeam?.id : raw.awayTeamId, ""),
+      name: awayTeamName,  // No "Away" fallback
+      logo: (typeof raw.awayTeam === "object" ? raw.awayTeam?.logo : null) ?? raw.awayTeamLogo ?? null,
       score: ensureInt(raw.score?.away ?? raw.awayScore),
-      logoSource: raw.awayTeam?.logoSource ?? "espn",
+      logoSource: (raw.awayTeam as any)?.logoSource ?? "espn",
     },
     competition,
     status: normalizeDomainMatchStatus({

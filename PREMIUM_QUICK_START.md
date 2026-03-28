@@ -13,7 +13,7 @@
 ✅ `/app/components/paywall/EnhancedPaywall.tsx` - Pricing screen  
 ✅ `/app/components/unlocks/FreeUnlockModal.tsx` - Daily unlock countdown
 ✅ `/app/hooks/usePremiumProduct.tsx` - State management hook
-✅ `/app/app/premium-settings.tsx` - Main screen route
+✅ `/app/app/premium.tsx` - Main screen route (UPDATED)
 
 ### 2. How to Use in Your App
 
@@ -21,7 +21,7 @@
 ```typescript
 import { router } from "expo-router";
 
-<Button onPress={() => router.push("/premium-settings")} title="Settings" />
+<Button onPress={() => router.push("/premium")} title="Premium" />
 ```
 
 #### Check Module Access
@@ -227,7 +227,7 @@ function ContentList() {
 ```typescript
 function ProfileButton() {
   return (
-    <TouchableOpacity onPress={() => router.push("/premium-settings")}>
+    <TouchableOpacity onPress={() => router.push("/premium")}>
       <Icon name="settings" />
     </TouchableOpacity>
   );

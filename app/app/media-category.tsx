@@ -2,7 +2,7 @@ import React from "react";
 import { View, Text, StyleSheet, TouchableOpacity } from "react-native";
 import { useLocalSearchParams, router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { NexoraSimpleHeader } from "@/components/NexoraSimpleHeader";
 
 const P = {
   bg: "#09090D",
@@ -14,17 +14,14 @@ const P = {
 };
 
 export default function MediaCategoryScreen() {
-  const insets = useSafeAreaInsets();
   const { type } = useLocalSearchParams<{ type?: string }>();
   const category = String(type || "media");
 
   return (
-    <View style={[styles.screen, { paddingTop: insets.top + 18 }]}> 
-      <TouchableOpacity style={styles.backBtn} onPress={() => router.back()} activeOpacity={0.8}>
-        <Ionicons name="chevron-back" size={20} color={P.text} />
-      </TouchableOpacity>
-
-      <View style={styles.card}>
+    <View style={styles.screen}>
+      <NexoraSimpleHeader title={category.toUpperCase()} />
+      <View style={styles.content}>
+        <View style={styles.card}>
         <Text style={styles.kicker}>NEXORA</Text>
         <Text style={styles.title}>{category.toUpperCase()}</Text>
         <Text style={styles.subtitle}>
@@ -39,6 +36,7 @@ export default function MediaCategoryScreen() {
           <Ionicons name="search" size={16} color={P.bg} />
           <Text style={styles.ctaText}>Open Search</Text>
         </TouchableOpacity>
+        </View>
       </View>
     </View>
   );
@@ -48,18 +46,11 @@ const styles = StyleSheet.create({
   screen: {
     flex: 1,
     backgroundColor: P.bg,
-    paddingHorizontal: 18,
   },
-  backBtn: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    borderWidth: 1,
-    borderColor: P.border,
-    backgroundColor: "rgba(255,255,255,0.03)",
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 16,
+  content: {
+    flex: 1,
+    paddingHorizontal: 18,
+    paddingTop: 20,
   },
   card: {
     borderRadius: 18,

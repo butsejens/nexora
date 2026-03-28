@@ -1,10 +1,11 @@
 import { useQuery } from "@tanstack/react-query";
-import { apiRequestJson } from "@/lib/query-client";
+import { getVodStudioById, mediaKeys } from "@/lib/services/media-service";
 
 export function useStudios(id: string) {
   return useQuery({
-    queryKey: ["media", "studio", id],
-    queryFn: async () => apiRequestJson(`/api/vod/studio?id=${encodeURIComponent(id)}`),
+    queryKey: mediaKeys.vodStudioDetail(id || "none"),
+    queryFn: async () => getVodStudioById(id),
     enabled: Boolean(id),
+    staleTime: 5 * 60_000,
   });
 }

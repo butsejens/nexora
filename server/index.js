@@ -1321,6 +1321,42 @@ function similarityScore(a, b) {
   return score;
 }
 
+function getNameParts(name) {
+  return normalizePersonName(name).split(" ").filter(Boolean);
+}
+
+function getSurname(name) {
+  const parts = getNameParts(name);
+  return parts.length ? parts[parts.length - 1] : "";
+}
+
+function getFirstInitial(name) {
+  const parts = getNameParts(name);
+  return parts.length ? String(parts[0] || "").slice(0, 1) : "";
+}
+
+function isSafeFuzzyPlayerMatch(targetName, candidateName, minScore = 0.7) {
+  const t = normalizePersonName(targetName);
+  const c = normalizePersonName(candidateName);
+  if (!t || !c) return false;
+  if (t === c) return true;
+
+  const score = similarityScore(t, c);
+  if (score < minScore) return false;
+
+  const tSurname = getSurname(t);
+  const cSurname = getSurname(c);
+  const tInitial = getFirstInitial(t);
+  const cInitial = getFirstInitial(c);
+
+  // Surname agreement is required for fuzzy matches, unless score is nearly exact.
+  if (score >= 0.9) return true;
+  if (!tSurname || !cSurname) return false;
+  if (tSurname !== cSurname) return false;
+  if (tInitial && cInitial && tInitial !== cInitial) return false;
+  return true;
+}
+
 function pickBestProfileMatch(profiles, player, teamName) {
   if (!Array.isArray(profiles) || profiles.length === 0) return null;
 
@@ -2837,14 +2873,16 @@ async function fetchTransfermarktPlayerDirect(playerName, teamName) {
     const normPlayer = normalizePersonName(playerName);
     let best = null;
     let bestScore = 0;
-    for (const r of results.slice(0, 10)) {
+    for (const r of results.slice(0, 12)) {
       const rName = normalizePersonName(r?.name || r?.playerName || "");
       const rClub = normalizePersonName(r?.club?.name || r?.team || "");
       let score = similarityScore(normPlayer, rName);
+      const safeNameMatch = isSafeFuzzyPlayerMatch(normPlayer, rName, 0.68);
+      if (!safeNameMatch && score < 0.9) continue;
       if (normTeam && rClub && similarityScore(normTeam, rClub) >= 0.5) score += 0.3;
       if (score > bestScore) { bestScore = score; best = r; }
     }
-    if (!best || bestScore < 0.45) { cacheSet(cacheKey, null, 300_000); return null; }
+    if (!best || bestScore < 0.62) { cacheSet(cacheKey, null, 300_000); return null; }
 
     const playerId = best.id;
     const marketValueEur = parseMarketValueEUR(best?.marketValue?.value ?? best?.marketValue);
@@ -3061,9 +3099,11 @@ async function enrichRosterMarketValues(players, teamName, _leagueName) {
     let bestTmScore = 0;
     for (const entry of tmEntries) {
       const score = similarityScore(normedName, entry.normed);
+      const safeMatch = isSafeFuzzyPlayerMatch(normedName, entry.normed, 0.7);
+      if (!safeMatch && score < 0.9) continue;
       if (score > bestTmScore) { bestTmScore = score; bestTmVal = entry.eur; }
     }
-    if (bestTmScore >= 0.45 && Number.isFinite(bestTmVal) && bestTmVal > 0) {
+    if (bestTmScore >= 0.7 && Number.isFinite(bestTmVal) && bestTmVal > 0) {
       next.marketValue = formatEURShort(bestTmVal);
       next.isRealValue = true;
       next.valueMethod = "transfermarkt-fuzzy";
@@ -3136,9 +3176,11 @@ async function enrichRosterPhotos(players, teamName, leagueName = "") {
         let bestTmPhoto = null;
         for (const entry of tmPhotoEntries) {
           const score = similarityScore(normName, entry.normed);
+          const safeMatch = isSafeFuzzyPlayerMatch(normName, entry.normed, 0.7);
+          if (!safeMatch && score < 0.9) continue;
           if (score > bestTmScore) { bestTmScore = score; bestTmPhoto = entry.photo; }
         }
-        if (bestTmScore >= 0.38 && bestTmPhoto) bestPhoto = bestTmPhoto;
+        if (bestTmScore >= 0.7 && bestTmPhoto) bestPhoto = bestTmPhoto;
       }
     }
 
@@ -3152,9 +3194,11 @@ async function enrichRosterPhotos(players, teamName, leagueName = "") {
       let bestDbPhoto = null;
       for (const entry of dbPhotoEntries) {
         const score = similarityScore(normName, entry.name);
+        const safeMatch = isSafeFuzzyPlayerMatch(normName, entry.name, 0.7);
+        if (!safeMatch && score < 0.9) continue;
         if (score > bestDbScore) { bestDbScore = score; bestDbPhoto = entry.photo; }
       }
-      if (bestDbScore >= 0.38 && bestDbPhoto) {
+      if (bestDbScore >= 0.7 && bestDbPhoto) {
         sportsDbPhoto = bestDbPhoto;
         if (!bestPhoto) bestPhoto = bestDbPhoto;
       } else {
@@ -3218,6 +3262,8 @@ async function enrichRosterPhotos(players, teamName, leagueName = "") {
                 if (!photo || !/^https?:\/\//i.test(photo)) continue;
                 const nameScore = similarityScore(normName, rName);
                 if (nameScore < 0.42) continue;
+                const safeNameMatch = isSafeFuzzyPlayerMatch(normName, rName, 0.7);
+                if (!safeNameMatch && nameScore < 0.9) continue;
                 // Boost score if team matches (strTeam or strTeam2)
                 const rTeam = normalizePersonName(r?.strTeam || "");
                 const rTeam2 = normalizePersonName(r?.strTeam2 || "");
@@ -7596,6 +7642,75 @@ app.get("/api/sports/player/:playerId", async (req, res) => {
     res.json(payload);
   } catch (e) {
     res.status(200).json({ error: String(e?.message || e) });
+  }
+});
+
+app.get("/api/sports/team/:teamId/player-quality", async (req, res) => {
+  const teamId = String(req.params.teamId || "").trim();
+  const league = String(req.query?.league || "eng.1").trim() || "eng.1";
+  const sport = String(req.query?.sport || "soccer").trim() || "soccer";
+  if (!teamId) return res.status(400).json({ error: "Missing teamId" });
+
+  try {
+    const query = new URLSearchParams();
+    query.set("sport", sport);
+    query.set("league", league);
+    if (req.query?.teamName) query.set("teamName", String(req.query.teamName));
+    if (req.query?.countryCode) query.set("countryCode", String(req.query.countryCode));
+
+    const origin = `${req.protocol}://${req.get("host")}`;
+    const detailResp = await fetch(`${origin}/api/sports/team/${encodeURIComponent(teamId)}?${query.toString()}`, {
+      headers: { "user-agent": "Mozilla/5.0 (Nexora/1.0)", accept: "application/json" },
+      signal: AbortSignal.timeout(12000),
+    });
+    const detail = detailResp.ok ? await detailResp.json() : null;
+    const players = Array.isArray(detail?.players) ? detail.players : [];
+
+    const rows = players.map((p, idx) => {
+      const name = String(p?.name || "").trim();
+      const hasPhoto = /^https?:\/\//i.test(String(p?.photo || ""));
+      const hasNationality = Boolean(String(p?.nationality || "").trim());
+      const hasPosition = Boolean(String(p?.position || p?.positionName || "").trim());
+      const hasAge = Number.isFinite(Number(p?.age || 0)) && Number(p?.age || 0) > 0;
+      const hasValue = Boolean(String(p?.marketValue || "").trim());
+      const realValue = Boolean(p?.isRealValue);
+      const method = String(p?.valueMethod || "").trim() || "unknown";
+
+      const score = [hasPhoto, hasNationality, hasPosition, hasAge, hasValue].filter(Boolean).length;
+      const confidence = score >= 5 ? "high" : score >= 3 ? "medium" : "low";
+
+      return {
+        idx,
+        id: String(p?.id || ""),
+        name,
+        photo: hasPhoto,
+        nationality: hasNationality,
+        position: hasPosition,
+        age: hasAge,
+        marketValue: hasValue,
+        isRealValue: realValue,
+        valueMethod: method,
+        confidence,
+      };
+    });
+
+    const summary = {
+      total: rows.length,
+      photoCoveragePct: rows.length ? Math.round((rows.filter((r) => r.photo).length / rows.length) * 100) : 0,
+      valueCoveragePct: rows.length ? Math.round((rows.filter((r) => r.marketValue).length / rows.length) * 100) : 0,
+      realValuePct: rows.length ? Math.round((rows.filter((r) => r.isRealValue).length / rows.length) * 100) : 0,
+      highConfidencePct: rows.length ? Math.round((rows.filter((r) => r.confidence === "high").length / rows.length) * 100) : 0,
+    };
+
+    res.json({
+      teamId,
+      league,
+      teamName: String(detail?.name || req.query?.teamName || ""),
+      summary,
+      players: rows,
+    });
+  } catch (e) {
+    res.status(200).json({ error: String(e?.message || e), teamId, league, summary: { total: 0 } });
   }
 });
 
