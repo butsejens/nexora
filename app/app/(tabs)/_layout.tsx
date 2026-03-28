@@ -4,7 +4,7 @@ import { Platform, StyleSheet, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { COLORS } from "@/constants/colors";
+import { COLORS } from "../../constants/colors";
 
 function TabIcon({ focused, icon }: { focused: boolean; icon: keyof typeof Ionicons.glyphMap }) {
   return (
@@ -39,7 +39,6 @@ export default function TabLayout() {
       <Tabs.Screen
         name="home"
         options={{
-          href: undefined,
           title: "Home",
           tabBarIcon: ({ focused }) => <TabIcon focused={focused} icon={focused ? "home" : "home-outline"} />,
         }}
@@ -47,7 +46,6 @@ export default function TabLayout() {
       <Tabs.Screen
         name="search"
         options={{
-          href: undefined,
           title: "Search",
           tabBarIcon: ({ focused }) => <TabIcon focused={focused} icon={focused ? "search" : "search-outline"} />,
         }}
@@ -55,7 +53,6 @@ export default function TabLayout() {
       <Tabs.Screen
         name="more"
         options={{
-          href: undefined,
           title: "Menu",
           tabBarIcon: ({ focused }) => <TabIcon focused={focused} icon={focused ? "menu" : "menu-outline"} />,
         }}
