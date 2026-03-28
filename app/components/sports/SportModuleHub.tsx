@@ -7,18 +7,19 @@
  * No overlaps, no glitching, clean architecture.
  */
 
-import React, { useState, useCallback, useEffect, useRef } from "react";
+import React, { useState, useCallback } from "react";
 import {
-  View, Text, StyleSheet, ScrollView, RefreshControl, AppState, TouchableOpacity,
+  View, Text, StyleSheet, ScrollView, RefreshControl, TouchableOpacity,
 } from "react-native";
 import { router } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
 import { Ionicons } from "@expo/vector-icons";
 
+import { useRenderTelemetry } from "@/hooks/useRenderTelemetry";
 import { NexoraHeader } from "@/components/NexoraHeader";
 import { useOnboardingStore } from "@/store/onboarding-store";
 import { useTranslation } from "@/lib/useTranslation";
-import { getSportsByDate, getSportsLive, sportKeys } from "@/lib/services/sports-service";
+import { buildSportLiveQuery, buildSportScheduleQuery } from "@/services/realtime-engine";
 import {
   LiveMatchCard,
   UpcomingMatchCard,
@@ -84,12 +85,6 @@ function toSportCardPayload(payload: SportsPayload): SportsPayload {
   };
 }
 
-function shouldRetrySportsQuery(failureCount: number, error: unknown): boolean {
-  if (failureCount >= 1) return false;
-  const msg = String((error as any)?.message || "").toLowerCase();
-  return msg.includes("network") || msg.includes("timeout") || msg.includes("failed to fetch");
-}
-
 // ═══════════════════════════════════════════════════════════════════════════════
 // COMPONENT EXPORTS
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -103,6 +98,8 @@ type SportModuleHubProps = {
  * Manages pane routing: explore | live | matchday | insights
  */
 export function SportModuleHub({ initialPane = "explore" }: SportModuleHubProps) {
+  useRenderTelemetry("SportModuleHub", { pane: initialPane });
+
   const { t } = useTranslation();
 
   // ─ State ─────────────────────────────────────────────────────────────────────
@@ -112,40 +109,19 @@ export function SportModuleHub({ initialPane = "explore" }: SportModuleHubProps)
     return d.toISOString().slice(0, 10);
   });
   const [refreshing, setRefreshing] = useState(false);
-  const appStateRef = useRef(AppState.currentState);
 
   // ─ Data Queries ──────────────────────────────────────────────────────────────
   const sportsEnabled = useOnboardingStore((s) => s.sportsEnabled);
 
   const liveQuery = useQuery({
-    queryKey: sportKeys.live(),
-    queryFn: async () => toSportCardPayload(await getSportsLive()),
-    staleTime: 20_000,
-    refetchInterval: 30_000,
-    retry: shouldRetrySportsQuery,
-    enabled: sportsEnabled,
+    ...buildSportLiveQuery(sportsEnabled),
+    select: toSportCardPayload,
   });
 
   const todayQuery = useQuery({
-    queryKey: sportKeys.homeByDate(selectedDate),
-    queryFn: async () => toSportCardPayload(await getSportsByDate(selectedDate)),
-    staleTime: 20_000,
-    refetchInterval: 30_000,
-    retry: shouldRetrySportsQuery,
-    enabled: sportsEnabled,
+    ...buildSportScheduleQuery(selectedDate, sportsEnabled),
+    select: toSportCardPayload,
   });
-
-  // ─ AppState listener: refetch on foreground ──────────────────────────────────
-  useEffect(() => {
-    const sub = AppState.addEventListener("change", (nextState) => {
-      if (nextState === "active" && appStateRef.current !== "active") {
-        void liveQuery.refetch();
-        void todayQuery.refetch();
-      }
-      appStateRef.current = nextState;
-    });
-    return () => sub.remove();
-  }, [liveQuery, todayQuery]);
 
   // ─ Pull to refresh ───────────────────────────────────────────────────────────
   const handleRefresh = useCallback(async () => {
