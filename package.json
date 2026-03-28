@@ -17,6 +17,7 @@
     "secrets:auto:lock": "node scripts/secrets-auto.mjs lock",
     "hooks:install": "git config core.hooksPath .githooks && chmod +x .githooks/post-commit",
     "release:auto": "node scripts/auto-release.mjs",
+    "release:apk": "npm -w app run release:apk",
     "secrets:encrypt": "node scripts/secrets-crypto.mjs encrypt app/.env app/.env.enc && node scripts/secrets-crypto.mjs encrypt server/.env server/.env.enc",
     "secrets:decrypt": "node scripts/secrets-crypto.mjs decrypt app/.env.enc app/.env && node scripts/secrets-crypto.mjs decrypt server/.env.enc server/.env",
     "ports:free": "node scripts/free-ports.mjs 8080 8082",
