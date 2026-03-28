@@ -58,7 +58,8 @@ const SPORT_ACCENTS: Record<string, string> = {
   ice_hockey: '#2196F3', hockey: '#2196F3',
 };
 
-const LOGO_SIZE = 40;
+const LOGO_SIZE = ms(40);
+const BACKDROP_LOGO_SIZE = sc(88);
 
 function getSportAccent(sport?: string): string {
   const key = (sport || '').toLowerCase();
@@ -158,10 +159,10 @@ function MatchRowCardInner({
         <View style={[s.card, live && s.cardLive]}>
           <View style={s.posterBackdrop}>
             <View style={s.posterLogoLeft}>
-              <TeamLogo uri={match.homeTeamLogo} teamName={match.homeTeam} size={88} />
+              <TeamLogo uri={match.homeTeamLogo} teamName={match.homeTeam} size={BACKDROP_LOGO_SIZE} />
             </View>
             <View style={s.posterLogoRight}>
-              <TeamLogo uri={match.awayTeamLogo} teamName={match.awayTeam} size={88} />
+              <TeamLogo uri={match.awayTeamLogo} teamName={match.awayTeam} size={BACKDROP_LOGO_SIZE} />
             </View>
             <LinearGradient
               colors={[

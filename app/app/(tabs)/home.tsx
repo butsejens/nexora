@@ -19,7 +19,7 @@ import { NexoraHeader } from "@/components/NexoraHeader";
 import { RealContentCard } from "@/components/RealContentCard";
 import { MatchRowCard } from "@/components/premium";
 import { COLORS } from "@/constants/colors";
-import { ms, s, vs } from "@/lib/responsive";
+import { ms, s, screenWidth, vs } from "@/lib/responsive";
 import { useNexora } from "@/context/NexoraContext";
 import { useFollowState, useWatchProgress } from "@/context/UserStateContext";
 import {
@@ -201,6 +201,7 @@ export default function CuratedHomeScreen() {
     : `${heroMedia?.type === "series" ? "Series" : "Film"}${heroMedia?.year ? ` · ${heroMedia.year}` : ""}`;
 
   const heroImage = heroIsSport ? null : (heroMedia?.backdrop || heroMedia?.poster || null);
+  const railCardWidth = Math.round(Math.max(108, Math.min(156, screenWidth * 0.32)));
 
   const openReplay = (item: any, fallbackId: string) => {
     const rawUrl = String(item?.embedUrl || item?.matchUrl || item?.url || "").trim();
@@ -452,7 +453,7 @@ export default function CuratedHomeScreen() {
               {movieRail.map((item: any) => (
                 <RealContentCard
                   key={`movie_${item.id}`}
-                  width={122}
+                  width={railCardWidth}
                   item={{
                     id: String(item.id),
                     title: item.title,
@@ -484,7 +485,7 @@ export default function CuratedHomeScreen() {
               {seriesRail.map((item: any) => (
                 <RealContentCard
                   key={`series_${item.id}`}
-                  width={122}
+                  width={railCardWidth}
                   item={{
                     id: String(item.id),
                     title: item.title,
@@ -516,7 +517,7 @@ export default function CuratedHomeScreen() {
               {releasesRail.map((item: any) => (
                 <RealContentCard
                   key={`release_${item.type}_${item.id}`}
-                  width={122}
+                  width={railCardWidth}
                   item={{
                     id: String(item.id),
                     title: item.title,
@@ -545,7 +546,7 @@ export default function CuratedHomeScreen() {
               {continueWatching.slice(0, 8).map((item: any) => (
                 <RealContentCard
                   key={`cw_${item.type}_${item.id}`}
-                  width={122}
+                  width={railCardWidth}
                   item={{
                     id: String(item.id),
                     title: item.title,
