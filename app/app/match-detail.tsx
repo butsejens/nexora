@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import {
-  View, Text, StyleSheet, TouchableOpacity, Platform,
+  Alert, View, Text, StyleSheet, TouchableOpacity, Platform,
   ScrollView, Image, ActivityIndicator, useWindowDimensions,
 } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
@@ -13,12 +13,10 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { COLORS } from "@/constants/colors";
 import { LiveBadge } from "@/components/LiveBadge";
 import { SafeHaptics } from "@/lib/safeHaptics";
-import { apiRequest, apiRequestJson } from "@/lib/query-client";
 import { openInVlc } from "@/lib/vlc";
 import { TeamLogo } from "@/components/TeamLogo";
 import { PillTabs, StateBlock } from "@/components/ui/PremiumPrimitives";
 import { buildErrorReference, normalizeApiError } from "@/lib/error-messages";
-import { fetchSportsLeagueResourceWithFallback, getLeaderboardRows } from "@/lib/sports-data";
 import { safeStr } from "@/lib/utils";
 import { resolveCompetitionBrand } from "@/lib/logo-manager";
 import { SilentResetBoundary } from "@/components/SilentResetBoundary";
@@ -29,6 +27,9 @@ import { buildGroundedMatchAnalysis } from "@/lib/match-analysis-engine";
 import { toCanonicalMatch } from "@/lib/canonical-match";
 import { normalizeTeamName, tokenOverlapScore } from "@/lib/entity-normalization";
 import { cacheGetStale, cachePeekStale, cacheSet, CacheTTL } from "@/lib/services/cache-service";
+import { getCompetitionInsights, getMatchDetailRaw, getMatchStream, sportKeys } from "@/lib/services/sports-service";
+import { useNexora } from "@/context/NexoraContext";
+import { showRewardedUnlockAd } from "@/lib/rewarded-ads";
 const BLOCK_POPUP_JS = `
 (function(){
   // Patch removeChild to never throw — prevents DOMException crashes
@@ -216,6 +217,7 @@ export default function MatchDetailScreen() {
 
   const insets = useSafeAreaInsets();
   const { width: screenWidth } = useWindowDimensions();
+  const { hasPremium, dailyPredictionUnlocksRemaining, isPredictionUnlocked, unlockPredictionWithRewardedAd } = useNexora();
   const resolvedInitialTab = (params.initialTab && ["stream", "stats", "lineups", "timeline", "highlights"].includes(params.initialTab)) ? params.initialTab as TabId : "stream";
   const [activeTab, setActiveTab] = useState<TabId>(resolvedInitialTab);
   const [visitedTabs, setVisitedTabs] = useState<Record<TabId, boolean>>({
@@ -231,6 +233,7 @@ export default function MatchDetailScreen() {
   const [streamErrorRef, setStreamErrorRef] = useState<string>("");
   const [activeExperienceTab, setActiveExperienceTab] = useState<ExperienceTabId>("prematch");
   const [isHeaderCollapsed, setIsHeaderCollapsed] = useState(false);
+  const [rewardedAdRunning, setRewardedAdRunning] = useState(false);
   const paramCanonical = useMemo(() => toCanonicalMatch({
     id: params.matchId,
     homeTeam: params.homeTeam,
@@ -297,13 +300,13 @@ export default function MatchDetailScreen() {
     error: streamFetchError,
     refetch: refetchStream,
   } = useQuery({
-    queryKey: ["match-stream", params.matchId, espnLeague],
+    queryKey: sportKeys.matchStream({ matchId: params.matchId, espnLeague }),
     placeholderData: () => cachePeekStale<any>(`sports:match-stream:${params.matchId}:${espnLeague}`) || undefined,
     queryFn: async () => {
       const key = `sports:match-stream:${params.matchId}:${espnLeague}`;
       const stale = await cacheGetStale<any>(key);
       try {
-        const payload = await apiRequestJson<any>(`/api/sports/stream/${params.matchId}?league=${encodeURIComponent(espnLeague)}`);
+        const payload = await getMatchStream({ matchId: params.matchId, league: espnLeague });
         cacheSet(key, payload, 60_000);
         return payload;
       } catch {
@@ -332,13 +335,13 @@ export default function MatchDetailScreen() {
   const hasStreamPlayerIssue = Boolean(streamWebError);
 
   const { data: matchDetail, isLoading: detailLoading } = useQuery({
-    queryKey: ["match-detail", params.matchId, espnLeague],
+    queryKey: sportKeys.matchDetail({ matchId: params.matchId, espnLeague, sport: espnSport }),
     placeholderData: () => cachePeekStale<any>(`sports:match-detail:${params.matchId}:${espnLeague}`) || undefined,
     queryFn: async () => {
       const key = `sports:match-detail:${params.matchId}:${espnLeague}`;
       const stale = await cacheGetStale<any>(key);
       try {
-        const payload = await apiRequestJson<any>(`/api/sports/match/${params.matchId}?sport=${espnSport}&league=${espnLeague}`);
+        const payload = await getMatchDetailRaw({ matchId: params.matchId, sport: espnSport, league: espnLeague });
         cacheSet(key, payload, CacheTTL.MATCH_DETAIL);
         return payload;
       } catch (error) {
@@ -378,205 +381,115 @@ export default function MatchDetailScreen() {
   const liveHomeScore = effectiveCanonical?.homeScore ?? Number(params.homeScore ?? 0);
   const liveAwayScore = effectiveCanonical?.awayScore ?? Number(params.awayScore ?? 0);
   const liveMinute = effectiveCanonical?.minute ?? (params.minute ? parseInt(params.minute) : undefined);
+  const competitionInsightsQuery = useQuery({
+    queryKey: sportKeys.competitionInsights({ leagueName: params.league, espnLeague, sport: espnSport }),
+    queryFn: () => getCompetitionInsights({ leagueName: params.league, espnLeague, sport: espnSport }),
+    enabled: Boolean(espnLeague || params.league),
+    staleTime: 10 * 60 * 1000,
+    retry: 1,
+  });
   // AI Prediction
   const requestPrediction = async (mode: "prematch" | "live") => {
-      const homeTag = normalizeTeamName(params.homeTeam);
-      const awayTag = normalizeTeamName(params.awayTeam);
+    const homeTag = normalizeTeamName(params.homeTeam);
+    const awayTag = normalizeTeamName(params.awayTeam);
 
-      const [standingsData, scorersData, assistsData] = await Promise.all([
-        (async () => {
-          try {
-            return await fetchSportsLeagueResourceWithFallback("standings", {
-              leagueName: params.league,
-              espnLeague,
-              sequential: true,
-            });
-          } catch {
-            return null;
-          }
-        })(),
-        (async () => {
-          try {
-            return await fetchSportsLeagueResourceWithFallback("topscorers", {
-              leagueName: params.league,
-              espnLeague,
-              sequential: true,
-            });
-          } catch {
-            return null;
-          }
-        })(),
-        (async () => {
-          try {
-            return await fetchSportsLeagueResourceWithFallback("topassists", {
-              leagueName: params.league,
-              espnLeague,
-              sequential: true,
-            });
-          } catch {
-            return null;
-          }
-        })(),
-      ]);
+    const insightPayload = competitionInsightsQuery.data || await getCompetitionInsights({
+      leagueName: params.league,
+      espnLeague,
+      sport: espnSport,
+    });
 
-      const standings = Array.isArray(standingsData?.standings) ? standingsData.standings : [];
-      const scorers = getLeaderboardRows("topscorers", scorersData);
-      const assisters = getLeaderboardRows("topassists", assistsData);
+    const standings: any[] = Array.isArray(insightPayload?.standings) ? insightPayload.standings : [];
+    const scorers: any[] = Array.isArray(insightPayload?.topScorers) ? insightPayload.topScorers : [];
+    const assisters: any[] = Array.isArray(insightPayload?.topAssists) ? insightPayload.topAssists : [];
 
-      const matchStanding = (teamName?: string) => {
-        const teamKey = normalizeTeamName(teamName);
-        if (!teamKey) return null;
-        return standings.find((row: any) => {
-          const rowTeam = normalizeTeamName(row?.team);
-          return rowTeam === teamKey || rowTeam.includes(teamKey) || teamKey.includes(rowTeam);
-        }) || null;
-      };
+    const matchStanding = (teamName?: string) => {
+      const teamKey = normalizeTeamName(teamName);
+      if (!teamKey) return null;
+      return standings.find((row: any) => {
+        const rowTeam = normalizeTeamName(row?.team);
+        return rowTeam === teamKey || rowTeam.includes(teamKey) || teamKey.includes(rowTeam);
+      }) || null;
+    };
 
-      const homeStanding = matchStanding(params.homeTeam);
-      const awayStanding = matchStanding(params.awayTeam);
+    const homeStanding = matchStanding(params.homeTeam);
+    const awayStanding = matchStanding(params.awayTeam);
 
-      const topByTeam = (tag: string) => scorers
-        .filter((row: any) => {
-          const scorerTeam = normalizeTeamName(row?.team);
-          return scorerTeam === tag || scorerTeam.includes(tag) || tag.includes(scorerTeam);
-        })
-        .sort((a: any, b: any) => Number(b?.goals || 0) - Number(a?.goals || 0))[0] || null;
+    const topByTeam = (tag: string, rows: any[], scoreKey: "goals" | "assists") => rows
+      .filter((row: any) => {
+        const team = normalizeTeamName(row?.team);
+        return team === tag || team.includes(tag) || tag.includes(team);
+      })
+      .sort((a: any, b: any) => Number(b?.[scoreKey] || b?.displayValue || 0) - Number(a?.[scoreKey] || a?.displayValue || 0))[0] || null;
 
-      const homeTopScorer = homeTag ? topByTeam(homeTag) : null;
-      const awayTopScorer = awayTag ? topByTeam(awayTag) : null;
+    const homeTopScorer = homeTag ? topByTeam(homeTag, scorers, "goals") : null;
+    const awayTopScorer = awayTag ? topByTeam(awayTag, scorers, "goals") : null;
+    const homeTopAssist = homeTag ? topByTeam(homeTag, assisters, "assists") : null;
+    const awayTopAssist = awayTag ? topByTeam(awayTag, assisters, "assists") : null;
 
-      const topAssistByTeam = (tag: string) => assisters
-        .filter((row: any) => {
-          const assistTeam = normalizeTeamName(row?.team);
-          return assistTeam === tag || assistTeam.includes(tag) || tag.includes(assistTeam);
-        })
-        .sort((a: any, b: any) => Number(b?.assists || b?.displayValue || 0) - Number(a?.assists || a?.displayValue || 0))[0] || null;
+    const isLiveMode = mode === "live";
+    const isInternationalContext = /fifa|nations|international|friendly|euro|world cup|wereldkampioenschap/i.test(`${espnLeague} ${params.league || ""}`);
+    const homeLineupPlayers = Array.isArray(homeLineupTeam?.players) ? homeLineupTeam.players.length : 0;
+    const awayLineupPlayers = Array.isArray(awayLineupTeam?.players) ? awayLineupTeam.players.length : 0;
+    const homeLineupCertainty = homeLineupTeam?.lineupType === "official" ? 0.95 : (homeLineupPlayers >= 11 ? 0.72 : 0.5);
+    const awayLineupCertainty = awayLineupTeam?.lineupType === "official" ? 0.95 : (awayLineupPlayers >= 11 ? 0.72 : 0.5);
 
-      const homeTopAssist = homeTag ? topAssistByTeam(homeTag) : null;
-      const awayTopAssist = awayTag ? topAssistByTeam(awayTag) : null;
-
-      const isLiveMode = mode === "live";
-      const isInternationalContext = /fifa|nations|international|friendly|euro|world cup|wereldkampioenschap/i.test(`${espnLeague} ${params.league || ""}`);
-      const homeLineupCertainty = homeLineupTeam?.lineupType === "official"
-        ? 0.95
-        : (Array.isArray(homeLineupTeam?.players) && homeLineupTeam.players.length >= 11 ? 0.72 : 0.5);
-      const awayLineupCertainty = awayLineupTeam?.lineupType === "official"
-        ? 0.95
-        : (Array.isArray(awayLineupTeam?.players) && awayLineupTeam.players.length >= 11 ? 0.72 : 0.5);
-
-      const groundedFallback = buildGroundedMatchAnalysis({
-        homeTeam: String(params.homeTeam || "Home"),
-        awayTeam: String(params.awayTeam || "Away"),
-        competitionContext: String(params.league || espnLeague || ""),
-        isInternational: isInternationalContext,
-        isLive: isLiveMode,
-        minute: isLiveMode ? liveMinute ?? null : null,
-        homeScore: Number(isLiveMode ? liveHomeScore ?? 0 : params.homeScore ?? 0),
-        awayScore: Number(isLiveMode ? liveAwayScore ?? 0 : params.awayScore ?? 0),
-        stats: {
-          home: isLiveMode ? (matchDetail?.homeStats || {}) : {},
-          away: isLiveMode ? (matchDetail?.awayStats || {}) : {},
-        },
-        events: isLiveMode && Array.isArray(matchDetail?.keyEvents) ? matchDetail.keyEvents.slice(0, 20) : [],
-        home: {
-          rank: homeStanding?.rank ?? null,
-          points: homeStanding?.points ?? null,
-          goalDiff: homeStanding?.goalDiff ?? null,
-          topScorer: homeTopScorer?.name || null,
-          topScorerGoals: homeTopScorer?.goals ?? null,
-          topAssist: homeTopAssist?.name || null,
-          topAssistCount: (homeTopAssist?.assists ?? Number(homeTopAssist?.displayValue || 0)) || null,
-          formation: homeLineupTeam?.formation || null,
-          lineupCertainty: homeLineupCertainty,
-        },
-        away: {
-          rank: awayStanding?.rank ?? null,
-          points: awayStanding?.points ?? null,
-          goalDiff: awayStanding?.goalDiff ?? null,
-          topScorer: awayTopScorer?.name || null,
-          topScorerGoals: awayTopScorer?.goals ?? null,
-          topAssist: awayTopAssist?.name || null,
-          topAssistCount: (awayTopAssist?.assists ?? Number(awayTopAssist?.displayValue || 0)) || null,
-          formation: awayLineupTeam?.formation || null,
-          lineupCertainty: awayLineupCertainty,
-        },
-      });
-
-      try {
-        const res = await apiRequest("POST", "/api/sports/predict", {
-          matchId: params.matchId,
-          espnLeague,
-          homeTeam: params.homeTeam,
-          awayTeam: params.awayTeam,
-          league: params.league,
-          sport: params.sport,
-          status: isLiveMode ? "live" : "upcoming",
-          homeScore: isLiveMode ? String(liveHomeScore ?? 0) : "0",
-          awayScore: isLiveMode ? String(liveAwayScore ?? 0) : "0",
-          isLive: isLiveMode,
-          minute: isLiveMode && liveMinute !== undefined ? String(liveMinute) : undefined,
-          stats: {
-            home: isLiveMode ? (matchDetail?.homeStats || {}) : {},
-            away: isLiveMode ? (matchDetail?.awayStats || {}) : {},
-          },
-          events: isLiveMode && Array.isArray(matchDetail?.keyEvents) ? matchDetail.keyEvents.slice(0, 20) : [],
-          venue: matchDetail?.venue || undefined,
-          context: {
-            homeRank: homeStanding?.rank,
-            awayRank: awayStanding?.rank,
-            homePoints: homeStanding?.points,
-            awayPoints: awayStanding?.points,
-            homeGoalDiff: homeStanding?.goalDiff,
-            awayGoalDiff: awayStanding?.goalDiff,
-            homeFormation: homeLineupTeam?.formation || null,
-            awayFormation: awayLineupTeam?.formation || null,
-            homeTopScorer: homeTopScorer?.name || null,
-            awayTopScorer: awayTopScorer?.name || null,
-            homeTopScorerGoals: homeTopScorer?.goals ?? null,
-            awayTopScorerGoals: awayTopScorer?.goals ?? null,
-            homeTopAssist: homeTopAssist?.name || null,
-            awayTopAssist: awayTopAssist?.name || null,
-            homeTopAssistCount: (homeTopAssist?.assists ?? Number(homeTopAssist?.displayValue || 0)) || null,
-            awayTopAssistCount: (awayTopAssist?.assists ?? Number(awayTopAssist?.displayValue || 0)) || null,
-            competitionContext: params.league || null,
-            isInternational: isInternationalContext,
-            venueContext: "home",
-            homeLineupCertainty,
-            awayLineupCertainty,
-          },
-        });
-        const json = await res.json();
-        const provider = (json && typeof json === "object" && "prediction" in json && json.prediction && typeof json.prediction === "object")
-          ? json.prediction
-          : json;
-        if (!provider || typeof provider !== "object") return groundedFallback;
-
-        return {
-          ...groundedFallback,
-          ...provider,
-          favored_side: provider?.favored_side || groundedFallback.favored_side,
-          confidence_score: Number(provider?.confidence_score || groundedFallback.confidence_score),
-          key_factors: Array.isArray(provider?.key_factors) && provider.key_factors.length ? provider.key_factors : groundedFallback.key_factors,
-          likely_pattern: String(provider?.likely_pattern || groundedFallback.likely_pattern),
-          live_shift_summary: provider?.live_shift_summary || groundedFallback.live_shift_summary,
-          post_match_summary: provider?.post_match_summary || groundedFallback.post_match_summary,
-          prediction: provider?.prediction || groundedFallback.prediction,
-          confidence: Number(provider?.confidence || groundedFallback.confidence),
-          summary: String(provider?.summary || groundedFallback.summary),
-          keyFactors: Array.isArray(provider?.keyFactors) && provider.keyFactors.length ? provider.keyFactors : groundedFallback.keyFactors,
-          tacticalNotes: Array.isArray(provider?.tacticalNotes) && provider.tacticalNotes.length ? provider.tacticalNotes : groundedFallback.tacticalNotes,
-          matchPattern: String(provider?.matchPattern || groundedFallback.matchPattern),
-          confidenceReason: String(provider?.confidenceReason || groundedFallback.confidenceReason),
-          homePct: Number(provider?.homePct || groundedFallback.homePct),
-          drawPct: Number(provider?.drawPct || groundedFallback.drawPct),
-          awayPct: Number(provider?.awayPct || groundedFallback.awayPct),
-        };
-      } catch {
-        return {
-          ...groundedFallback,
-          providerError: true,
-        };
-      }
+    return buildGroundedMatchAnalysis({
+      matchId: String(params.matchId || ""),
+      homeTeam: String(params.homeTeam || "Home"),
+      awayTeam: String(params.awayTeam || "Away"),
+      competition: String(params.league || espnLeague || ""),
+      competitionContext: String(params.league || espnLeague || ""),
+      isInternational: isInternationalContext,
+      isLive: isLiveMode,
+      status: effectiveCanonical?.status || params.status || null,
+      minute: isLiveMode ? liveMinute ?? null : null,
+      homeScore: Number(isLiveMode ? liveHomeScore ?? 0 : params.homeScore ?? 0),
+      awayScore: Number(isLiveMode ? liveAwayScore ?? 0 : params.awayScore ?? 0),
+      stats: {
+        home: isLiveMode ? (matchDetail?.homeStats || {}) : {},
+        away: isLiveMode ? (matchDetail?.awayStats || {}) : {},
+      },
+      events: isLiveMode && Array.isArray(matchDetail?.keyEvents) ? matchDetail.keyEvents.slice(0, 25) : [],
+      home: {
+        rank: homeStanding?.rank ?? null,
+        points: homeStanding?.points ?? null,
+        goalDiff: homeStanding?.goalDiff ?? null,
+        recentForm: homeStanding?.form ?? homeStanding?.recentForm ?? null,
+        goalsFor: homeStanding?.goalsFor ?? homeStanding?.gf ?? null,
+        goalsAgainst: homeStanding?.goalsAgainst ?? homeStanding?.ga ?? null,
+        cleanSheets: homeStanding?.cleanSheets ?? null,
+        gamesPlayed: homeStanding?.played ?? homeStanding?.gamesPlayed ?? null,
+        homeFormPts: homeStanding?.homePoints ?? homeStanding?.homeFormPts ?? null,
+        awayFormPts: homeStanding?.awayPoints ?? homeStanding?.awayFormPts ?? null,
+        topScorer: homeTopScorer?.name || null,
+        topScorerGoals: homeTopScorer?.goals ?? null,
+        topAssist: homeTopAssist?.name || null,
+        topAssistCount: (homeTopAssist?.assists ?? Number(homeTopAssist?.displayValue || 0)) || null,
+        formation: homeLineupTeam?.formation || null,
+        lineupStrength: Math.min(1, homeLineupPlayers / 11),
+        lineupCertainty: homeLineupCertainty,
+      },
+      away: {
+        rank: awayStanding?.rank ?? null,
+        points: awayStanding?.points ?? null,
+        goalDiff: awayStanding?.goalDiff ?? null,
+        recentForm: awayStanding?.form ?? awayStanding?.recentForm ?? null,
+        goalsFor: awayStanding?.goalsFor ?? awayStanding?.gf ?? null,
+        goalsAgainst: awayStanding?.goalsAgainst ?? awayStanding?.ga ?? null,
+        cleanSheets: awayStanding?.cleanSheets ?? null,
+        gamesPlayed: awayStanding?.played ?? awayStanding?.gamesPlayed ?? null,
+        homeFormPts: awayStanding?.homePoints ?? awayStanding?.homeFormPts ?? null,
+        awayFormPts: awayStanding?.awayPoints ?? awayStanding?.awayFormPts ?? null,
+        topScorer: awayTopScorer?.name || null,
+        topScorerGoals: awayTopScorer?.goals ?? null,
+        topAssist: awayTopAssist?.name || null,
+        topAssistCount: (awayTopAssist?.assists ?? Number(awayTopAssist?.displayValue || 0)) || null,
+        formation: awayLineupTeam?.formation || null,
+        lineupStrength: Math.min(1, awayLineupPlayers / 11),
+        lineupCertainty: awayLineupCertainty,
+      },
+    });
   };
 
   const {
@@ -759,7 +672,37 @@ export default function MatchDetailScreen() {
       return acc;
     }, { goals: 0, yellow: 0, red: 0, subs: 0, penalties: 0 });
   }, [orderedTimelineEvents]);
-  const safePrediction = prediction && !prediction.error ? prediction : null;
+  const predictionError = Boolean((prediction as any)?.error);
+  const safePrediction = prediction && !predictionError ? prediction : null;
+  const predictionMatchId = String(params.matchId || effectiveCanonical?.id || `${params.homeTeam}-${params.awayTeam}-${params.startDate || ""}`);
+  const predictionUnlocked = hasPremium || isPredictionUnlocked(predictionMatchId);
+  const handleUnlockPrediction = async () => {
+    if (hasPremium || predictionUnlocked) return;
+    if (!predictionMatchId) return;
+    if (dailyPredictionUnlocksRemaining <= 0) {
+      Alert.alert(
+        "Premium vereist",
+        "Je gratis dagelijkse unlock is opgebruikt. Upgrade naar Premium om alle Match Intelligence direct te openen.",
+        [
+          { text: "Annuleren", style: "cancel" },
+          { text: "Bekijk Premium", onPress: () => router.push("/premium") },
+        ]
+      );
+      return;
+    }
+
+    try {
+      setRewardedAdRunning(true);
+      const rewarded = await showRewardedUnlockAd();
+      if (!rewarded) return;
+      await unlockPredictionWithRewardedAd(predictionMatchId);
+      Alert.alert("Unlocked", "Nexora Match Intelligence is voor deze wedstrijd ontgrendeld.");
+    } catch {
+      Alert.alert("Unlock mislukt", "De rewarded unlock kon niet worden voltooid. Probeer opnieuw.");
+    } finally {
+      setRewardedAdRunning(false);
+    }
+  };
   const formCards = [
     { key: "home-form", label: `${homeTeamName} form`, value: safePrediction?.formHome || "- - - - -" },
     { key: "away-form", label: `${awayTeamName} form`, value: safePrediction?.formAway || "- - - - -" },
@@ -958,9 +901,10 @@ export default function MatchDetailScreen() {
 
             {safePrediction ? (
               <View style={styles.nxCard}>
-                <Text style={styles.nxCardKicker}>AI Read</Text>
+                <Text style={styles.nxCardKicker}>AI Match Summary</Text>
                 <Text style={styles.nxCardTitle}>{safePrediction.prediction || "No prediction yet"}</Text>
                 <Text style={styles.nxBodyText}>{safePrediction.summary || tFn("matchDetail.preMatchLoading")}</Text>
+                {!predictionUnlocked ? <Text style={[styles.nxMetaText, { marginTop: 12 }]}>Unlock resterend vandaag: {dailyPredictionUnlocksRemaining}</Text> : null}
               </View>
             ) : (
               <View style={styles.nxCard}>
@@ -994,81 +938,147 @@ export default function MatchDetailScreen() {
               </TouchableOpacity>
             </View>
 
-            {safePrediction ? (
+            {!safePrediction ? (
               <View style={styles.nxCard}>
-                <Text style={styles.nxCardKicker}>{liveInsightEnabled ? "Live AI coach" : "AI summary"}</Text>
-                <Text style={styles.nxCardTitle}>{safePrediction.prediction || "Model updating"}</Text>
-                <Text style={styles.nxBodyText}>{safePrediction.live_shift_summary || safePrediction.summary || "AI is analyzing the match context."}</Text>
+                <Text style={styles.nxCardKicker}>Nexora Match Intelligence</Text>
+                {predLoading ? (
+                  <View style={styles.prematchInsightLoading}>
+                    <ActivityIndicator size="small" color={COLORS.accent} />
+                    <Text style={styles.aiLoadingText}>{tFn("matchDetail.preMatchLoading")}</Text>
+                  </View>
+                ) : (
+                  <Text style={styles.nxBodyText}>Het model verwerkt vorm, live context, line-up zekerheid en league signalen.</Text>
+                )}
               </View>
             ) : null}
 
-            <View style={styles.nxGridWrap}>
-              {predictionSummaryCards.map((card) => (
-                <View key={card.key} style={[styles.nxGridCard, { borderColor: `${card.accent}44` }]}>
-                  <Text style={styles.nxGridLabel}>{card.label}</Text>
-                  <Text style={[styles.nxGridValue, { color: card.accent }]} numberOfLines={2}>{card.value}</Text>
+            {safePrediction ? (
+              <View style={styles.nxCard}>
+                <Text style={styles.nxCardKicker}>{liveInsightEnabled ? "Live AI coach" : "AI Match Summary"}</Text>
+                <Text style={styles.nxCardTitle}>{safePrediction.prediction || "Model updating"}</Text>
+                <Text style={styles.nxBodyText}>{safePrediction.live_shift_summary || safePrediction.summary || "AI is analyzing the match context."}</Text>
+                <View style={[styles.nxMetaRow, { marginTop: 12 }]}> 
+                  <Ionicons name="sparkles-outline" size={14} color="#8F98AE" />
+                  <Text style={styles.nxMetaText}>{safePrediction.tip || "No primary angle yet"}</Text>
                 </View>
-              ))}
-            </View>
-
-            <Text style={styles.nxSectionTitle}>Live AI Model</Text>
-            <View style={styles.nxGridWrap}>
-              <View style={styles.nxGridCard}>
-                <Text style={styles.nxGridLabel}>Win probability</Text>
-                <Text style={styles.nxGridValue}>{normHomePct}% / {normDrawPct}% / {normAwayPct}%</Text>
               </View>
-              <View style={styles.nxGridCard}>
-                <Text style={styles.nxGridLabel}>Expected goals</Text>
-                <Text style={styles.nxGridValue}>{Number(safePrediction?.xgHome || 0).toFixed(1)} - {Number(safePrediction?.xgAway || 0).toFixed(1)}</Text>
-              </View>
-              <View style={styles.nxGridCard}>
-                <Text style={styles.nxGridLabel}>Momentum shift</Text>
-                <Text style={styles.nxGridValue}>{safePrediction?.momentum || "Balanced"}</Text>
-              </View>
-              <View style={styles.nxGridCard}>
-                <Text style={styles.nxGridLabel}>Form analysis</Text>
-                <Text style={styles.nxGridValue}>{safePrediction?.formGuide?.homeForm ? "Live model + form" : "Recent form blended"}</Text>
-              </View>
-            </View>
+            ) : null}
 
-            <View style={styles.nxGridWrap}>
-              {formCards.map((card) => (
-                <View key={card.key} style={styles.nxGridCard}>
-                  <Text style={styles.nxGridLabel}>{card.label}</Text>
-                  <Text style={styles.nxGridValue}>{card.value}</Text>
-                </View>
-              ))}
-            </View>
-
-            <Text style={styles.nxSectionTitle}>Detailed Information</Text>
-            <View style={styles.nxGridWrap}>
-              {detailedInfoRows.map((row) => (
-                <View key={row.key} style={styles.nxGridCard}>
-                  <Text style={styles.nxGridLabel}>{row.label}</Text>
-                  <Text style={styles.nxGridValue}>{row.value}</Text>
-                </View>
-              ))}
-            </View>
-
-            <View style={styles.nxGoalsCard}>
-              <Text style={styles.nxCardKicker}>Goals grid</Text>
-              <View style={styles.nxGoalsGrid}>
-                <View style={styles.nxGoalPill}><Text style={styles.nxGoalPillText}>Over 1.5 · {over15Pct}%</Text></View>
-                <View style={styles.nxGoalPill}><Text style={styles.nxGoalPillText}>Over 2.5 · {over25Pct}%</Text></View>
-                <View style={styles.nxGoalPill}><Text style={styles.nxGoalPillText}>Under 2.5 · {under25Pct}%</Text></View>
-                <View style={styles.nxGoalPill}><Text style={styles.nxGoalPillText}>Under 3.5 · {under35Pct}%</Text></View>
-              </View>
-            </View>
-
-            {!safePrediction ? (
+            {safePrediction && !predictionUnlocked ? (
               <View style={styles.nxLockedCard}>
-                <Text style={styles.nxGridLabel}>Premium detail</Text>
-                <Text style={styles.nxBodyText}>Verdiepende layers worden zichtbaar zodra prediction data klaar is.</Text>
+                <Text style={styles.nxGridLabel}>Unlock Match Intelligence</Text>
+                <Text style={styles.nxBodyText}>Open winnaar-kansen, BTTS, O/U-lijnen, clean sheets, upset-risk en live momentum voor deze match.</Text>
+                <View style={[styles.nxGridWrap, { marginTop: 14 }]}> 
+                  <View style={styles.nxGridCard}>
+                    <Text style={styles.nxGridLabel}>Winner lean</Text>
+                    <Text style={styles.nxGridValue}>{safePrediction.prediction}</Text>
+                  </View>
+                  <View style={styles.nxGridCard}>
+                    <Text style={styles.nxGridLabel}>Confidence</Text>
+                    <Text style={styles.nxGridValue}>{confidencePct}%</Text>
+                  </View>
+                </View>
                 <BlurView intensity={45} tint="dark" style={styles.nxLockOverlay}>
                   <Ionicons name="lock-closed" size={18} color="#E50914" />
-                  <Text style={styles.nxLockText}>Tap to unlock</Text>
+                  <Text style={styles.nxLockText}>Premium intelligence locked</Text>
                 </BlurView>
+                <TouchableOpacity
+                  style={[styles.aiRefreshBtn, { alignSelf: "flex-start", marginTop: 16, borderColor: "#E50914" }]}
+                  onPress={handleUnlockPrediction}
+                  disabled={rewardedAdRunning}
+                >
+                  <Ionicons name={rewardedAdRunning ? "hourglass-outline" : "play-circle-outline"} size={14} color="#FFFFFF" />
+                  <Text style={[styles.aiRefreshText, { color: "#FFFFFF" }]}>
+                    {rewardedAdRunning ? "Unlocking..." : `Unlock via ad (${dailyPredictionUnlocksRemaining} left)`}
+                  </Text>
+                </TouchableOpacity>
+                {!hasPremium ? (
+                  <TouchableOpacity
+                    style={[styles.aiRefreshBtn, { alignSelf: "flex-start", marginTop: 12 }]}
+                    onPress={() => router.push("/premium")}
+                  >
+                    <Ionicons name="diamond-outline" size={14} color={COLORS.textMuted} />
+                    <Text style={styles.aiRefreshText}>Bekijk Premium</Text>
+                  </TouchableOpacity>
+                ) : null}
               </View>
+            ) : null}
+
+            {safePrediction && predictionUnlocked ? (
+              <>
+                <Text style={styles.nxSectionTitle}>Outcome Probabilities</Text>
+                <View style={styles.nxGridWrap}>
+                  {predictionSummaryCards.map((card) => (
+                    <View key={card.key} style={[styles.nxGridCard, { borderColor: `${card.accent}44` }]}> 
+                      <Text style={styles.nxGridLabel}>{card.label}</Text>
+                      <Text style={[styles.nxGridValue, { color: card.accent }]} numberOfLines={2}>{card.value}</Text>
+                    </View>
+                  ))}
+                </View>
+
+                <View style={styles.nxGridWrap}>
+                  {detailedInfoRows.map((row) => (
+                    <View key={row.key} style={styles.nxGridCard}>
+                      <Text style={styles.nxGridLabel}>{row.label}</Text>
+                      <Text style={styles.nxGridValue}>{row.value}</Text>
+                    </View>
+                  ))}
+                </View>
+
+                <Text style={styles.nxSectionTitle}>Smart Markets</Text>
+                <View style={styles.nxGoalsCard}>
+                  <Text style={styles.nxCardKicker}>Goals grid</Text>
+                  <View style={styles.nxGoalsGrid}>
+                    <View style={styles.nxGoalPill}><Text style={styles.nxGoalPillText}>Over 1.5 · {over15Pct}%</Text></View>
+                    <View style={styles.nxGoalPill}><Text style={styles.nxGoalPillText}>Over 2.5 · {over25Pct}%</Text></View>
+                    <View style={styles.nxGoalPill}><Text style={styles.nxGoalPillText}>Under 2.5 · {under25Pct}%</Text></View>
+                    <View style={styles.nxGoalPill}><Text style={styles.nxGoalPillText}>Under 3.5 · {under35Pct}%</Text></View>
+                    <View style={styles.nxGoalPill}><Text style={styles.nxGoalPillText}>BTTS · {bttsPct}%</Text></View>
+                    <View style={styles.nxGoalPill}><Text style={styles.nxGoalPillText}>Clean sheet {homeTeamName} · {Math.round(Number(safePrediction.cleanSheetHomePct || 0))}%</Text></View>
+                    <View style={styles.nxGoalPill}><Text style={styles.nxGoalPillText}>Clean sheet {awayTeamName} · {Math.round(Number(safePrediction.cleanSheetAwayPct || 0))}%</Text></View>
+                    <View style={styles.nxGoalPill}><Text style={styles.nxGoalPillText}>First to score · {safePrediction.firstTeamToScore} {Math.round(Number(safePrediction.firstTeamToScorePct || 0))}%</Text></View>
+                  </View>
+                </View>
+
+                <Text style={styles.nxSectionTitle}>Risk Factors</Text>
+                <View style={styles.nxGridWrap}>
+                  {(safePrediction.riskFactors || []).slice(0, 4).map((risk: any, index: number) => (
+                    <View key={`${risk?.label || "risk"}-${index}`} style={styles.nxGridCard}>
+                      <Text style={styles.nxGridLabel}>{risk?.label || "Risk"}</Text>
+                      <Text style={styles.nxGridValue}>{Math.round(Number(risk?.impact || 0))}/100</Text>
+                      <Text style={styles.nxMetaText}>{risk?.tone || "warning"}</Text>
+                    </View>
+                  ))}
+                </View>
+
+                <Text style={styles.nxSectionTitle}>Confidence Meter</Text>
+                <View style={styles.nxCard}>
+                  <Text style={styles.nxCardKicker}>Model confidence</Text>
+                  <Text style={styles.nxCardTitle}>{confidencePct}% · {safePrediction.confidence_label || safePrediction.riskLevel}</Text>
+                  <View style={styles.nxTimelineTrack}>
+                    <View style={[styles.nxTimelineFill, { width: `${confidencePct}%` }]} />
+                  </View>
+                  <View style={[styles.nxGridWrap, { marginTop: 16 }]}> 
+                    <View style={styles.nxGridCard}><Text style={styles.nxGridLabel}>Edge</Text><Text style={styles.nxGridValue}>{edgeScorePct}/100</Text></View>
+                    <View style={styles.nxGridCard}><Text style={styles.nxGridLabel}>Draw risk</Text><Text style={styles.nxGridValue}>{Math.round(Number(safePrediction.scoreDrawRiskPct || 0))}%</Text></View>
+                    <View style={styles.nxGridCard}><Text style={styles.nxGridLabel}>Upset risk</Text><Text style={styles.nxGridValue}>{Math.round(Number(safePrediction.upsetProbabilityPct || 0))}%</Text></View>
+                    <View style={styles.nxGridCard}><Text style={styles.nxGridLabel}>Pressure</Text><Text style={styles.nxGridValue}>{Math.round(Number(safePrediction.pressureIndex || 0))}/100</Text></View>
+                  </View>
+                </View>
+
+                <Text style={styles.nxSectionTitle}>Live Momentum</Text>
+                <View style={styles.nxCard}>
+                  <Text style={styles.nxCardKicker}>Flow state</Text>
+                  <Text style={styles.nxCardTitle}>{safePrediction.momentum || "Balanced"} · {safePrediction.danger || "Balanced"}</Text>
+                  <Text style={styles.nxBodyText}>{safePrediction.live_shift_summary || safePrediction.matchPattern || "Momentum updates zodra live events binnenkomen."}</Text>
+                  <View style={[styles.nxGridWrap, { marginTop: 16 }]}> 
+                    <View style={styles.nxGridCard}><Text style={styles.nxGridLabel}>xG</Text><Text style={styles.nxGridValue}>{Number(safePrediction.xgHome || 0).toFixed(1)} - {Number(safePrediction.xgAway || 0).toFixed(1)}</Text></View>
+                    <View style={styles.nxGridCard}><Text style={styles.nxGridLabel}>Momentum</Text><Text style={styles.nxGridValue}>{Math.round(Number(safePrediction.momentumScore || 0))}/100</Text></View>
+                    <View style={styles.nxGridCard}><Text style={styles.nxGridLabel}>Attacking strength</Text><Text style={styles.nxGridValue}>{Math.round(Number(safePrediction.attackingStrength?.home || 0))} - {Math.round(Number(safePrediction.attackingStrength?.away || 0))}</Text></View>
+                    <View style={styles.nxGridCard}><Text style={styles.nxGridLabel}>Forms</Text><Text style={styles.nxGridValue}>{formCards[0]?.value} / {formCards[1]?.value}</Text></View>
+                  </View>
+                </View>
+              </>
             ) : null}
           </ScrollView>
         ) : null}
@@ -1219,7 +1229,7 @@ export default function MatchDetailScreen() {
             scrollEventThrottle={16}
           >
             <Text style={styles.nxSectionTitle}>H2H</Text>
-            {safePrediction?.h2hSummary ? (
+            {predictionUnlocked && safePrediction?.h2hSummary ? (
               <View style={styles.nxCard}>
                 <Text style={styles.nxCardKicker}>Head to head</Text>
                 <Text style={styles.nxBodyText}>{safePrediction.h2hSummary}</Text>
@@ -1230,12 +1240,12 @@ export default function MatchDetailScreen() {
                 <Text style={styles.nxBodyText}>Vergelijkbare ontmoetingen, trendlines en contextuele edge.</Text>
                 <BlurView intensity={45} tint="dark" style={styles.nxLockOverlay}>
                   <Ionicons name="lock-closed" size={18} color="#E50914" />
-                  <Text style={styles.nxLockText}>Tap to unlock</Text>
+                  <Text style={styles.nxLockText}>Unlock required</Text>
                 </BlurView>
               </View>
             )}
 
-            {safePrediction?.formGuide?.homeForm || safePrediction?.formGuide?.awayForm ? (
+            {predictionUnlocked && (safePrediction?.formGuide?.homeForm || safePrediction?.formGuide?.awayForm) ? (
               <View style={styles.nxCard}>
                 <Text style={styles.nxCardKicker}>Form analysis</Text>
                 {safePrediction?.formGuide?.homeForm ? <Text style={styles.nxBodyText}>{homeTeamName}: {safePrediction.formGuide.homeForm}</Text> : null}
@@ -1322,14 +1332,21 @@ export default function MatchDetailScreen() {
               </View>
             </View>
 
-            <View style={styles.nxLockedCard}>
-              <Text style={styles.nxGridLabel}>Historical hit-rate</Text>
-              <Text style={styles.nxBodyText}>Team-specifieke accuratesse over vergelijkbare matchprofielen.</Text>
-              <BlurView intensity={45} tint="dark" style={styles.nxLockOverlay}>
-                <Ionicons name="lock-closed" size={18} color="#E50914" />
-                <Text style={styles.nxLockText}>Tap to unlock</Text>
-              </BlurView>
-            </View>
+            {predictionUnlocked ? (
+              <View style={styles.nxCard}>
+                <Text style={styles.nxCardKicker}>Model calibration</Text>
+                <Text style={styles.nxBodyText}>Deze confidence combineert signaalsterkte, datadekking, live-context en market-risk binnen hetzelfde model.</Text>
+              </View>
+            ) : (
+              <View style={styles.nxLockedCard}>
+                <Text style={styles.nxGridLabel}>Historical hit-rate</Text>
+                <Text style={styles.nxBodyText}>Team-specifieke accuratesse over vergelijkbare matchprofielen.</Text>
+                <BlurView intensity={45} tint="dark" style={styles.nxLockOverlay}>
+                  <Ionicons name="lock-closed" size={18} color="#E50914" />
+                  <Text style={styles.nxLockText}>Unlock required</Text>
+                </BlurView>
+              </View>
+            )}
           </ScrollView>
         ) : null}
       </View>
@@ -1452,28 +1469,6 @@ export default function MatchDetailScreen() {
           onChange={handleTabChange}
         />
       </ScrollView>
-
-      {prematchInsightEnabled && (predLoading || (prediction && !prediction.error)) ? (
-        <View style={styles.prematchInsightSection}>
-          <View style={styles.prematchInsightHeader}>
-            <Text style={styles.sectionLabel}>PRE-MATCH INSIGHT</Text>
-            {!predLoading && prediction && !prediction.error ? (
-              <TouchableOpacity style={styles.aiRefreshBtn} onPress={() => fetchPreMatchPrediction()}>
-                <Ionicons name="refresh-outline" size={13} color={COLORS.textMuted} />
-                <Text style={styles.aiRefreshText}>{tFn("matchDetail.preMatchRefresh")}</Text>
-              </TouchableOpacity>
-            ) : null}
-          </View>
-          {predLoading && !prediction ? (
-            <View style={styles.prematchInsightLoading}>
-              <ActivityIndicator size="small" color={COLORS.accent} />
-              <Text style={styles.aiLoadingText}>{tFn("matchDetail.preMatchLoading")}</Text>
-            </View>
-          ) : prediction && !prediction.error ? (
-            <AIPredictionView prediction={prediction} homeTeam={params.homeTeam} awayTeam={params.awayTeam} />
-          ) : null}
-        </View>
-      ) : null}
 
       {/* Stream Tab — always mounted, hidden when not active */}
       <View style={[styles.streamContainer, activeTab !== "stream" ? { display: "none" } : null]}>
@@ -3157,48 +3152,8 @@ function CombinedPitchViewInner({ homeTeamData, awayTeamData, league }: { homeTe
 
 const CombinedPitchView = React.memo(CombinedPitchViewInner);
 
-function AIPredictionViewInner({ prediction, homeTeam, awayTeam }: any) {
-  const normPcts = (() => {
-    let homePct = Number(prediction?.homePct || 0);
-    let drawPct = Number(prediction?.drawPct || 0);
-    let awayPct = Number(prediction?.awayPct || 0);
-    if (!Number.isFinite(homePct)) homePct = 0;
-    if (!Number.isFinite(drawPct)) drawPct = 0;
-    if (!Number.isFinite(awayPct)) awayPct = 0;
-    const sum = homePct + drawPct + awayPct;
-    if (sum <= 0) return { homePct: 34, drawPct: 33, awayPct: 33 };
-    homePct = Math.round((homePct / sum) * 100);
-    drawPct = Math.round((drawPct / sum) * 100);
-    awayPct = 100 - homePct - drawPct;
-    return { homePct, drawPct, awayPct };
-  })();
 
-  const hasXgData = prediction?.xgHome !== null && prediction?.xgHome !== undefined && prediction?.xgAway !== null && prediction?.xgAway !== undefined;
-  const winnerColor = prediction.prediction === "Home Win" ? COLORS.accent :
-    prediction.prediction === "Away Win" ? COLORS.live : "#FFD700";
-  const riskColor = prediction.riskLevel === "Low" ? "#4CAF50" : prediction.riskLevel === "High" ? COLORS.live : "#FF9800";
-  const bttsPct = Number(prediction?.bothTeamsToScorePct);
-  const over25Pct = Number(prediction?.over25Pct);
-  const homeDcPct = Number(prediction?.doubleChanceHomePct);
-  const awayDcPct = Number(prediction?.doubleChanceAwayPct);
-  const edgeScore = Number(prediction?.edgeScore);
-  const hasMarketMetrics = [bttsPct, over25Pct, homeDcPct, awayDcPct].some((v) => Number.isFinite(v));
-  const hasEdgeScore = Number.isFinite(edgeScore);
-  const winGapPct = Math.abs(normPcts.homePct - normPcts.awayPct);
-  const totalXg = hasXgData
-    ? Math.max(0, Number(prediction?.xgHome || 0)) + Math.max(0, Number(prediction?.xgAway || 0))
-    : null;
-  const volatilityScore = Math.max(0, Math.min(100, Math.round((normPcts.drawPct * 1.2) + ((100 - winGapPct) * 0.45))));
-  const recommendationLabel = (() => {
-    if (hasEdgeScore && edgeScore >= 78 && prediction?.confidence >= 70) return "High Edge";
-    if (hasEdgeScore && edgeScore >= 62) return "Balanced Value";
-    return "Watchlist";
-  })();
-  const recommendationColor = recommendationLabel === "High Edge"
-    ? COLORS.green
-    : recommendationLabel === "Balanced Value"
-      ? COLORS.accent
-      : COLORS.textMuted;
+function FormBubbles({ form }: { form: string }) {
 
   const homeShortName = homeTeam;
   const awayShortName = awayTeam;
@@ -3629,8 +3584,7 @@ function AIPredictionViewInner({ prediction, homeTeam, awayTeam }: any) {
   );
 }
 
-const AIPredictionView = React.memo(AIPredictionViewInner);
-
+// eslint-disable-next-line @typescript-eslint/no-redeclare
 function FormBubbles({ form }: { form: string }) {
   return (
     <View style={styles.formBubbles}>
