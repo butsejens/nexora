@@ -1,7 +1,7 @@
 import React, { useMemo, useRef, useEffect } from "react";
 import { Animated, Modal, StyleSheet, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { router } from "expo-router";
+import { router, useRootNavigationState } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { COLORS } from "@/constants/colors";
@@ -25,6 +25,7 @@ const MENU_ITEMS: MenuItem[] = [
 
 export function NexoraMenuOverlay() {
   const insets = useSafeAreaInsets();
+  const navState = useRootNavigationState();
   const isOpen = useUiStore((state) => state.nexoraMenuOpen);
   const closeMenu = useUiStore((state) => state.closeNexoraMenu);
 
@@ -46,9 +47,19 @@ export function NexoraMenuOverlay() {
     ]).start();
   }, [fade, isOpen, translateY]);
 
-  const activeRoute = useMemo(() => {
-    return "";
-  }, []);
+  const navSignature = useMemo(() => {
+    const routes = Array.isArray(navState?.routes) ? navState.routes : [];
+    const names = routes.map((route: any) => String(route?.name || "")).join("|");
+    const index = typeof navState?.index === "number" ? navState.index : -1;
+    return `${index}:${names}`;
+  }, [navState]);
+
+  useEffect(() => {
+    // Ensure stale overlay state never survives navigation transitions.
+    closeMenu();
+  }, [navSignature, closeMenu]);
+
+  const activeRoute = "";
 
   return (
     <Modal transparent visible={isOpen} animationType="none" onRequestClose={closeMenu}>

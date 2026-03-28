@@ -53,7 +53,13 @@ const BENEFITS = [
   { icon: "clock-outline", text: "Watch history synced across devices" },
 ];
 
-export const EnhancedPaywall = React.memo(function EnhancedPaywall({ visible, onDismiss }: { visible: boolean; onDismiss?: () => void }) {
+type EnhancedPaywallProps = {
+  visible: boolean;
+  onDismiss?: () => void;
+  onUpgradeSuccess?: () => void;
+};
+
+export const EnhancedPaywall = React.memo(function EnhancedPaywall({ visible, onDismiss, onUpgradeSuccess }: EnhancedPaywallProps) {
   const { purchasePremiumSubscription, restorePremiumAccess } = useNexora();
   
   const insets = useSafeAreaInsets();
@@ -61,21 +67,26 @@ export const EnhancedPaywall = React.memo(function EnhancedPaywall({ visible, on
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  if (!visible) return null;
+
   // Handle Purchase
   const handlePurchase = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
-      const success = await purchasePremiumSubscription?.(selectedPlan);
-      if (success) {
+      const result = await purchasePremiumSubscription?.(selectedPlan);
+      if (result?.ok) {
+        onUpgradeSuccess?.();
         onDismiss?.();
+      } else if (!result?.cancelled) {
+        setError(result?.reason || "Purchase failed. Please try again.");
       }
     } catch (_err) {
       setError("Purchase failed. Please try again.");
     } finally {
       setLoading(false);
     }
-  }, [selectedPlan, purchasePremiumSubscription, onDismiss]);
+  }, [selectedPlan, purchasePremiumSubscription, onDismiss, onUpgradeSuccess]);
 
   // Handle Restore
   const handleRestore = useCallback(async () => {
@@ -84,6 +95,7 @@ export const EnhancedPaywall = React.memo(function EnhancedPaywall({ visible, on
       setError(null);
       const result = await restorePremiumAccess?.();
       if (result?.ok) {
+        onUpgradeSuccess?.();
         onDismiss?.();
       } else {
         setError(result?.reason || "Restore failed. Please try again.");
@@ -93,7 +105,7 @@ export const EnhancedPaywall = React.memo(function EnhancedPaywall({ visible, on
     } finally {
       setLoading(false);
     }
-  }, [restorePremiumAccess, onDismiss]);
+  }, [restorePremiumAccess, onDismiss, onUpgradeSuccess]);
 
   return (
     <LinearGradient colors={[COLORS.background, "#1a1a2e"]} style={[styles.container, { paddingTop: insets.top }]}>

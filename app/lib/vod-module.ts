@@ -1,7 +1,7 @@
 import { dedupeVodItems } from "@/lib/vod-curation";
 
 export type VodModuleMediaType = "movie" | "series";
-export type VodModulePane = "home" | "search" | "collections" | "more";
+export type VodModulePane = "home" | "search" | "collections" | "platforms" | "more";
 export type VodSearchFilter = "all" | "movie" | "series" | "anime";
 
 export type VodCompany = {
@@ -225,9 +225,16 @@ export function enrichVodModuleItem(baseItem: any, detail?: any): VodModuleItem 
     ? detail.genre
     : Array.isArray(baseItem.genre) ? baseItem.genre : [];
 
+  const rawId = baseItem.id ?? detail?.id ?? "";
+  const idObj = rawId && typeof rawId === "object" ? rawId : null;
+  const resolvedId = idObj ? String(idObj.tmdbId || idObj.id || "") : String(rawId || "");
+  const resolvedTmdbId = Number(
+    (idObj ? idObj.tmdbId : null) || baseItem.tmdbId || detail?.tmdbId || detail?.id || 0
+  ) || null;
+
   return {
-    id: String(baseItem.id || detail?.id || ""),
-    tmdbId: Number(baseItem.tmdbId || detail?.tmdbId || detail?.id || 0) || null,
+    id: resolvedId,
+    tmdbId: resolvedTmdbId,
     type: (baseItem.type || detail?.type || "movie") as VodModuleMediaType,
     title: String(baseItem.title || detail?.title || "").trim(),
     poster: detail?.poster ?? baseItem.poster ?? null,

@@ -46,6 +46,12 @@ function getInferredNativeHost(): string {
   }
 }
 
+function isLikelyPhysicalHost(host: string): boolean {
+  const value = String(host || "").trim().toLowerCase();
+  if (!value) return false;
+  return value !== "localhost" && value !== "127.0.0.1";
+}
+
 function isLoopbackHost(base: string): boolean {
   try {
     const u = new URL(base);
@@ -87,6 +93,7 @@ export function getApiBaseCandidates(): string[] {
   if (Platform.OS !== "web") {
     const iosSim = "http://localhost:8080";
     const androidEmu = "http://10.0.2.2:8080";
+    const isPhysicalDeviceSession = isLikelyPhysicalHost(inferredHost);
 
     // Standalone/test APKs have no Metro host to infer and no business
     // defaulting to localhost. Prefer the production API unless the build
@@ -102,14 +109,39 @@ export function getApiBaseCandidates(): string[] {
       ]);
     }
 
-    // If explicit points to localhost on a physical device, inferred host should win.
-    if (explicit && isLoopbackHost(explicit) && inferredNative) {
-      return unique([lastWorkingApiBase, inferredNative, ...explicitList, explicit, iosSim, androidEmu]);
+    // Physical devices should prefer cloud API first in dev unless user gave
+    // a reachable non-loopback override.
+    if (isPhysicalDeviceSession) {
+      const nonLoopbackExplicit = explicitList.filter((candidate) => !isLoopbackHost(candidate));
+      const safeExplicit = explicit && !isLoopbackHost(explicit) ? explicit : "";
+      return unique([
+        lastWorkingApiBase,
+        safeExplicit,
+        ...nonLoopbackExplicit,
+        DEFAULT_RENDER_API_BASE,
+        inferredNative,
+        explicit,
+        iosSim,
+        androidEmu,
+      ]);
     }
 
-    // Prefer inferred/localhost first so a stale EXPO_PUBLIC_API_BASE IP
-    // cannot block requests for a long time in local development.
-    return unique([lastWorkingApiBase, ...explicitList, inferredNative, iosSim, explicit, androidEmu]);
+    // If explicit points to localhost, inferred host should win for simulators.
+    if (explicit && isLoopbackHost(explicit) && inferredNative) {
+      return unique([lastWorkingApiBase, inferredNative, ...explicitList, explicit, iosSim, androidEmu, DEFAULT_RENDER_API_BASE]);
+    }
+
+    // Prefer a reachable production fallback before emulator loopbacks in
+    // native dev, so physical devices don't burn multiple failed attempts.
+    return unique([
+      lastWorkingApiBase,
+      ...explicitList,
+      inferredNative,
+      DEFAULT_RENDER_API_BASE,
+      iosSim,
+      explicit,
+      androidEmu,
+    ]);
   }
 
   // 3) Web: use same-origin (useful for web deployments)
@@ -220,9 +252,10 @@ async function throwIfResNotOk(res: Response) {
 function timeoutForUrl(url: string, isSports: boolean = false): number {
   if (isSports) {
     if (isCloudflareSportsUrl(url)) return 12000;
-    if (isRenderUrl(url)) return 18000;
+    if (isRenderUrl(url)) return 30000;
     return 12000;
   }
+  if (isRenderUrl(url)) return 30000;
   return url.startsWith("https://") ? 25000 : 8000;
 }
 
@@ -234,9 +267,11 @@ function shouldTryNextBase(route: string, status: number): boolean {
 
 function shouldTryNextBaseForResponse(route: string, res: Response): boolean {
   if (shouldTryNextBase(route, res.status)) return true;
-  if (!isSportsRoute(route)) return false;
+  const isApiRoute = /^\/?api\//i.test(route);
+  if (!isApiRoute) return false;
   const contentType = String(res.headers.get("content-type") || "").toLowerCase();
-  // Cloudflare Access/challenge pages can return HTTP 200 + text/html.
+  // Misrouted API calls can return app HTML (Expo/Web) with HTTP 200.
+  // Treat those as fallback candidates for all API routes.
   if (contentType.includes("text/html")) return true;
   return false;
 }

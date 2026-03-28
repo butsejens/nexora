@@ -1,15 +1,14 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   View, Text, StyleSheet, TouchableOpacity, ScrollView,
-  Image, Platform, Animated,
+  Image, Animated,
 } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useQuery } from "@tanstack/react-query";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { COLORS } from "@/constants/colors";
-import { NexoraCollapsingHeader } from "@/components/layout/NexoraCollapsingHeader";
+import { NexoraSimpleHeader } from "@/components/NexoraSimpleHeader";
 import { normalizeApiError } from "@/lib/error-messages";
 import { TeamLogo } from "@/components/TeamLogo";
 import { StateBlock } from "@/components/ui/PremiumPrimitives";
@@ -104,17 +103,21 @@ export default function TeamDetailScreen() {
   const espnLeagueParam = asParam(params.espnLeague, "");
   const leagueParam = asParam(params.league, "eng.1");
   const countryCodeParam = asParam(params.countryCode, "");
-  const insets = useSafeAreaInsets();
   const { isFollowingTeam, followTeamAction, unfollowTeamAction } = useFollowState();
   const { t } = useTranslation();
   const teamFollowId = useMemo(() => {
     const raw = String(teamIdParam || teamNameParam || "").trim().toLowerCase();
     return raw || "team:unknown";
   }, [teamIdParam, teamNameParam]);
+  const resolvedTeamId = useMemo(() => {
+    const raw = String(teamIdParam || "").trim();
+    if (raw) return raw;
+    const teamName = String(teamNameParam || "").trim();
+    return teamName ? `name:${encodeURIComponent(teamName)}` : "";
+  }, [teamIdParam, teamNameParam]);
   const isFollowing = isFollowingTeam(teamFollowId);
   const [posFilter, setPosFilter] = useState<string>("all");
   const [sortKey, setSortKey] = useState<"value_desc" | "value_asc" | "age_desc" | "age_asc" | "name_asc" | "position_asc">("value_desc");
-  const topPad = Platform.OS === "web" ? 67 : insets.top;
 
   // Scroll-hide animation for filter header
   const scrollY = useRef(new Animated.Value(0)).current;
@@ -178,11 +181,11 @@ export default function TeamDetailScreen() {
   const league = espnLeagueParam || leagueParam || "eng.1";
 
   const { data, isLoading, error, refetch } = useQuery<TeamDetailData>({
-    queryKey: sportKeys.team({ teamId: teamIdParam, sport, league, countryCode: countryCodeParam }),
+    queryKey: sportKeys.team({ teamId: resolvedTeamId, sport, league, countryCode: countryCodeParam }),
     queryFn: async () => {
-      if (!teamIdParam) throw new Error("Team ID ontbreekt");
+      if (!resolvedTeamId) throw new Error("Team ID ontbreekt");
       return await getTeamOverview({
-        teamId: teamIdParam,
+        teamId: resolvedTeamId,
         sport,
         league,
         teamName: teamNameParam,
@@ -213,20 +216,20 @@ export default function TeamDetailScreen() {
     if (leagueName && country) return `${leagueName} • ${country}`;
     return leagueName || country;
   }, [data?.country, data?.leagueName]);
-  const playersWithPhoto = useMemo(
-    () => players.filter((p) => Boolean(p?.photo || p?.theSportsDbPhoto)),
+  const playersForDisplay = useMemo(
+    () => players.filter((p) => Boolean(String(p?.name || "").trim())),
     [players]
   );
 
   const positionGroups = useMemo(() => {
     const groups: Record<string, any[]> = {};
-    for (const p of playersWithPhoto) {
+    for (const p of playersForDisplay) {
       const pos = p.position || "?";
       if (!groups[pos]) groups[pos] = [];
       groups[pos].push(p);
     }
     return groups;
-  }, [playersWithPhoto]);
+  }, [playersForDisplay]);
 
   const positions = Object.keys(positionGroups).sort((a, b) => {
     const ia = POSITION_ORDER.indexOf(a);
@@ -247,7 +250,7 @@ export default function TeamDetailScreen() {
   };
 
   const filteredPlayers = useMemo(() => {
-    const scoped = posFilter === "all" ? [...playersWithPhoto] : playersWithPhoto.filter(p => p.position === posFilter);
+    const scoped = posFilter === "all" ? [...playersForDisplay] : playersForDisplay.filter(p => p.position === posFilter);
     scoped.sort((a, b) => {
       switch (sortKey) {
         case "value_desc":
@@ -266,7 +269,7 @@ export default function TeamDetailScreen() {
       }
     });
     return scoped;
-  }, [playersWithPhoto, posFilter, sortKey]);
+  }, [playersForDisplay, posFilter, sortKey]);
 
   const handleToggleFollow = useCallback(async () => {
     if (isFollowing) {
@@ -283,54 +286,31 @@ export default function TeamDetailScreen() {
 
   return (
     <View style={styles.container}>
-      <View style={{ zIndex: 30, elevation: 30 }}>
-        <NexoraCollapsingHeader
-          scrollY={scrollY}
-          topInset={topPad}
-          title={data?.name || teamNameParam}
-          subtitle={headerSubtitle}
-          onBack={() => router.back()}
-          backgroundColor={COLORS.cardElevated}
-          rightActions={
-            <View style={styles.headerActions}>
-              <TouchableOpacity
-                style={styles.infoBtn}
-                onPress={() => router.push({
-                  pathname: "/team-info",
-                  params: {
-                    teamId: teamIdParam,
-                    teamName: data?.name || teamNameParam,
-                    sport: sport,
-                    league,
-                  },
-                })}
-                activeOpacity={0.75}
-              >
-                <Ionicons name="information-circle-outline" size={18} color={COLORS.text} />
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.followBtn} onPress={() => void handleToggleFollow()} activeOpacity={0.75}>
-                <Ionicons name={isFollowing ? "heart" : "heart-outline"} size={16} color={isFollowing ? COLORS.accent : COLORS.text} />
-                <Text style={[styles.followBtnText, isFollowing && { color: COLORS.accent }]}>
-                  {isFollowing ? t("teamDetail.following") : t("teamDetail.follow")}
-                </Text>
-              </TouchableOpacity>
-            </View>
-          }
-          heroContent={data ? (
-            <View style={styles.teamHeaderContent}>
-              <View style={styles.teamPosterWrap}>
-                <View style={styles.teamPosterGlow} />
-                <TeamLogo
-                  uri={data.logo || logoParam || null}
-                  teamName={teamName}
-                  size={118}
-                />
-              </View>
-              {data.shortName ? <Text style={styles.teamShort}>{data.shortName}</Text> : null}
-            </View>
-          ) : null}
-        />
-      </View>
+      <NexoraSimpleHeader
+        title={data?.name || teamNameParam}
+        rightActions={
+          <View style={styles.headerActions}>
+            <TouchableOpacity
+              style={styles.infoBtn}
+              onPress={() => router.push({
+                pathname: "/team-info",
+                params: {
+                  teamId: teamIdParam,
+                  teamName: data?.name || teamNameParam,
+                  sport: sport,
+                  league,
+                },
+              })}
+              activeOpacity={0.75}
+            >
+              <Ionicons name="information-circle-outline" size={18} color={COLORS.text} />
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.followBtn} onPress={() => void handleToggleFollow()} activeOpacity={0.75}>
+              <Ionicons name={isFollowing ? "heart" : "heart-outline"} size={16} color={isFollowing ? COLORS.accent : COLORS.text} />
+            </TouchableOpacity>
+          </View>
+        }
+      />
 
       {isLoading ? (
         <View style={styles.loadingState}>
@@ -376,43 +356,61 @@ export default function TeamDetailScreen() {
                 <PlayerCard player={item} teamName={teamName} league={league} />
               </TouchableOpacity>
             )}
-            ListHeaderComponent={positions.length > 1 ? (
-              <Animated.View style={[styles.filterHeaderWrap, { transform: [{ translateY: filterTranslateY }] }]}>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false}
-                  style={[styles.filterScroll, styles.filterSticky]} contentContainerStyle={styles.filterRow}>
-                  <TouchableOpacity
-                    style={[styles.filterChip, posFilter === "all" && styles.filterChipActive]}
-                    onPress={() => setPosFilter("all")}
-                  >
-                    <Text style={[styles.filterChipText, posFilter === "all" && styles.filterChipTextActive]}>
-                      {t("teamDetail.all")} ({playersWithPhoto.length})
-                    </Text>
-                  </TouchableOpacity>
-                  {positions.map(pos => (
-                    <TouchableOpacity key={pos}
-                      style={[styles.filterChip, posFilter === pos && styles.filterChipActive,
-                        { borderColor: posFilter === pos ? (POSITION_COLORS[pos] || COLORS.accent) : COLORS.border }]}
-                      onPress={() => setPosFilter(pos)}
-                    >
-                      <Text style={[styles.filterChipText, posFilter === pos && {
-                        color: POSITION_COLORS[pos] || COLORS.accent
-                      }]}> 
-                        {positionLabel(pos)} ({positionGroups[pos]?.length || 0})
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </ScrollView>
+            ListHeaderComponent={
+              <View>
+                <View style={styles.teamHeroCard}>
+                  <View style={styles.teamHeaderContent}>
+                    <View style={styles.teamPosterWrap}>
+                      <View style={styles.teamPosterGlow} />
+                      <TeamLogo
+                        uri={data.logo || logoParam || null}
+                        teamName={teamName}
+                        size={106}
+                      />
+                    </View>
+                    {data.shortName ? <Text style={styles.teamShort}>{data.shortName}</Text> : null}
+                    {headerSubtitle ? <Text style={styles.teamMeta}>{headerSubtitle}</Text> : null}
+                  </View>
+                </View>
+                {positions.length > 1 ? (
+                  <Animated.View style={[styles.filterHeaderWrap, { transform: [{ translateY: filterTranslateY }] }]}> 
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false}
+                      style={[styles.filterScroll, styles.filterSticky]} contentContainerStyle={styles.filterRow}>
+                      <TouchableOpacity
+                        style={[styles.filterChip, posFilter === "all" && styles.filterChipActive]}
+                        onPress={() => setPosFilter("all")}
+                      >
+                        <Text style={[styles.filterChipText, posFilter === "all" && styles.filterChipTextActive]}>
+                          {t("teamDetail.all")} ({playersForDisplay.length})
+                        </Text>
+                      </TouchableOpacity>
+                      {positions.map(pos => (
+                        <TouchableOpacity key={pos}
+                          style={[styles.filterChip, posFilter === pos && styles.filterChipActive,
+                            { borderColor: posFilter === pos ? (POSITION_COLORS[pos] || COLORS.accent) : COLORS.border }]}
+                          onPress={() => setPosFilter(pos)}
+                        >
+                          <Text style={[styles.filterChipText, posFilter === pos && {
+                            color: POSITION_COLORS[pos] || COLORS.accent
+                          }]}> 
+                            {positionLabel(pos)} ({positionGroups[pos]?.length || 0})
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </ScrollView>
 
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.sortScroll} contentContainerStyle={styles.filterRow}>
-                  <SortChip label={t("teamDetail.valueDesc")} active={sortKey === "value_desc"} onPress={() => setSortKey("value_desc")} />
-                  <SortChip label={t("teamDetail.valueAsc")} active={sortKey === "value_asc"} onPress={() => setSortKey("value_asc")} />
-                  <SortChip label={t("teamDetail.ageDesc")} active={sortKey === "age_desc"} onPress={() => setSortKey("age_desc")} />
-                  <SortChip label={t("teamDetail.ageAsc")} active={sortKey === "age_asc"} onPress={() => setSortKey("age_asc")} />
-                  <SortChip label={t("teamDetail.nameAZ")} active={sortKey === "name_asc"} onPress={() => setSortKey("name_asc")} />
-                  <SortChip label={t("teamDetail.position")} active={sortKey === "position_asc"} onPress={() => setSortKey("position_asc")} />
-                </ScrollView>
-              </Animated.View>
-            ) : null}
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.sortScroll} contentContainerStyle={styles.filterRow}>
+                      <SortChip label={t("teamDetail.valueDesc")} active={sortKey === "value_desc"} onPress={() => setSortKey("value_desc")} />
+                      <SortChip label={t("teamDetail.valueAsc")} active={sortKey === "value_asc"} onPress={() => setSortKey("value_asc")} />
+                      <SortChip label={t("teamDetail.ageDesc")} active={sortKey === "age_desc"} onPress={() => setSortKey("age_desc")} />
+                      <SortChip label={t("teamDetail.ageAsc")} active={sortKey === "age_asc"} onPress={() => setSortKey("age_asc")} />
+                      <SortChip label={t("teamDetail.nameAZ")} active={sortKey === "name_asc"} onPress={() => setSortKey("name_asc")} />
+                      <SortChip label={t("teamDetail.position")} active={sortKey === "position_asc"} onPress={() => setSortKey("position_asc")} />
+                    </ScrollView>
+                  </Animated.View>
+                ) : null}
+              </View>
+            }
             onScroll={handleScroll}
             scrollEventThrottle={16}
             contentContainerStyle={styles.playerList}
@@ -545,6 +543,17 @@ function StatPill({ label, value, color, real }: { label: string; value: string;
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
+  teamHeroCard: {
+    marginHorizontal: 18,
+    marginTop: 14,
+    marginBottom: 10,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.12)",
+    backgroundColor: COLORS.cardElevated,
+    paddingVertical: 16,
+    paddingHorizontal: 12,
+  },
   header: { paddingHorizontal: 18, paddingBottom: 22 },
   backBtn: { width: 38, height: 38, alignItems: "center", justifyContent: "center", marginBottom: 8 },
   headerActions: { flexDirection: "row", alignItems: "center", gap: 10 },
@@ -590,6 +599,7 @@ const styles = StyleSheet.create({
   logoPlaceholderText: { fontFamily: "Inter_700Bold", fontSize: 22, color: COLORS.text },
   teamTitle: { fontFamily: "Inter_800ExtraBold", fontSize: 22, color: COLORS.text, textAlign: "center" },
   teamShort: { fontFamily: "Inter_400Regular", fontSize: 14, color: "rgba(255,255,255,0.5)" },
+  teamMeta: { fontFamily: "Inter_500Medium", fontSize: 12, color: COLORS.textMuted, textAlign: "center" },
   rankBadge: {
     flexDirection: "row", alignItems: "center", gap: 5,
     backgroundColor: "rgba(255,215,0,0.12)", borderRadius: 14,

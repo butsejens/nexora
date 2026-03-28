@@ -1,8 +1,9 @@
 import React, { useDeferredValue, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
+  Animated,
   FlatList,
-  Image,
+  InteractionManager,
   ScrollView,
   StyleSheet,
   Text,
@@ -10,6 +11,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { Image as ExpoImage } from "expo-image";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -58,6 +60,7 @@ type PlatformGroup = {
   key: string;
   label: string;
   logoUri?: string | null;
+  fallbackColor?: string;
   items: VodModuleItem[];
 };
 
@@ -68,20 +71,31 @@ const SEARCH_FILTERS: { key: VodSearchFilter; label: string }[] = [
   { key: "anime", label: "Anime" },
 ];
 
-const PLATFORM_BRAND_ASSETS: Record<string, { logoUri?: string | null }> = {
-  netflix: { logoUri: "https://logo.clearbit.com/netflix.com" },
-  disney: { logoUri: "https://logo.clearbit.com/disneyplus.com" },
-  prime: { logoUri: "https://logo.clearbit.com/primevideo.com" },
-  hbo: { logoUri: "https://logo.clearbit.com/max.com" },
-  apple: { logoUri: "https://logo.clearbit.com/tv.apple.com" },
-  paramount: { logoUri: "https://logo.clearbit.com/paramountplus.com" },
-  hulu: { logoUri: "https://logo.clearbit.com/hulu.com" },
-  peacock: { logoUri: "https://logo.clearbit.com/peacocktv.com" },
-  crunchyroll: { logoUri: "https://logo.clearbit.com/crunchyroll.com" },
-  lionsgate: { logoUri: "https://logo.clearbit.com/lionsgate.com" },
-  sony: { logoUri: "https://logo.clearbit.com/sonypictures.com" },
-  a24: { logoUri: "https://logo.clearbit.com/a24films.com" },
-};
+const PLATFORM_PROVIDER_CONFIG: Array<{
+  key: string;
+  label: string;
+  aliases: string[];
+  logoUri: string;
+  fallbackColor: string;
+}> = [
+  { key: "netflix", label: "Netflix", aliases: ["netflix"], logoUri: "https://www.google.com/s2/favicons?domain=netflix.com&sz=128", fallbackColor: "#E50914" },
+  { key: "disney", label: "Disney+", aliases: ["disney", "walt disney", "pixar", "marvel studios"], logoUri: "https://www.google.com/s2/favicons?domain=disneyplus.com&sz=128", fallbackColor: "#113CCF" },
+  { key: "prime", label: "Prime Video", aliases: ["amazon", "prime video", "amazon studios"], logoUri: "https://www.google.com/s2/favicons?domain=primevideo.com&sz=128", fallbackColor: "#00A8E1" },
+  { key: "hbo", label: "HBO Max", aliases: ["hbo", "max"], logoUri: "https://www.google.com/s2/favicons?domain=max.com&sz=128", fallbackColor: "#7F2BFF" },
+  { key: "apple", label: "Apple TV+", aliases: ["apple", "apple tv"], logoUri: "https://www.google.com/s2/favicons?domain=tv.apple.com&sz=128", fallbackColor: "#A5A5A5" },
+  { key: "paramount", label: "Paramount+", aliases: ["paramount", "paramount+"], logoUri: "https://www.google.com/s2/favicons?domain=paramountplus.com&sz=128", fallbackColor: "#1A4DFF" },
+  { key: "hulu", label: "Hulu", aliases: ["hulu", "fx productions", "searchlight"], logoUri: "https://www.google.com/s2/favicons?domain=hulu.com&sz=128", fallbackColor: "#1CE783" },
+  { key: "peacock", label: "Peacock", aliases: ["peacock", "nbcuniversal", "focus features"], logoUri: "https://www.google.com/s2/favicons?domain=peacocktv.com&sz=128", fallbackColor: "#FFD400" },
+  { key: "crunchyroll", label: "Crunchyroll", aliases: ["crunchyroll", "funimation", "anime"], logoUri: "https://www.google.com/s2/favicons?domain=crunchyroll.com&sz=128", fallbackColor: "#F47521" },
+  { key: "youtube", label: "YouTube", aliases: ["youtube", "google"], logoUri: "https://www.google.com/s2/favicons?domain=youtube.com&sz=128", fallbackColor: "#FF0000" },
+  { key: "mubi", label: "Mubi", aliases: ["mubi"], logoUri: "https://www.google.com/s2/favicons?domain=mubi.com&sz=128", fallbackColor: "#0F0F0F" },
+  { key: "lionsgate", label: "Lionsgate", aliases: ["lionsgate"], logoUri: "https://www.google.com/s2/favicons?domain=lionsgate.com&sz=128", fallbackColor: "#1F4FFF" },
+  { key: "sony", label: "Sony", aliases: ["sony pictures", "columbia pictures", "screen gems"], logoUri: "https://www.google.com/s2/favicons?domain=sonypictures.com&sz=128", fallbackColor: "#1A1A1A" },
+  { key: "a24", label: "A24", aliases: ["a24"], logoUri: "https://www.google.com/s2/favicons?domain=a24films.com&sz=128", fallbackColor: "#D8D8D8" },
+  { key: "universal", label: "Universal", aliases: ["universal", "illumination", "dreamworks"], logoUri: "https://www.google.com/s2/favicons?domain=universalpictures.com&sz=128", fallbackColor: "#0046FF" },
+  { key: "warner", label: "Warner Bros", aliases: ["warner", "dc studios", "new line cinema"], logoUri: "https://www.google.com/s2/favicons?domain=warnerbros.com&sz=128", fallbackColor: "#1D4ED8" },
+  { key: "mgm", label: "MGM", aliases: ["mgm"], logoUri: "https://www.google.com/s2/favicons?domain=mgm.com&sz=128", fallbackColor: "#A78733" },
+];
 
 async function fetchDetail(type: "movie" | "series", id: string | number) {
   return type === "movie" ? getMovieFull(Number(id)) : getSeriesFull(Number(id));
@@ -111,23 +125,8 @@ function normalizeTitle(value: string): string {
 }
 
 function buildPlatformGroups(items: VodModuleItem[]): PlatformGroup[] {
-  const providers = [
-    { key: "netflix", label: "Netflix", aliases: ["netflix"] },
-    { key: "disney", label: "Disney+", aliases: ["disney", "walt disney", "pixar", "marvel studios"] },
-    { key: "prime", label: "Prime Video", aliases: ["amazon", "prime video", "amazon studios"] },
-    { key: "hbo", label: "HBO", aliases: ["hbo", "max"] },
-    { key: "apple", label: "Apple TV+", aliases: ["apple", "apple tv"] },
-    { key: "paramount", label: "Paramount+", aliases: ["paramount", "paramount+"] },
-    { key: "hulu", label: "Hulu", aliases: ["hulu", "fx productions", "searchlight"] },
-    { key: "peacock", label: "Peacock", aliases: ["peacock", "nbcuniversal", "focus features"] },
-    { key: "crunchyroll", label: "Crunchyroll", aliases: ["crunchyroll", "funimation", "anime"] },
-    { key: "lionsgate", label: "Lionsgate", aliases: ["lionsgate"] },
-    { key: "sony", label: "Sony", aliases: ["sony pictures", "columbia pictures", "screen gems"] },
-    { key: "a24", label: "A24", aliases: ["a24"] },
-  ];
-
   const normalized = (value: unknown) => String(value || "").toLowerCase();
-  return providers
+  return PLATFORM_PROVIDER_CONFIG
     .map((provider) => {
       const filtered = items.filter((item) => {
         const haystack = normalized([
@@ -141,13 +140,12 @@ function buildPlatformGroups(items: VodModuleItem[]): PlatformGroup[] {
       return {
         key: provider.key,
         label: provider.label,
-        logoUri: PLATFORM_BRAND_ASSETS[provider.key]?.logoUri || null,
+        logoUri: provider.logoUri,
+        fallbackColor: provider.fallbackColor,
         items: dedupeModuleItems(filtered).slice(0, 24),
       };
     })
-    .filter((entry) => entry.items.length >= 2)
-    .sort((left, right) => right.items.length - left.items.length)
-    .slice(0, 10);
+    .sort((left, right) => right.items.length - left.items.length || left.label.localeCompare(right.label));
 }
 
 function ModuleSection({ title, children, actionLabel, onAction }: { title: string; children: React.ReactNode; actionLabel?: string; onAction?: () => void }) {
@@ -169,7 +167,15 @@ function ModuleSection({ title, children, actionLabel, onAction }: { title: stri
 function CollectionCard({ group, onPress }: { group: VodCollectionGroup; onPress: () => void }) {
   return (
     <TouchableOpacity style={styles.collectionCard} onPress={onPress} activeOpacity={0.84}>
-      {group.bannerUri ? <Image source={{ uri: group.bannerUri }} style={styles.collectionImage} /> : <View style={styles.collectionFallback} />}
+      {group.bannerUri ? (
+        <ExpoImage
+          source={{ uri: group.bannerUri }}
+          style={styles.collectionImage}
+          contentFit="cover"
+          cachePolicy="memory-disk"
+          transition={120}
+        />
+      ) : <View style={styles.collectionFallback} />}
       <View style={styles.collectionOverlay} />
       <View style={styles.collectionMeta}>
         <Text style={styles.collectionLabel}>COLLECTION</Text>
@@ -187,13 +193,86 @@ function StudioCard({ group, onPress }: { group: VodStudioGroup; onPress: () => 
     <TouchableOpacity style={styles.studioCard} onPress={onPress} activeOpacity={0.84}>
       <View style={styles.studioLogoWrap}>
         {group.logoUri ? (
-          <Image source={{ uri: group.logoUri }} resizeMode="contain" style={styles.studioLogo} />
+          <ExpoImage
+            source={{ uri: group.logoUri }}
+            style={styles.studioLogo}
+            contentFit="contain"
+            cachePolicy="memory-disk"
+            transition={100}
+          />
         ) : (
           <Text style={styles.studioLogoFallback}>{group.name.slice(0, 2).toUpperCase()}</Text>
         )}
       </View>
       <Text style={styles.studioTitle} numberOfLines={2}>{group.name}</Text>
       <Text style={styles.studioInfo}>{group.itemCount} titles</Text>
+    </TouchableOpacity>
+  );
+}
+
+function CollectionSkeletonCard({ pulse }: { pulse: Animated.Value }) {
+  return (
+    <Animated.View style={[styles.collectionSkeletonCard, { opacity: pulse }]}>
+      <View style={styles.collectionSkeletonOverlay} />
+      <View style={styles.collectionSkeletonMeta}>
+        <View style={styles.collectionSkeletonLabel} />
+        <View style={styles.collectionSkeletonTitle} />
+        <View style={styles.collectionSkeletonInfo} />
+      </View>
+    </Animated.View>
+  );
+}
+
+function PlatformSkeletonCard({ pulse }: { pulse: Animated.Value }) {
+  return (
+    <Animated.View style={[styles.platformSkeletonCard, { opacity: pulse }]}>
+      <View style={styles.platformSkeletonLogoWrap}>
+        <View style={styles.platformSkeletonLogo} />
+      </View>
+      <View style={styles.platformSkeletonTitle} />
+      <View style={styles.platformSkeletonMeta} />
+    </Animated.View>
+  );
+}
+
+function PlatformCard({
+  platform,
+  onPress,
+}: {
+  platform: PlatformGroup;
+  onPress: () => void;
+}) {
+  const [logoFailed, setLogoFailed] = useState(false);
+  const shouldUseFallback = !platform.logoUri || logoFailed;
+
+  return (
+    <TouchableOpacity style={styles.platformCard} onPress={onPress} activeOpacity={0.84}>
+      <View style={[styles.platformBrandBar, { backgroundColor: platform.fallbackColor || COLORS.accent }]} />
+      <View
+        style={[
+          styles.platformLogoWrap,
+          shouldUseFallback && {
+            backgroundColor: platform.fallbackColor || "rgba(255,255,255,0.88)",
+            borderColor: "transparent",
+          },
+        ]}
+      >
+        {shouldUseFallback ? (
+          <Text style={styles.platformLogoFallback}>{platform.label.slice(0, 2).toUpperCase()}</Text>
+        ) : (
+          <ExpoImage
+            source={{ uri: platform.logoUri as string }}
+            style={styles.platformLogo}
+            contentFit="contain"
+            cachePolicy="memory-disk"
+            transition={100}
+            onError={() => setLogoFailed(true)}
+          />
+        )}
+      </View>
+      <View style={[styles.platformLogoGlow, { backgroundColor: `${platform.fallbackColor || "#E50914"}1F` }]} />
+      <Text style={styles.platformTitle}>{platform.label}</Text>
+      <Text style={styles.platformMeta}>{platform.items.length} titles</Text>
     </TouchableOpacity>
   );
 }
@@ -211,9 +290,47 @@ export function VodModuleHub({ initialPane = "home", initialFilter = "all" }: Vo
   const [yearFilter, setYearFilter] = useState<string>("all");
   const [platformFilter, setPlatformFilter] = useState<string>("all");
   const [query, setQuery] = useState("");
+  const [deepCatalogEnabled, setDeepCatalogEnabled] = useState(false);
+  const skeletonPulse = React.useRef(new Animated.Value(0.58)).current;
   const deferredQuery = useDeferredValue(query.trim());
+  const isDiscoveryPane = activePane === "home" || activePane === "collections" || activePane === "platforms";
 
-  const homeQuery = useQuery(buildVodHomeQuery(activePane === "home"));
+  useEffect(() => {
+    // Keep first paint fast, then hydrate deeper catalog in idle time.
+    let isMounted = true;
+    const interaction = InteractionManager.runAfterInteractions(() => {
+      if (!isMounted) return;
+      setTimeout(() => {
+        if (isMounted) setDeepCatalogEnabled(true);
+      }, 120);
+    });
+    return () => {
+      isMounted = false;
+      interaction.cancel();
+    };
+  }, []);
+
+  useEffect(() => {
+    const pulseAnimation = Animated.loop(
+      Animated.sequence([
+        Animated.timing(skeletonPulse, {
+          toValue: 1,
+          duration: 820,
+          useNativeDriver: true,
+        }),
+        Animated.timing(skeletonPulse, {
+          toValue: 0.58,
+          duration: 820,
+          useNativeDriver: true,
+        }),
+      ])
+    );
+
+    pulseAnimation.start();
+    return () => pulseAnimation.stop();
+  }, [skeletonPulse]);
+
+  const homeQuery = useQuery(buildVodHomeQuery(isDiscoveryPane));
 
   const searchQuery = useQuery({
     queryKey: mediaKeys.search(deferredQuery),
@@ -222,12 +339,12 @@ export function VodModuleHub({ initialPane = "home", initialFilter = "all" }: Vo
     staleTime: 10 * 60 * 1000,
   });
 
-  const catalogChunkOneQuery = useQuery(buildVodCatalogRootQuery(activePane === "home" && Boolean(homeQuery.data)));
+  const catalogChunkOneQuery = useQuery(buildVodCatalogRootQuery(isDiscoveryPane && Boolean(homeQuery.data)));
 
   const catalogChunkTwoQuery = useQuery({
     queryKey: mediaKeys.vodCatalog(catalogChunkOneQuery.data?.meta?.nextCursorYear || null),
     queryFn: () => getVodCatalogChunk(catalogChunkOneQuery.data?.meta?.nextCursorYear || null),
-    enabled: activePane === "home" && Boolean(catalogChunkOneQuery.data?.meta?.nextCursorYear),
+    enabled: deepCatalogEnabled && isDiscoveryPane && Boolean(catalogChunkOneQuery.data?.meta?.nextCursorYear),
     staleTime: 30 * 60 * 1000,
     gcTime: 60 * 60 * 1000,
     retry: 1,
@@ -236,7 +353,7 @@ export function VodModuleHub({ initialPane = "home", initialFilter = "all" }: Vo
   const catalogChunkThreeQuery = useQuery({
     queryKey: mediaKeys.vodCatalog(catalogChunkTwoQuery.data?.meta?.nextCursorYear || null),
     queryFn: () => getVodCatalogChunk(catalogChunkTwoQuery.data?.meta?.nextCursorYear || null),
-    enabled: activePane === "home" && Boolean(catalogChunkTwoQuery.data?.meta?.nextCursorYear),
+    enabled: deepCatalogEnabled && isDiscoveryPane && Boolean(catalogChunkTwoQuery.data?.meta?.nextCursorYear),
     staleTime: 30 * 60 * 1000,
     gcTime: 60 * 60 * 1000,
     retry: 1,
@@ -245,15 +362,15 @@ export function VodModuleHub({ initialPane = "home", initialFilter = "all" }: Vo
   const catalogChunkFourQuery = useQuery({
     queryKey: mediaKeys.vodCatalog(catalogChunkThreeQuery.data?.meta?.nextCursorYear || null),
     queryFn: () => getVodCatalogChunk(catalogChunkThreeQuery.data?.meta?.nextCursorYear || null),
-    enabled: activePane === "home" && Boolean(catalogChunkThreeQuery.data?.meta?.nextCursorYear),
+    enabled: deepCatalogEnabled && isDiscoveryPane && Boolean(catalogChunkThreeQuery.data?.meta?.nextCursorYear),
     staleTime: 30 * 60 * 1000,
     gcTime: 60 * 60 * 1000,
     retry: 1,
   });
 
-  const curatedCollectionsQuery = useQuery(buildVodCollectionsQuery(activePane === "home"));
+  const curatedCollectionsQuery = useQuery(buildVodCollectionsQuery(isDiscoveryPane));
 
-  const curatedStudiosQuery = useQuery(buildVodStudiosQuery(activePane === "home"));
+  const curatedStudiosQuery = useQuery(buildVodStudiosQuery(isDiscoveryPane));
 
   useEffect(() => {
     if (activePane === "search") return;
@@ -290,6 +407,13 @@ export function VodModuleHub({ initialPane = "home", initialFilter = "all" }: Vo
     homeQuery.data?.allItems,
   ]);
 
+  const fastDiscoveryItems = useMemo(() => {
+    const homeItems = homeQuery.data?.allItems || [];
+    const curatedCollectionItems = (curatedCollectionsQuery.data || []).flatMap((collection) => collection.items || []);
+    const curatedStudioItems = (curatedStudiosQuery.data || []).flatMap((studio) => studio.items || []);
+    return dedupeModuleItems([...homeItems, ...curatedCollectionItems, ...curatedStudioItems]);
+  }, [curatedCollectionsQuery.data, curatedStudiosQuery.data, homeQuery.data?.allItems]);
+
   const collections = useMemo(() => {
     const curated = (curatedCollectionsQuery.data || []).map((collection) => ({
       key: `curated:${collection.id}`,
@@ -303,11 +427,11 @@ export function VodModuleHub({ initialPane = "home", initialFilter = "all" }: Vo
       fromYear: null,
       toYear: null,
     }));
-    const grouped = buildCollectionGroups(allItems);
+    const grouped = buildCollectionGroups(deepCatalogEnabled ? allItems : fastDiscoveryItems);
     return [...curated, ...grouped]
       .filter((group, index, arr) => arr.findIndex((entry) => entry.key === group.key || normalizeTitle(entry.name) === normalizeTitle(group.name)) === index)
-      .slice(0, 20);
-  }, [allItems, curatedCollectionsQuery.data]);
+      .slice(0, 120);
+  }, [allItems, curatedCollectionsQuery.data, deepCatalogEnabled, fastDiscoveryItems]);
   const studios = useMemo(() => {
     const curated = (curatedStudiosQuery.data || []).map((studio) => ({
       id: Number(studio.id) || undefined,
@@ -322,8 +446,10 @@ export function VodModuleHub({ initialPane = "home", initialFilter = "all" }: Vo
       .slice(0, 20);
   }, [allItems, curatedStudiosQuery.data]);
   const genres = useMemo(() => buildCategoryRails(allItems, 24).slice(0, 14), [allItems]);
-  const platforms = useMemo(() => buildPlatformGroups(allItems), [allItems]);
+  const platforms = useMemo(() => buildPlatformGroups(deepCatalogEnabled ? allItems : fastDiscoveryItems), [allItems, deepCatalogEnabled, fastDiscoveryItems]);
   const featured = homeQuery.data?.featured || null;
+  const showCollectionSkeleton = collections.length === 0 && (homeQuery.isLoading || curatedCollectionsQuery.isLoading);
+  const showPlatformSkeleton = platforms.length === 0 && (homeQuery.isLoading || catalogChunkOneQuery.isLoading);
 
   const availableGenres = useMemo(() => {
     const labels = new Set<string>();
@@ -338,6 +464,37 @@ export function VodModuleHub({ initialPane = "home", initialFilter = "all" }: Vo
   const availablePlatforms = useMemo(() => {
     return ["all", ...platforms.map((platform) => platform.label)];
   }, [platforms]);
+
+  const prioritizedImageUris = useMemo(() => {
+    const candidateUris = [
+      featured?.backdrop,
+      featured?.poster,
+      ...platforms.map((platform) => platform.logoUri),
+      ...collections.slice(0, 16).flatMap((collection) => [collection.bannerUri, collection.posterUri]),
+      ...studios.slice(0, 12).map((studio) => studio.logoUri),
+      ...allItems.slice(0, 48).flatMap((item) => [item.poster, item.backdrop]),
+    ];
+
+    const unique = new Set<string>();
+    for (const value of candidateUris) {
+      const uri = String(value || "").trim();
+      if (!uri || (!uri.startsWith("http://") && !uri.startsWith("https://"))) continue;
+      unique.add(uri);
+      if (unique.size >= 120) break;
+    }
+
+    return Array.from(unique);
+  }, [allItems, collections, featured?.backdrop, featured?.poster, platforms, studios]);
+
+  useEffect(() => {
+    if (!prioritizedImageUris.length) return;
+    ExpoImage.prefetch(prioritizedImageUris).catch(() => undefined);
+  }, [prioritizedImageUris]);
+
+  const selectedPlatform = useMemo(() => {
+    if (platformFilter === "all") return null;
+    return platforms.find((platform) => platform.label.toLowerCase() === platformFilter.toLowerCase()) || null;
+  }, [platformFilter, platforms]);
 
   const applyAdvancedFilters = useMemo(() => {
     return (items: VodModuleItem[]) => {
@@ -358,13 +515,17 @@ export function VodModuleHub({ initialPane = "home", initialFilter = "all" }: Vo
         }
 
         if (platformFilter !== "all") {
+          const selectedProvider = PLATFORM_PROVIDER_CONFIG.find(
+            (provider) => provider.label.toLowerCase() === normalizedPlatform || provider.key.toLowerCase() === normalizedPlatform
+          );
+          const platformAliases = selectedProvider?.aliases?.length ? selectedProvider.aliases : [normalizedPlatform];
           const haystack = [
             ...(item.studios || []),
             ...((item.productionCompanies || []).map((company) => company?.name || "")),
             ...(item.keywords || []),
             item.title,
           ].join(" ").toLowerCase();
-          if (!haystack.includes(normalizedPlatform)) return false;
+          if (!platformAliases.some((alias) => haystack.includes(alias))) return false;
         }
 
         return true;
@@ -402,7 +563,7 @@ export function VodModuleHub({ initialPane = "home", initialFilter = "all" }: Vo
 
   const filteredCatalogResults = useMemo(() => {
     const typeFiltered = filterBySearchFilter(allItems, searchFilter);
-    return applyAdvancedFilters(typeFiltered).slice(0, 120);
+    return applyAdvancedFilters(typeFiltered).slice(0, 180);
   }, [allItems, applyAdvancedFilters, searchFilter]);
 
 
@@ -493,16 +654,14 @@ export function VodModuleHub({ initialPane = "home", initialFilter = "all" }: Vo
     <View style={styles.container}>
       <NexoraHeader
         variant="module"
-        title="FILMS & SERIES"
+        title="Films & Series"
         titleColor={COLORS.accent}
         showSearch
         showNotification
         showFavorites
-        showProfile
         onSearch={() => router.push("/(tabs)/search")}
         onNotification={() => router.push("/follow-center")}
         onFavorites={() => router.push("/favorites")}
-        onProfile={() => router.push("/profile")}
       />
 
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
@@ -533,7 +692,7 @@ export function VodModuleHub({ initialPane = "home", initialFilter = "all" }: Vo
             {collections.length ? (
               <ModuleSection title="Collections" actionLabel="See all" onAction={() => setActivePane("collections")}>
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.collectionRow}>
-                  {collections.map((group) => (
+                  {collections.slice(0, 24).map((group) => (
                     <CollectionCard
                       key={group.key}
                       group={group}
@@ -556,6 +715,16 @@ export function VodModuleHub({ initialPane = "home", initialFilter = "all" }: Vo
               </ModuleSection>
             ) : null}
 
+            {showCollectionSkeleton ? (
+              <ModuleSection title="Collections">
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.collectionRow}>
+                  {Array.from({ length: 4 }).map((_, index) => (
+                    <CollectionSkeletonCard key={`collection-skeleton-${index}`} pulse={skeletonPulse} />
+                  ))}
+                </ScrollView>
+              </ModuleSection>
+            ) : null}
+
             {studios.length ? (
               <ModuleSection title="Studios">
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.studioRow}>
@@ -571,24 +740,28 @@ export function VodModuleHub({ initialPane = "home", initialFilter = "all" }: Vo
             ) : null}
 
             {platforms.length ? (
-              <ModuleSection title="Platforms" actionLabel="Browse all" onAction={() => setActivePane("search")}>
+              <ModuleSection title="Platforms" actionLabel="Browse all" onAction={() => setActivePane("platforms")}>
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterRow}>
-                  {platforms.map((platform) => (
-                    <TouchableOpacity
+                  {platforms.slice(0, 18).map((platform) => (
+                    <PlatformCard
                       key={platform.key}
-                      style={styles.platformCard}
+                      platform={platform}
                       onPress={() => {
-                        setActivePane("search");
-                        setQuery(platform.label);
                         setPlatformFilter(platform.label);
+                        setQuery("");
+                        setActivePane("search");
                       }}
-                    >
-                      <View style={styles.platformLogoWrap}>
-                        {platform.logoUri ? <Image source={{ uri: platform.logoUri }} style={styles.platformLogo} resizeMode="contain" /> : <Text style={styles.platformLogoFallback}>{platform.label.slice(0, 2).toUpperCase()}</Text>}
-                      </View>
-                      <Text style={styles.platformTitle}>{platform.label}</Text>
-                      <Text style={styles.platformMeta}>{platform.items.length} titles</Text>
-                    </TouchableOpacity>
+                    />
+                  ))}
+                </ScrollView>
+              </ModuleSection>
+            ) : null}
+
+            {showPlatformSkeleton ? (
+              <ModuleSection title="Platforms" actionLabel="Browse all" onAction={() => setActivePane("platforms")}>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterRow}>
+                  {Array.from({ length: 6 }).map((_, index) => (
+                    <PlatformSkeletonCard key={`platform-skeleton-${index}`} pulse={skeletonPulse} />
                   ))}
                 </ScrollView>
               </ModuleSection>
@@ -637,6 +810,27 @@ export function VodModuleHub({ initialPane = "home", initialFilter = "all" }: Vo
           </>
         ) : null}
 
+        {activePane === "platforms" ? (
+          <>
+            <ModuleSection title="All Platforms" actionLabel="Back" onAction={() => setActivePane("home")}>
+              <View style={styles.platformsGrid}>
+                {platforms.map((platform) => (
+                  <View key={`platform-grid-${platform.key}`} style={styles.platformGridItem}>
+                    <PlatformCard
+                      platform={platform}
+                      onPress={() => {
+                        setPlatformFilter(platform.label);
+                        setQuery("");
+                        setActivePane("search");
+                      }}
+                    />
+                  </View>
+                ))}
+              </View>
+            </ModuleSection>
+          </>
+        ) : null}
+
           {activePane === "search" ? (
           <>
             <View style={styles.searchBox}>
@@ -651,6 +845,44 @@ export function VodModuleHub({ initialPane = "home", initialFilter = "all" }: Vo
               />
             </View>
 
+            {platformFilter !== "all" ? (
+              <View style={styles.activePlatformWrap}>
+                <View style={styles.activePlatformLeft}>
+                  <View
+                    style={[
+                      styles.activePlatformLogoWrap,
+                      {
+                        backgroundColor: selectedPlatform?.fallbackColor || "rgba(255,255,255,0.2)",
+                      },
+                    ]}
+                  >
+                    {selectedPlatform?.logoUri ? (
+                      <ExpoImage
+                        source={{ uri: selectedPlatform.logoUri }}
+                        style={styles.activePlatformLogo}
+                        contentFit="contain"
+                        cachePolicy="memory-disk"
+                        transition={80}
+                      />
+                    ) : (
+                      <Text style={styles.activePlatformLogoFallback}>{platformFilter.slice(0, 2).toUpperCase()}</Text>
+                    )}
+                  </View>
+                  <Text style={styles.activePlatformText}>Platform: {platformFilter}</Text>
+                </View>
+                <TouchableOpacity
+                  style={styles.activePlatformClearBtn}
+                  onPress={() => {
+                    setPlatformFilter("all");
+                    setQuery("");
+                  }}
+                  activeOpacity={0.85}
+                >
+                  <Text style={styles.activePlatformClearText}>Clear</Text>
+                </TouchableOpacity>
+              </View>
+            ) : null}
+
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterRow}>
               {SEARCH_FILTERS.map((filter) => {
                 const active = searchFilter === filter.key;
@@ -662,6 +894,7 @@ export function VodModuleHub({ initialPane = "home", initialFilter = "all" }: Vo
               })}
             </ScrollView>
 
+            <Text style={styles.filterLabel}>Browse by Genre</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterRow}>
               {availableGenres.map((genre) => {
                 const active = genreFilter.toLowerCase() === genre.toLowerCase();
@@ -673,6 +906,7 @@ export function VodModuleHub({ initialPane = "home", initialFilter = "all" }: Vo
               })}
             </ScrollView>
 
+            <Text style={styles.filterLabel}>Browse by Year</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterRow}>
               {["all", "2020s", "2010s", "2000s", "classic"].map((yearKey) => {
                 const active = yearFilter === yearKey;
@@ -685,6 +919,7 @@ export function VodModuleHub({ initialPane = "home", initialFilter = "all" }: Vo
               })}
             </ScrollView>
 
+            <Text style={styles.filterLabel}>Browse by Platform</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterRow}>
               {availablePlatforms.map((platform) => {
                 const active = platformFilter.toLowerCase() === platform.toLowerCase();
@@ -711,7 +946,7 @@ export function VodModuleHub({ initialPane = "home", initialFilter = "all" }: Vo
 
             {deferredQuery.length < 2 ? (
               filteredCatalogResults.length ? (
-                <ModuleSection title="Filtered catalog">
+                <ModuleSection title="Extended Catalog" actionLabel="Customize filters" onAction={() => setSearchFilter("all")}>
                   <View style={styles.resultsGrid}>
                     {filteredCatalogResults.map((item) => (
                       <View key={`catalog-${item.type}-${item.id}`} style={styles.gridItem}>
@@ -803,6 +1038,45 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.card,
     marginRight: 14,
   },
+  collectionSkeletonCard: {
+    width: 290,
+    height: 172,
+    borderRadius: 22,
+    overflow: "hidden",
+    backgroundColor: "rgba(255,255,255,0.06)",
+    marginRight: 14,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.08)",
+  },
+  collectionSkeletonOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(255,255,255,0.05)",
+  },
+  collectionSkeletonMeta: {
+    position: "absolute",
+    left: 16,
+    right: 16,
+    bottom: 16,
+    gap: 8,
+  },
+  collectionSkeletonLabel: {
+    width: 72,
+    height: 10,
+    borderRadius: 6,
+    backgroundColor: "rgba(255,255,255,0.26)",
+  },
+  collectionSkeletonTitle: {
+    width: "78%",
+    height: 22,
+    borderRadius: 8,
+    backgroundColor: "rgba(255,255,255,0.34)",
+  },
+  collectionSkeletonInfo: {
+    width: "54%",
+    height: 11,
+    borderRadius: 6,
+    backgroundColor: "rgba(255,255,255,0.22)",
+  },
   collectionImage: { ...StyleSheet.absoluteFillObject },
   collectionFallback: { ...StyleSheet.absoluteFillObject, backgroundColor: COLORS.cardElevated },
   collectionOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(0,0,0,0.34)" },
@@ -835,38 +1109,102 @@ const styles = StyleSheet.create({
   studioTitle: { color: COLORS.text, fontFamily: "Inter_700Bold", fontSize: 14, lineHeight: 18 },
   studioInfo: { color: COLORS.textMuted, fontFamily: "Inter_500Medium", fontSize: 11 },
   platformCard: {
-    minWidth: 140,
-    borderRadius: 14,
+    minWidth: 168,
+    borderRadius: 18,
+    backgroundColor: "rgba(255,255,255,0.06)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.12)",
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    marginRight: 10,
+    overflow: "hidden",
+  },
+  platformBrandBar: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    top: 0,
+    height: 3,
+    opacity: 0.9,
+  },
+  platformSkeletonCard: {
+    minWidth: 168,
+    borderRadius: 18,
     backgroundColor: "rgba(255,255,255,0.05)",
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.08)",
-    paddingHorizontal: 14,
-    paddingVertical: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
     marginRight: 10,
   },
-  platformLogoWrap: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
+  platformSkeletonLogoWrap: {
+    width: 54,
+    height: 54,
+    borderRadius: 16,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(255,255,255,0.92)",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.18)",
-    marginBottom: 8,
+    backgroundColor: "rgba(255,255,255,0.18)",
+    marginBottom: 10,
   },
-  platformLogo: { width: 26, height: 26 },
-  platformLogoFallback: { color: COLORS.background, fontFamily: "Inter_700Bold", fontSize: 10 },
+  platformSkeletonLogo: {
+    width: 28,
+    height: 28,
+    borderRadius: 8,
+    backgroundColor: "rgba(255,255,255,0.32)",
+  },
+  platformSkeletonTitle: {
+    width: "76%",
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: "rgba(255,255,255,0.3)",
+  },
+  platformSkeletonMeta: {
+    width: "52%",
+    height: 10,
+    borderRadius: 6,
+    backgroundColor: "rgba(255,255,255,0.2)",
+    marginTop: 7,
+  },
+  platformLogoWrap: {
+    width: 54,
+    height: 54,
+    borderRadius: 16,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(255,255,255,0.96)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.26)",
+    marginBottom: 10,
+  },
+  platformLogo: { width: 34, height: 34 },
+  platformLogoGlow: {
+    position: "absolute",
+    width: 80,
+    height: 80,
+    borderRadius: 80,
+    right: -18,
+    top: -18,
+  },
+  platformLogoFallback: { color: "#FFFFFF", fontFamily: "Inter_800ExtraBold", fontSize: 13 },
   platformTitle: {
     color: COLORS.text,
-    fontFamily: "Inter_700Bold",
-    fontSize: 13,
+    fontFamily: "Inter_800ExtraBold",
+    fontSize: 14,
   },
   platformMeta: {
     color: COLORS.textMuted,
     fontFamily: "Inter_500Medium",
-    fontSize: 11,
+    fontSize: 12,
     marginTop: 4,
+  },
+  platformsGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    paddingHorizontal: 18,
+    gap: 10,
+  },
+  platformGridItem: {
+    width: "48%",
   },
   searchBox: {
     flexDirection: "row",
@@ -881,6 +1219,57 @@ const styles = StyleSheet.create({
     borderColor: "rgba(255,255,255,0.08)",
   },
   searchInput: { flex: 1, height: 50, color: COLORS.text, fontFamily: "Inter_400Regular" },
+  activePlatformWrap: {
+    marginHorizontal: 18,
+    marginBottom: 10,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "rgba(229,9,20,0.35)",
+    backgroundColor: "rgba(229,9,20,0.12)",
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  activePlatformLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  activePlatformLogoWrap: {
+    width: 24,
+    height: 24,
+    borderRadius: 8,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  activePlatformLogo: {
+    width: 16,
+    height: 16,
+  },
+  activePlatformLogoFallback: {
+    color: "#FFFFFF",
+    fontFamily: "Inter_700Bold",
+    fontSize: 9,
+  },
+  activePlatformText: {
+    color: COLORS.text,
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 12,
+  },
+  activePlatformClearBtn: {
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.25)",
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  activePlatformClearText: {
+    color: COLORS.text,
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 11,
+  },
   filterRow: { paddingHorizontal: 18, gap: 10, marginBottom: 18 },
   filterChip: {
     borderRadius: 999,
@@ -916,6 +1305,16 @@ const styles = StyleSheet.create({
   },
   collectionGridItem: {
     width: "100%",
+  },
+  filterLabel: {
+    color: COLORS.text,
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 12,
+    letterSpacing: 0.5,
+    marginLeft: 18,
+    marginBottom: 8,
+    marginTop: 4,
+    textTransform: "uppercase",
   },
   emptyWrap: { paddingTop: 90, alignItems: "center", gap: 10, paddingHorizontal: 28 },
   emptyTitle: { color: COLORS.text, fontFamily: "Inter_700Bold", fontSize: 20 },

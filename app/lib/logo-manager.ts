@@ -231,8 +231,8 @@ function pickCatalogFromEspn(
     }
   }
 
-  if (best && best.confidence >= 0.56) return best;
-  return candidates.length === 1 ? { competition: candidates[0], confidence: 0.56 } : null;
+  if (best && best.confidence >= 0.75) return best;
+  return null;
 }
 
 export function resolveCompetitionBrand(input: {
@@ -245,6 +245,34 @@ export function resolveCompetitionBrand(input: {
   ensureResolutionHydrated();
   const rawName = String(input?.name || "").trim();
   const espnLeague = String(input?.espnLeague || "").trim() || null;
+
+  // When name is empty or the generic "Competition" placeholder and we have a
+  // specific ESPN code, resolve directly from the catalog without requiring
+  // alias-score confidence (the ESPN slug alone is authoritative).
+  // "Competition" as a placeholder is safe here because match-detail no longer
+  // falls back to a default "eng.1" code when the league is unknown.
+  const isPlaceholderName = !rawName || rawName === "Competition";
+  if (isPlaceholderName && espnLeague) {
+    const directCandidates = COMPETITION_CATALOG_BY_ESPN.get(espnLeague) || [];
+    const directMatch =
+      directCandidates.length === 1
+        ? directCandidates[0]
+        : directCandidates.find((c) => c.tier === "division1") ||
+          directCandidates[0] ||
+          null;
+    if (directMatch) {
+      const logo = getDirectLeagueLogo(directMatch.league);
+      return {
+        name: directMatch.league,
+        logo,
+        espnLeague: directMatch.espn,
+        countryCode: directMatch.countryCode,
+        tier: directMatch.tier,
+        confidence: 0.85,
+      };
+    }
+  }
+
   const baseAliases = [
     ...getEntityAliases(rawName, "competition"),
     ...((input?.aliases || []).map((alias) => normalizeCompetitionName(alias)) || []),

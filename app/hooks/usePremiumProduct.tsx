@@ -31,6 +31,15 @@ export const usePremiumProduct = () => {
     initializeAuth();
   }, []);
 
+  // Keep premium auth state in sync with the app-wide auth source of truth.
+  useEffect(() => {
+    if (!context.authReady) {
+      setAuthState("loading");
+      return;
+    }
+    setAuthState(context.isAuthenticated ? "authenticated" : "unauthenticated");
+  }, [context.authReady, context.isAuthenticated]);
+
   // Load module visibility from storage
   useEffect(() => {
     loadModuleVisibility();
@@ -38,29 +47,18 @@ export const usePremiumProduct = () => {
 
   const initializeAuth = useCallback(async () => {
     try {
-      setAuthState("loading");
-      
-      // Check if user session exists
-      const session = await AsyncStorage.getItem("nexora_auth_session");
-      
-      if (session) {
-        const user = JSON.parse(session);
-        // In real app, verify token with Firebase
-        if (user && user.uid) {
-          setAuthState("authenticated");
-          setAuthError(null);
-        } else {
-          setAuthState("unauthenticated");
-        }
-      } else {
-        setAuthState("unauthenticated");
+      if (!context.authReady) {
+        setAuthState("loading");
+        return;
       }
+      setAuthState(context.isAuthenticated ? "authenticated" : "unauthenticated");
+      setAuthError(null);
     } catch (err) {
       console.error("Auth init failed:", err);
       setAuthState("unauthenticated");
       setAuthError("Failed to restore session");
     }
-  }, []);
+  }, [context.authReady, context.isAuthenticated]);
 
   const loadModuleVisibility = useCallback(async () => {
     try {
@@ -100,18 +98,15 @@ export const usePremiumProduct = () => {
           break;
         case "email":
           // Email handled in component
+          await initializeAuth();
           break;
       }
-      
-      // After successful auth, transition to home
-      const session = await AsyncStorage.getItem("nexora_auth_session");
-      if (session) {
-        setAuthState("authenticated");
-      }
+
+      await initializeAuth();
     } catch (err) {
       setAuthError(String(err));
     }
-  }, [context]);
+  }, [initializeAuth]);
 
   const handleLogout = useCallback(async () => {
     try {
@@ -176,7 +171,7 @@ export const usePremiumProduct = () => {
     updateModuleVisibility,
     
     // User
-    user: context.user,
+    user: context.authEmail,
     
     // Context methods
     purchasePremiumSubscription: context.purchasePremiumSubscription,

@@ -23,9 +23,9 @@ import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
 
-import { SPACING } from "@/constants/design-system";
 import { useFollowState } from "@/context/UserStateContext";
 import { TeamLogo } from "@/components/TeamLogo";
+import { NexoraSimpleHeader } from "@/components/NexoraSimpleHeader";
 import { resolveCompetitionBrand, resolveTeamLogoUri } from "@/lib/logo-manager";
 import type { FollowedTeam, FollowedMatch } from "@/lib/domain/models";
 
@@ -40,56 +40,6 @@ const P = {
   muted:    "#9D9DAA",
   border:   "rgba(255,255,255,0.08)",
 };
-
-// ── Header ─────────────────────────────────────────────────────────────────────
-function ScreenHeader({ onBack }: { onBack: () => void }) {
-  const insets = useSafeAreaInsets();
-  return (
-    <View style={[hdr.container, { paddingTop: (Platform.OS === "web" ? 0 : insets.top) + 6 }]}>
-      <TouchableOpacity onPress={onBack} style={hdr.backBtn} activeOpacity={0.7}>
-        <Ionicons name="chevron-back" size={22} color={P.text} />
-      </TouchableOpacity>
-      <View style={hdr.titleWrap}>
-        <Ionicons name="notifications" size={18} color={P.accent} />
-        <Text style={hdr.title}>Follows & Notifications</Text>
-      </View>
-      <View style={{ width: 40 }} />
-    </View>
-  );
-}
-const hdr = StyleSheet.create({
-  container: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: SPACING.lg,
-    paddingBottom: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: P.border,
-    backgroundColor: P.bg,
-  },
-  backBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: P.elevated,
-    borderWidth: 1,
-    borderColor: P.border,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  titleWrap: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-  title: {
-    color: P.text,
-    fontSize: 16,
-    fontFamily: "Inter_700Bold",
-    letterSpacing: 0.2,
-  },
-});
 
 // ── Section header ─────────────────────────────────────────────────────────────
 function SectionHead({ icon, title, count }: { icon: string; title: string; count: number }) {
@@ -398,7 +348,7 @@ export default function FollowCenterScreen() {
 
   return (
     <View style={styles.container}>
-      <ScreenHeader onBack={() => router.back()} />
+      <NexoraSimpleHeader title="Follows & Notifications" />
 
       <ScrollView
         contentContainerStyle={[styles.content, { paddingBottom: bottomPad }]}

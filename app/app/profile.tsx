@@ -1,4 +1,4 @@
-import React, { useCallback, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -37,6 +37,7 @@ import { SafeHaptics } from "@/lib/safeHaptics";
 import * as FileSystem from "expo-file-system/legacy";
 import * as IntentLauncher from "expo-intent-launcher";
 import { useOnboardingStore } from "@/store/onboarding-store";
+import { useUiStore } from "@/store/uiStore";
 import { getUpdateDiagnosticsAsync } from "@/services/update-diagnostics";
 
 const CHANGELOG: { version: string; date: string; changes: string[] }[] = [
@@ -747,6 +748,7 @@ function Divider() {
 
 export default function SettingsScreen() {
   const insets = useSafeAreaInsets();
+  const closeNexoraMenu = useUiStore((state) => state.closeNexoraMenu);
   const { openUpdate } = useLocalSearchParams<{ openUpdate?: string }>();
   const {selectedQuality, setSelectedQuality,
     subtitlesEnabled, setSubtitlesEnabled,
@@ -828,6 +830,10 @@ const [showAddPlaylist, setShowAddPlaylist] = useState(false);
       mounted = false;
     };
   }, []);
+
+  useEffect(() => {
+    closeNexoraMenu();
+  }, [closeNexoraMenu]);
 
   const handleManualUpdateCheck = useCallback(() => {
     setShowUpdateModal(true);
@@ -1284,8 +1290,6 @@ const [showAddPlaylist, setShowAddPlaylist] = useState(false);
               SafeHaptics.success();
               Alert.alert("Klaar", "App data is gereset.");
             } catch (e: any) {
-      setProgressVisible(false);
-
               Alert.alert("Error", e?.message || "Could not reset app data");
             }
           },
@@ -1320,9 +1324,8 @@ const [showAddPlaylist, setShowAddPlaylist] = useState(false);
         variant="module"
         title="SETTINGS"
         titleColor={COLORS.accent}
+        compact
         showSearch={false}
-        showProfile
-        onProfile={() => router.push("/profile")}
       />
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: bottomPad }}>
@@ -1468,6 +1471,12 @@ const [showAddPlaylist, setShowAddPlaylist] = useState(false);
             icon="notifications-outline"
             label="Notification preferences"
             value={`${notificationSummary} active`}
+            onPress={() => router.push("/notifications")}
+          />
+          <Divider />
+          <SettingRow
+            icon="color-wand-outline"
+            label="Edit onboarding preferences"
             onPress={() => setShowOnboardingEditor(true)}
           />
           <Divider />

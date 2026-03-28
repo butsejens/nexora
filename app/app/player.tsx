@@ -226,6 +226,70 @@ const AD_DOMAINS = [
   "monetag.com", "ads-monetag.com",
 ];
 
+const TRAILER_TRUSTED_HOST_SNIPPETS = [
+  "youtube.com",
+  "www.youtube.com",
+  "m.youtube.com",
+  "youtu.be",
+  "youtube-nocookie.com",
+  "ytimg.com",
+  "i.ytimg.com",
+  "googlevideo.com",
+  "youtubei.googleapis.com",
+  "googleapis.com",
+  "gstatic.com",
+  "googleusercontent.com",
+  "ggpht.com",
+];
+
+function isTrustedTrailerHost(hostname: string): boolean {
+  const host = String(hostname || "").toLowerCase();
+  if (!host) return false;
+  return TRAILER_TRUSTED_HOST_SNIPPETS.some((allowedHost) => host === allowedHost || host.endsWith(`.${allowedHost}`));
+}
+
+function toYouTubeEmbedUrl(value: string): string | null {
+  const raw = String(value || "").trim();
+  if (!raw) return null;
+  const asEmbed = (key: string) => `https://www.youtube.com/embed/${encodeURIComponent(key)}?autoplay=1&rel=0&modestbranding=1&playsinline=1&enablejsapi=1&origin=${encodeURIComponent("https://www.youtube.com")}`;
+  if (/^[A-Za-z0-9_-]{6,}$/.test(raw)) return asEmbed(raw);
+  try {
+    const parsed = new URL(raw);
+    const host = parsed.hostname.toLowerCase();
+    const keyFromQuery = parsed.searchParams.get("v");
+    if (keyFromQuery && /^[A-Za-z0-9_-]{6,}$/.test(keyFromQuery.trim())) return asEmbed(keyFromQuery.trim());
+    const pathParts = parsed.pathname.split("/").filter(Boolean);
+    const tail = String(pathParts[pathParts.length - 1] || "").trim();
+    if (host.includes("youtu.be") && /^[A-Za-z0-9_-]{6,}$/.test(tail)) return asEmbed(tail);
+    if (host.includes("youtube") && pathParts[0] === "embed" && /^[A-Za-z0-9_-]{6,}$/.test(tail)) return asEmbed(tail);
+    if (host.includes("youtube") && pathParts[0] === "shorts" && /^[A-Za-z0-9_-]{6,}$/.test(tail)) return asEmbed(tail);
+  } catch {
+    const match = raw.match(/(?:v=|youtu\.be\/|embed\/)([A-Za-z0-9_-]{6,})/i);
+    if (match?.[1]) return asEmbed(String(match[1]).trim());
+  }
+  return null;
+}
+
+function extractYouTubeKey(value: string): string {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  if (/^[A-Za-z0-9_-]{6,}$/.test(raw)) return raw;
+  try {
+    const parsed = new URL(raw);
+    const host = parsed.hostname.toLowerCase();
+    const byQuery = String(parsed.searchParams.get("v") || "").trim();
+    if (/^[A-Za-z0-9_-]{6,}$/.test(byQuery)) return byQuery;
+    const parts = parsed.pathname.split("/").filter(Boolean);
+    const tail = String(parts[parts.length - 1] || "").trim();
+    if (host.includes("youtu.be") && /^[A-Za-z0-9_-]{6,}$/.test(tail)) return tail;
+    if (host.includes("youtube") && /^[A-Za-z0-9_-]{6,}$/.test(tail)) return tail;
+  } catch {
+    const match = raw.match(/(?:v=|youtu\.be\/|embed\/|shorts\/)([A-Za-z0-9_-]{6,})/i);
+    if (match?.[1]) return String(match[1]).trim();
+  }
+  return "";
+}
+
 // ─── JS injected in embed WebView ─────────────────────────────────────────────
 // Strategy: allow exactly 1 user click (to start playback), then block everything.
 // Once a video element is detected playing, block all non-player interactions.
@@ -855,7 +919,7 @@ export default function PlayerScreen() {
   // ── Premium gate — block playback if user lacks entitlement ─────────────
   const contentCategory = type === "movie" ? "movies" : type === "series" ? "series" : null;
   const premiumBlocked = contentCategory && !hasPremium(contentCategory as any);
-  const normalizedTrailerKey = String(trailerKey || "").trim();
+  const normalizedTrailerKey = extractYouTubeKey(String(trailerKey || ""));
   const normalizedSeason = Number(season || "1") || 1;
   const normalizedEpisode = Number(episode || "1") || 1;
   const playbackHistoryId = type === "series"
@@ -1193,14 +1257,18 @@ export default function PlayerScreen() {
   // ── What to render ────────────────────────────────────────────────────────
   const embedUrl: string | null = (() => {
     if (normalizedTrailerKey) {
-      return `https://www.youtube-nocookie.com/embed/${normalizedTrailerKey}?autoplay=1&rel=0&modestbranding=1&playsinline=1`;
+      return toYouTubeEmbedUrl(normalizedTrailerKey);
+    }
+    if (String(type || "") === "trailer" && paramEmbedUrl) {
+      const normalizedTrailerUrl = toYouTubeEmbedUrl(String(paramEmbedUrl));
+      if (normalizedTrailerUrl) return normalizedTrailerUrl;
     }
     if (paramEmbedUrl) return paramEmbedUrl;
     if (allProvidersFailed) return null;
     if (tmdbId) return getEmbedUrl(provider, tmdbId, type || "movie", season || "1", episode || "1");
     return null;
   })();
-  const trailerMode = !!normalizedTrailerKey;
+  const trailerMode = !!normalizedTrailerKey || (String(type || "") === "trailer" && !!toYouTubeEmbedUrl(String(paramEmbedUrl || "")));
 
   const hlsHtml: string | null = (effectiveStreamUrl && !useFallbackEmbed) ? buildHlsHtml(effectiveStreamUrl) : null;
   const embedUrlWithAutoplay: string | null = (!hlsHtml && embedUrl) ? withEmbedAutoplayParams(embedUrl) : null;
@@ -1213,6 +1281,7 @@ export default function PlayerScreen() {
     return (req: any) => {
       const url: string = req.url || "";
       if (!url || url.startsWith("about:") || url.startsWith("blob:") || url.startsWith("data:")) return true;
+      const isTopFrame = req?.isTopFrame !== false;
 
       const BLOCK_PATTERNS = [
         /play\.google\.com\/store/i,
@@ -1233,11 +1302,8 @@ export default function PlayerScreen() {
         const reqHost   = new URL(url).hostname;
         const isSameDomain = reqHost === embedHost || reqHost.endsWith("." + embedHost);
         if (isTrailerMode) {
-          const isYouTubeRelated =
-            reqHost.includes("youtube") ||
-            reqHost.includes("youtube-nocookie") ||
-            reqHost.includes("googlevideo") ||
-            reqHost.includes("ytimg");
+          const isYouTubeRelated = isTrustedTrailerHost(reqHost);
+          if (!isTopFrame) return true;
           if (/\.(m3u8|mp4|ts|webm|mpd|mkv)(\?|$)/i.test(url)) return true;
           if (isYouTubeRelated) return true;
           return false;
@@ -1281,11 +1347,7 @@ export default function PlayerScreen() {
         const reqHost   = new URL(url).hostname;
         const isSameDomain = reqHost === embedHost || reqHost.endsWith("." + embedHost);
         if (isTrailerMode) {
-          const isYouTubeRelated =
-            reqHost.includes("youtube") ||
-            reqHost.includes("youtube-nocookie") ||
-            reqHost.includes("googlevideo") ||
-            reqHost.includes("ytimg");
+          const isYouTubeRelated = isTrustedTrailerHost(reqHost);
           if (!isYouTubeRelated && !/\.(m3u8|mp4|ts|webm|mpd|mkv)(\?|$)/i.test(url)) {
             embedWebviewRef.current?.stopLoading();
             embedWebviewRef.current?.goBack();
@@ -1372,7 +1434,15 @@ export default function PlayerScreen() {
         <WebView
           key={webviewKey}
           ref={embedWebviewRef}
-          source={{ uri: embedUrlWithAutoplay }}
+          source={trailerMode
+            ? {
+                uri: embedUrlWithAutoplay,
+                headers: {
+                  Referer: "https://www.youtube.com/",
+                  Origin: "https://www.youtube.com",
+                },
+              }
+            : { uri: embedUrlWithAutoplay }}
           style={styles.webview}
           allowsFullscreenVideo
           setSupportMultipleWindows={false}
@@ -1386,7 +1456,7 @@ export default function PlayerScreen() {
           mixedContentMode="always"
           originWhitelist={["http://*", "https://*", "about:*", "blob:*", "*"]}
           userAgent="Mozilla/5.0 (Linux; Android 12; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
-          injectedJavaScriptBeforeContentLoaded={AD_BLOCK_JS}
+          injectedJavaScriptBeforeContentLoaded={trailerMode ? undefined : AD_BLOCK_JS}
           onMessage={(event) => {
             try {
               const data = JSON.parse(event.nativeEvent.data);

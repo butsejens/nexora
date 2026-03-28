@@ -1,10 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
-import { apiRequestJson } from "@/lib/query-client";
+import { buildSportLiveQuery, buildSportScheduleQuery } from "@/services/realtime-engine";
 
 export function useLiveMatches(date?: string) {
-  const suffix = date ? `?date=${encodeURIComponent(date)}` : "";
-  return useQuery({
-    queryKey: ["sports", "live", date || "today"],
-    queryFn: async () => apiRequestJson(`/api/sports/live${suffix}`),
-  });
+  if (date) {
+    return useQuery(buildSportScheduleQuery(date, true));
+  }
+  return useQuery(buildSportLiveQuery(true));
 }

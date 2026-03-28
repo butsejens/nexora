@@ -1,4 +1,4 @@
-import React, { memo } from 'react';
+ import React, { memo } from 'react';
 import {
   View,
   Text,
@@ -14,6 +14,8 @@ import { TeamLogo } from '@/components/TeamLogo';
 import { resolveCompetitionBrand } from '@/lib/logo-manager';
 import { resolveMatchBucket } from '@/lib/match-state';
 import { t as tFn } from '@/lib/i18n';
+import { calculateMomentum } from '@/lib/ai/momentum-calculator';
+import { MomentumBar } from '@/components/sports/MomentumBar';
 
 export interface MatchRowCardProps {
   match: {
@@ -32,6 +34,9 @@ export interface MatchRowCardProps {
     sport?: string;
     possession?: { home: number; away: number };
     redCards?: { home: number; away: number };
+    shotsOnGoal?: { home?: number; away?: number };
+    attacks?: { home: number; away: number };
+    xg?: { home: number; away: number };
   };
   onPress?: () => void;
   onNotificationToggle?: () => void;
@@ -131,6 +136,20 @@ function MatchRowCardInner({
     : finished
       ? tFn('common.ft')
       : formatKickoffLabel(match.startTime);
+  const momentum = calculateMomentum({
+    homeStats: {
+      possession: match?.possession?.home,
+      shotsOnTarget: match?.shotsOnGoal?.home,
+      attacks: (match as any)?.attacks?.home,
+      xg: (match as any)?.xg?.home,
+    },
+    awayStats: {
+      possession: match?.possession?.away,
+      shotsOnTarget: match?.shotsOnGoal?.away,
+      attacks: (match as any)?.attacks?.away,
+      xg: (match as any)?.xg?.away,
+    },
+  });
 
   return (
     <View style={s.wrap}>
@@ -260,6 +279,15 @@ function MatchRowCardInner({
               <Text style={s.possLabel}>{match.possession.away}%</Text>
             </View>
           ) : null}
+
+          <View style={s.momentumWrap}>
+            <MomentumBar
+              model={momentum}
+              compact
+              homeLabel={match.homeTeam.slice(0, 3).toUpperCase()}
+              awayLabel={match.awayTeam.slice(0, 3).toUpperCase()}
+            />
+          </View>
 
           {showActions ? (
             <View style={s.actions}>
@@ -515,6 +543,10 @@ const s = StyleSheet.create({
     color: COLORS.textMuted,
     width: 26,
     textAlign: 'center',
+  },
+  momentumWrap: {
+    paddingHorizontal: 14,
+    paddingBottom: 10,
   },
   actions: {
     paddingHorizontal: 14,

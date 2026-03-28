@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useMemo, useState } from "react";
 import {
   View,
   Text,
@@ -15,6 +15,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useNexora } from "@/context/NexoraContext";
 import { COLORS } from "@/constants/colors";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
+import { useOnboardingStore } from "@/store/onboarding-store";
 
 const QUALITY_OPTIONS = ["480p", "720p", "1080p", "Auto"];
 const LANGUAGE_OPTIONS = ["English", "Dutch", "Spanish", "French"];
@@ -24,8 +25,14 @@ export const PremiumSettingsHub = React.memo(function PremiumSettingsHub({
 }: {
   onLogout?: () => void;
 }) {
-  const { authEmail, isPremium, signOut } = useNexora();
+  const { authEmail, isPremium, signOut, purchasePremiumSubscription, restorePremiumAccess } = useNexora();
   const insets = useSafeAreaInsets();
+  const sportsEnabled = useOnboardingStore((s) => s.sportsEnabled);
+  const moviesEnabled = useOnboardingStore((s) => s.moviesEnabled);
+  const iptvEnabled = useOnboardingStore((s) => s.iptvEnabled);
+  const setSportsEnabled = useOnboardingStore((s) => s.setSportsEnabled);
+  const setMoviesEnabled = useOnboardingStore((s) => s.setMoviesEnabled);
+  const setIptvEnabled = useOnboardingStore((s) => s.setIptvEnabled);
 
   // UI State
   const [activeSection, setActiveSection] = useState<"account" | "subscription" | "modules" | "preferences" | "notifications" | "privacy" | "diagnostics">("account");
@@ -40,12 +47,12 @@ export const PremiumSettingsHub = React.memo(function PremiumSettingsHub({
   const [cacheSize, setCacheSize] = useState("245 MB");
 
   // Module Visibility
-  const [modules, setModules] = useState({
-    sport: true,
-    movies: true,
-    series: true,
-    livetv: true,
-  });
+  const modules = useMemo(() => ({
+    sport: sportsEnabled,
+    movies: moviesEnabled,
+    series: moviesEnabled,
+    livetv: iptvEnabled,
+  }), [sportsEnabled, moviesEnabled, iptvEnabled]);
 
   // Handle Logout
   const handleLogout = useCallback(async () => {
@@ -70,13 +77,64 @@ export const PremiumSettingsHub = React.memo(function PremiumSettingsHub({
   // Handle Module Toggle
   const toggleModule = useCallback(
     async (moduleName: keyof typeof modules) => {
-      const newModules = { ...modules, [moduleName]: !modules[moduleName] };
-      setModules(newModules);
-      // In a real app, sync to context and AsyncStorage here
-      await AsyncStorage.setItem("nexora_module_visibility", JSON.stringify(newModules));
+      if (moduleName === "sport") {
+        setSportsEnabled(!modules.sport);
+      } else if (moduleName === "movies" || moduleName === "series") {
+        setMoviesEnabled(!modules.movies);
+      } else if (moduleName === "livetv") {
+        setIptvEnabled(!modules.livetv);
+      }
+
+      // Keep legacy key in sync for backward compatibility with older builds.
+      const updated = {
+        sport: moduleName === "sport" ? !modules.sport : modules.sport,
+        movies: (moduleName === "movies" || moduleName === "series") ? !modules.movies : modules.movies,
+        series: (moduleName === "movies" || moduleName === "series") ? !modules.series : modules.series,
+        livetv: moduleName === "livetv" ? !modules.livetv : modules.livetv,
+      };
+      await AsyncStorage.setItem("nexora_module_visibility", JSON.stringify(updated));
     },
-    [modules]
+    [modules, setIptvEnabled, setMoviesEnabled, setSportsEnabled]
   );
+
+  const handleUpgrade = useCallback(async (plan: "weekly" | "monthly" | "yearly") => {
+    try {
+      setLoading(true);
+      const result = await purchasePremiumSubscription(plan);
+      if (result.ok) {
+        Alert.alert("Premium active", "Your subscription is now active.");
+      } else if (result.cancelled) {
+        Alert.alert("Purchase cancelled", "No changes were made to your subscription.");
+      } else {
+        Alert.alert("Purchase failed", result.reason || "Unable to activate premium right now.");
+      }
+    } finally {
+      setLoading(false);
+    }
+  }, [purchasePremiumSubscription]);
+
+  const openUpgradeChooser = useCallback(() => {
+    Alert.alert("Choose plan", "Select a Premium plan", [
+      { text: "Weekly", onPress: () => { void handleUpgrade("weekly"); } },
+      { text: "Monthly", onPress: () => { void handleUpgrade("monthly"); } },
+      { text: "Yearly", onPress: () => { void handleUpgrade("yearly"); } },
+      { text: "Cancel", style: "cancel" },
+    ]);
+  }, [handleUpgrade]);
+
+  const handleRestorePurchases = useCallback(async () => {
+    try {
+      setLoading(true);
+      const result = await restorePremiumAccess();
+      if (result.ok && result.restored) {
+        Alert.alert("Restored", "Your premium access has been restored.");
+      } else {
+        Alert.alert("Nothing to restore", result.reason || "No active purchase found.");
+      }
+    } finally {
+      setLoading(false);
+    }
+  }, [restorePremiumAccess]);
 
   // Handle Clear Cache
   const handleClearCache = useCallback(async () => {
@@ -197,12 +255,15 @@ export const PremiumSettingsHub = React.memo(function PremiumSettingsHub({
                     <BenefitRow icon="subtitles" benefit="Multiple audio & subtitle languages" />
                   </SettingCard>
 
-                  <TouchableOpacity style={styles.secondaryButton}>
+                  <TouchableOpacity style={styles.secondaryButton} onPress={() => { void handleRestorePurchases(); }} disabled={loading}>
                     <MaterialCommunityIcons name="refresh" size={18} color={COLORS.accent} />
                     <Text style={styles.secondaryButtonText}>Restore Purchases</Text>
                   </TouchableOpacity>
 
-                  <TouchableOpacity style={styles.dangerButton}>
+                  <TouchableOpacity
+                    style={styles.dangerButton}
+                    onPress={() => Alert.alert("Manage subscription", "Open your App Store or Play Store subscriptions to change or cancel your plan.")}
+                  >
                     <Ionicons name="close" size={20} color="#FF5252" />
                     <Text style={styles.dangerButtonText}>Cancel Subscription</Text>
                   </TouchableOpacity>
@@ -226,7 +287,7 @@ export const PremiumSettingsHub = React.memo(function PremiumSettingsHub({
                     <BenefitRow icon="download" benefit="Offline downloads" />
                   </SettingCard>
 
-                  <TouchableOpacity style={[styles.primaryButton, { backgroundColor: COLORS.accent }]}>
+                  <TouchableOpacity style={[styles.primaryButton, { backgroundColor: COLORS.accent }]} onPress={openUpgradeChooser} disabled={loading}>
                     <Ionicons name="card" size={20} color="#fff" />
                     <Text style={[styles.primaryButtonText, { color: "#fff" }]}>Upgrade to Premium</Text>
                   </TouchableOpacity>

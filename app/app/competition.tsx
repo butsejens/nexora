@@ -1,13 +1,13 @@
 import React, { useState, useMemo, useEffect } from "react";
 import {
   View, Text, StyleSheet, TouchableOpacity, ScrollView,
-  Image, Platform, ActivityIndicator, FlatList,
+  Image, ActivityIndicator, FlatList,
 } from "react-native";
 import { MatchRowCard } from "@/components/premium";
 import { router, useLocalSearchParams } from "expo-router";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
+import { NexoraSimpleHeader } from "@/components/NexoraSimpleHeader";
 
 import { useQuery } from "@tanstack/react-query";
 import { COLORS } from "@/constants/colors";
@@ -165,8 +165,6 @@ export default function CompetitionScreen() {
     () => resolveCompetitionBrand({ name: leagueName, espnLeague }),
     [espnLeague, leagueName],
   );
-  const insets = useSafeAreaInsets();
-  const topPad = Platform.OS === "web" ? 67 : insets.top;
   const gradColors = (LEAGUE_COLORS[leagueName] || ["#1a3a6b", "#0B0F17"]) as [string, string];
 
   const isCup = detectCup(espnLeague, leagueName);
@@ -290,6 +288,26 @@ export default function CompetitionScreen() {
   const scorersQueryErrorMsg = bundleError ? normalizeApiError(bundleError).userMessage : "";
   const storylines = useMemo(() => buildStorylines(standings, scorers, assists), [standings, scorers, assists]);
 
+  const visibleTabs = useMemo(() => {
+    const tabs: { id: TabId; label: string; icon: keyof typeof Ionicons.glyphMap }[] = isCup
+      ? [
+          { id: "matches", label: tFn("competition.matches"), icon: "football-outline" },
+          { id: "teams", label: tFn("competition.teams"), icon: "people-outline" },
+          { id: "scorers", label: tFn("competition.topScorers"), icon: "trophy-outline" },
+          { id: "assists", label: tFn("competition.topAssists") || "Assists", icon: "arrow-redo-outline" },
+          { id: "stats", label: tFn("competition.stats"), icon: "stats-chart-outline" },
+        ]
+      : [
+          { id: "standings", label: tFn("competition.standings"), icon: "list-outline" },
+          { id: "matches", label: tFn("competition.matches"), icon: "football-outline" },
+          { id: "teams", label: tFn("competition.teams"), icon: "people-outline" },
+          { id: "scorers", label: tFn("competition.topScorers"), icon: "trophy-outline" },
+          { id: "assists", label: tFn("competition.topAssists") || "Assists", icon: "arrow-redo-outline" },
+          { id: "stats", label: tFn("competition.stats"), icon: "stats-chart-outline" },
+        ];
+    return tabs;
+  }, [isCup]);
+
   const seasonLabel: string =
     (standingsData as any)?.seasonLabel ||
     (scorersData as any)?.seasonLabel ||
@@ -299,50 +317,65 @@ export default function CompetitionScreen() {
 
   return (
     <View style={styles.container}>
-      {/* Header */}
+      <NexoraSimpleHeader title={competitionBrand.name || leagueName} />
+
       <View style={{ zIndex: 30, elevation: 30 }}>
-      <LinearGradient colors={[gradColors[0], `${gradColors[0]}CC`, `${gradColors[1]}99`, COLORS.background] as any}
-        locations={[0, 0.3, 0.65, 1]}
-        style={[styles.header, { paddingTop: topPad + 8 }]}>
-        <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
-          <Ionicons name="chevron-back" size={24} color={COLORS.text} />
-        </TouchableOpacity>
-        <View style={styles.headerContent}>
-          {(() => {
-            const leagueLogo = competitionBrand.logo;
-            return leagueLogo ? (
-              <View style={styles.headerIconWrap}>
-                <Image
-                  source={typeof leagueLogo === "number" ? leagueLogo : { uri: leagueLogo as string }}
-                  style={{ width: 38, height: 38 }}
-                  resizeMode="contain"
-                />
+        <LinearGradient
+          colors={[`${gradColors[0]}AA`, `${gradColors[1]}88`, "rgba(5,5,5,0.0)"] as any}
+          locations={[0, 0.58, 1]}
+          style={styles.compHero}
+        >
+          <View style={styles.headerContent}>
+            {(() => {
+              const leagueLogo = competitionBrand.logo;
+              return leagueLogo ? (
+                <View style={styles.headerIconWrap}>
+                  <Image
+                    source={typeof leagueLogo === "number" ? leagueLogo : { uri: leagueLogo as string }}
+                    style={{ width: 38, height: 38 }}
+                    resizeMode="contain"
+                  />
+                </View>
+              ) : (
+                <View style={styles.headerIconWrap}>
+                  <MaterialCommunityIcons name={isCup ? "trophy-outline" as any : "soccer"} size={26} color="rgba(255,255,255,0.95)" />
+                </View>
+              );
+            })()}
+            <Text style={styles.leagueTitle} numberOfLines={1}>{competitionBrand.name || leagueName}</Text>
+            <View style={styles.headerBadgeRow}>
+              <View style={styles.headerBadge}>
+                <Text style={styles.headerBadgeText}>{isCup ? t("competition.cup") : t("competition.league")}</Text>
               </View>
-            ) : (
-              <View style={styles.headerIconWrap}>
-                <MaterialCommunityIcons name={isCup ? "trophy-outline" as any : "soccer"} size={26} color="rgba(255,255,255,0.95)" />
+              {seasonLabel ? (
+                <View style={[styles.headerBadge, styles.headerBadgeSeason]}>
+                  <Text style={styles.headerBadgeText}>{seasonLabel}</Text>
+                </View>
+              ) : null}
+              <View style={styles.headerBadge}>
+                <Text style={styles.headerBadgeText}>{t("competition.football")}</Text>
               </View>
-            );
-          })()}
-          <Text style={styles.leagueTitle} numberOfLines={1}>{competitionBrand.name || leagueName}</Text>
-          <View style={styles.headerBadgeRow}>
-            <View style={styles.headerBadge}>
-              <Text style={styles.headerBadgeText}>{isCup ? t("competition.cup") : t("competition.league")}</Text>
-            </View>
-            {seasonLabel ? (
-              <View style={[styles.headerBadge, styles.headerBadgeSeason]}>
-                <Text style={styles.headerBadgeText}>{seasonLabel}</Text>
-              </View>
-            ) : null}
-            <View style={styles.headerBadge}>
-              <Text style={styles.headerBadgeText}>{t("competition.football")}</Text>
             </View>
           </View>
-        </View>
-      </LinearGradient>
-      </View>
+        </LinearGradient>
 
-      {/* Tabs intentionally hidden for cleaner standings-first layout */}
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tabBarContent} style={styles.tabBarWrap}>
+          {visibleTabs.map((tab) => {
+            const active = activeTab === tab.id;
+            return (
+              <TouchableOpacity
+                key={tab.id}
+                style={[styles.tabChip, active ? styles.tabChipActive : null]}
+                onPress={() => setActiveTab(tab.id)}
+                activeOpacity={0.8}
+              >
+                <Ionicons name={tab.icon} size={13} color={active ? COLORS.accent : COLORS.textMuted} />
+                <Text style={[styles.tabChipText, active ? styles.tabChipTextActive : null]}>{tab.label}</Text>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
+      </View>
 
       {/* Content area */}
       <View style={{ flex: 1 }}>
@@ -861,6 +894,47 @@ function ScorerRow({ scorer, rank, league, espnLeague, statLabel, accentColor }:
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
+  compHero: {
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 10,
+  },
+  tabBarWrap: {
+    borderTopWidth: 1,
+    borderTopColor: "rgba(255,255,255,0.08)",
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+    backgroundColor: COLORS.overlayLight,
+  },
+  tabBarContent: {
+    flexDirection: "row",
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  tabChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.cardElevated,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+  },
+  tabChipActive: {
+    borderColor: COLORS.accent,
+    backgroundColor: COLORS.accentGlow,
+  },
+  tabChipText: {
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 12,
+    color: COLORS.textMuted,
+  },
+  tabChipTextActive: {
+    color: COLORS.accent,
+  },
   header: { paddingHorizontal: 16, paddingBottom: 20 },
   backBtn: { width: 38, height: 38, alignItems: "center", justifyContent: "center", marginBottom: 6 },
   headerContent: { alignItems: "center", gap: 6 },

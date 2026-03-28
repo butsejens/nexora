@@ -26,13 +26,15 @@ export default function TabLayout() {
         tabBarActiveTintColor: COLORS.accent,
         tabBarInactiveTintColor: COLORS.textSecondary,
         tabBarLabelStyle: styles.label,
+        tabBarItemStyle: styles.tabItem,
         tabBarStyle: {
           backgroundColor: COLORS.background,
           borderTopWidth: 1,
           borderTopColor: COLORS.border,
-          height: Platform.OS === "ios" ? 62 + Math.max(0, insets.bottom - 6) : 62,
-          paddingBottom: Platform.OS === "ios" ? Math.max(6, insets.bottom - 4) : 6,
-          paddingTop: 6,
+          height: Platform.OS === "ios" ? 66 + Math.max(0, insets.bottom) : 68,
+          paddingBottom: Platform.OS === "ios" ? Math.max(8, insets.bottom) : 10,
+          paddingTop: 8,
+          paddingHorizontal: 6,
         },
       }}
     >
@@ -53,6 +55,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="more"
         options={{
+          href: "/(tabs)/more",
           title: "Menu",
           tabBarIcon: ({ focused }) => <TabIcon focused={focused} icon={focused ? "menu" : "menu-outline"} />,
         }}
@@ -81,7 +84,10 @@ const styles = StyleSheet.create({
   },
   label: {
     fontFamily: "Inter_600SemiBold",
-    fontSize: 11,
-    marginTop: 1,
+    fontSize: 10,
+    marginTop: 2,
+  },
+  tabItem: {
+    minWidth: 0,
   },
 });

@@ -1,8 +1,12 @@
-import React, { useMemo, useState } from "react";
-import { View, ScrollView, Text, TouchableOpacity, StyleSheet } from "react-native";
+import React, { useMemo, useState, useEffect } from "react";
+import { View, ScrollView, Text, TouchableOpacity, StyleSheet, Platform, Linking } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useQuery } from "@tanstack/react-query";
 import { useFollowState } from "@/context/UserStateContext";
 import { useOnboardingStore } from "@/store/onboarding-store";
+import { buildHighlightsQuery, buildHomeSportsQuery, buildVodHomeQuery, deriveCuratedHomeMedia } from "@/services/realtime-engine";
+import { loadSmartAlerts, runNotificationEngine } from "@/lib/ai";
 
 type NotificationCenterProps = {
   onClose: () => void;
@@ -21,13 +25,31 @@ const P = {
 };
 
 export function NotificationCenter({ onClose, onNavigate }: NotificationCenterProps) {
+  const insets = useSafeAreaInsets();
+  const topPad = Platform.OS === "web" ? 0 : insets.top;
   const { followedTeams, followedMatches, unfollowTeamAction, unfollowMatchAction } = useFollowState();
   const notificationPrefs = useOnboardingStore((state) => state.notifications);
+  const sportsEnabled = useOnboardingStore((state) => state.sportsEnabled);
+  const moviesEnabled = useOnboardingStore((state) => state.moviesEnabled);
+  const [smartAlerts, setSmartAlerts] = useState<any[]>([]);
   const [activeTab, setActiveTab] = useState<TabKey>("followed");
+  const sportsQuery = useQuery(buildHomeSportsQuery(new Date().toISOString().slice(0, 10), sportsEnabled));
+  const highlightsQuery = useQuery(buildHighlightsQuery(sportsEnabled));
+  const releasesQuery = useQuery(buildVodHomeQuery(moviesEnabled));
 
   const alertsEnabledCount = [notificationPrefs.matches, notificationPrefs.goals, notificationPrefs.lineups, notificationPrefs.news].filter(Boolean).length;
 
   const recentItems = useMemo(() => {
+    if (smartAlerts.length > 0) {
+      return smartAlerts.slice(0, 12).map((alert) => ({
+        id: String(alert.id),
+        title: String(alert.title || "Alert"),
+        subtitle: String(alert.body || ""),
+        route: alert.route,
+        params: alert.params,
+        priority: alert.priority,
+      }));
+    }
     return followedMatches
       .slice()
       .sort((a, b) => String(b.startTime || "").localeCompare(String(a.startTime || "")))
@@ -37,13 +59,62 @@ export function NotificationCenter({ onClose, onNavigate }: NotificationCenterPr
         title: `${match.homeTeam} vs ${match.awayTeam}`,
         subtitle: match.competition || "Match alert",
       }));
-  }, [followedMatches]);
+  }, [followedMatches, smartAlerts]);
+
+  useEffect(() => {
+    let mounted = true;
+    const run = async () => {
+      const sportsPayload = sportsQuery.data || { live: [], upcoming: [] };
+      const trackedMatches = [...(sportsPayload.live || []), ...(sportsPayload.upcoming || [])].map((match: any) => ({
+        matchId: String(match?.id || ""),
+        homeTeam: String(match?.homeTeam?.name || match?.homeTeam || "Home"),
+        awayTeam: String(match?.awayTeam?.name || match?.awayTeam || "Away"),
+        status: String(match?.status || ""),
+        homeScore: Number(match?.score?.home ?? match?.homeScore ?? 0),
+        awayScore: Number(match?.score?.away ?? match?.awayScore ?? 0),
+        espnLeague: String(match?.espnLeague || ""),
+      }));
+
+      const rankedPick = trackedMatches[0] || null;
+      const releases = deriveCuratedHomeMedia(releasesQuery.data).newReleases.slice(0, 6).map((item: any) => ({
+        id: item?.id,
+        title: item?.title,
+        year: item?.year,
+      }));
+
+      const generated = await runNotificationEngine({
+        notifications: {
+          matches: notificationPrefs.matches,
+          goals: notificationPrefs.goals,
+          news: notificationPrefs.news,
+        },
+        followedTeamNames: followedTeams.map((team) => team.teamName),
+        trackedMatches,
+        rankedMatchPick: rankedPick ? {
+          matchId: rankedPick.matchId,
+          homeTeam: rankedPick.homeTeam,
+          awayTeam: rankedPick.awayTeam,
+          league: String(rankedPick.espnLeague || ""),
+        } : null,
+        releases,
+      });
+
+      if (mounted) setSmartAlerts(generated);
+    };
+
+    run().catch(async () => {
+      const cached = await loadSmartAlerts();
+      if (mounted) setSmartAlerts(cached);
+    });
+
+    return () => { mounted = false; };
+  }, [followedTeams, highlightsQuery.data, notificationPrefs.goals, notificationPrefs.matches, notificationPrefs.news, releasesQuery.data, sportsQuery.data]);
 
   const followEmpty = followedTeams.length === 0 && followedMatches.length === 0;
 
   return (
     <View style={styles.screen}>
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: topPad + 12 }]}>
         <View style={styles.headerTop}>
           <Text style={styles.title}>Notifications</Text>
           <TouchableOpacity style={styles.iconBtn} onPress={onClose}>
@@ -132,9 +203,41 @@ export function NotificationCenter({ onClose, onNavigate }: NotificationCenterPr
             <Text style={styles.body}>Goals: {notificationPrefs.goals ? "On" : "Off"}</Text>
             <Text style={styles.body}>Lineups: {notificationPrefs.lineups ? "On" : "Off"}</Text>
             <Text style={styles.body}>News: {notificationPrefs.news ? "On" : "Off"}</Text>
-            <TouchableOpacity style={styles.primaryBtn} onPress={() => onNavigate("settings")}> 
-              <Text style={styles.primaryBtnText}>Open Notification Settings</Text>
+            <TouchableOpacity
+              style={styles.primaryBtn}
+              onPress={() => {
+                if (Platform.OS === "ios") {
+                  void Linking.openURL("app-settings:");
+                } else {
+                  void Linking.openSettings();
+                }
+              }}
+            >
+              <Text style={styles.primaryBtnText}>Open Device Notification Settings</Text>
             </TouchableOpacity>
+          </View>
+
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>Smart Alerts Engine</Text>
+            {smartAlerts.length === 0 ? (
+              <Text style={styles.body}>Nog geen AI alerts opgebouwd. Zodra er live-events of releases zijn, verschijnt hier je gefilterde feed.</Text>
+            ) : (
+              smartAlerts.slice(0, 6).map((alert) => (
+                <TouchableOpacity
+                  key={String(alert.id)}
+                  style={styles.row}
+                  onPress={() => alert.route ? onNavigate(String(alert.route), alert.params || undefined) : undefined}
+                >
+                  <View style={styles.rowTextWrap}>
+                    <Text style={styles.rowTitle}>{String(alert.title || "Alert")}</Text>
+                    <Text style={styles.rowSub}>{String(alert.body || "")}</Text>
+                  </View>
+                  <Text style={[styles.priorityBadge, alert.priority === "priority" ? styles.priorityBadgeHigh : null]}>
+                    {alert.priority === "priority" ? "Priority" : "Silent"}
+                  </Text>
+                </TouchableOpacity>
+              ))
+            )}
           </View>
         </ScrollView>
       )}
@@ -151,13 +254,21 @@ export function NotificationCenter({ onClose, onNavigate }: NotificationCenterPr
             <View style={styles.card}>
               <Text style={styles.cardTitle}>Recent Items</Text>
               {recentItems.map((item) => (
-                <View key={item.id} style={styles.row}>
+                <TouchableOpacity
+                  key={item.id}
+                  style={styles.row}
+                  onPress={() => (item as any).route ? onNavigate(String((item as any).route), (item as any).params || undefined) : undefined}
+                >
                   <View style={styles.rowTextWrap}>
                     <Text style={styles.rowTitle}>{item.title}</Text>
                     <Text style={styles.rowSub}>{item.subtitle}</Text>
                   </View>
-                  <Ionicons name="ellipse" size={10} color={P.accent} />
-                </View>
+                  {(item as any).priority === "priority" ? (
+                    <Text style={[styles.priorityBadge, styles.priorityBadgeHigh]}>Priority</Text>
+                  ) : (
+                    <Ionicons name="ellipse" size={10} color={P.accent} />
+                  )}
+                </TouchableOpacity>
               ))}
             </View>
           )}
@@ -174,7 +285,7 @@ const styles = StyleSheet.create({
   },
   header: {
     paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingBottom: 12,
     borderBottomWidth: 1,
     borderBottomColor: P.border,
   },
@@ -278,6 +389,22 @@ const styles = StyleSheet.create({
     color: P.accent,
     fontSize: 11,
     fontFamily: "Inter_700Bold",
+  },
+  priorityBadge: {
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.2)",
+    color: "#D2D6E3",
+    fontSize: 10,
+    fontFamily: "Inter_700Bold",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    overflow: "hidden",
+  },
+  priorityBadgeHigh: {
+    borderColor: "rgba(229,9,20,0.45)",
+    color: P.accent,
+    backgroundColor: "rgba(229,9,20,0.14)",
   },
   body: {
     color: P.muted,

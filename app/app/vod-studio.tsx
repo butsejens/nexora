@@ -32,7 +32,7 @@ export default function VodStudioScreen() {
 
   return (
     <View style={styles.container}>
-      <NexoraHeader variant="module" title="STUDIO" titleColor={COLORS.accent} showSearch={false} showProfile />
+      <NexoraHeader variant="module" title="STUDIO" titleColor={COLORS.accent} showSearch={false} showBack showProfile={false} />
       {isLoading ? (
         <View style={styles.loadingWrap}>
           <ActivityIndicator color={COLORS.accent} />

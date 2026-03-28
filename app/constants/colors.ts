@@ -31,6 +31,7 @@ export const COLORS = {
   gold:  "#FFD700",
   green: "#00E676",
   blue:  "#3A7EFF",
+  cyan:  "#2DD4FF",
   yellow:"#FFB300",
 
   // Overlays

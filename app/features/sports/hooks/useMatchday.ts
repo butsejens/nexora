@@ -1,9 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
-import { apiRequestJson } from "@/lib/query-client";
+import { buildSportScheduleQuery } from "@/services/realtime-engine";
 
 export function useMatchday(date: string) {
-  return useQuery({
-    queryKey: ["sports", "matchday", date],
-    queryFn: async () => apiRequestJson(`/api/sports/by-date?date=${encodeURIComponent(date)}`),
-  });
+  return useQuery(buildSportScheduleQuery(date, Boolean(date)));
 }

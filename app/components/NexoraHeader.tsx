@@ -15,11 +15,13 @@ interface Props {
   badgeTone?: "live" | "accent" | "neutral";
   variant?: "default" | "module";
   compact?: boolean;
+  showBack?: boolean;
   showMenu?: boolean;
   showSearch?: boolean;
   showNotification?: boolean;
   showFavorites?: boolean;
   showProfile?: boolean;
+  onBack?: () => void;
   onSearch?: () => void;
   onNotification?: () => void;
   onFavorites?: () => void;
@@ -34,10 +36,12 @@ export function NexoraHeader({
   badgeTone = "neutral",
   variant = "default",
   compact = false,
+  showBack = false,
   showSearch = true,
   showNotification = false,
   showFavorites = false,
   showProfile = false,
+  onBack,
   onSearch,
   onNotification,
   onFavorites,
@@ -56,9 +60,11 @@ export function NexoraHeader({
   const openMenu = useUiStore((state) => state.openNexoraMenu);
 
   // Fallbacks: always navigate even if prop is not passed
+  const handleBack = onBack ?? (() => router.back());
   const handleNotification = onNotification ?? (() => router.push("/follow-center"));
   const handleFavorites = onFavorites ?? (() => router.push("/favorites"));
   const handleProfile = onProfile ?? (() => router.push("/profile"));
+  const handleSearch = onSearch ?? (() => router.navigate("/(tabs)/search"));
   const handleMenu = () => openMenu();
 
   const moduleTitleColor = titleColor ?? COLORS.accent;
@@ -72,19 +78,24 @@ export function NexoraHeader({
         compact ? styles.brandWordmarkCompact : null,
         isModuleVariant ? styles.brandWordmarkModule : null,
       ]}
-      numberOfLines={1}
-      ellipsizeMode="tail"
     >
       NEXORA
     </Text>
   );
 
+  const backButton = (
+    <ScalePress style={[styles.iconBtn, { width: actionSize, height: actionSize, borderRadius: actionSize / 2 }]} onPress={handleBack}>
+      <Ionicons name="chevron-back" size={iconSize} color={COLORS.textSecondary} />
+    </ScalePress>
+  );
+
   const content = compact ? (
     <View style={styles.contentRow}>
+      {showBack ? backButton : null}
       <View style={styles.brandAreaCompact}>
         {brandWordmark}
         {title ? (
-          <Text style={[styles.sectionTitleCompact, { color: isModuleVariant ? moduleTitleColor : (titleColor ?? COLORS.textSecondary) }]} numberOfLines={1}>
+          <Text style={[styles.sectionTitleCompact, { color: isModuleVariant ? moduleTitleColor : (titleColor ?? COLORS.textSecondary) }]}>
             {title}
           </Text>
         ) : null}
@@ -98,7 +109,7 @@ export function NexoraHeader({
           </ScalePress>
         )}
         {showSearch && (
-          <ScalePress style={[styles.iconBtn, { width: actionSize, height: actionSize, borderRadius: actionSize / 2 }]} onPress={onSearch}>
+          <ScalePress style={[styles.iconBtn, { width: actionSize, height: actionSize, borderRadius: actionSize / 2 }]} onPress={handleSearch}>
             <Ionicons name="search" size={iconSize} color={COLORS.textSecondary} />
           </ScalePress>
         )}
@@ -121,6 +132,7 @@ export function NexoraHeader({
     </View>
   ) : (
     <View style={styles.contentRow}>
+      {showBack ? backButton : null}
       <View style={styles.brandArea}>
         <View style={styles.brandTopRow}>
           {brandWordmark}
@@ -139,7 +151,7 @@ export function NexoraHeader({
           ) : null}
         </View>
         {title ? (
-          <Text style={[styles.sectionTitle, { color: isModuleVariant ? moduleTitleColor : (titleColor ?? COLORS.textSecondary) }]} numberOfLines={1}>
+          <Text style={[styles.sectionTitle, { color: isModuleVariant ? moduleTitleColor : (titleColor ?? COLORS.textSecondary) }]}>
             {title}
           </Text>
         ) : null}
@@ -153,7 +165,7 @@ export function NexoraHeader({
           </ScalePress>
         )}
         {showSearch && (
-          <ScalePress style={[styles.iconBtn, { width: actionSize, height: actionSize, borderRadius: actionSize / 2 }]} onPress={onSearch}>
+          <ScalePress style={[styles.iconBtn, { width: actionSize, height: actionSize, borderRadius: actionSize / 2 }]} onPress={handleSearch}>
             <Ionicons name="search" size={iconSize} color={COLORS.textSecondary} />
           </ScalePress>
         )}

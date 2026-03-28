@@ -344,6 +344,11 @@ export async function getVodCollections(): Promise<VodCollectionPayload[]> {
   return results.filter((item) => item.itemCount > 2);
 }
 
+export async function getVodCollectionById(id: string) {
+  if (!id) return null;
+  return await safeFetch<any>(`/api/vod/collection?id=${encodeURIComponent(id)}`, null);
+}
+
 export async function getVodStudios(): Promise<VodStudioPayload[]> {
   const studioTargets = [
     { id: "420", name: "Marvel Studios" },
@@ -371,6 +376,11 @@ export async function getVodStudios(): Promise<VodStudioPayload[]> {
   return results.filter((item) => item.itemCount > 3);
 }
 
+export async function getVodStudioById(id: string) {
+  if (!id) return null;
+  return await safeFetch<any>(`/api/vod/studio?id=${encodeURIComponent(id)}`, null);
+}
+
 // ─── React Query key factories ────────────────────────────────────────────────
 
 export const mediaKeys = {
@@ -391,4 +401,6 @@ export const mediaKeys = {
   vodCatalog: (cursorYear: number | null) => ["media", "vod", "catalog", cursorYear ?? "root"] as const,
   vodCollections: () => ["media", "vod", "collections"] as const,
   vodStudios: () => ["media", "vod", "studios"] as const,
+  vodCollectionDetail: (id: string) => ["media", "vod", "collection", id] as const,
+  vodStudioDetail: (id: string) => ["media", "vod", "studio", id] as const,
 } as const;

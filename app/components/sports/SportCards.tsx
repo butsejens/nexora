@@ -12,6 +12,8 @@ import { View, Text, StyleSheet, TouchableOpacity, Image } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { TeamLogo } from "@/components/TeamLogo";
 import { resolveCompetitionBrand } from "@/lib/logo-manager";
+import { calculateMomentum } from "@/lib/ai/momentum-calculator";
+import { MomentumBar } from "@/components/sports/MomentumBar";
 
 const DS = {
   bg: "#09090D",
@@ -42,6 +44,20 @@ export function LiveMatchCard({ match, onPress }: LiveMatchCardProps) {
   const homeScore = match?.homeScore ?? "–";
   const awayScore = match?.awayScore ?? "–";
   const minute = match?.minute ? `${match.minute}'` : "LIVE";
+  const momentum = calculateMomentum({
+    homeStats: match?.homeStats || {
+      possession: match?.possession?.home,
+      shotsOnTarget: match?.shotsOnGoal?.home,
+      attacks: match?.attacks?.home,
+      xg: match?.xg?.home,
+    },
+    awayStats: match?.awayStats || {
+      possession: match?.possession?.away,
+      shotsOnTarget: match?.shotsOnGoal?.away,
+      attacks: match?.attacks?.away,
+      xg: match?.xg?.away,
+    },
+  });
 
   return (
     <TouchableOpacity
@@ -99,6 +115,14 @@ export function LiveMatchCard({ match, onPress }: LiveMatchCardProps) {
             />
           </View>
         </View>
+
+        {/* Stadium info (optional) */}
+        <MomentumBar
+          model={momentum}
+          compact
+          homeLabel={String(match?.homeTeam || "HOME").slice(0, 3).toUpperCase()}
+          awayLabel={String(match?.awayTeam || "AWAY").slice(0, 3).toUpperCase()}
+        />
 
         {/* Stadium info (optional) */}
         {match?.stadium && (
