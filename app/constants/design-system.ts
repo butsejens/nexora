@@ -6,6 +6,43 @@
  */
 
 import { COLORS } from './colors';
+import { ms, s, vs, isSmallDevice, isLargeDevice, isTablet, screenWidth } from '../lib/responsive';
+
+// ═══════════════════════════════════════════════════════════════════════════
+// RESPONSIVE SCALE HELPERS (re-export for convenience)
+// ═══════════════════════════════════════════════════════════════════════════
+export { s, vs, ms, isSmallDevice, isLargeDevice, isTablet, screenWidth } from '../lib/responsive';
+
+/**
+ * Responsive font sizes — scale based on screen width.
+ * Use RF instead of hardcoded fontSize values where text must adapt.
+ */
+export const RF = {
+  xs:      ms(10),
+  sm:      ms(11),
+  base:    ms(12),
+  md:      ms(14),
+  lg:      ms(16),
+  xl:      ms(18),
+  '2xl':   ms(20),
+  '3xl':   ms(24),
+  '4xl':   ms(28),
+  '5xl':   ms(32),
+  hero:    ms(42),
+} as const;
+
+/**
+ * Responsive spacing — scale based on screen width (moderate).
+ */
+export const RS = {
+  xs:   s(4),
+  sm:   s(8),
+  md:   s(12),
+  lg:   s(16),
+  xl:   s(20),
+  xxl:  s(24),
+  xxxl: s(32),
+} as const;
 
 // ═══════════════════════════════════════════════════════════════════════════
 // TYPOGRAPHY SYSTEM
@@ -13,108 +50,108 @@ import { COLORS } from './colors';
 
 export const TYPOGRAPHY = {
   screenTitle: {
-    fontSize: 28,
+    fontSize: ms(28),
     fontWeight: '800' as const,
-    lineHeight: 32,
+    lineHeight: ms(32),
     letterSpacing: -0.6,
     fontFamily: 'Inter_800ExtraBold',
   },
 
   // HERO / PRIMARY TITLES
   heroScore: {
-    fontSize: 42,
+    fontSize: ms(42),
     fontWeight: '800' as const,
-    lineHeight: 46,
+    lineHeight: ms(46),
     letterSpacing: -0.5,
     fontFamily: 'Inter_800ExtraBold',
   },
 
   // SECTION TITLES
   sectionTitle: {
-    fontSize: 20,
+    fontSize: ms(20),
     fontWeight: '700' as const,
-    lineHeight: 24,
+    lineHeight: ms(24),
     letterSpacing: -0.3,
     fontFamily: 'Inter_700Bold',
   },
 
   // CARD TITLES
   cardTitle: {
-    fontSize: 18,
+    fontSize: ms(18),
     fontWeight: '700' as const,
-    lineHeight: 22,
+    lineHeight: ms(22),
     letterSpacing: -0.2,
     fontFamily: 'Inter_700Bold',
   },
 
   // MATCH METADATA (Team names, comp, time)
   matchMetadata: {
-    fontSize: 16,
+    fontSize: ms(16),
     fontWeight: '600' as const,
-    lineHeight: 20,
+    lineHeight: ms(20),
     letterSpacing: -0.1,
     fontFamily: 'Inter_600SemiBold',
   },
 
   // BODY TEXT
   body: {
-    fontSize: 14,
+    fontSize: ms(14),
     fontWeight: '500' as const,
-    lineHeight: 18,
+    lineHeight: ms(18),
     letterSpacing: 0,
     fontFamily: 'Inter_500Medium',
   },
 
   // SUPPORTING TEXT
   caption: {
-    fontSize: 12,
+    fontSize: ms(12),
     fontWeight: '400' as const,
-    lineHeight: 16,
+    lineHeight: ms(16),
     letterSpacing: 0.2,
     fontFamily: 'Inter_400Regular',
   },
 
   // BADGE TEXT
   badge: {
-    fontSize: 13,
+    fontSize: ms(13),
     fontWeight: '600' as const,
-    lineHeight: 16,
+    lineHeight: ms(16),
     letterSpacing: 0.1,
     fontFamily: 'Inter_600SemiBold',
   },
 
   // SMALL TEXT
   small: {
-    fontSize: 11,
+    fontSize: ms(11),
     fontWeight: '500' as const,
-    lineHeight: 14,
+    lineHeight: ms(14),
     letterSpacing: 0,
     fontFamily: 'Inter_500Medium',
   },
   metadataLabel: {
-    fontSize: 11,
+    fontSize: ms(11),
     fontWeight: '600' as const,
-    lineHeight: 14,
+    lineHeight: ms(14),
     letterSpacing: 0.4,
     fontFamily: 'Inter_600SemiBold',
   },
 
   tabLabel: {
-    fontSize: 12,
+    fontSize: ms(12),
     fontWeight: '600' as const,
-    lineHeight: 16,
+    lineHeight: ms(16),
     letterSpacing: 0.2,
     fontFamily: 'Inter_600SemiBold',
   },
 
   tinyBadge: {
-    fontSize: 10,
+    fontSize: ms(10),
     fontWeight: '700' as const,
-    lineHeight: 12,
+    lineHeight: ms(12),
     letterSpacing: 0.4,
     fontFamily: 'Inter_700Bold',
   },
-} as const;
+};
 
 // ═══════════════════════════════════════════════════════════════════════════
 // SPACING SYSTEM
