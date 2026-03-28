@@ -8,59 +8,38 @@ import {
   Inter_800ExtraBold,
 } from "@expo-google-fonts/inter";
 import { Stack, router } from "expo-router";
-import * as SplashScreen from "expo-splash-screen";
-import React, { useEffect, useRef, useState } from "react";
-import { Platform, Linking, AppState, View, Text, Pressable, ScrollView } from "react-native";
-import AsyncStorage from "@react-native-async-storage/async-storage";
-
+import React, { useEffect, useRef } from "react";
+import { AppState } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
+import * as Notifications from "expo-notifications";
+import * as Updates from "expo-updates";
+import Constants from "expo-constants";
+
 import { MatchAlertsBridge } from "@/components/MatchAlertsBridge";
 import { PersonalizationBridge } from "@/components/PersonalizationBridge";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
-import { RequiredLoginGate } from "@/components/auth/RequiredLoginGate";
-import { queryClient, getApiBaseCandidates, apiRequest, apiRequestJson, DEFAULT_RENDER_API_BASE } from "@/lib/query-client";
+import { NexoraMenuOverlay } from "@/components/navigation/NexoraMenuOverlay";
+import {
+  queryClient,
+  getApiBaseCandidates,
+  apiRequestJson,
+  DEFAULT_RENDER_API_BASE,
+} from "@/lib/query-client";
 import { startPlayerImageWarmup } from "@/lib/player-image-system";
-import { NexoraProvider, useNexora } from "@/context/NexoraContext";
+import { NexoraProvider } from "@/context/NexoraContext";
 import { UserStateProvider } from "@/context/UserStateContext";
 import { SafeAreaProvider } from "react-native-safe-area-context";
-import { PulseLaunchScreen } from "@/components/brand/PulseLaunchScreen";
-import { NexoraMenuOverlay } from "@/components/navigation/NexoraMenuOverlay";
-import { NexoraIntro } from "@/components/NexoraIntro";
-import { PremiumOnboardingFlow } from "@/features/onboarding/PremiumOnboardingFlow";
-import * as Updates from "expo-updates";
-import * as Notifications from "expo-notifications";
-import * as Application from "expo-application";
-import * as FileSystem from "expo-file-system/legacy";
-import * as IntentLauncher from "expo-intent-launcher";
-import Constants from "expo-constants";
 import { COLORS } from "@/constants/colors";
-import {
-  cacheSet,
-  cachePeekStale,
-  CacheTTL,
-  cacheWarmup,
-} from "@/lib/services/cache-service";
+import { cacheSet, cachePeekStale, CacheTTL, cacheWarmup } from "@/lib/services/cache-service";
 import { initializeMatchNotifications } from "@/lib/match-notifications";
-import { fetchSportsLeagueResourceWithFallback } from "@/lib/sports-data";
-import { useOnboardingStore } from "@/store/onboarding-store";
 import { logStartupEvent, runStartupTask } from "@/services/startup-orchestrator";
-import { buildDiagnosticCode, buildDiagnosticReport, recordLaunchSnapshot } from "@/services/update-diagnostics";
+import { recordLaunchSnapshot } from "@/services/update-diagnostics";
 
-// ─── Persistent cache keys (must match what screens useQuery with) ────────────
 const PREFETCH_ENTRIES = (today: string) => [
-  { queryKey: ["movies", "trending"],  cacheKey: "movies:trending",   ttlMs: CacheTTL.HOME_RAILS },
-  { queryKey: ["movies", "genres"],    cacheKey: "movies:genres",     ttlMs: CacheTTL.TMDB_METADATA },
-  { queryKey: ["series", "trending"],  cacheKey: "series:trending",   ttlMs: CacheTTL.HOME_RAILS },
-  { queryKey: ["series", "genres"],    cacheKey: "series:genres",     ttlMs: CacheTTL.TMDB_METADATA },
-  { queryKey: ["sports", "highlights"],cacheKey: "sports:highlights", ttlMs: CacheTTL.MATCH_DETAIL },
+  { queryKey: ["movies", "trending"], cacheKey: "movies:trending", ttlMs: CacheTTL.HOME_RAILS },
+  { queryKey: ["series", "trending"], cacheKey: "series:trending", ttlMs: CacheTTL.HOME_RAILS },
   { queryKey: ["sports", "today", today], cacheKey: `sports:today:${today}`, ttlMs: CacheTTL.TODAY_SPORTS },
-  { queryKey: ["sports", "live",  today], cacheKey: `sports:live:${today}`,  ttlMs: CacheTTL.LIVE_MATCH },
-];
-
-const POPULAR_COMPETITIONS = [
-  { league: "UEFA Champions League", espn: "uefa.champions" },
-  { league: "Premier League", espn: "eng.1" },
-  { league: "La Liga", espn: "esp.1" },
+  { queryKey: ["sports", "live", today], cacheKey: `sports:live:${today}`, ttlMs: CacheTTL.LIVE_MATCH },
 ];
 
 function normalizeSportsPayload(json: any) {
@@ -77,90 +56,9 @@ function normalizeSportsPayload(json: any) {
   };
 }
 
-function getFrequentMatchesFromPayloads(payloads: (any | undefined)[]): any[] {
-  const byId = new Map<string, any>();
-  for (const payload of payloads) {
-    if (!payload) continue;
-    const rows = [
-      ...(Array.isArray(payload.live) ? payload.live : []),
-      ...(Array.isArray(payload.upcoming) ? payload.upcoming : []),
-      ...(Array.isArray(payload.finished) ? payload.finished : []),
-    ];
-    for (const row of rows) {
-      const id = String(row?.id || "").trim();
-      if (!id || byId.has(id)) continue;
-      byId.set(id, row);
-    }
-  }
-  return Array.from(byId.values());
-}
-
-async function prefetchMatchDetailEssentials(matches: any[]): Promise<void> {
-  const topCandidates = matches.slice(0, 6);
-  await Promise.allSettled(
-    topCandidates.map(async (match) => {
-      const matchId = String(match?.id || "").trim();
-      if (!matchId) return;
-      const espnLeague = String(match?.espnLeague || "eng.1").trim() || "eng.1";
-      const queryKey = ["match-detail", matchId, espnLeague] as const;
-      const cacheKey = `sports:match-detail:${matchId}:${espnLeague}`;
-
-      await queryClient.prefetchQuery({
-        queryKey,
-        staleTime: 30_000,
-        queryFn: async () => {
-          const data = await apiRequestJson<any>(`/api/sports/match/${encodeURIComponent(matchId)}?sport=soccer&league=${encodeURIComponent(espnLeague)}`);
-          cacheSet(cacheKey, data, CacheTTL.MATCH_DETAIL);
-          return data;
-        },
-      });
-    }),
-  );
-}
-
-async function prefetchPopularCompetitionBundles(): Promise<void> {
-  await Promise.allSettled(
-    POPULAR_COMPETITIONS.map(async (competition) => {
-      const safeFetch = async (
-        kind: "standings" | "topscorers" | "topassists" | "competition-stats" | "competition-teams" | "competition-matches",
-      ) => {
-        try {
-          return await fetchSportsLeagueResourceWithFallback(kind, {
-            leagueName: competition.league,
-            espnLeague: competition.espn,
-            sequential: kind === "topscorers" || kind === "topassists",
-          });
-        } catch {
-          return { error: `Failed to load ${kind}` };
-        }
-      };
-
-      const [standings, topscorers, topassists, competitionStats, competitionTeams, competitionMatches] = await Promise.all([
-        safeFetch("standings"),
-        safeFetch("topscorers"),
-        safeFetch("topassists"),
-        safeFetch("competition-stats"),
-        safeFetch("competition-teams"),
-        safeFetch("competition-matches"),
-      ]);
-
-      queryClient.setQueryData(["competition-bundle", "v3", competition.league, competition.espn], {
-        standings,
-        topscorers,
-        topassists,
-        competitionStats,
-        competitionTeams,
-        competitionMatches,
-      });
-    }),
-  );
-}
-
-// Seed the QueryClient from disk cache so screens render instantly on cold start.
 function seedQueryClientFromCache() {
   const today = new Date().toISOString().slice(0, 10);
   for (const { queryKey, cacheKey } of PREFETCH_ENTRIES(today)) {
-    // Seed from in-memory cache after cacheWarmup() so render paths stay sync.
     const cached = cachePeekStale(cacheKey);
     if (cached != null) {
       queryClient.setQueryData(queryKey, cached);
@@ -170,56 +68,30 @@ function seedQueryClientFromCache() {
 
 let prefetchHomeDataInFlight: Promise<void> | null = null;
 
-// Prefetch key API data, writing results to both QueryClient and disk cache.
 function prefetchHomeData(): Promise<void> {
   if (prefetchHomeDataInFlight) return prefetchHomeDataInFlight;
 
   const run = async () => {
-  const today = new Date().toISOString().slice(0, 10);
-  const date = encodeURIComponent(today);
+    const today = new Date().toISOString().slice(0, 10);
+    const date = encodeURIComponent(today);
 
-  const fetchAndCache = async (path: string, ck: string, ttl: number, queryKey: readonly unknown[]) => {
-    try {
-      const data = await apiRequestJson<any>(path);
-      const normalized = path.startsWith("/api/sports/") ? normalizeSportsPayload(data) : data;
-      cacheSet(ck, normalized, ttl);
-      queryClient.setQueryData(queryKey, normalized);
-      return normalized;
-    } catch {
-      return undefined;
-    }
-  };
+    const fetchAndCache = async (path: string, cacheKey: string, ttlMs: number, queryKey: readonly unknown[]) => {
+      try {
+        const data = await apiRequestJson<any>(path);
+        const normalized = path.startsWith("/api/sports/") ? normalizeSportsPayload(data) : data;
+        cacheSet(cacheKey, normalized, ttlMs);
+        queryClient.setQueryData(queryKey, normalized);
+      } catch {
+        // Startup prefetch is best-effort and must never block render.
+      }
+    };
 
-  // Phase A (critical): first paint data for sports + home rails.
-  const phaseATask = Promise.allSettled([
-    fetchAndCache(`/api/sports/live?date=${date}`, "sports:live:" + today, CacheTTL.LIVE_MATCH, ["sports", "live", today]),
-    fetchAndCache(`/api/sports/by-date?date=${date}`, `sports:today:${today}`, CacheTTL.TODAY_SPORTS, ["sports", "today", today]),
-    fetchAndCache("/api/sports/highlights", "sports:highlights", CacheTTL.MATCH_DETAIL, ["sports", "highlights"]),
-    fetchAndCache("/api/movies/trending", "movies:trending", CacheTTL.HOME_RAILS, ["movies", "trending"]),
-    fetchAndCache("/api/series/trending", "series:trending", CacheTTL.HOME_RAILS, ["series", "trending"]),
-  ]);
-
-  // Match detail essentials for likely next navigations.
-  void phaseATask.then(async (results) => {
-    const payloads = results
-      .filter((result): result is PromiseFulfilledResult<any> => result.status === "fulfilled")
-      .map((result) => result.value);
-    const frequentMatches = getFrequentMatchesFromPayloads(payloads);
-    if (frequentMatches.length > 0) {
-      await prefetchMatchDetailEssentials(frequentMatches);
-    }
-  });
-
-  // Phase B (background): enrich secondary tabs and warm server-side sports caches.
-  setTimeout(() => {
-    void fetchAndCache(`/api/sports/menu-tools?date=${date}&league=all`, `sports:menu-tools:${today}:all`, CacheTTL.MATCH_DETAIL, ["sports", "menu-tools", today, "all"]);
-    void fetchAndCache("/api/movies/genres-catalog?page=1", "movies:genres", CacheTTL.TMDB_METADATA, ["movies", "genres"]);
-    void fetchAndCache("/api/series/genres-catalog?page=1", "series:genres", CacheTTL.TMDB_METADATA, ["series", "genres"]);
-    void apiRequest("GET", "/api/sports/prefetch-home").catch(() => undefined);
-    void prefetchPopularCompetitionBundles();
-  }, 0);
-
-    await phaseATask;
+    await Promise.allSettled([
+      fetchAndCache(`/api/sports/live?date=${date}`, `sports:live:${today}`, CacheTTL.LIVE_MATCH, ["sports", "live", today]),
+      fetchAndCache(`/api/sports/by-date?date=${date}`, `sports:today:${today}`, CacheTTL.TODAY_SPORTS, ["sports", "today", today]),
+      fetchAndCache("/api/movies/trending", "movies:trending", CacheTTL.HOME_RAILS, ["movies", "trending"]),
+      fetchAndCache("/api/series/trending", "series:trending", CacheTTL.HOME_RAILS, ["series", "trending"]),
+    ]);
   };
 
   prefetchHomeDataInFlight = run().finally(() => {
@@ -229,33 +101,6 @@ function prefetchHomeData(): Promise<void> {
   return prefetchHomeDataInFlight;
 }
 
-function scheduleBackgroundStartupTask(name: string, timeoutMs: number, run: () => Promise<void>) {
-  void runStartupTask({
-    scope: "background",
-    name,
-    timeoutMs,
-    run,
-  });
-}
-
-SplashScreen.preventAutoHideAsync();
-
-// In-memory flags (reset on cold app start)
-let hasCompletedBootOnce = false;
-let hasCheckedServerUpdateOnce = false;
-const ENABLE_AUTO_APK_UPDATE_ON_BOOT = false;
-
-// Persistent boot flag key — written after first boot so subsequent cold
-// starts skip the boot screen entirely.
-const BOOT_FLAG_KEY = "nexora_booted_v1";
-const BOOT_CACHE_TIMEOUT_MS = 2500;
-const BOOT_FLAG_TIMEOUT_MS = 1200;
-const HYDRATION_TIMEOUT_MS = 2500;
-// Signals that the disk cache has been loaded into memory
-let diskCacheReady = false;
-
-// ── OTA update diagnostics ────────────────────────────────────────────────────
-// Log current update state to console on every cold start for crash log visibility.
 function logUpdateDiagnostics() {
   try {
     const info: Record<string, unknown> = {
@@ -267,39 +112,12 @@ function logUpdateDiagnostics() {
       createdAt: Updates.createdAt?.toISOString() || "unknown",
       isEnabled: Updates.isEnabled,
     };
-    console.info("[nexora:update] active bundle diagnostics", info);
+    console.info("[nexora:start] update diagnostics", info);
     logStartupEvent("boot", "info", "update-diagnostics", info);
     void recordLaunchSnapshot();
-  } catch (e) {
-    console.warn("[nexora:update] failed to read update diagnostics", e);
+  } catch (error) {
+    console.warn("[nexora:start] failed to read update diagnostics", error);
   }
-}
-
-function compareVersions(a: string, b: string): number {
-  const pa = String(a || "")
-    .split(".")
-    .map((part) => {
-      const n = Number.parseInt(String(part).replace(/[^0-9]/g, ""), 10);
-      return Number.isFinite(n) ? n : 0;
-    });
-  const pb = String(b || "")
-    .split(".")
-    .map((part) => {
-      const n = Number.parseInt(String(part).replace(/[^0-9]/g, ""), 10);
-      return Number.isFinite(n) ? n : 0;
-    });
-  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
-    const diff = (pa[i] || 0) - (pb[i] || 0);
-    if (diff !== 0) return diff;
-  }
-  return 0;
-}
-
-function resolveInstalledVersion(): string {
-  const nativeVersion = String(Application.nativeApplicationVersion || "0.0.0");
-  const configVersion = String(Constants.expoConfig?.version || "0.0.0");
-  const runtimeVersion = String(Updates.runtimeVersion || "0.0.0");
-  return [nativeVersion, configVersion, runtimeVersion].sort(compareVersions).at(-1) || nativeVersion;
 }
 
 function RootLayoutNav() {
@@ -312,15 +130,7 @@ function RootLayoutNav() {
       }}
     >
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-      <Stack.Screen
-        name="player"
-        options={{
-          headerShown: false,
-          animation: "slide_from_bottom",
-          gestureEnabled: true,
-          gestureDirection: "vertical",
-        }}
-      />
+      <Stack.Screen name="player" options={{ headerShown: false, animation: "slide_from_bottom", gestureEnabled: true, gestureDirection: "vertical" }} />
       <Stack.Screen name="profile" options={{ headerShown: false }} />
       <Stack.Screen name="settings" options={{ headerShown: false }} />
       <Stack.Screen name="competition" options={{ headerShown: false }} />
@@ -340,359 +150,67 @@ function RootLayoutNav() {
   );
 }
 
-function AppShellContent({
-  bootDone,
-  bootMessage,
-  hasHydrated,
-  hydrationRecovering,
-  hasCompletedOnboarding,
-  bootStalled,
-}: {
-  bootDone: boolean;
-  bootMessage: string;
-  hasHydrated: boolean;
-  hydrationRecovering: boolean;
-  hasCompletedOnboarding: boolean;
-  bootStalled: boolean;
-}) {
-  const { isAuthenticated, authReady } = useNexora();
-
-  const [copied, setCopied] = useState(false);
-  const startupDiagnosticCode = buildDiagnosticCode("startup-stall");
-  const startupDiagnosticReport = buildDiagnosticReport("startup-stall");
-
-  const showStartupDiagnosticsReady = () => {
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1600);
-  };
-
-  if (bootStalled) {
-    return (
-      <View style={{ flex: 1, backgroundColor: COLORS.background, paddingHorizontal: 16, paddingTop: 64, paddingBottom: 32 }}>
-        <Text style={{ color: COLORS.accent, fontFamily: "Inter_800ExtraBold", fontSize: 18 }}>Opstart vastgelopen</Text>
-        <Text style={{ color: COLORS.textSecondary, marginTop: 8, fontFamily: "Inter_500Medium", lineHeight: 22 }}>
-          De app lijkt vast te lopen tijdens opstart. Kopieer onderstaande foutcode en plak deze in de chat.
-        </Text>
-
-        <View style={{ marginTop: 12, alignSelf: "flex-start", paddingVertical: 6, paddingHorizontal: 10, borderRadius: 999, backgroundColor: "rgba(229,9,20,0.16)", borderWidth: 1, borderColor: "rgba(229,9,20,0.45)" }}>
-          <Text selectable style={{ color: "#FCA5A5", fontFamily: Platform.OS === "android" ? "monospace" : "Menlo", fontSize: 12 }}>
-            {startupDiagnosticCode}
-          </Text>
-        </View>
-
-        <Pressable
-          onPress={showStartupDiagnosticsReady}
-          style={({ pressed }) => ({
-            marginTop: 14,
-            alignSelf: "flex-start",
-            paddingVertical: 10,
-            paddingHorizontal: 14,
-            borderRadius: 10,
-            backgroundColor: copied ? "#16A34A" : COLORS.card,
-            opacity: pressed ? 0.9 : 1,
-          })}
-        >
-          <Text style={{ color: COLORS.text, fontFamily: "Inter_700Bold" }}>{copied ? "Klaar om te delen" : "Gebruik de tekst hieronder"}</Text>
-        </Pressable>
-
-        <ScrollView style={{ marginTop: 14, borderRadius: 12, borderWidth: 1, borderColor: COLORS.border, backgroundColor: COLORS.card, padding: 12 }}>
-          <Text selectable style={{ color: COLORS.textSecondary, fontFamily: Platform.OS === "android" ? "monospace" : "Menlo", fontSize: 11, lineHeight: 16 }}>
-            {startupDiagnosticReport}
-          </Text>
-        </ScrollView>
-      </View>
-    );
-  }
-
-  if (!bootDone) {
-    return <NexoraIntro subtitle={bootMessage} />;
-  }
-
-  if (!hasHydrated) {
-    return (
-      <PulseLaunchScreen
-        badge={hydrationRecovering ? "Recovering setup" : "Restoring setup"}
-        title="Syncing your preferences"
-        subtitle={hydrationRecovering
-          ? "Saved startup data took too long. Recovering a safe state and continuing into the app."
-          : "Loading saved modules, notifications and personalized rails."}
-        progress={96}
-      />
-    );
-  }
-
-  if (!authReady) {
-    return (
-      <PulseLaunchScreen
-        badge="Verifying login"
-        title="Checking secure session"
-        subtitle="Validating your authentication state before opening Nexora."
-        progress={98}
-      />
-    );
-  }
-
-  if (!isAuthenticated) {
-    return <RequiredLoginGate />;
-  }
-
-  if (!hasCompletedOnboarding) {
-    return <PremiumOnboardingFlow />;
-  }
-
-  return <RootLayoutNav />;
-}
-
 export default function RootLayout() {
-  const [fontsLoaded] = useFonts({
+  useFonts({
     Inter_400Regular,
     Inter_500Medium,
     Inter_600SemiBold,
     Inter_700Bold,
     Inter_800ExtraBold,
   });
-  const hasHydrated = useOnboardingStore((state) => state.hasHydrated);
-  const hasCompletedOnboarding = useOnboardingStore((state) => state.hasCompletedOnboarding);
-  const recoverPersistedState = useOnboardingStore((state) => state.recoverPersistedState);
 
-  const [bootDone, setBootDone] = useState(hasCompletedBootOnce);
-  const [bootMessage, setBootMessage] = useState("Resources laden...");
-  const [fontFallbackReady, setFontFallbackReady] = useState(false);
-  const [hydrationRecovering, setHydrationRecovering] = useState(false);
-  const [bootStalled, setBootStalled] = useState(false);
-  const bootStartedRef = useRef(false);
+  const startupRanRef = useRef(false);
 
-  // 3s font fallback (reduced from 7s – fonts rarely take this long)
   useEffect(() => {
-    const timer = setTimeout(() => setFontFallbackReady(true), 3000);
-    return () => clearTimeout(timer);
+    if (startupRanRef.current) return;
+    startupRanRef.current = true;
+
+    const startedAt = Date.now();
+    logStartupEvent("boot", "info", "app-launch", { startedAt });
+    logUpdateDiagnostics();
+
+    void runStartupTask({
+      scope: "boot",
+      name: "seed-cache-from-disk",
+      timeoutMs: 2500,
+      run: async () => {
+        const today = new Date().toISOString().slice(0, 10);
+        await cacheWarmup(PREFETCH_ENTRIES(today).map((entry) => entry.cacheKey));
+        seedQueryClientFromCache();
+      },
+    });
+
+    void runStartupTask({
+      scope: "background",
+      name: "prefetch-home",
+      timeoutMs: 10000,
+      run: async () => {
+        await prefetchHomeData();
+      },
+    });
+
+    void runStartupTask({
+      scope: "background",
+      name: "warm-player-images",
+      timeoutMs: 10000,
+      run: async () => {
+        await startPlayerImageWarmup(queryClient);
+      },
+    });
+
+    void runStartupTask({
+      scope: "background",
+      name: "init-notifications",
+      timeoutMs: 3000,
+      run: async () => {
+        await initializeMatchNotifications();
+      },
+    });
+
+    const doneAt = Date.now();
+    logStartupEvent("boot", "info", "ui-mounted", { durationMs: doneAt - startedAt });
   }, []);
 
-  // Hide native splash as soon as fonts (or fallback) are ready
-  useEffect(() => {
-    if (fontsLoaded || fontFallbackReady) {
-      SplashScreen.hideAsync().catch(() => {});
-    }
-  }, [fontsLoaded, fontFallbackReady]);
-
-  // Boot sequence — starts immediately when fonts are ready.
-  // Strategy:
-  //   1. Load disk cache → seed QueryClient (instant, no network)
-  //   2. Check AsyncStorage boot flag — if already booted, skip screen entirely
-  //   3. Fire prefetch + warmup (non-blocking)
-  //   4. Complete boot in ≤ 1.5 s regardless of server response
-  useEffect(() => {
-    if (hasCompletedBootOnce) {
-      setBootDone(true);
-      return;
-    }
-
-    if (!fontsLoaded && !fontFallbackReady) return;
-    if (bootStartedRef.current) return;
-    bootStartedRef.current = true;
-
-    let mounted = true;
-    const stallTimer = setTimeout(() => {
-      if (!mounted) return;
-      if (!hasCompletedBootOnce) {
-        setBootStalled(true);
-        logStartupEvent("boot", "error", "boot-stalled-timeout", { timeoutMs: 15000 });
-      }
-    }, 15000);
-    const messages = [
-      "Interface voorbereiden...",
-      "Content laden...",
-      "Bijna klaar...",
-    ];
-    let messageIndex = 0;
-
-    // Progress bar animates quickly — boot completes in ~1-1.5s
-    const progressTimer = setInterval(() => {
-      if (!mounted) return;
-      messageIndex = Math.min(messages.length - 1, messageIndex + 1);
-      setBootMessage(messages[messageIndex]);
-    }, 300);
-
-    (async () => {
-      try {
-        // Step 0: log current bundle/update state for diagnostics
-        logUpdateDiagnostics();
-
-        // Step 1: load disk cache and immediately seed QueryClient
-        if (!diskCacheReady) {
-          const cacheResult = await runStartupTask({
-            scope: "boot",
-            name: "preload-disk-cache",
-            timeoutMs: BOOT_CACHE_TIMEOUT_MS,
-            run: async () => {
-              // Warm up cache layer from AsyncStorage
-              const today = new Date().toISOString().slice(0, 10);
-              const cacheKeys = PREFETCH_ENTRIES(today)
-                .map(e => e.cacheKey);
-              await cacheWarmup(cacheKeys);
-              seedQueryClientFromCache();
-              diskCacheReady = true;
-            },
-          });
-          if (cacheResult.status !== "success") {
-            logStartupEvent("boot", "warn", "Continuing without seeded disk cache", { status: cacheResult.status });
-          }
-        }
-
-        // Step 2: check persistent boot flag — if already booted once, skip
-        const bootFlagResult = await runStartupTask({
-          scope: "boot",
-          name: "read-boot-flag",
-          timeoutMs: BOOT_FLAG_TIMEOUT_MS,
-          run: async () => await AsyncStorage.getItem(BOOT_FLAG_KEY),
-        });
-        const bootFlag = bootFlagResult.status === "success" ? bootFlagResult.value : null;
-        if (bootFlag) {
-          hasCompletedBootOnce = true;
-          // Still fire background refresh and warmup
-          logStartupEvent("background", "info", "Scheduling cached-user warmup");
-          scheduleBackgroundStartupTask("prefetch-home-data", 7000, async () => {
-            await prefetchHomeData();
-          });
-          scheduleBackgroundStartupTask("player-image-warmup", 8000, async () => {
-            await startPlayerImageWarmup(queryClient);
-          });
-          return; // completes in finally
-        }
-
-        // Step 3: fire prefetch and warmup — completely non-blocking
-        const candidates = getApiBaseCandidates();
-        if (candidates.length > 0) {
-          // Wake up server in background (fire and forget, no await)
-          logStartupEvent("background", "info", "Scheduling cold-start warmup", { candidates: candidates.length });
-          scheduleBackgroundStartupTask("wake-primary-api", 1500, async () => {
-            await fetch(`${candidates[0]}/health`);
-          });
-          scheduleBackgroundStartupTask("prefetch-home-data", 7000, async () => {
-            await prefetchHomeData();
-          });
-          scheduleBackgroundStartupTask("player-image-warmup", 8000, async () => {
-            await startPlayerImageWarmup(queryClient);
-          });
-          // Initialize notification channels early so they're ready before any screen uses them
-          scheduleBackgroundStartupTask("initialize-match-notifications", 3000, async () => {
-            await initializeMatchNotifications();
-          });
-        }
-
-        // Step 4: wait a minimal time so the boot screen briefly shows
-        await new Promise((resolve) => setTimeout(resolve, 800));
-      } finally {
-        if (!mounted) return;
-        clearTimeout(stallTimer);
-        clearInterval(progressTimer);
-        setBootMessage("Klaar");
-        hasCompletedBootOnce = true;
-        setBootStalled(false);
-        // Persist so next cold start skips the boot screen
-        AsyncStorage.setItem(BOOT_FLAG_KEY, "1").catch(() => null);
-        setBootDone(true);
-      }
-    })();
-
-    return () => {
-      mounted = false;
-      clearTimeout(stallTimer);
-      clearInterval(progressTimer);
-    };
-  }, [fontsLoaded, fontFallbackReady]);
-
-  useEffect(() => {
-    if (!bootDone || hasHydrated) return;
-
-    let cancelled = false;
-    const timer = setTimeout(() => {
-      if (cancelled || hasHydrated) return;
-      setHydrationRecovering(true);
-      logStartupEvent("hydration", "warn", "Persist hydration timed out, recovering onboarding state", {
-        timeoutMs: HYDRATION_TIMEOUT_MS,
-      });
-      void recoverPersistedState().finally(() => {
-        if (!cancelled) {
-          setHydrationRecovering(false);
-        }
-      });
-    }, HYDRATION_TIMEOUT_MS);
-
-    return () => {
-      cancelled = true;
-      clearTimeout(timer);
-    };
-  }, [bootDone, hasHydrated, recoverPersistedState]);
-
-  // Server update check — optional auto-download/install path for Android APK updates.
-  // Disabled by default to avoid startup loops or unintended version overrides.
-  useEffect(() => {
-    if (!bootDone) return;
-    if (hasCheckedServerUpdateOnce) return;
-    if (!ENABLE_AUTO_APK_UPDATE_ON_BOOT) return;
-    hasCheckedServerUpdateOnce = true;
-
-    const run = async () => {
-      try {
-        if (__DEV__) return;
-
-        const res = await apiRequest("GET", "/api/app-version");
-        const data = await res.json() as { version: string; apkUrl?: string; directApkUrl?: string };
-        const effectiveVer = resolveInstalledVersion();
-        if (compareVersions(data.version, effectiveVer) <= 0) return;
-
-        // Prefer direct GitHub URL to avoid redirect hops
-        const url = data.directApkUrl || data.apkUrl || "";
-        if (!url) return;
-        const normalized = url.replace(/^http:\/\//i, "https://");
-
-        // Auto-download and install APK on Android
-        if (Platform.OS === "android") {
-          try {
-            const dir = (FileSystem.cacheDirectory || FileSystem.documentDirectory || "") + "updates/";
-            await FileSystem.makeDirectoryAsync(dir, { intermediates: true }).catch(() => {});
-            const filename = `nexora-update-${Date.now()}.apk`;
-            const fileUri = dir + filename;
-
-            const dl = FileSystem.createDownloadResumable(
-              normalized,
-              fileUri,
-              { headers: { Accept: "application/vnd.android.package-archive" } },
-            );
-            const result = await dl.downloadAsync();
-            if (!result?.uri) throw new Error("Download mislukt");
-
-            const contentUri = await FileSystem.getContentUriAsync(result.uri);
-            try {
-              await IntentLauncher.startActivityAsync("android.intent.action.INSTALL_PACKAGE", {
-                data: contentUri,
-                type: "application/vnd.android.package-archive",
-                flags: 268435457, // FLAG_ACTIVITY_NEW_TASK | FLAG_GRANT_READ_URI_PERMISSION
-              });
-            } catch {
-              await IntentLauncher.startActivityAsync("android.intent.action.VIEW", {
-                data: contentUri,
-                type: "application/vnd.android.package-archive",
-                flags: 268435457, // FLAG_ACTIVITY_NEW_TASK | FLAG_GRANT_READ_URI_PERMISSION
-              });
-            }
-          } catch {
-            // Fallback: open download URL in browser
-            try { await Linking.openURL(normalized); } catch {}
-          }
-          return;
-        }
-
-        // iOS / other: open in browser
-        try { await Linking.openURL(normalized); } catch {}
-      } catch {}
-    };
-
-    run();
-  }, [bootDone]);
-
-  // Notification tap handler — navigate to profile (update modal) when user taps the notification
   useEffect(() => {
     const sub = Notifications.addNotificationResponseReceivedListener((response) => {
       if (response.notification.request.content.data?.type === "app_update") {
@@ -702,69 +220,58 @@ export default function RootLayout() {
     return () => sub.remove();
   }, []);
 
-  // ── AppState: foreground resume refresh + Render keep-alive ─────────────────
-  // When the app returns from background, stale sports data is refreshed in the
-  // background so screens show fresh content immediately.
-  // A keep-alive ping (every 4 min) prevents the Render free-tier from sleeping.
   useEffect(() => {
-    if (!bootDone) return;
-
     let keepAliveId: ReturnType<typeof setInterval> | null = null;
     let lastRefreshAt = Date.now();
-    const RESUME_STALE_MS = 90_000;        // refresh if absent > 90 s
-    const KEEP_ALIVE_MS  = 4 * 60 * 1000; // ping Render every 4 minutes
+    const RESUME_STALE_MS = 90000;
+    const KEEP_ALIVE_MS = 4 * 60 * 1000;
 
-    function pingRender() {
-      // Prefer the hardcoded Render base so Cloudflare doesn't intercept the
-      // keep-alive (Cloudflare would just return a cached response, not waking
-      // the Render dyno).
+    const pingRender = () => {
       const baseList = getApiBaseCandidates();
-      const renderBase =
-        baseList.find((b) => /onrender\.com/i.test(b)) ||
-        DEFAULT_RENDER_API_BASE;
+      const renderBase = baseList.find((b) => /onrender\.com/i.test(b)) || DEFAULT_RENDER_API_BASE;
       fetch(`${renderBase}/api/sports/health`, { method: "GET" }).catch(() => {});
-    }
+    };
 
-    function startKeepAlive() {
-      if (keepAliveId) return;
-      keepAliveId = setInterval(pingRender, KEEP_ALIVE_MS);
-    }
-
-    function stopKeepAlive() {
-      if (keepAliveId) {
-        clearInterval(keepAliveId);
-        keepAliveId = null;
-      }
-    }
-
-    function onForeground() {
+    const onForeground = () => {
       const now = Date.now();
       if (now - lastRefreshAt >= RESUME_STALE_MS) {
         lastRefreshAt = now;
-        logStartupEvent("background", "info", "AppState resume: scheduling sports refresh");
-        scheduleBackgroundStartupTask("resume-refresh", 15_000, async () => {
-          await prefetchHomeData();
+        void runStartupTask({
+          scope: "background",
+          name: "resume-refresh",
+          timeoutMs: 15000,
+          run: async () => {
+            await prefetchHomeData();
+          },
         });
       }
-      startKeepAlive();
-    }
+
+      if (!keepAliveId) {
+        keepAliveId = setInterval(pingRender, KEEP_ALIVE_MS);
+      }
+    };
 
     const sub = AppState.addEventListener("change", (state) => {
       if (state === "active") {
         onForeground();
-      } else {
-        stopKeepAlive();
+        return;
+      }
+
+      if (keepAliveId) {
+        clearInterval(keepAliveId);
+        keepAliveId = null;
       }
     });
 
-    // App is already active at mount — start keep-alive immediately.
-    startKeepAlive();
+    onForeground();
 
     return () => {
       sub.remove();
-      stopKeepAlive();
+      if (keepAliveId) {
+        clearInterval(keepAliveId);
+      }
     };
-  }, [bootDone]);
+  }, []);
 
   return (
     <ErrorBoundary>
@@ -775,14 +282,7 @@ export default function RootLayout() {
               <UserStateProvider>
                 <PersonalizationBridge />
                 <MatchAlertsBridge />
-                <AppShellContent
-                  bootDone={bootDone}
-                  bootMessage={bootMessage}
-                  hasHydrated={hasHydrated}
-                  hydrationRecovering={hydrationRecovering}
-                  hasCompletedOnboarding={hasCompletedOnboarding}
-                  bootStalled={bootStalled}
-                />
+                <RootLayoutNav />
                 <NexoraMenuOverlay />
               </UserStateProvider>
             </NexoraProvider>
