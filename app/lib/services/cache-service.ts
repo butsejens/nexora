@@ -16,6 +16,7 @@
  */
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { logRealtimeEvent } from "@/services/realtime-telemetry";
 
 const PREFIX = "nx_cache_";
 const WRITE_DEBOUNCE_MS = 300;
@@ -66,6 +67,7 @@ export async function cacheSet<T>(key: string, value: T, ttlMs = 0): Promise<voi
   };
   mem.set(key, entry as CacheEntry<unknown>);
   scheduleWrite(key, entry as CacheEntry<unknown>);
+  logRealtimeEvent("cache", "set", { key, ttlMs });
 }
 
 /**
@@ -78,8 +80,10 @@ export async function cacheGet<T>(key: string): Promise<T | null> {
   const inMem = mem.get(key);
   if (inMem) {
     if (inMem.expiresAt === 0 || Date.now() <= inMem.expiresAt) {
+      logRealtimeEvent("cache", "hit", { key, layer: "memory", stale: false });
       return inMem.value as T;
     }
+    logRealtimeEvent("cache", "miss", { key, layer: "memory", reason: "expired" });
     return null; // expired
   }
 
@@ -89,9 +93,14 @@ export async function cacheGet<T>(key: string): Promise<T | null> {
     if (!raw) return null;
     const entry = JSON.parse(raw) as CacheEntry<T>;
     mem.set(key, entry as CacheEntry<unknown>);
-    if (entry.expiresAt !== 0 && Date.now() > entry.expiresAt) return null;
+    if (entry.expiresAt !== 0 && Date.now() > entry.expiresAt) {
+      logRealtimeEvent("cache", "miss", { key, layer: "disk", reason: "expired" });
+      return null;
+    }
+    logRealtimeEvent("cache", "hit", { key, layer: "disk", stale: false });
     return entry.value;
   } catch {
+    logRealtimeEvent("cache", "miss", { key, layer: "disk", reason: "error" });
     return null;
   }
 }
@@ -102,15 +111,20 @@ export async function cacheGet<T>(key: string): Promise<T | null> {
  */
 export async function cacheGetStale<T>(key: string): Promise<T | null> {
   const inMem = mem.get(key);
-  if (inMem) return inMem.value as T;
+  if (inMem) {
+    logRealtimeEvent("cache", "stale-hit", { key, layer: "memory" });
+    return inMem.value as T;
+  }
 
   try {
     const raw = await AsyncStorage.getItem(storageKey(key));
     if (!raw) return null;
     const entry = JSON.parse(raw) as CacheEntry<T>;
     mem.set(key, entry as CacheEntry<unknown>);
+    logRealtimeEvent("cache", "stale-hit", { key, layer: "disk" });
     return entry.value;
   } catch {
+    logRealtimeEvent("cache", "miss", { key, layer: "disk", reason: "stale-read-error" });
     return null;
   }
 }
@@ -122,6 +136,7 @@ export async function cacheGetStale<T>(key: string): Promise<T | null> {
 export function cachePeekStale<T>(key: string): T | null {
   const inMem = mem.get(key);
   if (!inMem) return null;
+  logRealtimeEvent("cache", "peek-hit", { key, layer: "memory" });
   return inMem.value as T;
 }
 
@@ -155,14 +170,17 @@ export async function cacheWarmup(keys: string[]): Promise<void> {
   const storageKeys = keys.map(storageKey);
   try {
     const pairs = await AsyncStorage.multiGet(storageKeys);
+    let warmed = 0;
     for (const [rawKey, rawValue] of pairs) {
       if (!rawValue) continue;
       const logicalKey = rawKey.startsWith(PREFIX) ? rawKey.slice(PREFIX.length) : rawKey;
       try {
         const entry = JSON.parse(rawValue) as CacheEntry<unknown>;
         mem.set(logicalKey, entry);
+        warmed += 1;
       } catch {}
     }
+    logRealtimeEvent("cache", "warmup", { requested: keys.length, warmed });
   } catch {}
 }
 

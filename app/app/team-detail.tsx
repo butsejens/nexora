@@ -10,14 +10,13 @@ import { useQuery } from "@tanstack/react-query";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { COLORS } from "@/constants/colors";
 import { NexoraCollapsingHeader } from "@/components/layout/NexoraCollapsingHeader";
-import { apiRequest } from "@/lib/query-client";
-import { enrichTeamDetailPayload } from "@/lib/sports-enrichment";
 import { normalizeApiError } from "@/lib/error-messages";
 import { TeamLogo } from "@/components/TeamLogo";
 import { StateBlock } from "@/components/ui/PremiumPrimitives";
 import { useFollowState } from "@/context/UserStateContext";
 import { useTranslation } from "@/lib/useTranslation";
 import { t as tFn } from "@/lib/i18n";
+import { getTeamOverview, sportKeys } from "@/lib/services/sports-service";
 import {
   getBestCachedOrSeedPlayerImage,
   resolvePlayerImageUri,
@@ -96,7 +95,7 @@ function positionLabel(pos: string, positionName?: string): string {
 
 export default function TeamDetailScreen() {
   const params = useLocalSearchParams<{
-    teamId: string; teamName: string; logo?: string; sport?: string; league?: string; espnLeague?: string;
+    teamId: string; teamName: string; logo?: string; sport?: string; league?: string; espnLeague?: string; countryCode?: string;
   }>();
   const teamIdParam = asParam(params.teamId, "");
   const teamNameParam = asParam(params.teamName, "Team");
@@ -104,6 +103,7 @@ export default function TeamDetailScreen() {
   const sportParam = asParam(params.sport, "soccer");
   const espnLeagueParam = asParam(params.espnLeague, "");
   const leagueParam = asParam(params.league, "eng.1");
+  const countryCodeParam = asParam(params.countryCode, "");
   const insets = useSafeAreaInsets();
   const { isFollowingTeam, followTeamAction, unfollowTeamAction } = useFollowState();
   const { t } = useTranslation();
@@ -178,13 +178,16 @@ export default function TeamDetailScreen() {
   const league = espnLeagueParam || leagueParam || "eng.1";
 
   const { data, isLoading, error, refetch } = useQuery<TeamDetailData>({
-    queryKey: ["team-detail", teamIdParam, sport, league],
+    queryKey: sportKeys.team({ teamId: teamIdParam, sport, league, countryCode: countryCodeParam }),
     queryFn: async () => {
       if (!teamIdParam) throw new Error("Team ID ontbreekt");
-      const tn = encodeURIComponent(String(teamNameParam || ""));
-      const res = await apiRequest("GET", `/api/sports/team/${encodeURIComponent(teamIdParam)}?sport=${encodeURIComponent(sport)}&league=${encodeURIComponent(league)}&teamName=${tn}`);
-      const json = (await res.json()) as TeamDetailData;
-      return enrichTeamDetailPayload(json) as TeamDetailData;
+      return await getTeamOverview({
+        teamId: teamIdParam,
+        sport,
+        league,
+        teamName: teamNameParam,
+        countryCode: countryCodeParam || undefined,
+      }) as TeamDetailData;
     },
     staleTime: 5 * 60 * 1000,
     gcTime: 30 * 60 * 1000,

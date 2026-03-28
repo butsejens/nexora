@@ -49,30 +49,34 @@ export default function PremiumScreen() {
   // Show loading state
   if (premium.authState === "loading") {
     return (
-      <View style={{ flex: 1, backgroundColor: COLORS.background, justifyContent: "center", alignItems: "center" }}>
+      <LinearGradient colors={[COLORS.background, "#1a1a2e"]} style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
         <ActivityIndicator size="large" color={COLORS.accent} />
-        <Text style={{ marginTop: 16, color: COLORS.text, fontFamily: "Inter_600SemiBold" }}>Loading Premium...</Text>
-      </View>
+      </LinearGradient>
     );
   }
 
-  // Show authenticated user the settings hub
+  // Show authenticated settings hub
   return (
-    <View style={{ flex: 1 }}>
+    <View style={styles.container}>
       <PremiumSettingsHub onLogout={handleLogout} />
 
-      {/* Premium Paywall Modal */}
-      <EnhancedPaywall
-        visible={showPaywall}
-        onDismiss={() => setShowPaywall(false)}
-        onUpgradeSuccess={handlePremiumUpgradeSuccess}
-      />
+      {/* Paywall Modal */}
+      <EnhancedPaywall visible={showPaywall} onDismiss={() => setShowPaywall(false)} />
 
       {/* Free Unlock Modal */}
       <FreeUnlockModal
         visible={showFreeUnlock}
         onDismiss={() => setShowFreeUnlock(false)}
+        onUnlocked={() => {
+          // Handle unlock success
+          premium.handleUnlocked();
+        }}
+        isPremium={premium.isPremium}
       />
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  container: { flex: 1 },
+});

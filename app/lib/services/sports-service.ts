@@ -21,7 +21,6 @@ import {
   normalizeCompetitionId,
   normalizePlayer,
   normalizeTeam,
-  normalizeStanding,
   type NormalizedLeaderboardRow,
 } from "@/lib/domain/normalizers";
 import { deduplicateLeaderboard } from "@/lib/domain/identity-resolver";
@@ -34,12 +33,9 @@ import type {
   MatchStats,
   MatchAnalysisInput,
   TeamStanding,
-  Competition,
   CompetitionId,
   Player,
   Team,
-  FollowedTeam,
-  FollowedMatch,
 } from "@/lib/domain/models";
 
 // ─── Shared helpers ───────────────────────────────────────────────────────────
@@ -142,7 +138,7 @@ function normalizeSportsHomePayload(raw: any): SportsHomeData {
     })),
   );
 
-  const toMatches = (bucket: Array<{ id?: unknown }>): Match[] => {
+  const toMatches = (bucket: { id?: unknown }[]): Match[] => {
     return bucket
       .map((row) => byId.get(String(row?.id || "")))
       .filter(Boolean) as Match[];
@@ -401,22 +397,6 @@ function buildAnalysisInput(
   };
 }
 
-// ─── AI prediction ────────────────────────────────────────────────────────────
-
-export async function predictMatch(matchId: string): Promise<any> {
-  return safeFetch(`/api/sports/predict`, null);
-}
-
-export async function requestMatchPrediction(input: MatchAnalysisInput): Promise<any> {
-  try {
-    const res = await apiRequest("POST", "/api/sports/predict", input);
-    if (!res.ok) return null;
-    return res.json();
-  } catch {
-    return null;
-  }
-}
-
 // ─── React Query key factories ────────────────────────────────────────────────
 // Central place for all sports query keys — prevents key collisions between screens.
 
@@ -435,5 +415,4 @@ export const sportKeys = {
   player: (playerId: string) => ["sports", "player", playerId] as const,
   matchDetail: (params: { matchId: string; espnLeague?: string; sport?: string }) => ["sports", "match", params.matchId, params.sport || "soccer", params.espnLeague || "default"] as const,
   matchStream: (params: { matchId: string; espnLeague?: string }) => ["sports", "match-stream", params.matchId, params.espnLeague || "default"] as const,
-  predict: (matchId: string) => ["sports", "predict", matchId] as const,
 } as const;

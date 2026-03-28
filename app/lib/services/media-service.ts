@@ -14,10 +14,7 @@ import { apiRequest } from "@/lib/query-client";
 import {
   normalizeMovieFromTmdb,
   normalizeSeriesFromTmdb,
-  normalizeEpisodeFromTmdb,
   normalizeTrailerFromServer,
-  normalizeWatchHistoryItem,
-  normalizeWatchProgress,
 } from "@/lib/domain/normalizers";
 import { dedupeVodItems } from "@/lib/vod-curation";
 import {
@@ -28,15 +25,8 @@ import {
 import type {
   Movie,
   Series,
-  Season,
-  Episode,
   Trailer,
-  RecommendationItem,
-  WatchProgress,
-  WatchHistoryItem,
-  MediaId,
   StreamSource,
-  Title,
 } from "@/lib/domain/models";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -126,10 +116,10 @@ function mapTrendingRail<T extends Movie | Series>(items: any[], normalizer: (it
   return (Array.isArray(items) ? items : []).map((item) => enforceMetadataOnly(normalizer(item)));
 }
 
-function buildVodItems(items: any[], type: "movie" | "series"): VodModuleItem[] {
+function buildVodItems(items: any[], type?: "movie" | "series"): VodModuleItem[] {
   return dedupeModuleItems(
     (Array.isArray(items) ? items : [])
-      .map((item) => enrichVodModuleItem({ ...item, type }))
+      .map((item) => enrichVodModuleItem(type ? { ...item, type } : item))
       .filter((item) => Boolean(item.title))
   );
 }
@@ -317,7 +307,7 @@ export async function getVodCatalogChunk(cursorYear?: number | null): Promise<Vo
   if (cursorYear) params.set("cursorYear", String(cursorYear));
   const payload = await safeFetch<any>(`/api/vod/catalog?${params.toString()}`, {});
   return {
-    items: buildVodItems(payload?.items || [], "movie"),
+    items: buildVodItems(payload?.items || []),
     meta: payload?.meta,
   };
 }

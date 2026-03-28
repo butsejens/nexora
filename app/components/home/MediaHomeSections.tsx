@@ -13,9 +13,9 @@ import { Ionicons } from "@expo/vector-icons";
 import { RealContentCard } from "@/components/RealContentCard";
 import { COLORS } from "@/constants/colors";
 import { useNexora } from "@/context/NexoraContext";
-import { apiRequest } from "@/lib/query-client";
 import { buildMoodRecommendations, createContinueWatching, type VodMood } from "@/lib/vod-curation";
 import { enrichVodModuleItem, type VodModuleItem } from "@/lib/vod-module";
+import { buildMediaSectionsQuery } from "@/services/realtime-engine";
 
 type MediaHomeSectionsProps = {
   title?: string;
@@ -28,41 +28,6 @@ type MediaPayload = {
   trendingSeries: VodModuleItem[];
   catalogPicks: VodModuleItem[];
 };
-
-async function fetchJson(path: string) {
-  const response = await apiRequest("GET", path);
-  return response.json();
-}
-
-async function fetchMediaPayload(): Promise<MediaPayload> {
-  const [movieData, seriesData, catalogData] = await Promise.all([
-    fetchJson("/api/movies/trending"),
-    fetchJson("/api/series/trending"),
-    fetchJson("/api/vod/catalog?type=all&years=30&chunkYears=4&pagesPerYear=1"),
-  ]);
-
-  const trendingMovies = [
-    ...(Array.isArray(movieData?.trending) ? movieData.trending : []),
-    ...(Array.isArray(movieData?.popular) ? movieData.popular : []),
-  ]
-    .slice(0, 18)
-    .map((item: any) => enrichVodModuleItem({ ...item, type: "movie", isTrending: true }));
-
-  const trendingSeries = [
-    ...(Array.isArray(seriesData?.trending) ? seriesData.trending : []),
-    ...(Array.isArray(seriesData?.popular) ? seriesData.popular : []),
-  ]
-    .slice(0, 18)
-    .map((item: any) => enrichVodModuleItem({ ...item, type: "series", isTrending: true }));
-
-  return {
-    trendingMovies,
-    trendingSeries,
-    catalogPicks: (Array.isArray(catalogData?.items) ? catalogData.items : [])
-      .slice(0, 24)
-      .map((item: any) => enrichVodModuleItem(item)),
-  };
-}
 
 function SectionTitle({ title }: { title: string }) {
   return (
@@ -138,14 +103,7 @@ function MediaRail({
 export function MediaHomeSections({ title = "Entertainment for you", compact = false, sportsMood = "fun" }: MediaHomeSectionsProps) {
   const { isFavorite, toggleFavorite, watchHistory } = useNexora();
 
-  const mediaQuery = useQuery({
-    queryKey: ["home", "media-sections"],
-    queryFn: fetchMediaPayload,
-    staleTime: 10 * 60 * 1000,
-    gcTime: 20 * 60 * 1000,
-    retry: 1,
-    refetchOnMount: false,
-  });
+  const mediaQuery = useQuery<MediaPayload>(buildMediaSectionsQuery());
 
   const continueWatching = useMemo(() => {
     const movieRows = createContinueWatching(watchHistory as any, "movie", 8);

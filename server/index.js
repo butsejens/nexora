@@ -4230,132 +4230,6 @@ function normalizeOutcome(value) {
   return "";
 }
 
-function parseAiPredictionToUiShape(raw) {
-  const parsed = typeof raw === "string" ? tryParseJSON(raw) : raw;
-  if (!parsed || typeof parsed !== "object") {
-    const e = new Error("AI gaf geen geldige JSON terug");
-    e.statusCode = 502;
-    throw e;
-  }
-
-  const outcome = normalizeOutcome(parsed.result || parsed.prediction || parsed.outcome);
-  if (!outcome) {
-    const e = new Error("AI output mist prediction/result");
-    e.statusCode = 502;
-    throw e;
-  }
-
-  const confidence = clamp(Math.round(toNumber(parsed.confidence, 58)), 1, 99);
-
-  let homePct = Math.round(toNumber(parsed.homePct, NaN));
-  let drawPct = Math.round(toNumber(parsed.drawPct, NaN));
-  let awayPct = Math.round(toNumber(parsed.awayPct, NaN));
-
-  if (!Number.isFinite(homePct) || !Number.isFinite(drawPct) || !Number.isFinite(awayPct)) {
-    const base = Math.max(40, Math.min(85, confidence));
-    if (outcome === "Home Win") {
-      homePct = base;
-      drawPct = Math.max(8, 100 - base - 15);
-      awayPct = 100 - homePct - drawPct;
-    } else if (outcome === "Away Win") {
-      awayPct = base;
-      drawPct = Math.max(8, 100 - base - 15);
-      homePct = 100 - awayPct - drawPct;
-    } else {
-      drawPct = Math.max(35, Math.min(55, base));
-      homePct = Math.round((100 - drawPct) / 2);
-      awayPct = 100 - drawPct - homePct;
-    }
-  }
-
-  const scoreline = parsed.predictedScore || parsed.scoreline || parsed.score || null;
-  const reasoning = parsed.summary || parsed.reasoning || null;
-  const riskLevel =
-    parsed.riskLevel || parsed.risk || (confidence >= 65 ? "Low" : confidence >= 54 ? "Medium" : "High");
-  const bothTeamsToScorePct = clamp(Math.round(toNumber(parsed.bothTeamsToScorePct ?? parsed.bttsPct, 0)), 0, 100);
-  const over25Pct = clamp(Math.round(toNumber(parsed.over25Pct ?? parsed.over2_5Pct ?? parsed.over25Probability, 0)), 0, 100);
-  const edgeScore = clamp(Math.round(toNumber(parsed.edgeScore, confidence)), 0, 100);
-
-  const normalizedPct = normalizeThreeWayPercentages(homePct, drawPct, awayPct);
-
-  return {
-    prediction: outcome,
-    confidence,
-    predictedScore: scoreline,
-    xgHome: parsed.xgHome ?? parsed.xg_home ?? null,
-    xgAway: parsed.xgAway ?? parsed.xg_away ?? null,
-    homePct: normalizedPct.homePct,
-    drawPct: normalizedPct.drawPct,
-    awayPct: normalizedPct.awayPct,
-    bothTeamsToScorePct,
-    over25Pct,
-    doubleChanceHomePct: clamp(normalizedPct.homePct + normalizedPct.drawPct, 0, 100),
-    doubleChanceAwayPct: clamp(normalizedPct.awayPct + normalizedPct.drawPct, 0, 100),
-    edgeScore,
-    confidenceReason: parsed.confidenceReason || null,
-    modelVersion: parsed.modelVersion || "ai-v2",
-    momentum: parsed.momentum || null,
-    danger: parsed.danger || null,
-    riskLevel,
-    summary: reasoning,
-    keyFactors: Array.isArray(parsed.keyFactors) ? parsed.keyFactors : [],
-    tacticalNotes: Array.isArray(parsed.tacticalNotes) ? parsed.tacticalNotes : [],
-    h2hSummary: parsed.h2hSummary || null,
-    formHome: parsed.formHome || null,
-    formAway: parsed.formAway || null,
-    tip: parsed.tip || null,
-    // Enhanced analysis fields
-    matchInsight: parsed.matchInsight || null,
-    formGuide: parsed.formGuide && typeof parsed.formGuide === "object" ? parsed.formGuide : null,
-    tacticalEdge: parsed.tacticalEdge && typeof parsed.tacticalEdge === "object" ? parsed.tacticalEdge : null,
-    attackingStrength: parsed.attackingStrength && typeof parsed.attackingStrength === "object" ? {
-      home: clamp(Math.round(toNumber(parsed.attackingStrength.home, 50)), 0, 100),
-      away: clamp(Math.round(toNumber(parsed.attackingStrength.away, 50)), 0, 100),
-    } : null,
-    defensiveStrength: parsed.defensiveStrength && typeof parsed.defensiveStrength === "object" ? {
-      home: clamp(Math.round(toNumber(parsed.defensiveStrength.home, 50)), 0, 100),
-      away: clamp(Math.round(toNumber(parsed.defensiveStrength.away, 50)), 0, 100),
-    } : null,
-    playerImpact: Array.isArray(parsed.playerImpact) ? parsed.playerImpact.slice(0, 3) : null,
-    matchPattern: parsed.matchPattern || null,
-    predictionExplanation: parsed.predictionExplanation || parsed.predictionExplanation || null,
-    nextGoalProbability: parsed.nextGoalProbability != null ? clamp(Math.round(toNumber(parsed.nextGoalProbability, 0)), 0, 100) : null,
-    formation: parsed.formation || null,
-    pressureIndex: parsed.pressureIndex != null ? clamp(Math.round(toNumber(parsed.pressureIndex, 0)), 0, 100) : null,
-    source: "ai",
-    updatedAt: new Date().toISOString(),
-  };
-}
-
-function normalizeAiProviderError(error) {
-  const msg = String(error?.message || "").toLowerCase();
-  const details = JSON.stringify(error?.details || {}).toLowerCase();
-  const all = `${msg} ${details}`;
-
-  const e = new Error("AI analyse tijdelijk niet beschikbaar. Probeer later opnieuw.");
-  e.statusCode = Number(error?.statusCode || 502);
-
-  if (all.includes("insufficient balance") || all.includes("insufficient_quota") || all.includes("quota") || all.includes("credit")) {
-    e.message = "AI provider saldo/quota is op. Gebruik een gratis provider (Ollama lokaal/OpenRouter free/Groq free) of vul tegoed aan.";
-    e.statusCode = 402;
-    return e;
-  }
-
-  if (all.includes("invalid api key") || all.includes("unauthorized") || all.includes("401")) {
-    e.message = "AI API key ongeldig. Controleer je provider keys (DEEPSEEK/OPENAI/OPENROUTER/GROQ).";
-    e.statusCode = 401;
-    return e;
-  }
-
-  if (all.includes("ollama") || all.includes("econnrefused") || all.includes("not reachable") || all.includes("aborterror")) {
-    e.message = "Lokale Ollama is niet bereikbaar. Start Ollama of gebruik een cloud AI-key.";
-    e.statusCode = 503;
-    return e;
-  }
-
-  return e;
-}
-
 function toNum(v) {
   if (typeof v === "number") return Number.isFinite(v) ? v : 0;
   if (typeof v === "string") {
@@ -4716,202 +4590,6 @@ function findTopScorerByTeam(rows, teamName) {
       return rowKey && (rowKey === teamKey || rowKey.includes(teamKey) || teamKey.includes(rowKey));
     })
     .sort((a, b) => Number(b?.goals || 0) - Number(a?.goals || 0))[0] || null;
-}
-
-async function enrichPredictPayloadContext(payload) {
-  const base = payload && typeof payload === "object" ? payload : {};
-  const leagueName = normalizeLeagueName(base?.league || "");
-  const homeTeam = String(base?.homeTeam || "");
-  const awayTeam = String(base?.awayTeam || "");
-  const context = base?.context && typeof base.context === "object" ? { ...base.context } : {};
-  const leagueToken = String(base?.espnLeague || base?.league || "").toLowerCase();
-  const international = /fifa|nations|international|friendly|world cup|euro/.test(leagueToken);
-
-  if (!leagueName || !homeTeam || !awayTeam) {
-    return { ...base, context };
-  }
-
-  const needStandings = !(context.homeRank || context.awayRank || context.homePoints || context.awayPoints || context.homeGoalDiff || context.awayGoalDiff);
-  const needScorers = !(context.homeTopScorerGoals || context.awayTopScorerGoals);
-
-  const season = seasonForDate(new Date());
-  const standingsKey = `predict_ctx_standings_${leagueName}_${season}`;
-  const scorersKey = `predict_ctx_scorers_${leagueName}_${season}`;
-
-  const [standingsRows, scorersRows] = await Promise.all([
-    needStandings
-      ? getOrFetch(standingsKey, 5 * 60_000, async () => {
-          const raw = await espnStandings(leagueName);
-          return mapEspnStandings(raw);
-        }).catch(() => [])
-      : Promise.resolve([]),
-    needScorers
-      ? getOrFetch(scorersKey, 5 * 60_000, async () => {
-          const raw = await espnTopScorers(leagueName);
-          return mapEspnTopScorers(raw);
-        }).catch(() => [])
-      : Promise.resolve([]),
-  ]);
-
-  const homeStanding = needStandings ? findTeamRowByName(standingsRows, homeTeam) : null;
-  const awayStanding = needStandings ? findTeamRowByName(standingsRows, awayTeam) : null;
-  const homeTopScorer = needScorers ? findTopScorerByTeam(scorersRows, homeTeam) : null;
-  const awayTopScorer = needScorers ? findTopScorerByTeam(scorersRows, awayTeam) : null;
-
-  return {
-    ...base,
-    context: {
-      ...context,
-      homeRank: context.homeRank ?? homeStanding?.rank ?? null,
-      awayRank: context.awayRank ?? awayStanding?.rank ?? null,
-      homePoints: context.homePoints ?? homeStanding?.points ?? null,
-      awayPoints: context.awayPoints ?? awayStanding?.points ?? null,
-      homeGoalDiff: context.homeGoalDiff ?? homeStanding?.goalDiff ?? null,
-      awayGoalDiff: context.awayGoalDiff ?? awayStanding?.goalDiff ?? null,
-      homeTopScorer: context.homeTopScorer ?? homeTopScorer?.name ?? null,
-      awayTopScorer: context.awayTopScorer ?? awayTopScorer?.name ?? null,
-      homeTopScorerGoals: context.homeTopScorerGoals ?? homeTopScorer?.goals ?? null,
-      awayTopScorerGoals: context.awayTopScorerGoals ?? awayTopScorer?.goals ?? null,
-      competitionContext: context.competitionContext ?? base?.league ?? null,
-      isInternational: context.isInternational ?? international,
-      homeLineupCertainty: context.homeLineupCertainty ?? null,
-      awayLineupCertainty: context.awayLineupCertainty ?? null,
-    },
-  };
-}
-
-async function aiPredictMatch(payload) {
-  const enrichedPayload = await enrichPredictPayloadContext(payload);
-  const hasAnyProvider = Boolean(
-    process.env.OLLAMA_MODEL ||
-    process.env.DEEPSEEK_API_KEY ||
-    process.env.OPENROUTER_API_KEY ||
-    process.env.GROQ_API_KEY ||
-    process.env.OPENAI_API_KEY ||
-    process.env.GEMINI_API_KEY
-  );
-
-  // Zilliz cache check – skip for live matches (status=live) as they change rapidly
-  const isLive = String(enrichedPayload?.status || "").toLowerCase() === "live";
-  const liveMinuteBucket = isLive ? Math.floor(Number(enrichedPayload?.minute || 0) / 2) : 0;
-  const predSnapshot = {
-    homeTeam: String(enrichedPayload?.homeTeam || "").trim().toLowerCase(),
-    awayTeam: String(enrichedPayload?.awayTeam || "").trim().toLowerCase(),
-    league: String(enrichedPayload?.league || "").trim().toLowerCase(),
-    status: String(enrichedPayload?.status || "").trim().toLowerCase(),
-    homeScore: Number(enrichedPayload?.homeScore || 0),
-    awayScore: Number(enrichedPayload?.awayScore || 0),
-    minuteBucket: liveMinuteBucket,
-    context: enrichedPayload?.context || {},
-  };
-  const predHash = crypto.createHash("sha1").update(JSON.stringify(predSnapshot)).digest("hex");
-  const predCacheKey = `ai_predict_${predHash}`;
-  const predInflightKey = `inflight_${predCacheKey}`;
-  const localTtlMs = isLive ? 15_000 : 5 * 60_000;
-
-  const localCached = cacheGet(predCacheKey);
-  if (localCached) {
-    return { ...localCached, fromCache: true };
-  }
-
-  const existingPrediction = __inflight.get(predInflightKey);
-  if (existingPrediction) return existingPrediction;
-
-  const homeTeam = String(enrichedPayload?.homeTeam || "");
-  const awayTeam = String(enrichedPayload?.awayTeam || "");
-  const league = String(enrichedPayload?.league || "");
-  const zPredKey = `${homeTeam}_vs_${awayTeam}_${league}`;
-  if (!isLive && _zillizReady) {
-    const zCached = await zillizGet("match_prediction", zPredKey);
-    if (zCached?.prediction) {
-      cacheSet(predCacheKey, zCached, localTtlMs);
-      return { ...zCached, fromCache: true };
-    }
-  }
-
-  if (!hasAnyProvider) {
-    const fallback = deterministicPrediction(enrichedPayload);
-    cacheSet(predCacheKey, fallback, isLive ? 8_000 : 90_000);
-    return fallback;
-  }
-
-  const sys = {
-    role: "system",
-    content:
-      "Je bent een elite voetbalanalist met Opta-niveau expertise in xG-modellen, tactische formaties, pressing-systemen, kaartanalyse en alle Europese competities. Je combineert statistische data met diepgaande tactische kennis van bekende clubs, hun spelsystemen en huidige vormlijn. Voor live wedstrijden: analyseer momentum, recente kansen en drukzones uit de laatste 15 minuten. Anti-cheat: gebruik UITSLUITEND de aangeleverde data als feitenbasis; vul ontbrekende velden aan met realistische voetbalkennis. Antwoord ENKEL met geldig JSON zonder extra tekst of markdown.",
-  };
-  const user = {
-    role: "user",
-    content:
-      "Analyseer deze voetbalwedstrijd grondig en geef een complete tactische en statistische analyse.\n\nANALYSE-REGELS:\n- Rode kaarten: geef groot nadeel in percentages (verlies minstens 12-18% kans)\n- Live wedstrijden: gebruik exact de huidige score, minuut en recente events als primaire signaalbron\n- Momentum: analyseer welk team de laatste 15 min domineert op basis van events/schoten\n- Gele kaarten stapelen: verhoog riskLevel bij 3+ gele kaarten per team\n- Thuisvoordeel: geef 3-5% extra bij gelijke kansen\n- Gebruik je voetbalkennis voor formHome/formAway en h2hSummary als data ontbreekt\n- Bij bekende clubs (CL, Premier League, etc.): gebruik realistische formaties en sterkhouders\n\nOutput ALLEEN geldig JSON met EXACT deze keys:\n- prediction: \"Home Win\" | \"Away Win\" | \"Draw\"\n- confidence: 0-100\n- predictedScore: \"X-Y\"\n- homePct: 0-100\n- drawPct: 0-100\n- awayPct: 0-100 (som moet exact 100 zijn)\n- xgHome: decimaal xG of null\n- xgAway: decimaal xG of null\n- nextGoalProbability: kans op doelpunt komende 15 min (0-100) of null\n- bothTeamsToScorePct: 0-100\n- over25Pct: kans op meer dan 2.5 doelpunten (0-100)\n- edgeScore: statistische voordeel score (0-100)\n- confidenceReason: maximaal 1 zin waarom deze confidence\n- summary: tactische analyse 3-4 zinnen Nederlands (benoem rode kaarten, dominantie, kansen)\n- keyFactors: array van max 5 strings (score/kaarten/schoten/pressing/momentum in volgorde van impact)\n- tacticalNotes: array van max 4 strings Nederlands (formatie-inzichten, zwakke zones, sleutelduels)\n- momentum: \"Home\" | \"Away\" | \"Balanced\"\n- danger: \"Home Attack\" | \"Away Attack\" | \"Balanced\"\n- riskLevel: \"Low\" | \"Medium\" | \"High\"\n- tip: concrete wedtip 1 zin Nederlands (bv. Asian Handicap, goalline, of correct score)\n- h2hSummary: samenvatting onderlinge duels of null\n- formHome: recentste 5 resultaten thuisploeg \"WWDLL\" of null\n- formAway: recentste 5 resultaten uitploeg \"LWWDL\" of null\n- formation: opstelling-inzicht bv \"4-3-3 vs 4-4-2\" of null\n- pressureIndex: pressing-intensiteit van thuisploeg (0-100) of null\n- doubleChanceHomePct: kans 1X (0-100)\n- doubleChanceAwayPct: kans X2 (0-100)\n\nNIEUWE VELDEN (alle verplicht, gebruik je voetbalkennis):\n- matchInsight: 2-3 zinnen Nederlands over het belang/context van deze wedstrijd (stand in competitie, motivatie, reeks)\n- formGuide: object met { homeForm: string beschrijving 2 zinnen van thuisploeg vorm, awayForm: string beschrijving 2 zinnen van uitploeg vorm }\n- tacticalEdge: object met { homeStrengths: array max 3 strings, homeWeaknesses: array max 3 strings, awayStrengths: array max 3 strings, awayWeaknesses: array max 3 strings }\n- attackingStrength: object met { home: 0-100 score, away: 0-100 score }\n- defensiveStrength: object met { home: 0-100 score, away: 0-100 score }\n- playerImpact: array max 3 objecten { name: string, team: \"home\"|\"away\", impact: string 1 zin } of null als geen info beschikbaar\n- matchPattern: 1 zin Nederlands over verwacht wedstrijdverloop (bv. \"Open begin met thuisdruk, gevolgd door counter-aanvallen\")\n- predictionExplanation: 2-3 zinnen Nederlands met duidelijke onderbouwing waarom dit de voorspelling is\n\nINPUT:\n" +
-      JSON.stringify(enrichedPayload, null, 2),
-  };
-
-  const providers = [];
-  if (process.env.GROQ_API_KEY) {
-    providers.push({ name: "groq", run: () => groqChat([sys, user], { temperature: 0.35 }) });
-  }
-  if (process.env.OPENROUTER_API_KEY) {
-    providers.push({ name: "openrouter", run: () => openrouterChat([sys, user], { temperature: 0.35 }) });
-  }
-  if (process.env.OPENAI_API_KEY) {
-    providers.push({ name: "openai", run: () => openaiChat([sys, user], { temperature: 0.35 }) });
-  }
-  if (process.env.DEEPSEEK_API_KEY) {
-    providers.push({ name: "deepseek", run: () => deepseekChat([sys, user], { temperature: 0.35 }) });
-  }
-  if (process.env.GEMINI_API_KEY) {
-    providers.push({ name: "gemini", run: () => geminiChat([sys, user], { temperature: 0.35 }) });
-  }
-  if (process.env.XAI_API_KEY) {
-    providers.push({ name: "grok", run: () => xaiChat([sys, user], { temperature: 0.35 }) });
-  }
-  if (process.env.OLLAMA_MODEL) {
-    providers.push({ name: "ollama", run: () => ollamaChat([sys, user], { temperature: 0.35 }) });
-  }
-
-  const predictionTask = (async () => {
-    let lastError = null;
-    for (const provider of providers) {
-      try {
-        const raw = await Promise.race([
-          provider.run(),
-          new Promise((_, reject) => setTimeout(() => reject(new Error(`Provider timeout: ${provider.name}`)), 4500)),
-        ]);
-        const parsed = parseAiPredictionToUiShape(raw);
-        const result = {
-          ...parsed,
-          source: `ai-${provider.name}`,
-          updatedAt: new Date().toISOString(),
-        };
-        cacheSet(predCacheKey, result, localTtlMs);
-        // Cache AI prediction in Zilliz (only for non-live, finished/upcoming matches)
-        if (!isLive) {
-          zillizPut("match_prediction", zPredKey, result); // async, best-effort
-        }
-        return result;
-      } catch (e) {
-        lastError = e;
-      }
-    }
-
-    const normalized = normalizeAiProviderError(lastError);
-    console.warn(`[ai] all providers failed: ${normalized.message}`);
-    const fallback = {
-      ...deterministicPrediction(enrichedPayload),
-      source: "fallback-stats",
-      providerError: normalized.message,
-    };
-    cacheSet(predCacheKey, fallback, isLive ? 8_000 : 90_000);
-    return fallback;
-  })();
-
-  __inflight.set(predInflightKey, predictionTask);
-  try {
-    return await predictionTask;
-  } finally {
-    __inflight.delete(predInflightKey);
-  }
 }
 
 // -----------------------------
@@ -7227,6 +6905,7 @@ app.get("/api/sports/team/:teamId", async (req, res) => {
   const teamId = String(req.params.teamId);
   const espnLeague = String(req.query?.league || "eng.1");
   const teamNameFromQuery = String(req.query?.teamName || "").trim();
+  const countryCodeFromQuery = String(req.query?.countryCode || "").trim().toUpperCase();
   const season = seasonForDate(new Date());
   const key = `team_${teamId}_${season}_${espnLeague}`;
 
@@ -7252,11 +6931,54 @@ app.get("/api/sports/team/:teamId", async (req, res) => {
         nigeria: "657", ireland: "8702",
       };
 
+      const NATIONAL_TEAM_IDS_BY_CODE = {
+        AT: "474",
+        AU: "628",
+        BE: "459",
+        BR: "205",
+        CA: "206",
+        CH: "475",
+        CZ: "7802",
+        DE: "481",
+        DK: "376",
+        DZ: "624",
+        EC: "209",
+        EG: "2620",
+        EN: "448",
+        ES: "164",
+        FR: "478",
+        GB: "448",
+        IE: "8702",
+        IR: "469",
+        IT: "162",
+        JP: "627",
+        KR: "451",
+        MA: "2869",
+        MX: "203",
+        NL: "449",
+        NO: "464",
+        NZ: "2666",
+        PL: "7820",
+        PT: "482",
+        RO: "7822",
+        SA: "655",
+        SCO: "580",
+        SE: "7824",
+        SN: "654",
+        TR: "10010",
+        TN: "659",
+        UA: "7827",
+        US: "660",
+        UY: "212",
+        UZ: "2570",
+        WA: "7825",
+      };
+
       if (teamId.startsWith("name:")) {
         const rawName = decodeURIComponent(teamId.replace(/^name:/, "")).toLowerCase();
 
         // Try direct national team ID mapping first
-        const nationalId = NATIONAL_TEAM_IDS[rawName];
+        const nationalId = NATIONAL_TEAM_IDS[rawName] || (countryCodeFromQuery ? NATIONAL_TEAM_IDS_BY_CODE[countryCodeFromQuery] : undefined);
         if (nationalId && espnLeague.includes("fifa")) {
           resolvedTeamId = nationalId;
         } else {
@@ -7271,7 +6993,7 @@ app.get("/api/sports/team/:teamId", async (req, res) => {
             .map((t) => t?.team || t)
             .find((t) => {
               const n = String(t?.displayName || t?.name || "").toLowerCase();
-              return n === rawName || n.includes(rawName) || rawName.includes(n);
+              return n === rawName || (rawName.length >= 5 && (n.startsWith(rawName) || rawName.startsWith(n)));
             });
           if (found?.id) resolvedTeamId = String(found.id);
         }
@@ -7289,7 +7011,7 @@ app.get("/api/sports/team/:teamId", async (req, res) => {
           const fallbackTeams = fallbackJson?.sports?.[0]?.leagues?.[0]?.teams || fallbackJson?.teams || [];
           const match = fallbackTeams.map((t) => t?.team || t).find((t) => {
             const n = String(t?.displayName || t?.name || "").toLowerCase();
-            return n === rawName || n.includes(rawName) || rawName.includes(n);
+            return n === rawName || (rawName.length >= 5 && (n.startsWith(rawName) || rawName.startsWith(n)));
           });
           if (match?.id) resolvedTeamId = String(match.id);
         } catch {}
@@ -7874,17 +7596,6 @@ app.get("/api/sports/player/:playerId", async (req, res) => {
     res.json(payload);
   } catch (e) {
     res.status(200).json({ error: String(e?.message || e) });
-  }
-});
-
-// AI predict endpoint used by app
-app.post("/api/sports/predict", async (req, res) => {
-  try {
-    const prediction = await aiPredictMatch(req.body || {});
-    res.json(prediction);
-  } catch (e) {
-    // still respond 200 so UI doesn't spin forever
-    res.status(200).json({ prediction: null, error: String(e?.message || e), code: Number(e?.statusCode || 500) });
   }
 });
 

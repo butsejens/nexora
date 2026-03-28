@@ -17,8 +17,18 @@ import { NexoraHeader } from "@/components/NexoraHeader";
 import { RealContentCard, RealHeroBanner } from "@/components/RealContentCard";
 import { COLORS } from "@/constants/colors";
 import { useNexora } from "@/context/NexoraContext";
-import { apiRequest } from "@/lib/query-client";
+import { useRenderTelemetry } from "@/hooks/useRenderTelemetry";
 import { SafeHaptics } from "@/lib/safeHaptics";
+import {
+  getMovieFull,
+  getSeriesFull,
+  getVodCatalogChunk,
+  getVodCollections,
+  getVodHomePayload,
+  getVodStudios,
+  mediaKeys,
+  searchMedia,
+} from "@/lib/services/media-service";
 import { buildMoodRecommendations, createContinueWatching } from "@/lib/vod-curation";
 import {
   buildCategoryRails,
@@ -26,54 +36,22 @@ import {
   buildStudioGroups,
   enrichVodModuleItem,
   filterBySearchFilter,
-  pickFeaturedItem,
   type VodCollectionGroup,
   type VodModuleItem,
   type VodModulePane,
   type VodSearchFilter,
   type VodStudioGroup,
 } from "@/lib/vod-module";
-import { withTimeout } from "@/lib/utils";
+import {
+  buildVodCatalogRootQuery,
+  buildVodCollectionsQuery,
+  buildVodHomeQuery,
+  buildVodStudiosQuery,
+} from "@/services/realtime-engine";
 
 type VodModuleHubProps = {
   initialPane?: VodModulePane;
   initialFilter?: VodSearchFilter;
-};
-
-type HomePayload = {
-  featured: VodModuleItem | null;
-  trendingMovies: VodModuleItem[];
-  trendingSeries: VodModuleItem[];
-  recentMovies: VodModuleItem[];
-  recentSeries: VodModuleItem[];
-  topRatedMovies: VodModuleItem[];
-  topRatedSeries: VodModuleItem[];
-  allItems: VodModuleItem[];
-};
-
-type CatalogPayload = {
-  items: VodModuleItem[];
-  meta?: {
-    nextCursorYear?: number | null;
-    hasMore?: boolean;
-  };
-};
-
-type CuratedCollectionPayload = {
-  id: string;
-  name: string;
-  itemCount: number;
-  items: VodModuleItem[];
-  poster?: string | null;
-  backdrop?: string | null;
-};
-
-type CuratedStudioPayload = {
-  id: string;
-  name: string;
-  logo?: string | null;
-  itemCount: number;
-  items: VodModuleItem[];
 };
 
 type PlatformGroup = {
@@ -105,15 +83,8 @@ const PLATFORM_BRAND_ASSETS: Record<string, { logoUri?: string | null }> = {
   a24: { logoUri: "https://logo.clearbit.com/a24films.com" },
 };
 
-async function fetchJson(path: string) {
-  const response = await withTimeout(apiRequest("GET", path), 15000);
-  return response.json();
-}
-
 async function fetchDetail(type: "movie" | "series", id: string | number) {
-  const path = type === "movie" ? `/api/movies/${id}/full` : `/api/series/${id}/full`;
-  const data = await fetchJson(path);
-  return data?.error ? null : data;
+  return type === "movie" ? getMovieFull(Number(id)) : getSeriesFull(Number(id));
 }
 
 function dedupeModuleItems(items: VodModuleItem[]): VodModuleItem[] {
@@ -137,119 +108,6 @@ function normalizeTitle(value: string): string {
     .replace(/[\u0300-\u036f]/g, "")
     .replace(/[^a-z0-9]+/g, " ")
     .trim();
-}
-
-async function fetchHomePayload(): Promise<HomePayload> {
-  const [movieData, seriesData] = await Promise.all([
-    fetchJson("/api/movies/trending"),
-    fetchJson("/api/series/trending"),
-  ]);
-
-  const movieSeeds = [
-    ...(movieData?.trending || []).slice(0, 14).map((item: any) => ({ ...item, isTrending: true })),
-    ...(movieData?.popular || []).slice(0, 14),
-    ...(movieData?.newReleases || []).slice(0, 14).map((item: any) => ({ ...item, isNew: true })),
-    ...(movieData?.topRated || []).slice(0, 14),
-  ];
-
-  const seriesSeeds = [
-    ...(seriesData?.trending || []).slice(0, 14).map((item: any) => ({ ...item, isTrending: true })),
-    ...(seriesData?.popular || []).slice(0, 14),
-    ...(seriesData?.newReleases || []).slice(0, 14).map((item: any) => ({ ...item, isNew: true })),
-    ...(seriesData?.topRated || []).slice(0, 14),
-  ];
-
-  const enrichedMovies = dedupeModuleItems(
-    movieSeeds.map((item: any) => enrichVodModuleItem({ ...item, type: "movie" }))
-  )
-    .filter((item) => item.title);
-
-  const enrichedSeries = dedupeModuleItems(
-    seriesSeeds.map((item: any) => enrichVodModuleItem({ ...item, type: "series" }))
-  )
-    .filter((item) => item.title);
-
-  const allItems = dedupeModuleItems([...enrichedMovies, ...enrichedSeries]);
-  return {
-    featured: pickFeaturedItem(allItems),
-    trendingMovies: enrichedMovies.filter((item) => item.isTrending).slice(0, 16),
-    trendingSeries: enrichedSeries.filter((item) => item.isTrending).slice(0, 16),
-    recentMovies: enrichedMovies.filter((item) => item.isNew).slice(0, 16),
-    recentSeries: enrichedSeries.filter((item) => item.isNew).slice(0, 16),
-    topRatedMovies: [...enrichedMovies].sort((a, b) => Number(b.rating || b.imdb || 0) - Number(a.rating || a.imdb || 0)).slice(0, 16),
-    topRatedSeries: [...enrichedSeries].sort((a, b) => Number(b.rating || b.imdb || 0) - Number(a.rating || a.imdb || 0)).slice(0, 16),
-    allItems,
-  };
-}
-
-async function fetchCatalogChunk(cursorYear?: number | null): Promise<CatalogPayload> {
-  const params = new URLSearchParams({
-    type: "all",
-    years: "30",
-    chunkYears: "6",
-    pagesPerYear: "2",
-  });
-  if (cursorYear) params.set("cursorYear", String(cursorYear));
-  const payload = await fetchJson(`/api/vod/catalog?${params.toString()}`);
-  return {
-    items: dedupeModuleItems(((payload?.items || []) as any[]).map((item) => enrichVodModuleItem(item))),
-    meta: payload?.meta,
-  };
-}
-
-async function fetchCuratedCollections(): Promise<CuratedCollectionPayload[]> {
-  const collectionTargets = [
-    "Star Wars",
-    "Harry Potter",
-    "Marvel",
-    "The Lord of the Rings",
-    "Mission Impossible",
-    "John Wick",
-    "Fast and Furious",
-    "Jurassic Park",
-    "DC",
-    "James Bond",
-  ];
-  const results = await Promise.all(
-    collectionTargets.map(async (target) => {
-      const payload = await fetchJson(`/api/vod/collection?title=${encodeURIComponent(target)}&depth=5`).catch(() => null);
-      const items = dedupeModuleItems(((payload?.items || []) as any[]).map((item) => enrichVodModuleItem(item))).slice(0, 40);
-      return {
-        id: String(payload?.collection?.id || target).toLowerCase(),
-        name: String(payload?.collection?.name || `${target} Collection`),
-        itemCount: Number(payload?.stats?.total || items.length || 0),
-        items,
-        poster: payload?.collection?.poster || null,
-        backdrop: payload?.collection?.backdrop || null,
-      };
-    })
-  );
-  return results.filter((item) => item.itemCount > 2);
-}
-
-async function fetchCuratedStudios(): Promise<CuratedStudioPayload[]> {
-  const studioTargets = [
-    { id: "420", name: "Marvel Studios" },
-    { id: "2", name: "Walt Disney Pictures" },
-    { id: "174", name: "Warner Bros. Pictures" },
-    { id: "33", name: "Universal Pictures" },
-    { id: "4", name: "Paramount Pictures" },
-    { id: "25", name: "20th Century Studios" },
-  ];
-  const results = await Promise.all(
-    studioTargets.map(async (target) => {
-      const payload = await fetchJson(`/api/vod/studio?id=${encodeURIComponent(target.id)}&name=${encodeURIComponent(target.name)}&depth=7`).catch(() => null);
-      const items = dedupeModuleItems(((payload?.items || []) as any[]).map((item) => enrichVodModuleItem(item))).slice(0, 60);
-      return {
-        id: String(payload?.studio?.id || target.id),
-        name: String(payload?.studio?.name || target.name),
-        logo: payload?.studio?.logo || null,
-        itemCount: Number(payload?.stats?.total || items.length || 0),
-        items,
-      };
-    })
-  );
-  return results.filter((item) => item.itemCount > 3);
 }
 
 function buildPlatformGroups(items: VodModuleItem[]): PlatformGroup[] {
@@ -341,6 +199,8 @@ function StudioCard({ group, onPress }: { group: VodStudioGroup; onPress: () => 
 }
 
 export function VodModuleHub({ initialPane = "home", initialFilter = "all" }: VodModuleHubProps) {
+  useRenderTelemetry("VodModuleHub", { pane: initialPane });
+
   const queryClient = useQueryClient();
   const { isFavorite, toggleFavorite, watchHistory } = useNexora();
   const [activePane, setActivePane] = useState<VodModulePane>(
@@ -353,37 +213,20 @@ export function VodModuleHub({ initialPane = "home", initialFilter = "all" }: Vo
   const [query, setQuery] = useState("");
   const deferredQuery = useDeferredValue(query.trim());
 
-  const homeQuery = useQuery({
-    queryKey: ["vod-module-home"],
-    queryFn: fetchHomePayload,
-    staleTime: 15 * 60 * 1000,
-    gcTime: 30 * 60 * 1000,
-    retry: 1,
-    refetchOnMount: false,
-  });
+  const homeQuery = useQuery(buildVodHomeQuery(activePane === "home"));
 
   const searchQuery = useQuery({
-    queryKey: ["vod-module-search", deferredQuery],
-    queryFn: async () => {
-      if (deferredQuery.length < 2) return { movies: [], series: [] };
-      return fetchJson(`/api/search/multi?query=${encodeURIComponent(deferredQuery)}`);
-    },
+    queryKey: mediaKeys.search(deferredQuery),
+    queryFn: () => searchMedia(deferredQuery),
     enabled: activePane === "search" && deferredQuery.length >= 2,
     staleTime: 10 * 60 * 1000,
   });
 
-  const catalogChunkOneQuery = useQuery({
-    queryKey: ["vod-module-catalog", "chunk-1"],
-    queryFn: () => fetchCatalogChunk(null),
-    enabled: activePane === "home" && Boolean(homeQuery.data),
-    staleTime: 30 * 60 * 1000,
-    gcTime: 60 * 60 * 1000,
-    retry: 1,
-  });
+  const catalogChunkOneQuery = useQuery(buildVodCatalogRootQuery(activePane === "home" && Boolean(homeQuery.data)));
 
   const catalogChunkTwoQuery = useQuery({
-    queryKey: ["vod-module-catalog", "chunk-2", catalogChunkOneQuery.data?.meta?.nextCursorYear || "none"],
-    queryFn: () => fetchCatalogChunk(catalogChunkOneQuery.data?.meta?.nextCursorYear || null),
+    queryKey: mediaKeys.vodCatalog(catalogChunkOneQuery.data?.meta?.nextCursorYear || null),
+    queryFn: () => getVodCatalogChunk(catalogChunkOneQuery.data?.meta?.nextCursorYear || null),
     enabled: activePane === "home" && Boolean(catalogChunkOneQuery.data?.meta?.nextCursorYear),
     staleTime: 30 * 60 * 1000,
     gcTime: 60 * 60 * 1000,
@@ -391,8 +234,8 @@ export function VodModuleHub({ initialPane = "home", initialFilter = "all" }: Vo
   });
 
   const catalogChunkThreeQuery = useQuery({
-    queryKey: ["vod-module-catalog", "chunk-3", catalogChunkTwoQuery.data?.meta?.nextCursorYear || "none"],
-    queryFn: () => fetchCatalogChunk(catalogChunkTwoQuery.data?.meta?.nextCursorYear || null),
+    queryKey: mediaKeys.vodCatalog(catalogChunkTwoQuery.data?.meta?.nextCursorYear || null),
+    queryFn: () => getVodCatalogChunk(catalogChunkTwoQuery.data?.meta?.nextCursorYear || null),
     enabled: activePane === "home" && Boolean(catalogChunkTwoQuery.data?.meta?.nextCursorYear),
     staleTime: 30 * 60 * 1000,
     gcTime: 60 * 60 * 1000,
@@ -400,38 +243,24 @@ export function VodModuleHub({ initialPane = "home", initialFilter = "all" }: Vo
   });
 
   const catalogChunkFourQuery = useQuery({
-    queryKey: ["vod-module-catalog", "chunk-4", catalogChunkThreeQuery.data?.meta?.nextCursorYear || "none"],
-    queryFn: () => fetchCatalogChunk(catalogChunkThreeQuery.data?.meta?.nextCursorYear || null),
+    queryKey: mediaKeys.vodCatalog(catalogChunkThreeQuery.data?.meta?.nextCursorYear || null),
+    queryFn: () => getVodCatalogChunk(catalogChunkThreeQuery.data?.meta?.nextCursorYear || null),
     enabled: activePane === "home" && Boolean(catalogChunkThreeQuery.data?.meta?.nextCursorYear),
     staleTime: 30 * 60 * 1000,
     gcTime: 60 * 60 * 1000,
     retry: 1,
   });
 
-  const curatedCollectionsQuery = useQuery({
-    queryKey: ["vod-module-curated-collections"],
-    queryFn: fetchCuratedCollections,
-    enabled: activePane === "home",
-    staleTime: 60 * 60 * 1000,
-    gcTime: 2 * 60 * 60 * 1000,
-    retry: 1,
-  });
+  const curatedCollectionsQuery = useQuery(buildVodCollectionsQuery(activePane === "home"));
 
-  const curatedStudiosQuery = useQuery({
-    queryKey: ["vod-module-curated-studios"],
-    queryFn: fetchCuratedStudios,
-    enabled: activePane === "home",
-    staleTime: 60 * 60 * 1000,
-    gcTime: 2 * 60 * 60 * 1000,
-    retry: 1,
-  });
+  const curatedStudiosQuery = useQuery(buildVodStudiosQuery(activePane === "home"));
 
   useEffect(() => {
     if (activePane === "search") return;
-    queryClient.prefetchQuery({ queryKey: ["vod-module-home"], queryFn: fetchHomePayload, staleTime: 15 * 60 * 1000 }).catch(() => undefined);
-    queryClient.prefetchQuery({ queryKey: ["vod-module-catalog", "chunk-1"], queryFn: () => fetchCatalogChunk(null), staleTime: 30 * 60 * 1000 }).catch(() => undefined);
-    queryClient.prefetchQuery({ queryKey: ["vod-module-curated-collections"], queryFn: fetchCuratedCollections, staleTime: 60 * 60 * 1000 }).catch(() => undefined);
-    queryClient.prefetchQuery({ queryKey: ["vod-module-curated-studios"], queryFn: fetchCuratedStudios, staleTime: 60 * 60 * 1000 }).catch(() => undefined);
+    queryClient.prefetchQuery({ queryKey: mediaKeys.vodHome(), queryFn: getVodHomePayload, staleTime: 15 * 60 * 1000 }).catch(() => undefined);
+    queryClient.prefetchQuery({ queryKey: mediaKeys.vodCatalog(null), queryFn: () => getVodCatalogChunk(null), staleTime: 30 * 60 * 1000 }).catch(() => undefined);
+    queryClient.prefetchQuery({ queryKey: mediaKeys.vodCollections(), queryFn: getVodCollections, staleTime: 60 * 60 * 1000 }).catch(() => undefined);
+    queryClient.prefetchQuery({ queryKey: mediaKeys.vodStudios(), queryFn: getVodStudios, staleTime: 60 * 60 * 1000 }).catch(() => undefined);
   }, [activePane, queryClient]);
 
   const allItems = useMemo(() => {

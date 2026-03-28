@@ -19,10 +19,10 @@ import { MatchAlertsBridge } from "@/components/MatchAlertsBridge";
 import { PersonalizationBridge } from "@/components/PersonalizationBridge";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { NexoraMenuOverlay } from "@/components/navigation/NexoraMenuOverlay";
+import { useRenderTelemetry } from "@/hooks/useRenderTelemetry";
 import {
   queryClient,
   getApiBaseCandidates,
-  apiRequestJson,
   DEFAULT_RENDER_API_BASE,
 } from "@/lib/query-client";
 import { startPlayerImageWarmup } from "@/lib/player-image-system";
@@ -30,76 +30,18 @@ import { NexoraProvider } from "@/context/NexoraContext";
 import { UserStateProvider } from "@/context/UserStateContext";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { COLORS } from "@/constants/colors";
-import { cacheSet, cachePeekStale, CacheTTL, cacheWarmup } from "@/lib/services/cache-service";
+import { cacheWarmup } from "@/lib/services/cache-service";
 import { initializeMatchNotifications } from "@/lib/match-notifications";
+import { primeBootstrapRealtimeData, realtimeCacheKeys } from "@/services/realtime-engine";
 import { logStartupEvent, runStartupTask } from "@/services/startup-orchestrator";
 import { recordLaunchSnapshot } from "@/services/update-diagnostics";
 
-const PREFETCH_ENTRIES = (today: string) => [
-  { queryKey: ["movies", "trending"], cacheKey: "movies:trending", ttlMs: CacheTTL.HOME_RAILS },
-  { queryKey: ["series", "trending"], cacheKey: "series:trending", ttlMs: CacheTTL.HOME_RAILS },
-  { queryKey: ["sports", "today", today], cacheKey: `sports:today:${today}`, ttlMs: CacheTTL.TODAY_SPORTS },
-  { queryKey: ["sports", "live", today], cacheKey: `sports:live:${today}`, ttlMs: CacheTTL.LIVE_MATCH },
+const BOOTSTRAP_CACHE_KEYS = (today: string) => [
+  `sports:live:${today}`,
+  `sports:today:${today}`,
+  realtimeCacheKeys.vodHome(),
+  realtimeCacheKeys.vodCollections(),
 ];
-
-function normalizeSportsPayload(json: any) {
-  const hasMatchBuckets =
-    Array.isArray(json?.live) ||
-    Array.isArray(json?.upcoming) ||
-    Array.isArray(json?.finished);
-  if (!hasMatchBuckets) return json;
-  return {
-    ...json,
-    live: Array.isArray(json?.live) ? json.live : [],
-    upcoming: Array.isArray(json?.upcoming) ? json.upcoming : [],
-    finished: Array.isArray(json?.finished) ? json.finished : [],
-  };
-}
-
-function seedQueryClientFromCache() {
-  const today = new Date().toISOString().slice(0, 10);
-  for (const { queryKey, cacheKey } of PREFETCH_ENTRIES(today)) {
-    const cached = cachePeekStale(cacheKey);
-    if (cached != null) {
-      queryClient.setQueryData(queryKey, cached);
-    }
-  }
-}
-
-let prefetchHomeDataInFlight: Promise<void> | null = null;
-
-function prefetchHomeData(): Promise<void> {
-  if (prefetchHomeDataInFlight) return prefetchHomeDataInFlight;
-
-  const run = async () => {
-    const today = new Date().toISOString().slice(0, 10);
-    const date = encodeURIComponent(today);
-
-    const fetchAndCache = async (path: string, cacheKey: string, ttlMs: number, queryKey: readonly unknown[]) => {
-      try {
-        const data = await apiRequestJson<any>(path);
-        const normalized = path.startsWith("/api/sports/") ? normalizeSportsPayload(data) : data;
-        cacheSet(cacheKey, normalized, ttlMs);
-        queryClient.setQueryData(queryKey, normalized);
-      } catch {
-        // Startup prefetch is best-effort and must never block render.
-      }
-    };
-
-    await Promise.allSettled([
-      fetchAndCache(`/api/sports/live?date=${date}`, `sports:live:${today}`, CacheTTL.LIVE_MATCH, ["sports", "live", today]),
-      fetchAndCache(`/api/sports/by-date?date=${date}`, `sports:today:${today}`, CacheTTL.TODAY_SPORTS, ["sports", "today", today]),
-      fetchAndCache("/api/movies/trending", "movies:trending", CacheTTL.HOME_RAILS, ["movies", "trending"]),
-      fetchAndCache("/api/series/trending", "series:trending", CacheTTL.HOME_RAILS, ["series", "trending"]),
-    ]);
-  };
-
-  prefetchHomeDataInFlight = run().finally(() => {
-    prefetchHomeDataInFlight = null;
-  });
-
-  return prefetchHomeDataInFlight;
-}
 
 function logUpdateDiagnostics() {
   try {
@@ -151,6 +93,8 @@ function RootLayoutNav() {
 }
 
 export default function RootLayout() {
+  useRenderTelemetry("RootLayout");
+
   useFonts({
     Inter_400Regular,
     Inter_500Medium,
@@ -175,17 +119,17 @@ export default function RootLayout() {
       timeoutMs: 2500,
       run: async () => {
         const today = new Date().toISOString().slice(0, 10);
-        await cacheWarmup(PREFETCH_ENTRIES(today).map((entry) => entry.cacheKey));
-        seedQueryClientFromCache();
+        await cacheWarmup(BOOTSTRAP_CACHE_KEYS(today));
       },
     });
 
     void runStartupTask({
       scope: "background",
-      name: "prefetch-home",
+      name: "prime-realtime-bootstrap",
       timeoutMs: 10000,
       run: async () => {
-        await prefetchHomeData();
+        const today = new Date().toISOString().slice(0, 10);
+        await primeBootstrapRealtimeData(queryClient, today);
       },
     });
 
@@ -238,10 +182,11 @@ export default function RootLayout() {
         lastRefreshAt = now;
         void runStartupTask({
           scope: "background",
-          name: "resume-refresh",
+          name: "resume-realtime-refresh",
           timeoutMs: 15000,
           run: async () => {
-            await prefetchHomeData();
+            const today = new Date().toISOString().slice(0, 10);
+            await primeBootstrapRealtimeData(queryClient, today);
           },
         });
       }
