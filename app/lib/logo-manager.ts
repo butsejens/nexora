@@ -152,9 +152,14 @@ const COMPETITION_CATALOG = COUNTRY_COMPETITIONS.flatMap((country) =>
   }))
 );
 
-const COMPETITION_CATALOG_BY_ESPN = new Map(
-  COMPETITION_CATALOG.map((competition) => [competition.espn, competition])
-);
+const COMPETITION_CATALOG_BY_ESPN = new Map<string, (typeof COMPETITION_CATALOG)[number][]>();
+for (const competition of COMPETITION_CATALOG) {
+  const key = String(competition.espn || "").trim();
+  if (!key) continue;
+  const current = COMPETITION_CATALOG_BY_ESPN.get(key) || [];
+  current.push(competition);
+  COMPETITION_CATALOG_BY_ESPN.set(key, current);
+}
 
 function getDirectLeagueLogo(leagueName?: string | null): string | number | null {
   const rawName = String(leagueName || "").trim();
@@ -186,7 +191,7 @@ function scoreCompetitionCandidate(
   let score = 0;
 
   if (String(context?.espnLeague || "").trim() && candidate.espn === context?.espnLeague) {
-    return 1;
+    score = Math.max(score, 0.58);
   }
 
   for (const alias of aliases) {
@@ -205,6 +210,31 @@ function scoreCompetitionCandidate(
   return score;
 }
 
+function pickCatalogFromEspn(
+  espnLeague: string | null,
+  aliases: string[],
+  context?: { countryCode?: string | null; tier?: CompetitionTier | null },
+): { competition: (typeof COMPETITION_CATALOG)[number]; confidence: number } | null {
+  if (!espnLeague) return null;
+  const candidates = COMPETITION_CATALOG_BY_ESPN.get(espnLeague) || [];
+  if (!candidates.length) return null;
+
+  let best: { competition: (typeof COMPETITION_CATALOG)[number]; confidence: number } | null = null;
+  for (const candidate of candidates) {
+    const confidence = scoreCompetitionCandidate(candidate, aliases, {
+      espnLeague,
+      countryCode: context?.countryCode || null,
+      tier: context?.tier || null,
+    });
+    if (!best || confidence > best.confidence) {
+      best = { competition: candidate, confidence };
+    }
+  }
+
+  if (best && best.confidence >= 0.56) return best;
+  return candidates.length === 1 ? { competition: candidates[0], confidence: 0.56 } : null;
+}
+
 export function resolveCompetitionBrand(input: {
   name?: string | null;
   espnLeague?: string | null;
@@ -215,7 +245,16 @@ export function resolveCompetitionBrand(input: {
   ensureResolutionHydrated();
   const rawName = String(input?.name || "").trim();
   const espnLeague = String(input?.espnLeague || "").trim() || null;
-  const catalogFromEspn = espnLeague ? COMPETITION_CATALOG_BY_ESPN.get(espnLeague) || null : null;
+  const baseAliases = [
+    ...getEntityAliases(rawName, "competition"),
+    ...((input?.aliases || []).map((alias) => normalizeCompetitionName(alias)) || []),
+  ].filter(Boolean);
+
+  const espnPick = pickCatalogFromEspn(espnLeague, baseAliases, {
+    countryCode: input?.countryCode || null,
+    tier: input?.tier || null,
+  });
+  const catalogFromEspn = espnPick?.competition || null;
   const countryCode = String(input?.countryCode || catalogFromEspn?.countryCode || "").trim().toUpperCase() || null;
   const tier = (input?.tier || catalogFromEspn?.tier || null) as CompetitionTier | null;
   const cacheKey = makeCompetitionCacheKey(rawName || catalogFromEspn?.league || "", {
@@ -265,10 +304,7 @@ export function resolveCompetitionBrand(input: {
     };
   }
 
-  const aliases = [
-    ...getEntityAliases(rawName, "competition"),
-    ...((input?.aliases || []).map((alias) => normalizeCompetitionName(alias)) || []),
-  ].filter(Boolean);
+  const aliases = baseAliases;
 
   let bestCatalog: { competition: (typeof COMPETITION_CATALOG)[number]; confidence: number } | null = null;
   for (const competition of COMPETITION_CATALOG) {

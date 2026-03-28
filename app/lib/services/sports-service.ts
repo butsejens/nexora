@@ -54,6 +54,27 @@ async function safeFetch<T>(route: string, fallback: T): Promise<T> {
   }
 }
 
+function buildCompetitionScope(params: {
+  leagueName?: string;
+  espnLeague?: string;
+  sport?: string;
+}) {
+  return {
+    leagueName: params.leagueName,
+    espnLeague: params.espnLeague || params.leagueName || "unknown",
+    sport: params.sport || "soccer",
+  };
+}
+
+function buildCompetitionScopeKey(params: {
+  leagueName?: string;
+  espnLeague?: string;
+  sport?: string;
+}): string {
+  const scope = buildCompetitionScope(params);
+  return `${scope.sport}:${scope.espnLeague}:${scope.leagueName || scope.espnLeague}`;
+}
+
 function buildCompetitionId(params: {
   leagueName?: string;
   espnLeague?: string;
@@ -153,6 +174,12 @@ export interface CompetitionOverview {
   topAssists: NormalizedLeaderboardRow[];
 }
 
+export interface CompetitionInsightParams {
+  leagueName?: string;
+  espnLeague?: string;
+  sport?: string;
+}
+
 export async function getCompetitionStandings(params: {
   leagueName?: string;
   espnLeague?: string;
@@ -244,11 +271,38 @@ export async function getCompetitionStats(params: {
   });
 }
 
+export async function getCompetitionInsights(params: CompetitionInsightParams): Promise<CompetitionOverview> {
+  const [standings, topScorers, topAssists] = await Promise.all([
+    getCompetitionStandings(params),
+    getCompetitionTopScorers(params),
+    getCompetitionTopAssists(params),
+  ]);
+
+  return {
+    competition: buildCompetitionId(params),
+    standings,
+    topScorers,
+    topAssists,
+  };
+}
+
 // ─── Team ─────────────────────────────────────────────────────────────────────
 
-export async function getTeamOverview(teamId: string): Promise<any> {
+export async function getTeamOverview(params: {
+  teamId: string;
+  sport?: string;
+  league?: string;
+  teamName?: string;
+  countryCode?: string;
+}): Promise<any> {
   // Server returns enriched Team shape including squad + recent results
-  const raw = await safeFetch(`/api/sports/team/${encodeURIComponent(teamId)}`, null);
+  const query = new URLSearchParams();
+  if (params.sport) query.set("sport", params.sport);
+  if (params.league) query.set("league", params.league);
+  if (params.teamName) query.set("teamName", params.teamName);
+  if (params.countryCode) query.set("countryCode", params.countryCode);
+  const route = `/api/sports/team/${encodeURIComponent(params.teamId)}${query.size ? `?${query.toString()}` : ""}`;
+  const raw = await safeFetch(route, null);
   if (!raw) return null;
   return enrichTeamDetailPayload(raw);
 }
@@ -269,6 +323,28 @@ export interface RawMatchDetail {
   events?: any[];
   lineups?: any;
   stats?: any;
+}
+
+export async function getMatchDetailRaw(params: {
+  matchId: string;
+  sport?: string;
+  league?: string;
+}): Promise<any> {
+  const query = new URLSearchParams();
+  if (params.sport) query.set("sport", params.sport);
+  if (params.league) query.set("league", params.league);
+  const route = `/api/sports/match/${encodeURIComponent(params.matchId)}${query.size ? `?${query.toString()}` : ""}`;
+  return safeFetch<any>(route, null);
+}
+
+export async function getMatchStream(params: {
+  matchId: string;
+  league?: string;
+}): Promise<any> {
+  const query = new URLSearchParams();
+  if (params.league) query.set("league", params.league);
+  const route = `/api/sports/stream/${encodeURIComponent(params.matchId)}${query.size ? `?${query.toString()}` : ""}`;
+  return safeFetch<any>(route, {});
 }
 
 export async function getMatchDetail(matchId: string): Promise<MatchDetail | null> {
@@ -348,14 +424,16 @@ export const sportKeys = {
   home: () => ["sports", "home"] as const,
   homeByDate: (date: string) => ["sports", "home", date] as const,
   live: () => ["sports", "live"] as const,
-  standings: (league: string) => ["sports", "standings", league] as const,
-  topScorers: (league: string) => ["sports", "topscorers", league] as const,
-  topAssists: (league: string) => ["sports", "topassists", league] as const,
-  competitionTeams: (league: string) => ["sports", "teams", league] as const,
-  competitionMatches: (league: string) => ["sports", "matches", league] as const,
-  competitionStats: (league: string) => ["sports", "stats", league] as const,
-  team: (teamId: string) => ["sports", "team", teamId] as const,
+  standings: (params: CompetitionInsightParams) => ["sports", "standings", buildCompetitionScopeKey(params)] as const,
+  topScorers: (params: CompetitionInsightParams) => ["sports", "topscorers", buildCompetitionScopeKey(params)] as const,
+  topAssists: (params: CompetitionInsightParams) => ["sports", "topassists", buildCompetitionScopeKey(params)] as const,
+  competitionTeams: (params: CompetitionInsightParams) => ["sports", "teams", buildCompetitionScopeKey(params)] as const,
+  competitionMatches: (params: CompetitionInsightParams) => ["sports", "matches", buildCompetitionScopeKey(params)] as const,
+  competitionStats: (params: CompetitionInsightParams) => ["sports", "stats", buildCompetitionScopeKey(params)] as const,
+  competitionInsights: (params: CompetitionInsightParams) => ["sports", "insights", buildCompetitionScopeKey(params)] as const,
+  team: (params: { teamId: string; league?: string; sport?: string; countryCode?: string }) => ["sports", "team", params.teamId, params.sport || "soccer", params.league || "default", params.countryCode || ""] as const,
   player: (playerId: string) => ["sports", "player", playerId] as const,
-  matchDetail: (matchId: string, espnLeague: string) => ["sports", "match", matchId, espnLeague] as const,
+  matchDetail: (params: { matchId: string; espnLeague?: string; sport?: string }) => ["sports", "match", params.matchId, params.sport || "soccer", params.espnLeague || "default"] as const,
+  matchStream: (params: { matchId: string; espnLeague?: string }) => ["sports", "match-stream", params.matchId, params.espnLeague || "default"] as const,
   predict: (matchId: string) => ["sports", "predict", matchId] as const,
 } as const;

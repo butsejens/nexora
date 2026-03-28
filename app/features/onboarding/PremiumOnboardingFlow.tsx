@@ -12,7 +12,6 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { PulseLaunchScreen } from "@/components/brand/PulseLaunchScreen";
 import { COLORS } from "@/constants/colors";
 import {
   SPORT_OPTIONS,
@@ -283,12 +282,14 @@ export function PremiumOnboardingFlow({ mode = "first-launch", onFinished }: Pre
 
   if (step === 9) {
     return (
-      <PulseLaunchScreen
-        badge={mode === "editor" ? "Updating experience" : "Finalizing setup"}
-        title="Building your premium home"
-        subtitle={preload.message || LOADING_MESSAGES[loadingMessageIndex]}
-        progress={Math.max(8, uiProgress)}
-      />
+      <SafeAreaView style={styles.finishingSafeArea}>
+        <View style={styles.finishingContainer}>
+          <ActivityIndicator size="small" color={COLORS.accent} />
+          <Text style={styles.finishingTitle}>Building your premium home</Text>
+          <Text style={styles.finishingSubtitle}>{preload.message || LOADING_MESSAGES[loadingMessageIndex]}</Text>
+          <Text style={styles.finishingProgress}>{Math.max(8, uiProgress)}%</Text>
+        </View>
+      </SafeAreaView>
     );
   }
 
@@ -531,6 +532,34 @@ export function PremiumOnboardingFlow({ mode = "first-launch", onFinished }: Pre
 }
 
 const styles = StyleSheet.create({
+  finishingSafeArea: {
+    flex: 1,
+    backgroundColor: COLORS.background,
+  },
+  finishingContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    gap: 10,
+    paddingHorizontal: 24,
+  },
+  finishingTitle: {
+    color: COLORS.text,
+    fontSize: 18,
+    fontWeight: "800",
+    textAlign: "center",
+  },
+  finishingSubtitle: {
+    color: COLORS.textSecondary,
+    fontSize: 14,
+    textAlign: "center",
+  },
+  finishingProgress: {
+    color: COLORS.accent,
+    fontSize: 13,
+    fontWeight: "700",
+    letterSpacing: 0.5,
+  },
   safeArea: {
     flex: 1,
     backgroundColor: COLORS.background,
