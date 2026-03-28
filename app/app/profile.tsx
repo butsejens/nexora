@@ -731,9 +731,9 @@ function SettingRow({ icon, label, value, onPress, rightElement, danger }: {
       <View style={[styles.rowIcon, danger && styles.rowIconDanger]}>
         <Ionicons name={icon as any} size={18} color={danger ? COLORS.live : COLORS.accent} />
       </View>
-      <Text style={[styles.rowLabel, danger && styles.rowLabelDanger]}>{label}</Text>
+      <Text style={[styles.rowLabel, danger && styles.rowLabelDanger]} numberOfLines={2}>{label}</Text>
       <View style={styles.rowRight}>
-        {value ? <Text style={styles.rowValue}>{value}</Text> : null}
+        {value ? <Text style={styles.rowValue} numberOfLines={2}>{value}</Text> : null}
         {rightElement}
         {onPress && !rightElement && <Ionicons name="chevron-forward" size={16} color={COLORS.textMuted} />}
       </View>
@@ -2012,10 +2012,10 @@ const styles = StyleSheet.create({
   row: { flexDirection: "row", alignItems: "center", paddingHorizontal: 16, paddingVertical: 14, gap: 12 },
   rowIcon: { width: 34, height: 34, borderRadius: 10, backgroundColor: COLORS.accentGlow, alignItems: "center", justifyContent: "center" },
   rowIconDanger: { backgroundColor: COLORS.liveGlow },
-  rowLabel: { flex: 1, fontFamily: "Inter_500Medium", fontSize: 15, color: COLORS.text },
+  rowLabel: { flex: 1, minWidth: 0, fontFamily: "Inter_500Medium", fontSize: 15, color: COLORS.text, lineHeight: 20 },
   rowLabelDanger: { color: COLORS.live },
-  rowRight: { flexDirection: "row", alignItems: "center", gap: 6 },
-  rowValue: { fontFamily: "Inter_500Medium", fontSize: 14, color: COLORS.textMuted },
+  rowRight: { flexShrink: 1, minWidth: 0, maxWidth: "52%", flexDirection: "row", alignItems: "center", justifyContent: "flex-end", gap: 6 },
+  rowValue: { flexShrink: 1, minWidth: 0, textAlign: "right", fontFamily: "Inter_500Medium", fontSize: 14, lineHeight: 19, color: COLORS.textMuted },
   divider: { height: 1, backgroundColor: COLORS.border, marginLeft: 62 },
   profileSection: { alignItems: "center", paddingVertical: 22, gap: 6 },
   avatarContainer: { position: "relative", marginBottom: 8 },

@@ -43,7 +43,7 @@ export function NexoraHeader({
   onFavorites,
   onProfile,
   rightElement,
-  showMenu = true,
+  showMenu = false,
 }: Props) {
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
