@@ -7,36 +7,21 @@
  * No overlaps, no glitching, clean architecture.
  */
 
-import React, { useState, useCallback, useEffect, useMemo, useRef } from "react";
+import React, { useState, useCallback, useEffect, useRef } from "react";
 import {
-  View, Text, StyleSheet, ScrollView, RefreshControl, Platform,
-  TouchableOpacity, TextInput, Alert, AppState, Modal, Image,
-  useWindowDimensions, ActivityIndicator, FlatList,
+  View, Text, StyleSheet, ScrollView, RefreshControl, AppState, TouchableOpacity,
 } from "react-native";
-import { router, useFocusEffect } from "expo-router";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { router } from "expo-router";
+import { useQuery } from "@tanstack/react-query";
 import { Ionicons } from "@expo/vector-icons";
-import { LinearGradient } from "expo-linear-gradient";
-import { BlurView } from "expo-blur";
 
 import { NexoraHeader } from "@/components/NexoraHeader";
-import { TeamLogo } from "@/components/TeamLogo";
-import { COLORS } from "@/constants/colors";
-import { useNexora } from "@/context/NexoraContext";
-import { useFollowState } from "@/context/UserStateContext";
 import { useOnboardingStore } from "@/store/onboarding-store";
 import { useTranslation } from "@/lib/useTranslation";
-import { apiRequestJson } from "@/lib/query-client";
-import { SafeHaptics } from "@/lib/safeHaptics";
-import { resolveCompetitionBrand } from "@/lib/logo-manager";
-import { resolveMatchBucket } from "@/lib/match-state";
-import { cacheGetStale, cachePeekStale, cacheSet, CacheTTL } from "@/lib/services/cache-service";
-import { safeStr, flagFromIso2 } from "@/lib/utils";
+import { getSportsByDate, getSportsLive, sportKeys } from "@/lib/services/sports-service";
 import {
   LiveMatchCard,
   UpcomingMatchCard,
-  FinishedMatchCard,
 } from "@/components/sports/SportCards";
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -50,14 +35,6 @@ type SportsPayload = {
   live?: any[];
   upcoming?: any[];
   finished?: any[];
-  error?: string;
-};
-
-type SportsMenuToolsPayload = {
-  date?: string;
-  league?: string;
-  footballPredictions?: any[];
-  dailyAccaPicks?: any[];
   error?: string;
 };
 
@@ -81,22 +58,29 @@ const DS = {
 // API HELPERS
 // ═══════════════════════════════════════════════════════════════════════════════
 
-async function fetchSportsPayload(path: string): Promise<SportsPayload> {
-  const json = await apiRequestJson<any>(path);
+function toSportCardMatch(match: any) {
+  if (!match?.homeTeam || typeof match.homeTeam === "string") return match;
   return {
-    ...json,
-    live: Array.isArray(json?.live) ? json.live : [],
-    upcoming: Array.isArray(json?.upcoming) ? json.upcoming : [],
-    finished: Array.isArray(json?.finished) ? json.finished : [],
+    ...match,
+    league: match?.competition?.displayName || match?.league || "League",
+    espnLeague: match?.competition?.espnSlug || match?.espnLeague || "",
+    homeTeam: match?.homeTeam?.name || "Home",
+    awayTeam: match?.awayTeam?.name || "Away",
+    homeTeamLogo: match?.homeTeam?.logo || null,
+    awayTeamLogo: match?.awayTeam?.logo || null,
+    homeScore: match?.score?.home ?? match?.homeScore,
+    awayScore: match?.score?.away ?? match?.awayScore,
+    startTime: match?.startTime || null,
+    minute: match?.minute ?? null,
   };
 }
 
-async function fetchSportsMenuTools(path: string): Promise<SportsMenuToolsPayload> {
-  const json = await apiRequestJson<any>(path);
+function toSportCardPayload(payload: SportsPayload): SportsPayload {
   return {
-    ...json,
-    footballPredictions: Array.isArray(json?.footballPredictions) ? json.footballPredictions : [],
-    dailyAccaPicks: Array.isArray(json?.dailyAccaPicks) ? json.dailyAccaPicks : [],
+    ...payload,
+    live: Array.isArray(payload?.live) ? payload.live.map(toSportCardMatch) : [],
+    upcoming: Array.isArray(payload?.upcoming) ? payload.upcoming.map(toSportCardMatch) : [],
+    finished: Array.isArray(payload?.finished) ? payload.finished.map(toSportCardMatch) : [],
   };
 }
 
@@ -119,14 +103,11 @@ type SportModuleHubProps = {
  * Manages pane routing: explore | live | matchday | insights
  */
 export function SportModuleHub({ initialPane = "explore" }: SportModuleHubProps) {
-  const insets = useSafeAreaInsets();
   const { t } = useTranslation();
-  const queryClient = useQueryClient();
-  const { width } = useWindowDimensions();
-  
+
   // ─ State ─────────────────────────────────────────────────────────────────────
   const [activePane, setActivePane] = useState<SportPane>(initialPane);
-  const [selectedDate, setSelectedDate] = useState(() => {
+  const [selectedDate] = useState(() => {
     const d = new Date();
     return d.toISOString().slice(0, 10);
   });
@@ -137,8 +118,8 @@ export function SportModuleHub({ initialPane = "explore" }: SportModuleHubProps)
   const sportsEnabled = useOnboardingStore((s) => s.sportsEnabled);
 
   const liveQuery = useQuery({
-    queryKey: ["sports", "live", selectedDate],
-    queryFn: () => fetchSportsPayload(`/api/sports/live?date=${encodeURIComponent(selectedDate)}`),
+    queryKey: sportKeys.live(),
+    queryFn: async () => toSportCardPayload(await getSportsLive()),
     staleTime: 20_000,
     refetchInterval: 30_000,
     retry: shouldRetrySportsQuery,
@@ -146,8 +127,8 @@ export function SportModuleHub({ initialPane = "explore" }: SportModuleHubProps)
   });
 
   const todayQuery = useQuery({
-    queryKey: ["sports", "today", selectedDate],
-    queryFn: () => fetchSportsPayload(`/api/sports/today?date=${encodeURIComponent(selectedDate)}`),
+    queryKey: sportKeys.homeByDate(selectedDate),
+    queryFn: async () => toSportCardPayload(await getSportsByDate(selectedDate)),
     staleTime: 20_000,
     refetchInterval: 30_000,
     retry: shouldRetrySportsQuery,
@@ -363,7 +344,6 @@ function MatchdayPane({ matches }: MatchdayPaneProps) {
 }
 
 function InsightsPane() {
-  const { t } = useTranslation();
   return (
     <View style={{ paddingBottom: 40 }}>
       <SectionTitle title="Insights" />
