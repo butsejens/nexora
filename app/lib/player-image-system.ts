@@ -279,9 +279,18 @@ function classifySource(url: string): PlayerImageEntry["source"] {
 }
 
 function scoreCandidate(url: string, player: PlayerSeed, meta?: { candidateName?: string; candidateTeam?: string }): number {
-  let score = 0.15;
-  if (isEspnPhoto(url)) score += 0.2;
-  if (/thesportsdb|transfermarkt|wikimedia|wikipedia/i.test(url)) score += 0.18;
+  let score = 0.20; // Base score improved
+  
+  // ESPN photos from numeric ID are very reliable
+  if (isEspnPhoto(url) && /^\d+$/.test(normalizeText(player.id))) {
+    score += 0.35; // Much higher confidence for ESPN numeric IDs
+  } else if (isEspnPhoto(url)) {
+    score += 0.15; // Lower if ID type unclear
+  }
+  
+  // Trusted sources
+  if (/thesportsdb|transfermarkt/i.test(url)) score += 0.22;
+  if (/wikimedia|wikipedia/i.test(url)) score += 0.16;
 
   const playerName = normalizePlayerName(player.name);
   const candidateName = normalizePlayerName(meta?.candidateName || player.name);
@@ -289,15 +298,15 @@ function scoreCandidate(url: string, player: PlayerSeed, meta?: { candidateName?
   const candidateTeam = normalizeTeamName(meta?.candidateTeam || player.team);
 
   const nameSimilarity = scoreNameSimilarity(playerName, candidateName);
-  score += nameSimilarity * 0.45;
+  score += nameSimilarity * 0.50;
 
   if (playerTeam && candidateTeam) {
     const teamSimilarity = scoreNameSimilarity(playerTeam, candidateTeam);
-    score += teamSimilarity * 0.14;
+    score += teamSimilarity * 0.15;
   }
 
   if (normalizeText(player.id) && /^\d+$/.test(normalizeText(player.id))) {
-    score += 0.06;
+    score += 0.08;
   }
 
   return Math.max(0, Math.min(1, score));
@@ -402,21 +411,33 @@ export function getCachedPlayerImage(player: PlayerSeed): string | null {
 export function getPlayerFallbackAvatar(name: Nullable<string>): string | null {
   const normalizedName = normalizeText(name);
   if (!normalizedName) return null;
-  return `https://ui-avatars.com/api/?name=${encodeURIComponent(normalizedName)}&size=256&background=1a1a2e&color=e0e0e0&bold=true&format=png`;
+  
+  // Use a more sophisticated fallback service with better avatars
+  const initials = normalizedName
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((word) => word[0])
+    .join("")
+    .toUpperCase();
+  
+  return `https://ui-avatars.com/api/?name=${encodeURIComponent(initials)}&size=300&background=random&color=fff&bold=true&format=png`;
 }
 
 export function getBestCachedOrSeedPlayerImage(player: PlayerSeed): string | null {
   const cached = getCachedPlayerImage(player);
   if (cached) return cached;
 
+  // Prefer direct seed photos (from API) over ESPN fallback
   if (isValidHttpUrl(player.photo)) return String(player.photo);
   if (isValidHttpUrl(player.theSportsDbPhoto)) return String(player.theSportsDbPhoto);
 
+  // Only use ESPN as last resort if we have a numeric ID
   const playerId = normalizeText(player.id);
-  if (/^\d+$/.test(playerId)) {
+  if (/^\d+$/.test(playerId) && playerId.length > 3) {
     return `https://a.espncdn.com/i/headshots/soccer/players/full/${encodeURIComponent(playerId)}.png`;
   }
 
+  // Fallback to initials avatar
   return getPlayerFallbackAvatar(player.name);
 }
 
@@ -511,19 +532,20 @@ function collectCandidates(player: PlayerSeed, profile: any | null): Array<{ url
     candidates.push({ url, source, confidence });
   };
 
-  // 1. ESPN CDN from numeric ID — identity-locked, highest confidence
-  if (/^\d+$/.test(playerId)) {
-    const espnUrl = `https://a.espncdn.com/i/headshots/soccer/players/full/${encodeURIComponent(playerId)}.png`;
-    addCandidate(espnUrl, "espn", 0.92);
-  }
-
-  // 2. Direct seed photos (from player API) — trusted, high confidence because they come from the player record itself
+  // 1. Direct seed photos (from player API) — trusted first
   const seedPhotos = [player.photo, player.theSportsDbPhoto]
     .map((x) => normalizeText(x || ""))
     .filter((x) => isValidHttpUrl(x));
   for (const url of seedPhotos) {
     const source = classifySource(url);
-    addCandidate(url, source, Math.max(0.97, scoreCandidate(url, player, { candidateName: player.name, candidateTeam: player.team })));
+    // Direct seed photos get high confidence since they come from the player record
+    addCandidate(url, source, 0.96);
+  }
+
+  // 2. ESPN CDN from numeric ID — identity-locked, very high confidence
+  if (/^\d+$/.test(playerId) && playerId.length > 3) {
+    const espnUrl = `https://a.espncdn.com/i/headshots/soccer/players/full/${encodeURIComponent(playerId)}.png`;
+    addCandidate(espnUrl, "espn", 0.94);
   }
 
   // 3. Profile photos — scored normally
@@ -539,11 +561,13 @@ function collectCandidates(player: PlayerSeed, profile: any | null): Array<{ url
     addCandidate(url, source, confidence);
   }
 
-  // 4. Deterministic fallback image; never wrong identity, only initials avatar.
+  // 4. Deterministic fallback image — never wrong identity, graceful degradation
   const fallbackName = normalizeText(profile?.name || player.name || "Player");
   if (fallbackName) {
-    const fallbackUrl = `https://ui-avatars.com/api/?name=${encodeURIComponent(fallbackName)}&size=256&background=1a1a2e&color=e0e0e0&bold=true&format=png`;
-    addCandidate(fallbackUrl, "fallback", 0.4);
+    const fallbackUrl = getPlayerFallbackAvatar(fallbackName);
+    if (fallbackUrl) {
+      addCandidate(fallbackUrl, "fallback", 0.45);
+    }
   }
 
   return candidates;
@@ -553,19 +577,32 @@ function chooseBestCandidate(player: PlayerSeed, candidates: Array<{ url: string
   if (!candidates.length) return { url: null, source: "none", confidence: 0 };
 
   const name = normalizeName(player.name);
-  const hasIdentityContext = Boolean(name) && (Boolean(normalizeText(player.id)) || Boolean(normalizeName(player.team)));
+  const hasId = /^\d+$/.test(normalizeText(player.id)) && normalizeText(player.id).length > 3;
+  const hasIdentityContext = Boolean(name) && (hasId || Boolean(normalizeName(player.team)));
+  
   const sorted = [...candidates].sort((a, b) => b.confidence - a.confidence);
   const winner = sorted[0];
 
-  if (!hasIdentityContext && winner.source !== "fallback") {
-    return { url: null, source: "none", confidence: 0 };
+  // ESPN photos with numeric IDs are identity-locked — very low threshold
+  if (winner.source === "espn" && hasId && winner.confidence >= 0.40) {
+    return { url: winner.url, source: winner.source, confidence: winner.confidence };
   }
 
-  const hasId = /^\d+$/.test(normalizeText(player.id));
-  // ESPN headshots derived from a numeric player ID are identity-locked — very low threshold needed
-  const minConfidence = winner.source === "espn" && hasId ? 0.30 : hasId ? 0.45 : 0.55;
-  if (winner.source !== "fallback" && winner.confidence < minConfidence) {
-    return { url: null, source: "none", confidence: winner.confidence };
+  // Direct seed photos are trusted
+  if (winner.source === "internal" && winner.confidence >= 0.85) {
+    return { url: winner.url, source: winner.source, confidence: winner.confidence };
+  }
+
+  // Require higher confidence for other sources without ID
+  const minConfidence = hasId ? 0.50 : hasIdentityContext ? 0.60 : 0.75;
+  
+  if (winner.confidence < minConfidence) {
+    // Try to find a fallback avatar if we can't match
+    const fallback = winner.source === "fallback" ? winner : sorted.find((c) => c.source === "fallback");
+    if (fallback && hasIdentityContext) {
+      return { url: fallback.url, source: fallback.source, confidence: fallback.confidence };
+    }
+    return { url: null, source: "none", confidence: 0 };
   }
 
   return { url: winner.url, source: winner.source, confidence: winner.confidence };

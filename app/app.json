@@ -8,8 +8,8 @@
     },
     "updates": {
       "enabled": true,
-      "checkAutomatically": "ON_LOAD",
-      "fallbackToCacheTimeout": 3000,
+      "checkAutomatically": "ON_ERROR_RECOVERY",
+      "fallbackToCacheTimeout": 0,
       "url": "https://u.expo.dev/d41d5b43-95e5-427b-b25f-780826d001e8",
       "requestHeaders": {
         "expo-channel-name": "production"

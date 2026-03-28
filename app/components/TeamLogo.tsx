@@ -17,6 +17,7 @@ export const TeamLogo = React.memo(function TeamLogo({
   const [failCount, setFailCount] = useState(0);
   const [imageLoaded, setImageLoaded] = useState(false);
   const maxFails = 3;
+  
   const resolved = useMemo(() => {
     if (resolvedLogo != null) return resolvedLogo;
     if (failCount >= maxFails) return null;
@@ -26,6 +27,7 @@ export const TeamLogo = React.memo(function TeamLogo({
     if (failCount === 1) return resolveTeamLogoUri(teamName, null);
     return null;
   }, [teamName, uri, failCount, resolvedLogo]);
+  
   const initials = useMemo(() => getInitials(teamName, 2), [teamName]);
 
   const imageSource =
@@ -37,27 +39,42 @@ export const TeamLogo = React.memo(function TeamLogo({
           : null
       : null;
 
+  const showImage = imageSource && !(!imageLoaded && failCount > 0);
+
   return (
     <View
       style={[
         styles.container,
-        { width: size, height: size, borderRadius: size * 0.18 },
+        {
+          width: size,
+          height: size,
+          borderRadius: size * 0.18,
+        },
       ]}
     >
+      {/* Initials fallback - show when no image loaded */}
       <Text
         style={[
           styles.initials,
           { fontSize: size * 0.28 },
-          imageLoaded && { opacity: 0 },
+          imageLoaded && { display: "none" },
         ]}
+        allowFontScaling={false}
       >
         {initials}
       </Text>
-      {imageSource ? (
+
+      {/* Logo image */}
+      {showImage ? (
         <Image
           source={imageSource as any}
-          style={{ width: size, height: size, position: "absolute", borderRadius: size * 0.18 }}
-          resizeMode="contain"
+          style={{
+            width: size,
+            height: size,
+            position: "absolute",
+            borderRadius: size * 0.18,
+          }}
+          resizeMode="center"
           onLoad={() => setImageLoaded(true)}
           onError={() => {
             setFailCount((c) => Math.min(c + 1, maxFails));
@@ -75,12 +92,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     overflow: "hidden",
-    // @ts-ignore
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.4,
-    shadowRadius: 4,
-    elevation: 4,
   },
   initials: {
     fontFamily: "Inter_800ExtraBold",

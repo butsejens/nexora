@@ -1,10 +1,14 @@
-import { useEffect } from "react";
-import { router } from "expo-router";
+import React from "react";
+import { useFocusEffect, useRouter } from "expo-router";
 
 export default function RootIndexRedirect() {
-  useEffect(() => {
-    router.replace("/(tabs)/home");
-  }, []);
+  const router = useRouter();
+
+  useFocusEffect(
+    React.useCallback(() => {
+      router.replace("/(tabs)/home");
+    }, [router])
+  );
 
   return null;
 }
