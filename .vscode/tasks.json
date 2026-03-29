@@ -4,11 +4,8 @@
 		{
 			"label": "Start Nexora App",
 			"type": "shell",
-			"command": "npm",
-			"args": [
-				"run",
-				"app"
-			],
+			"command": "npm run app:tunnel",
+			"args": [],
 			"isBackground": true,
 			"group": "build"
 		},
@@ -19,6 +16,24 @@
 			"args": [
 				"run",
 				"dev"
+			],
+			"isBackground": true,
+			"group": "build"
+		},
+		{
+			"label": "Expo LAN 8080 Stable",
+			"type": "shell",
+			"command": "npm",
+			"args": [
+				"-w",
+				"app",
+				"exec",
+				"expo",
+				"start",
+				"--lan",
+				"--port",
+				"8080",
+				"--clear"
 			],
 			"isBackground": true,
 			"group": "build"

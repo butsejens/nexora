@@ -15,9 +15,9 @@
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "13B07F861A680F5B00A75B9A"
-               BuildableName = "nexoramonorepo.app"
-               BlueprintName = "nexoramonorepo"
-               ReferencedContainer = "container:nexoramonorepo.xcodeproj">
+               BuildableName = "NEXORA.app"
+               BlueprintName = "NEXORA"
+               ReferencedContainer = "container:NEXORA.xcodeproj"
             </BuildableReference>
          </BuildActionEntry>
       </BuildActionEntries>
@@ -33,9 +33,9 @@
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "00E356ED1AD99517003FC87E"
-               BuildableName = "nexoramonorepoTests.xctest"
-               BlueprintName = "nexoramonorepoTests"
-               ReferencedContainer = "container:nexoramonorepo.xcodeproj">
+               BuildableName = "NEXORATests.xctest"
+               BlueprintName = "NEXORATests"
+               ReferencedContainer = "container:NEXORA.xcodeproj"
             </BuildableReference>
          </TestableReference>
       </Testables>

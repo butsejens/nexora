@@ -584,8 +584,8 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     paddingHorizontal: 22,
-    paddingBottom: 34,
-    paddingTop: 8,
+    paddingBottom: 16,
+    paddingTop: 22,
     gap: 18,
   },
   headerRow: {
@@ -620,7 +620,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   heroCard: {
-    paddingTop: 42,
+    paddingTop: 22,
     gap: 20,
   },
   heroLogoWrap: {
@@ -679,7 +679,7 @@ const styles = StyleSheet.create({
     lineHeight: 21,
   },
   contentCard: {
-    marginTop: 18,
+    marginTop: 8,
     borderRadius: 28,
     borderWidth: 1,
     borderColor: COLORS.borderLight,
@@ -821,7 +821,7 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
   footer: {
-    marginTop: 8,
+    marginTop: 2,
     gap: 12,
   },
   footerHint: {

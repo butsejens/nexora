@@ -8,78 +8,44 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { BlurView } from "expo-blur";
-import WebView from "react-native-webview";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { COLORS } from "@/constants/colors";
-import { LiveBadge } from "@/components/LiveBadge";
 import { SafeHaptics } from "@/lib/safeHaptics";
-import { openInVlc } from "@/lib/vlc";
 import { TeamLogo } from "@/components/TeamLogo";
-import { PillTabs, StateBlock } from "@/components/ui/PremiumPrimitives";
-import { buildErrorReference, normalizeApiError } from "@/lib/error-messages";
+import { StateBlock } from "@/components/ui/PremiumPrimitives";
 import { safeStr } from "@/lib/utils";
 import { resolveCompetitionBrand } from "@/lib/logo-manager";
-import { SilentResetBoundary } from "@/components/SilentResetBoundary";
 import { t as tFn } from "@/lib/i18n";
 import { getBestCachedOrSeedPlayerImage, resolvePlayerImageUri } from "@/lib/player-image-system";
 import { resolveMatchBucket } from "@/lib/match-state";
-import { buildGroundedMatchAnalysis } from "@/lib/match-analysis-engine";
 import { toCanonicalMatch } from "@/lib/canonical-match";
-import { normalizeTeamName, tokenOverlapScore } from "@/lib/entity-normalization";
+import { normalizeTeamName } from "@/lib/entity-normalization";
 import { cacheGetStale, cachePeekStale, cacheSet, CacheTTL } from "@/lib/services/cache-service";
-import { getCompetitionInsights, getMatchDetailRaw, getMatchStream, sportKeys } from "@/lib/services/sports-service";
+import { getCompetitionInsights, getMatchDetailRaw, sportKeys } from "@/lib/services/sports-service";
 import { useNexora } from "@/context/NexoraContext";
+import { useFollowState } from "@/context/UserStateContext";
 import { showRewardedUnlockAd } from "@/lib/rewarded-ads";
-import { buildAiMatchStory, calculateMomentum, filterStatsByMode, getStatsMode, setStatsMode, type StatsMode } from "@/lib/ai";
+import { buildAiMatchStory, calculateMomentum, filterStatsByMode, generateAiMatchStoryCard, getStatsMode, runAiPredictionModel, setStatsMode } from "@/lib/ai";
+import type { StatsMode } from "@/lib/ai";
 import { MomentumBar } from "@/components/sports/MomentumBar";
-const BLOCK_POPUP_JS = `
-(function(){
-  // Patch removeChild to never throw — prevents DOMException crashes
-  try{
-    var _origRc = Node.prototype.removeChild;
-    Node.prototype.removeChild = function(child){
-      try{ return _origRc.call(this, child); }catch(e){ return child; }
-    };
-  }catch(e){}
-
-  // Swallow removeChild / DOM hierarchy errors silently
-  var _isRcErr = function(msg){
-    var s = String(msg||'').toLowerCase();
-    return s.includes('removechild') || s.includes('notfounderror') || s.includes('not a child') || s.includes('hierarchyrequesterror');
-  };
-  window.onerror = function(message,source,lineno,colno,error){
-    var msg = error ? String(error.message||error.name||message||'') : String(message||'');
-    if(_isRcErr(msg)) return true;
-    return false;
-  };
-  window.addEventListener('error', function(ev){
-    try{
-      var msg = ev.error ? String(ev.error.message||ev.error.name||'') : String(ev.message||'');
-      if(_isRcErr(msg)){ ev.preventDefault(); ev.stopImmediatePropagation(); }
-    }catch(e){}
-  }, true);
-
-  // Block popups / navigation
-  window.open = function(){ return null; };
-  window.alert = function(){};
-  window.confirm = function(){ return true; };
-  window.prompt = function(){ return ''; };
-  document.addEventListener('click', function(e){
-    var a = e.target && e.target.closest ? e.target.closest('a[target="_blank"]') : null;
-    if(a){ e.preventDefault(); e.stopPropagation(); }
-  }, true);
-  window.addEventListener('beforeunload', function(e){ e.stopImmediatePropagation(); }, true);
-})();
-true;
-`;
-
-const TABS = [
-  { id: "stream",    label: "matchDetail.stream",      icon: "play-circle-outline" },
-  { id: "stats",    label: "matchDetail.stats",       icon: "bar-chart-outline" },
-  { id: "lineups",  label: "matchDetail.lineups",     icon: "people-outline" },
-  { id: "timeline", label: "matchDetail.timeline",    icon: "git-branch-outline" },
-  { id: "highlights", label: "matchDetail.highlights", icon: "star-outline" },
-] as const;
+import {
+  useH2H,
+  useInjuries,
+  useKeyPlayers,
+  useMatchContext,
+  useStandings,
+  useTeamForm,
+  useTeamStats,
+} from "@/features/match/hooks/usePrematchData";
+import {
+  useExpectedLineups,
+  useFormationLayout,
+  useLineups,
+  useLiveLineupChanges,
+  useTimeline,
+  useTimelineFilters,
+} from "@/features/match/hooks/useLineupTimelineIntegration";
+import type { TimelineFilter } from "@/features/match/hooks/useLineupTimelineIntegration";
 
 const EXPERIENCE_TABS = [
   { id: "prematch", label: "Prematch" },
@@ -88,11 +54,9 @@ const EXPERIENCE_TABS = [
   { id: "lineups", label: "Lineups" },
   { id: "timeline", label: "Timeline" },
   { id: "h2h", label: "H2H" },
-  { id: "success", label: "Success Rate" },
 ] as const;
 
-type TabId = "stream" | "stats" | "lineups" | "timeline" | "highlights";
-type ExperienceTabId = "prematch" | "predictions" | "stats" | "lineups" | "timeline" | "h2h" | "success";
+type ExperienceTabId = "prematch" | "predictions" | "stats" | "lineups" | "timeline" | "h2h";
 
 function shouldRetryRequest(failureCount: number, error: unknown): boolean {
   if (failureCount >= 1) return false;
@@ -112,88 +76,6 @@ function shouldRetryRequest(failureCount: number, error: unknown): boolean {
   );
 }
 
-function buildFormationRows(players: any[], formationRaw?: string) {
-  const starters = (Array.isArray(players) ? players : [])
-    .filter((p) => p?.starter !== false)
-    .slice(0, 11);
-
-  if (!starters.length) return [] as any[][];
-
-  const formationNums = String(formationRaw || "")
-    .split("-")
-    .map((n) => parseInt(n.trim(), 10))
-    .filter((n) => Number.isFinite(n) && n > 0);
-
-  const byRole = {
-    gk: starters.filter((p) => /gk|goalkeeper/i.test(`${p?.position || ""} ${p?.positionName || ""}`)),
-    def: starters.filter((p) => /cb|lb|rb|wb|def|back/i.test(`${p?.position || ""} ${p?.positionName || ""}`)),
-    mid: starters.filter((p) => /dm|cm|am|lm|rm|mid/i.test(`${p?.position || ""} ${p?.positionName || ""}`)),
-    fwd: starters.filter((p) => /st|cf|lw|rw|fw|att|wing|forward|striker/i.test(`${p?.position || ""} ${p?.positionName || ""}`)),
-  };
-
-  const pool = [...starters];
-  const takeFrom = (arr: any[], count: number) => {
-    const out: any[] = [];
-    while (arr.length && out.length < count) {
-      const p = arr.shift();
-      const idx = pool.findIndex((x) => x?.id === p?.id);
-      if (idx >= 0) {
-        out.push(pool[idx]);
-        pool.splice(idx, 1);
-      }
-    }
-    return out;
-  };
-
-  const gk = takeFrom([...byRole.gk], 1);
-  if (!gk.length && pool.length) gk.push(pool.shift());
-
-  const lines = formationNums.length >= 3 ? formationNums : [4, 3, 3];
-
-  // Build rows from back to front: defenders first, then additional lines toward attack
-  const rows: any[][] = [];
-  for (let i = 0; i < lines.length; i++) {
-    const count = lines[i];
-    // Pick from the most logical role pool, fallback to remaining pool
-    const rolePool = i === 0 ? byRole.def : i === lines.length - 1 ? byRole.fwd : byRole.mid;
-    const row = takeFrom([...rolePool], count);
-    while (row.length < count && pool.length) row.push(pool.shift());
-    rows.push(row);
-  }
-
-  // Return from front (attackers) to back (GK) for rendering
-  return [...rows.reverse(), gk].filter((row) => row.length > 0);
-}
-
-function orderLineupTeams(starters: any[], homeName: string, awayName: string): any[] {
-  const teams = Array.isArray(starters) ? [...starters] : [];
-  if (teams.length < 2) return teams;
-
-  const homeKey = normalizeTeamName(homeName);
-  const awayKey = normalizeTeamName(awayName);
-
-  const matchIndex = (target: string) => teams.findIndex((team) => {
-    const teamName = team?.team || team?.name || "";
-    const teamKey = normalizeTeamName(teamName);
-    if (!teamKey || !target) return false;
-    // Use tokenOverlapScore for more sophisticated matching than substring inclusion
-    const overlapScore = tokenOverlapScore(teamKey, target);
-    return teamKey === target || overlapScore >= 0.5;
-  });
-
-  const homeIdx = matchIndex(homeKey);
-  const awayIdx = matchIndex(awayKey);
-  if (homeIdx >= 0 && awayIdx >= 0 && homeIdx !== awayIdx) {
-    return [teams[homeIdx], teams[awayIdx], ...teams.filter((_, idx) => idx !== homeIdx && idx !== awayIdx)];
-  }
-  if (homeIdx > 0) {
-    const homeTeam = teams[homeIdx];
-    teams.splice(homeIdx, 1);
-    teams.unshift(homeTeam);
-  }
-  return teams;
-}
-
 function normalizeLeague(value: unknown): string {
   return String(value || "").trim().toLowerCase();
 }
@@ -204,6 +86,60 @@ function looksDomesticCompetition(label: string): boolean {
 
 function hasCountryLogo(uri: unknown): boolean {
   return String(uri || "").toLowerCase().includes("/countries/");
+}
+
+type LiveStatusTone = "live" | "warning" | "muted" | "finished";
+
+function getLiveStatusMeta(input: {
+  status?: string;
+  detail?: string;
+  minute?: number | null;
+  isFinished?: boolean;
+  isPostponed?: boolean;
+}): { label: string; minuteLabel: string | null; tone: LiveStatusTone } {
+  const statusToken = String(input.status || "").toLowerCase();
+  const detailToken = String(input.detail || "").toLowerCase();
+  const minute = Number.isFinite(Number(input.minute)) ? Number(input.minute) : null;
+  const combined = `${statusToken} ${detailToken}`;
+
+  if (input.isPostponed || /postpon|cancel|afgelast|abandon/.test(combined)) {
+    return { label: "POSTPONED", minuteLabel: null, tone: "warning" };
+  }
+  if (/suspend|interrupted|abandon/.test(combined)) {
+    return { label: "SUSPENDED", minuteLabel: null, tone: "warning" };
+  }
+  if (/delay|delayed/.test(combined)) {
+    return { label: "DELAYED", minuteLabel: null, tone: "warning" };
+  }
+  if (/pen|shootout/.test(combined)) {
+    return { label: "PEN", minuteLabel: null, tone: "live" };
+  }
+  if (/extra|aet|et/.test(combined)) {
+    return { label: "EXTRA TIME", minuteLabel: minute != null ? `${minute}'` : null, tone: "live" };
+  }
+  if (/ht|half/.test(combined)) {
+    return { label: "HT", minuteLabel: null, tone: "warning" };
+  }
+  if (input.isFinished || /ft|finished|fulltime|final/.test(combined)) {
+    return { label: "FT", minuteLabel: null, tone: "finished" };
+  }
+  if (/live|in progress|in_play|inplay/.test(combined) || (minute != null && minute > 0)) {
+    return { label: "LIVE", minuteLabel: minute != null ? `${minute}'` : null, tone: "live" };
+  }
+  return { label: "UPCOMING", minuteLabel: null, tone: "muted" };
+}
+
+function inferEventSide(event: any, homeTeam: string, awayTeam: string): "home" | "away" | "center" {
+  const forced = String(event?.side || "").toLowerCase();
+  if (forced === "home" || forced === "away" || forced === "center") return forced;
+
+  const team = safeStr(event?.team || event?.teamName || "").toLowerCase();
+  const home = safeStr(homeTeam).toLowerCase();
+  const away = safeStr(awayTeam).toLowerCase();
+  if (!team) return "center";
+  if (team.includes(home.split(" ")[0]) || home.includes(team.split(" ")[0])) return "home";
+  if (team.includes(away.split(" ")[0]) || away.includes(team.split(" ")[0])) return "away";
+  return "center";
 }
 
 export default function MatchDetailScreen() {
@@ -219,23 +155,21 @@ export default function MatchDetailScreen() {
   const insets = useSafeAreaInsets();
   const { width: screenWidth } = useWindowDimensions();
   const { hasPremium, dailyPredictionUnlocksRemaining, isPredictionUnlocked, unlockPredictionWithRewardedAd } = useNexora();
-  const resolvedInitialTab = (params.initialTab && ["stream", "stats", "lineups", "timeline", "highlights"].includes(params.initialTab)) ? params.initialTab as TabId : "stream";
-  const [activeTab, setActiveTab] = useState<TabId>(resolvedInitialTab);
-  const [visitedTabs, setVisitedTabs] = useState<Record<TabId, boolean>>({
-    stream: resolvedInitialTab === "stream",
-    stats: resolvedInitialTab === "stats",
-    lineups: resolvedInitialTab === "lineups",
-    timeline: resolvedInitialTab === "timeline",
-    highlights: resolvedInitialTab === "highlights",
-  });
+  const { isFollowingMatch, followMatchAction, unfollowMatchAction } = useFollowState();
   const [lineupView, setLineupView] = useState<"pitch" | "list">("pitch");
-  const [streamKey, setStreamKey] = useState(0);
-  const [streamWebError, setStreamWebError] = useState<unknown>(null);
-  const [streamErrorRef, setStreamErrorRef] = useState<string>("");
   const [activeExperienceTab, setActiveExperienceTab] = useState<ExperienceTabId>("prematch");
+  const [visitedExperienceTabs, setVisitedExperienceTabs] = useState<Record<ExperienceTabId, boolean>>({
+    prematch: true,
+    predictions: false,
+    stats: false,
+    lineups: false,
+    timeline: false,
+    h2h: false,
+  });
   const [rewardedAdRunning, setRewardedAdRunning] = useState(false);
   const [statsMode, setStatsModeState] = useState<StatsMode>("basic");
   const [aiStoryCollapsed, setAiStoryCollapsed] = useState(true);
+  const [timelineFilter, setTimelineFilter] = useState<TimelineFilter>("all");
   const paramCanonical = useMemo(() => toCanonicalMatch({
     id: params.matchId,
     homeTeam: params.homeTeam,
@@ -296,46 +230,6 @@ export default function MatchDetailScreen() {
     };
     return map[params.league] || "";
   }, [likelyInternationalFromParams, params.espnLeague, params.league]);
-  const {
-    data: streamData,
-    isLoading: _streamLoading,
-    error: streamFetchError,
-    refetch: refetchStream,
-  } = useQuery({
-    queryKey: sportKeys.matchStream({ matchId: params.matchId, espnLeague }),
-    placeholderData: () => cachePeekStale<any>(`sports:match-stream:${params.matchId}:${espnLeague}`) || undefined,
-    queryFn: async () => {
-      const key = `sports:match-stream:${params.matchId}:${espnLeague}`;
-      const stale = await cacheGetStale<any>(key);
-      try {
-        const payload = await getMatchStream({ matchId: params.matchId, league: espnLeague });
-        cacheSet(key, payload, 60_000);
-        return payload;
-      } catch {
-        return stale || {};
-      }
-    },
-    enabled: !!params.matchId && paramBucket === "live",
-    staleTime: 60_000,
-    retry: shouldRetryRequest,
-    refetchOnMount: false,
-  });
-  const _rawStreamUrl = streamData?.url || ""; void _streamLoading;
-  const streamUrl = (() => {
-    if (!_rawStreamUrl) return `https://embedme.top/embed/alpha/${params.matchId}/1`;
-    const u = _rawStreamUrl.toLowerCase();
-    if (
-      u.includes("google.") || u.includes("bing.com") || u.includes("yahoo.com") ||
-      u.includes("search?q=") || u.includes("/search?") || u.includes("duckduckgo.")
-    ) return `https://embedme.top/embed/alpha/${params.matchId}/1`;
-    if (!u.startsWith("http://") && !u.startsWith("https://")) return `https://embedme.top/embed/alpha/${params.matchId}/1`;
-    return _rawStreamUrl;
-  })();
-  const streamApiError = normalizeApiError(streamFetchError || streamData?.error || null);
-  const streamPlayerError = normalizeApiError(streamWebError);
-  const hasStreamApiIssue = Boolean(streamFetchError || streamData?.error);
-  const hasStreamPlayerIssue = Boolean(streamWebError);
-
   const { data: matchDetail, isLoading: detailLoading } = useQuery({
     queryKey: sportKeys.matchDetail({ matchId: params.matchId, espnLeague, sport: espnSport }),
     placeholderData: () => cachePeekStale<any>(`sports:match-detail:${params.matchId}:${espnLeague}`) || undefined,
@@ -383,6 +277,15 @@ export default function MatchDetailScreen() {
   const liveHomeScore = effectiveCanonical?.homeScore ?? Number(params.homeScore ?? 0);
   const liveAwayScore = effectiveCanonical?.awayScore ?? Number(params.awayScore ?? 0);
   const liveMinute = effectiveCanonical?.minute ?? (params.minute ? parseInt(params.minute) : undefined);
+  const followMatchId = String(effectiveCanonical?.id || params.matchId || "");
+  const isMatchFollowed = followMatchId ? isFollowingMatch(followMatchId) : false;
+  const statusMeta = getLiveStatusMeta({
+    status: String(effectiveCanonical?.status || params.status || ""),
+    detail: String(effectiveCanonical?.statusDetail || matchDetail?.statusDetail || matchDetail?.status || params.statusDetail || ""),
+    minute: liveMinute ?? null,
+    isFinished,
+    isPostponed,
+  });
   const competitionInsightsQuery = useQuery({
     queryKey: sportKeys.competitionInsights({ leagueName: params.league, espnLeague, sport: espnSport }),
     queryFn: () => getCompetitionInsights({ leagueName: params.league, espnLeague, sport: espnSport }),
@@ -431,12 +334,12 @@ export default function MatchDetailScreen() {
 
     const isLiveMode = mode === "live";
     const isInternationalContext = /fifa|nations|international|friendly|euro|world cup|wereldkampioenschap/i.test(`${espnLeague} ${params.league || ""}`);
-    const homeLineupPlayers = Array.isArray(homeLineupTeam?.players) ? homeLineupTeam.players.length : 0;
-    const awayLineupPlayers = Array.isArray(awayLineupTeam?.players) ? awayLineupTeam.players.length : 0;
-    const homeLineupCertainty = homeLineupTeam?.lineupType === "official" ? 0.95 : (homeLineupPlayers >= 11 ? 0.72 : 0.5);
-    const awayLineupCertainty = awayLineupTeam?.lineupType === "official" ? 0.95 : (awayLineupPlayers >= 11 ? 0.72 : 0.5);
+    const homeLineupPlayers = Array.isArray(homeLineupTeam?.allPlayers) ? homeLineupTeam.allPlayers.length : 0;
+    const awayLineupPlayers = Array.isArray(awayLineupTeam?.allPlayers) ? awayLineupTeam.allPlayers.length : 0;
+    const homeLineupCertainty = homeLineupTeam?.lineupState === "confirmed" ? 0.95 : (homeLineupPlayers >= 11 ? 0.72 : 0.5);
+    const awayLineupCertainty = awayLineupTeam?.lineupState === "confirmed" ? 0.95 : (awayLineupPlayers >= 11 ? 0.72 : 0.5);
 
-    return buildGroundedMatchAnalysis({
+    return runAiPredictionModel({
       matchId: String(params.matchId || ""),
       homeTeam: String(params.homeTeam || "Home"),
       awayTeam: String(params.awayTeam || "Away"),
@@ -452,12 +355,22 @@ export default function MatchDetailScreen() {
         home: isLiveMode ? (matchDetail?.homeStats || {}) : {},
         away: isLiveMode ? (matchDetail?.awayStats || {}) : {},
       },
-      events: isLiveMode && Array.isArray(matchDetail?.keyEvents) ? matchDetail.keyEvents.slice(0, 25) : [],
+      events: Array.isArray(timelineRawEvents)
+        ? timelineRawEvents.slice(-40)
+        : (isLiveMode && Array.isArray(matchDetail?.keyEvents) ? matchDetail.keyEvents.slice(0, 25) : []),
+      headToHead: prematchH2H?.summary
+        ? {
+            homeWins: Number(prematchH2H.summary.homeWins || 0),
+            awayWins: Number(prematchH2H.summary.awayWins || 0),
+            draws: Number(prematchH2H.summary.draws || 0),
+          }
+        : null,
       home: {
         rank: homeStanding?.rank ?? null,
         points: homeStanding?.points ?? null,
         goalDiff: homeStanding?.goalDiff ?? null,
         recentForm: homeStanding?.form ?? homeStanding?.recentForm ?? null,
+        recentResults5: prematchTeamForm?.homeForm?.sequence || null,
         goalsFor: homeStanding?.goalsFor ?? homeStanding?.gf ?? null,
         goalsAgainst: homeStanding?.goalsAgainst ?? homeStanding?.ga ?? null,
         cleanSheets: homeStanding?.cleanSheets ?? null,
@@ -469,6 +382,8 @@ export default function MatchDetailScreen() {
         topAssist: homeTopAssist?.name || null,
         topAssistCount: (homeTopAssist?.assists ?? Number(homeTopAssist?.displayValue || 0)) || null,
         formation: homeLineupTeam?.formation || null,
+        injuries: prematchInjuries.home.length || null,
+        suspensions: 0,
         lineupStrength: Math.min(1, homeLineupPlayers / 11),
         lineupCertainty: homeLineupCertainty,
       },
@@ -477,6 +392,7 @@ export default function MatchDetailScreen() {
         points: awayStanding?.points ?? null,
         goalDiff: awayStanding?.goalDiff ?? null,
         recentForm: awayStanding?.form ?? awayStanding?.recentForm ?? null,
+        recentResults5: prematchTeamForm?.awayForm?.sequence || null,
         goalsFor: awayStanding?.goalsFor ?? awayStanding?.gf ?? null,
         goalsAgainst: awayStanding?.goalsAgainst ?? awayStanding?.ga ?? null,
         cleanSheets: awayStanding?.cleanSheets ?? null,
@@ -488,10 +404,12 @@ export default function MatchDetailScreen() {
         topAssist: awayTopAssist?.name || null,
         topAssistCount: (awayTopAssist?.assists ?? Number(awayTopAssist?.displayValue || 0)) || null,
         formation: awayLineupTeam?.formation || null,
+        injuries: prematchInjuries.away.length || null,
+        suspensions: 0,
         lineupStrength: Math.min(1, awayLineupPlayers / 11),
         lineupCertainty: awayLineupCertainty,
       },
-    });
+    }, mode);
   };
 
   const {
@@ -519,23 +437,33 @@ export default function MatchDetailScreen() {
       ? Boolean(preMatchLoading && !preMatchPrediction)
       : false;
 
-  const handleTabChange = (tab: TabId) => {
-    setActiveTab(tab);
-    setVisitedTabs((current) => (current[tab] ? current : { ...current, [tab]: true }));
+  const handleExperienceTabChange = (tab: ExperienceTabId) => {
+    setActiveExperienceTab(tab);
+    setVisitedExperienceTabs((current) => (current[tab] ? current : { ...current, [tab]: true }));
     SafeHaptics.impactLight();
   };
 
-  const handleRetryAutoStream = async () => {
+  const handleToggleFollowMatch = async () => {
+    if (!followMatchId) return;
     SafeHaptics.impactLight();
-    setStreamWebError(null);
-    setStreamErrorRef("");
-    await refetchStream();
-    setStreamKey(k => k + 1);
+    try {
+      if (isMatchFollowed) {
+        await unfollowMatchAction(followMatchId);
+      } else {
+        await followMatchAction({
+          matchId: followMatchId,
+          homeTeam: safeStr(effectiveCanonical?.homeTeam || params.homeTeam),
+          awayTeam: safeStr(effectiveCanonical?.awayTeam || params.awayTeam),
+          competition: safeStr(effectiveCanonical?.league || params.league),
+          espnLeague: safeStr(espnLeague || params.espnLeague),
+          startTime: safeStr(effectiveCanonical?.startDate || params.startDate) || null,
+          notificationsEnabled: true,
+        });
+      }
+    } catch {
+      Alert.alert("Kon meldingen niet updaten", "Probeer opnieuw.");
+    }
   };
-
-  const handleExperienceScroll = useMemo(() => {
-    return (_event: any) => {};
-  }, []);
 
   useEffect(() => {
     let mounted = true;
@@ -599,16 +527,6 @@ export default function MatchDetailScreen() {
 
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const scoreFontSize = screenWidth < 350 ? 40 : screenWidth < 385 ? 44 : 48;
-  const timelineEvents = useMemo(
-    () => (Array.isArray(matchDetail?.timeline) ? matchDetail.timeline : []),
-    [matchDetail?.timeline],
-  );
-  const orderedLineupTeams = useMemo(
-    () => orderLineupTeams(matchDetail?.starters || [], String(params.homeTeam || ""), String(params.awayTeam || "")),
-    [matchDetail?.starters, params.homeTeam, params.awayTeam]
-  );
-  const homeLineupTeam = orderedLineupTeams[0] || null;
-  const awayLineupTeam = orderedLineupTeams[1] || null;
   const rawCompetitionName = safeStr(effectiveCanonical?.league || matchDetail?.competition || matchDetail?.league || params.league);
   const likelyInternational = useMemo(() => {
     if (/fifa\.|uefa\.nations|international|friendly|friendlies|world cup|euro/i.test(espnLeague)) return true;
@@ -631,6 +549,95 @@ export default function MatchDetailScreen() {
   const homeTeamName = safeStr(matchDetail?.homeTeam || params.homeTeam || "Home");
   const awayTeamName = safeStr(matchDetail?.awayTeam || params.awayTeam || "Away");
   const kickoffRaw = safeStr(matchDetail?.startDate || matchDetail?.date || effectiveCanonical?.startDate || "");
+  const timelineRawEvents = useMemo(
+    () => (Array.isArray(matchDetail?.timeline) ? matchDetail.timeline : []),
+    [matchDetail?.timeline],
+  );
+
+  const prematchContext = useMatchContext({
+    kickoffRaw,
+    venue: matchDetail?.venue,
+    city: matchDetail?.city,
+    country: matchDetail?.country,
+    referee: matchDetail?.referee,
+    weather: (matchDetail as any)?.weather,
+    competition: competitionName,
+    round: matchDetail?.round,
+  });
+
+  const prematchStandings = useStandings({
+    leagueName: competitionName,
+    espnLeague,
+    sport: espnSport,
+    homeTeam: homeTeamName,
+    awayTeam: awayTeamName,
+  });
+
+  const prematchTeamForm = useTeamForm({
+    homeTeamId: String((matchDetail as any)?.homeTeamId || "") || null,
+    awayTeamId: String((matchDetail as any)?.awayTeamId || "") || null,
+    homeTeam: homeTeamName,
+    awayTeam: awayTeamName,
+    espnLeague,
+    sport: espnSport,
+  });
+
+  const prematchH2H = useH2H({
+    leagueName: competitionName,
+    espnLeague,
+    homeTeam: homeTeamName,
+    awayTeam: awayTeamName,
+  });
+
+  const prematchTeamStats = useTeamStats({
+    homeStanding: prematchStandings.homeStanding,
+    awayStanding: prematchStandings.awayStanding,
+    homeForm: prematchTeamForm.homeForm,
+    awayForm: prematchTeamForm.awayForm,
+    homeOverview: prematchTeamForm.homeTeamOverview,
+    awayOverview: prematchTeamForm.awayTeamOverview,
+  });
+
+  const prematchKeyPlayers = useKeyPlayers({
+    homeTeam: homeTeamName,
+    awayTeam: awayTeamName,
+    competitionInsights: prematchStandings.data,
+    homeOverview: prematchTeamForm.homeTeamOverview,
+    awayOverview: prematchTeamForm.awayTeamOverview,
+  });
+
+  const prematchInjuries = useInjuries({
+    homeOverview: prematchTeamForm.homeTeamOverview,
+    awayOverview: prematchTeamForm.awayTeamOverview,
+  });
+
+  const expectedLineups = useExpectedLineups({
+    homeOverview: prematchTeamForm.homeTeamOverview,
+    awayOverview: prematchTeamForm.awayTeamOverview,
+  });
+
+  const timelineData = useTimeline({
+    events: timelineRawEvents,
+    homeTeam: homeTeamName,
+    awayTeam: awayTeamName,
+    status: String(effectiveCanonical?.statusDetail || effectiveCanonical?.status || params.status || ""),
+  });
+
+  const { substitutions } = useLiveLineupChanges({ events: timelineData.events });
+
+  const integratedLineups = useLineups({
+    confirmedTeams: (matchDetail as any)?.starters || [],
+    homeTeam: homeTeamName,
+    awayTeam: awayTeamName,
+    expectedHome: expectedLineups.homeExpected,
+    expectedAway: expectedLineups.awayExpected,
+    substitutions,
+  });
+  const homeLineupTeam = integratedLineups.home;
+  const awayLineupTeam = integratedLineups.away;
+  const homeFormationLayout = useFormationLayout(homeLineupTeam);
+  const awayFormationLayout = useFormationLayout(awayLineupTeam);
+
   const kickoffTs = Date.parse(kickoffRaw);
   const hasKickoffDate = Number.isFinite(kickoffTs);
   const kickoffDate = (() => {
@@ -659,25 +666,41 @@ export default function MatchDetailScreen() {
       return "";
     }
   })();
-  const kickoffConfirmed = kickoffTime.length > 0;
   const highlightSummary = matchDetail?.highlights || null;
-  const highlightMoments = Array.isArray(highlightSummary?.topMoments) ? highlightSummary.topMoments : [];
-  const highlightRecap = Array.isArray(highlightSummary?.recap) ? highlightSummary.recap : [];
-  const redesignEnabled = String(params.initialTab || "") !== "legacy";
-  const orderedTimelineEvents = useMemo(() => sortTimelineForRender(timelineEvents), [timelineEvents]);
+  void highlightSummary;
+  const orderedTimelineEvents = timelineData.events;
   const timelineProgressMinute = Math.max(0, Math.min(120, Number(liveMinute || 0)));
   const timelineProgressPct = Math.max(0, Math.min(100, Math.round((timelineProgressMinute / 90) * 100)));
   const timelineEventCounts = useMemo(() => {
-    return orderedTimelineEvents.reduce((acc, event: any) => {
-      const kind = String(event?.kind || event?.type || "").toLowerCase();
-      if (kind.includes("goal")) acc.goals += 1;
+    return orderedTimelineEvents.reduce((acc, event) => {
+      const kind = String(event.kind || "").toLowerCase();
+      if (event.filter === "goals") acc.goals += 1;
       if (kind.includes("yellow")) acc.yellow += 1;
       if (kind.includes("red")) acc.red += 1;
-      if (kind.includes("sub") || kind.includes("substitut")) acc.subs += 1;
-      if (kind.includes("pen") || kind.includes("penalty")) acc.penalties += 1;
+      if (event.filter === "subs") acc.subs += 1;
+      if (kind.includes("penalty") || kind.includes("missed_penalty")) acc.penalties += 1;
       return acc;
     }, { goals: 0, yellow: 0, red: 0, subs: 0, penalties: 0 });
   }, [orderedTimelineEvents]);
+  const timelineFilters = useTimelineFilters({
+    events: orderedTimelineEvents,
+    activeFilter: timelineFilter,
+  });
+  const filteredTimelineEvents = useMemo(
+    () => timelineFilters.filteredEvents,
+    [timelineFilters.filteredEvents],
+  );
+  const keyLiveEvents = useMemo(
+    () => orderedTimelineEvents.filter((event) => !event.isPhaseSeparator && event.isKeyMoment).slice(-6).reverse(),
+    [orderedTimelineEvents],
+  );
+  const momentumTrend = useMemo(
+    () => orderedTimelineEvents
+      .filter((event) => !event.isPhaseSeparator)
+      .slice(-8)
+      .map((event) => (event.side === "home" ? 14 : event.side === "away" ? -14 : 0)),
+    [orderedTimelineEvents],
+  );
   const momentumModel = useMemo(() => calculateMomentum({
     homeStats: matchDetail?.homeStats || {},
     awayStats: matchDetail?.awayStats || {},
@@ -698,7 +721,16 @@ export default function MatchDetailScreen() {
   ), [matchDetail?.awayStats, matchDetail?.homeStats, statsMode]);
   const predictionError = Boolean((prediction as any)?.error);
   const safePrediction = prediction && !predictionError ? prediction : null;
-  const predictionMatchId = String(params.matchId || effectiveCanonical?.id || `${params.homeTeam}-${params.awayTeam}-${params.startDate || ""}`);
+  const premiumStoryCard = useMemo(() => {
+    return generateAiMatchStoryCard({
+      prediction: safePrediction,
+      liveStory: aiStory,
+      isLive: liveInsightEnabled,
+      homeTeam: homeTeamName,
+      awayTeam: awayTeamName,
+    });
+  }, [aiStory, awayTeamName, homeTeamName, liveInsightEnabled, safePrediction]);
+  const predictionMatchId = followMatchId || `${params.homeTeam}-${params.awayTeam}-${params.startDate || ""}`;
   const predictionUnlocked = hasPremium || isPredictionUnlocked(predictionMatchId);
   const handleUnlockPrediction = async () => {
     if (hasPremium || predictionUnlocked) return;
@@ -774,14 +806,7 @@ export default function MatchDetailScreen() {
     { key: "goals", label: "Goals", value: `O2.5 ${over25Pct}%` },
   ];
 
-  const successDataCoverage = Math.round(
-    [safePrediction?.homePct, safePrediction?.drawPct, safePrediction?.awayPct, safePrediction?.confidence, safePrediction?.over25Pct, safePrediction?.bothTeamsToScorePct]
-      .filter((value) => value !== null && value !== undefined).length / 6 * 100
-  );
-  const successSignalStrength = Math.max(40, Math.round((confidencePct * 0.65) + (edgeScorePct * 0.35)));
-
-  if (redesignEnabled) {
-    return (
+  return (
       <View style={styles.container}>
         <LinearGradient
           colors={["#111521", "#0B0F1A", "#080B12"]}
@@ -791,90 +816,52 @@ export default function MatchDetailScreen() {
             <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
               <Ionicons name="chevron-back" size={22} color="#FFFFFF" />
             </TouchableOpacity>
-            {(isLive || isHalfTime) ? (
-              <View style={styles.nxLiveGlowPill}>
-                <View style={styles.nxLiveDot} />
-                <Text style={styles.nxLiveText}>{isHalfTime ? "HALF TIME" : `LIVE ${liveMinute ? `${liveMinute}'` : ""}`}</Text>
-              </View>
-            ) : (
-              <View style={styles.nxUpcomingPill}>
-                <Text style={styles.nxUpcomingText}>{isFinished ? "FINISHED" : "UPCOMING"}</Text>
-              </View>
-            )}
-            <TouchableOpacity
-              style={styles.heroActionBtn}
-              onPress={() => {
-                SafeHaptics.impactLight();
-                router.push("/follow-center");
-              }}
-            >
-              <Ionicons name="notifications-outline" size={20} color="#FFFFFF" />
-            </TouchableOpacity>
+            {/* ...existing code for status pill and notification button... */}
           </View>
-
-          <View style={styles.matchHeader}>
-            <View style={styles.competitionRowCenterOnly}>
-              <View style={styles.competitionCenter}>
-                {leagueLogoUri ? (
-                  <TeamLogo uri={leagueLogoUri} teamName={competitionName} size={24} />
-                ) : (
-                  <View style={styles.leagueFallbackIcon}>
-                    <Ionicons name="trophy-outline" size={14} color={COLORS.textMuted} />
-                  </View>
-                )}
-                <Text style={styles.leagueName} numberOfLines={1}>{competitionBrand.name || competitionName}</Text>
-              </View>
+          { (isLive || isHalfTime) ? (
+            <View style={styles.liveSignalWrap}>
+              {keyLiveEvents.length > 0 ? (
+                <View style={styles.liveSignalCard}>
+                  <Text style={styles.liveSignalTitle}>Live Key Events</Text>
+                  {keyLiveEvents.map((event, idx) => {
+                    const minute = event.minuteLabel || "--";
+                    const token = event.filter;
+                    const side = event.side;
+                    const title = safeStr(event.title || "Event");
+                    const detail = safeStr(event.description || "");
+                    return (
+                      <View key={`${title}_${minute}_${idx}`} style={styles.liveSignalEventRow}>
+                        <Text style={styles.liveSignalMinute}>{minute || "--"}</Text>
+                        <View style={styles.liveSignalEventBody}>
+                          <Text style={styles.liveSignalEventTitle} numberOfLines={1}>{title}</Text>
+                          {detail ? <Text style={styles.liveSignalEventDetail} numberOfLines={1}>{detail}</Text> : null}
+                        </View>
+                        <View
+                          style={[
+                            styles.liveSignalTypePill,
+                            token === "goals" ? styles.liveSignalTypeGoal : null,
+                            token === "cards" ? styles.liveSignalTypeCard : null,
+                            token === "subs" ? styles.liveSignalTypeSub : null,
+                            token === "var" ? styles.liveSignalTypeVar : null,
+                            token === "key" ? styles.liveSignalTypePen : null,
+                          ]}
+                        >
+                          <Text style={styles.liveSignalTypeText}>{side === "center" ? token.toUpperCase() : side === "home" ? "HOME" : "AWAY"}</Text>
+                        </View>
+                      </View>
+                    );
+                  })}
+                </View>
+              ) : null}
             </View>
+          ) : null}
 
-            <View style={styles.scoreRow}>
-              <TeamSide
-                name={homeTeamName}
-                logo={matchDetail?.homeTeamLogo || params.homeTeamLogo}
-                onPress={() => {
-                  const fallbackTeamId = `name:${encodeURIComponent(homeTeamName || "")}`;
-                  router.push({
-                    pathname: "/team-detail",
-                    params: {
-                      teamId: matchDetail?.homeTeamId || fallbackTeamId,
-                      teamName: homeTeamName,
-                      logo: matchDetail?.homeTeamLogo || params.homeTeamLogo || "",
-                      sport: espnSport,
-                      league: espnLeague,
-                    },
-                  });
-                }}
-              />
-              <View style={styles.scoreCenter}>
-                {(isLive || isHalfTime || isFinished) ? (
-                  <Text style={[styles.score, { fontSize: scoreFontSize }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>
-                    {liveHomeScore} - {liveAwayScore}
-                  </Text>
-                ) : (
-                  <>
-                    <Text style={styles.scheduledDate} numberOfLines={1}>{kickoffDate || "Datum volgt"}</Text>
-                    <Text style={styles.vsText}>VS</Text>
-                    <Text style={styles.scheduledTime} numberOfLines={1}>{kickoffTime || "--:--"}</Text>
-                  </>
-                )}
+            {matchDetail?.venue ? (
+              <View style={styles.venueRow}> 
+                <Ionicons name="location-outline" size={12} color="rgba(255,255,255,0.62)" />
+                <Text style={[styles.venueText, { color: "rgba(255,255,255,0.72)" }]}>{matchDetail.venue}</Text>
               </View>
-              <TeamSide
-                name={awayTeamName}
-                logo={matchDetail?.awayTeamLogo || params.awayTeamLogo}
-                onPress={() => {
-                  const fallbackTeamId = `name:${encodeURIComponent(awayTeamName || "")}`;
-                  router.push({
-                    pathname: "/team-detail",
-                    params: {
-                      teamId: matchDetail?.awayTeamId || fallbackTeamId,
-                      teamName: awayTeamName,
-                      logo: matchDetail?.awayTeamLogo || params.awayTeamLogo || "",
-                      sport: espnSport,
-                      league: espnLeague,
-                    },
-                  });
-                }}
-              />
-            </View>
+            ) : null}
 
             {momentumModel.hasData ? (
               <View style={styles.headerMomentumWrap}>
@@ -913,6 +900,88 @@ export default function MatchDetailScreen() {
           </View>
         ) : null}
 
+        {(isLive || isHalfTime) ? (
+          <View style={styles.liveSignalWrap}>
+            {keyLiveEvents.length > 0 ? (
+              <View style={styles.liveSignalCard}>
+                <Text style={styles.liveSignalTitle}>Live Key Events</Text>
+                {keyLiveEvents.map((event, idx) => {
+                  const minute = event.minuteLabel || "--";
+                  const token = event.filter;
+                  const side = event.side;
+                  const title = safeStr(event.title || "Event");
+                  const detail = safeStr(event.description || "");
+                  return (
+                    <View key={`${title}_${minute}_${idx}`} style={styles.liveSignalEventRow}>
+                      <Text style={styles.liveSignalMinute}>{minute || "--"}</Text>
+                      <View style={styles.liveSignalEventBody}>
+                        <Text style={styles.liveSignalEventTitle} numberOfLines={1}>{title}</Text>
+                        {detail ? <Text style={styles.liveSignalEventDetail} numberOfLines={1}>{detail}</Text> : null}
+                      </View>
+                      <View
+                        style={[
+                          styles.liveSignalTypePill,
+                          token === "goals" ? styles.liveSignalTypeGoal : null,
+                          token === "cards" ? styles.liveSignalTypeCard : null,
+                          token === "subs" ? styles.liveSignalTypeSub : null,
+                          token === "var" ? styles.liveSignalTypeVar : null,
+                          token === "key" ? styles.liveSignalTypePen : null,
+                        ]}
+                      >
+                        <Text style={styles.liveSignalTypeText}>{side === "center" ? token.toUpperCase() : side === "home" ? "HOME" : "AWAY"}</Text>
+                      </View>
+                    </View>
+                  );
+                })}
+              </View>
+            ) : null}
+
+            <View style={styles.liveSignalCard}>
+              <Text style={styles.liveSignalTitle}>Live Match Factors</Text>
+              <View style={styles.liveFactorGrid}>
+                {liveMatchFactors.map((factor) => (
+                  <View key={factor.label} style={styles.liveFactorChip}>
+                    <Text style={styles.liveFactorLabel}>{factor.label}</Text>
+                    <Text
+                      style={[
+                        styles.liveFactorValue,
+                        factor.tone === "home" ? styles.liveFactorValueHome : null,
+                        factor.tone === "away" ? styles.liveFactorValueAway : null,
+                      ]}
+                    >
+                      {factor.value}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+              {momentumTrend.length > 0 ? (
+                <View style={styles.liveTrendWrap}>
+                  <Text style={styles.liveTrendLabel}>Momentum trend</Text>
+                  <View style={styles.liveTrendBars}>
+                    {momentumTrend.map((point, idx) => {
+                      const height = Math.max(5, Math.min(22, Math.round(Math.abs(point) * 2)));
+                      const positive = point >= 0;
+                      return (
+                        <View
+                          key={`trend_${idx}`}
+                          style={[
+                            styles.liveTrendBar,
+                            {
+                              height,
+                              backgroundColor: positive ? "rgba(31,219,142,0.88)" : "rgba(62,120,255,0.88)",
+                              alignSelf: positive ? "flex-end" : "flex-start",
+                            },
+                          ]}
+                        />
+                      );
+                    })}
+                  </View>
+                </View>
+              ) : null}
+            </View>
+          </View>
+        ) : null}
+
         <View style={styles.nxTabBarWrap}>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.nxTabBarInner}>
             {EXPERIENCE_TABS.map((tab) => {
@@ -920,10 +989,7 @@ export default function MatchDetailScreen() {
               return (
                 <TouchableOpacity
                   key={tab.id}
-                  onPress={() => {
-                    setActiveExperienceTab(tab.id);
-                    SafeHaptics.impactLight();
-                  }}
+                  onPress={() => handleExperienceTabChange(tab.id)}
                   style={styles.nxTabItem}
                   activeOpacity={0.85}
                 >
@@ -935,58 +1001,192 @@ export default function MatchDetailScreen() {
           </ScrollView>
         </View>
 
-        {activeExperienceTab === "prematch" ? (
+        {visitedExperienceTabs.prematch ? (
           <ScrollView
-            style={styles.tabContent}
+            style={[styles.tabContent, activeExperienceTab !== "prematch" ? styles.hiddenTabContent : null]}
             contentContainerStyle={styles.nxContentWrap}
             showsVerticalScrollIndicator={false}
-            onScroll={handleExperienceScroll}
+            decelerationRate="fast"
             scrollEventThrottle={16}
           >
+            <Text style={styles.nxSectionTitle}>Match Context</Text>
             <View style={styles.nxCard}>
-              <Text style={styles.nxCardKicker}>Prematch</Text>
-              <Text style={styles.nxCardTitle}>Match Context</Text>
-              <View style={styles.nxMetaRow}>
-                <Ionicons name="calendar-outline" size={14} color="#8F98AE" />
-                <Text style={styles.nxMetaText}>{kickoffDate || "Datum volgt"} · {kickoffTime || "--:--"}</Text>
-              </View>
-              {!!matchDetail?.venue && (
-                <View style={styles.nxMetaRow}>
-                  <Ionicons name="location-outline" size={14} color="#8F98AE" />
-                  <Text style={styles.nxMetaText}>{matchDetail.venue}</Text>
+              <Text style={styles.nxCardKicker}>Context</Text>
+              <Text style={styles.nxCardTitle}>{homeTeamName} vs {awayTeamName}</Text>
+              <View style={styles.nxMetaRow}><Ionicons name="calendar-outline" size={14} color="#8F98AE" /><Text style={styles.nxMetaText}>{prematchContext.kickoffDate || "Datum volgt"} · {prematchContext.kickoffTime || "--:--"}</Text></View>
+              <View style={styles.nxMetaRow}><Ionicons name="time-outline" size={14} color="#8F98AE" /><Text style={styles.nxMetaText}>Tijdzone: {prematchContext.timezone}</Text></View>
+              <View style={styles.nxMetaRow}><Ionicons name="trophy-outline" size={14} color="#8F98AE" /><Text style={styles.nxMetaText}>{prematchContext.competition || "Competitie onbekend"}{prematchContext.round ? ` · ${prematchContext.round}` : ""}</Text></View>
+              <View style={styles.nxMetaRow}><Ionicons name="location-outline" size={14} color="#8F98AE" /><Text style={styles.nxMetaText}>{prematchContext.venue || "Stadion onbekend"}{prematchContext.city ? ` · ${prematchContext.city}` : ""}{prematchContext.country ? `, ${prematchContext.country}` : ""}</Text></View>
+              <View style={styles.nxMetaRow}><Ionicons name="person-outline" size={14} color="#8F98AE" /><Text style={styles.nxMetaText}>Scheidsrechter: {prematchContext.referee || "Niet beschikbaar"}</Text></View>
+              <View style={styles.nxMetaRow}><Ionicons name="cloud-outline" size={14} color="#8F98AE" /><Text style={styles.nxMetaText}>Weer: {prematchContext.weather || "Niet beschikbaar"}</Text></View>
+            </View>
+
+            <Text style={styles.nxSectionTitle}>Team Form</Text>
+            <View style={styles.nxGridWrap}>
+              <View style={styles.nxGridCard}>
+                <Text style={styles.nxGridLabel}>{homeTeamName}</Text>
+                <View style={styles.formBadgeRow}>
+                  {prematchTeamForm.homeForm.sequence.map((r: string, idx: number) => (
+                    <View key={`home_form_${idx}`} style={[styles.formBadge, r === "W" ? styles.formBadgeWin : r === "D" ? styles.formBadgeDraw : styles.formBadgeLoss]}>
+                      <Text style={styles.formBadgeText}>{r}</Text>
+                    </View>
+                  ))}
                 </View>
+                <Text style={styles.nxMetaText}>Goals: {prematchTeamForm.homeForm.goalsScored} · Tegen: {prematchTeamForm.homeForm.goalsConceded}</Text>
+                <Text style={styles.nxGridValue}>AI Form: {prematchTeamForm.homeForm.aiFormScore}/100</Text>
+              </View>
+              <View style={styles.nxGridCard}>
+                <Text style={styles.nxGridLabel}>{awayTeamName}</Text>
+                <View style={styles.formBadgeRow}>
+                  {prematchTeamForm.awayForm.sequence.map((r: string, idx: number) => (
+                    <View key={`away_form_${idx}`} style={[styles.formBadge, r === "W" ? styles.formBadgeWin : r === "D" ? styles.formBadgeDraw : styles.formBadgeLoss]}>
+                      <Text style={styles.formBadgeText}>{r}</Text>
+                    </View>
+                  ))}
+                </View>
+                <Text style={styles.nxMetaText}>Goals: {prematchTeamForm.awayForm.goalsScored} · Tegen: {prematchTeamForm.awayForm.goalsConceded}</Text>
+                <Text style={styles.nxGridValue}>AI Form: {prematchTeamForm.awayForm.aiFormScore}/100</Text>
+              </View>
+            </View>
+
+            <Text style={styles.nxSectionTitle}>Head to Head</Text>
+            <View style={styles.nxCard}>
+              <Text style={styles.nxCardKicker}>Last 5 meetings</Text>
+              <Text style={styles.nxBodyText}>{homeTeamName} wins {prematchH2H.summary.homeWins} · Draws {prematchH2H.summary.draws} · {awayTeamName} wins {prematchH2H.summary.awayWins}</Text>
+              {(prematchH2H.rows || []).map((row: any) => (
+                <View key={row.id} style={styles.nxListRow}>
+                  <Text style={styles.nxListPrimary}>{row.homeTeam} {row.homeScore}-{row.awayScore} {row.awayTeam}</Text>
+                  <Text style={styles.nxListMeta}>{row.location === "home" ? "Home" : row.location === "away" ? "Away" : "Neutral"}</Text>
+                </View>
+              ))}
+              {(!prematchH2H.rows || prematchH2H.rows.length === 0) ? <Text style={styles.nxBodyText}>Geen recente onderlinge matchen gevonden in deze competitiecontext.</Text> : null}
+            </View>
+
+            <Text style={styles.nxSectionTitle}>Team Stats Comparison</Text>
+            <View style={styles.nxCard}>
+              {(prematchTeamStats.metrics || []).map((metric: any) => {
+                const homeVal = typeof metric.home === "number" ? metric.home : 0;
+                const awayVal = typeof metric.away === "number" ? metric.away : 0;
+                const total = Math.max(1, homeVal + awayVal);
+                const homePctBar = Math.round((homeVal / total) * 100);
+                const awayPctBar = 100 - homePctBar;
+                const decimals = Number.isFinite(metric.decimals) ? metric.decimals : 1;
+                const suffix = metric.suffix || "";
+                return (
+                  <View key={metric.key} style={styles.compareRow}>
+                    <Text style={styles.compareLabel}>{metric.label}</Text>
+                    <View style={styles.compareBars}>
+                      <View style={[styles.compareBarHome, { width: `${homePctBar}%` }]} />
+                      <View style={[styles.compareBarAway, { width: `${awayPctBar}%` }]} />
+                    </View>
+                    <View style={styles.compareValuesRow}>
+                      <Text style={styles.compareValue}>{metric.home == null ? "--" : `${homeVal.toFixed(decimals)}${suffix}`}</Text>
+                      <Text style={styles.compareValue}>{metric.away == null ? "--" : `${awayVal.toFixed(decimals)}${suffix}`}</Text>
+                    </View>
+                  </View>
+                );
+              })}
+            </View>
+
+            <Text style={styles.nxSectionTitle}>Standings Context</Text>
+            <View style={styles.nxGridWrap}>
+              <View style={styles.nxGridCard}>
+                <Text style={styles.nxGridLabel}>{homeTeamName}</Text>
+                <Text style={styles.nxGridValue}>#{prematchStandings.homeStanding?.rank ?? "--"} · {prematchStandings.homeStanding?.points ?? "--"} pts</Text>
+                <Text style={styles.nxMetaText}>Vorm: {prematchStandings.homeStanding?.form || "Niet beschikbaar"}</Text>
+              </View>
+              <View style={styles.nxGridCard}>
+                <Text style={styles.nxGridLabel}>{awayTeamName}</Text>
+                <Text style={styles.nxGridValue}>#{prematchStandings.awayStanding?.rank ?? "--"} · {prematchStandings.awayStanding?.points ?? "--"} pts</Text>
+                <Text style={styles.nxMetaText}>Vorm: {prematchStandings.awayStanding?.form || "Niet beschikbaar"}</Text>
+              </View>
+            </View>
+
+            <Text style={styles.nxSectionTitle}>Key Players</Text>
+            <View style={styles.nxGridWrap}>
+              <View style={styles.nxGridCard}>
+                <Text style={styles.nxGridLabel}>{homeTeamName}</Text>
+                <Text style={styles.nxMetaText}>Top scorer: {prematchKeyPlayers.home.topScorer?.name || "Niet beschikbaar"}</Text>
+                <Text style={styles.nxMetaText}>Assist leader: {prematchKeyPlayers.home.assistLeader?.name || "Niet beschikbaar"}</Text>
+                <Text style={styles.nxMetaText}>AI key player: {prematchKeyPlayers.home.keyPlayer?.player?.name || "Niet beschikbaar"}</Text>
+              </View>
+              <View style={styles.nxGridCard}>
+                <Text style={styles.nxGridLabel}>{awayTeamName}</Text>
+                <Text style={styles.nxMetaText}>Top scorer: {prematchKeyPlayers.away.topScorer?.name || "Niet beschikbaar"}</Text>
+                <Text style={styles.nxMetaText}>Assist leader: {prematchKeyPlayers.away.assistLeader?.name || "Niet beschikbaar"}</Text>
+                <Text style={styles.nxMetaText}>AI key player: {prematchKeyPlayers.away.keyPlayer?.player?.name || "Niet beschikbaar"}</Text>
+              </View>
+            </View>
+
+            <Text style={styles.nxSectionTitle}>Injuries / Suspensions</Text>
+            <View style={styles.nxCard}>
+              {prematchInjuries.hasVerifiedData ? (
+                <>
+                  <Text style={styles.nxGridLabel}>{homeTeamName}</Text>
+                  {(prematchInjuries.home || []).map((item: any, idx: number) => (
+                    <View key={`home_abs_${idx}`} style={styles.nxListRow}>
+                      <Text style={styles.nxListPrimary}>{item.name}</Text>
+                      <Text style={styles.nxListMeta}>{item.reason}</Text>
+                    </View>
+                  ))}
+                  <Text style={[styles.nxGridLabel, { marginTop: 10 }]}>{awayTeamName}</Text>
+                  {(prematchInjuries.away || []).map((item: any, idx: number) => (
+                    <View key={`away_abs_${idx}`} style={styles.nxListRow}>
+                      <Text style={styles.nxListPrimary}>{item.name}</Text>
+                      <Text style={styles.nxListMeta}>{item.reason}</Text>
+                    </View>
+                  ))}
+                </>
+              ) : (
+                <Text style={styles.nxBodyText}>Geen geverifieerde blessures of schorsingen beschikbaar in de huidige databronnen.</Text>
               )}
             </View>
 
-            {safePrediction ? (
-              <View style={styles.nxCard}>
-                <Text style={styles.nxCardKicker}>AI Match Summary</Text>
-                <Text style={styles.nxCardTitle}>{safePrediction.prediction || "No prediction yet"}</Text>
-                <Text style={styles.nxBodyText}>{safePrediction.summary || tFn("matchDetail.preMatchLoading")}</Text>
-                {!predictionUnlocked ? <Text style={[styles.nxMetaText, { marginTop: 12 }]}>Unlock resterend vandaag: {dailyPredictionUnlocksRemaining}</Text> : null}
+            <Text style={styles.nxSectionTitle}>Expected Lineups</Text>
+            <View style={styles.nxGridWrap}>
+              <View style={styles.nxGridCard}>
+                <Text style={styles.nxGridLabel}>{homeTeamName}</Text>
+                <Text style={styles.nxGridValue}>{homeLineupTeam?.formation || "Onbekend"}</Text>
+                <Text style={styles.nxMetaText}>Status: {homeLineupTeam?.lineupState === "confirmed" ? "Confirmed lineup" : homeLineupTeam?.lineupState === "expected" ? "Expected lineup" : "Lineup not available"}</Text>
+                <Text style={styles.nxMetaText}>XI: {homeLineupTeam?.starters?.length || 0} · Bench: {homeLineupTeam?.bench?.length || 0}</Text>
+                {prematchInjuries.home.length > 0 ? <Text style={styles.nxMetaText}>Afwezig: {prematchInjuries.home.slice(0, 3).map((item) => item.name).join(", ")}</Text> : null}
               </View>
-            ) : (
-              <View style={styles.nxCard}>
-                <Text style={styles.nxCardKicker}>AI Read</Text>
-                {predLoading ? (
-                  <View style={styles.prematchInsightLoading}>
-                    <ActivityIndicator size="small" color={COLORS.accent} />
-                    <Text style={styles.aiLoadingText}>{tFn("matchDetail.preMatchLoading")}</Text>
-                  </View>
-                ) : (
-                  <Text style={styles.nxBodyText}>Prediction wordt opgebouwd op basis van recente vorm, context en teamdata.</Text>
-                )}
+              <View style={styles.nxGridCard}>
+                <Text style={styles.nxGridLabel}>{awayTeamName}</Text>
+                <Text style={styles.nxGridValue}>{awayLineupTeam?.formation || "Onbekend"}</Text>
+                <Text style={styles.nxMetaText}>Status: {awayLineupTeam?.lineupState === "confirmed" ? "Confirmed lineup" : awayLineupTeam?.lineupState === "expected" ? "Expected lineup" : "Lineup not available"}</Text>
+                <Text style={styles.nxMetaText}>XI: {awayLineupTeam?.starters?.length || 0} · Bench: {awayLineupTeam?.bench?.length || 0}</Text>
+                {prematchInjuries.away.length > 0 ? <Text style={styles.nxMetaText}>Afwezig: {prematchInjuries.away.slice(0, 3).map((item) => item.name).join(", ")}</Text> : null}
               </View>
-            )}
+            </View>
+
+            <View style={styles.nxCard}>
+              <Text style={styles.nxCardKicker}>Tactical setup preview</Text>
+              <Text style={styles.nxBodyText}>{homeTeamName} likely setup: {homeLineupTeam?.formation || "Unknown"} · {awayTeamName} likely setup: {awayLineupTeam?.formation || "Unknown"}.</Text>
+              <Text style={[styles.nxMetaText, { marginTop: 8 }]}>Deze preview wordt automatisch bijgewerkt zodra confirmed lineups of late absences binnenkomen.</Text>
+            </View>
+
+            <Text style={styles.nxSectionTitle}>Odds</Text>
+            <View style={styles.nxCard}>
+              {safePrediction ? (
+                <>
+                  <View style={styles.nxListRow}><Text style={styles.nxListPrimary}>Home</Text><Text style={styles.nxListMeta}>{normHomePct}% · {(normHomePct > 0 ? (100 / normHomePct).toFixed(2) : "--")}</Text></View>
+                  <View style={styles.nxListRow}><Text style={styles.nxListPrimary}>Draw</Text><Text style={styles.nxListMeta}>{normDrawPct}% · {(normDrawPct > 0 ? (100 / normDrawPct).toFixed(2) : "--")}</Text></View>
+                  <View style={styles.nxListRow}><Text style={styles.nxListPrimary}>Away</Text><Text style={styles.nxListMeta}>{normAwayPct}% · {(normAwayPct > 0 ? (100 / normAwayPct).toFixed(2) : "--")}</Text></View>
+                </>
+              ) : (
+                <Text style={styles.nxBodyText}>Odds niet beschikbaar voor deze wedstrijdcontext.</Text>
+              )}
+            </View>
           </ScrollView>
         ) : null}
 
-        {activeExperienceTab === "predictions" ? (
+        {visitedExperienceTabs.predictions ? (
           <ScrollView
-            style={styles.tabContent}
+            style={[styles.tabContent, activeExperienceTab !== "predictions" ? styles.hiddenTabContent : null]}
             contentContainerStyle={styles.nxContentWrap}
             showsVerticalScrollIndicator={false}
-            onScroll={handleExperienceScroll}
+            decelerationRate="fast"
             scrollEventThrottle={16}
           >
             <View style={styles.nxSectionHeadRow}>
@@ -1006,7 +1206,7 @@ export default function MatchDetailScreen() {
                     <Text style={styles.aiLoadingText}>{tFn("matchDetail.preMatchLoading")}</Text>
                   </View>
                 ) : (
-                  <Text style={styles.nxBodyText}>Het model verwerkt vorm, live context, line-up zekerheid en league signalen.</Text>
+                  <Text style={styles.nxBodyText}>Nog geen modeloutput ontvangen. Controleer of standings/live stats en line-up context beschikbaar zijn.</Text>
                 )}
               </View>
             ) : null}
@@ -1020,6 +1220,17 @@ export default function MatchDetailScreen() {
                   <Ionicons name="sparkles-outline" size={14} color="#8F98AE" />
                   <Text style={styles.nxMetaText}>{safePrediction.tip || "No primary angle yet"}</Text>
                 </View>
+              </View>
+            ) : null}
+
+            {safePrediction && premiumStoryCard ? (
+              <View style={styles.nxCard}>
+                <Text style={styles.nxCardKicker}>AI Story Layer</Text>
+                <Text style={styles.nxCardTitle}>{premiumStoryCard.title}</Text>
+                <Text style={styles.nxBodyText}>{premiumStoryCard.summary}</Text>
+                {premiumStoryCard.keyFactors.map((factor) => (
+                  <Text key={factor} style={styles.aiStoryBullet}>• {factor}</Text>
+                ))}
               </View>
             ) : null}
 
@@ -1075,6 +1286,13 @@ export default function MatchDetailScreen() {
                   ))}
                 </View>
 
+                <View style={styles.nxCard}>
+                  <Text style={styles.nxCardKicker}>Probability Engine</Text>
+                  <Text style={styles.nxBodyText}>1X2: {safePrediction.probabilityEngine.oneXTwo.home}% / {safePrediction.probabilityEngine.oneXTwo.draw}% / {safePrediction.probabilityEngine.oneXTwo.away}%</Text>
+                  <Text style={[styles.nxBodyText, { marginTop: 8 }]}>Goals: O2.5 {safePrediction.probabilityEngine.goals.over25}% · U2.5 {safePrediction.probabilityEngine.goals.under25}% · BTTS {safePrediction.probabilityEngine.goals.btts}%</Text>
+                  <Text style={[styles.nxMetaText, { marginTop: 10 }]}>xG: {safePrediction.probabilityEngine.goals.expectedGoals.home.toFixed(2)} - {safePrediction.probabilityEngine.goals.expectedGoals.away.toFixed(2)} (total {safePrediction.probabilityEngine.goals.expectedGoals.total.toFixed(2)})</Text>
+                </View>
+
                 <View style={styles.nxGridWrap}>
                   {detailedInfoRows.map((row) => (
                     <View key={row.key} style={styles.nxGridCard}>
@@ -1110,6 +1328,26 @@ export default function MatchDetailScreen() {
                   ))}
                 </View>
 
+                <View style={styles.nxCard}>
+                  <Text style={styles.nxCardKicker}>Data Fusion Signals</Text>
+                  <View style={styles.nxGoalsGrid}>
+                    <View style={styles.nxGoalPill}><Text style={styles.nxGoalPillText}>Form: {safePrediction.dataSignals.form ? "Live" : "Missing"}</Text></View>
+                    <View style={styles.nxGoalPill}><Text style={styles.nxGoalPillText}>Standings: {safePrediction.dataSignals.standings ? "Live" : "Missing"}</Text></View>
+                    <View style={styles.nxGoalPill}><Text style={styles.nxGoalPillText}>H2H: {safePrediction.dataSignals.headToHead ? "Live" : "Missing"}</Text></View>
+                    <View style={styles.nxGoalPill}><Text style={styles.nxGoalPillText}>Injuries: {safePrediction.dataSignals.injuries ? "Live" : "Missing"}</Text></View>
+                    <View style={styles.nxGoalPill}><Text style={styles.nxGoalPillText}>Lineups: {safePrediction.dataSignals.lineups ? "Live" : "Missing"}</Text></View>
+                    <View style={styles.nxGoalPill}><Text style={styles.nxGoalPillText}>Live stats: {safePrediction.dataSignals.liveStats ? "Live" : "Missing"}</Text></View>
+                  </View>
+                  {premiumStoryCard ? (
+                    <>
+                      <Text style={[styles.nxCardKicker, { marginTop: 14 }]}>Evidence</Text>
+                      {premiumStoryCard.dataEvidence.map((line) => (
+                        <Text key={line} style={styles.nxMetaText}>• {line}</Text>
+                      ))}
+                    </>
+                  ) : null}
+                </View>
+
                 <Text style={styles.nxSectionTitle}>Confidence Meter</Text>
                 <View style={styles.nxCard}>
                   <Text style={styles.nxCardKicker}>Model confidence</Text>
@@ -1142,12 +1380,12 @@ export default function MatchDetailScreen() {
           </ScrollView>
         ) : null}
 
-        {activeExperienceTab === "stats" ? (
+        {visitedExperienceTabs.stats ? (
           <ScrollView
-            style={styles.tabContent}
+            style={[styles.tabContent, activeExperienceTab !== "stats" ? styles.hiddenTabContent : null]}
             contentContainerStyle={styles.nxContentWrap}
             showsVerticalScrollIndicator={false}
-            onScroll={handleExperienceScroll}
+            decelerationRate="fast"
             scrollEventThrottle={16}
           >
             <View style={styles.statsModeRow}>
@@ -1215,22 +1453,27 @@ export default function MatchDetailScreen() {
           </ScrollView>
         ) : null}
 
-        {activeExperienceTab === "lineups" ? (
+        {visitedExperienceTabs.lineups ? (
           <ScrollView
-            style={styles.tabContent}
+            style={[styles.tabContent, activeExperienceTab !== "lineups" ? styles.hiddenTabContent : null]}
             contentContainerStyle={styles.nxContentWrap}
             showsVerticalScrollIndicator={false}
-            onScroll={handleExperienceScroll}
+            decelerationRate="fast"
             scrollEventThrottle={16}
           >
             <Text style={styles.nxSectionTitle}>Lineups</Text>
+            <View style={styles.nxCard}>
+              <Text style={styles.nxCardKicker}>Availability states</Text>
+              <Text style={styles.nxMetaText}>{homeTeamName}: {homeLineupTeam.lineupState === "confirmed" ? "confirmed lineup" : homeLineupTeam.lineupState === "expected" ? "expected lineup" : "lineup not available"}</Text>
+              <Text style={styles.nxMetaText}>{awayTeamName}: {awayLineupTeam.lineupState === "confirmed" ? "confirmed lineup" : awayLineupTeam.lineupState === "expected" ? "expected lineup" : "lineup not available"}</Text>
+            </View>
             <View style={styles.lineupViewToggleRow}>
               <TouchableOpacity
                 style={[styles.lineupViewBtn, lineupView === "pitch" ? styles.lineupViewBtnActive : null]}
                 onPress={() => setLineupView("pitch")}
               >
                 <Ionicons name="football-outline" size={14} color={lineupView === "pitch" ? COLORS.accent : COLORS.textMuted} />
-                <Text style={[styles.lineupViewBtnText, lineupView === "pitch" ? styles.lineupViewBtnTextActive : null]}>Pitch</Text>
+                <Text style={[styles.lineupViewBtnText, lineupView === "pitch" ? styles.lineupViewBtnTextActive : null]}>Field</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.lineupViewBtn, lineupView === "list" ? styles.lineupViewBtnActive : null]}
@@ -1243,32 +1486,55 @@ export default function MatchDetailScreen() {
 
             {detailLoading ? (
               <LoadingState />
-            ) : orderedLineupTeams.length > 0 ? (
+            ) : integratedLineups.hasAnyLineups ? (
               <>
-                {homeLineupTeam && awayLineupTeam ? (
-                  lineupView === "pitch" ? (
-                    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.lineupPitchScroller}>
-                      <CombinedPitchView
-                        homeTeamData={homeLineupTeam}
-                        awayTeamData={awayLineupTeam}
-                        league={espnLeague}
-                      />
-                    </ScrollView>
-                  ) : (
-                    orderedLineupTeams.map((team: any, ti: number) => (
-                      <View key={ti} style={styles.lineupTeamSection}>
-                        <View style={styles.lineupHeaderRow}>
-                          <Text style={styles.sectionLabel}>{team.team?.toUpperCase()}</Text>
-                        </View>
-                        <View style={styles.lineupListCard}>
-                          <Text style={styles.lineupListLabel}>STARTING XI</Text>
-                          {(team.players || []).filter((p: any) => p?.starter !== false).map((p: any, i: number) => (
-                            <PlayerRow key={`st_${p?.id || p?.name || i}`} player={p} sport={params.sport} teamName={team.team} league={espnLeague} />
-                          ))}
-                        </View>
+                {lineupView === "pitch" ? (
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.lineupPitchScroller}>
+                    <PremiumLineupField
+                      homeTeam={homeLineupTeam}
+                      awayTeam={awayLineupTeam}
+                      homeRows={homeFormationLayout.rows}
+                      awayRows={awayFormationLayout.rows}
+                      league={espnLeague}
+                    />
+                  </ScrollView>
+                ) : (
+                  [homeLineupTeam, awayLineupTeam].map((team) => (
+                    <View key={team.teamName} style={styles.lineupTeamSection}>
+                      <View style={styles.lineupHeaderRow}>
+                        <Text style={styles.sectionLabel}>{team.teamName?.toUpperCase()}</Text>
+                        <Text style={styles.nxMetaText}>{team.formation || "No formation"}</Text>
                       </View>
-                    ))
-                  )
+                      <View style={styles.lineupListCard}>
+                        <Text style={styles.lineupListLabel}>STARTING XI</Text>
+                        {(team.starters || []).map((p: any, i: number) => (
+                          <PlayerRow key={`st_${p?.id || p?.name || i}`} player={p} sport={params.sport} teamName={team.teamName} league={espnLeague} />
+                        ))}
+                        <Text style={[styles.lineupListLabel, { marginTop: 10 }]}>BENCH / SUBSTITUTES</Text>
+                        {(team.bench || []).length > 0 ? (
+                          (team.bench || []).map((p: any, i: number) => (
+                            <PlayerRow key={`bn_${p?.id || p?.name || i}`} player={p} sport={params.sport} teamName={team.teamName} league={espnLeague} compact />
+                          ))
+                        ) : (
+                          <Text style={styles.nxMetaText}>No bench data available.</Text>
+                        )}
+                      </View>
+                    </View>
+                  ))
+                )}
+
+                {substitutions.length > 0 ? (
+                  <View style={styles.nxCard}>
+                    <Text style={styles.nxCardKicker}>Live substitutions</Text>
+                    {substitutions.map((change, index) => {
+                      return (
+                        <View key={`${change.id}_${index}`} style={styles.nxListRow}>
+                          <Text style={styles.nxListPrimary}>{change.minuteLabel || "--"} · {change.teamName || (change.side === "home" ? homeTeamName : awayTeamName)}</Text>
+                          <Text style={styles.nxListMeta}>{change.playerOut || "?"} → {change.playerIn || "?"}</Text>
+                        </View>
+                      );
+                    })}
+                  </View>
                 ) : null}
               </>
             ) : (
@@ -1277,18 +1543,21 @@ export default function MatchDetailScreen() {
           </ScrollView>
         ) : null}
 
-        {activeExperienceTab === "timeline" ? (
+        {visitedExperienceTabs.timeline ? (
           <ScrollView
-            style={styles.tabContent}
+            style={[styles.tabContent, activeExperienceTab !== "timeline" ? styles.hiddenTabContent : null]}
             contentContainerStyle={styles.nxContentWrap}
             showsVerticalScrollIndicator={false}
-            onScroll={handleExperienceScroll}
+            decelerationRate="fast"
             scrollEventThrottle={16}
           >
             <View style={styles.nxCard}>
               <View style={styles.nxSectionHeadRow}>
                 <Text style={styles.nxCardTitle}>Real-time timeline</Text>
-                <Text style={styles.nxTimelineMinute}>{isFinished ? "FT" : `${timelineProgressMinute || 0}'`}</Text>
+                <Text style={styles.nxTimelineMinute}>
+                  {statusMeta.label}
+                  {statusMeta.minuteLabel ? ` ${statusMeta.minuteLabel}` : ""}
+                </Text>
               </View>
               <View style={styles.nxTimelineTrack}>
                 <View style={[styles.nxTimelineFill, { width: `${timelineProgressPct}%` }]} />
@@ -1300,6 +1569,25 @@ export default function MatchDetailScreen() {
               </View>
             </View>
 
+            <View style={styles.timelineFilterRow}>
+              {[
+                { key: "all", label: "All" },
+                { key: "goal", label: "Goals" },
+                { key: "card", label: "Cards" },
+                { key: "sub", label: "Subs" },
+                { key: "var", label: "VAR" },
+                { key: "pen", label: "Pens" },
+              ].map((chip) => (
+                <TouchableOpacity
+                  key={chip.key}
+                  onPress={() => setTimelineFilter(chip.key as TimelineFilter)}
+                  style={[styles.timelineFilterChip, timelineFilter === chip.key ? styles.timelineFilterChipActive : null]}
+                >
+                  <Text style={[styles.timelineFilterText, timelineFilter === chip.key ? styles.timelineFilterTextActive : null]}>{chip.label}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
             <View style={styles.nxGridWrap}>
               <View style={styles.nxGridCard}><Text style={styles.nxGridLabel}>⚽ Goals</Text><Text style={styles.nxGridValue}>{timelineEventCounts.goals}</Text></View>
               <View style={styles.nxGridCard}><Text style={styles.nxGridLabel}>🟨 Yellow</Text><Text style={styles.nxGridValue}>{timelineEventCounts.yellow}</Text></View>
@@ -1308,24 +1596,24 @@ export default function MatchDetailScreen() {
               <View style={styles.nxGridCard}><Text style={styles.nxGridLabel}>⚡ Penalty</Text><Text style={styles.nxGridValue}>{timelineEventCounts.penalties}</Text></View>
             </View>
 
-            {orderedTimelineEvents.length > 0 ? (
+            {filteredTimelineEvents.length > 0 ? (
               <MatchTimeline
-                events={orderedTimelineEvents}
+                events={filteredTimelineEvents}
                 homeTeam={params.homeTeam}
                 awayTeam={params.awayTeam}
               />
             ) : (
-              <EmptyState icon="git-branch-outline" text={tFn("matchDetail.timelineUnavailable")} />
+              <EmptyState icon="git-branch-outline" text={timelineFilter === "all" ? tFn("matchDetail.timelineUnavailable") : "Geen key moments voor deze filter"} />
             )}
           </ScrollView>
         ) : null}
 
-        {activeExperienceTab === "h2h" ? (
+        {visitedExperienceTabs.h2h ? (
           <ScrollView
-            style={styles.tabContent}
+            style={[styles.tabContent, activeExperienceTab !== "h2h" ? styles.hiddenTabContent : null]}
             contentContainerStyle={styles.nxContentWrap}
             showsVerticalScrollIndicator={false}
-            onScroll={handleExperienceScroll}
+            decelerationRate="fast"
             scrollEventThrottle={16}
           >
             <Text style={styles.nxSectionTitle}>H2H</Text>
@@ -1354,485 +1642,8 @@ export default function MatchDetailScreen() {
             ) : null}
           </ScrollView>
         ) : null}
-
-        {activeExperienceTab === "success" ? (
-          <ScrollView
-            style={styles.tabContent}
-            contentContainerStyle={styles.nxContentWrap}
-            showsVerticalScrollIndicator={false}
-            onScroll={handleExperienceScroll}
-            scrollEventThrottle={16}
-          >
-            <Text style={styles.nxSectionTitle}>Success Rate</Text>
-            <View style={styles.nxGridWrap}>
-              <View style={styles.nxGridCard}>
-                <Text style={styles.nxGridLabel}>AI confidence</Text>
-                <Text style={styles.nxGridValue}>{confidencePct}%</Text>
-              </View>
-              <View style={styles.nxGridCard}>
-                <Text style={styles.nxGridLabel}>Data coverage</Text>
-                <Text style={styles.nxGridValue}>{successDataCoverage}%</Text>
-              </View>
-              <View style={styles.nxGridCard}>
-                <Text style={styles.nxGridLabel}>Signal strength</Text>
-                <Text style={styles.nxGridValue}>{successSignalStrength}%</Text>
-              </View>
-              <View style={styles.nxGridCard}>
-                <Text style={styles.nxGridLabel}>Risk band</Text>
-                <Text style={styles.nxGridValue}>{safePrediction?.riskLevel || "Balanced"}</Text>
-              </View>
-            </View>
-
-            {predictionUnlocked ? (
-              <View style={styles.nxCard}>
-                <Text style={styles.nxCardKicker}>Model calibration</Text>
-                <Text style={styles.nxBodyText}>Deze confidence combineert signaalsterkte, datadekking, live-context en market-risk binnen hetzelfde model.</Text>
-              </View>
-            ) : (
-              <View style={styles.nxLockedCard}>
-                <Text style={styles.nxGridLabel}>Historical hit-rate</Text>
-                <Text style={styles.nxBodyText}>Team-specifieke accuratesse over vergelijkbare matchprofielen.</Text>
-                <BlurView intensity={45} tint="dark" style={styles.nxLockOverlay}>
-                  <Ionicons name="lock-closed" size={18} color="#E50914" />
-                  <Text style={styles.nxLockText}>Unlock required</Text>
-                </BlurView>
-              </View>
-            )}
-          </ScrollView>
-        ) : null}
       </View>
     );
-  }
-
-  return (
-    <View style={styles.container}>
-      {/* Header */}
-      <LinearGradient colors={[COLORS.cardElevated, COLORS.surface, COLORS.background]} style={[styles.header, { paddingTop: topPad + 8 }]}>
-        <View style={styles.heroTopRow}>
-          <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
-            <Ionicons name="chevron-back" size={24} color={COLORS.text} />
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.heroActionBtn}
-            onPress={() => {
-              SafeHaptics.impactLight();
-              router.push("/follow-center");
-            }}
-          >
-            <Ionicons name="notifications-outline" size={20} color={COLORS.text} />
-          </TouchableOpacity>
-        </View>
-
-        <View style={styles.matchHeader}>
-          <View style={styles.competitionRowCenterOnly}>
-            <View style={styles.competitionCenter}>
-              {leagueLogoUri ? (
-                <TeamLogo uri={leagueLogoUri} teamName={competitionName} size={24} />
-              ) : (
-                <View style={styles.leagueFallbackIcon}>
-                  <Ionicons name="trophy-outline" size={14} color={COLORS.textMuted} />
-                </View>
-              )}
-              <Text style={styles.leagueName} numberOfLines={1}>{competitionBrand.name || competitionName}</Text>
-            </View>
-          </View>
-          <View style={styles.scoreRow}>
-            <TeamSide
-              name={homeTeamName}
-              logo={matchDetail?.homeTeamLogo || params.homeTeamLogo}
-              onPress={() => {
-              const fallbackTeamId = `name:${encodeURIComponent(homeTeamName || "")}`;
-              router.push({
-                pathname: "/team-detail",
-                params: {
-                  teamId: matchDetail?.homeTeamId || fallbackTeamId,
-                  teamName: homeTeamName,
-                  logo: matchDetail?.homeTeamLogo || params.homeTeamLogo || "",
-                  sport: espnSport,
-                  league: espnLeague,
-                },
-              });
-            }}
-            />
-            <View style={styles.scoreCenter}>
-              {(isLive || isHalfTime) ? (
-                <>
-                  <Text style={[styles.score, { fontSize: scoreFontSize }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>{liveHomeScore} - {liveAwayScore}</Text>
-                  {isHalfTime
-                    ? <Text style={[styles.finishedLabel, { color: "#FFD700" }]}>HT</Text>
-                    : <LiveBadge minute={liveMinute} small />}
-                </>
-              ) : isFinished ? (
-                <>
-                  <Text style={[styles.score, { fontSize: scoreFontSize }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>{liveHomeScore} - {liveAwayScore}</Text>
-                  <Text style={[styles.finishedLabel, { color: "#FFD34D" }]}>FT</Text>
-                </>
-              ) : isPostponed ? (
-                <>
-                  <Text style={styles.vsText}>VS</Text>
-                  <Text style={[styles.finishedLabel, { color: COLORS.live }]}>AFGELAST</Text>
-                </>
-              ) : (
-                <>
-                  <Text style={styles.scheduledDate} numberOfLines={1}>{kickoffDate || "Datum volgt"}</Text>
-                  <Text style={styles.vsText}>VS</Text>
-                  <Text style={styles.scheduledTime} numberOfLines={1}>
-                    {kickoffTime || "--:--"}
-                  </Text>
-                  {!kickoffConfirmed ? <Text style={styles.kickoffPendingNote}>{tFn("matchDetail.kickoffTBD")}</Text> : null}
-                </>
-              )}
-            </View>
-            <TeamSide
-              name={awayTeamName}
-              logo={matchDetail?.awayTeamLogo || params.awayTeamLogo}
-              onPress={() => {
-              const fallbackTeamId = `name:${encodeURIComponent(awayTeamName || "")}`;
-              router.push({
-                pathname: "/team-detail",
-                params: {
-                  teamId: matchDetail?.awayTeamId || fallbackTeamId,
-                  teamName: awayTeamName,
-                  logo: matchDetail?.awayTeamLogo || params.awayTeamLogo || "",
-                  sport: espnSport,
-                  league: espnLeague,
-                },
-              });
-            }}
-            />
-          </View>
-
-          {/* Stadium info */}
-          {matchDetail?.venue && (
-            <View style={styles.venueRow}>
-              <Ionicons name="location-outline" size={12} color={COLORS.textMuted} />
-              <Text style={styles.venueText}>{matchDetail.venue}</Text>
-            </View>
-          )}
-        </View>
-      </LinearGradient>
-
-      {/* Tab Bar */}
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tabBarScroll} contentContainerStyle={styles.tabBar}>
-        <PillTabs
-          tabs={TABS.map((tab) => ({ id: tab.id, label: tFn(tab.label), icon: tab.icon as any }))}
-          active={activeTab}
-          onChange={handleTabChange}
-        />
-      </ScrollView>
-
-      {/* Stream Tab — always mounted, hidden when not active */}
-      <View style={[styles.streamContainer, activeTab !== "stream" ? { display: "none" } : null]}>
-          {isLive ? (
-            <>
-                <View style={styles.videoBox}>
-                  <SilentResetBoundary>
-                    <WebView key={streamKey} source={{ uri: streamUrl }}
-                      style={{ flex: 1, backgroundColor: "#000" }}
-                      allowsFullscreenVideo mediaPlaybackRequiresUserAction={false}
-                      javaScriptEnabled domStorageEnabled
-                      setSupportMultipleWindows={false}
-                      allowsInlineMediaPlayback
-                      injectedJavaScriptBeforeContentLoaded={BLOCK_POPUP_JS}
-                      injectedJavaScript={BLOCK_POPUP_JS}
-                      onShouldStartLoadWithRequest={(req) => {
-                        const url = (req.url || "").toLowerCase();
-                        if (url.includes("google.") || url.includes("bing.com") || url.includes("yahoo.com")) return false;
-                        if (url.includes("doubleclick.") || url.includes("googleads.") || url.includes("googlesyndication.")) return false;
-                        if (!url.startsWith("http://") && !url.startsWith("https://")) return false;
-                        return true;
-                      }}
-                      onError={(event) => {
-                        const err = event?.nativeEvent?.description || tFn("matchDetail.webviewError");
-                        setStreamWebError(err);
-                        setStreamErrorRef((prev) => prev || buildErrorReference("NX-STR"));
-                      }}
-                    />
-                  </SilentResetBoundary>
-                </View>
-                <View style={styles.serverSection}>
-                  {hasStreamApiIssue ? (
-                    <View style={styles.streamErrorCard}>
-                      <MaterialCommunityIcons name="wifi-alert" size={14} color={COLORS.live} />
-                      <Text style={styles.streamErrorText}>{streamApiError.userMessage}</Text>
-                    </View>
-                  ) : null}
-                  {hasStreamPlayerIssue ? (
-                    <View style={styles.streamErrorCard}>
-                      <MaterialCommunityIcons name="alert-octagon-outline" size={14} color={COLORS.live} />
-                      <View style={{ flex: 1, gap: 4 }}>
-                        <Text style={styles.streamErrorText}>{streamPlayerError.userMessage}</Text>
-                        {streamErrorRef ? <Text style={styles.streamErrorRef}>{tFn("matchDetail.errorCode", { code: streamErrorRef })}</Text> : null}
-                      </View>
-                    </View>
-                  ) : null}
-                  {hasStreamApiIssue && hasStreamPlayerIssue ? (
-                    <View style={styles.streamErrorCard}>
-                      <MaterialCommunityIcons name="alert-circle-outline" size={14} color={COLORS.textMuted} />
-                      <Text style={styles.streamErrorText}>{tFn("matchDetail.noStreamAvailable")}</Text>
-                    </View>
-                  ) : null}
-                  <TouchableOpacity style={styles.serverBtn} onPress={handleRetryAutoStream}>
-                    <Ionicons name="refresh-outline" size={12} color={COLORS.accent} />
-                    <Text style={styles.serverBtnText}>{tFn("matchDetail.loadOtherStream")}</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={styles.serverBtn}
-                    onPress={async () => {
-                      SafeHaptics.impactLight();
-                      await openInVlc(streamUrl, `${params.homeTeam || ""} - ${params.awayTeam || ""}`.trim() || "Live sport");
-                    }}
-                  >
-                    <Ionicons name="open-outline" size={12} color={COLORS.accent} />
-                    <Text style={styles.serverBtnText}>Open in VLC</Text>
-                  </TouchableOpacity>
-                </View>
-              </>
-          ) : (
-            <View style={styles.notLiveContainer}>
-              <Ionicons name="time-outline" size={48} color={COLORS.textMuted} />
-              <Text style={styles.notLiveTitle}>{tFn("matchDetail.matchNotStarted")}</Text>
-              <Text style={styles.notLiveText}>{tFn("matchDetail.streamAutoStart")}</Text>
-            </View>
-          )}
-        </View>
-
-      {/* Stats Tab */}
-      {visitedTabs.stats ? (
-      <ScrollView style={[styles.tabContent, activeTab !== "stats" ? { display: "none" } : null]} contentContainerStyle={styles.tabContentInner} showsVerticalScrollIndicator={false}>
-          {detailLoading ? (
-            <LoadingState />
-          ) : matchDetail ? (
-            <>
-              <Text style={styles.sectionLabel}>MATCH STATISTICS</Text>
-              <StatsBars
-                homeTeam={params.homeTeam}
-                awayTeam={params.awayTeam}
-                homeStats={matchDetail.homeStats || {}}
-                awayStats={matchDetail.awayStats || {}}
-              />
-
-              <MatchHeatmap
-                homeTeam={params.homeTeam}
-                awayTeam={params.awayTeam}
-                homeStats={matchDetail.homeStats || {}}
-                awayStats={matchDetail.awayStats || {}}
-              />
-
-              <InfoBlock title="MATCH INFO">
-                <InfoRow icon="trophy-outline" label="Competition" value={safeStr(params.league)} />
-                {matchDetail.round ? <InfoRow icon="layers-outline" label="Round" value={safeStr(matchDetail.round)} /> : null}
-                {matchDetail.season ? <InfoRow icon="calendar-outline" label="Season" value={safeStr(matchDetail.season)} /> : null}
-                {matchDetail.date ? <InfoRow icon="time-outline" label="Date / Kickoff" value={safeStr(matchDetail.date)} /> : null}
-                {matchDetail.venue ? <InfoRow icon="location-outline" label="Venue" value={safeStr(matchDetail.venue)} /> : null}
-                {matchDetail.city ? <InfoRow icon="business-outline" label="City" value={safeStr(matchDetail.city)} /> : null}
-                {matchDetail.attendance ? <InfoRow icon="people-outline" label="Attendance" value={Number(matchDetail.attendance).toLocaleString()} /> : null}
-                {matchDetail.referee ? <InfoRow icon="person-outline" label="Referee" value={safeStr(matchDetail.referee)} /> : null}
-                {matchDetail.country ? <InfoRow icon="flag-outline" label="Country" value={safeStr(matchDetail.country)} /> : null}
-              </InfoBlock>
-            </>
-          ) : (
-            <EmptyState icon="stats-chart-outline" text={tFn("matchDetail.statsUnavailable")} />
-          )}
-        </ScrollView>
-      ) : null}
-
-      {/* Lineups/Matchen Tab */}
-      {visitedTabs.lineups ? (
-      <ScrollView style={[styles.tabContent, activeTab !== "lineups" ? { display: "none" } : null]} contentContainerStyle={styles.tabContentInner} showsVerticalScrollIndicator={false}>
-          <View style={styles.lineupViewToggleRow}>
-            <TouchableOpacity
-              style={[styles.lineupViewBtn, lineupView === "pitch" ? styles.lineupViewBtnActive : null]}
-              onPress={() => setLineupView("pitch")}
-            >
-              <Ionicons name="football-outline" size={14} color={lineupView === "pitch" ? COLORS.accent : COLORS.textMuted} />
-              <Text style={[styles.lineupViewBtnText, lineupView === "pitch" ? styles.lineupViewBtnTextActive : null]}>Pitch</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.lineupViewBtn, lineupView === "list" ? styles.lineupViewBtnActive : null]}
-              onPress={() => setLineupView("list")}
-            >
-              <Ionicons name="list-outline" size={14} color={lineupView === "list" ? COLORS.accent : COLORS.textMuted} />
-              <Text style={[styles.lineupViewBtnText, lineupView === "list" ? styles.lineupViewBtnTextActive : null]}>List</Text>
-            </TouchableOpacity>
-          </View>
-
-          {detailLoading ? (
-            <LoadingState />
-          ) : orderedLineupTeams.length > 0 ? (
-            <>
-              {homeLineupTeam && awayLineupTeam && (
-                <View style={styles.lineupTeamHeader}>
-                  <View style={styles.lineupTeamSide}>
-                    <TeamLogo uri={matchDetail?.homeTeamLogo || params.homeTeamLogo} teamName={homeLineupTeam?.team} size={36} />
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.lineupTeamName} numberOfLines={1}>{homeLineupTeam?.team}</Text>
-                      {homeLineupTeam?.formation ? <Text style={styles.lineupFormation}>{homeLineupTeam.formation}</Text> : null}
-                    </View>
-                  </View>
-                  <View style={styles.lineupTeamDivider}><Text style={styles.lineupVsSmall}>VS</Text></View>
-                  <View style={[styles.lineupTeamSide, { flexDirection: "row-reverse" }]}>
-                    <TeamLogo uri={matchDetail?.awayTeamLogo || params.awayTeamLogo} teamName={awayLineupTeam?.team} size={36} />
-                    <View style={{ flex: 1, alignItems: "flex-end" }}>
-                      <Text style={styles.lineupTeamName} numberOfLines={1}>{awayLineupTeam?.team}</Text>
-                      {awayLineupTeam?.formation ? <Text style={styles.lineupFormation}>{awayLineupTeam.formation}</Text> : null}
-                    </View>
-                  </View>
-                </View>
-              )}
-
-              {lineupView === "pitch" && homeLineupTeam && awayLineupTeam ? (
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.lineupPitchScroller}>
-                  <CombinedPitchView
-                    homeTeamData={homeLineupTeam}
-                    awayTeamData={awayLineupTeam}
-                    league={espnLeague}
-                  />
-                </ScrollView>
-              ) : (
-                orderedLineupTeams.map((team: any, ti: number) => (
-                  <View key={ti} style={styles.lineupTeamSection}>
-                    <View style={styles.lineupHeaderRow}>
-                      <Text style={styles.sectionLabel}>{team.team?.toUpperCase()}</Text>
-                    </View>
-
-                    {lineupView === "pitch" ? (
-                      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.lineupPitchScroller}>
-                        <LinearGradient
-                          colors={["#183c20", "#0f2f19", "#0b2413"]}
-                          style={styles.pitchCard}
-                        >
-                          <View style={styles.pitchCenterCircle} />
-                          <View style={styles.pitchHalfLine} />
-                          {buildFormationRows(team.players || [], team.formation).map((row, rowIndex) => (
-                            <View key={rowIndex} style={styles.pitchRow}>
-                              {row.map((p: any, pi: number) => (
-                                <View key={`${p.id || p.name}-${pi}`} style={styles.pitchPlayerWrap}>
-                                  <PlayerRow player={p} sport={params.sport} compact teamName={team.team} league={espnLeague} />
-                                </View>
-                              ))}
-                            </View>
-                          ))}
-                        </LinearGradient>
-                      </ScrollView>
-                    ) : (
-                      <View style={styles.lineupListCard}>
-                        <Text style={styles.lineupListLabel}>STARTING XI</Text>
-                        {(team.players || []).filter((p: any) => p?.starter !== false).map((p: any, i: number) => (
-                          <PlayerRow key={`st_${p?.id || p?.name || i}`} player={p} sport={params.sport} teamName={team.team} league={espnLeague} />
-                        ))}
-                        {(team.players || []).some((p: any) => p?.starter === false) ? (
-                          <>
-                            <Text style={[styles.lineupListLabel, { marginTop: 10 }]}>BENCH</Text>
-                            {(team.players || []).filter((p: any) => p?.starter === false).map((p: any, i: number) => (
-                              <PlayerRow key={`bn_${p?.id || p?.name || i}`} player={p} sport={params.sport} teamName={team.team} league={espnLeague} />
-                            ))}
-                          </>
-                        ) : null}
-                      </View>
-                    )}
-                  </View>
-                ))
-              )}
-            </>
-          ) : (
-            <EmptyState icon="people-outline" text={tFn("matchDetail.lineupsUnavailable")} />
-          )}
-        </ScrollView>
-      ) : null}
-
-      {/* Timeline Tab */}
-      {visitedTabs.timeline ? (
-      <ScrollView style={[styles.tabContent, activeTab !== "timeline" ? { display: "none" } : null]} contentContainerStyle={styles.tabContentInner} showsVerticalScrollIndicator={false}>
-        {detailLoading ? (
-          <LoadingState />
-        ) : timelineEvents.length > 0 ? (
-          <>
-            <Text style={styles.sectionLabel}>MATCH TIMELINE</Text>
-            <MatchTimeline
-              events={timelineEvents}
-              homeTeam={params.homeTeam}
-              awayTeam={params.awayTeam}
-            />
-          </>
-        ) : (
-          <EmptyState icon="git-branch-outline" text={tFn("matchDetail.timelineUnavailable")} />
-        )}
-      </ScrollView>
-      ) : null}
-
-      {/* Highlights Tab */}
-      {visitedTabs.highlights ? (
-      <ScrollView style={[styles.tabContent, activeTab !== "highlights" ? { display: "none" } : null]} contentContainerStyle={styles.tabContentInner} showsVerticalScrollIndicator={false}>
-        {detailLoading ? (
-          <LoadingState />
-        ) : (() => {
-          const fallbackMoments = timelineEvents.filter((event: any) => !["kickoff", "halftime", "fulltime", "info"].includes(String(event?.kind || "")));
-          const usableMoments = highlightMoments.length > 0 ? highlightMoments : fallbackMoments;
-          const hasHighlights = usableMoments.length > 0 || highlightRecap.length > 0 || highlightSummary?.summary;
-          if (!hasHighlights) return <EmptyState icon="star-outline" text={tFn("matchDetail.highlightsUnavailable")} />;
-          // Compute match excitement rating (1-5 stars)
-          const goalEvents = usableMoments.filter((e: any) => /goal/i.test(String(e?.kind || e?.type || "")));
-          const cardEvents = usableMoments.filter((e: any) => /red|yellow_red/i.test(String(e?.kind || e?.type || "")));
-          const excitementScore = Math.min(5, Math.max(1, Math.round(
-            1.5 + goalEvents.length * 0.7 + cardEvents.length * 0.4 + (usableMoments.length > 8 ? 0.5 : 0)
-          )));
-          return (
-            <>
-              {/* Match Rating */}
-              <View style={styles.highlightRatingCard}>
-                <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                  <MaterialCommunityIcons name="fire" size={16} color="#FF9800" />
-                  <Text style={styles.highlightRatingTitle}>{tFn("matchDetail.matchRating")}</Text>
-                </View>
-                <View style={{ flexDirection: "row", gap: 3 }}>
-                  {[1,2,3,4,5].map(s => (
-                    <Ionicons key={s} name={s <= excitementScore ? "star" : "star-outline"} size={16} color={s <= excitementScore ? "#FFD700" : "rgba(255,255,255,0.2)"} />
-                  ))}
-                </View>
-                <Text style={styles.highlightRatingSub}>
-                  {goalEvents.length} {tFn("matchDetail.goals")} · {usableMoments.length} {tFn("matchDetail.moments")}
-                </Text>
-              </View>
-
-              {highlightSummary?.summary ? (
-                <LinearGradient colors={["rgba(229,9,20,0.12)", "rgba(229,9,20,0.04)"]} style={styles.highlightsHeroCard}>
-                  <View style={styles.highlightsHeroHeader}>
-                    <Ionicons name="sparkles-outline" size={15} color={COLORS.accent} />
-                    <Text style={styles.highlightsHeroTitle}>Match Recap</Text>
-                  </View>
-                  <Text style={styles.highlightsHeroText}>{highlightSummary.summary}</Text>
-                </LinearGradient>
-              ) : null}
-
-              {highlightRecap.length > 0 ? (
-                <>
-                  <Text style={styles.sectionLabel}>KEY MOMENTS</Text>
-                  <View style={styles.highlightRecapGrid}>
-                    {highlightRecap.map((line: string, index: number) => (
-                      <View key={`${line}-${index}`} style={styles.highlightRecapCard}>
-                        <Text style={styles.highlightRecapIndex}>{String(index + 1).padStart(2, "0")}</Text>
-                        <Text style={styles.highlightRecapText}>{line}</Text>
-                      </View>
-                    ))}
-                  </View>
-                </>
-              ) : null}
-
-              {usableMoments.length > 0 ? (
-                <>
-                  <Text style={styles.sectionLabel}>TIJDLIJN</Text>
-                  <MatchTimeline events={usableMoments} homeTeam={params.homeTeam} awayTeam={params.awayTeam} />
-                </>
-              ) : null}
-            </>
-          );
-        })()}
-      </ScrollView>
-      ) : null}
-
-    </View>
-  );
 }
 
 function TeamSide({ name, logo, onPress }: { name: string; logo?: string; onPress?: () => void }) {
@@ -1846,77 +1657,14 @@ function TeamSide({ name, logo, onPress }: { name: string; logo?: string; onPres
         activeOpacity={onPress ? 0.7 : 1}
       >
         <TeamLogo uri={logo} teamName={name} size={logoSize} />
-        <Text style={[styles.teamName, width < 360 && { fontSize: 10, maxWidth: 84 }]} numberOfLines={2}>{name}</Text>
+        <Text style={[styles.teamName, width < 360 && { fontSize: 10 }]} numberOfLines={2}>{name}</Text>
       </TouchableOpacity>
     </View>
   );
 }
 
-function timelineMinuteValue(event: any, index: number): number {
-  const kind = String(event?.kind || event?.type || "").toLowerCase();
-  if (kind === "kickoff") return 0;
-  if (kind === "halftime") return 45.99;
-  if (kind === "second_half" || kind === "secondhalf") return 46;
-  if (kind === "fulltime") return 90.99;
-  if (kind === "extra_time") return 105;
-  if (kind === "penalties") return 120;
-
-  const provided = Number(event?.minuteValue);
-  if (Number.isFinite(provided) && provided >= 0) return provided;
-  const text = String(event?.minute || event?.time || "");
-  const match = text.match(/(\d+)(?:\+(\d+))?/);
-  if (!match) return index;
-  const base = Number(match[1] || 0);
-  const extra = Number(match[2] || 0);
-  return base + (extra > 0 ? extra / 100 : 0);
-}
-
-function timelinePhaseWeight(kind: string): number {
-  if (kind === "kickoff") return 0;
-  if (kind === "halftime") return 1;
-  if (kind === "second_half" || kind === "secondhalf") return 2;
-  if (kind === "fulltime") return 3;
-  if (kind === "extra_time") return 4;
-  if (kind === "penalties") return 5;
-  return 10;
-}
-
-function sortTimelineForRender(events: any[]): any[] {
-  const unique = new Set<string>();
-  const cleaned = (Array.isArray(events) ? events : []).filter((event) => {
-    const key = `${String(event?.kind || event?.type || "")}|${String(event?.minute || event?.time || "")}|${String(event?.title || "")}|${String(event?.description || event?.detail || "")}|${String(event?.team || event?.teamName || "")}`;
-    if (unique.has(key)) return false;
-    unique.add(key);
-    return true;
-  });
-
-  return [...cleaned].sort((a, b) => {
-    const kindA = String(a?.kind || a?.type || "").toLowerCase();
-    const kindB = String(b?.kind || b?.type || "").toLowerCase();
-    const minA = timelineMinuteValue(a, 0);
-    const minB = timelineMinuteValue(b, 0);
-    if (minA !== minB) return minA - minB;
-
-    const phaseA = timelinePhaseWeight(kindA);
-    const phaseB = timelinePhaseWeight(kindB);
-    if (phaseA !== phaseB) return phaseA - phaseB;
-
-    const isBoundaryA = ["kickoff", "halftime", "second_half", "secondhalf", "fulltime", "extra_time", "penalties"].includes(kindA);
-    const isBoundaryB = ["kickoff", "halftime", "second_half", "secondhalf", "fulltime", "extra_time", "penalties"].includes(kindB);
-    if (isBoundaryA !== isBoundaryB) return isBoundaryA ? -1 : 1;
-
-    const orderA = Number(a?.sequence || a?.order || Number.MAX_SAFE_INTEGER);
-    const orderB = Number(b?.sequence || b?.order || Number.MAX_SAFE_INTEGER);
-    if (Number.isFinite(orderA) && Number.isFinite(orderB) && orderA !== orderB) {
-      return orderA - orderB;
-    }
-
-    return String(a?.title || "").localeCompare(String(b?.title || ""));
-  });
-}
-
 function MatchTimelineInner({ events, homeTeam, awayTeam }: { events: any[]; homeTeam: string; awayTeam: string }) {
-  const orderedEvents = useMemo(() => sortTimelineForRender(events), [events]);
+  const orderedEvents = useMemo(() => (Array.isArray(events) ? events : []), [events]);
 
   if (!orderedEvents?.length) {
     return <EmptyState icon="timer-outline" text="No timeline events available" />;
@@ -1969,35 +1717,19 @@ function MatchTimelineInner({ events, homeTeam, awayTeam }: { events: any[]; hom
     return { icon: "ellipse-outline" as const, color: COLORS.textMuted, label: "Event", dot: COLORS.textMuted };
   };
 
-  const isHomeEvent = (ev: any): boolean => {
-    if (ev?.side === "home") return true;
-    if (ev?.side === "away" || ev?.side === "center") return false;
-    const evTeam = safeStr(ev?.team || ev?.teamName || "").toLowerCase();
-    const home = homeTeam.toLowerCase();
-    const away = awayTeam.toLowerCase();
-    if (!evTeam) return false; // unknown team → render as center
-    if (evTeam.includes(home.split(" ")[0]) || home.includes(evTeam.split(" ")[0])) return true;
-    if (evTeam.includes(away.split(" ")[0]) || away.includes(evTeam.split(" ")[0])) return false;
-    return false;
-  };
-
   return (
     <View style={styles.timelineWrapper}>
       <View style={[styles.timelineConnector, { left: "50%", marginLeft: -1 }]} />
       {orderedEvents.map((ev: any, i: number) => {
         const cfg = getEventConfig(ev);
-        const onHome = isHomeEvent(ev);
-        const rawMinute = safeStr(ev?.minute || (ev?.time ? `${String(ev.time)}'` : ""));
-        // Safety clamp: if minute looks like raw seconds (>150), convert
-        const minute = rawMinute.replace(/(\d+)/, (_, n) => {
-          const num = Number(n);
-          return num > 150 ? String(Math.floor(num / 60)) : n;
-        });
+        const side = (ev?.side || inferEventSide(ev, homeTeam, awayTeam)) as "home" | "away" | "center";
+        const onHome = side === "home";
+        const minute = safeStr(ev?.minuteLabel || ev?.minute || "");
         const title = safeStr(ev?.title || cfg.label);
         const description = safeStr(ev?.description || ev?.player || ev?.name || ev?.text || ev?.detail || "");
         const secondary = safeStr(ev?.secondary || ev?.assist || "");
-        const isCenterEvent = ev?.side === "center" || ["kickoff", "halftime", "fulltime"].includes(String(ev?.kind || ""))
-          || (!ev?.side && !safeStr(ev?.team || ev?.teamName || ""));
+        const kind = String(ev?.kind || ev?.type || "").toLowerCase();
+        const isCenterEvent = Boolean(ev?.isPhaseSeparator) || side === "center" || ["kickoff", "halftime", "fulltime", "extra_time", "penalties"].includes(kind);
 
         return (
           <View key={i} style={styles.timelineRow}>
@@ -2205,7 +1937,7 @@ function MatchHeatmapInner({ homeTeam, awayTeam, homeStats, awayStats }: { homeT
           <View style={heatmapStyles.rightArc} />
 
           {dynamicZones.map((zone, idx) => (
-            <View key={`zone_label_${idx}`} style={[heatmapStyles.zoneLabelChip, { left: `${zone.left + (zone.width / 2) - 4}%` }]}>
+            <View key={`zone_label_${idx}`} style={[heatmapStyles.zoneLabelChip, { left: `${zone.left + (zone.width / 2) - 4}%` }]}> 
               <Text style={heatmapStyles.zoneLabel}>{zone.label}</Text>
             </View>
           ))}
@@ -2217,8 +1949,8 @@ function MatchHeatmapInner({ homeTeam, awayTeam, homeStats, awayStats }: { homeT
               style={[
                 heatmapStyles.shotDot,
                 {
-                  left: `${dot.x}%` as any,
-                  top: `${dot.y}%` as any,
+                  left: `${dot.x}%`,
+                  top: `${dot.y}%`,
                   backgroundColor: dot.onTarget ? dot.color : "transparent",
                   borderColor: dot.color,
                 },
@@ -3041,6 +2773,12 @@ function PlayerRow({ player, sport, compact = false, teamName = "", league = "en
           ) : null}
         </View>
         <Text style={[styles.playerPos, compact ? styles.playerPosCompact : null]} numberOfLines={1}>{player.positionName || player.position}</Text>
+        <View style={styles.playerFlagRow}>
+          {player.isCaptain ? <Text style={styles.playerFlagPill}>C</Text> : null}
+          {player.isGoalkeeper ? <Text style={styles.playerFlagPill}>GK</Text> : null}
+          {player.subInMinute ? <Text style={styles.playerFlagPill}>IN {player.subInMinute}&#39;</Text> : null}
+          {player.subOutMinute ? <Text style={styles.playerFlagPill}>OUT {player.subOutMinute}&#39;</Text> : null}
+        </View>
       </View>
       {!compact && <View style={{ alignItems: "flex-end", gap: 4 }}>
         {player.marketValue && (
@@ -3122,9 +2860,21 @@ function PitchDot({ player, color, teamName, league, rowSize = 4 }: { player: an
   );
 }
 
-function CombinedPitchViewInner({ homeTeamData, awayTeamData, league }: { homeTeamData: any; awayTeamData: any; league?: string }) {
-  const homeColumns = [...buildFormationRows(homeTeamData?.players || [], homeTeamData?.formation)].reverse();
-  const awayColumns = buildFormationRows(awayTeamData?.players || [], awayTeamData?.formation);
+function PremiumLineupFieldInner({
+  homeTeam,
+  awayTeam,
+  homeRows,
+  awayRows,
+  league,
+}: {
+  homeTeam: any;
+  awayTeam: any;
+  homeRows: any[][];
+  awayRows: any[][];
+  league?: string;
+}) {
+  const homeColumns = [...(homeRows || [])].reverse();
+  const awayColumns = awayRows || [];
 
   return (
     <LinearGradient colors={["#07150f", "#0b2418", "#123423", "#123423", "#0b2418", "#07150f"]} style={styles.combinedPitch}>
@@ -3142,19 +2892,19 @@ function CombinedPitchViewInner({ homeTeamData, awayTeamData, league }: { homeTe
 
       <View style={styles.pitchTopTeamsRow}>
         <View style={styles.pitchTopTeamCard}>
-          <TeamLogo uri={homeTeamData?.logo || null} teamName={homeTeamData?.team || "Home"} size={28} />
+          <TeamLogo uri={null} teamName={homeTeam?.teamName || "Home"} size={28} />
           <View style={{ flex: 1 }}>
-            <Text style={[styles.pitchTopTeamName, { color: COLORS.accent }]} numberOfLines={1}>{homeTeamData?.team}</Text>
-            {homeTeamData?.formation ? <Text style={styles.pitchTopTeamMeta}>{homeTeamData.formation}</Text> : null}
+            <Text style={[styles.pitchTopTeamName, { color: COLORS.accent }]} numberOfLines={1}>{homeTeam?.teamName}</Text>
+            {homeTeam?.formation ? <Text style={styles.pitchTopTeamMeta}>{homeTeam.formation}</Text> : null}
           </View>
         </View>
         <View style={styles.pitchTopBadge}><Text style={styles.pitchTopBadgeText}>LINEUP</Text></View>
         <View style={[styles.pitchTopTeamCard, { justifyContent: "flex-end" }]}>
           <View style={{ flex: 1, alignItems: "flex-end" }}>
-            <Text style={[styles.pitchTopTeamName, { color: "#5D9EFF", textAlign: "right" }]} numberOfLines={1}>{awayTeamData?.team}</Text>
-            {awayTeamData?.formation ? <Text style={styles.pitchTopTeamMeta}>{awayTeamData.formation}</Text> : null}
+            <Text style={[styles.pitchTopTeamName, { color: "#5D9EFF", textAlign: "right" }]} numberOfLines={1}>{awayTeam?.teamName}</Text>
+            {awayTeam?.formation ? <Text style={styles.pitchTopTeamMeta}>{awayTeam.formation}</Text> : null}
           </View>
-          <TeamLogo uri={awayTeamData?.logo || null} teamName={awayTeamData?.team || "Away"} size={28} />
+          <TeamLogo uri={null} teamName={awayTeam?.teamName || "Away"} size={28} />
         </View>
       </View>
 
@@ -3167,7 +2917,7 @@ function CombinedPitchViewInner({ homeTeamData, awayTeamData, league }: { homeTe
                   key={`home_${player?.id || player?.name || playerIndex}`}
                   player={player}
                   color={COLORS.accent}
-                  teamName={homeTeamData?.team}
+                  teamName={homeTeam?.teamName}
                   league={league}
                   rowSize={column.length}
                 />
@@ -3188,7 +2938,7 @@ function CombinedPitchViewInner({ homeTeamData, awayTeamData, league }: { homeTe
                   key={`away_${player?.id || player?.name || playerIndex}`}
                   player={player}
                   color="#5D9EFF"
-                  teamName={awayTeamData?.team}
+                  teamName={awayTeam?.teamName}
                   league={league}
                   rowSize={column.length}
                 />
@@ -3201,7 +2951,7 @@ function CombinedPitchViewInner({ homeTeamData, awayTeamData, league }: { homeTe
   );
 }
 
-const CombinedPitchView = React.memo(CombinedPitchViewInner);
+const PremiumLineupField = React.memo(PremiumLineupFieldInner);
 
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 function FormBubbles({ form }: { form: string }) {
@@ -3217,31 +2967,20 @@ function FormBubbles({ form }: { form: string }) {
   );
 }
 
-function InfoBlock({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <View style={[styles.infoCard, { marginTop: 14 }]}>
-      <Text style={styles.infoCardTitle}>{title}</Text>
-      {children}
-    </View>
-  );
-}
-
-function InfoRow({ label, value, highlight, icon }: { label: string; value: string; highlight?: boolean; icon?: string }) {
-  return (
-    <View style={styles.infoRow}>
-      <View style={styles.infoLabelRow}>
-        {icon && <Ionicons name={icon as any} size={14} color={COLORS.textMuted} style={{ marginRight: 8 }} />}
-        <Text style={styles.infoLabel}>{label}</Text>
-      </View>
-      <Text style={[styles.infoValue, highlight && styles.infoValueHighlight]}>{value}</Text>
-    </View>
-  );
-}
-
 function LoadingState() {
+  const skeletonRows = [0, 1, 2, 3];
   return (
     <View style={styles.loadingState}>
-      <StateBlock loading title={tFn("matchDetail.matchDataLoading")} message={tFn("common.loading") || "Loading..."} />
+      <View style={styles.skeletonCard}>
+        <View style={styles.skeletonTitle} />
+        {skeletonRows.map((row) => (
+          <View key={row} style={styles.skeletonRow}>
+            <View style={styles.skeletonPill} />
+            <View style={styles.skeletonBar} />
+            <View style={styles.skeletonPill} />
+          </View>
+        ))}
+      </View>
     </View>
   );
 }
@@ -3257,6 +2996,8 @@ const styles = StyleSheet.create({
   nxHeader: {
     borderBottomWidth: 1,
     borderBottomColor: "rgba(255,255,255,0.08)",
+    zIndex: 20,
+    elevation: 20,
   },
   nxHeaderCollapsed: {
     paddingBottom: 4,
@@ -3290,6 +3031,47 @@ const styles = StyleSheet.create({
   },
   nxLiveText: {
     color: "#FF6B71",
+    fontFamily: "Inter_700Bold",
+    fontSize: 10,
+    letterSpacing: 0.8,
+  },
+  nxStatusPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.2)",
+    backgroundColor: "rgba(255,255,255,0.06)",
+  },
+  nxStatusPillLive: {
+    borderColor: "rgba(229,9,20,0.65)",
+    backgroundColor: "rgba(229,9,20,0.18)",
+  },
+  nxStatusPillWarning: {
+    borderColor: "rgba(255,173,51,0.55)",
+    backgroundColor: "rgba(255,173,51,0.14)",
+  },
+  nxStatusPillFinished: {
+    borderColor: "rgba(255,255,255,0.18)",
+    backgroundColor: "rgba(255,255,255,0.04)",
+  },
+  nxStatusDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 999,
+    backgroundColor: "#A5AEC4",
+  },
+  nxStatusDotLive: {
+    backgroundColor: "#FF3040",
+  },
+  nxStatusDotWarning: {
+    backgroundColor: "#FFAD33",
+  },
+  nxStatusText: {
+    color: "#FFFFFF",
     fontFamily: "Inter_700Bold",
     fontSize: 10,
     letterSpacing: 0.8,
@@ -3361,10 +3143,103 @@ const styles = StyleSheet.create({
     fontSize: 11,
     lineHeight: 16,
   },
+  liveSignalWrap: {
+    marginHorizontal: 16,
+    marginTop: 4,
+    marginBottom: 8,
+    gap: 10,
+  },
+  liveSignalCard: {
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.09)",
+    backgroundColor: "#0B0F1A",
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    gap: 9,
+  },
+  liveSignalTitle: {
+    color: "#FFFFFF",
+    fontFamily: "Inter_700Bold",
+    fontSize: 13,
+  },
+  liveSignalEventRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  liveSignalMinute: {
+    width: 44,
+    color: "#AAB4C8",
+    fontFamily: "Inter_700Bold",
+    fontSize: 11,
+  },
+  liveSignalEventBody: {
+    flex: 1,
+    gap: 2,
+  },
+  liveSignalEventTitle: {
+    color: "#FFFFFF",
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 12,
+  },
+  liveSignalEventDetail: {
+    color: "#8E98AF",
+    fontFamily: "Inter_500Medium",
+    fontSize: 11,
+  },
+  liveSignalTypePill: {
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.18)",
+    backgroundColor: "rgba(255,255,255,0.07)",
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  liveSignalTypeGoal: { borderColor: "rgba(0,230,118,0.58)", backgroundColor: "rgba(0,230,118,0.16)" },
+  liveSignalTypeCard: { borderColor: "rgba(255,87,87,0.58)", backgroundColor: "rgba(255,87,87,0.16)" },
+  liveSignalTypeSub: { borderColor: "rgba(93,158,255,0.58)", backgroundColor: "rgba(93,158,255,0.16)" },
+  liveSignalTypeVar: { borderColor: "rgba(167,139,250,0.58)", backgroundColor: "rgba(167,139,250,0.16)" },
+  liveSignalTypePen: { borderColor: "rgba(255,152,0,0.58)", backgroundColor: "rgba(255,152,0,0.16)" },
+  liveSignalTypeText: {
+    color: "#E6ECF9",
+    fontFamily: "Inter_700Bold",
+    fontSize: 9,
+    letterSpacing: 0.7,
+  },
+  liveTrendWrap: {
+    marginTop: 4,
+    gap: 8,
+  },
+  liveTrendLabel: {
+    color: "#8D99B2",
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 10,
+    letterSpacing: 0.5,
+  },
+  liveTrendBars: {
+    height: 24,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.08)",
+    backgroundColor: "rgba(255,255,255,0.03)",
+    flexDirection: "row",
+    alignItems: "stretch",
+    paddingHorizontal: 6,
+    gap: 3,
+  },
+  liveTrendBar: {
+    flex: 1,
+    borderRadius: 2,
+    marginVertical: 1,
+  },
   nxTabBarWrap: {
     backgroundColor: "#0B0F1A",
     borderBottomWidth: 1,
     borderBottomColor: "rgba(255,255,255,0.08)",
+    zIndex: 0,
+    elevation: 0,
+    marginBottom: 6,
   },
   nxTabBarInner: {
     flexDirection: "row",
@@ -3398,8 +3273,8 @@ const styles = StyleSheet.create({
   },
   nxContentWrap: {
     paddingHorizontal: 16,
-    paddingTop: 10,
-    paddingBottom: 28,
+    paddingTop: 20,
+    paddingBottom: 38,
     gap: 12,
   },
   nxSectionHeadRow: {
@@ -3500,6 +3375,97 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: "#B9C2D7",
   },
+  nxListRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
+    paddingVertical: 6,
+    borderBottomWidth: 1,
+    borderBottomColor: "rgba(255,255,255,0.06)",
+  },
+  nxListPrimary: {
+    flex: 1,
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 12,
+    color: "#E9EEFA",
+  },
+  nxListMeta: {
+    fontFamily: "Inter_500Medium",
+    fontSize: 11,
+    color: "#A8B2C8",
+  },
+  formBadgeRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginTop: 8,
+    marginBottom: 6,
+  },
+  formBadge: {
+    minWidth: 22,
+    paddingHorizontal: 6,
+    paddingVertical: 4,
+    borderRadius: 8,
+    alignItems: "center",
+  },
+  formBadgeWin: {
+    backgroundColor: "rgba(34,197,94,0.2)",
+    borderWidth: 1,
+    borderColor: "rgba(34,197,94,0.45)",
+  },
+  formBadgeDraw: {
+    backgroundColor: "rgba(251,191,36,0.2)",
+    borderWidth: 1,
+    borderColor: "rgba(251,191,36,0.45)",
+  },
+  formBadgeLoss: {
+    backgroundColor: "rgba(239,68,68,0.2)",
+    borderWidth: 1,
+    borderColor: "rgba(239,68,68,0.45)",
+  },
+  formBadgeText: {
+    fontFamily: "Inter_700Bold",
+    fontSize: 10,
+    color: "#FFFFFF",
+  },
+  compareRow: {
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: "rgba(255,255,255,0.06)",
+    gap: 6,
+  },
+  compareLabel: {
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 12,
+    color: "#CBD3E8",
+  },
+  compareBars: {
+    flexDirection: "row",
+    width: "100%",
+    height: 8,
+    borderRadius: 999,
+    overflow: "hidden",
+    backgroundColor: "rgba(255,255,255,0.08)",
+  },
+  compareBarHome: {
+    height: "100%",
+    backgroundColor: "rgba(229,9,20,0.75)",
+  },
+  compareBarAway: {
+    height: "100%",
+    backgroundColor: "rgba(72,93,129,0.9)",
+  },
+  compareValuesRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  compareValue: {
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 11,
+    color: "#AEB9D0",
+  },
   nxTimelineMinute: {
     fontFamily: "Inter_700Bold",
     fontSize: 16,
@@ -3526,6 +3492,31 @@ const styles = StyleSheet.create({
     fontFamily: "Inter_500Medium",
     fontSize: 11,
     color: "#8F9AAF",
+  },
+  timelineFilterRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  timelineFilterChip: {
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.14)",
+    backgroundColor: "rgba(255,255,255,0.05)",
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  timelineFilterChipActive: {
+    borderColor: "rgba(229,9,20,0.58)",
+    backgroundColor: "rgba(229,9,20,0.18)",
+  },
+  timelineFilterText: {
+    color: "#9BA6BE",
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 11,
+  },
+  timelineFilterTextActive: {
+    color: "#FFFFFF",
   },
   nxGridWrap: {
     flexDirection: "row",
@@ -3643,6 +3634,10 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.12)",
+  },
+  heroActionBtnActive: {
+    borderColor: "rgba(229,9,20,0.6)",
+    backgroundColor: "rgba(229,9,20,0.22)",
   },
   matchHeader: {
     width: "100%",
@@ -3844,6 +3839,9 @@ const styles = StyleSheet.create({
     maxWidth: 280,
   },
   tabContent: { flex: 1 },
+  hiddenTabContent: {
+    display: "none",
+  },
   tabContentInner: { paddingHorizontal: 16, paddingTop: 14, paddingBottom: 20, gap: 0 },
   prematchInsightSection: {
     paddingHorizontal: 16,
@@ -4462,6 +4460,24 @@ const styles = StyleSheet.create({
   playerInlineValue: { fontFamily: "Inter_700Bold", fontSize: 10, color: "#00C896" },
   playerPos: { fontFamily: "Inter_400Regular", fontSize: 11, color: COLORS.textMuted, marginTop: 1 },
   playerPosCompact: { fontSize: 9, marginTop: 0 },
+  playerFlagRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    alignItems: "center",
+    gap: 5,
+    marginTop: 4,
+  },
+  playerFlagPill: {
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 9,
+    color: COLORS.text,
+    backgroundColor: "rgba(255,255,255,0.08)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.16)",
+    borderRadius: 999,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+  },
   starterBadge: {
     backgroundColor: COLORS.accentGlow,
     borderRadius: 6,
@@ -4483,7 +4499,39 @@ const styles = StyleSheet.create({
     borderColor: "rgba(0,200,150,0.3)",
   },
   marketValueText: { fontFamily: "Inter_700Bold", fontSize: 10, color: "#00C896" },
-  loadingState: { flex: 1, alignItems: "center", justifyContent: "center", paddingVertical: 60, gap: 14 },
+  loadingState: { flex: 1, alignItems: "stretch", justifyContent: "flex-start", paddingVertical: 2, gap: 10 },
+  skeletonCard: {
+    backgroundColor: "#0B0F1A",
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.08)",
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    gap: 10,
+  },
+  skeletonTitle: {
+    width: "42%",
+    height: 14,
+    borderRadius: 999,
+    backgroundColor: "rgba(255,255,255,0.14)",
+  },
+  skeletonRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  skeletonPill: {
+    width: 42,
+    height: 10,
+    borderRadius: 999,
+    backgroundColor: "rgba(255,255,255,0.12)",
+  },
+  skeletonBar: {
+    flex: 1,
+    height: 8,
+    borderRadius: 999,
+    backgroundColor: "rgba(255,255,255,0.1)",
+  },
   loadingText: { fontFamily: "Inter_500Medium", fontSize: 14, color: COLORS.textMuted },
   emptyState: { alignItems: "center", paddingVertical: 60, gap: 14 },
   emptyText: { fontFamily: "Inter_500Medium", fontSize: 14, color: COLORS.textMuted, textAlign: "center" },

@@ -8,6 +8,7 @@ import {
   Inter_800ExtraBold,
 } from "@expo-google-fonts/inter";
 import { Stack, router } from "expo-router";
+import * as SplashScreen from "expo-splash-screen";
 import React, { useEffect, useRef } from "react";
 import { AppState } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
@@ -35,6 +36,12 @@ import { initializeMatchNotifications } from "@/lib/match-notifications";
 import { primeBootstrapRealtimeData, realtimeCacheKeys } from "@/services/realtime-engine";
 import { logStartupEvent, runStartupTask } from "@/services/startup-orchestrator";
 import { recordLaunchSnapshot } from "@/services/update-diagnostics";
+
+// Prevent the splash screen from auto-hiding.
+// We call SplashScreen.hideAsync() manually once fonts have loaded.
+SplashScreen.preventAutoHideAsync().catch(() => {
+  // Ignore — may have already been called or platform doesn't support it.
+});
 
 const BOOTSTRAP_CACHE_KEYS = (today: string) => [
   `sports:live:${today}`,
@@ -95,7 +102,7 @@ function RootLayoutNav() {
 export default function RootLayout() {
   useRenderTelemetry("RootLayout");
 
-  useFonts({
+  const [fontsLoaded, fontError] = useFonts({
     Inter_400Regular,
     Inter_500Medium,
     Inter_600SemiBold,
@@ -217,6 +224,16 @@ export default function RootLayout() {
       }
     };
   }, []);
+
+  // Wait for fonts before rendering to avoid invisible text flash.
+  // fontError is fine — system fonts will be used as fallback.
+  useEffect(() => {
+    if (fontsLoaded || fontError) {
+      SplashScreen.hideAsync().catch(() => {});
+    }
+  }, [fontsLoaded, fontError]);
+
+  if (!fontsLoaded && !fontError) return null;
 
   return (
     <ErrorBoundary>

@@ -4,7 +4,7 @@ import dotenv from "dotenv";
 import fetch from "node-fetch";
 import { fileURLToPath } from "url";
 import { dirname, join } from "path";
-import { existsSync, readFileSync } from "fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
 import crypto from "crypto";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -158,6 +158,201 @@ const APIFY_SOFASCORE_ACTOR = process.env.APIFY_SOFASCORE_ACTOR || "azzouzana/so
 const ESPN_SCOREBOARD_BASE = "https://site.web.api.espn.com/apis/v2/sports/soccer/scoreboard";
 const ESPN_REQUEST_TIMEOUT_MS = Number(process.env.ESPN_TIMEOUT_MS || 4500);
 const ESPN_LOOKAHEAD_DAYS = Number(process.env.ESPN_LOOKAHEAD_DAYS || 3);
+const ESPN_API_KEY = String(process.env.ESPN_API_KEY || process.env.ESPN_KEY || "").trim();
+const ESPN_PUBLIC_CACHE_TTL_MS = Number(process.env.ESPN_PUBLIC_CACHE_TTL_MS || 30000);
+
+const ESPN_PUBLIC_DOMAIN_BASES = Object.freeze({
+  site: "https://site.api.espn.com",
+  sitev2: "https://site.api.espn.com",
+  sitev3: "https://site.api.espn.com",
+  corev2: "https://sports.core.api.espn.com",
+  corev3: "https://sports.core.api.espn.com",
+  webv3: "https://site.web.api.espn.com",
+  cdn: "https://cdn.espn.com",
+  now: "https://now.core.api.espn.com",
+});
+
+const ESPN_PUBLIC_SPORTS = [
+  { slug: "australian-football", name: "Australian Football" },
+  { slug: "baseball", name: "Baseball" },
+  { slug: "basketball", name: "Basketball" },
+  { slug: "cricket", name: "Cricket" },
+  { slug: "field-hockey", name: "Field Hockey" },
+  { slug: "football", name: "Football" },
+  { slug: "golf", name: "Golf" },
+  { slug: "hockey", name: "Hockey" },
+  { slug: "lacrosse", name: "Lacrosse" },
+  { slug: "mma", name: "Mixed Martial Arts" },
+  { slug: "racing", name: "Racing" },
+  { slug: "rugby", name: "Rugby" },
+  { slug: "rugby-league", name: "Rugby League" },
+  { slug: "soccer", name: "Soccer" },
+  { slug: "tennis", name: "Tennis" },
+  { slug: "volleyball", name: "Volleyball" },
+  { slug: "water-polo", name: "Water Polo" },
+];
+
+function withEspnApiKey(rawUrl) {
+  const url = String(rawUrl || "").trim();
+  if (!url || !ESPN_API_KEY) return url;
+  try {
+    const parsed = new URL(url);
+    if (!parsed.searchParams.has("apikey") && !parsed.searchParams.has("apiKey")) {
+      parsed.searchParams.set("apikey", ESPN_API_KEY);
+    }
+    return parsed.toString();
+  } catch {
+    return url;
+  }
+}
+
+function espnRequestHeaders() {
+  return {
+    "user-agent": "Mozilla/5.0 (Nexora/1.0)",
+    accept: "application/json",
+    ...(ESPN_API_KEY ? { "x-api-key": ESPN_API_KEY } : {}),
+  };
+}
+
+function normalizeEspnPublicPath(rawPath) {
+  const path = String(rawPath || "").trim();
+  if (!path) return "";
+  if (path.startsWith("http://") || path.startsWith("https://")) return "";
+  if (path.includes("..") || path.includes("\\")) return "";
+  return path.startsWith("/") ? path : `/${path}`;
+}
+
+function pickEspnPublicQuery(rawQuery) {
+  const out = {};
+  for (const [key, value] of Object.entries(rawQuery || {})) {
+    if (key === "domain" || key === "path") continue;
+    if (value == null) continue;
+    if (Array.isArray(value)) {
+      out[key] = value.map((it) => String(it));
+      continue;
+    }
+    out[key] = String(value);
+  }
+  return out;
+}
+
+function buildEspnPublicUrl(domain, path, query) {
+  const base = ESPN_PUBLIC_DOMAIN_BASES[domain];
+  if (!base) return "";
+  const normalizedPath = normalizeEspnPublicPath(path);
+  if (!normalizedPath) return "";
+  const url = new URL(`${base}${normalizedPath}`);
+  for (const [key, value] of Object.entries(query || {})) {
+    if (Array.isArray(value)) {
+      for (const it of value) url.searchParams.append(key, String(it));
+      continue;
+    }
+    url.searchParams.set(key, String(value));
+  }
+  return withEspnApiKey(url.toString());
+}
+
+function makeEspnPublicCacheKey(domain, path, query) {
+  const canonical = {};
+  for (const key of Object.keys(query || {}).sort()) {
+    canonical[key] = query[key];
+  }
+  return `espn:public:${domain}:${path}:${JSON.stringify(canonical)}`;
+}
+
+async function fetchEspnPublic(domain, path, query) {
+  const cacheKey = makeEspnPublicCacheKey(domain, path, query);
+  return getOrFetch(cacheKey, ESPN_PUBLIC_CACHE_TTL_MS, async () => {
+    const url = buildEspnPublicUrl(domain, path, query);
+    if (!url) {
+      const err = new Error("Invalid ESPN domain or path");
+      err.statusCode = 400;
+      throw err;
+    }
+
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), ESPN_REQUEST_TIMEOUT_MS);
+    try {
+      const resp = await fetch(url, {
+        headers: espnRequestHeaders(),
+        signal: controller.signal,
+      });
+
+      if (!resp.ok) {
+        const body = await resp.text().catch(() => "");
+        const err = new Error(`ESPN upstream error (${resp.status})`);
+        err.statusCode = resp.status;
+        err.details = body.slice(0, 600);
+        throw err;
+      }
+
+      const contentType = String(resp.headers.get("content-type") || "").toLowerCase();
+      if (contentType.includes("application/json")) {
+        return await resp.json();
+      }
+
+      return { raw: await resp.text() };
+    } finally {
+      clearTimeout(timer);
+    }
+  });
+}
+
+app.get("/api/espn/catalog", (_req, res) => {
+  res.json({
+    ok: true,
+    domains: ESPN_PUBLIC_DOMAIN_BASES,
+    sports: ESPN_PUBLIC_SPORTS,
+    examples: [
+      {
+        route: "/api/espn/public?domain=site&path=/apis/site/v2/sports/soccer/eng.1/scoreboard&dates=20260328",
+        description: "Site API v2 scoreboard",
+      },
+      {
+        route: "/api/espn/public?domain=sitev2&path=/apis/v2/sports/soccer/eng.1/standings",
+        description: "Standings endpoint that returns full tree",
+      },
+      {
+        route: "/api/espn/public?domain=corev2&path=/v2/sports/soccer/leagues/eng.1/events&limit=10",
+        description: "Core v2 detailed events",
+      },
+      {
+        route: "/api/espn/public?domain=webv3&path=/apis/common/v3/sports/football/nfl/statistics/byathlete&season=2025&seasontype=2",
+        description: "Web v3 athlete leaderboard",
+      },
+      {
+        route: "/api/espn/public?domain=now&path=/v1/sports/news&sport=soccer&limit=10",
+        description: "Now API realtime news",
+      },
+    ],
+  });
+});
+
+app.get("/api/espn/public", async (req, res) => {
+  try {
+    const domain = String(req.query.domain || "site").trim().toLowerCase();
+    const path = normalizeEspnPublicPath(req.query.path);
+    if (!ESPN_PUBLIC_DOMAIN_BASES[domain]) {
+      return res.status(400).json({
+        error: "Invalid domain",
+        allowed: Object.keys(ESPN_PUBLIC_DOMAIN_BASES),
+      });
+    }
+    if (!path) {
+      return res.status(400).json({ error: "Missing or invalid 'path' query parameter" });
+    }
+
+    const query = pickEspnPublicQuery(req.query);
+    const data = await fetchEspnPublic(domain, path, query);
+    res.json({ ok: true, domain, path, query, data });
+  } catch (err) {
+    const status = Number(err?.statusCode || 502);
+    res.status(status).json({
+      error: err?.message || "Failed to fetch ESPN data",
+      details: err?.details || null,
+    });
+  }
+});
 
 // Per-league ESPN scoreboard URLs (more reliable than generic)
 const ESPN_LEAGUE_SCOREBOARDS = {
@@ -207,12 +402,12 @@ async function espnScoreboard(dateYmd) {
   const leagueUrls = Object.entries(ESPN_LEAGUE_SCOREBOARDS);
   const results = await Promise.allSettled(
     leagueUrls.map(async ([leagueName, baseUrl]) => {
-      const url = `${baseUrl}?dates=${encodeURIComponent(dates)}&limit=20`;
+      const url = withEspnApiKey(`${baseUrl}?dates=${encodeURIComponent(dates)}&limit=20`);
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), ESPN_REQUEST_TIMEOUT_MS);
       try {
         const resp = await fetch(url, {
-          headers: { "user-agent": "Mozilla/5.0 (Nexora/1.0)", "accept": "application/json" },
+          headers: espnRequestHeaders(),
           signal: controller.signal,
         });
         clearTimeout(timer);
@@ -244,9 +439,9 @@ async function espnScoreboard(dateYmd) {
 
   // If per-league failed or returned nothing, try generic endpoint
   if (allEvents.length === 0) {
-    const url = `${ESPN_SCOREBOARD_BASE}?dates=${encodeURIComponent(dates)}`;
+    const url = withEspnApiKey(`${ESPN_SCOREBOARD_BASE}?dates=${encodeURIComponent(dates)}`);
     const resp = await fetch(url, {
-      headers: { "user-agent": "Mozilla/5.0 (Nexora/1.0)", "accept": "application/json" },
+      headers: espnRequestHeaders(),
     });
     if (!resp.ok) {
       const text = await resp.text().catch(() => "");
@@ -1225,6 +1420,67 @@ async function zillizPut(type, cacheKey, result) {
       }],
     });
   } catch { /* best-effort */ }
+}
+
+const PLAYER_ANALYSIS_STORE_PATH = join(__dirname, "data", "player-analysis-cache.json");
+const PLAYER_ANALYSIS_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
+let playerAnalysisStore = null;
+
+function ensurePlayerAnalysisStoreLoaded() {
+  if (playerAnalysisStore) return;
+  try {
+    const dir = dirname(PLAYER_ANALYSIS_STORE_PATH);
+    if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+    if (!existsSync(PLAYER_ANALYSIS_STORE_PATH)) {
+      writeFileSync(PLAYER_ANALYSIS_STORE_PATH, JSON.stringify({ version: 1, items: {} }, null, 2), "utf8");
+    }
+    const raw = readFileSync(PLAYER_ANALYSIS_STORE_PATH, "utf8");
+    const parsed = JSON.parse(raw || "{}");
+    playerAnalysisStore = {
+      version: Number(parsed?.version || 1),
+      items: parsed?.items && typeof parsed.items === "object" ? parsed.items : {},
+    };
+  } catch {
+    playerAnalysisStore = { version: 1, items: {} };
+  }
+}
+
+function savePlayerAnalysisStore() {
+  try {
+    if (!playerAnalysisStore) return;
+    const dir = dirname(PLAYER_ANALYSIS_STORE_PATH);
+    if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+    writeFileSync(PLAYER_ANALYSIS_STORE_PATH, JSON.stringify(playerAnalysisStore, null, 2), "utf8");
+  } catch {
+    // best effort
+  }
+}
+
+function makePlayerAnalysisKey({ playerId, name, team, league, language }) {
+  return [
+    String(playerId || "").trim(),
+    normalizePersonName(name),
+    normalizePersonName(team),
+    String(league || "eng.1").trim().toLowerCase(),
+    String(language || "nl").trim().toLowerCase(),
+  ].join("|");
+}
+
+function getStoredPlayerAnalysis(key) {
+  ensurePlayerAnalysisStoreLoaded();
+  const row = playerAnalysisStore?.items?.[key];
+  if (!row) return null;
+  if (Date.now() - Number(row.updatedAt || 0) > PLAYER_ANALYSIS_MAX_AGE_MS) return null;
+  return row;
+}
+
+function setStoredPlayerAnalysis(key, payload) {
+  ensurePlayerAnalysisStoreLoaded();
+  playerAnalysisStore.items[key] = {
+    ...payload,
+    updatedAt: Date.now(),
+  };
+  savePlayerAnalysisStore();
 }
 
 function normalizePersonName(name) {
@@ -3774,9 +4030,9 @@ async function fetchOfficialWatchOptionsForMatch(matchId, espnLeague = "eng.1") 
   if (!id) return [];
   try {
     const leagueSlug = ESPN_LEAGUE_SLUGS[espnLeague] || espnLeague;
-    const summaryUrl = `https://site.api.espn.com/apis/site/v2/sports/soccer/${encodeURIComponent(leagueSlug)}/summary?event=${encodeURIComponent(id)}`;
+    const summaryUrl = withEspnApiKey(`https://site.api.espn.com/apis/site/v2/sports/soccer/${encodeURIComponent(leagueSlug)}/summary?event=${encodeURIComponent(id)}`);
     const summaryResp = await fetch(summaryUrl, {
-      headers: { "user-agent": "Mozilla/5.0 (Nexora/1.0)", accept: "application/json" },
+      headers: espnRequestHeaders(),
       signal: AbortSignal.timeout(5000),
     });
     if (!summaryResp.ok) return [];
@@ -4799,9 +5055,17 @@ async function fetchSportsByDateCore(date) {
   return { date, timezone: TZ, live: [], upcoming: [], finished: [], source: "espn" };
 }
 
-async function enhanceSportsFallbackWithGemini(scoredRows) {
-  if (!process.env.GEMINI_API_KEY || !Array.isArray(scoredRows) || scoredRows.length === 0) {
-    return { rows: scoredRows || [], usedGemini: false };
+async function enhanceSportsFallbackWithAI(scoredRows) {
+  const hasProvider = Boolean(
+    process.env.GEMINI_API_KEY ||
+    process.env.DEEPSEEK_API_KEY ||
+    process.env.OPENROUTER_API_KEY ||
+    process.env.GROQ_API_KEY ||
+    process.env.OPENAI_API_KEY ||
+    process.env.OLLAMA_MODEL
+  );
+  if (!hasProvider || !Array.isArray(scoredRows) || scoredRows.length === 0) {
+    return { rows: scoredRows || [], usedAI: false, aiProvider: null };
   }
 
   const batch = scoredRows.slice(0, 10).map((row) => ({
@@ -4825,12 +5089,33 @@ async function enhanceSportsFallbackWithGemini(scoredRows) {
         "Input:\n" + JSON.stringify(batch),
     };
 
-    const raw = await geminiChat([sys, user], { temperature: 0.15 });
-    const cleaned = String(raw || "").replace(/```json\s*|```\s*/g, "").trim();
-    const parsed = tryParseJSON(cleaned);
-    const predictions = Array.isArray(parsed?.predictions) ? parsed.predictions : (Array.isArray(parsed) ? parsed : []);
+    const providers = [];
+    if (process.env.GEMINI_API_KEY) providers.push({ name: "gemini", run: () => geminiChat([sys, user], { temperature: 0.15 }) });
+    if (process.env.DEEPSEEK_API_KEY) providers.push({ name: "deepseek", run: () => deepseekChat([sys, user], { temperature: 0.15 }) });
+    if (process.env.OPENROUTER_API_KEY) providers.push({ name: "openrouter", run: () => openrouterChat([sys, user], { temperature: 0.15 }) });
+    if (process.env.GROQ_API_KEY) providers.push({ name: "groq", run: () => groqChat([sys, user], { temperature: 0.15 }) });
+    if (process.env.OPENAI_API_KEY) providers.push({ name: "openai", run: () => openaiChat([sys, user], { temperature: 0.15, model: "gpt-4o-mini" }) });
+    if (process.env.OLLAMA_MODEL) providers.push({ name: "ollama", run: () => ollamaChat([sys, user], { temperature: 0.15 }) });
 
-    if (!predictions.length) return { rows: scoredRows, usedGemini: false };
+    let predictions = [];
+    let usedProvider = null;
+    for (const provider of providers) {
+      try {
+        const raw = await provider.run();
+        const cleaned = String(raw || "").replace(/```json\s*|```\s*/g, "").trim();
+        const parsed = tryParseJSON(cleaned);
+        const mapped = Array.isArray(parsed?.predictions) ? parsed.predictions : (Array.isArray(parsed) ? parsed : []);
+        if (mapped.length > 0) {
+          predictions = mapped;
+          usedProvider = provider.name;
+          break;
+        }
+      } catch {
+        // try next provider
+      }
+    }
+
+    if (!predictions.length) return { rows: scoredRows, usedAI: false, aiProvider: null };
 
     const byId = new Map(predictions.map((item) => [String(item?.matchId || ""), item]));
     const merged = scoredRows.map((row) => {
@@ -4863,10 +5148,10 @@ async function enhanceSportsFallbackWithGemini(scoredRows) {
       };
     });
 
-    return { rows: merged, usedGemini: true };
+    return { rows: merged, usedAI: true, aiProvider: usedProvider };
   } catch (err) {
-    console.warn("[menu-tools] Gemini fallback enrichment failed:", err?.message || err);
-    return { rows: scoredRows, usedGemini: false };
+    console.warn("[menu-tools] AI fallback enrichment failed:", err?.message || err);
+    return { rows: scoredRows, usedAI: false, aiProvider: null };
   }
 }
 
@@ -4918,7 +5203,7 @@ async function buildSportsMenuToolsPayload(payload) {
     };
   });
 
-  const { rows: enrichedScored, usedGemini } = await enhanceSportsFallbackWithGemini(scored);
+  const { rows: enrichedScored, usedAI, aiProvider } = await enhanceSportsFallbackWithAI(scored);
   const footballPredictions = enrichedScored.slice(0, 10);
 
   const dailyAccaPicks = enrichedScored
@@ -4933,7 +5218,7 @@ async function buildSportsMenuToolsPayload(payload) {
 
   return {
     generatedAt: new Date().toISOString(),
-    source: usedGemini ? "backend-model-v1+gemini" : "backend-model-v1",
+    source: usedAI ? `backend-model-v1+${String(aiProvider || "ai")}` : "backend-model-v1",
     footballPredictions,
     dailyAccaPicks,
   };
@@ -5839,9 +6124,9 @@ app.get("/api/sports/match/:matchId", async (req, res) => {
   try {
     const payload = await getOrFetch(CACHE_KEY, 10_000, async () => {
       if (footballSource() === "espn") {
-        const summaryUrl = `https://site.api.espn.com/apis/site/v2/sports/soccer/${encodeURIComponent(espnLeague)}/summary?event=${encodeURIComponent(matchId)}`;
+        const summaryUrl = withEspnApiKey(`https://site.api.espn.com/apis/site/v2/sports/soccer/${encodeURIComponent(espnLeague)}/summary?event=${encodeURIComponent(matchId)}`);
         const summaryResp = await fetch(summaryUrl, {
-          headers: { "user-agent": "Mozilla/5.0 (Nexora/1.0)", accept: "application/json" },
+          headers: espnRequestHeaders(),
         });
         if (!summaryResp.ok) {
           const err = new Error("Match not found");
@@ -6267,9 +6552,9 @@ async function espnStandings(leagueName) {
   const base = `${ESPN_STANDINGS_BASE}/${slug}/standings`;
   // Try seasontype=1 (regular season) first — required for leagues like bel.1
   for (const st of [1, 2]) {
-    const url = `${base}?seasontype=${st}`;
+    const url = withEspnApiKey(`${base}?seasontype=${st}`);
     const resp = await fetchWithTimeout(
-      fetch(url, { headers: { "user-agent": "Mozilla/5.0 (Nexora/1.0)", accept: "application/json" } }),
+      fetch(url, { headers: espnRequestHeaders() }),
       12000
     );
     if (!resp.ok) throw new Error(`ESPN standings ${resp.status}`);
@@ -6284,7 +6569,7 @@ async function espnStandings(leagueName) {
   }
   // If both empty, try without seasontype as final fallback
   const resp = await fetchWithTimeout(
-    fetch(base, { headers: { "user-agent": "Mozilla/5.0 (Nexora/1.0)", accept: "application/json" } }),
+    fetch(withEspnApiKey(base), { headers: espnRequestHeaders() }),
     12000
   );
   if (!resp.ok) throw new Error(`ESPN standings ${resp.status}`);
@@ -6293,9 +6578,9 @@ async function espnStandings(leagueName) {
 
 async function espnTopScorers(leagueName) {
   const slug = ESPN_LEAGUE_SLUGS[leagueName] || ESPN_LEAGUE_SLUGS[normalizeLeagueName(leagueName)] || leagueName;
-  const url = `https://site.web.api.espn.com/apis/v2/sports/soccer/${slug}/leaders`;
+  const url = withEspnApiKey(`https://site.web.api.espn.com/apis/v2/sports/soccer/${slug}/leaders`);
   const resp = await fetchWithTimeout(
-    fetch(url, { headers: { "user-agent": "Mozilla/5.0 (Nexora/1.0)", accept: "application/json" } }),
+    fetch(url, { headers: espnRequestHeaders() }),
     12000
   );
   if (!resp.ok) throw new Error(`ESPN topscorers ${resp.status}`);
@@ -6309,11 +6594,12 @@ function extractEspnRefId(ref) {
 }
 
 async function fetchJsonWithTimeout(url, timeoutMs = 12000) {
+  const finalUrl = withEspnApiKey(url);
   const resp = await fetchWithTimeout(
-    fetch(url, { headers: { "user-agent": "Mozilla/5.0 (Nexora/1.0)", accept: "application/json" } }),
+    fetch(finalUrl, { headers: espnRequestHeaders() }),
     timeoutMs
   );
-  if (!resp.ok) throw new Error(`Fetch ${resp.status}: ${redactSensitiveUrl(url)}`);
+  if (!resp.ok) throw new Error(`Fetch ${resp.status}: ${redactSensitiveUrl(finalUrl)}`);
   return resp.json();
 }
 
@@ -6918,8 +7204,8 @@ app.get("/api/sports/competition-teams/:league", async (req, res) => {
   try {
     const payload = await getOrFetch(key, 10 * 60_000, async () => {
       const resp = await fetchWithTimeout(
-        fetch(`https://site.api.espn.com/apis/site/v2/sports/soccer/${encodeURIComponent(espnSlug)}/teams`, {
-          headers: { "user-agent": "Mozilla/5.0 (Nexora/1.0)", accept: "application/json" },
+        fetch(withEspnApiKey(`https://site.api.espn.com/apis/site/v2/sports/soccer/${encodeURIComponent(espnSlug)}/teams`), {
+          headers: espnRequestHeaders(),
         }),
         15000
       );
@@ -7029,8 +7315,8 @@ app.get("/api/sports/team/:teamId", async (req, res) => {
           resolvedTeamId = nationalId;
         } else {
           // Fallback: search teams list
-          const teamsResp = await fetch(`https://site.api.espn.com/apis/site/v2/sports/soccer/${encodeURIComponent(espnLeague)}/teams`, {
-            headers: { "user-agent": "Mozilla/5.0 (Nexora/1.0)", accept: "application/json" },
+          const teamsResp = await fetch(withEspnApiKey(`https://site.api.espn.com/apis/site/v2/sports/soccer/${encodeURIComponent(espnLeague)}/teams`), {
+            headers: espnRequestHeaders(),
             signal: AbortSignal.timeout(8000),
           });
           const teamsJson = teamsResp.ok ? await teamsResp.json() : {};
@@ -7049,8 +7335,8 @@ app.get("/api/sports/team/:teamId", async (req, res) => {
       if (resolvedTeamId.startsWith("name:") && espnLeague.includes("fifa")) {
         const rawName = decodeURIComponent(resolvedTeamId.replace(/^name:/, "")).toLowerCase();
         try {
-          const fallbackResp = await fetch(`https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.world/teams`, {
-            headers: { "user-agent": "Mozilla/5.0 (Nexora/1.0)", accept: "application/json" },
+          const fallbackResp = await fetch(withEspnApiKey(`https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.world/teams`), {
+            headers: espnRequestHeaders(),
             signal: AbortSignal.timeout(8000),
           });
           const fallbackJson = fallbackResp.ok ? await fallbackResp.json() : {};
@@ -7070,12 +7356,12 @@ app.get("/api/sports/team/:teamId", async (req, res) => {
       let rosterJson = {};
       for (const leagueSlug of leagueVariants) {
         const [teamResp, rosterResp] = await Promise.all([
-          fetch(`https://site.api.espn.com/apis/site/v2/sports/soccer/${encodeURIComponent(leagueSlug)}/teams/${encodeURIComponent(resolvedTeamId)}`, {
-            headers: { "user-agent": "Mozilla/5.0 (Nexora/1.0)", accept: "application/json" },
+          fetch(withEspnApiKey(`https://site.api.espn.com/apis/site/v2/sports/soccer/${encodeURIComponent(leagueSlug)}/teams/${encodeURIComponent(resolvedTeamId)}`), {
+            headers: espnRequestHeaders(),
             signal: AbortSignal.timeout(8000),
           }),
-          fetch(`https://site.api.espn.com/apis/site/v2/sports/soccer/${encodeURIComponent(leagueSlug)}/teams/${encodeURIComponent(resolvedTeamId)}/roster`, {
-            headers: { "user-agent": "Mozilla/5.0 (Nexora/1.0)", accept: "application/json" },
+          fetch(withEspnApiKey(`https://site.api.espn.com/apis/site/v2/sports/soccer/${encodeURIComponent(leagueSlug)}/teams/${encodeURIComponent(resolvedTeamId)}/roster`), {
+            headers: espnRequestHeaders(),
             signal: AbortSignal.timeout(8000),
           }),
         ]);
@@ -7246,7 +7532,7 @@ app.get("/api/sports/team/:teamId", async (req, res) => {
       let upcomingMatches = [];
       if (team?.id || resolvedTeamId) {
         try {
-          const scheduleUrl = `https://site.api.espn.com/apis/site/v2/sports/soccer/leagues/${encodeURIComponent(espnLeague)}/teams/${encodeURIComponent(String(team?.id || resolvedTeamId))}/schedule`;
+          const scheduleUrl = withEspnApiKey(`https://site.api.espn.com/apis/site/v2/sports/soccer/leagues/${encodeURIComponent(espnLeague)}/teams/${encodeURIComponent(String(team?.id || resolvedTeamId))}/schedule`);
           const scheduleJson = await fetchJsonWithTimeout(scheduleUrl, 9000).catch(() => null);
           const events = Array.isArray(scheduleJson?.events) ? scheduleJson.events : [];
           const mappedEvents = events.map((event) => {
@@ -7642,6 +7928,119 @@ app.get("/api/sports/player/:playerId", async (req, res) => {
     res.json(payload);
   } catch (e) {
     res.status(200).json({ error: String(e?.message || e) });
+  }
+});
+
+app.get("/api/sports/player-analysis/:playerId", async (req, res) => {
+  const playerId = String(req.params.playerId || "").trim();
+  const name = String(req.query?.name || "").trim();
+  const team = String(req.query?.team || "").trim();
+  const league = String(req.query?.league || "eng.1").trim() || "eng.1";
+  const language = String(req.query?.language || "nl").toLowerCase() === "en" ? "en" : "nl";
+  const refresh = String(req.query?.refresh || "") === "1";
+
+  const key = makePlayerAnalysisKey({ playerId, name, team, league, language });
+  if (!refresh) {
+    const stored = getStoredPlayerAnalysis(key);
+    if (stored?.summary) {
+      return res.json({
+        ...stored,
+        cached: true,
+        provider: "cached",
+        updatedAt: new Date(Number(stored.updatedAt || Date.now())).toISOString(),
+      });
+    }
+  }
+
+  let playerProfile = null;
+  try {
+    const query = new URLSearchParams();
+    if (name) query.set("name", name);
+    if (team) query.set("team", team);
+    if (league) query.set("league", league);
+    const base = `${req.protocol}://${req.get("host")}`;
+    const detailResp = await fetch(`${base}/api/sports/player/${encodeURIComponent(playerId)}?${query.toString()}`, {
+      headers: { "user-agent": "Mozilla/5.0 (Nexora/1.0)", accept: "application/json" },
+      signal: AbortSignal.timeout(12000),
+    });
+    playerProfile = detailResp.ok ? await detailResp.json() : null;
+  } catch {
+    playerProfile = null;
+  }
+
+  const safeProfile = {
+    id: playerId,
+    name: String(playerProfile?.name || name || "Unknown player"),
+    position: String(playerProfile?.position || ""),
+    age: Number(playerProfile?.age || 0) || undefined,
+    currentClub: String(playerProfile?.currentClub || team || ""),
+    marketValue: playerProfile?.marketValue || null,
+    formerClubs: Array.isArray(playerProfile?.formerClubs) ? playerProfile.formerClubs : [],
+  };
+
+  const ai = await aiAnalyzePlayerProfile(safeProfile, { league, source: playerProfile?.source || "sports-service" });
+  const fallback = inferStrengthsWeaknesses(safeProfile.position, safeProfile.age);
+  const defaultSummary = language === "en"
+    ? `${safeProfile.name} is profiled via multi-source football data (ESPN + Transfermarkt + AI context).`
+    : `${safeProfile.name} is geprofileerd via multi-source voetbaldatasets (ESPN + Transfermarkt + AI-context).`;
+
+  const payload = {
+    playerId: safeProfile.id || undefined,
+    playerName: safeProfile.name,
+    summary: String(ai?.summary || defaultSummary),
+    strengths: Array.isArray(ai?.strengths) && ai.strengths.length ? ai.strengths.slice(0, 5) : fallback.strengths,
+    weaknesses: Array.isArray(ai?.weaknesses) && ai.weaknesses.length ? ai.weaknesses.slice(0, 5) : fallback.weaknesses,
+    tactical: null,
+    physical: null,
+    mental: null,
+    transferPotential: safeProfile.marketValue ? String(safeProfile.marketValue) : null,
+    language,
+    provider: ai ? "ai" : "fallback",
+    cached: false,
+    updatedAt: new Date().toISOString(),
+  };
+
+  setStoredPlayerAnalysis(key, payload);
+  res.json(payload);
+});
+
+app.get("/api/sports/player-analysis-stream/:playerId", async (req, res) => {
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Connection", "keep-alive");
+
+  const send = (payload) => {
+    res.write(`data: ${JSON.stringify(payload)}\n\n`);
+  };
+
+  try {
+    const playerId = String(req.params.playerId || "").trim();
+    send({ type: "start", playerId });
+
+    const base = `${req.protocol}://${req.get("host")}`;
+    const q = new URLSearchParams();
+    for (const [k, v] of Object.entries(req.query || {})) {
+      if (v == null) continue;
+      q.set(k, String(v));
+    }
+
+    const detailResp = await fetch(`${base}/api/sports/player-analysis/${encodeURIComponent(playerId)}?${q.toString()}`, {
+      headers: { accept: "application/json" },
+      signal: AbortSignal.timeout(15000),
+    });
+    const data = detailResp.ok ? await detailResp.json() : null;
+    const summary = String(data?.summary || "").trim();
+
+    if (summary) {
+      const chunks = summary.split(/(?<=[.!?])\s+/).filter(Boolean);
+      for (const chunk of chunks) send({ type: "chunk", chunk });
+    }
+
+    send({ type: "done", data });
+  } catch (err) {
+    send({ type: "error", message: String(err?.message || err || "stream failed") });
+  } finally {
+    res.end();
   }
 });
 
@@ -8249,17 +8648,28 @@ const TMDB_BASE = "https://api.themoviedb.org/3";
 const TMDB_IMG_500 = "https://image.tmdb.org/t/p/w500";
 const TMDB_IMG_780 = "https://image.tmdb.org/t/p/w780";
 const TMDB_PROFILE_185 = "https://image.tmdb.org/t/p/w185";
+const TMDB_TIMEOUT_MS = Number(process.env.TMDB_TIMEOUT_MS || 7000);
+const TMDB_CACHE_TTL_MS = Number(process.env.TMDB_CACHE_TTL_MS || 5 * 60 * 1000);
 
-async function tmdb(pathAndQuery) {
+async function tmdb(pathAndQuery, options = {}) {
   const key = process.env.TMDB_API_KEY;
   if (!key) return null;
+
+  const timeoutMs = Number(options?.timeoutMs || TMDB_TIMEOUT_MS);
+  const cacheTtlMs = Number(options?.cacheTtlMs ?? TMDB_CACHE_TTL_MS);
 
   const sep = pathAndQuery.includes("?") ? "&" : "?";
   const url = `${TMDB_BASE}${pathAndQuery}${sep}api_key=${encodeURIComponent(
     key
   )}&language=nl-NL`;
 
-  const r = await fetch(url);
+  const cacheKey = `tmdb:${url}`;
+  if (cacheTtlMs > 0) {
+    const cached = cacheGet(cacheKey);
+    if (cached) return cached;
+  }
+
+  const r = await fetch(url, { signal: AbortSignal.timeout(timeoutMs) });
   const data = await r.json();
   if (!r.ok) {
     const e = new Error(`TMDB error (${r.status})`);
@@ -8267,6 +8677,7 @@ async function tmdb(pathAndQuery) {
     e.details = data;
     throw e;
   }
+  if (cacheTtlMs > 0) cacheSet(cacheKey, data, cacheTtlMs);
   return data;
 }
 
@@ -8274,11 +8685,16 @@ async function tmdb(pathAndQuery) {
 async function tmdbVideosAllLangs(mediaType, tmdbId) {
   const key = process.env.TMDB_API_KEY;
   if (!key) return null;
+  const cacheKey = `tmdb-videos-all:${mediaType}:${tmdbId}`;
+  const cached = cacheGet(cacheKey);
+  if (cached) return cached;
   const url = `${TMDB_BASE}/${mediaType}/${encodeURIComponent(tmdbId)}/videos?api_key=${encodeURIComponent(key)}&include_video_language=en,nl,de,fr,null`;
   try {
-    const r = await fetch(url);
+    const r = await fetch(url, { signal: AbortSignal.timeout(TMDB_TIMEOUT_MS) });
     if (!r.ok) return null;
-    return await r.json();
+    const payload = await r.json();
+    cacheSet(cacheKey, payload, 30 * 60 * 1000);
+    return payload;
   } catch { return null; }
 }
 
@@ -8770,6 +9186,11 @@ app.get("/api/movies/:id/full", tmdbLimiter, async (req, res) => {
   try {
     if (!process.env.TMDB_API_KEY) return res.json(null);
 
+    const titleHint = String(req.query.title || "").trim().toLowerCase();
+    const cacheKey = `movie-full:${String(req.params.id || "")}:${titleHint}`;
+    const cached = cacheGet(cacheKey);
+    if (cached) return res.json(cached);
+
     let id = req.params.id;
     let detail, videos, credits;
 
@@ -8807,7 +9228,9 @@ app.get("/api/movies/:id/full", tmdbLimiter, async (req, res) => {
       if (allLangVideos && pickTrailerKey(allLangVideos)) finalVideos = allLangVideos;
     }
 
-    res.json(mapFullDetail(detail, finalVideos, credits, "movie"));
+    const payload = mapFullDetail(detail, finalVideos, credits, "movie");
+    cacheSet(cacheKey, payload, 30 * 60 * 1000);
+    res.json(payload);
   } catch (e) {
     res.status(200).json({ error: String(e?.message || e) });
   }
@@ -8816,6 +9239,11 @@ app.get("/api/movies/:id/full", tmdbLimiter, async (req, res) => {
 app.get("/api/series/:id/full", tmdbLimiter, async (req, res) => {
   try {
     if (!process.env.TMDB_API_KEY) return res.json(null);
+
+    const titleHint = String(req.query.title || "").trim().toLowerCase();
+    const cacheKey = `series-full:${String(req.params.id || "")}:${titleHint}`;
+    const cached = cacheGet(cacheKey);
+    if (cached) return res.json(cached);
 
     let id = req.params.id;
     let detail, videos, credits;
@@ -8854,7 +9282,9 @@ app.get("/api/series/:id/full", tmdbLimiter, async (req, res) => {
       if (allLangVideos && pickTrailerKey(allLangVideos)) finalVideos = allLangVideos;
     }
 
-    res.json(mapFullDetail(detail, finalVideos, credits, "series"));
+    const payload = mapFullDetail(detail, finalVideos, credits, "series");
+    cacheSet(cacheKey, payload, 30 * 60 * 1000);
+    res.json(payload);
   } catch (e) {
     res.status(200).json({ error: String(e?.message || e) });
   }
@@ -8899,7 +9329,10 @@ app.get("/api/vod/collection", tmdbLimiter, async (req, res) => {
 
     const requestedId = Number(req.query.id || 0);
     const requestedTitle = String(req.query.title || "").trim();
-    const depth = clampInt(req.query.depth, 1, 8, 5);
+    const depth = clampInt(req.query.depth, 1, 5, 3);
+    const cacheKey = `vod-collection:${requestedId || "none"}:${normalizeText(requestedTitle)}:${depth}`;
+    const cached = cacheGet(cacheKey);
+    if (cached) return res.json(cached);
     let collectionId = requestedId;
 
     if (!collectionId && requestedTitle) {
@@ -8959,7 +9392,7 @@ app.get("/api/vod/collection", tmdbLimiter, async (req, res) => {
     const movieCount = items.filter((item) => item.type === "movie").length;
     const seriesCount = items.filter((item) => item.type === "series").length;
 
-    res.json({
+    const result = {
       collection: {
         id: Number(collectionPayload?.id || collectionId || 0) || null,
         name: collectionPayload?.name || requestedTitle || "Collection",
@@ -8974,7 +9407,9 @@ app.get("/api/vod/collection", tmdbLimiter, async (req, res) => {
         movies: movieCount,
         series: seriesCount,
       },
-    });
+    };
+    cacheSet(cacheKey, result, 30 * 60 * 1000);
+    res.json(result);
   } catch (e) {
     res.status(200).json({ collection: null, items: [], error: String(e?.message || e) });
   }

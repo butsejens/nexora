@@ -1,10 +1,9 @@
-import { useQuery } from "@tanstack/react-query";
-import { apiRequestJson } from "@/lib/query-client";
+import { usePlayer } from "@/hooks/usePlayer";
 
 export function usePlayerProfile(playerId: string) {
-  return useQuery({
-    queryKey: ["sports", "player", playerId],
-    queryFn: async () => apiRequestJson(`/api/sports/player/${encodeURIComponent(playerId)}`),
-    enabled: Boolean(playerId),
+  return usePlayer({
+    playerId,
+    league: "eng.1",
+    sport: "soccer",
   });
 }

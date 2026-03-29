@@ -1,5 +1,5 @@
 {
-  "name": "nexora-monorepo",
+  "name": "NEXORA",
   "private": true,
   "workspaces": [
     "app",
@@ -20,20 +20,22 @@
     "release:apk": "npm -w app run release:apk",
     "secrets:encrypt": "node scripts/secrets-crypto.mjs encrypt app/.env app/.env.enc && node scripts/secrets-crypto.mjs encrypt server/.env server/.env.enc",
     "secrets:decrypt": "node scripts/secrets-crypto.mjs decrypt app/.env.enc app/.env && node scripts/secrets-crypto.mjs decrypt server/.env.enc server/.env",
-    "ports:free": "node scripts/free-ports.mjs 8080 8082",
-    "dev": "npm run doctor && npm run secrets:auto:ensure && npm run security:env-check && npm run ports:free && concurrently --kill-others-on-fail \"npm -w server run dev\" \"npm -w app run start:ci\"",
+    "ports:free": "node scripts/free-ports.mjs 18081",
+    "dev": "npm run doctor && npm run secrets:auto:ensure && npm run security:env-check && npm run ports:free && npm -w server run dev & npm -w app run start:lan & wait",
     "server": "npm run secrets:auto:ensure && npm run security:env-check && npm -w server run dev",
     "server:start": "npm run secrets:auto:ensure && npm run security:env-check && npm -w server start",
-    "app": "npm run secrets:auto:ensure && npm run security:env-check && npm -w app start",
-    "app:tunnel": "npm run secrets:auto:ensure && npm run security:env-check && npm -w app run start:tunnel",
-    "app:restart:8080": "npm run secrets:auto:ensure && npm run security:env-check && npm -w app run start:restart:8080",
+    "app": "npm run secrets:auto:ensure && npm run security:env-check && node scripts/free-ports.mjs 18081 && npm -w app run start:tunnel",
+    "app:tunnel": "npm run secrets:auto:ensure && npm run security:env-check && node scripts/free-ports.mjs 18081 && npm -w app run start:tunnel",
+    "app:restart:18081": "npm run secrets:auto:ensure && npm run security:env-check && npm -w app run start:restart:18081",
     "cloudflare:deploy": "npm --prefix cloudflare/sports-worker exec wrangler -- deploy --config cloudflare/sports-worker/wrangler.toml",
     "cloudflare:deploy:dry-run": "npm --prefix cloudflare/sports-worker exec wrangler -- deploy --config cloudflare/sports-worker/wrangler.toml --dry-run",
     "android": "expo run:android",
-    "ios": "expo run:ios"
+    "ios": "expo run:ios",
+    "postinstall": "patch-package || true"
   },
   "devDependencies": {
-    "concurrently": "^8.2.2"
+    "concurrently": "^8.2.2",
+    "patch-package": "^8.0.0"
   },
   "main": "app/index.js",
   "dependencies": {

@@ -52,6 +52,16 @@ function isLikelyPhysicalHost(host: string): boolean {
   return value !== "localhost" && value !== "127.0.0.1";
 }
 
+function shouldUseInferredNativeHost(host: string): boolean {
+  const value = String(host || "").trim().toLowerCase();
+  if (!value) return false;
+  if (value === "localhost" || value === "127.0.0.1") return true;
+  if (value.includes("boltexpo.dev")) return false;
+  if (/^[0-9.]+$/.test(value)) return true;
+  if (value.endsWith(".local")) return true;
+  return false;
+}
+
 function isLoopbackHost(base: string): boolean {
   try {
     const u = new URL(base);
@@ -81,10 +91,13 @@ function parseEnvBaseList(raw: string): string[] {
 }
 
 export function getApiBaseCandidates(): string[] {
+  if (/:8082(?:\/|$)/.test(lastWorkingApiBase)) {
+    lastWorkingApiBase = "";
+  }
   const explicit = normalizeBase(process.env.EXPO_PUBLIC_API_BASE || "");
   const explicitList = parseEnvBaseList(process.env.EXPO_PUBLIC_API_BASES || "");
   const inferredHost = getInferredNativeHost();
-  const inferredNative = inferredHost ? `http://${inferredHost}:8080` : "";
+  const inferredNative = shouldUseInferredNativeHost(inferredHost) ? `http://${inferredHost}:8080` : "";
 
   // 2) Expo native (iOS/Android) during development: try to infer host from
   //    the Metro debugger configuration. This saves the user from having to
@@ -181,6 +194,9 @@ export function getApiBaseCandidates(): string[] {
 }
 
 export function getSportsApiBaseCandidates(): string[] {
+  if (/:8082(?:\/|$)/.test(lastWorkingSportsApiBase)) {
+    lastWorkingSportsApiBase = "";
+  }
   const explicit = normalizeBase(process.env.EXPO_PUBLIC_SPORTS_API_BASE || "");
   const explicitList = parseEnvBaseList(process.env.EXPO_PUBLIC_SPORTS_API_BASES || "");
   const hasExplicitSportsBase = Boolean(explicit) || explicitList.length > 0;
@@ -252,11 +268,11 @@ async function throwIfResNotOk(res: Response) {
 function timeoutForUrl(url: string, isSports: boolean = false): number {
   if (isSports) {
     if (isCloudflareSportsUrl(url)) return 12000;
-    if (isRenderUrl(url)) return 30000;
+    if (isRenderUrl(url)) return 18000;
     return 12000;
   }
-  if (isRenderUrl(url)) return 30000;
-  return url.startsWith("https://") ? 25000 : 8000;
+  if (isRenderUrl(url)) return 15000;
+  return url.startsWith("https://") ? 15000 : 8000;
 }
 
 function shouldTryNextBase(route: string, status: number): boolean {

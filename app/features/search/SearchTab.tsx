@@ -540,10 +540,13 @@ export function SearchTab({ onSelectResult }: SearchTabProps) {
     setResults(deduped.slice(0, 80));
   }, [sportsEnabled, moviesEnabled, iptvEnabled, sportsItems, curatedSportsItems, mediaItems, iptvItems]);
 
+  useEffect(() => {
+    performSearch(query);
+  }, [performSearch, query]);
+
   const handleSearch = useCallback((text: string) => {
     setQuery(text);
-    performSearch(text);
-  }, [performSearch]);
+  }, []);
 
   const handleSelectResult = (result: SearchResult) => {
     // Add to recent searches
@@ -559,7 +562,11 @@ export function SearchTab({ onSelectResult }: SearchTabProps) {
     setResults([]);
   };
 
-  const isLoading = sportsQuery.isLoading || mediaQuery.isLoading || mediaSearchQuery.isLoading;
+  const baseLoading =
+    (sportsEnabled && sportsQuery.isLoading && !sportsQuery.data) ||
+    (moviesEnabled && mediaQuery.isLoading && !mediaQuery.data);
+  const liveSearchLoading = moviesEnabled && debouncedQuery.length >= 2 && mediaSearchQuery.isFetching;
+  const isLoading = Boolean(baseLoading || liveSearchLoading);
   const showResults = query.trim().length > 0;
 
   return (
@@ -574,7 +581,7 @@ export function SearchTab({ onSelectResult }: SearchTabProps) {
             placeholderTextColor={P.muted}
             value={query}
             onChangeText={handleSearch}
-            editable={!isLoading}
+            editable
           />
           {query.length > 0 && (
             <TouchableOpacity onPress={handleClearSearch} style={styles.clearButton}>
