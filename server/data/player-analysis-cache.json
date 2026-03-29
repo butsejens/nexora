@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "items": {
+    "1580|kylian mbappe|real madrid|esp.1|nl": {
+      "playerId": "1580",
+      "playerName": "Kylian Mbappe",
+      "summary": "Kylian Mbappe is geprofileerd via multi-source voetbaldatasets (ESPN + Transfermarkt + AI-context).",
+      "strengths": [
+        "Werkethiek",
+        "Tactisch inzicht"
+      ],
+      "weaknesses": [
+        "Constante impact over 90 minuten"
+      ],
+      "tactical": null,
+      "physical": null,
+      "mental": null,
+      "transferPotential": "€200M",
+      "language": "nl",
+      "provider": "fallback",
+      "cached": false,
+      "updatedAt": 1774788410289
+    }
+  }
+}

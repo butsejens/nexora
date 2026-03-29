@@ -9,6 +9,8 @@ type TimelineEvent = {
   team?: string;
   player?: string;
   text?: string;
+  title?: string;
+  description?: string;
 };
 
 export type MatchStoryInput = {
@@ -48,6 +50,35 @@ function firstImportantEvent(events: TimelineEvent[]): TimelineEvent | null {
   }) || null;
 }
 
+function eventCategory(event: TimelineEvent): "goal" | "card" | "sub" | "var" | "pen" | "other" {
+  const token = normalizeText(event);
+  if (token.includes("goal")) return "goal";
+  if (token.includes("yellow") || token.includes("red") || token.includes("card")) return "card";
+  if (token.includes("sub") || token.includes("substitut")) return "sub";
+  if (token.includes("var")) return "var";
+  if (token.includes("pen")) return "pen";
+  return "other";
+}
+
+function buildRecentEventLine(events: TimelineEvent[]): string | null {
+  if (!events.length) return null;
+  const recent = [...events].sort((a, b) => minuteOf(b) - minuteOf(a)).slice(0, 3);
+  const headline = recent.find((event) => eventCategory(event) !== "other") || recent[0];
+  if (!headline) return null;
+
+  const cat = eventCategory(headline);
+  const minute = minuteOf(headline);
+  const actor = String(headline.team || "").trim();
+  const detail = String(headline.detail || headline.description || headline.title || headline.text || "").trim();
+
+  if (cat === "goal") return `${minute}' bracht ${actor || "een team"} via een doelpunt een duidelijke kanteling in de match.`;
+  if (cat === "card") return `${minute}' zorgde een kaartmoment${actor ? ` voor ${actor}` : ""} voor extra spanning in het wedstrijdbeeld.`;
+  if (cat === "sub") return `${minute}' brachten wissels${actor ? ` bij ${actor}` : ""} nieuwe energie in het spel.`;
+  if (cat === "var") return `${minute}' stuurde VAR het momentum bij met een beslissende interventie.`;
+  if (cat === "pen") return `${minute}' werd een penaltymoment cruciaal voor het verdere verloop.`;
+  return detail ? `Recent event: ${detail}` : null;
+}
+
 export function buildAiMatchStory(input: MatchStoryInput): MatchStory {
   const events = Array.isArray(input.timeline) ? input.timeline : [];
   const momentum = calculateMomentum({ homeStats: input.homeStats, awayStats: input.awayStats });
@@ -62,6 +93,7 @@ export function buildAiMatchStory(input: MatchStoryInput): MatchStory {
   }
 
   const firstKey = firstImportantEvent(events);
+  const recentEventLine = buildRecentEventLine(events);
   const winner = input.homeScore === input.awayScore
     ? "in balans"
     : input.homeScore > input.awayScore
@@ -77,18 +109,19 @@ export function buildAiMatchStory(input: MatchStoryInput): MatchStory {
     : "De flow werd vooral bepaald door sleutelacties in de timeline.";
 
   const turningPoint = firstKey
-    ? `Kantelpunt rond ${minuteOf(firstKey)}': ${String(firstKey.detail || firstKey.type || firstKey.text || "belangrijk moment")}.`
+    ? `Kantelpunt rond ${minuteOf(firstKey)}': ${String(firstKey.detail || firstKey.description || firstKey.title || firstKey.type || firstKey.text || "belangrijk moment")}.`
     : undefined;
 
   const bullets: string[] = [];
   if (momentum.hasData) bullets.push(`Momentum ${momentum.homePct}% - ${momentum.awayPct}%`);
   if (events.length) bullets.push(`${events.length} relevante timeline-events verwerkt`);
+  if (recentEventLine) bullets.push(recentEventLine);
   bullets.push(`Huidige stand: ${input.homeScore}-${input.awayScore} (${winner})`);
 
   return {
     available: true,
     title: "AI Match Story",
-    summary: `${flowLine} ${turningPoint || ""}`.trim(),
+    summary: `${flowLine} ${recentEventLine || ""} ${turningPoint || ""}`.trim(),
     turningPoint,
     bullets,
   };

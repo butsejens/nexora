@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useCallback, useEffect } from "react";
+import React, { useMemo, useState, useCallback } from "react";
 import {
   Image,
   RefreshControl,
@@ -32,9 +32,6 @@ import {
 import { useOnboardingStore } from "@/store/onboarding-store";
 import { resolveMatchCompetitionLabel, resolveMatchEspnLeagueCode } from "@/lib/sports-competition";
 import {
-  loadMatchInteractions,
-  rankMatchesForUser,
-  recordMatchInteraction,
   selectHighlightsForFeed,
 } from "@/lib/ai";
 
@@ -121,7 +118,6 @@ export default function CuratedHomeScreen() {
   const { watchHistory, isFavorite, toggleFavorite } = useNexora();
   const { followedTeams } = useFollowState();
   const { continueWatching: syncedContinueWatching } = useWatchProgress();
-  const [matchInteractions, setMatchInteractions] = useState<any>(null);
 
   const sportsQuery = useQuery(buildHomeSportsQuery(todayUTC(), sportsEnabled));
   const mediaQuery = useQuery(buildVodHomeQuery(moviesEnabled));
@@ -133,20 +129,10 @@ export default function CuratedHomeScreen() {
     return buildContinueWatchingRows(watchHistory as any, syncedContinueWatching as any, 8);
   }, [syncedContinueWatching, watchHistory]);
 
-  useEffect(() => {
-    let mounted = true;
-    loadMatchInteractions().then((value) => {
-      if (mounted) setMatchInteractions(value);
-    }).catch(() => {
-      if (mounted) setMatchInteractions(null);
-    });
-    return () => { mounted = false; };
-  }, []);
-
   const liveMatches = useMemo(() => (sportsEnabled ? (sportsQuery.data?.live || []) : []), [sportsEnabled, sportsQuery.data?.live]);
   const upcomingMatches = useMemo(() => (sportsEnabled ? (sportsQuery.data?.upcoming || []) : []), [sportsEnabled, sportsQuery.data?.upcoming]);
-  const allSmartCandidates = useMemo(
-    () => (sportsEnabled ? [...liveMatches, ...upcomingMatches] : []),
+  const todayMatches = useMemo(
+    () => (sportsEnabled ? [...liveMatches, ...upcomingMatches].slice(0, 3) : []),
     [liveMatches, sportsEnabled, upcomingMatches],
   );
   const favoriteTeamNames = [
@@ -154,15 +140,6 @@ export default function CuratedHomeScreen() {
     ...selectedTeams.map((team) => String(team?.name || "")),
   ].filter(Boolean);
   const preferredLeagues = selectedCompetitions.map((competition) => String(competition?.name || competition?.id || "")).filter(Boolean);
-  const rankedSmartFeed = useMemo(() => {
-    return rankMatchesForUser({
-      matches: allSmartCandidates,
-      favoriteTeams: favoriteTeamNames,
-      preferredLeagues,
-      interactions: matchInteractions,
-    }).slice(0, 6);
-  }, [allSmartCandidates, favoriteTeamNames, preferredLeagues, matchInteractions]);
-  const todayMatches = rankedSmartFeed.slice(0, 3).map((entry) => entry.match);
 
   const [notifiedMatchIds, setNotifiedMatchIds] = useState<Set<string>>(new Set());
   const toggleMatchNotification = useCallback((matchId: string) => {
@@ -188,7 +165,7 @@ export default function CuratedHomeScreen() {
     }).map((entry) => entry.item).slice(0, 8);
   }, [favoriteTeamNames, preferredLeagues, replayAndHighlight.highlights]);
 
-  const heroSport = sportsEnabled ? (rankedSmartFeed[0]?.match || liveMatches[0] || upcomingMatches[0]) : null;
+  const heroSport = sportsEnabled ? (liveMatches[0] || upcomingMatches[0] || null) : null;
   const heroMedia = moviesEnabled ? (movieRail[0] || seriesRail[0] || null) : null;
   const heroIsSport = Boolean(heroSport);
 
@@ -197,7 +174,7 @@ export default function CuratedHomeScreen() {
     : String(heroMedia?.title || "Welcome to NEXORA");
 
   const heroMeta = heroIsSport
-    ? `AI Matchday Pick · ${resolveMatchCompetitionLabel(heroSport)}`
+    ? `Matchday Pick · ${resolveMatchCompetitionLabel(heroSport)}`
     : `${heroMedia?.type === "series" ? "Series" : "Film"}${heroMedia?.year ? ` · ${heroMedia.year}` : ""}`;
 
   const heroImage = heroIsSport ? null : (heroMedia?.backdrop || heroMedia?.poster || null);
@@ -218,7 +195,6 @@ export default function CuratedHomeScreen() {
   };
 
   const openMatchDetail = useCallback((match: any) => {
-    void recordMatchInteraction(match).then(() => loadMatchInteractions().then(setMatchInteractions).catch(() => undefined)).catch(() => undefined);
     router.push({ pathname: "/match-detail", params: toMatchParams(match) });
   }, []);
 
@@ -308,79 +284,52 @@ export default function CuratedHomeScreen() {
           </TouchableOpacity>
         </View>
 
-        {sportsEnabled && rankedSmartFeed.length > 0 && (
-          <View style={styles.section}>
-            <View style={styles.sectionHead}>
-              <Text style={styles.sectionLabel}>SMART MATCH FEED</Text>
-              <TouchableOpacity onPress={() => router.push("/sport")}>
-                <Text style={styles.sectionAction}>AI powered</Text>
-              </TouchableOpacity>
-            </View>
-            {rankedSmartFeed.slice(0, 4).map((entry: any) => (
-              <View key={`smart_${String(entry?.match?.id || "")}`} style={styles.smartCardWrap}>
-                <MatchRowCard
-                  match={{
-                    id: String(entry?.match?.id || ""),
-                    homeTeam: getTeamName(entry?.match?.homeTeam, "Home"),
-                    awayTeam: getTeamName(entry?.match?.awayTeam, "Away"),
-                    homeTeamLogo: getTeamLogo(entry?.match, "home"),
-                    awayTeamLogo: getTeamLogo(entry?.match, "away"),
-                    homeScore: getScore(entry?.match, "home"),
-                    awayScore: getScore(entry?.match, "away"),
-                    status: String(entry?.match?.status || "upcoming") as any,
-                    minute: Number(entry?.match?.minute ?? 0),
-                    startTime: String(entry?.match?.startDate || entry?.match?.startTime || ""),
-                    league: resolveMatchCompetitionLabel(entry?.match),
-                    espnLeague: resolveMatchEspnLeagueCode(entry?.match),
-                    sport: String(entry?.match?.sport || "football"),
-                    possession: entry?.match?.possession,
-                    redCards: entry?.match?.redCards,
-                  }}
-                  onPress={() => openMatchDetail(entry?.match)}
-                />
-                <View style={styles.smartReasonRow}>
-                  {entry?.isTrending ? <Text style={styles.smartReasonTag}>Trending</Text> : null}
-                  {entry?.isUpsetPotential ? <Text style={styles.smartReasonTag}>Upset Potential</Text> : null}
-                  {(entry?.reasons || []).slice(0, 2).map((reason: string) => (
-                    <Text key={`${String(entry?.match?.id || "")}_${reason}`} style={styles.smartReasonTag}>{reason}</Text>
-                  ))}
-                </View>
-              </View>
-            ))}
-          </View>
-        )}
-
         {sportsEnabled && (
           <View style={styles.section}>
             <View style={styles.sectionHead}>
               <Text style={styles.sectionLabel}>SPORT</Text>
               <TouchableOpacity onPress={() => router.push("/sport")}>
-                <Text style={styles.sectionAction}>Open match center</Text>
+                <Text style={styles.sectionActionLive}>Open match center</Text>
               </TouchableOpacity>
             </View>
-            {todayMatches.length > 0 ? todayMatches.map((match: any) => (
-              <MatchRowCard
-                key={String(match?.id || `${match?.homeTeam}_${match?.awayTeam}`)}
-                match={{
-                  id: String(match?.id || ""),
-                  homeTeam: getTeamName(match?.homeTeam, "Home"),
-                  awayTeam: getTeamName(match?.awayTeam, "Away"),
-                  homeTeamLogo: getTeamLogo(match, "home"),
-                  awayTeamLogo: getTeamLogo(match, "away"),
-                  homeScore: getScore(match, "home"),
-                  awayScore: getScore(match, "away"),
-                  status: String(match?.status || "upcoming") as any,
-                  minute: Number(match?.minute ?? 0),
-                  startTime: String(match?.startDate || match?.startTime || ""),
-                  league: resolveMatchCompetitionLabel(match),
-                  espnLeague: resolveMatchEspnLeagueCode(match),
-                  sport: String(match?.sport || "football"),
-                }}
-                onPress={() => router.push({ pathname: "/match-detail", params: toMatchParams(match) })}
-                onNotificationToggle={() => toggleMatchNotification(String(match?.id || ""))}
-                isNotificationOn={notifiedMatchIds.has(String(match?.id || ""))}
-              />
-            )) : <Text style={styles.emptyText}>No live or upcoming matches available right now.</Text>}
+            {todayMatches.length > 0 ? (
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.rail}>
+                {todayMatches.map((match: any, idx: number) => (
+                  <View
+                    key={[
+                      String(match?.id || ""),
+                      String(match?.homeTeam?.id || match?.homeTeam || ""),
+                      String(match?.awayTeam?.id || match?.awayTeam || ""),
+                      String(match?.startDate || match?.startTime || ""),
+                      String(idx),
+                    ].join("_")}
+                    style={styles.sportRailCardWrap}
+                  >
+                    <MatchRowCard
+                      match={{
+                        id: String(match?.id || ""),
+                        homeTeam: getTeamName(match?.homeTeam, "Home"),
+                        awayTeam: getTeamName(match?.awayTeam, "Away"),
+                        homeTeamLogo: getTeamLogo(match, "home"),
+                        awayTeamLogo: getTeamLogo(match, "away"),
+                        homeScore: getScore(match, "home"),
+                        awayScore: getScore(match, "away"),
+                        status: String(match?.status || "upcoming") as any,
+                        minute: Number(match?.minute ?? 0),
+                        startTime: String(match?.startDate || match?.startTime || ""),
+                        league: resolveMatchCompetitionLabel(match),
+                        espnLeague: resolveMatchEspnLeagueCode(match),
+                        sport: String(match?.sport || "football"),
+                      }}
+                      onPress={() => router.push({ pathname: "/match-detail", params: toMatchParams(match) })}
+                      onNotificationToggle={() => toggleMatchNotification(String(match?.id || ""))}
+                      isNotificationOn={notifiedMatchIds.has(String(match?.id || ""))}
+                      compact
+                    />
+                  </View>
+                ))}
+              </ScrollView>
+            ) : <Text style={styles.emptyText}>No live or upcoming matches available right now.</Text>}
           </View>
         )}
 
@@ -466,7 +415,7 @@ export default function CuratedHomeScreen() {
                   }}
                   isFavorite={isFavorite(String(item.id))}
                   onFavorite={() => toggleFavorite(String(item.id))}
-                  onPress={() => router.push({ pathname: "/detail", params: { id: String(item.id), type: "movie", title: item.title } })}
+                  onPress={() => router.push({ pathname: "/detail", params: { id: String(item.tmdbId || item.id), tmdbId: item.tmdbId ? String(item.tmdbId) : undefined, type: "movie", title: item.title } })}
                 />
               ))}
             </ScrollView>
@@ -498,7 +447,7 @@ export default function CuratedHomeScreen() {
                   }}
                   isFavorite={isFavorite(String(item.id))}
                   onFavorite={() => toggleFavorite(String(item.id))}
-                  onPress={() => router.push({ pathname: "/detail", params: { id: String(item.id), type: "series", title: item.title } })}
+                  onPress={() => router.push({ pathname: "/detail", params: { id: String(item.tmdbId || item.id), tmdbId: item.tmdbId ? String(item.tmdbId) : undefined, type: "series", title: item.title } })}
                 />
               ))}
             </ScrollView>
@@ -510,7 +459,7 @@ export default function CuratedHomeScreen() {
             <View style={styles.sectionHead}>
               <Text style={styles.sectionLabel}>NEW RELEASES</Text>
               <TouchableOpacity onPress={() => router.push("/films-series")}>
-                <Text style={styles.sectionAction}>Live updated</Text>
+                <Text style={styles.sectionActionLive}>Live updated</Text>
               </TouchableOpacity>
             </View>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.rail}>
@@ -530,7 +479,7 @@ export default function CuratedHomeScreen() {
                   }}
                   isFavorite={isFavorite(String(item.id))}
                   onFavorite={() => toggleFavorite(String(item.id))}
-                  onPress={() => router.push({ pathname: "/detail", params: { id: String(item.id), type: item.type, title: item.title } })}
+                  onPress={() => router.push({ pathname: "/detail", params: { id: String(item.tmdbId || item.id), tmdbId: item.tmdbId ? String(item.tmdbId) : undefined, type: item.type, title: item.title } })}
                 />
               ))}
             </ScrollView>
@@ -560,7 +509,7 @@ export default function CuratedHomeScreen() {
                   showProgress
                   isFavorite={isFavorite(String(item.id))}
                   onFavorite={() => toggleFavorite(String(item.id))}
-                  onPress={() => router.push({ pathname: "/detail", params: { id: String(item.id), type: item.type, title: item.title } })}
+                  onPress={() => router.push({ pathname: "/detail", params: { id: String(item.tmdbId || item.id), tmdbId: item.tmdbId ? String(item.tmdbId) : undefined, type: item.type, title: item.title } })}
                 />
               ))}
             </ScrollView>
@@ -634,27 +583,10 @@ const styles = StyleSheet.create({
     letterSpacing: 0.6,
   },
   sectionAction: { color: COLORS.accent, fontFamily: "Inter_600SemiBold", fontSize: ms(12) },
-  smartCardWrap: {
-    marginBottom: vs(8),
-  },
-  smartReasonRow: {
-    paddingHorizontal: s(18),
-    marginTop: -vs(2),
-    marginBottom: vs(8),
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: ms(6),
-  },
-  smartReasonTag: {
-    color: "rgba(255,255,255,0.82)",
-    fontFamily: "Inter_600SemiBold",
-    fontSize: ms(10),
-    paddingHorizontal: s(8),
-    paddingVertical: vs(4),
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: "rgba(229,9,20,0.3)",
-    backgroundColor: "rgba(229,9,20,0.16)",
+  sectionActionLive: { color: COLORS.live, fontFamily: "Inter_700Bold", fontSize: ms(12) },
+  sportRailCardWrap: {
+    width: s(220),
+    marginRight: s(10),
   },
   emptyText: {
     color: COLORS.textMuted,

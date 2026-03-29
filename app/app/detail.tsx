@@ -356,7 +356,7 @@ export default function DetailScreen() {
     staleTime: 10 * 60 * 1000,
     initialData: cachedDetail || undefined,
     placeholderData: !cachedDetail ? routeSeedData || undefined : undefined,
-    retry: 2,
+    retry: 0,
     retryDelay: (attempt: number) => Math.min(1000 * 2 ** attempt, 5000),
   });
 
@@ -365,7 +365,7 @@ export default function DetailScreen() {
     queryFn: () => fetchRelatedTitles(String(tmdbId || id), type === "series" ? "series" : "movie"),
     enabled: Boolean((tmdbId || id) && (type === "movie" || type === "series")),
     staleTime: 20 * 60 * 1000,
-    retry: 1,
+    retry: 0,
   });
 
   // ── Fallback: search TMDB by title if IPTV has no tmdbId ─────────────────
@@ -373,9 +373,9 @@ export default function DetailScreen() {
   const { data: searchData, isLoading: searchLoading, error: searchError } = useQuery({
     queryKey: ["tmdb-search", type, searchTitle],
     queryFn: () => searchTmdb(searchTitle!, type),
-    enabled: isIptv === "true" && !tmdbId && !!searchTitle,
+    enabled: Boolean(searchTitle) && (!tmdbId || (Boolean(tmdbError) && Boolean(paramTitle))),
     staleTime: 30 * 60 * 1000,
-    retry: 1,
+    retry: 0,
   });
 
   // ── Merge: IPTV channel info + TMDB enrichment ────────────────────────────
@@ -498,15 +498,19 @@ export default function DetailScreen() {
   const openTrailer = () => {
     SafeHaptics.impactLight();
     const key = String(primaryTrailer?.key || "").trim();
-    if (!key) return;
+    const embedUrl = String((primaryTrailer as any)?.url || (data as any)?.trailerUrl || "").trim();
+    if (!key && !embedUrl) {
+      Alert.alert(t("common.error"), "Trailer is currently unavailable for this title.");
+      return;
+    }
     router.push({
       pathname: "/player",
       params: {
-        trailerKey: key,
+        trailerKey: key || undefined,
         title: `${String(data?.title || "Trailer")} Trailer`,
         type: "trailer",
-        contentId: `trailer_${String(data?.id || id)}_${key}`,
-        embedUrl: String((primaryTrailer as any)?.url || (data as any)?.trailerUrl || "").trim() || undefined,
+        contentId: `trailer_${String(data?.id || id)}_${key || "embed"}`,
+        embedUrl: embedUrl || undefined,
       },
     });
   };

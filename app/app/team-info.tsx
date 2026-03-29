@@ -1,14 +1,12 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { View, Text, StyleSheet, ScrollView, Image, useWindowDimensions } from "react-native";
-import { useLocalSearchParams, router } from "expo-router";
-import { useQuery } from "@tanstack/react-query";
+import { useLocalSearchParams } from "expo-router";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { COLORS } from "@/constants/colors";
-import { apiRequest } from "@/lib/query-client";
-import { enrichTeamDetailPayload } from "@/lib/sports-enrichment";
 import { TeamLogo } from "@/components/TeamLogo";
 import { NexoraSimpleHeader } from "@/components/NexoraSimpleHeader";
 import { resolveCompetitionBrand } from "@/lib/logo-manager";
+import { useTeam } from "@/hooks/useTeam";
 import {
   getBestCachedOrSeedPlayerImage,
   resolvePlayerImageUri,
@@ -261,14 +259,11 @@ export default function TeamInfoScreen() {
   const league = asParam(params.league, "eng.1");
   const sport = asParam(params.sport, "soccer");
 
-  const { data } = useQuery({
-    queryKey: ["team-info", teamId, league],
-    queryFn: async () => {
-      const res = await apiRequest("GET", `/api/sports/team/${encodeURIComponent(teamId)}?sport=${encodeURIComponent(sport)}&league=${encodeURIComponent(league)}&teamName=${encodeURIComponent(teamName)}`);
-      const json = await res.json();
-      return enrichTeamDetailPayload(json);
-    },
-    enabled: Boolean(teamId),
+  const { data } = useTeam({
+    teamId,
+    teamName,
+    league,
+    sport,
   });
 
   const recent = Array.isArray(data?.recentResults) ? data.recentResults : [];

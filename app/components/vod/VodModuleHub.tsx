@@ -61,6 +61,7 @@ type PlatformGroup = {
   label: string;
   logoUri?: string | null;
   fallbackColor?: string;
+  totalCount: number;
   items: VodModuleItem[];
 };
 
@@ -71,30 +72,30 @@ const SEARCH_FILTERS: { key: VodSearchFilter; label: string }[] = [
   { key: "anime", label: "Anime" },
 ];
 
-const PLATFORM_PROVIDER_CONFIG: Array<{
+const PLATFORM_PROVIDER_CONFIG: {
   key: string;
   label: string;
   aliases: string[];
   logoUri: string;
   fallbackColor: string;
-}> = [
-  { key: "netflix", label: "Netflix", aliases: ["netflix"], logoUri: "https://www.google.com/s2/favicons?domain=netflix.com&sz=128", fallbackColor: "#E50914" },
-  { key: "disney", label: "Disney+", aliases: ["disney", "walt disney", "pixar", "marvel studios"], logoUri: "https://www.google.com/s2/favicons?domain=disneyplus.com&sz=128", fallbackColor: "#113CCF" },
-  { key: "prime", label: "Prime Video", aliases: ["amazon", "prime video", "amazon studios"], logoUri: "https://www.google.com/s2/favicons?domain=primevideo.com&sz=128", fallbackColor: "#00A8E1" },
-  { key: "hbo", label: "HBO Max", aliases: ["hbo", "max"], logoUri: "https://www.google.com/s2/favicons?domain=max.com&sz=128", fallbackColor: "#7F2BFF" },
-  { key: "apple", label: "Apple TV+", aliases: ["apple", "apple tv"], logoUri: "https://www.google.com/s2/favicons?domain=tv.apple.com&sz=128", fallbackColor: "#A5A5A5" },
-  { key: "paramount", label: "Paramount+", aliases: ["paramount", "paramount+"], logoUri: "https://www.google.com/s2/favicons?domain=paramountplus.com&sz=128", fallbackColor: "#1A4DFF" },
-  { key: "hulu", label: "Hulu", aliases: ["hulu", "fx productions", "searchlight"], logoUri: "https://www.google.com/s2/favicons?domain=hulu.com&sz=128", fallbackColor: "#1CE783" },
-  { key: "peacock", label: "Peacock", aliases: ["peacock", "nbcuniversal", "focus features"], logoUri: "https://www.google.com/s2/favicons?domain=peacocktv.com&sz=128", fallbackColor: "#FFD400" },
-  { key: "crunchyroll", label: "Crunchyroll", aliases: ["crunchyroll", "funimation", "anime"], logoUri: "https://www.google.com/s2/favicons?domain=crunchyroll.com&sz=128", fallbackColor: "#F47521" },
-  { key: "youtube", label: "YouTube", aliases: ["youtube", "google"], logoUri: "https://www.google.com/s2/favicons?domain=youtube.com&sz=128", fallbackColor: "#FF0000" },
-  { key: "mubi", label: "Mubi", aliases: ["mubi"], logoUri: "https://www.google.com/s2/favicons?domain=mubi.com&sz=128", fallbackColor: "#0F0F0F" },
-  { key: "lionsgate", label: "Lionsgate", aliases: ["lionsgate"], logoUri: "https://www.google.com/s2/favicons?domain=lionsgate.com&sz=128", fallbackColor: "#1F4FFF" },
-  { key: "sony", label: "Sony", aliases: ["sony pictures", "columbia pictures", "screen gems"], logoUri: "https://www.google.com/s2/favicons?domain=sonypictures.com&sz=128", fallbackColor: "#1A1A1A" },
-  { key: "a24", label: "A24", aliases: ["a24"], logoUri: "https://www.google.com/s2/favicons?domain=a24films.com&sz=128", fallbackColor: "#D8D8D8" },
-  { key: "universal", label: "Universal", aliases: ["universal", "illumination", "dreamworks"], logoUri: "https://www.google.com/s2/favicons?domain=universalpictures.com&sz=128", fallbackColor: "#0046FF" },
-  { key: "warner", label: "Warner Bros", aliases: ["warner", "dc studios", "new line cinema"], logoUri: "https://www.google.com/s2/favicons?domain=warnerbros.com&sz=128", fallbackColor: "#1D4ED8" },
-  { key: "mgm", label: "MGM", aliases: ["mgm"], logoUri: "https://www.google.com/s2/favicons?domain=mgm.com&sz=128", fallbackColor: "#A78733" },
+}[] = [
+  { key: "netflix", label: "Netflix", aliases: ["netflix"], logoUri: "https://logo.clearbit.com/netflix.com?size=256", fallbackColor: "#E50914" },
+  { key: "disney", label: "Disney+", aliases: ["disney", "walt disney", "pixar", "marvel studios"], logoUri: "https://logo.clearbit.com/disneyplus.com?size=256", fallbackColor: "#113CCF" },
+  { key: "prime", label: "Prime Video", aliases: ["amazon", "prime video", "amazon studios"], logoUri: "https://logo.clearbit.com/primevideo.com?size=256", fallbackColor: "#00A8E1" },
+  { key: "hbo", label: "HBO Max", aliases: ["hbo", "max"], logoUri: "https://logo.clearbit.com/max.com?size=256", fallbackColor: "#7F2BFF" },
+  { key: "apple", label: "Apple TV+", aliases: ["apple", "apple tv"], logoUri: "https://logo.clearbit.com/tv.apple.com?size=256", fallbackColor: "#A5A5A5" },
+  { key: "paramount", label: "Paramount+", aliases: ["paramount", "paramount+"], logoUri: "https://logo.clearbit.com/paramountplus.com?size=256", fallbackColor: "#1A4DFF" },
+  { key: "hulu", label: "Hulu", aliases: ["hulu", "fx productions", "searchlight"], logoUri: "https://logo.clearbit.com/hulu.com?size=256", fallbackColor: "#1CE783" },
+  { key: "peacock", label: "Peacock", aliases: ["peacock", "nbcuniversal", "focus features"], logoUri: "https://logo.clearbit.com/peacocktv.com?size=256", fallbackColor: "#FFD400" },
+  { key: "crunchyroll", label: "Crunchyroll", aliases: ["crunchyroll", "funimation", "anime"], logoUri: "https://logo.clearbit.com/crunchyroll.com?size=256", fallbackColor: "#F47521" },
+  { key: "youtube", label: "YouTube", aliases: ["youtube", "google"], logoUri: "https://logo.clearbit.com/youtube.com?size=256", fallbackColor: "#FF0000" },
+  { key: "mubi", label: "Mubi", aliases: ["mubi"], logoUri: "https://logo.clearbit.com/mubi.com?size=256", fallbackColor: "#0F0F0F" },
+  { key: "lionsgate", label: "Lionsgate", aliases: ["lionsgate"], logoUri: "https://logo.clearbit.com/lionsgate.com?size=256", fallbackColor: "#1F4FFF" },
+  { key: "sony", label: "Sony", aliases: ["sony pictures", "columbia pictures", "screen gems"], logoUri: "https://logo.clearbit.com/sonypictures.com?size=256", fallbackColor: "#1A1A1A" },
+  { key: "a24", label: "A24", aliases: ["a24"], logoUri: "https://logo.clearbit.com/a24films.com?size=256", fallbackColor: "#D8D8D8" },
+  { key: "universal", label: "Universal", aliases: ["universal", "illumination", "dreamworks"], logoUri: "https://logo.clearbit.com/universalpictures.com?size=256", fallbackColor: "#0046FF" },
+  { key: "warner", label: "Warner Bros", aliases: ["warner", "dc studios", "new line cinema"], logoUri: "https://logo.clearbit.com/warnerbros.com?size=256", fallbackColor: "#1D4ED8" },
+  { key: "mgm", label: "MGM", aliases: ["mgm"], logoUri: "https://logo.clearbit.com/mgm.com?size=256", fallbackColor: "#A78733" },
 ];
 
 async function fetchDetail(type: "movie" | "series", id: string | number) {
@@ -142,10 +143,12 @@ function buildPlatformGroups(items: VodModuleItem[]): PlatformGroup[] {
         label: provider.label,
         logoUri: provider.logoUri,
         fallbackColor: provider.fallbackColor,
+        totalCount: dedupeModuleItems(filtered).length,
         items: dedupeModuleItems(filtered).slice(0, 24),
       };
     })
-    .sort((left, right) => right.items.length - left.items.length || left.label.localeCompare(right.label));
+    .filter((group) => group.totalCount > 0)
+    .sort((left, right) => right.totalCount - left.totalCount || left.label.localeCompare(right.label));
 }
 
 function ModuleSection({ title, children, actionLabel, onAction }: { title: string; children: React.ReactNode; actionLabel?: string; onAction?: () => void }) {
@@ -252,7 +255,7 @@ function PlatformCard({
         style={[
           styles.platformLogoWrap,
           shouldUseFallback && {
-            backgroundColor: platform.fallbackColor || "rgba(255,255,255,0.88)",
+            backgroundColor: `${platform.fallbackColor || "#E50914"}26`,
             borderColor: "transparent",
           },
         ]}
@@ -272,7 +275,7 @@ function PlatformCard({
       </View>
       <View style={[styles.platformLogoGlow, { backgroundColor: `${platform.fallbackColor || "#E50914"}1F` }]} />
       <Text style={styles.platformTitle}>{platform.label}</Text>
-      <Text style={styles.platformMeta}>{platform.items.length} titles</Text>
+      <Text style={styles.platformMeta}>{platform.totalCount} titles</Text>
     </TouchableOpacity>
   );
 }
@@ -302,7 +305,7 @@ export function VodModuleHub({ initialPane = "home", initialFilter = "all" }: Vo
       if (!isMounted) return;
       setTimeout(() => {
         if (isMounted) setDeepCatalogEnabled(true);
-      }, 120);
+      }, 650);
     });
     return () => {
       isMounted = false;
@@ -339,7 +342,7 @@ export function VodModuleHub({ initialPane = "home", initialFilter = "all" }: Vo
     staleTime: 10 * 60 * 1000,
   });
 
-  const catalogChunkOneQuery = useQuery(buildVodCatalogRootQuery(isDiscoveryPane && Boolean(homeQuery.data)));
+  const catalogChunkOneQuery = useQuery(buildVodCatalogRootQuery(isDiscoveryPane && deepCatalogEnabled && Boolean(homeQuery.data)));
 
   const catalogChunkTwoQuery = useQuery({
     queryKey: mediaKeys.vodCatalog(catalogChunkOneQuery.data?.meta?.nextCursorYear || null),
@@ -374,10 +377,14 @@ export function VodModuleHub({ initialPane = "home", initialFilter = "all" }: Vo
 
   useEffect(() => {
     if (activePane === "search") return;
-    queryClient.prefetchQuery({ queryKey: mediaKeys.vodHome(), queryFn: getVodHomePayload, staleTime: 15 * 60 * 1000 }).catch(() => undefined);
-    queryClient.prefetchQuery({ queryKey: mediaKeys.vodCatalog(null), queryFn: () => getVodCatalogChunk(null), staleTime: 30 * 60 * 1000 }).catch(() => undefined);
-    queryClient.prefetchQuery({ queryKey: mediaKeys.vodCollections(), queryFn: getVodCollections, staleTime: 60 * 60 * 1000 }).catch(() => undefined);
-    queryClient.prefetchQuery({ queryKey: mediaKeys.vodStudios(), queryFn: getVodStudios, staleTime: 60 * 60 * 1000 }).catch(() => undefined);
+    const interaction = InteractionManager.runAfterInteractions(() => {
+      setTimeout(() => {
+        queryClient.prefetchQuery({ queryKey: mediaKeys.vodHome(), queryFn: getVodHomePayload, staleTime: 15 * 60 * 1000 }).catch(() => undefined);
+        queryClient.prefetchQuery({ queryKey: mediaKeys.vodCollections(), queryFn: getVodCollections, staleTime: 60 * 60 * 1000 }).catch(() => undefined);
+        queryClient.prefetchQuery({ queryKey: mediaKeys.vodStudios(), queryFn: getVodStudios, staleTime: 60 * 60 * 1000 }).catch(() => undefined);
+      }, 320);
+    });
+    return () => interaction.cancel();
   }, [activePane, queryClient]);
 
   const allItems = useMemo(() => {
@@ -480,7 +487,7 @@ export function VodModuleHub({ initialPane = "home", initialFilter = "all" }: Vo
       const uri = String(value || "").trim();
       if (!uri || (!uri.startsWith("http://") && !uri.startsWith("https://"))) continue;
       unique.add(uri);
-      if (unique.size >= 120) break;
+      if (unique.size >= 72) break;
     }
 
     return Array.from(unique);
@@ -570,7 +577,7 @@ export function VodModuleHub({ initialPane = "home", initialFilter = "all" }: Vo
   const warmDetailPayload = (item: VodModuleItem) => {
     const tmdbId = item.tmdbId ? String(item.tmdbId) : item.id;
     queryClient.prefetchQuery({
-      queryKey: ["vod-detail-prefetch", item.type, tmdbId],
+      queryKey: ["detail", item.type, tmdbId],
       queryFn: () => fetchDetail(item.type, tmdbId),
       staleTime: 10 * 60 * 1000,
     }).catch(() => undefined);
@@ -579,10 +586,11 @@ export function VodModuleHub({ initialPane = "home", initialFilter = "all" }: Vo
   const goToDetail = (item: VodModuleItem) => {
     warmDetailPayload(item);
     const tmdbId = item.tmdbId ? String(item.tmdbId) : undefined;
+    const preferredId = tmdbId || String(item.id);
     router.push({
       pathname: "/detail",
       params: {
-        id: item.id,
+        id: preferredId,
         type: item.type,
         title: item.title,
         ...(tmdbId ? { tmdbId } : {}),
@@ -1166,17 +1174,17 @@ const styles = StyleSheet.create({
     marginTop: 7,
   },
   platformLogoWrap: {
-    width: 54,
-    height: 54,
-    borderRadius: 16,
+    width: 74,
+    height: 74,
+    borderRadius: 18,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(255,255,255,0.96)",
+    backgroundColor: "rgba(255,255,255,0.92)",
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.26)",
+    borderColor: "rgba(255,255,255,0.22)",
     marginBottom: 10,
   },
-  platformLogo: { width: 34, height: 34 },
+  platformLogo: { width: 56, height: 56 },
   platformLogoGlow: {
     position: "absolute",
     width: 80,

@@ -1,15 +1,37 @@
 {
   "expo": {
-    "android": {
-      "package": "com.butsejens.nexoramonorepo"
+    "name": "Nexora",
+    "slug": "nexora",
+    "version": "2.6.6",
+    "orientation": "portrait",
+    "icon": "./assets/images/icon.png",
+    "userInterfaceStyle": "automatic",
+    "splash": {
+      "image": "./assets/images/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#111521"
     },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
     "ios": {
-      "bundleIdentifier": "com.butsejens.nexoramonorepo"
+      "supportsTablet": true
     },
-    "extra": {
-      "eas": {
-        "projectId": "7e5969f0-cd69-40ca-ab17-7a2509c2cbba"
+    "android": {
+      "package": "com.butsejens.nexora",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/images/adaptive-icon.png",
+        "backgroundColor": "#111521"
       }
+    },
+    "web": {
+      "favicon": "./assets/images/favicon.png"
+    },
+    "devClient": {
+      "port": 19000
+    },
+    "packagerOpts": {
+      "port": 19000
     }
   }
 }

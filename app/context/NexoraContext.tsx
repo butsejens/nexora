@@ -172,6 +172,9 @@ const NexoraContext = createContext<NexoraContextValue | null>(null);
 // Constant outside component — never recreated
 const ALL_CATS: PremiumCategory[] = ["sport", "movies", "series", "livetv"];
 const profiles = ["Main"];
+const PREMIUM_BYPASS_ENABLED = ["1", "true", "yes", "on"].includes(
+  String(process.env.EXPO_PUBLIC_PREMIUM_BYPASS || "").trim().toLowerCase()
+);
 
 function todayStorageDate(): string {
   return new Date().toISOString().slice(0, 10);
@@ -230,8 +233,8 @@ export function NexoraProvider({ children }: { children: ReactNode }) {
   const [dailyPredictionUnlockState, setDailyPredictionUnlockState] = useState<DailyPredictionUnlockState>(() => normalizeDailyPredictionState());
   const [unlockedPredictionIds, setUnlockedPredictionIds] = useState<string[]>([]);
 
-  const isPremium = ALL_CATS.every(c => premiumCategories.includes(c));
-  const hasPremium = (cat: PremiumCategory) => premiumCategories.includes(cat);
+  const isPremium = PREMIUM_BYPASS_ENABLED || ALL_CATS.every(c => premiumCategories.includes(c));
+  const hasPremium = (cat: PremiumCategory) => PREMIUM_BYPASS_ENABLED || premiumCategories.includes(cat);
 
   useEffect(() => {
     // Uses parseM3UContentAsync — single source of truth, no duplicate inline logic

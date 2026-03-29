@@ -4,3 +4,6 @@ export * from "./match-ranking-service";
 export * from "./ai-summary-service";
 export * from "./highlight-engine";
 export * from "./notification-engine";
+export * from "./probabilityEngine";
+export * from "./aiPredictionService";
+export * from "./aiMatchStoryGenerator";

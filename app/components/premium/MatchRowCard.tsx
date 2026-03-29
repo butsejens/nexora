@@ -5,6 +5,8 @@ import {
   StyleSheet,
   TouchableOpacity,
   Image,
+  type StyleProp,
+  type ViewStyle,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -46,6 +48,8 @@ export interface MatchRowCardProps {
   onWatchPress?: () => void;
   onStatsPress?: () => void;
   onLineupsPress?: () => void;
+  compact?: boolean;
+  containerStyle?: StyleProp<ViewStyle>;
 }
 
 const SPORT_ACCENTS: Record<string, string> = {
@@ -59,6 +63,7 @@ const SPORT_ACCENTS: Record<string, string> = {
 };
 
 const LOGO_SIZE = ms(40);
+const LOGO_SIZE_COMPACT = ms(30);
 const BACKDROP_LOGO_SIZE = sc(88);
 
 function getSportAccent(sport?: string): string {
@@ -113,6 +118,8 @@ function MatchRowCardInner({
   onWatchPress,
   onStatsPress,
   onLineupsPress,
+  compact = false,
+  containerStyle,
 }: MatchRowCardProps) {
   const bucket = resolveMatchBucket({
     status: match.status,
@@ -138,6 +145,7 @@ function MatchRowCardInner({
     : finished
       ? tFn('common.ft')
       : formatKickoffLabel(match.startTime);
+  const teamLogoSize = compact ? LOGO_SIZE_COMPACT : LOGO_SIZE;
   const momentum = calculateMomentum({
     homeStats: {
       possession: match?.possession?.home,
@@ -154,9 +162,9 @@ function MatchRowCardInner({
   });
 
   return (
-    <View style={s.wrap}>
+    <View style={[s.wrap, compact && s.wrapCompact, containerStyle]}>
       <TouchableOpacity activeOpacity={0.88} onPress={onPress}>
-        <View style={[s.card, live && s.cardLive]}>
+        <View style={[s.card, compact && s.cardCompact, live && s.cardLive]}>
           <View style={s.posterBackdrop}>
             <View style={s.posterLogoLeft}>
               <TeamLogo uri={match.homeTeamLogo} teamName={match.homeTeam} size={BACKDROP_LOGO_SIZE} />
@@ -182,13 +190,13 @@ function MatchRowCardInner({
             style={s.glowOverlay}
           />
 
-          <View style={[s.topBar, { backgroundColor: barColor }]} />
+          <View style={[s.topBar, compact && s.topBarCompact, { backgroundColor: barColor }]} />
 
-          <View style={s.metaRow}>
+          <View style={[s.metaRow, compact && s.metaRowCompact]}>
             <View style={s.metaSpacer} />
             {onNotificationToggle ? (
               <TouchableOpacity
-                style={[s.notifyQuickBtn, isNotificationOn ? s.notifyQuickBtnActive : null]}
+                style={[s.notifyQuickBtn, compact && s.notifyQuickBtnCompact, isNotificationOn ? s.notifyQuickBtnActive : null]}
                 onPress={onNotificationToggle}
                 activeOpacity={0.75}
               >
@@ -201,77 +209,77 @@ function MatchRowCardInner({
             ) : null}
           </View>
 
-          <View style={s.row}>
-            <View style={s.teamCol}>
+          <View style={[s.row, compact && s.rowCompact]}>
+            <View style={[s.teamCol, compact && s.teamColCompact]}>
               <Text
-                style={[s.teamName, homeWin && s.teamNameBold]}
-                numberOfLines={2}
+                style={[s.teamName, compact && s.teamNameCompact, homeWin && s.teamNameBold]}
+                numberOfLines={compact ? 1 : 2}
                 adjustsFontSizeToFit
                 minimumFontScale={0.72}
                 ellipsizeMode="tail"
               >
                 {match.homeTeam}
               </Text>
-              <TeamLogo uri={match.homeTeamLogo} teamName={match.homeTeam} size={LOGO_SIZE} />
-              {!upcoming && (match.redCards?.home ?? 0) > 0 ? (
-                <Text style={s.cards}>{'🟥'.repeat(Math.min(match.redCards.home, 3))}</Text>
+              <TeamLogo uri={match.homeTeamLogo} teamName={match.homeTeam} size={teamLogoSize} />
+              {!upcoming && ((match.redCards?.home ?? 0) > 0) ? (
+                <Text style={s.cards}>{'🟥'.repeat(Math.min(match.redCards?.home ?? 0, 3))}</Text>
               ) : null}
             </View>
 
-            <View style={s.center}>
+            <View style={[s.center, compact && s.centerCompact]}>
               {leagueLogo ? (
                 <Image
                   source={typeof leagueLogo === 'number' ? leagueLogo : { uri: leagueLogo as string }}
-                  style={s.leagueLogoCenter}
+                  style={[s.leagueLogoCenter, compact && s.leagueLogoCenterCompact]}
                   resizeMode="contain"
                 />
               ) : (
-                <View style={s.leagueIconFallback}>
+                <View style={[s.leagueIconFallback, compact && s.leagueIconFallbackCompact]}>
                   <Ionicons name="trophy-outline" size={14} color={COLORS.textMuted} />
                 </View>
               )}
-              <Text style={s.centerCompetitionText} numberOfLines={2}>
+              <Text style={[s.centerCompetitionText, compact && s.centerCompetitionTextCompact]} numberOfLines={compact ? 1 : 2}>
                 {competitionBrand.name || match.league || 'Competition'}
               </Text>
 
               {!upcoming ? (
                 <>
-                  <Text style={[s.score, live && s.scoreLive]}>
+                  <Text style={[s.score, compact && s.scoreCompact, live && s.scoreLive]}>
                     {match.homeScore ?? 0}
                     <Text style={s.scoreSep}> : </Text>
                     {match.awayScore ?? 0}
                   </Text>
-                  <View style={s.statusRow}>
+                  <View style={[s.statusRow, compact && s.statusRowCompact]}>
                     {live ? <LivePulse /> : null}
-                    <Text style={[s.statusBelow, live ? s.statusBelowLive : null, finished ? s.statusBelowFinished : null]}>{stateLabel}</Text>
+                    <Text style={[s.statusBelow, compact && s.statusBelowCompact, live ? s.statusBelowLive : null, finished ? s.statusBelowFinished : null]}>{stateLabel}</Text>
                   </View>
                 </>
               ) : (
                 <>
-                  <Text style={s.kickoffLabel}>{tFn('common.upcoming')}</Text>
-                  <Text style={s.kickoff}>{stateLabel}</Text>
+                  <Text style={[s.kickoffLabel, compact && s.kickoffLabelCompact]}>{tFn('common.upcoming')}</Text>
+                  <Text style={[s.kickoff, compact && s.kickoffCompact]}>{stateLabel}</Text>
                 </>
               )}
             </View>
 
-            <View style={s.teamCol}>
+            <View style={[s.teamCol, compact && s.teamColCompact]}>
               <Text
-                style={[s.teamName, awayWin && s.teamNameBold]}
-                numberOfLines={2}
+                style={[s.teamName, compact && s.teamNameCompact, awayWin && s.teamNameBold]}
+                numberOfLines={compact ? 1 : 2}
                 adjustsFontSizeToFit
                 minimumFontScale={0.72}
                 ellipsizeMode="tail"
               >
                 {match.awayTeam}
               </Text>
-              <TeamLogo uri={match.awayTeamLogo} teamName={match.awayTeam} size={LOGO_SIZE} />
-              {!upcoming && (match.redCards?.away ?? 0) > 0 ? (
-                <Text style={s.cards}>{'🟥'.repeat(Math.min(match.redCards.away, 3))}</Text>
+              <TeamLogo uri={match.awayTeamLogo} teamName={match.awayTeam} size={teamLogoSize} />
+              {!upcoming && ((match.redCards?.away ?? 0) > 0) ? (
+                <Text style={s.cards}>{'🟥'.repeat(Math.min(match.redCards?.away ?? 0, 3))}</Text>
               ) : null}
             </View>
           </View>
 
-          {live && match.possession ? (
+          {!compact && live && match.possession ? (
             <View style={s.possRow}>
               <Text style={s.possLabel}>{match.possession.home}%</Text>
               <View style={s.possBar}>
@@ -282,16 +290,18 @@ function MatchRowCardInner({
             </View>
           ) : null}
 
-          <View style={s.momentumWrap}>
-            <MomentumBar
-              model={momentum}
-              compact
-              homeLabel={match.homeTeam.slice(0, 3).toUpperCase()}
-              awayLabel={match.awayTeam.slice(0, 3).toUpperCase()}
-            />
-          </View>
+          {!compact ? (
+            <View style={s.momentumWrap}>
+              <MomentumBar
+                model={momentum}
+                compact
+                homeLabel={match.homeTeam.slice(0, 3).toUpperCase()}
+                awayLabel={match.awayTeam.slice(0, 3).toUpperCase()}
+              />
+            </View>
+          ) : null}
 
-          {showActions ? (
+          {showActions && !compact ? (
             <View style={s.actions}>
               <View style={s.actionsDivider} />
               <View style={s.actionsRow}>
@@ -316,9 +326,175 @@ export const MatchRowCard = memo(MatchRowCardInner);
 export default MatchRowCard;
 
 const s = StyleSheet.create({
+    pulseWrap: {
+      width: ms(18),
+      height: ms(18),
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginRight: ms(6),
+    },
+    pulseRing: {
+      position: 'absolute',
+      width: ms(18),
+      height: ms(18),
+      borderRadius: ms(9),
+      borderWidth: 2,
+      borderColor: COLORS.live,
+      opacity: 0.32,
+    },
+    pulseDot: {
+      width: ms(8),
+      height: ms(8),
+      borderRadius: ms(4),
+      backgroundColor: COLORS.live,
+    },
+    actionBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: COLORS.cardElevated,
+      borderRadius: ms(8),
+      paddingHorizontal: ms(10),
+      paddingVertical: ms(6),
+      marginHorizontal: ms(4),
+    },
+    actionBtnPrimary: {
+      backgroundColor: COLORS.live,
+    },
+    actionBtnText: {
+      marginLeft: ms(4),
+      fontSize: ms(12),
+      color: COLORS.textSecondary,
+      fontWeight: '600',
+    },
+    leagueIconFallback: {
+      width: sc(26),
+      height: sc(26),
+      borderRadius: sc(13),
+      backgroundColor: COLORS.cardElevated,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    leagueIconFallbackCompact: {
+      width: sc(18),
+      height: sc(18),
+      borderRadius: sc(9),
+    },
+    score: {
+      fontSize: ms(28),
+      fontWeight: '700',
+      color: COLORS.text,
+      textAlign: 'center',
+    },
+    scoreCompact: {
+      fontSize: ms(20),
+    },
+    scoreLive: {
+      color: COLORS.live,
+    },
+    scoreSep: {
+      fontSize: ms(18),
+      color: COLORS.textMuted,
+      marginHorizontal: ms(2),
+    },
+    statusRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginTop: vs(2),
+    },
+    statusRowCompact: {
+      marginTop: 0,
+    },
+    statusBelow: {
+      fontSize: ms(12),
+      color: COLORS.textMuted,
+      marginLeft: ms(4),
+    },
+    statusBelowCompact: {
+      fontSize: ms(10),
+    },
+    statusBelowLive: {
+      color: COLORS.live,
+      fontWeight: '700',
+    },
+    statusBelowFinished: {
+      color: COLORS.text,
+      fontWeight: '700',
+    },
+    kickoffLabel: {
+      fontSize: ms(10),
+      color: COLORS.textMuted,
+      textAlign: 'center',
+      marginBottom: vs(2),
+    },
+    kickoffLabelCompact: {
+      fontSize: ms(8),
+      marginBottom: 0,
+    },
+    kickoff: {
+      fontSize: ms(16),
+      color: COLORS.text,
+      textAlign: 'center',
+    },
+    kickoffCompact: {
+      fontSize: ms(12),
+    },
+    possRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginTop: vs(8),
+      marginBottom: vs(4),
+    },
+    possLabel: {
+      fontSize: ms(10),
+      color: COLORS.textMuted,
+      width: sc(28),
+      textAlign: 'center',
+    },
+    possBar: {
+      flex: 1,
+      flexDirection: 'row',
+      height: vs(8),
+      borderRadius: ms(4),
+      backgroundColor: COLORS.cardElevated,
+      marginHorizontal: ms(6),
+      overflow: 'hidden',
+    },
+    possHome: {
+      backgroundColor: COLORS.accent,
+      height: '100%',
+    },
+    possAway: {
+      backgroundColor: COLORS.textMuted,
+      height: '100%',
+    },
+    momentumWrap: {
+      marginTop: vs(8),
+      marginBottom: vs(4),
+      paddingHorizontal: sc(10),
+    },
+    actions: {
+      marginTop: vs(10),
+      paddingHorizontal: sc(10),
+    },
+    actionsDivider: {
+      height: 1,
+      backgroundColor: COLORS.border,
+      marginBottom: vs(8),
+    },
+    actionsRow: {
+      flexDirection: 'row',
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
   wrap: {
     marginHorizontal: SPACING.lg,
     marginBottom: vs(12),
+  },
+  wrapCompact: {
+    marginHorizontal: 0,
+    marginBottom: 0,
   },
   card: {
     backgroundColor: COLORS.card,
@@ -332,6 +508,10 @@ const s = StyleSheet.create({
     shadowRadius: 6,
     elevation: 3,
     position: 'relative',
+  },
+  cardCompact: {
+    minHeight: vs(126),
+    borderRadius: ms(14),
   },
   glowOverlay: {
     ...StyleSheet.absoluteFillObject,
@@ -364,6 +544,9 @@ const s = StyleSheet.create({
   topBar: {
     height: vs(3),
   },
+  topBarCompact: {
+    height: vs(2),
+  },
   metaRow: {
     flexDirection: 'row',
     justifyContent: 'flex-end',
@@ -371,6 +554,10 @@ const s = StyleSheet.create({
     paddingHorizontal: sc(14),
     paddingTop: vs(11),
     paddingBottom: 0,
+  },
+  metaRowCompact: {
+    paddingHorizontal: sc(10),
+    paddingTop: vs(7),
   },
   metaSpacer: {
     flex: 1,
@@ -385,6 +572,11 @@ const s = StyleSheet.create({
     borderColor: COLORS.border,
     backgroundColor: COLORS.cardElevated,
   },
+  notifyQuickBtnCompact: {
+    width: sc(24),
+    height: sc(24),
+    borderRadius: sc(12),
+  },
   notifyQuickBtnActive: {
     borderColor: 'rgba(255, 45, 85, 0.36)',
     backgroundColor: COLORS.live,
@@ -397,11 +589,20 @@ const s = StyleSheet.create({
     paddingBottom: vs(13),
     minHeight: vs(124),
   },
+  rowCompact: {
+    paddingHorizontal: sc(10),
+    paddingTop: vs(4),
+    paddingBottom: vs(8),
+    minHeight: vs(86),
+  },
   teamCol: {
     flex: 5,
     alignItems: 'center',
     gap: ms(6),
     minWidth: 0,
+  },
+  teamColCompact: {
+    gap: ms(4),
   },
   teamName: {
     fontSize: ms(14),
@@ -410,6 +611,10 @@ const s = StyleSheet.create({
     lineHeight: ms(16),
     textAlign: 'center',
     letterSpacing: 0.1,
+  },
+  teamNameCompact: {
+    fontSize: ms(11),
+    lineHeight: ms(12),
   },
   teamNameBold: {
     color: COLORS.text,
@@ -427,6 +632,11 @@ const s = StyleSheet.create({
     minWidth: sc(118),
     gap: ms(4),
   },
+  centerCompact: {
+    minWidth: sc(92),
+    gap: ms(2),
+    paddingHorizontal: sc(4),
+  },
   centerCompetitionText: {
     color: COLORS.textMuted,
     fontSize: ms(9),
@@ -437,152 +647,20 @@ const s = StyleSheet.create({
     minHeight: vs(24),
     maxWidth: sc(112),
   },
+  centerCompetitionTextCompact: {
+    fontSize: ms(8),
+    minHeight: vs(12),
+    maxWidth: sc(96),
+  },
   leagueLogoCenter: {
     width: sc(26),
     height: sc(26),
     marginBottom: vs(2),
   },
-  leagueIconFallback: {
-    width: sc(26),
-    height: sc(26),
-    alignItems: 'center',
-    justifyContent: 'center',
+  leagueLogoCenterCompact: {
+    width: sc(18),
+    height: sc(18),
+    marginBottom: 0,
   },
-  score: {
-    fontSize: ms(28),
-    fontWeight: '800',
-    color: COLORS.text,
-    letterSpacing: 1,
-    includeFontPadding: false,
-  },
-  scoreLive: {
-    color: COLORS.live,
-    textShadowColor: 'rgba(255,45,85,0.45)',
-    textShadowRadius: 10,
-    textShadowOffset: { width: 0, height: 0 },
-  },
-  scoreSep: {
-    color: COLORS.textMuted,
-    fontWeight: '400',
-  },
-  kickoff: {
-    fontSize: ms(19),
-    fontWeight: '800',
-    color: COLORS.text,
-    letterSpacing: 0.5,
-  },
-  kickoffLabel: {
-    fontSize: ms(9),
-    fontWeight: '700',
-    color: COLORS.textMuted,
-    marginBottom: vs(2),
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  statusRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: ms(6),
-    minHeight: vs(22),
-  },
-  statusBelow: {
-    fontSize: ms(10),
-    fontWeight: '800',
-    color: COLORS.textMuted,
-    letterSpacing: 0.35,
-    textTransform: 'uppercase',
-  },
-  statusBelowLive: {
-    color: COLORS.live,
-  },
-  statusBelowFinished: {
-    color: '#FFD34D',
-  },
-  pulseWrap: {
-    width: sc(14),
-    height: sc(14),
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  pulseRing: {
-    position: 'absolute',
-    width: sc(14),
-    height: sc(14),
-    borderRadius: sc(7),
-    backgroundColor: 'rgba(255,45,85,0.22)',
-  },
-  pulseDot: {
-    width: sc(7),
-    height: sc(7),
-    borderRadius: sc(3.5),
-    backgroundColor: COLORS.live,
-  },
-  possRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: sc(14),
-    paddingBottom: vs(10),
-    gap: ms(9),
-  },
-  possBar: {
-    flex: 1,
-    height: vs(4),
-    borderRadius: ms(2),
-    flexDirection: 'row',
-    overflow: 'hidden',
-    backgroundColor: COLORS.surface,
-  },
-  possHome: {
-    backgroundColor: COLORS.accent,
-  },
-  possAway: {
-    backgroundColor: COLORS.borderLight,
-  },
-  possLabel: {
-    fontSize: ms(9),
-    fontWeight: '600',
-    color: COLORS.textMuted,
-    width: sc(26),
-    textAlign: 'center',
-  },
-  momentumWrap: {
-    paddingHorizontal: sc(14),
-    paddingBottom: vs(10),
-  },
-  actions: {
-    paddingHorizontal: sc(14),
-    paddingBottom: vs(12),
-  },
-  actionsDivider: {
-    height: 1,
-    backgroundColor: COLORS.border,
-    marginBottom: vs(7),
-  },
-  actionsRow: {
-    flexDirection: 'row',
-    gap: ms(5),
-  },
-  actionBtn: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: ms(3),
-    paddingVertical: vs(6),
-    borderRadius: ms(8),
-    backgroundColor: COLORS.cardElevated,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  actionBtnPrimary: {
-    backgroundColor: COLORS.accent,
-    borderColor: COLORS.accent,
-  },
-  actionBtnText: {
-    fontSize: ms(9),
-    fontWeight: '600',
-    color: COLORS.textSecondary,
-    letterSpacing: 0.2,
-  },
+  // ...restored existing code...
 });

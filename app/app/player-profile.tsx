@@ -14,6 +14,7 @@ import { t as tFn, getLanguage } from "@/lib/i18n";
 import { TeamLogo } from "@/components/TeamLogo";
 import { SectionHeader, StateBlock, SurfaceCard } from "@/components/ui/PremiumPrimitives";
 import { resolveClubHistoryLogoUri, resolveTeamLogoUri } from "@/lib/logo-manager";
+import { useAIAnalysis } from "@/hooks/useAIAnalysis";
 import {
   getBestCachedOrSeedPlayerImage,
   getCachedPlayerImage,
@@ -259,6 +260,22 @@ export default function PlayerProfileScreen() {
     retry: 0,
   });
 
+  const { data: aiAnalysis } = useAIAnalysis({
+    playerId: String(params.playerId || ""),
+    name: String(params.name || ""),
+    team: String(params.team || ""),
+    league: String(params.league || "eng.1"),
+    language: "nl",
+  });
+
+  const mergedAnalysisText = aiAnalysis?.summary || data?.analysis || tx("playerProfile.analysisUnavailable", "Analysis unavailable");
+  const mergedStrengths = (Array.isArray(aiAnalysis?.strengths) && aiAnalysis?.strengths.length > 0)
+    ? aiAnalysis.strengths
+    : (Array.isArray(data?.strengths) ? data.strengths : []);
+  const mergedWeaknesses = (Array.isArray(aiAnalysis?.weaknesses) && aiAnalysis?.weaknesses.length > 0)
+    ? aiAnalysis.weaknesses
+    : (Array.isArray(data?.weaknesses) ? data.weaknesses : []);
+
   const playerImageSeed = useMemo(() => ({
     id: String(params.playerId || data?.id || ""),
     name: String(data?.name || params.name || ""),
@@ -471,26 +488,26 @@ export default function PlayerProfileScreen() {
               colors={["rgba(229,9,20,0.07)", "rgba(17,17,17,0)"]}
               style={{ borderRadius: 10, padding: 12, marginBottom: 4 }}
             >
-              <Text style={[styles.analysisText, { color: COLORS.text }]}>{data?.analysis || tx("playerProfile.analysisUnavailable", "Analysis unavailable")}</Text>
+              <Text style={[styles.analysisText, { color: COLORS.text }]}>{mergedAnalysisText}</Text>
             </LinearGradient>
 
           </Card>
 
           <Card title={tx("playerProfile.strengths", "Strengths")}>
             <View style={styles.pillWrap}>
-              {(Array.isArray(data?.strengths) ? data.strengths : []).slice(0, 6).map((item: string, idx: number) => (
+              {mergedStrengths.slice(0, 6).map((item: string, idx: number) => (
                 <Bullet key={`s_${idx}`} text={item} good />
               ))}
-              {(Array.isArray(data?.strengths) ? data.strengths : []).length === 0 ? <Text style={styles.placeholder}>{UNKNOWN}</Text> : null}
+              {mergedStrengths.length === 0 ? <Text style={styles.placeholder}>{UNKNOWN}</Text> : null}
             </View>
           </Card>
 
           <Card title={tx("playerProfile.weaknesses", "Weaknesses")}>
             <View style={styles.pillWrap}>
-              {(Array.isArray(data?.weaknesses) ? data.weaknesses : []).slice(0, 6).map((item: string, idx: number) => (
+              {mergedWeaknesses.slice(0, 6).map((item: string, idx: number) => (
                 <Bullet key={`w_${idx}`} text={item} />
               ))}
-              {(Array.isArray(data?.weaknesses) ? data.weaknesses : []).length === 0 ? <Text style={styles.placeholder}>{UNKNOWN}</Text> : null}
+              {mergedWeaknesses.length === 0 ? <Text style={styles.placeholder}>{UNKNOWN}</Text> : null}
             </View>
           </Card>
 

@@ -39,7 +39,7 @@ export const PremiumAuthFlow = React.memo(function PremiumAuthFlow({
       // TODO: Integrate actual Google OAuth via expo-auth-session
       // For now, show placeholder
       setError("Google Sign-In integration coming soon");
-    } catch (_err) {
+    } catch {
       setError("Google login failed");
     } finally {
       setLoading(false);
@@ -54,7 +54,7 @@ export const PremiumAuthFlow = React.memo(function PremiumAuthFlow({
       // TODO: Integrate actual Apple Sign-In via expo-apple-authentication
       // For now, show placeholder
       setError("Apple Sign-In integration coming soon");
-    } catch (_err) {
+    } catch {
       setError("Apple login failed");
     } finally {
       setLoading(false);
@@ -76,7 +76,7 @@ export const PremiumAuthFlow = React.memo(function PremiumAuthFlow({
       setError(null);
       await signInWithEmail(email, password);
       onAuthSuccess?.();
-    } catch (_err) {
+    } catch {
       setError("Login failed: invalid email or password");
     } finally {
       setLoading(false);
@@ -106,7 +106,7 @@ export const PremiumAuthFlow = React.memo(function PremiumAuthFlow({
       setError(null);
       await signInWithEmail(email, password);
       onAuthSuccess?.();
-    } catch (_err) {
+    } catch {
       setError("Sign up failed: email may already be in use");
     } finally {
       setLoading(false);
@@ -131,7 +131,7 @@ export const PremiumAuthFlow = React.memo(function PremiumAuthFlow({
         setEmail("");
         setPassword("");
       }, 2000);
-    } catch (_err) {
+    } catch {
       setError("Password reset failed");
     } finally {
       setLoading(false);

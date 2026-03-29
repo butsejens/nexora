@@ -67,8 +67,6 @@ export const EnhancedPaywall = React.memo(function EnhancedPaywall({ visible, on
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  if (!visible) return null;
-
   // Handle Purchase
   const handlePurchase = useCallback(async () => {
     try {
@@ -81,7 +79,7 @@ export const EnhancedPaywall = React.memo(function EnhancedPaywall({ visible, on
       } else if (!result?.cancelled) {
         setError(result?.reason || "Purchase failed. Please try again.");
       }
-    } catch (_err) {
+    } catch {
       setError("Purchase failed. Please try again.");
     } finally {
       setLoading(false);
@@ -100,12 +98,14 @@ export const EnhancedPaywall = React.memo(function EnhancedPaywall({ visible, on
       } else {
         setError(result?.reason || "Restore failed. Please try again.");
       }
-    } catch (_err) {
+    } catch {
       setError("Restore failed. Please try again.");
     } finally {
       setLoading(false);
     }
   }, [restorePremiumAccess, onDismiss, onUpgradeSuccess]);
+
+  if (!visible) return null;
 
   return (
     <LinearGradient colors={[COLORS.background, "#1a1a2e"]} style={[styles.container, { paddingTop: insets.top }]}>

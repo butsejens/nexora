@@ -150,7 +150,7 @@ export const PremiumSettingsHub = React.memo(function PremiumSettingsHub({
             setCacheSize("0 MB");
             // In real app, delete actual cache files
             setLoading(false);
-          } catch (_err) {
+          } catch {
             Alert.alert("Error", "Failed to clear cache");
             setLoading(false);
           }
