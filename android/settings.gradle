@@ -22,6 +22,10 @@ plugins {
   id("expo-autolinking-settings")
 }
 
+// Monorepo: tell autolinking to scan nexora/app (the actual app workspace)
+// instead of nexora/ (the monorepo root), which only has a handful of deps.
+expoAutolinking.projectRoot = file("../app")
+
 extensions.configure(com.facebook.react.ReactSettingsExtension) { ex ->
   if (System.getenv('EXPO_USE_COMMUNITY_AUTOLINKING') == '1') {
     ex.autolinkLibrariesFromCommand()
