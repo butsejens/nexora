@@ -131,10 +131,13 @@ export default function CuratedHomeScreen() {
 
   const liveMatches = useMemo(() => (sportsEnabled ? (sportsQuery.data?.live || []) : []), [sportsEnabled, sportsQuery.data?.live]);
   const upcomingMatches = useMemo(() => (sportsEnabled ? (sportsQuery.data?.upcoming || []) : []), [sportsEnabled, sportsQuery.data?.upcoming]);
-  const todayMatches = useMemo(
-    () => (sportsEnabled ? [...liveMatches, ...upcomingMatches].slice(0, 3) : []),
-    [liveMatches, sportsEnabled, upcomingMatches],
-  );
+  const finishedMatches = useMemo(() => (sportsEnabled ? (sportsQuery.data?.finished || []) : []), [sportsEnabled, sportsQuery.data?.finished]);
+  const todayMatches = useMemo(() => {
+    if (!sportsEnabled) return [];
+    const active = [...liveMatches, ...upcomingMatches];
+    // When no live/upcoming matches, show finished matches so the section is never empty
+    return active.length > 0 ? active.slice(0, 3) : finishedMatches.slice(0, 3);
+  }, [liveMatches, upcomingMatches, finishedMatches, sportsEnabled]);
   const favoriteTeamNames = [
     ...followedTeams.map((team) => String(team?.teamName || "")),
     ...selectedTeams.map((team) => String(team?.name || "")),
@@ -165,7 +168,7 @@ export default function CuratedHomeScreen() {
     }).map((entry) => entry.item).slice(0, 8);
   }, [favoriteTeamNames, preferredLeagues, replayAndHighlight.highlights]);
 
-  const heroSport = sportsEnabled ? (liveMatches[0] || upcomingMatches[0] || null) : null;
+  const heroSport = sportsEnabled ? (liveMatches[0] || upcomingMatches[0] || finishedMatches[0] || null) : null;
   const heroMedia = moviesEnabled ? (movieRail[0] || seriesRail[0] || null) : null;
   const heroIsSport = Boolean(heroSport);
 
@@ -329,7 +332,7 @@ export default function CuratedHomeScreen() {
                   </View>
                 ))}
               </ScrollView>
-            ) : <Text style={styles.emptyText}>No live or upcoming matches available right now.</Text>}
+            ) : <Text style={styles.emptyText}>{sportsQuery.isLoading ? "Wedstrijden laden..." : "Geen wedstrijden gevonden voor vandaag."}</Text>}
           </View>
         )}
 

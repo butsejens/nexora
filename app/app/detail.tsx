@@ -356,8 +356,8 @@ export default function DetailScreen() {
     staleTime: 10 * 60 * 1000,
     initialData: cachedDetail || undefined,
     placeholderData: !cachedDetail ? routeSeedData || undefined : undefined,
-    retry: 0,
-    retryDelay: (attempt: number) => Math.min(1000 * 2 ** attempt, 5000),
+    retry: 2,
+    retryDelay: (attempt: number) => Math.min(3000 * 2 ** attempt, 12000),
   });
 
   const relatedQuery = useQuery({
