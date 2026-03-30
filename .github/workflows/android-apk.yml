@@ -117,14 +117,24 @@ jobs:
           if-no-files-found: error
 
       - name: Create or update GitHub Release with APK
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: v${{ steps.version.outputs.version }}
-          name: "Nexora v${{ steps.version.outputs.version }}"
-          body: |
-            Android APK build from commit ${{ github.sha }}
-            Branch: `${{ github.ref_name }}`
-          files: android/app/build/outputs/apk/release/nexora-v${{ steps.version.outputs.version }}.apk
-          make_latest: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          APK="android/app/build/outputs/apk/release/nexora-v${VERSION}.apk"
+
+          echo "Publishing release v${VERSION} with APK: $APK"
+
+          # Remove existing release + tag if present (handles re-runs for the same version)
+          gh release delete "v${VERSION}" --yes 2>/dev/null || true
+          git push origin ":refs/tags/v${VERSION}" 2>/dev/null || true
+
+          # Create the release and attach the APK
+          gh release create "v${VERSION}" \
+            "$APK" \
+            --title "Nexora v${VERSION}" \
+            --notes "Android APK — commit ${{ github.sha }} (branch: ${{ github.ref_name }})" \
+            --latest \
+            --repo "${{ github.repository }}"
+
+          echo "Release published: https://github.com/${{ github.repository }}/releases/tag/v${VERSION}"
