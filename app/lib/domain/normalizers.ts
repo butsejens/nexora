@@ -483,8 +483,8 @@ export function normalizeMovieFromTmdb(raw: any): Movie {
     originalTitle: raw.original_title ?? null,
     overview: raw.overview ?? null,
     tagline: raw.tagline ?? null,
-    posterUri: tmdbImageUrl(raw.poster_path),
-    backdropUri: tmdbImageUrl(raw.backdrop_path),
+    posterUri: tmdbImageUrl(raw.poster_path) ?? raw.poster ?? null,
+    backdropUri: tmdbImageUrl(raw.backdrop_path) ?? raw.backdrop ?? null,
     releaseYear: raw.release_date ? new Date(raw.release_date).getFullYear() : null,
     originalLanguage: raw.original_language ?? null,
     genres: Array.isArray(raw.genres)
@@ -492,7 +492,7 @@ export function normalizeMovieFromTmdb(raw: any): Movie {
       : Array.isArray(raw.genre_ids)
         ? raw.genre_ids.map((id: number) => ({ id, name: "" }))
         : [],
-    rating: ensureFloat(raw.vote_average),
+    rating: ensureFloat(raw.vote_average) ?? ensureFloat(raw.rating) ?? null,
     ratingCount: ensureInt(raw.vote_count),
     runtime: ensureInt(raw.runtime),
     status: raw.status ?? null,
@@ -517,8 +517,8 @@ export function normalizeSeriesFromTmdb(raw: any): Series {
     originalTitle: raw.original_name ?? raw.original_title ?? null,
     overview: raw.overview ?? null,
     tagline: raw.tagline ?? null,
-    posterUri: tmdbImageUrl(raw.poster_path),
-    backdropUri: tmdbImageUrl(raw.backdrop_path),
+    posterUri: tmdbImageUrl(raw.poster_path) ?? raw.poster ?? null,
+    backdropUri: tmdbImageUrl(raw.backdrop_path) ?? raw.backdrop ?? null,
     releaseYear: raw.first_air_date ? new Date(raw.first_air_date).getFullYear() : null,
     originalLanguage: raw.original_language ?? null,
     genres: Array.isArray(raw.genres)
@@ -526,7 +526,7 @@ export function normalizeSeriesFromTmdb(raw: any): Series {
       : Array.isArray(raw.genre_ids)
         ? raw.genre_ids.map((id: number) => ({ id, name: "" }))
         : [],
-    rating: ensureFloat(raw.vote_average),
+    rating: ensureFloat(raw.vote_average) ?? ensureFloat(raw.rating) ?? null,
     ratingCount: ensureInt(raw.vote_count),
     runtime: ensureInt(raw.episode_run_time?.[0] ?? raw.runtime),
     status: raw.status ?? null,
