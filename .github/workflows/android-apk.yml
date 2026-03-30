@@ -93,18 +93,35 @@ jobs:
           echo "SUCCESS: APK found"
           ls -lh "$APK"
 
+      - name: Read app version
+        id: version
+        run: |
+          VERSION=$(node -e "console.log(require('./app/app.json').expo.version)")
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "App version: $VERSION"
+
+      - name: Rename APK with version
+        run: |
+          cp android/app/build/outputs/apk/release/app-release.apk \
+             android/app/build/outputs/apk/release/nexora-v${{ steps.version.outputs.version }}.apk
+
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: app-release-apk
-          path: android/app/build/outputs/apk/release/app-release.apk
+          name: nexora-v${{ steps.version.outputs.version }}
+          path: android/app/build/outputs/apk/release/nexora-v${{ steps.version.outputs.version }}.apk
           retention-days: 30
           if-no-files-found: error
 
-      - name: Attach APK to GitHub Release
-        if: startsWith(github.ref, 'refs/tags/v')
+      - name: Create or update GitHub Release with APK
         uses: softprops/action-gh-release@v2
         with:
-          files: android/app/build/outputs/apk/release/app-release.apk
+          tag_name: v${{ steps.version.outputs.version }}
+          name: "Nexora v${{ steps.version.outputs.version }}"
+          body: |
+            Android APK build from commit ${{ github.sha }}
+            Branch: `${{ github.ref_name }}`
+          files: android/app/build/outputs/apk/release/nexora-v${{ steps.version.outputs.version }}.apk
+          make_latest: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
