@@ -490,9 +490,9 @@ export function useLiveLineupChanges(params: { events: TimelineEventItem[] }) {
 }
 
 function normalizeTeamLineup(rawTeam: any, fallbackName: string): TeamLineupState {
-  const players = (Array.isArray(rawTeam?.players) ? rawTeam.players : []).map((player, index) => normalizeLineupPlayer(player, index));
-  const starters = players.filter((player) => player.isStarter);
-  const bench = players.filter((player) => !player.isStarter);
+  const players = (Array.isArray(rawTeam?.players) ? rawTeam.players : []).map((player: any, index: number) => normalizeLineupPlayer(player, index));
+  const starters = players.filter((player: any) => player.isStarter);
+  const bench = players.filter((player: any) => !player.isStarter);
 
   const lineupState: TeamLineupState["lineupState"] =
     starters.length >= 11

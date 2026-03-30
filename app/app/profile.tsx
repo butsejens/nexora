@@ -682,14 +682,14 @@ function LanguageModal({ visible, selected, onClose, onSelect }: {
 }
 
 function QualityModal({ visible, selected, onClose, onSelect }: {
-  visible: boolean; selected: string; onClose: () => void; onSelect: (q: string) => void;
+  visible: boolean; selected: string; onClose: () => void; onSelect: (q: "4K" | "FHD" | "HD" | "Auto") => void;
 }) {
   const QUALITY_OPTIONS = [
     { code: "Auto", label: "Auto" },
     { code: "4K", label: "4K Ultra HD" },
     { code: "FHD", label: "Full HD (1080p)" },
     { code: "HD", label: "HD (720p)" },
-  ];
+  ] as const;
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <View style={langStyles.overlay}>

@@ -239,7 +239,7 @@ export async function getCompetitionMatches(params: {
     espnLeague: params.espnLeague,
   });
   if (!Array.isArray(raw?.matches)) return [];
-  const normalized = raw.matches.map(normalizeMatchFromServer);
+  const normalized: Match[] = (raw.matches as any[]).map(normalizeMatchFromServer);
   const byId = new Map(normalized.map((match) => [match.id, match]));
   const partitioned = partitionMatches(
     normalized.map((match) => ({

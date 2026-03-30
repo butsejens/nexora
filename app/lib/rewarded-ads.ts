@@ -54,14 +54,14 @@ export async function showRewardedUnlockAd(): Promise<{ rewarded: boolean; amoun
     };
 
     const unsubscribeLoaded = rewarded.addAdEventListener(AdEventType.LOADED, () => {
-      rewarded.show().catch((error) => {
+      rewarded.show().catch((error: unknown) => {
         if (resolved) return;
         cleanup();
         reject(error);
       });
     });
 
-    const unsubscribeEarned = rewarded.addAdEventListener(RewardedAdEventType.EARNED_REWARD, (reward) => {
+    const unsubscribeEarned = rewarded.addAdEventListener(RewardedAdEventType.EARNED_REWARD, (reward: any) => {
       rewardPayload = {
         rewarded: true,
         amount: reward.amount,
@@ -73,7 +73,7 @@ export async function showRewardedUnlockAd(): Promise<{ rewarded: boolean; amoun
       finalize(rewardPayload);
     });
 
-    const unsubscribeError = rewarded.addAdEventListener(AdEventType.ERROR, (error) => {
+    const unsubscribeError = rewarded.addAdEventListener(AdEventType.ERROR, (error: unknown) => {
       if (resolved) return;
       cleanup();
       reject(error);

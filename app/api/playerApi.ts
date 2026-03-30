@@ -30,11 +30,9 @@ export async function fetchPlayer(params: FetchPlayerParams): Promise<PlayerProf
   const response = await apiRequest("GET", route);
   const json = await response.json();
   const enriched = enrichPlayerProfilePayload(json, {
-    id: params.playerId,
     name: params.name || "",
     team: params.team || "",
     league: params.league || "eng.1",
-    sport: params.sport || "soccer",
   });
   return enriched as PlayerProfileDto;
 }

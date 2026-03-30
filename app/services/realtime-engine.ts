@@ -310,7 +310,7 @@ export async function primeBootstrapRealtimeData(queryClient: QueryClient, today
       ttlMs: realtimePolicies.collections.ttlMs,
       staleTime: realtimePolicies.collections.staleTime,
       fetcher: () => getVodCollections(),
-      collectImageUrls: (collections) => collections.flatMap((entry) => [entry.poster || null, entry.backdrop || null]).filter(Boolean) as string[],
+      collectImageUrls: (collections) => collections.flatMap((entry: any) => [entry.poster || null, entry.backdrop || null]).filter(Boolean) as string[],
     },
   ] satisfies RealtimeQueryConfig<any>[];
 
@@ -318,7 +318,7 @@ export async function primeBootstrapRealtimeData(queryClient: QueryClient, today
     seedRealtimeQueryFromCache(queryClient, config.queryKey, config.cacheKey);
   }
 
-  await Promise.allSettled(configs.map((config) => prefetchRealtimeQuery(queryClient, config)));
+  await Promise.allSettled(configs.map((config) => prefetchRealtimeQuery(queryClient, config as RealtimeQueryConfig<any>)));
 }
 
 export function buildHomeSportsQuery(date: string, enabled: boolean) {

@@ -291,7 +291,7 @@ function riskLevelFromConfidence(confidence: number, liveChaos: number): MatchAn
   return "High";
 }
 
-function eventText(event: MatchAnalysisInput["events"][number]): string {
+function eventText(event: NonNullable<MatchAnalysisInput["events"]>[number]): string {
   return `${event?.type || ""} ${event?.detail || ""} ${event?.text || ""}`.toLowerCase();
 }
 

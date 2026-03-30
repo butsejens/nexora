@@ -286,7 +286,7 @@ export default function PlayerProfileScreen() {
     theSportsDbPhoto: data?.theSportsDbPhoto || (params.theSportsDbPhoto ? String(params.theSportsDbPhoto) : null),
     nationality: String(data?.nationality || params.nationality || ""),
     position: String(data?.position || params.position || ""),
-    age: data?.age,
+    age: data?.age ?? undefined,
   }), [
     params.playerId,
     params.name,
