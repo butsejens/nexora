@@ -9,8 +9,8 @@ import {
 } from "@expo-google-fonts/inter";
 import { Stack, router } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
-import React, { useEffect, useRef } from "react";
-import { AppState } from "react-native";
+import React, { useEffect, useRef, useState } from "react";
+import { AppState, Image, View, StyleSheet, Animated } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import * as Notifications from "expo-notifications";
 import * as Updates from "expo-updates";
@@ -194,7 +194,7 @@ export default function RootLayout() {
         void runStartupTask({
           scope: "background",
           name: "resume-realtime-refresh",
-          timeoutMs: 15000,
+          timeoutMs: 70000,
           run: async () => {
             const today = new Date().toISOString().slice(0, 10);
             await primeBootstrapRealtimeData(queryClient, today);
@@ -229,13 +229,26 @@ export default function RootLayout() {
     };
   }, []);
 
+  // In-app branded splash overlay: fades out after fonts + brief Nexora logo moment.
+  const [inAppSplashDone, setInAppSplashDone] = useState(false);
+  const splashOpacity = useRef(new Animated.Value(1)).current;
+
   // Wait for fonts before rendering to avoid invisible text flash.
   // fontError is fine — system fonts will be used as fallback.
   useEffect(() => {
     if (fontsLoaded || fontError) {
       SplashScreen.hideAsync().catch(() => {});
+      // Fade out in-app Nexora splash after 1.4s (long enough to see it)
+      const timer = setTimeout(() => {
+        Animated.timing(splashOpacity, {
+          toValue: 0,
+          duration: 350,
+          useNativeDriver: true,
+        }).start(() => setInAppSplashDone(true));
+      }, 1400);
+      return () => clearTimeout(timer);
     }
-  }, [fontsLoaded, fontError]);
+  }, [fontsLoaded, fontError, splashOpacity]);
 
   if (!fontsLoaded && !fontError) return null;
 
@@ -252,9 +265,35 @@ export default function RootLayout() {
                 <NexoraMenuOverlay />
               </UserStateProvider>
             </NexoraProvider>
+            {!inAppSplashDone && (
+              <Animated.View
+                style={[splashStyles.overlay, { opacity: splashOpacity }]}
+                pointerEvents="none"
+              >
+                <Image
+                  source={require("../assets/images/logo.png")}
+                  style={splashStyles.logo}
+                  resizeMode="contain"
+                />
+              </Animated.View>
+            )}
           </GestureHandlerRootView>
         </SafeAreaProvider>
       </QueryClientProvider>
     </ErrorBoundary>
   );
 }
+
+const splashStyles = StyleSheet.create({
+  overlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "#050505",
+    alignItems: "center",
+    justifyContent: "center",
+    zIndex: 9999,
+  },
+  logo: {
+    width: 180,
+    height: 180,
+  },
+});

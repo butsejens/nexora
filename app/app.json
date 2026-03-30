@@ -58,6 +58,12 @@
     },
     "plugins": [
       "expo-router",
+      ["expo-splash-screen", {
+        "image": "./assets/images/logo.png",
+        "imageWidth": 180,
+        "resizeMode": "contain",
+        "backgroundColor": "#050505"
+      }],
       "expo-font",
       "expo-web-browser",
       "expo-apple-authentication",
