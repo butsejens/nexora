@@ -120,6 +120,10 @@ export default function RootLayout() {
     logStartupEvent("boot", "info", "app-launch", { startedAt });
     logUpdateDiagnostics();
 
+    // Fire-and-forget Render warmup: starts the Render cold-boot process immediately
+    // so the server is ready by the time the main data fetches begin (~2-5s later).
+    fetch(`${DEFAULT_RENDER_API_BASE}/api/ping`, { method: "GET" }).catch(() => {});
+
     void runStartupTask({
       scope: "boot",
       name: "seed-cache-from-disk",
@@ -133,7 +137,7 @@ export default function RootLayout() {
     void runStartupTask({
       scope: "background",
       name: "prime-realtime-bootstrap",
-      timeoutMs: 10000,
+      timeoutMs: 70000,
       run: async () => {
         const today = new Date().toISOString().slice(0, 10);
         await primeBootstrapRealtimeData(queryClient, today);

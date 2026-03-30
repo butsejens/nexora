@@ -65,7 +65,9 @@ function shouldUseInferredNativeHost(host: string): boolean {
 function isLoopbackHost(base: string): boolean {
   try {
     const u = new URL(base);
-    return u.hostname === "localhost" || u.hostname === "127.0.0.1";
+    // 10.0.2.2 is the Android emulator's alias for the host machine's localhost.
+    // It is never reachable from a physical device on a real network.
+    return u.hostname === "localhost" || u.hostname === "127.0.0.1" || u.hostname === "10.0.2.2";
   } catch {
     return false;
   }
@@ -124,6 +126,8 @@ export function getApiBaseCandidates(): string[] {
 
     // Physical devices should prefer cloud API first in dev unless user gave
     // a reachable non-loopback override.
+    // NOTE: inferredNative/iosSim/androidEmu use the Expo bundler port (8080),
+    // NOT the Nexora API server port — so they are intentionally excluded here.
     if (isPhysicalDeviceSession) {
       const nonLoopbackExplicit = explicitList.filter((candidate) => !isLoopbackHost(candidate));
       const safeExplicit = explicit && !isLoopbackHost(explicit) ? explicit : "";
@@ -132,10 +136,6 @@ export function getApiBaseCandidates(): string[] {
         safeExplicit,
         ...nonLoopbackExplicit,
         DEFAULT_RENDER_API_BASE,
-        inferredNative,
-        explicit,
-        iosSim,
-        androidEmu,
       ]);
     }
 
@@ -265,14 +265,15 @@ async function throwIfResNotOk(res: Response) {
 // Cloud URLs (https) may need to wake up from cold start → longer timeout
 // Local URLs (http) are either up or not → short timeout
 // Sports routes to non-deployed Cloudflare → use failfast to prioritize Render
+// Render free-tier cold starts can take up to ~50s; 65s covers worst case.
 function timeoutForUrl(url: string, isSports: boolean = false): number {
   if (isSports) {
     if (isCloudflareSportsUrl(url)) return 12000;
-    if (isRenderUrl(url)) return 18000;
+    if (isRenderUrl(url)) return 65000;
     return 12000;
   }
-  if (isRenderUrl(url)) return 15000;
-  return url.startsWith("https://") ? 15000 : 8000;
+  if (isRenderUrl(url)) return 65000;
+  return url.startsWith("https://") ? 20000 : 8000;
 }
 
 function shouldTryNextBase(route: string, status: number): boolean {
