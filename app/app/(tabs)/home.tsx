@@ -390,7 +390,7 @@ export default function CuratedHomeScreen() {
           </View>
         )}
 
-        {moviesEnabled && (
+        {moviesEnabled && (movieRail.length > 0 || mediaQuery.isLoading) && (
           <View style={styles.section}>
             <View style={styles.sectionHead}>
               <Text style={styles.sectionLabel}>FILMS</Text>
@@ -422,7 +422,7 @@ export default function CuratedHomeScreen() {
           </View>
         )}
 
-        {moviesEnabled && (
+        {moviesEnabled && (seriesRail.length > 0 || mediaQuery.isLoading) && (
           <View style={styles.section}>
             <View style={styles.sectionHead}>
               <Text style={styles.sectionLabel}>SERIES</Text>
