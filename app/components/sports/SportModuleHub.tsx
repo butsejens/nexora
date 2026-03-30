@@ -9,7 +9,7 @@
 
 import React, { useState, useCallback, useMemo, useEffect } from "react";
 import {
-  View, Text, StyleSheet, ScrollView, RefreshControl, TouchableOpacity,
+  View, Text, StyleSheet, ScrollView, RefreshControl, TouchableOpacity, Image,
 } from "react-native";
 import { router } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
@@ -27,12 +27,13 @@ import {
 } from "@/components/sports/SportCards";
 import { resolveMatchCompetitionLabel, resolveMatchEspnLeagueCode } from "@/lib/sports-competition";
 import { loadMatchInteractions, rankMatchesForUser, recordMatchInteraction } from "@/lib/ai";
+import { getCompetitionTeams, getCompetitionStandings } from "@/lib/services/sports-service";
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // TYPES & DATA STRUCTURES
 // ═══════════════════════════════════════════════════════════════════════════════
 
-type SportPane = "explore" | "live" | "matchday" | "insights";
+type SportPane = "explore" | "live" | "matchday" | "insights" | "teams" | "standings";
 
 type SportsPayload = {
   date?: string;
@@ -331,13 +332,15 @@ export function SportModuleHub({ initialPane = "explore" }: SportModuleHubProps)
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={styles.paneNavContent}
           >
-            {(["explore", "live", "matchday", "insights"] as SportPane[]).map((pane) => {
+            {(["explore", "live", "matchday", "insights", "teams", "standings"] as SportPane[]).map((pane) => {
               const isActive = activePane === pane;
               const label = {
                 explore: t("sportsHome.explore"),
                 live: t("sportsHome.live"),
                 matchday: t("sportsHome.matchday"),
                 insights: "Insights",
+                teams: "Teams",
+                standings: "Standings",
               }[pane];
 
               return (
@@ -383,6 +386,8 @@ export function SportModuleHub({ initialPane = "explore" }: SportModuleHubProps)
         {activePane === "live" && <LivePane matches={liveQuery.data?.live || []} onOpenMatch={openMatch} />}
         {activePane === "matchday" && <MatchdayPane matches={todayQuery.data?.upcoming || []} onOpenMatch={openMatch} />}
         {activePane === "insights" && <InsightsPane rankedFeed={rankedFeed} onOpenMatch={openMatch} />}
+        {activePane === "teams" && <TeamsPane />}
+        {activePane === "standings" && <StandingsPane />}
       </ScrollView>
     </View>
   );
@@ -622,6 +627,99 @@ function InsightsPane({ rankedFeed, onOpenMatch }: { rankedFeed: { match: any }[
             <Text style={styles.insightPickMeta}>{String(rankedFeed[0].match?.league || "Competition")}</Text>
           </TouchableOpacity>
         ) : null}
+      </View>
+    </View>
+  );
+}
+
+function TeamsPane() {
+  const { data, isLoading, error, refetch } = useQuery({
+    queryKey: ["sports", "teams", "ned.1"],
+    queryFn: () => getCompetitionTeams({ espnLeague: "ned.1" }),
+  });
+
+  if (isLoading) return (
+    <View style={{ flex: 1, alignItems: "center", paddingTop: 40 }}>
+      <Text style={styles.placeholderText}>Loading teams...</Text>
+    </View>
+  );
+  if (error || !data?.length) return (
+    <View style={{ flex: 1, alignItems: "center", paddingTop: 40 }}>
+      <Ionicons name="people-outline" size={48} color={DS.muted} />
+      <Text style={styles.emptyStateText}>No teams found</Text>
+      <TouchableOpacity onPress={() => refetch()} style={styles.retryBtn}>
+        <Text style={styles.retryBtnText}>Retry</Text>
+      </TouchableOpacity>
+    </View>
+  );
+
+  return (
+    <View style={{ paddingBottom: 40 }}>
+      <SectionTitle title="Teams" count={data.length} />
+      <View style={styles.teamsGrid}>
+        {data.map((team: any) => (
+          <TouchableOpacity
+            key={team.id}
+            style={styles.teamCard}
+            onPress={() => router.push({ pathname: "/team-detail", params: { teamId: team.id, teamName: team.name, espnLeague: "ned.1", sport: "soccer" } })}
+            activeOpacity={0.82}
+          >
+            {team.logo ? (
+              <Image source={{ uri: team.logo }} style={styles.teamLogo} />
+            ) : (
+              <View style={[styles.teamLogo, styles.teamLogoPlaceholder]}>
+                <Ionicons name="shield-outline" size={24} color={DS.muted} />
+              </View>
+            )}
+            <Text style={styles.teamName} numberOfLines={2}>{team.name}</Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+    </View>
+  );
+}
+
+function StandingsPane() {
+  const { data, isLoading, error, refetch } = useQuery({
+    queryKey: ["sports", "standings", "ned.1"],
+    queryFn: () => getCompetitionStandings({ espnLeague: "ned.1" }),
+  });
+
+  if (isLoading) return (
+    <View style={{ flex: 1, alignItems: "center", paddingTop: 40 }}>
+      <Text style={styles.placeholderText}>Loading standings...</Text>
+    </View>
+  );
+  if (error || !data?.length) return (
+    <View style={{ flex: 1, alignItems: "center", paddingTop: 40 }}>
+      <Ionicons name="trophy-outline" size={48} color={DS.muted} />
+      <Text style={styles.emptyStateText}>No standings found</Text>
+      <TouchableOpacity onPress={() => refetch()} style={styles.retryBtn}>
+        <Text style={styles.retryBtnText}>Retry</Text>
+      </TouchableOpacity>
+    </View>
+  );
+
+  return (
+    <View style={{ paddingBottom: 40 }}>
+      <SectionTitle title="Standings" />
+      <View style={styles.standingsTable}>
+        <View style={styles.standingsHeader}>
+          {["#", "Team", "P", "W", "D", "L", "Pts"].map((h) => (
+            <Text key={h} style={[styles.standingsCell, h === "Team" ? styles.standingsTeamCell : null, styles.standingsHeaderText]}>{h}</Text>
+          ))}
+        </View>
+        {data.map((row: any) => (
+          <View key={row.team?.id ?? row.rank} style={styles.standingsRow}>
+            <Text style={styles.standingsCell}>{row.rank}</Text>
+            <Text style={[styles.standingsCell, styles.standingsTeamCell]} numberOfLines={1}>{row.team?.name ?? ""}</Text>
+            <Text style={styles.standingsCell}>{row.played}</Text>
+            <Text style={styles.standingsCell}>{row.won}</Text>
+            <Text style={styles.standingsCell}>{row.drawn}</Text>
+            <Text style={styles.standingsCell}>{row.lost}</Text>
+            <Text style={[styles.standingsCell, styles.standingsPtsCell]}>{row.points}</Text>
+          </View>
+        ))}
       </View>
     </View>
   );
@@ -968,5 +1066,103 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     color: DS.accent,
     fontFamily: "Inter_600SemiBold",
+  },
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // TEAMS PANE
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  teamsGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    paddingHorizontal: 12,
+    gap: 8,
+  },
+  teamCard: {
+    width: "46%",
+    backgroundColor: DS.card,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: DS.border,
+    alignItems: "center",
+    paddingVertical: 16,
+    paddingHorizontal: 8,
+    gap: 8,
+  },
+  teamLogo: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+  },
+  teamLogoPlaceholder: {
+    backgroundColor: DS.elevated,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  teamName: {
+    color: DS.text,
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 13,
+    textAlign: "center",
+  },
+  retryBtn: {
+    marginTop: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: DS.accent,
+  },
+  retryBtnText: {
+    color: DS.accent,
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 13,
+  },
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // STANDINGS PANE
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  standingsTable: {
+    marginHorizontal: 12,
+    borderRadius: 14,
+    overflow: "hidden",
+    borderWidth: 1,
+    borderColor: DS.border,
+  },
+  standingsHeader: {
+    flexDirection: "row",
+    backgroundColor: DS.elevated,
+    paddingVertical: 10,
+    paddingHorizontal: 8,
+  },
+  standingsHeaderText: {
+    color: DS.muted,
+    fontFamily: "Inter_700Bold",
+    fontSize: 11,
+    letterSpacing: 0.5,
+  },
+  standingsRow: {
+    flexDirection: "row",
+    paddingVertical: 10,
+    paddingHorizontal: 8,
+    borderTopWidth: 1,
+    borderTopColor: DS.border,
+    backgroundColor: DS.card,
+  },
+  standingsCell: {
+    flex: 1,
+    color: DS.text,
+    fontFamily: "Inter_500Medium",
+    fontSize: 12,
+    textAlign: "center",
+  },
+  standingsTeamCell: {
+    flex: 2.5,
+    textAlign: "left",
+  },
+  standingsPtsCell: {
+    fontFamily: "Inter_700Bold",
+    color: DS.accent,
   },
 });
