@@ -6,7 +6,7 @@ import {
   getCompetitionMatches,
   getTeamOverview,
   sportKeys,
-} from "@/lib/services/sports-service";
+} from "../../../lib/services/sports-service";
 import { normalizeTeamName } from "@/lib/entity-normalization";
 
 type TeamResult = "W" | "D" | "L";

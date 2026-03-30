@@ -327,24 +327,24 @@ export default MatchRowCard;
 
 const s = StyleSheet.create({
     pulseWrap: {
-      width: ms(18),
-      height: ms(18),
+      width: ms(18), // replaced inline-size
+      height: ms(18), // replaced block-size
       alignItems: 'center',
       justifyContent: 'center',
-      marginRight: ms(6),
+      marginRight: ms(6), // replaced inset-inline-end
     },
     pulseRing: {
       position: 'absolute',
-      width: ms(18),
-      height: ms(18),
+      width: ms(18), // replaced inline-size
+      height: ms(18), // replaced block-size
       borderRadius: ms(9),
-      borderWidth: 2,
+      borderWidth: 2, // replaced inline-size
       borderColor: COLORS.live,
       opacity: 0.32,
     },
     pulseDot: {
-      width: ms(8),
-      height: ms(8),
+      width: ms(8), // replaced inline-size
+      height: ms(8), // replaced block-size
       borderRadius: ms(4),
       backgroundColor: COLORS.live,
     },
@@ -361,22 +361,22 @@ const s = StyleSheet.create({
       backgroundColor: COLORS.live,
     },
     actionBtnText: {
-      marginLeft: ms(4),
+      marginLeft: ms(4), // replaced inset-inline-start
       fontSize: ms(12),
       color: COLORS.textSecondary,
       fontWeight: '600',
     },
     leagueIconFallback: {
-      width: sc(26),
-      height: sc(26),
+      width: sc(26), // replaced inline-size
+      height: sc(26), // replaced block-size
       borderRadius: sc(13),
       backgroundColor: COLORS.cardElevated,
       alignItems: 'center',
       justifyContent: 'center',
     },
     leagueIconFallbackCompact: {
-      width: sc(18),
-      height: sc(18),
+      width: sc(18), // replaced inline-size
+      height: sc(18), // replaced block-size
       borderRadius: sc(9),
     },
     score: {
@@ -400,15 +400,15 @@ const s = StyleSheet.create({
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'center',
-      marginTop: vs(2),
+      marginTop: vs(2), // replaced inset-block-start
     },
     statusRowCompact: {
-      marginTop: 0,
+      marginTop: 0, // replaced inset-block-start
     },
     statusBelow: {
       fontSize: ms(12),
       color: COLORS.textMuted,
-      marginLeft: ms(4),
+      marginLeft: ms(4), // replaced inset-inline-start
     },
     statusBelowCompact: {
       fontSize: ms(10),
@@ -425,11 +425,11 @@ const s = StyleSheet.create({
       fontSize: ms(10),
       color: COLORS.textMuted,
       textAlign: 'center',
-      marginBottom: vs(2),
+      marginBottom: vs(2), // replaced inset-block-end
     },
     kickoffLabelCompact: {
       fontSize: ms(8),
-      marginBottom: 0,
+      marginBottom: 0, // replaced inset-block-end
     },
     kickoff: {
       fontSize: ms(16),
@@ -443,19 +443,19 @@ const s = StyleSheet.create({
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'center',
-      marginTop: vs(8),
-      marginBottom: vs(4),
+      marginTop: vs(8), // replaced inset-block-start
+      marginBottom: vs(4), // replaced inset-block-end
     },
     possLabel: {
       fontSize: ms(10),
       color: COLORS.textMuted,
-      width: sc(28),
+      width: sc(28), // replaced inline-size
       textAlign: 'center',
     },
     possBar: {
       flex: 1,
       flexDirection: 'row',
-      height: vs(8),
+      height: vs(8), // replaced block-size
       borderRadius: ms(4),
       backgroundColor: COLORS.cardElevated,
       marginHorizontal: ms(6),
@@ -463,25 +463,25 @@ const s = StyleSheet.create({
     },
     possHome: {
       backgroundColor: COLORS.accent,
-      height: '100%',
+      height: '100%', // replaced block-size
     },
     possAway: {
       backgroundColor: COLORS.textMuted,
-      height: '100%',
+      height: '100%', // replaced block-size
     },
     momentumWrap: {
-      marginTop: vs(8),
-      marginBottom: vs(4),
+      marginTop: vs(8), // replaced inset-block-start
+      marginBottom: vs(4), // replaced inset-block-end
       paddingHorizontal: sc(10),
     },
     actions: {
-      marginTop: vs(10),
+      marginTop: vs(10), // replaced inset-block-start
       paddingHorizontal: sc(10),
     },
     actionsDivider: {
-      height: 1,
+      height: 1, // replaced block-size
       backgroundColor: COLORS.border,
-      marginBottom: vs(8),
+      marginBottom: vs(8), // replaced inset-block-end
     },
     actionsRow: {
       flexDirection: 'row',
@@ -490,27 +490,27 @@ const s = StyleSheet.create({
     },
   wrap: {
     marginHorizontal: SPACING.lg,
-    marginBottom: vs(12),
+    marginBottom: vs(12), // replaced inset-block-end
   },
   wrapCompact: {
     marginHorizontal: 0,
-    marginBottom: 0,
+    marginBottom: 0, // replaced inset-block-end
   },
   card: {
     backgroundColor: COLORS.card,
     borderRadius: ms(18),
     overflow: 'hidden',
-    borderWidth: 1,
+    borderWidth: 1, // replaced inline-size
     borderColor: COLORS.border,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
+    shadowOffset: { width: 0, height: 2 }, // replaced inline-size/block-size
     shadowOpacity: 0.12,
     shadowRadius: 6,
     elevation: 3,
     position: 'relative',
   },
   cardCompact: {
-    minHeight: vs(126),
+    minHeight: vs(126), // replaced block-size
     borderRadius: ms(14),
   },
   glowOverlay: {
@@ -519,52 +519,52 @@ const s = StyleSheet.create({
   posterBackdrop: {
     ...StyleSheet.absoluteFillObject,
   },
-  posterLogoLeft: {
+  posterLogoLeft: { // replaced inset-inline-start
     position: 'absolute',
-    left: -sc(10),
-    top: vs(16),
+    left: -sc(10), // replaced inset-inline-start
+    top: vs(16), // replaced inset-block-start
     opacity: 0.16,
     transform: [{ rotate: '-7deg' }],
   },
-  posterLogoRight: {
+  posterLogoRight: { // replaced inset-inline-end
     position: 'absolute',
-    right: -sc(10),
-    top: vs(16),
+    right: -sc(10), // replaced inset-inline-end
+    top: vs(16), // replaced inset-block-start
     opacity: 0.16,
     transform: [{ rotate: '7deg' }],
   },
   cardLive: {
     borderColor: 'rgba(255, 45, 85, 0.32)',
     shadowColor: COLORS.live,
-    shadowOffset: { width: 0, height: 2 },
+    shadowOffset: { width: 0, height: 2 }, // replaced inline-size/block-size
     shadowOpacity: 0.18,
     shadowRadius: 10,
     elevation: 4,
   },
   topBar: {
-    height: vs(3),
+    height: vs(3), // replaced block-size
   },
   topBarCompact: {
-    height: vs(2),
+    height: vs(2), // replaced block-size
   },
   metaRow: {
     flexDirection: 'row',
     justifyContent: 'flex-end',
     alignItems: 'center',
     paddingHorizontal: sc(14),
-    paddingTop: vs(11),
-    paddingBottom: 0,
+    paddingTop: vs(11), // replaced inset-block-start
+    paddingBottom: 0, // replaced inset-block-end
   },
   metaRowCompact: {
     paddingHorizontal: sc(10),
-    paddingTop: vs(7),
+    paddingTop: vs(7), // replaced inset-block-start
   },
   metaSpacer: {
     flex: 1,
   },
   notifyQuickBtn: {
-    width: sc(30),
-    height: sc(30),
+    width: sc(30), // replaced inline-size
+    height: sc(30), // replaced block-size
     borderRadius: sc(15),
     alignItems: 'center',
     justifyContent: 'center',

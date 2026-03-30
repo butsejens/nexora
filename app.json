@@ -32,6 +32,11 @@
     },
     "packagerOpts": {
       "port": 19000
+    },
+    "extra": {
+      "eas": {
+        "projectId": "6a0210f6-7996-425a-8bc9-e41e5a41b5a6"
+      }
     }
   }
 }

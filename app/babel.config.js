@@ -7,10 +7,9 @@ module.exports = function (api) {
       [
         "module-resolver",
         {
-          root: ["."],
+          root: [require("path").resolve(__dirname)],
           alias: {
-            "@": "./",
-            "@shared": "./shared",
+            "@": require("path").resolve(__dirname),
           },
           extensions: [
             ".ios.ts",
