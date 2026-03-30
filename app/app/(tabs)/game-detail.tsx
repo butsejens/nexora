@@ -28,7 +28,7 @@ export default function GameDetailScreen() {
       <Text style={styles.score}>{data.match.score.home} - {data.match.score.away}</Text>
       <Text style={styles.section}>Details</Text>
       <Text>Venue: {data.match.venue || "-"}</Text>
-      <Text>Competition: {data.match.competition || "-"}</Text>
+      <Text>Competition: {String(data.match.competition || "-")}</Text>
       {/* Add more details as needed */}
     </View>
   );

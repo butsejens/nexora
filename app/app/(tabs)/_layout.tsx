@@ -48,27 +48,29 @@ export default function TabLayout() {
         name="home"
         options={{
           title: "Home",
-          tabBarIcon: ({ focused }) => <TabIcon focused={focused} icon={focused ? "home" : "home-outline"} />,
+          tabBarIcon: ({ focused }: { focused: boolean }) => <TabIcon focused={focused} icon={focused ? "home" : "home-outline"} />,
         }}
       />
       <Tabs.Screen
         name="search"
         options={{
           title: "Search",
-          tabBarIcon: ({ focused }) => <TabIcon focused={focused} icon={focused ? "search" : "search-outline"} />,
+          tabBarIcon: ({ focused }: { focused: boolean }) => <TabIcon focused={focused} icon={focused ? "search" : "search-outline"} />,
         }}
       />
 
       <Tabs.Screen name="sports-home" options={{ href: null }} />
       <Tabs.Screen name="teams" options={{ href: null }} />
       <Tabs.Screen name="standings" options={{ href: null }} />
+      <Tabs.Screen name="game-detail" options={{ href: null }} />
+      <Tabs.Screen name="sports-demo" options={{ href: null }} />
 
       <Tabs.Screen
         name="more"
         options={{
           href: "/(tabs)/more",
           title: "Menu",
-          tabBarIcon: ({ focused }) => <TabIcon focused={focused} icon={focused ? "menu" : "menu-outline"} />,
+          tabBarIcon: ({ focused }: { focused: boolean }) => <TabIcon focused={focused} icon={focused ? "menu" : "menu-outline"} />,
         }}
       />
 

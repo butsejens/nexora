@@ -197,7 +197,7 @@ export function prioritizeMatchesForPersonalization<T>(
 export function matchBelongsToPreferredCompetition(match: any, personalization: PersonalizationSnapshot): boolean {
   const league = normalizeText(match?.league);
   const espnLeague = normalizeText(match?.espnLeague);
-  return (
+  return !!(
     (league && personalization.preferredCompetitionNames.has(league)) ||
     (espnLeague && personalization.preferredCompetitionLeagues.has(espnLeague))
   );
@@ -209,7 +209,7 @@ export function matchInvolvesPreferredTeam(match: any, personalization: Personal
   const homeTeam = normalizeText(match?.homeTeam);
   const awayTeam = normalizeText(match?.awayTeam);
 
-  return (
+  return !!(
     (homeTeamId && personalization.preferredTeamIds.has(homeTeamId)) ||
     (awayTeamId && personalization.preferredTeamIds.has(awayTeamId)) ||
     (homeTeam && personalization.preferredTeamNames.has(homeTeam)) ||

@@ -398,7 +398,7 @@ export function NexoraProvider({ children }: { children: ReactNode }) {
       };
     }
 
-    let unsubscribe = () => undefined;
+    let unsubscribe: () => void = () => undefined;
     try {
       unsubscribe = watchAuthState(async (user) => {
       if (cancelled) return;

@@ -332,11 +332,11 @@ export default function TeamInfoScreen() {
     if (raw && raw.toLowerCase() !== team && !isLeagueCode(raw)) return raw;
     return guessCountryFromLeagueCode(league) || "Unknown";
   }, [data?.country, data?.name, league, teamName]);
-  const topScorerLabel = String(data?.topScorer?.name || "").trim()
-    ? `${data.topScorer.name}${data?.topScorer?.goals ? ` · ${data.topScorer.goals}G` : ""}`
+  const topScorerLabel = String((data?.topScorer as any)?.name || "").trim()
+    ? `${(data?.topScorer as any)?.name}${(data?.topScorer as any)?.goals ? ` · ${(data?.topScorer as any)?.goals}G` : ""}`
     : "";
-  const topAssistLabel = String(data?.topAssist?.name || "").trim()
-    ? `${data.topAssist.name}${data?.topAssist?.assists ? ` · ${data.topAssist.assists}A` : ""}`
+  const topAssistLabel = String((data?.topAssist as any)?.name || "").trim()
+    ? `${(data?.topAssist as any)?.name}${(data?.topAssist as any)?.assists ? ` · ${(data?.topAssist as any)?.assists}A` : ""}`
     : "";
 
   const heroColor = data?.color || "#E50914";
@@ -445,7 +445,7 @@ export default function TeamInfoScreen() {
               <Text style={styles.statLabel}>Goals Against</Text>
             </View>
             <View style={styles.statCard}>
-              <Text style={styles.statValue}>{data?.cleanSheets ?? 0}</Text>
+              <Text style={styles.statValue}>{Number(data?.cleanSheets ?? 0)}</Text>
               <Text style={styles.statLabel}>Clean Sheets</Text>
             </View>
           </View>

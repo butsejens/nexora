@@ -27,7 +27,7 @@ export default function TeamsScreen() {
       renderItem={({ item }) => (
         <View style={styles.card}>
           {item.logo ? (
-            <Image source={{ uri: item.logo }} style={styles.logo} />
+            <Image source={{ uri: String(item.logo) }} style={styles.logo} />
           ) : (
             <View style={styles.logoPlaceholder} />
           )}

@@ -91,7 +91,7 @@ function scoreNameSimilarity(a: string, b: string): number {
   const jaccard = tokenOverlapScore(a, b);
   const aParts = a.split(" ").filter(Boolean);
   const bParts = b.split(" ").filter(Boolean);
-  const starts = aParts[0] && bParts[0] && (aParts[0] === bParts[0] ? 0.15 : 0);
+  const starts = Number(aParts[0] && bParts[0] && (aParts[0] === bParts[0] ? 0.15 : 0));
   return Math.min(1, jaccard + starts);
 }
 
