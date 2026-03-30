@@ -2,10 +2,10 @@ import React from "react";
 import { View, Text, FlatList, ActivityIndicator, TouchableOpacity, StyleSheet } from "react-native";
 import { useQuery } from "@tanstack/react-query";
 import { getSportsHome } from "../../lib/services/sports-service";
-import { useNavigation } from "expo-router";
+import { useRouter } from "expo-router";
 
 export default function SportsHomeScreen() {
-  const navigation = useNavigation();
+  const router = useRouter();
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ["sports", "home"],
     queryFn: getSportsHome,
@@ -34,7 +34,7 @@ export default function SportsHomeScreen() {
       renderItem={({ item }) => (
         <TouchableOpacity
           style={styles.card}
-          onPress={() => navigation.navigate("game-detail", { id: item.id })}
+          onPress={() => router.push({ pathname: "/game-detail", params: { id: item.id } })}
         >
           <Text style={styles.teams}>{item.homeTeam.name} - {item.awayTeam.name}</Text>
           <Text style={styles.status}>{item.status} | {item.startTime?.slice(11, 16) || "?"}</Text>

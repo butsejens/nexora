@@ -701,6 +701,32 @@ export default function MatchDetailScreen() {
       .map((event) => (event.side === "home" ? 14 : event.side === "away" ? -14 : 0)),
     [orderedTimelineEvents],
   );
+  const liveMatchFactors = useMemo(() => {
+    const homeStats = matchDetail?.homeStats || {};
+    const awayStats = matchDetail?.awayStats || {};
+    const factors: { label: string; value: string; tone: "home" | "away" | "neutral" }[] = [];
+    const hPoss = Number(homeStats?.ball_possession ?? homeStats?.possession ?? 0);
+    const aPoss = Number(awayStats?.ball_possession ?? awayStats?.possession ?? 0);
+    if (hPoss || aPoss) {
+      factors.push({ label: "Possession", value: `${hPoss}% – ${aPoss}%`, tone: hPoss > aPoss ? "home" : aPoss > hPoss ? "away" : "neutral" });
+    }
+    const hShots = Number(homeStats?.shots ?? homeStats?.total_shots ?? 0);
+    const aShots = Number(awayStats?.shots ?? awayStats?.total_shots ?? 0);
+    if (hShots || aShots) {
+      factors.push({ label: "Shots", value: `${hShots} – ${aShots}`, tone: hShots > aShots ? "home" : aShots > hShots ? "away" : "neutral" });
+    }
+    const hShotsOn = Number(homeStats?.shots_on_goal ?? homeStats?.shots_on_target ?? 0);
+    const aShotsOn = Number(awayStats?.shots_on_goal ?? awayStats?.shots_on_target ?? 0);
+    if (hShotsOn || aShotsOn) {
+      factors.push({ label: "On Target", value: `${hShotsOn} – ${aShotsOn}`, tone: hShotsOn > aShotsOn ? "home" : aShotsOn > hShotsOn ? "away" : "neutral" });
+    }
+    const hCorners = Number(homeStats?.corners ?? homeStats?.corner_kicks ?? 0);
+    const aCorners = Number(awayStats?.corners ?? awayStats?.corner_kicks ?? 0);
+    if (hCorners || aCorners) {
+      factors.push({ label: "Corners", value: `${hCorners} – ${aCorners}`, tone: hCorners > aCorners ? "home" : aCorners > hCorners ? "away" : "neutral" });
+    }
+    return factors;
+  }, [matchDetail?.homeStats, matchDetail?.awayStats]);
   const momentumModel = useMemo(() => calculateMomentum({
     homeStats: matchDetail?.homeStats || {},
     awayStats: matchDetail?.awayStats || {},
@@ -731,9 +757,9 @@ export default function MatchDetailScreen() {
     });
   }, [aiStory, awayTeamName, homeTeamName, liveInsightEnabled, safePrediction]);
   const predictionMatchId = followMatchId || `${params.homeTeam}-${params.awayTeam}-${params.startDate || ""}`;
-  const predictionUnlocked = hasPremium || isPredictionUnlocked(predictionMatchId);
+  const predictionUnlocked = hasPremium("sport") || isPredictionUnlocked(predictionMatchId);
   const handleUnlockPrediction = async () => {
-    if (hasPremium || predictionUnlocked) return;
+    if (hasPremium("sport") || predictionUnlocked) return;
     if (!predictionMatchId) return;
     if (dailyPredictionUnlocksRemaining <= 0) {
       Alert.alert(
@@ -3206,6 +3232,39 @@ const styles = StyleSheet.create({
     fontFamily: "Inter_700Bold",
     fontSize: 9,
     letterSpacing: 0.7,
+  },
+  liveFactorGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  liveFactorChip: {
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.1)",
+    backgroundColor: "rgba(255,255,255,0.05)",
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    minWidth: 90,
+    flex: 1,
+    gap: 2,
+  },
+  liveFactorLabel: {
+    color: "#8E98AF",
+    fontFamily: "Inter_500Medium",
+    fontSize: 10,
+    letterSpacing: 0.4,
+  },
+  liveFactorValue: {
+    color: "#FFFFFF",
+    fontFamily: "Inter_700Bold",
+    fontSize: 12,
+  },
+  liveFactorValueHome: {
+    color: "#1FDB8E",
+  },
+  liveFactorValueAway: {
+    color: "#3E78FF",
   },
   liveTrendWrap: {
     marginTop: 4,
