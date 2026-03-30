@@ -1,6 +1,154 @@
+
+// --- ESPN Sports Data API ---
+
+// Normalize ESPN event/game to internal model
+function normalizeGame(ev) {
+  return {
+    id: String(ev.id),
+    league: ev._leagueHint || ev.league?.name || ev.league?.abbreviation || '',
+    homeTeam: ev.competitions?.[0]?.competitors?.find(c => c.homeAway === 'home')?.team?.displayName || '',
+    awayTeam: ev.competitions?.[0]?.competitors?.find(c => c.homeAway === 'away')?.team?.displayName || '',
+    homeScore: Number(ev.competitions?.[0]?.competitors?.find(c => c.homeAway === 'home')?.score) || 0,
+    awayScore: Number(ev.competitions?.[0]?.competitors?.find(c => c.homeAway === 'away')?.score) || 0,
+    status: ev.status?.type?.description || '',
+    startTime: ev.date || '',
+  };
+}
+
+function normalizeTeam(team) {
+  return {
+    id: String(team.id),
+    name: team.displayName || team.name || '',
+    logo: team.logos?.[0]?.href || '',
+  };
+}
+
+function normalizeStanding(entry) {
+  return {
+    team: entry.team?.displayName || '',
+    wins: entry.stats?.find(s => s.name === 'wins')?.value || 0,
+    losses: entry.stats?.find(s => s.name === 'losses')?.value || 0,
+    rank: entry.stats?.find(s => s.name === 'rank')?.value || 0,
+  };
+}
+
+// GET /api/sports/games?league=eng.1&date=YYYY-MM-DD
+app.get('/api/sports/games', async (req, res) => {
+  try {
+    const league = String(req.query.league || 'eng.1');
+    const date = String(req.query.date || new Date().toISOString().slice(0, 10));
+    const cacheKey = `espn:games:${league}:${date}`;
+    const cached = await cacheGet(cacheKey);
+    if (cached) return res.json({ ok: true, games: cached });
+    const url = `https://site.api.espn.com/apis/site/v2/sports/soccer/${league}/scoreboard?dates=${date.replace(/-/g, '')}`;
+    const resp = await fetch(url, { headers: espnRequestHeaders() });
+    if (!resp.ok) throw new Error('Failed to fetch ESPN scoreboard');
+    const data = await resp.json();
+    const games = (data.events || []).map(normalizeGame);
+    await cacheSet(cacheKey, games, 30 * 1000); // 30s TTL
+    res.json({ ok: true, games });
+  } catch (err) {
+    res.status(502).json({ ok: false, error: err.message || 'Failed to fetch games', games: [] });
+  }
+});
+
+// GET /api/sports/teams?league=eng.1
+app.get('/api/sports/teams', async (req, res) => {
+  try {
+    const league = String(req.query.league || 'eng.1');
+    const cacheKey = `espn:teams:${league}`;
+    const cached = await cacheGet(cacheKey);
+    if (cached) return res.json({ ok: true, teams: cached });
+    const url = `https://site.api.espn.com/apis/site/v2/sports/soccer/${league}/teams`;
+    const resp = await fetch(url, { headers: espnRequestHeaders() });
+    if (!resp.ok) throw new Error('Failed to fetch ESPN teams');
+    const data = await resp.json();
+    const teams = (data.sports?.[0]?.leagues?.[0]?.teams || []).map(e => normalizeTeam(e.team));
+    await cacheSet(cacheKey, teams, 24 * 60 * 60 * 1000); // 24h TTL
+    res.json({ ok: true, teams });
+  } catch (err) {
+    res.status(502).json({ ok: false, error: err.message || 'Failed to fetch teams', teams: [] });
+  }
+});
+
+// GET /api/sports/standings?league=eng.1
+app.get('/api/sports/standings', async (req, res) => {
+  try {
+    const league = String(req.query.league || 'eng.1');
+    const cacheKey = `espn:standings:${league}`;
+    const cached = await cacheGet(cacheKey);
+    if (cached) return res.json({ ok: true, standings: cached });
+    const url = `https://site.api.espn.com/apis/site/v2/sports/soccer/${league}/standings`;
+    const resp = await fetch(url, { headers: espnRequestHeaders() });
+    if (!resp.ok) throw new Error('Failed to fetch ESPN standings');
+    const data = await resp.json();
+    const standings = (data.children?.[0]?.standings?.entries || []).map(normalizeStanding);
+    await cacheSet(cacheKey, standings, 6 * 60 * 60 * 1000); // 6h TTL
+    res.json({ ok: true, standings });
+  } catch (err) {
+    res.status(502).json({ ok: false, error: err.message || 'Failed to fetch standings', standings: [] });
+  }
+});
+
+// GET /api/sports/game/:id
+app.get('/api/sports/game/:id', async (req, res) => {
+  try {
+    const id = String(req.params.id);
+    const cacheKey = `espn:game:${id}`;
+    const cached = await cacheGet(cacheKey);
+    if (cached) return res.json({ ok: true, game: cached });
+    const url = `https://site.api.espn.com/apis/site/v2/sports/soccer/summary?event=${id}`;
+    const resp = await fetch(url, { headers: espnRequestHeaders() });
+    if (!resp.ok) throw new Error('Failed to fetch ESPN game details');
+    const data = await resp.json();
+    // Use the first event for normalization
+    const game = data.header?.competitions?.[0] ? normalizeGame({
+      id,
+      competitions: data.header.competitions,
+      status: data.header.competitions[0].status,
+      date: data.header.competitions[0].date,
+      league: data.league,
+    }) : null;
+    await cacheSet(cacheKey, game, 5 * 60 * 1000); // 5m TTL
+    res.json({ ok: true, game });
+  } catch (err) {
+    res.status(502).json({ ok: false, error: err.message || 'Failed to fetch game details', game: null });
+  }
+});
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
+import { createClient } from "redis";
+
+// --- Redis client setup ---
+dotenv.config();
+const redisUrl = process.env.REDIS_URL || "redis://localhost:6379";
+let redisClient;
+if (redisUrl) {
+  redisClient = createClient({ url: redisUrl });
+  redisClient.on("error", (err) => console.error("[redis] error:", err));
+  redisClient.connect().then(() => console.log("[redis] connected"));
+}
+
+// Redis get/set helpers (async)
+async function redisGet(key) {
+  if (!redisClient) return null;
+  try {
+    const val = await redisClient.get(key);
+    return val ? JSON.parse(val) : null;
+  } catch {
+    return null;
+  }
+}
+
+async function redisSet(key, value, ttlMs) {
+  if (!redisClient) return;
+  try {
+    await redisClient.set(key, JSON.stringify(value), {
+      PX: ttlMs || 60000,
+    });
+  } catch {}
+}
 import fetch from "node-fetch";
 import { fileURLToPath } from "url";
 import { dirname, join } from "path";
@@ -83,7 +231,14 @@ app.get("/api/ping", (_req, res) => {
 const __cache = new Map(); // key -> { value, expiresAt, staleValue, staleAt }
 const __inflight = new Map();
 
-function cacheGet(key) {
+
+async function cacheGet(key) {
+  // Prefer Redis if available
+  if (redisClient) {
+    const val = await redisGet(key);
+    if (val !== null) return val;
+  }
+  // Fallback to in-memory
   const item = __cache.get(key);
   if (!item) return null;
   if (Date.now() <= item.expiresAt) return item.value;
@@ -95,7 +250,13 @@ function cacheGetStale(key) {
   return item?.staleValue ?? null;
 }
 
-function cacheSet(key, value, ttlMs) {
+
+async function cacheSet(key, value, ttlMs) {
+  // Prefer Redis if available
+  if (redisClient) {
+    await redisSet(key, value, ttlMs);
+  }
+  // Always set in-memory as fallback
   const now = Date.now();
   __cache.set(key, {
     value,
@@ -105,15 +266,16 @@ function cacheSet(key, value, ttlMs) {
   });
 }
 
+
 async function getOrFetch(key, ttlMs, fetcher) {
-  const cached = cacheGet(key);
+  const cached = await cacheGet(key);
   if (cached) return cached;
   const existing = __inflight.get(key);
   if (existing) return existing;
   const p = (async () => {
     try {
       const value = await fetcher();
-      cacheSet(key, value, ttlMs);
+      await cacheSet(key, value, ttlMs);
       return value;
     } finally {
       __inflight.delete(key);

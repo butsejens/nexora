@@ -15,7 +15,7 @@ import { StateBlock } from "@/components/ui/PremiumPrimitives";
 import { useFollowState } from "@/context/UserStateContext";
 import { useTranslation } from "@/lib/useTranslation";
 import { t as tFn } from "@/lib/i18n";
-import { getTeamOverview, sportKeys } from "@/lib/services/sports-service";
+import { getTeamOverview, sportKeys } from "../lib/services/sports-service";
 import {
   getBestCachedOrSeedPlayerImage,
   resolvePlayerImageUri,

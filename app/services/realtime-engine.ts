@@ -7,7 +7,7 @@ import {
   getSportsLive,
   getMatchDetailRaw,
   sportKeys,
-} from "@/lib/services/sports-service";
+} from "../lib/services/sports-service";
 import {
   getVodCatalogChunk,
   getVodCollections,

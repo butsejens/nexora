@@ -1,4 +1,4 @@
-import { apiRequest } from "@/lib/query-client";
+import { apiRequest } from "../lib/query-client";
 import type { PlayerAnalysisDto } from "@/types/data-layer";
 
 export type FetchPlayerAnalysisParams = {

@@ -6,7 +6,7 @@
  */
 
 import React from "react";
-import { SportModuleHub } from "@/components/sports/SportModuleHub";
+import { SportModuleHub } from "../../components/sports/SportModuleHub";
 
 /**
  * Sport Tab Screen

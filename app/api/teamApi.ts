@@ -1,5 +1,5 @@
-import { apiRequest } from "@/lib/query-client";
-import { enrichTeamDetailPayload } from "@/lib/sports-enrichment";
+import { apiRequest } from "../lib/query-client";
+import { enrichTeamDetailPayload } from "../lib/sports-enrichment";
 import type { TeamDto } from "@/types/data-layer";
 
 export type FetchTeamParams = {

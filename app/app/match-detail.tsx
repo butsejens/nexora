@@ -21,7 +21,7 @@ import { resolveMatchBucket } from "@/lib/match-state";
 import { toCanonicalMatch } from "@/lib/canonical-match";
 import { normalizeTeamName } from "@/lib/entity-normalization";
 import { cacheGetStale, cachePeekStale, cacheSet, CacheTTL } from "@/lib/services/cache-service";
-import { getCompetitionInsights, getMatchDetailRaw, sportKeys } from "@/lib/services/sports-service";
+import { getCompetitionInsights, getMatchDetailRaw, sportKeys } from "../lib/services/sports-service";
 import { useNexora } from "@/context/NexoraContext";
 import { useFollowState } from "@/context/UserStateContext";
 import { showRewardedUnlockAd } from "@/lib/rewarded-ads";
@@ -807,6 +807,7 @@ export default function MatchDetailScreen() {
   ];
 
   return (
+
       <View style={styles.container}>
         <LinearGradient
           colors={["#111521", "#0B0F1A", "#080B12"]}
@@ -856,23 +857,22 @@ export default function MatchDetailScreen() {
             </View>
           ) : null}
 
-            {matchDetail?.venue ? (
-              <View style={styles.venueRow}> 
-                <Ionicons name="location-outline" size={12} color="rgba(255,255,255,0.62)" />
-                <Text style={[styles.venueText, { color: "rgba(255,255,255,0.72)" }]}>{matchDetail.venue}</Text>
-              </View>
-            ) : null}
+          {matchDetail?.venue ? (
+            <View style={styles.venueRow}> 
+              <Ionicons name="location-outline" size={12} color="rgba(255,255,255,0.62)" />
+              <Text style={[styles.venueText, { color: "rgba(255,255,255,0.72)" }]}>{matchDetail.venue}</Text>
+            </View>
+          ) : null}
 
-            {momentumModel.hasData ? (
-              <View style={styles.headerMomentumWrap}>
-                <MomentumBar
-                  model={momentumModel}
-                  homeLabel={homeTeamName.slice(0, 3).toUpperCase() || "HOM"}
-                  awayLabel={awayTeamName.slice(0, 3).toUpperCase() || "AWY"}
-                />
-              </View>
-            ) : null}
-          </View>
+          {momentumModel.hasData ? (
+            <View style={styles.headerMomentumWrap}>
+              <MomentumBar
+                model={momentumModel}
+                homeLabel={homeTeamName.slice(0, 3).toUpperCase() || "HOM"}
+                awayLabel={awayTeamName.slice(0, 3).toUpperCase() || "AWY"}
+              />
+            </View>
+          ) : null}
         </LinearGradient>
 
         {aiStory.available ? (

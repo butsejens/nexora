@@ -11,12 +11,26 @@ const rootPkgPath = path.join(repoRoot, "package.json");
 const appPkgPath = path.join(repoRoot, "app", "package.json");
 const serverPkgPath = path.join(repoRoot, "server", "package.json");
 const releaseApkPath = path.join(repoRoot, "android", "app", "build", "outputs", "apk", "release", "app-release.apk");
-// 50MB floor — correct Hermes + New Architecture builds are ~60-65 MB; 98MB was a bloated
-// legacy build (wrong package/JSC). Threshold protects against truly empty/broken artifacts.
-const minReleaseApkBytes = 50 * 1024 * 1024;
+// 90MB floor — correct Hermes + New Architecture builds are 90MB+.
+// Threshold protects against empty, unsigned, or broken artifacts.
+const minReleaseApkBytes = 90 * 1024 * 1024;
 
 function run(command, cwd = repoRoot) {
-  execSync(command, { cwd, stdio: "inherit", env: process.env });
+  console.log(`\n[auto-release] Running: ${command} (cwd: ${cwd})`);
+  try {
+    execSync(command, {
+      cwd,
+      stdio: "inherit",
+      env: { ...process.env, NODE_ENV: "production" },
+    });
+    console.log(`[auto-release] Command succeeded: ${command}`);
+  } catch (err) {
+    if (err && typeof err === "object" && (err.status !== undefined || err.code !== undefined)) {
+      console.error(`[auto-release] Command failed with exit code: ${err.status ?? err.code}`);
+    }
+    console.error(`[auto-release] Error running command: ${command}`);
+    throw err;
+  }
 }
 
 function readJson(filePath) {
@@ -117,6 +131,8 @@ function publishGithubRelease(version) {
 }
 
 function main() {
+  // Prevent Metro cache usage during CI/release builds to avoid ENOTEMPTY cache errors
+  process.env.EXPO_METRO_NO_CACHE = "1";
   const appJson = readJson(appJsonPath);
   const currentVersion = String(appJson?.expo?.version || "0.0.0");
   const nextVersion = bumpPatch(currentVersion);

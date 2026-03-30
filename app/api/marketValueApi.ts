@@ -1,4 +1,4 @@
-import { fetchPlayer, type FetchPlayerParams } from "@/api/playerApi";
+import { fetchPlayer, type FetchPlayerParams } from "./playerApi";
 import type { MarketValuePoint, MarketValueResponse, ProviderName } from "@/types/data-layer";
 
 function toEur(value: unknown): number | null {
