@@ -7,6 +7,7 @@ const repoRoot = path.resolve(new URL("..", import.meta.url).pathname);
 const appJsonPath = path.join(repoRoot, "app", "app.json");
 const serverVersionPath = path.join(repoRoot, "server", "app-version.json");
 const androidGradlePath = path.join(repoRoot, "android", "app", "build.gradle");
+const androidStringsPath = path.join(repoRoot, "android", "app", "src", "main", "res", "values", "strings.xml");
 const rootPkgPath = path.join(repoRoot, "package.json");
 const appPkgPath = path.join(repoRoot, "app", "package.json");
 const serverPkgPath = path.join(repoRoot, "server", "package.json");
@@ -60,6 +61,16 @@ function updateGradleVersion(version) {
     .replace(/versionName\s+"[^"]+"/, `versionName "${version}"`);
 
   fs.writeFileSync(androidGradlePath, updated, "utf8");
+}
+
+function updateAndroidStringsRuntimeVersion(version) {
+  if (!fs.existsSync(androidStringsPath)) return;
+  const text = fs.readFileSync(androidStringsPath, "utf8");
+  const updated = text.replace(
+    /(<string name="expo_runtime_version">)[^<]*(<\/string>)/,
+    `$1${version}$2`,
+  );
+  fs.writeFileSync(androidStringsPath, updated, "utf8");
 }
 
 function hasEncryptedEnvPair() {
@@ -161,12 +172,13 @@ function main() {
   writeJson(serverPkgPath, serverPkg);
 
   updateGradleVersion(nextVersion);
+  updateAndroidStringsRuntimeVersion(nextVersion);
 
   run("npm -w app run lint");
   run("node --check server/index.js");
   buildApk(nextVersion, expectedAndroidPackage);
 
-  run("git add package.json app/app.json server/app-version.json app/package.json server/package.json android/app/build.gradle");
+  run("git add package.json app/app.json server/app-version.json app/package.json server/package.json android/app/build.gradle android/app/src/main/res/values/strings.xml");
 
   try {
     run(`git commit -m \"chore(release): auto bump to ${nextVersion} [auto-release]\"`);
