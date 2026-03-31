@@ -127,7 +127,8 @@ function buildApk(expectedVersion, expectedPackage) {
 }
 
 function publishGithubRelease(version) {
-  run(`gh release create "v${version}" "${releaseApkPath}" --title "v${version}" --notes "Nexora v${version}" --latest --repo butsejens/nexora`);
+  // Upload APK with a versioned filename so users see "Nexora-v2.6.x.apk" in the release assets
+  run(`gh release create "v${version}" "${releaseApkPath}#Nexora-v${version}.apk" --title "v${version}" --notes "Nexora v${version}" --latest --draft=false --repo butsejens/nexora`);
 }
 
 function main() {
