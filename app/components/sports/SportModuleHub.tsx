@@ -199,7 +199,7 @@ export function SportModuleHub({ initialPane = "explore" }: SportModuleHubProps)
 
   // ─ State ─────────────────────────────────────────────────────────────────────
   const [activePane, setActivePane] = useState<SportPane>(initialPane);
-  const [selectedDate] = useState(() => {
+  const [selectedDate, setSelectedDate] = useState(() => {
     const d = new Date();
     return d.toISOString().slice(0, 10);
   });
@@ -381,10 +381,18 @@ export function SportModuleHub({ initialPane = "explore" }: SportModuleHubProps)
             rankedFeed={rankedFeed}
             isLoading={Boolean(liveQuery.isLoading || todayQuery.isLoading)}
             onOpenMatch={openMatch}
+            onViewSchedule={() => setActivePane("matchday")}
           />
         )}
         {activePane === "live" && <LivePane matches={liveQuery.data?.live || []} onOpenMatch={openMatch} />}
-        {activePane === "matchday" && <MatchdayPane matches={todayQuery.data?.upcoming || []} onOpenMatch={openMatch} />}
+        {activePane === "matchday" && (
+          <MatchdayPane
+            matches={todayQuery.data?.upcoming || []}
+            onOpenMatch={openMatch}
+            selectedDate={selectedDate}
+            onDateChange={setSelectedDate}
+          />
+        )}
         {activePane === "insights" && <InsightsPane rankedFeed={rankedFeed} onOpenMatch={openMatch} />}
         {activePane === "teams" && <TeamsPane />}
         {activePane === "standings" && <StandingsPane />}
@@ -403,9 +411,10 @@ interface ExplorePaneProps {
   rankedFeed: { match: any; reasons: string[]; isTrending: boolean; isUpsetPotential: boolean }[];
   isLoading: boolean;
   onOpenMatch: (match: any) => void;
+  onViewSchedule: () => void;
 }
 
-function ExplorePane({ liveMatches, upcomingMatches, rankedFeed, isLoading, onOpenMatch }: ExplorePaneProps) {
+function ExplorePane({ liveMatches, upcomingMatches, rankedFeed, isLoading, onOpenMatch, onViewSchedule }: ExplorePaneProps) {
   const { t } = useTranslation();
 
   // Group upcoming matches by competition
@@ -465,17 +474,11 @@ function ExplorePane({ liveMatches, upcomingMatches, rankedFeed, isLoading, onOp
         <>
           <SectionTitle title="Featured" />
           <View style={styles.matchList}>
-            {liveMatches && liveMatches[0] ? (
-              <LiveMatchCard
-                match={liveMatches[0]}
-                onPress={() => onOpenMatch(liveMatches[0])}
-              />
-            ) : upcomingMatches && upcomingMatches[0] ? (
-              <UpcomingMatchCard
-                match={upcomingMatches[0]}
-                onPress={() => onOpenMatch(upcomingMatches[0])}
-              />
-            ) : null}
+            {featuredMatch?.status === "live" || featuredMatch?.minute ? (
+              <LiveMatchCard match={featuredMatch} onPress={() => onOpenMatch(featuredMatch)} />
+            ) : (
+              <UpcomingMatchCard match={featuredMatch} onPress={() => onOpenMatch(featuredMatch)} />
+            )}
           </View>
         </>
       ) : null}
@@ -483,9 +486,13 @@ function ExplorePane({ liveMatches, upcomingMatches, rankedFeed, isLoading, onOp
       {!isLoading && rankedFeed.length > 0 ? (
         <>
           <SectionTitle title="Smart Match Feed" count={rankedFeed.length} />
-          <View style={styles.matchList}>
-            {rankedFeed.slice(0, 4).map((entry, idx) => (
-              <View key={`${String(entry?.match?.id || idx)}_smart`}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={{ paddingHorizontal: 18, gap: 12, paddingBottom: 4 }}
+          >
+            {rankedFeed.slice(0, 6).map((entry, idx) => (
+              <View key={`${String(entry?.match?.id || idx)}_smart`} style={{ width: 280 }}>
                 <UpcomingMatchCard
                   match={entry.match}
                   onPress={() => onOpenMatch(entry.match)}
@@ -499,7 +506,7 @@ function ExplorePane({ liveMatches, upcomingMatches, rankedFeed, isLoading, onOp
                 </View>
               </View>
             ))}
-          </View>
+          </ScrollView>
         </>
       ) : null}
 
@@ -530,9 +537,7 @@ function ExplorePane({ liveMatches, upcomingMatches, rankedFeed, isLoading, onOp
       {!isLoading && (upcomingMatches.length > 3 || liveMatches.length > 0) ? (
         <TouchableOpacity 
           style={styles.viewAllButton}
-          onPress={() => {
-            // Can add navigation to full match list here
-          }}
+          onPress={onViewSchedule}
           activeOpacity={0.7}
         >
           <Text style={styles.viewAllText}>View Full Schedule →</Text>
@@ -578,56 +583,106 @@ function LivePane({ matches, onOpenMatch }: LivePaneProps) {
 interface MatchdayPaneProps {
   matches: any[];
   onOpenMatch: (match: any) => void;
+  selectedDate: string;
+  onDateChange: (date: string) => void;
 }
 
-function MatchdayPane({ matches, onOpenMatch }: MatchdayPaneProps) {
+function MatchdayPane({ matches, onOpenMatch, selectedDate, onDateChange }: MatchdayPaneProps) {
   const { t } = useTranslation();
 
-  if (!matches || matches.length === 0) {
-    return (
-      <View style={{ paddingBottom: 40 }}>
-        <SectionTitle title={t("sportsHome.matchday")} />
-        <EmptyState icon="calendar-outline" title={t("sportsHome.noUpcomingMatches")} />
-      </View>
-    );
-  }
+  const goToPrevDay = () => {
+    const d = new Date(selectedDate);
+    d.setDate(d.getDate() - 1);
+    onDateChange(d.toISOString().slice(0, 10));
+  };
+
+  const goToNextDay = () => {
+    const d = new Date(selectedDate);
+    d.setDate(d.getDate() + 1);
+    onDateChange(d.toISOString().slice(0, 10));
+  };
+
+  const formattedDate = (() => {
+    const d = new Date(selectedDate);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const target = new Date(selectedDate);
+    target.setHours(0, 0, 0, 0);
+    const diff = Math.round((target.getTime() - today.getTime()) / (24 * 60 * 60 * 1000));
+    if (diff === 0) return "Today";
+    if (diff === 1) return "Tomorrow";
+    if (diff === -1) return "Yesterday";
+    return new Intl.DateTimeFormat("nl-BE", { weekday: "short", day: "numeric", month: "short" }).format(d);
+  })();
 
   return (
     <View style={{ paddingBottom: 40 }}>
-      <SectionTitle title={t("sportsHome.matchday")} count={matches.length} />
-      <View style={styles.matchList}>
-        {matches.map((match, idx) => (
-          <UpcomingMatchCard
-            key={`${match.id}-${idx}`}
-            match={match}
-            onPress={() => onOpenMatch(match)}
-          />
-        ))}
+      {/* Date Navigation */}
+      <View style={styles.dateNavRow}>
+        <TouchableOpacity style={styles.dateNavBtn} onPress={goToPrevDay} activeOpacity={0.7}>
+          <Ionicons name="chevron-back" size={20} color={DS.text} />
+        </TouchableOpacity>
+        <Text style={styles.dateNavLabel}>{formattedDate}</Text>
+        <TouchableOpacity style={styles.dateNavBtn} onPress={goToNextDay} activeOpacity={0.7}>
+          <Ionicons name="chevron-forward" size={20} color={DS.text} />
+        </TouchableOpacity>
       </View>
+      {!matches || matches.length === 0 ? (
+        <EmptyState icon="calendar-outline" title={t("sportsHome.noUpcomingMatches")} />
+      ) : (
+        <>
+          <SectionTitle title={t("sportsHome.matchday")} count={matches.length} />
+          <View style={styles.matchList}>
+            {matches.map((match, idx) => (
+              <UpcomingMatchCard
+                key={`${match.id}-${idx}`}
+                match={match}
+                onPress={() => onOpenMatch(match)}
+              />
+            ))}
+          </View>
+        </>
+      )}
     </View>
   );
 }
 
-function InsightsPane({ rankedFeed, onOpenMatch }: { rankedFeed: { match: any }[]; onOpenMatch: (match: any) => void }) {
+function InsightsPane({ rankedFeed, onOpenMatch }: { rankedFeed: { match: any; reasons: string[]; isTrending: boolean; isUpsetPotential: boolean }[]; onOpenMatch: (match: any) => void }) {
   return (
     <View style={{ paddingBottom: 40 }}>
       <SectionTitle title="Insights" />
-      <View style={{ paddingHorizontal: 18, paddingVertical: 20 }}>
-        <Text style={styles.placeholderText}>AI modules live: ranking, momentum, match story and smart notifications.</Text>
+      <View style={{ paddingHorizontal: 18, paddingBottom: 8 }}>
         <TouchableOpacity style={styles.highlightsButton} onPress={() => router.push("/highlights")} activeOpacity={0.8}>
           <Ionicons name="flash-outline" size={14} color={DS.bg} />
           <Text style={styles.highlightsButtonText}>Open Auto Highlights Feed</Text>
         </TouchableOpacity>
-        {rankedFeed[0]?.match ? (
-          <TouchableOpacity style={styles.insightPickCard} onPress={() => onOpenMatch(rankedFeed[0].match)} activeOpacity={0.86}>
-            <Text style={styles.insightPickKicker}>AI Matchday Pick</Text>
-            <Text style={styles.insightPickTitle}>
-              {String(rankedFeed[0].match?.homeTeam || "Home")} vs {String(rankedFeed[0].match?.awayTeam || "Away")}
-            </Text>
-            <Text style={styles.insightPickMeta}>{String(rankedFeed[0].match?.league || "Competition")}</Text>
-          </TouchableOpacity>
-        ) : null}
       </View>
+      {rankedFeed.length > 0 ? (
+        <>
+          <SectionTitle title="AI Match Picks" count={rankedFeed.length} />
+          <View style={styles.matchList}>
+            {rankedFeed.map((entry, idx) => (
+              <View key={`${String(entry?.match?.id || idx)}_insight`}>
+                <UpcomingMatchCard
+                  match={entry.match}
+                  onPress={() => onOpenMatch(entry.match)}
+                />
+                <View style={styles.smartTagsRow}>
+                  {entry.isTrending ? <Text style={styles.smartTag}>🔥 Trending</Text> : null}
+                  {entry.isUpsetPotential ? <Text style={styles.smartTag}>⚡ Upset Alert</Text> : null}
+                  {(entry.reasons || []).slice(0, 3).map((reason, reasonIdx) => (
+                    <Text key={`${reason}_${reasonIdx}`} style={styles.smartTag}>{reason}</Text>
+                  ))}
+                </View>
+              </View>
+            ))}
+          </View>
+        </>
+      ) : (
+        <View style={{ paddingHorizontal: 18, paddingVertical: 20 }}>
+          <Text style={styles.placeholderText}>AI modules live: ranking, momentum, match story and smart notifications.</Text>
+        </View>
+      )}
     </View>
   );
 }
@@ -639,12 +694,12 @@ function TeamsPane() {
   });
 
   if (isLoading) return (
-    <View style={{ flex: 1, alignItems: "center", paddingTop: 40 }}>
+    <View style={{ minHeight: 250, alignItems: "center", paddingTop: 40 }}>
       <Text style={styles.placeholderText}>Loading teams...</Text>
     </View>
   );
   if (error || !data?.length) return (
-    <View style={{ flex: 1, alignItems: "center", paddingTop: 40 }}>
+    <View style={{ minHeight: 250, alignItems: "center", paddingTop: 40 }}>
       <Ionicons name="people-outline" size={48} color={DS.muted} />
       <Text style={styles.emptyStateText}>No teams found</Text>
       <TouchableOpacity onPress={() => refetch()} style={styles.retryBtn}>
@@ -686,12 +741,12 @@ function StandingsPane() {
   });
 
   if (isLoading) return (
-    <View style={{ flex: 1, alignItems: "center", paddingTop: 40 }}>
+    <View style={{ minHeight: 250, alignItems: "center", paddingTop: 40 }}>
       <Text style={styles.placeholderText}>Loading standings...</Text>
     </View>
   );
   if (error || !data?.length) return (
-    <View style={{ flex: 1, alignItems: "center", paddingTop: 40 }}>
+    <View style={{ minHeight: 250, alignItems: "center", paddingTop: 40 }}>
       <Ionicons name="trophy-outline" size={48} color={DS.muted} />
       <Text style={styles.emptyStateText}>No standings found</Text>
       <TouchableOpacity onPress={() => refetch()} style={styles.retryBtn}>
@@ -1164,5 +1219,34 @@ const styles = StyleSheet.create({
   standingsPtsCell: {
     fontFamily: "Inter_700Bold",
     color: DS.accent,
+  },
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // DATE NAV
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  dateNavRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 18,
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: DS.border,
+    marginBottom: 4,
+  },
+  dateNavBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: DS.elevated,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  dateNavLabel: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: DS.text,
+    fontFamily: "Inter_700Bold",
   },
 });
