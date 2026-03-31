@@ -229,28 +229,45 @@ export default function RootLayout() {
     };
   }, []);
 
-  // In-app branded splash overlay: fades out after fonts + brief Nexora logo moment.
+  // In-app branded splash overlay: covers the navigation tree until fonts are ready,
+  // then fades out after a brief Nexora logo moment. Never returns null so Expo Router
+  // can always mount its navigation tree (returning null from the root layout in
+  // Expo Router 6 prevents navigation from initialising and leaves the app stuck).
   const [inAppSplashDone, setInAppSplashDone] = useState(false);
   const splashOpacity = useRef(new Animated.Value(1)).current;
 
-  // Wait for fonts before rendering to avoid invisible text flash.
-  // fontError is fine — system fonts will be used as fallback.
   useEffect(() => {
-    if (fontsLoaded || fontError) {
-      SplashScreen.hideAsync().catch(() => {});
-      // Fade out in-app Nexora splash after 1.4s (long enough to see it)
-      const timer = setTimeout(() => {
+    // Treat both "loaded" and "error" (system font fallback) as ready to proceed.
+    // Also apply an 8 s safety-timeout in case useFonts never settles.
+    if (!fontsLoaded && !fontError) return;
+
+    SplashScreen.hideAsync().catch(() => {});
+    // Fade out in-app Nexora splash after 1.4 s (long enough to see the logo).
+    const timer = setTimeout(() => {
+      Animated.timing(splashOpacity, {
+        toValue: 0,
+        duration: 350,
+        useNativeDriver: true,
+      }).start(() => setInAppSplashDone(true));
+    }, 1400);
+    return () => clearTimeout(timer);
+  }, [fontsLoaded, fontError, splashOpacity]);
+
+  // Safety valve: if fonts haven't loaded after 8 s, dismiss the overlay anyway.
+  useEffect(() => {
+    const timeout = setTimeout(() => {
+      if (!inAppSplashDone) {
+        SplashScreen.hideAsync().catch(() => {});
         Animated.timing(splashOpacity, {
           toValue: 0,
           duration: 350,
           useNativeDriver: true,
         }).start(() => setInAppSplashDone(true));
-      }, 1400);
-      return () => clearTimeout(timer);
-    }
-  }, [fontsLoaded, fontError, splashOpacity]);
-
-  if (!fontsLoaded && !fontError) return null;
+      }
+    }, 8000);
+    return () => clearTimeout(timeout);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <ErrorBoundary>
