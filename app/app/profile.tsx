@@ -42,6 +42,20 @@ import { getUpdateDiagnosticsAsync } from "@/services/update-diagnostics";
 
 const CHANGELOG: { version: string; date: string; changes: string[] }[] = [
   {
+    version: "2.6.14",
+    date: "2026-03-28",
+    changes: [
+      "Sport UI volledig vernieuwd: wedstrijdkaarten, timeline en smart match feed",
+      "Match-detail header toont wedstrijdinfo boven de tab-balk",
+      "Teams & Standen laadt correct (grijs scherm opgelost)",
+      "Featured sectie en horizontale Smart Match Feed toegevoegd",
+      "View Full Schedule navigatie hersteld",
+      "Insights pane en matchday datum-navigatie verbeterd",
+      "Update-check verbeterd: OTA wordt eerst gecontroleerd, onafhankelijk van server",
+      "App controleert nu automatisch op updates bij elke opstart",
+    ],
+  },
+  {
     version: "2.6.0",
     date: "2026-03-26",
     changes: [
@@ -337,14 +351,9 @@ function UpdateModal({
     setChecking(true);
     setStatus("idle");
     try {
-      // Always check server for the latest APK version
-      const res = await apiRequest("GET", "/api/app-version");
-      const data = await res.json() as { version: string; apkUrl: string; directApkUrl?: string };
-      // APK installs should be compared against the installed native binary version.
-      // Using OTA/config version here can cause false "latest" on dev/test clients.
-      const installedBinaryVersion = String(Application.nativeApplicationVersion || currentVersion || "0.0.0");
-      const hasNewerApk = compareVersions(data.version, installedBinaryVersion) > 0;
-
+      // 1. Check for OTA (JS bundle) updates first — independently from the server.
+      //    Running this first ensures a network failure on the APK-version endpoint
+      //    never silently skips the OTA check.
       if (!__DEV__ && Updates.isEnabled) {
         try {
           const update = await Updates.checkForUpdateAsync();
@@ -357,7 +366,14 @@ function UpdateModal({
         } catch {}
       }
 
-      // Server has a newer version → offer APK download
+      // 2. Check server for a newer native APK version
+      const res = await apiRequest("GET", "/api/app-version");
+      const data = await res.json() as { version: string; apkUrl: string; directApkUrl?: string };
+      // Compare against the installed native binary version (not the OTA/config version)
+      // to avoid false "up to date" results on dev/test clients.
+      const installedBinaryVersion = String(Application.nativeApplicationVersion || currentVersion || "0.0.0");
+      const hasNewerApk = compareVersions(data.version, installedBinaryVersion) > 0;
+
       if (hasNewerApk) {
         setApkUrl(data.apkUrl);
         setDirectApkUrl(data.directApkUrl || "");
