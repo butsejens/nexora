@@ -843,7 +843,60 @@ export default function MatchDetailScreen() {
             <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
               <Ionicons name="chevron-back" size={22} color="#FFFFFF" />
             </TouchableOpacity>
-            {/* ...existing code for status pill and notification button... */}
+            <View style={[styles.nxStatusPill, statusMeta.tone === "live" ? styles.nxStatusPillLive : null]}>
+              {statusMeta.tone === "live" ? <View style={styles.nxStatusDot} /> : null}
+              <Text style={styles.nxStatusText}>
+                {statusMeta.minuteLabel ? `${statusMeta.label} ${statusMeta.minuteLabel}` : statusMeta.label}
+              </Text>
+            </View>
+            <TouchableOpacity
+              style={[styles.heroActionBtn, isMatchFollowed ? styles.heroActionBtnActive : null]}
+              onPress={handleToggleFollowMatch}
+              activeOpacity={0.7}
+            >
+              <Ionicons
+                name={isMatchFollowed ? "notifications" : "notifications-outline"}
+                size={20}
+                color={isMatchFollowed ? "#FFFFFF" : "rgba(255,255,255,0.7)"}
+              />
+            </TouchableOpacity>
+          </View>
+          <View style={styles.matchHeader}>
+            <View style={styles.competitionRowCenterOnly}>
+              <View style={styles.competitionCenter}>
+                {leagueLogoUri ? (
+                  <Image source={{ uri: leagueLogoUri }} style={{ width: 16, height: 16, borderRadius: 2 }} resizeMode="contain" />
+                ) : null}
+                <Text style={styles.leagueName} numberOfLines={1}>{competitionName}</Text>
+              </View>
+            </View>
+            <View style={styles.scoreRow}>
+              <TeamSide
+                name={homeTeamName}
+                logo={matchDetail?.homeTeamLogo || params.homeTeamLogo}
+                logoSize={screenWidth < 360 ? 58 : 68}
+                width={screenWidth}
+                onPress={() => router.push({ pathname: "/team-detail", params: { teamId: String((matchDetail as any)?.homeTeamId || ""), teamName: homeTeamName, espnLeague, sport: espnSport } })}
+              />
+              <View style={styles.scoreCenter}>
+                {(isLive || isFinished) ? (
+                  <Text style={[styles.score, { fontSize: scoreFontSize }]}>{liveHomeScore} - {liveAwayScore}</Text>
+                ) : (
+                  <>
+                    <Text style={styles.vsText}>VS</Text>
+                    {kickoffTime ? <Text style={styles.scheduledTime}>{kickoffTime}</Text> : null}
+                    {kickoffDate ? <Text style={styles.scheduledDate}>{kickoffDate}</Text> : null}
+                  </>
+                )}
+              </View>
+              <TeamSide
+                name={awayTeamName}
+                logo={matchDetail?.awayTeamLogo || params.awayTeamLogo}
+                logoSize={screenWidth < 360 ? 58 : 68}
+                width={screenWidth}
+                onPress={() => router.push({ pathname: "/team-detail", params: { teamId: String((matchDetail as any)?.awayTeamId || ""), teamName: awayTeamName, espnLeague, sport: espnSport } })}
+              />
+            </View>
           </View>
           { (isLive || isHalfTime) ? (
             <View style={styles.liveSignalWrap}>
