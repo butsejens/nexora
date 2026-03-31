@@ -1,5 +1,6 @@
-import React, { useMemo, useState, useCallback } from "react";
+import React, { useMemo, useState, useCallback, useRef, useEffect } from "react";
 import {
+  FlatList,
   Image,
   RefreshControl,
   ScrollView,
@@ -168,20 +169,45 @@ export default function CuratedHomeScreen() {
     }).map((entry) => entry.item).slice(0, 8);
   }, [favoriteTeamNames, preferredLeagues, replayAndHighlight.highlights]);
 
-  const heroSport = sportsEnabled ? (liveMatches[0] || upcomingMatches[0] || finishedMatches[0] || null) : null;
-  const heroMedia = moviesEnabled ? (movieRail[0] || seriesRail[0] || null) : null;
-  const heroIsSport = Boolean(heroSport);
-
-  const heroTitle = heroIsSport
-    ? `${getTeamName(heroSport?.homeTeam, "Home")} vs ${getTeamName(heroSport?.awayTeam, "Away")}`
-    : String(heroMedia?.title || "Welcome to NEXORA");
-
-  const heroMeta = heroIsSport
-    ? `Matchday Pick · ${resolveMatchCompetitionLabel(heroSport)}`
-    : `${heroMedia?.type === "series" ? "Series" : "Film"}${heroMedia?.year ? ` · ${heroMedia.year}` : ""}`;
-
-  const heroImage = heroIsSport ? null : (heroMedia?.backdrop || heroMedia?.poster || null);
   const railCardWidth = Math.round(Math.max(108, Math.min(156, screenWidth * 0.32)));
+
+  // ── Hero carousel items (sports + media, cycle every 5s) ──────────────────
+  type HeroItem =
+    | { kind: "sport"; match: any }
+    | { kind: "media"; media: any };
+
+  const heroCandidates = useMemo<HeroItem[]>(() => {
+    const items: HeroItem[] = [];
+    if (sportsEnabled) {
+      [...liveMatches, ...upcomingMatches, ...finishedMatches].slice(0, 4).forEach((match) => {
+        items.push({ kind: "sport", match });
+      });
+    }
+    if (moviesEnabled) {
+      [...movieRail, ...seriesRail].slice(0, 4).forEach((media) => {
+        items.push({ kind: "media", media });
+      });
+    }
+    if (items.length === 0) {
+      // Fallback placeholder
+      items.push({ kind: "media", media: null });
+    }
+    return items.slice(0, 6);
+  }, [liveMatches, upcomingMatches, finishedMatches, movieRail, seriesRail, sportsEnabled, moviesEnabled]);
+
+  const heroFlatListRef = useRef<FlatList<HeroItem>>(null);
+  const heroIndexRef = useRef(0);
+  const [heroPage, setHeroPage] = useState(0);
+
+  useEffect(() => {
+    if (heroCandidates.length <= 1) return;
+    const timer = setInterval(() => {
+      heroIndexRef.current = (heroIndexRef.current + 1) % heroCandidates.length;
+      heroFlatListRef.current?.scrollToIndex({ index: heroIndexRef.current, animated: true });
+      setHeroPage(heroIndexRef.current);
+    }, 5000);
+    return () => clearInterval(timer);
+  }, [heroCandidates.length]);
 
   const openReplay = (item: any, fallbackId: string) => {
     const rawUrl = String(item?.embedUrl || item?.matchUrl || item?.url || "").trim();
@@ -232,59 +258,82 @@ export default function CuratedHomeScreen() {
         contentContainerStyle={{ paddingBottom: insets.bottom + 96 }}
       >
         <View style={styles.heroWrap}>
-          <TouchableOpacity
-            activeOpacity={0.9}
-            onPress={() => {
-              if (heroIsSport && heroSport) {
-                openMatchDetail(heroSport);
-                return;
-              }
-              if (heroMedia) {
-                router.push({
-                  pathname: "/detail",
-                  params: {
-                    id: heroMedia.id,
-                    type: heroMedia.type,
-                    title: heroMedia.title,
-                    tmdbId: heroMedia.tmdbId ? String(heroMedia.tmdbId) : undefined,
-                  },
-                });
-              }
+          <FlatList<HeroItem>
+            ref={heroFlatListRef}
+            data={heroCandidates}
+            horizontal
+            pagingEnabled
+            showsHorizontalScrollIndicator={false}
+            scrollEnabled={heroCandidates.length > 1}
+            getItemLayout={(_, index) => ({ length: screenWidth - s(32), offset: (screenWidth - s(32)) * index, index })}
+            onMomentumScrollEnd={(e) => {
+              const page = Math.round(e.nativeEvent.contentOffset.x / (screenWidth - s(32)));
+              heroIndexRef.current = page;
+              setHeroPage(page);
             }}
-          >
-            <View style={styles.heroCard}>
-              {heroImage ? <Image source={{ uri: heroImage }} style={StyleSheet.absoluteFill} resizeMode="cover" /> : null}
-              {heroIsSport && heroSport ? (
-                <>
-                  {getTeamLogo(heroSport, "home") ? (
-                    <Image
-                      source={{ uri: getTeamLogo(heroSport, "home") }}
-                      style={styles.heroTeamLogoLeft}
-                      resizeMode="contain"
-                    />
-                  ) : null}
-                  {getTeamLogo(heroSport, "away") ? (
-                    <Image
-                      source={{ uri: getTeamLogo(heroSport, "away") }}
-                      style={styles.heroTeamLogoRight}
-                      resizeMode="contain"
-                    />
-                  ) : null}
-                  <LinearGradient
-                    colors={["rgba(9,24,18,0.55)", "rgba(9,9,13,0.92)"]}
-                    style={StyleSheet.absoluteFill}
-                  />
-                </>
-              ) : (
-                <LinearGradient colors={["rgba(9,9,13,0.15)", "rgba(9,9,13,0.9)"]} style={StyleSheet.absoluteFill} />
-              )}
-              <View style={styles.heroContent}>
-                <Text style={styles.heroEyebrow}>{heroIsSport ? "MATCHDAY PICK" : "CURATED PICK"}</Text>
-                <Text style={styles.heroTitle} numberOfLines={2}>{heroTitle}</Text>
-                <Text style={styles.heroMeta}>{heroMeta}</Text>
-              </View>
+            keyExtractor={(_, idx) => String(idx)}
+            renderItem={({ item }) => {
+              const isSport = item.kind === "sport";
+              const match = isSport ? item.match : null;
+              const media = isSport ? null : (item as any).media;
+              const title = isSport
+                ? `${getTeamName(match?.homeTeam, "Home")} vs ${getTeamName(match?.awayTeam, "Away")}`
+                : String(media?.title || "Welcome to NEXORA");
+              const meta = isSport
+                ? `Matchday Pick · ${resolveMatchCompetitionLabel(match)}`
+                : `${media?.type === "series" ? "Series" : "Film"}${media?.year ? ` · ${media.year}` : ""}`;
+              const img = isSport ? null : (media?.backdrop || media?.poster || null);
+              return (
+                <TouchableOpacity
+                  style={{ width: screenWidth - s(32) }}
+                  activeOpacity={0.9}
+                  onPress={() => {
+                    if (isSport && match) { openMatchDetail(match); return; }
+                    if (media) {
+                      router.push({
+                        pathname: "/detail",
+                        params: {
+                          id: media.id,
+                          type: media.type,
+                          title: media.title,
+                          tmdbId: media.tmdbId ? String(media.tmdbId) : undefined,
+                        },
+                      });
+                    }
+                  }}
+                >
+                  <View style={styles.heroCard}>
+                    {img ? <Image source={{ uri: img }} style={StyleSheet.absoluteFill} resizeMode="cover" /> : null}
+                    {isSport && match ? (
+                      <>
+                        {getTeamLogo(match, "home") ? (
+                          <Image source={{ uri: getTeamLogo(match, "home") }} style={styles.heroTeamLogoLeft} resizeMode="contain" />
+                        ) : null}
+                        {getTeamLogo(match, "away") ? (
+                          <Image source={{ uri: getTeamLogo(match, "away") }} style={styles.heroTeamLogoRight} resizeMode="contain" />
+                        ) : null}
+                        <LinearGradient colors={["rgba(9,24,18,0.55)", "rgba(9,9,13,0.92)"]} style={StyleSheet.absoluteFill} />
+                      </>
+                    ) : (
+                      <LinearGradient colors={["rgba(9,9,13,0.15)", "rgba(9,9,13,0.9)"]} style={StyleSheet.absoluteFill} />
+                    )}
+                    <View style={styles.heroContent}>
+                      <Text style={styles.heroEyebrow}>{isSport ? "MATCHDAY PICK" : "CURATED PICK"}</Text>
+                      <Text style={styles.heroTitle} numberOfLines={2}>{title}</Text>
+                      <Text style={styles.heroMeta}>{meta}</Text>
+                    </View>
+                  </View>
+                </TouchableOpacity>
+              );
+            }}
+          />
+          {heroCandidates.length > 1 ? (
+            <View style={styles.heroDots}>
+              {heroCandidates.map((_, i) => (
+                <View key={i} style={[styles.heroDot, i === heroPage && styles.heroDotActive]} />
+              ))}
             </View>
-          </TouchableOpacity>
+          ) : null}
         </View>
 
         {sportsEnabled && (
@@ -554,6 +603,24 @@ const styles = StyleSheet.create({
     opacity: 0.18,
   },
   heroContent: { padding: s(18), gap: ms(6) },
+  heroDots: {
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
+    gap: 6,
+    marginTop: 10,
+  },
+  heroDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: "rgba(255,255,255,0.25)",
+  },
+  heroDotActive: {
+    backgroundColor: COLORS.accent,
+    width: 18,
+    borderRadius: 3,
+  },
   heroEyebrow: {
     color: COLORS.accent,
     fontFamily: "Inter_700Bold",

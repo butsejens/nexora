@@ -898,44 +898,6 @@ export default function MatchDetailScreen() {
               />
             </View>
           </View>
-          { (isLive || isHalfTime) ? (
-            <View style={styles.liveSignalWrap}>
-              {keyLiveEvents.length > 0 ? (
-                <View style={styles.liveSignalCard}>
-                  <Text style={styles.liveSignalTitle}>Live Key Events</Text>
-                  {keyLiveEvents.map((event, idx) => {
-                    const minute = event.minuteLabel || "--";
-                    const token = event.filter;
-                    const side = event.side;
-                    const title = safeStr(event.title || "Event");
-                    const detail = safeStr(event.description || "");
-                    return (
-                      <View key={`${title}_${minute}_${idx}`} style={styles.liveSignalEventRow}>
-                        <Text style={styles.liveSignalMinute}>{minute || "--"}</Text>
-                        <View style={styles.liveSignalEventBody}>
-                          <Text style={styles.liveSignalEventTitle} numberOfLines={1}>{title}</Text>
-                          {detail ? <Text style={styles.liveSignalEventDetail} numberOfLines={1}>{detail}</Text> : null}
-                        </View>
-                        <View
-                          style={[
-                            styles.liveSignalTypePill,
-                            token === "goals" ? styles.liveSignalTypeGoal : null,
-                            token === "cards" ? styles.liveSignalTypeCard : null,
-                            token === "subs" ? styles.liveSignalTypeSub : null,
-                            token === "var" ? styles.liveSignalTypeVar : null,
-                            token === "key" ? styles.liveSignalTypePen : null,
-                          ]}
-                        >
-                          <Text style={styles.liveSignalTypeText}>{side === "center" ? token.toUpperCase() : side === "home" ? "HOME" : "AWAY"}</Text>
-                        </View>
-                      </View>
-                    );
-                  })}
-                </View>
-              ) : null}
-            </View>
-          ) : null}
-
           {matchDetail?.venue ? (
             <View style={styles.venueRow}> 
               <Ionicons name="location-outline" size={12} color="rgba(255,255,255,0.62)" />
@@ -979,88 +941,6 @@ export default function MatchDetailScreen() {
           </View>
         ) : null}
 
-        {(isLive || isHalfTime) ? (
-          <View style={styles.liveSignalWrap}>
-            {keyLiveEvents.length > 0 ? (
-              <View style={styles.liveSignalCard}>
-                <Text style={styles.liveSignalTitle}>Live Key Events</Text>
-                {keyLiveEvents.map((event, idx) => {
-                  const minute = event.minuteLabel || "--";
-                  const token = event.filter;
-                  const side = event.side;
-                  const title = safeStr(event.title || "Event");
-                  const detail = safeStr(event.description || "");
-                  return (
-                    <View key={`${title}_${minute}_${idx}`} style={styles.liveSignalEventRow}>
-                      <Text style={styles.liveSignalMinute}>{minute || "--"}</Text>
-                      <View style={styles.liveSignalEventBody}>
-                        <Text style={styles.liveSignalEventTitle} numberOfLines={1}>{title}</Text>
-                        {detail ? <Text style={styles.liveSignalEventDetail} numberOfLines={1}>{detail}</Text> : null}
-                      </View>
-                      <View
-                        style={[
-                          styles.liveSignalTypePill,
-                          token === "goals" ? styles.liveSignalTypeGoal : null,
-                          token === "cards" ? styles.liveSignalTypeCard : null,
-                          token === "subs" ? styles.liveSignalTypeSub : null,
-                          token === "var" ? styles.liveSignalTypeVar : null,
-                          token === "key" ? styles.liveSignalTypePen : null,
-                        ]}
-                      >
-                        <Text style={styles.liveSignalTypeText}>{side === "center" ? token.toUpperCase() : side === "home" ? "HOME" : "AWAY"}</Text>
-                      </View>
-                    </View>
-                  );
-                })}
-              </View>
-            ) : null}
-
-            <View style={styles.liveSignalCard}>
-              <Text style={styles.liveSignalTitle}>Live Match Factors</Text>
-              <View style={styles.liveFactorGrid}>
-                {liveMatchFactors.map((factor) => (
-                  <View key={factor.label} style={styles.liveFactorChip}>
-                    <Text style={styles.liveFactorLabel}>{factor.label}</Text>
-                    <Text
-                      style={[
-                        styles.liveFactorValue,
-                        factor.tone === "home" ? styles.liveFactorValueHome : null,
-                        factor.tone === "away" ? styles.liveFactorValueAway : null,
-                      ]}
-                    >
-                      {factor.value}
-                    </Text>
-                  </View>
-                ))}
-              </View>
-              {momentumTrend.length > 0 ? (
-                <View style={styles.liveTrendWrap}>
-                  <Text style={styles.liveTrendLabel}>Momentum trend</Text>
-                  <View style={styles.liveTrendBars}>
-                    {momentumTrend.map((point, idx) => {
-                      const height = Math.max(5, Math.min(22, Math.round(Math.abs(point) * 2)));
-                      const positive = point >= 0;
-                      return (
-                        <View
-                          key={`trend_${idx}`}
-                          style={[
-                            styles.liveTrendBar,
-                            {
-                              height,
-                              backgroundColor: positive ? "rgba(31,219,142,0.88)" : "rgba(62,120,255,0.88)",
-                              alignSelf: positive ? "flex-end" : "flex-start",
-                            },
-                          ]}
-                        />
-                      );
-                    })}
-                  </View>
-                </View>
-              ) : null}
-            </View>
-          </View>
-        ) : null}
-
         <View style={styles.nxTabBarWrap}>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.nxTabBarInner}>
             {EXPERIENCE_TABS.map((tab) => {
@@ -1088,6 +968,86 @@ export default function MatchDetailScreen() {
             decelerationRate="fast"
             scrollEventThrottle={16}
           >
+            {(isLive || isHalfTime) ? (
+              <View style={styles.liveSignalWrap}>
+                {keyLiveEvents.length > 0 ? (
+                  <View style={styles.liveSignalCard}>
+                    <Text style={styles.liveSignalTitle}>Live Key Events</Text>
+                    {keyLiveEvents.map((event, idx) => {
+                      const minute = event.minuteLabel || "--";
+                      const token = event.filter;
+                      const side = event.side;
+                      const title = safeStr(event.title || "Event");
+                      const detail = safeStr(event.description || "");
+                      return (
+                        <View key={`${title}_${minute}_${idx}`} style={styles.liveSignalEventRow}>
+                          <Text style={styles.liveSignalMinute}>{minute || "--"}</Text>
+                          <View style={styles.liveSignalEventBody}>
+                            <Text style={styles.liveSignalEventTitle} numberOfLines={1}>{title}</Text>
+                            {detail ? <Text style={styles.liveSignalEventDetail} numberOfLines={1}>{detail}</Text> : null}
+                          </View>
+                          <View
+                            style={[
+                              styles.liveSignalTypePill,
+                              token === "goals" ? styles.liveSignalTypeGoal : null,
+                              token === "cards" ? styles.liveSignalTypeCard : null,
+                              token === "subs" ? styles.liveSignalTypeSub : null,
+                              token === "var" ? styles.liveSignalTypeVar : null,
+                              token === "key" ? styles.liveSignalTypePen : null,
+                            ]}
+                          >
+                            <Text style={styles.liveSignalTypeText}>{side === "center" ? token.toUpperCase() : side === "home" ? "HOME" : "AWAY"}</Text>
+                          </View>
+                        </View>
+                      );
+                    })}
+                  </View>
+                ) : null}
+                <View style={styles.liveSignalCard}>
+                  <Text style={styles.liveSignalTitle}>Live Match Factors</Text>
+                  <View style={styles.liveFactorGrid}>
+                    {liveMatchFactors.map((factor) => (
+                      <View key={factor.label} style={styles.liveFactorChip}>
+                        <Text style={styles.liveFactorLabel}>{factor.label}</Text>
+                        <Text
+                          style={[
+                            styles.liveFactorValue,
+                            factor.tone === "home" ? styles.liveFactorValueHome : null,
+                            factor.tone === "away" ? styles.liveFactorValueAway : null,
+                          ]}
+                        >
+                          {factor.value}
+                        </Text>
+                      </View>
+                    ))}
+                  </View>
+                  {momentumTrend.length > 0 ? (
+                    <View style={styles.liveTrendWrap}>
+                      <Text style={styles.liveTrendLabel}>Momentum trend</Text>
+                      <View style={styles.liveTrendBars}>
+                        {momentumTrend.map((point, idx) => {
+                          const height = Math.max(5, Math.min(22, Math.round(Math.abs(point) * 2)));
+                          const positive = point >= 0;
+                          return (
+                            <View
+                              key={`trend_${idx}`}
+                              style={[
+                                styles.liveTrendBar,
+                                {
+                                  height,
+                                  backgroundColor: positive ? "rgba(31,219,142,0.88)" : "rgba(62,120,255,0.88)",
+                                  alignSelf: positive ? "flex-end" : "flex-start",
+                                },
+                              ]}
+                            />
+                          );
+                        })}
+                      </View>
+                    </View>
+                  ) : null}
+                </View>
+              </View>
+            ) : null}
             <Text style={styles.nxSectionTitle}>Match Context</Text>
             <View style={styles.nxCard}>
               <Text style={styles.nxCardKicker}>Context</Text>

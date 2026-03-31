@@ -675,8 +675,29 @@ export function VodModuleHub({ initialPane = "home", initialFilter = "all" }: Vo
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         {homeQuery.isLoading && !homeQuery.data ? (
           <View style={styles.loadingWrap}>
-            <ActivityIndicator color={COLORS.accent} />
+            <ActivityIndicator color={COLORS.accent} size="large" />
             <Text style={styles.loadingText}>Building premium catalog...</Text>
+          </View>
+        ) : null}
+
+        {/* Empty / error state — API returned but with no content */}
+        {activePane === "home" && !homeQuery.isLoading && homeSections.length === 0 && collections.length === 0 ? (
+          <View style={styles.emptyWrap}>
+            <Ionicons name="film-outline" size={52} color={COLORS.accent} style={{ opacity: 0.5 }} />
+            <Text style={styles.emptyTitle}>Catalog unavailable</Text>
+            <Text style={styles.emptyMessage}>Could not reach the server. Check your connection and try again.</Text>
+            <TouchableOpacity
+              style={styles.retryButton}
+              activeOpacity={0.8}
+              onPress={() => {
+                homeQuery.refetch();
+                curatedCollectionsQuery.refetch();
+                curatedStudiosQuery.refetch();
+              }}
+            >
+              <Ionicons name="refresh-outline" size={15} color="#fff" />
+              <Text style={styles.retryButtonText}>Try again</Text>
+            </TouchableOpacity>
           </View>
         ) : null}
 
@@ -1026,6 +1047,20 @@ const styles = StyleSheet.create({
   scrollContent: { paddingBottom: 104 },
   loadingWrap: { paddingTop: 80, alignItems: "center", gap: 12 },
   loadingText: { color: COLORS.textSecondary, fontFamily: "Inter_500Medium" },
+  emptyWrap: { paddingTop: 100, alignItems: "center", gap: 14, paddingHorizontal: 32 },
+  emptyTitle: { color: COLORS.text, fontFamily: "Inter_700Bold", fontSize: 18 },
+  emptyMessage: { color: COLORS.textSecondary, fontFamily: "Inter_500Medium", fontSize: 13, textAlign: "center" },
+  retryButton: {
+    marginTop: 8,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: COLORS.accent,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 999,
+  },
+  retryButtonText: { color: "#fff", fontFamily: "Inter_700Bold", fontSize: 13 },
   section: { marginBottom: 28 },
   sectionHeader: {
     flexDirection: "row",
@@ -1324,7 +1359,5 @@ const styles = StyleSheet.create({
     marginTop: 4,
     textTransform: "uppercase",
   },
-  emptyWrap: { paddingTop: 90, alignItems: "center", gap: 10, paddingHorizontal: 28 },
-  emptyTitle: { color: COLORS.text, fontFamily: "Inter_700Bold", fontSize: 20 },
   emptyText: { color: COLORS.textSecondary, fontFamily: "Inter_400Regular", textAlign: "center" },
 });

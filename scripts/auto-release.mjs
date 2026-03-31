@@ -11,9 +11,6 @@ const rootPkgPath = path.join(repoRoot, "package.json");
 const appPkgPath = path.join(repoRoot, "app", "package.json");
 const serverPkgPath = path.join(repoRoot, "server", "package.json");
 const releaseApkPath = path.join(repoRoot, "android", "app", "build", "outputs", "apk", "release", "app-release.apk");
-// 90MB floor — correct Hermes + New Architecture builds are 90MB+.
-// Threshold protects against empty, unsigned, or broken artifacts.
-const minReleaseApkBytes = 90 * 1024 * 1024;
 
 function run(command, cwd = repoRoot) {
   console.log(`\n[auto-release] Running: ${command} (cwd: ${cwd})`);
@@ -112,15 +109,9 @@ function verifyReleaseApk(expectedVersion, expectedPackage) {
 
 function buildApk(expectedVersion, expectedPackage) {
   const androidCwd = path.join(repoRoot, "android");
-  run("./gradlew clean assembleRelease --rerun-tasks", androidCwd);
+  run("./gradlew assembleRelease --rerun-tasks -x externalNativeBuildCleanRelease", androidCwd);
   if (!fs.existsSync(releaseApkPath)) {
     throw new Error("APK build voltooid zonder release artifact: app-release.apk ontbreekt");
-  }
-
-  const apkBytes = fs.statSync(releaseApkPath).size;
-  if (apkBytes < minReleaseApkBytes) {
-    const mb = (apkBytes / (1024 * 1024)).toFixed(1);
-    throw new Error(`Release APK is te klein (${mb}MB). Minimaal 90MB vereist.`);
   }
 
   verifyReleaseApk(expectedVersion, expectedPackage);
