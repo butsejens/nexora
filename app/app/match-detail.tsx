@@ -191,7 +191,7 @@ export default function MatchDetailScreen() {
     : paramCanonical?.status === "finished"
       ? "finished"
       : "upcoming";
-  const espnSport = "soccer";
+  const espnSport = String(params.sport || "soccer");
   const likelyInternationalFromParams = useMemo(() => {
     const rawLeague = normalizeLeague(params.league);
     if (/friendly|friendlies|international|fifa|nations|world cup|euro/.test(rawLeague)) return true;
@@ -428,8 +428,8 @@ export default function MatchDetailScreen() {
     mutationFn: () => requestPrediction("live"),
   });
 
-  const prematchInsightEnabled = !isLive && !isFinished;
-  const liveInsightEnabled = isLive || isHalfTime;
+  const prematchInsightEnabled = !isLive && !isFinished && !isPostponed;
+  const liveInsightEnabled = isLive;
   const prediction = liveInsightEnabled ? livePrediction : prematchInsightEnabled ? preMatchPrediction : null;
   const predLoading = liveInsightEnabled
     ? Boolean(livePredictionLoading && !livePrediction)
@@ -666,8 +666,6 @@ export default function MatchDetailScreen() {
       return "";
     }
   })();
-  const highlightSummary = matchDetail?.highlights || null;
-  void highlightSummary;
   const orderedTimelineEvents = timelineData.events;
   const timelineProgressMinute = Math.max(0, Math.min(120, Number(liveMinute || 0)));
   const timelineProgressPct = Math.max(0, Math.min(100, Math.round((timelineProgressMinute / 90) * 100)));
@@ -1685,9 +1683,10 @@ export default function MatchDetailScreen() {
     );
 }
 
-function TeamSide({ name, logo, onPress }: { name: string; logo?: string; onPress?: () => void }) {
-  const { width } = useWindowDimensions();
-  const logoSize = width < 360 ? 40 : width < 400 ? 46 : 52;
+function TeamSide({ name, logo, logoSize: logoSizeProp, width: widthProp, onPress }: { name: string; logo?: string; logoSize?: number; width?: number; onPress?: () => void }) {
+  const { width: windowWidth } = useWindowDimensions();
+  const width = widthProp ?? windowWidth;
+  const logoSize = logoSizeProp ?? (width < 360 ? 40 : width < 400 ? 46 : 52);
   return (
     <View style={styles.teamSideWrap}>
       <TouchableOpacity
@@ -2991,20 +2990,6 @@ function PremiumLineupFieldInner({
 }
 
 const PremiumLineupField = React.memo(PremiumLineupFieldInner);
-
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-function FormBubbles({ form }: { form: string }) {
-  return (
-    <View style={styles.formBubbles}>
-      {form.split("").slice(0, 5).map((r, i) => (
-        <View key={i} style={[styles.formBubble,
-          r === "W" ? styles.formW : r === "D" ? styles.formD : styles.formL]}>
-          <Text style={styles.formBubbleText}>{r}</Text>
-        </View>
-      ))}
-    </View>
-  );
-}
 
 function LoadingState() {
   const skeletonRows = [0, 1, 2, 3];
@@ -4668,15 +4653,6 @@ const styles = StyleSheet.create({
   factorRow: { flexDirection: "row", alignItems: "flex-start", gap: 8, paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: COLORS.border },
   factorDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: COLORS.accent, marginTop: 6 },
   factorText: { fontFamily: "Inter_400Regular", fontSize: 13, color: COLORS.text, flex: 1 },
-  formRow: { flexDirection: "row", gap: 10, flexWrap: "wrap" },
-  formCard: { backgroundColor: COLORS.card, borderRadius: 14, padding: 14, borderWidth: 1, borderColor: COLORS.border, gap: 8, flex: 1, overflow: "hidden" },
-  formTeamName: { fontFamily: "Inter_600SemiBold", fontSize: 13, color: COLORS.text },
-  formBubbles: { flexDirection: "row", gap: 4, flexWrap: "wrap" },
-  formBubble: { width: 22, height: 22, borderRadius: 11, alignItems: "center", justifyContent: "center" },
-  formW: { backgroundColor: "rgba(0,230,118,0.2)", borderWidth: 1, borderColor: COLORS.green },
-  formD: { backgroundColor: "rgba(138,157,181,0.2)", borderWidth: 1, borderColor: COLORS.textMuted },
-  formL: { backgroundColor: "rgba(255,59,48,0.2)", borderWidth: 1, borderColor: COLORS.live },
-  formBubbleText: { fontFamily: "Inter_700Bold", fontSize: 11, color: COLORS.text },
   tipCard: { flexDirection: "row", alignItems: "flex-start", gap: 10, backgroundColor: "rgba(255,215,0,0.08)", borderRadius: 14, padding: 14, borderWidth: 1, borderColor: "rgba(255,215,0,0.25)" },
   tipText: { fontFamily: "Inter_400Regular", fontSize: 13, color: COLORS.textSecondary, flex: 1, lineHeight: 20 },
   aiDisclaimer: { fontFamily: "Inter_400Regular", fontSize: 11, color: COLORS.textMuted, textAlign: "center", marginTop: 4, paddingBottom: 20 },

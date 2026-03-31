@@ -153,9 +153,18 @@ export default function CuratedHomeScreen() {
       return next;
     });
   }, []);
-  const movieRail = moviesEnabled ? (mediaData?.movies || []).slice(0, 8) : [];
-  const seriesRail = moviesEnabled ? (mediaData?.series || []).slice(0, 8) : [];
-  const releasesRail = moviesEnabled ? (mediaData?.newReleases || []).slice(0, 8) : [];
+  const movieRail = useMemo(
+    () => (moviesEnabled ? (mediaData?.movies || []).slice(0, 8) : []),
+    [moviesEnabled, mediaData?.movies],
+  );
+  const seriesRail = useMemo(
+    () => (moviesEnabled ? (mediaData?.series || []).slice(0, 8) : []),
+    [moviesEnabled, mediaData?.series],
+  );
+  const releasesRail = useMemo(
+    () => (moviesEnabled ? (mediaData?.newReleases || []).slice(0, 8) : []),
+    [moviesEnabled, mediaData?.newReleases],
+  );
   const replayAndHighlight = useMemo(
     () => splitReplayAndHighlightItems(sportsEnabled ? (highlightsQuery.data || []) : []),
     [highlightsQuery.data, sportsEnabled],
@@ -381,7 +390,7 @@ export default function CuratedHomeScreen() {
                   </View>
                 ))}
               </ScrollView>
-            ) : <Text style={styles.emptyText}>{sportsQuery.isLoading ? "Wedstrijden laden..." : "Geen wedstrijden gevonden voor vandaag."}</Text>}
+            ) : <Text style={styles.emptyText}>{sportsQuery.isLoading ? "Loading matches..." : "No matches found for today."}</Text>}
           </View>
         )}
 

@@ -517,7 +517,13 @@ export const queryClient = new QueryClient({
       queryFn: getQueryFn({ on401: "throw" }),
       refetchInterval: false,
       refetchOnWindowFocus: false,
+      // Data is never considered stale in-session; screens revalidate
+      // explicitly via invalidateQueries or per-query staleTime overrides.
       staleTime: Infinity,
+      // Keep inactive queries alive in memory for 30 minutes.
+      // Default is 5 min — too aggressive for mobile where screens are
+      // mounted/unmounted frequently during navigation.
+      gcTime: 30 * 60 * 1000,
       retry: 1,
       retryDelay: (attempt) => Math.min(2000 * 2 ** attempt, 10000),
     },

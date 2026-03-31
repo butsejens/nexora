@@ -24,6 +24,8 @@ import { useFollowState } from "@/context/UserStateContext";
 import {
   LiveMatchCard,
   UpcomingMatchCard,
+  FinishedMatchCard,
+  SkeletonMatchCard,
 } from "@/components/sports/SportCards";
 import { resolveMatchCompetitionLabel, resolveMatchEspnLeagueCode } from "@/lib/sports-competition";
 import { loadMatchInteractions, rankMatchesForUser, recordMatchInteraction } from "@/lib/ai";
@@ -48,15 +50,15 @@ type SportsPayload = {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 const DS = {
-  bg: "#09090D",
-  card: "#12121A",
-  elevated: "#1C1C28",
-  accent: "#4CAF82",
-  live: "#FF3040",
-  text: "#FFFFFF",
-  muted: "#9D9DAA",
-  border: "rgba(255,255,255,0.08)",
-  glass: "rgba(28,28,40,0.92)",
+  bg:       "#050505",
+  card:     "#0B0F1A",
+  elevated: "#12192A",
+  accent:   "#E50914",
+  live:     "#22C55E",
+  text:     "#FFFFFF",
+  muted:    "#71717A",
+  border:   "#1F2937",
+  glass:    "rgba(11,15,26,0.92)",
 };
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -430,7 +432,6 @@ function ExplorePane({ liveMatches, upcomingMatches, rankedFeed, isLoading, onOp
     return acc;
   }, {} as Record<string, any[]>);
 
-  // Sort leagues by number of matches and convert to proper types
   const sortedLeagues: [string, any[]][] = Object.entries(upcomingByLeague)
     .sort((a, b) => {
       const lenA = Array.isArray(a[1]) ? a[1].length : 0;
@@ -440,41 +441,53 @@ function ExplorePane({ liveMatches, upcomingMatches, rankedFeed, isLoading, onOp
     .slice(0, 3)
     .map(([league, matches]) => [league, Array.isArray(matches) ? matches : []]);
 
-  // Featured match = first live match, or first upcoming
   const featuredMatch = rankedFeed[0]?.match || liveMatches[0] || upcomingMatches[0];
+
+  if (isLoading) {
+    return (
+      <View style={{ paddingBottom: 40 }}>
+        <SectionTitle title={t("sportsHome.explore")} />
+        <View style={styles.matchList}>
+          <SkeletonMatchCard />
+          <SkeletonMatchCard />
+          <SkeletonMatchCard />
+        </View>
+      </View>
+    );
+  }
+
+  if (liveMatches.length === 0 && upcomingMatches.length === 0) {
+    return (
+      <View style={{ paddingBottom: 40 }}>
+        <SectionTitle title={t("sportsHome.explore")} />
+        <EmptyState icon="football-outline" title={t("sportsHome.exploreSports")} />
+      </View>
+    );
+  }
 
   return (
     <View style={{ paddingBottom: 40 }}>
-      <SectionTitle title={t("sportsHome.explore")} />
-
-      {/* Summary Cards */}
+      {/* Summary stat chips */}
       <View style={styles.exploreSummary}>
-        <View style={styles.exploreSummaryCard}>
-          <Text style={styles.exploreSummaryLabel}>Live</Text>
+        <View style={[styles.exploreSummaryCard, styles.exploreSummaryLive]}>
+          <View style={styles.exploreSummaryLiveDot} />
           <Text style={styles.exploreSummaryValue}>{liveMatches.length}</Text>
+          <Text style={styles.exploreSummaryLabel}>Live</Text>
         </View>
         <View style={styles.exploreSummaryCard}>
-          <Text style={styles.exploreSummaryLabel}>Today</Text>
+          <Ionicons name="calendar-outline" size={14} color={DS.muted} style={{ marginBottom: 2 }} />
           <Text style={styles.exploreSummaryValue}>{upcomingMatches.length}</Text>
+          <Text style={styles.exploreSummaryLabel}>Today</Text>
+        </View>
+        <View style={styles.exploreSummaryCard}>
+          <Ionicons name="trophy-outline" size={14} color={DS.muted} style={{ marginBottom: 2 }} />
+          <Text style={styles.exploreSummaryValue}>{sortedLeagues.length}</Text>
+          <Text style={styles.exploreSummaryLabel}>Leagues</Text>
         </View>
       </View>
 
-      {/* Loading State */}
-      {isLoading ? (
-        <View style={{ paddingHorizontal: 18, paddingVertical: 12 }}>
-          <Text style={styles.placeholderText}>Loading football data...</Text>
-        </View>
-      ) : null}
-
-      {/* Empty State */}
-      {!isLoading && liveMatches.length === 0 && upcomingMatches.length === 0 ? (
-        <View style={{ paddingHorizontal: 18, paddingVertical: 12 }}>
-          <Text style={styles.placeholderText}>{t("sportsHome.exploreSports")}</Text>
-        </View>
-      ) : null}
-
-      {/* Featured Match - if available */}
-      {!isLoading && featuredMatch ? (
+      {/* Featured Match */}
+      {featuredMatch ? (
         <>
           <SectionTitle title="Featured" />
           <View style={styles.matchList}>
@@ -487,25 +500,36 @@ function ExplorePane({ liveMatches, upcomingMatches, rankedFeed, isLoading, onOp
         </>
       ) : null}
 
-      {!isLoading && rankedFeed.length > 0 ? (
+      {/* Smart Match Feed */}
+      {rankedFeed.length > 0 ? (
         <>
-          <SectionTitle title="Smart Match Feed" count={rankedFeed.length} />
+          <SectionTitle title="Smart Feed" count={rankedFeed.length} />
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
-            contentContainerStyle={{ paddingHorizontal: 18, gap: 12, paddingBottom: 4 }}
+            contentContainerStyle={{ paddingHorizontal: 18, gap: 10, paddingBottom: 4 }}
           >
             {rankedFeed.slice(0, 6).map((entry, idx) => (
-              <View key={`${String(entry?.match?.id || idx)}_smart`} style={{ width: 280 }}>
+              <View key={`${String(entry?.match?.id || idx)}_smart`} style={{ width: 270 }}>
                 <UpcomingMatchCard
                   match={entry.match}
                   onPress={() => onOpenMatch(entry.match)}
                 />
                 <View style={styles.smartTagsRow}>
-                  {entry.isTrending ? <Text style={styles.smartTag}>Trending</Text> : null}
-                  {entry.isUpsetPotential ? <Text style={styles.smartTag}>Upset</Text> : null}
-                  {(entry.reasons || []).slice(0, 2).map((reason, reasonIdx) => (
-                    <Text key={`${reason}_${reasonIdx}`} style={styles.smartTag}>{reason}</Text>
+                  {entry.isTrending ? (
+                    <View style={[styles.smartBadge, styles.smartBadgeFire]}>
+                      <Ionicons name="flame" size={10} color="#FF6B35" />
+                    </View>
+                  ) : null}
+                  {entry.isUpsetPotential ? (
+                    <View style={[styles.smartBadge, styles.smartBadgeAlert]}>
+                      <Ionicons name="flash" size={10} color="#FFB300" />
+                    </View>
+                  ) : null}
+                  {(entry.reasons || []).slice(0, 2).map((reason, ri) => (
+                    <View key={`${reason}_${ri}`} style={styles.smartTagChip}>
+                      <Text style={styles.smartTagText}>{reason}</Text>
+                    </View>
                   ))}
                 </View>
               </View>
@@ -515,12 +539,12 @@ function ExplorePane({ liveMatches, upcomingMatches, rankedFeed, isLoading, onOp
       ) : null}
 
       {/* Matches by League */}
-      {!isLoading && sortedLeagues.length > 0 ? (
+      {sortedLeagues.length > 0 ? (
         <>
           {sortedLeagues.map(([league, leagueMatches]) => (
             <View key={league}>
-              <SectionTitle 
-                title={league || "Other Competitions"} 
+              <SectionTitle
+                title={league || "Other Competitions"}
                 count={Array.isArray(leagueMatches) ? leagueMatches.length : 0}
               />
               <View style={styles.matchList}>
@@ -537,14 +561,15 @@ function ExplorePane({ liveMatches, upcomingMatches, rankedFeed, isLoading, onOp
         </>
       ) : null}
 
-      {/* View All Link */}
-      {!isLoading && (upcomingMatches.length > 3 || liveMatches.length > 0) ? (
-        <TouchableOpacity 
+      {(upcomingMatches.length > 3 || liveMatches.length > 0) ? (
+        <TouchableOpacity
           style={styles.viewAllButton}
           onPress={onViewSchedule}
           activeOpacity={0.7}
         >
-          <Text style={styles.viewAllText}>View Full Schedule →</Text>
+          <Ionicons name="calendar-outline" size={14} color={DS.accent} />
+          <Text style={styles.viewAllText}>Full Schedule</Text>
+          <Ionicons name="chevron-forward" size={14} color={DS.accent} />
         </TouchableOpacity>
       ) : null}
     </View>
@@ -563,7 +588,7 @@ function LivePane({ matches, onOpenMatch }: LivePaneProps) {
     return (
       <View style={{ paddingBottom: 40 }}>
         <SectionTitle title={t("sportsHome.live")} />
-        <EmptyState icon="football-outline" title={t("sportsHome.noLiveMatches")} />
+        <EmptyState icon="radio-outline" title={t("sportsHome.noLiveMatches")} />
       </View>
     );
   }
@@ -647,13 +672,26 @@ function MatchdayPane({ matches, onOpenMatch, selectedDate, onDateChange }: Matc
           <View style={styles.matchList}>
             {matches.map((match, idx) => {
               const isLive = match?.status === "live" || (match?.minute != null && match?.minute !== "");
-              return isLive ? (
-                <LiveMatchCard
-                  key={`${match.id}-${idx}`}
-                  match={match}
-                  onPress={() => onOpenMatch(match)}
-                />
-              ) : (
+              const isFinished = match?.status === "finished" || match?.status === "ft" || match?.status === "post";
+              if (isLive) {
+                return (
+                  <LiveMatchCard
+                    key={`${match.id}-${idx}`}
+                    match={match}
+                    onPress={() => onOpenMatch(match)}
+                  />
+                );
+              }
+              if (isFinished) {
+                return (
+                  <FinishedMatchCard
+                    key={`${match.id}-${idx}`}
+                    match={match}
+                    onPress={() => onOpenMatch(match)}
+                  />
+                );
+              }
+              return (
                 <UpcomingMatchCard
                   key={`${match.id}-${idx}`}
                   match={match}
@@ -672,78 +710,65 @@ function InsightsPane({ rankedFeed, onOpenMatch }: { rankedFeed: { match: any; r
   return (
     <View style={{ paddingBottom: 40 }}>
       <SectionTitle title="Insights" />
-      <View style={{ paddingHorizontal: 18, paddingBottom: 8 }}>
+
+      {/* Highlights shortcut */}
+      <View style={{ paddingHorizontal: 18, paddingBottom: 4 }}>
         <TouchableOpacity style={styles.highlightsButton} onPress={() => router.push("/highlights")} activeOpacity={0.8}>
-          <Ionicons name="flash-outline" size={14} color={DS.bg} />
-          <Text style={styles.highlightsButtonText}>Open Auto Highlights Feed</Text>
+          <Ionicons name="flash" size={13} color="#050505" />
+          <Text style={styles.highlightsButtonText}>Auto Highlights</Text>
         </TouchableOpacity>
       </View>
+
       {rankedFeed.length > 0 ? (
         <>
-          <SectionTitle title="AI Match Picks" count={rankedFeed.length} />
+          <SectionTitle title="Smart Picks" count={rankedFeed.length} />
           <View style={styles.matchList}>
-            {rankedFeed.map((entry, idx) => {
-              // Derive a pseudo win-probability from ranking position & upset flag
-              const rankWeight = Math.max(0, 1 - idx * 0.12);
-              const homeWin = entry.isUpsetPotential
-                ? Math.round(28 + rankWeight * 22)
-                : Math.round(44 + rankWeight * 18);
-              const awayWin = entry.isUpsetPotential
-                ? Math.round(42 + rankWeight * 20)
-                : Math.round(22 + rankWeight * 14);
-              const draw = Math.max(5, 100 - homeWin - awayWin);
-              const homeW = Math.min(homeWin, 100 - draw - 5);
-              const awayW = Math.min(awayWin, 100 - draw - 5);
-              const drawW = 100 - homeW - awayW;
-              const pick = homeW >= awayW + 8 ? "Home win" : awayW >= homeW + 8 ? "Away win" : "Draw likely";
-
-              return (
-                <View key={`${String(entry?.match?.id || idx)}_insight`}>
-                  <UpcomingMatchCard
-                    match={entry.match}
-                    onPress={() => onOpenMatch(entry.match)}
-                  />
-                  {/* AI Prediction Card */}
-                  <View style={styles.aiPredCard}>
-                    <Text style={styles.aiPredKicker}>⚡ AI PREDICTION</Text>
-                    <Text style={styles.aiPredPick}>{pick}</Text>
-                    {/* probability bar */}
-                    <View style={styles.aiProbRow}>
-                      <View style={[styles.aiProbSegHome, { flex: homeW }]} />
-                      <View style={[styles.aiProbSegDraw, { flex: drawW }]} />
-                      <View style={[styles.aiProbSegAway, { flex: awayW }]} />
-                    </View>
-                    <View style={styles.aiProbLabels}>
-                      <Text style={styles.aiProbLabel}>{homeW}% H</Text>
-                      <Text style={styles.aiProbLabelCenter}>{drawW}% D</Text>
-                      <Text style={styles.aiProbLabel}>{awayW}% A</Text>
-                    </View>
-                  </View>
+            {rankedFeed.map((entry, idx) => (
+              <View key={`${String(entry?.match?.id || idx)}_insight`}>
+                <UpcomingMatchCard
+                  match={entry.match}
+                  onPress={() => onOpenMatch(entry.match)}
+                />
+                {(entry.isTrending || entry.isUpsetPotential || entry.reasons?.length > 0) && (
                   <View style={styles.smartTagsRow}>
-                    {entry.isTrending ? <Text style={styles.smartTag}>🔥 Trending</Text> : null}
-                    {entry.isUpsetPotential ? <Text style={styles.smartTag}>⚡ Upset Alert</Text> : null}
-                    {(entry.reasons || []).slice(0, 3).map((reason, reasonIdx) => (
-                      <Text key={`${reason}_${reasonIdx}`} style={styles.smartTag}>{reason}</Text>
+                    {entry.isTrending ? (
+                      <View style={[styles.smartBadge, styles.smartBadgeFire]}>
+                        <Ionicons name="flame" size={10} color="#FF6B35" />
+                        <Text style={[styles.smartTagText, { color: "#FF6B35" }]}>Trending</Text>
+                      </View>
+                    ) : null}
+                    {entry.isUpsetPotential ? (
+                      <View style={[styles.smartBadge, styles.smartBadgeAlert]}>
+                        <Ionicons name="flash" size={10} color="#FFB300" />
+                        <Text style={[styles.smartTagText, { color: "#FFB300" }]}>Upset Alert</Text>
+                      </View>
+                    ) : null}
+                    {(entry.reasons || []).slice(0, 2).map((reason, reasonIdx) => (
+                      <View key={`${reason}_${reasonIdx}`} style={styles.smartBadge}>
+                        <Text style={styles.smartTagText}>{reason}</Text>
+                      </View>
                     ))}
                   </View>
-                </View>
-              );
-            })}
+                )}
+              </View>
+            ))}
           </View>
         </>
       ) : (
-        <View style={{ paddingHorizontal: 18, paddingVertical: 20 }}>
-          <Text style={styles.placeholderText}>AI modules live: ranking, momentum, match story and smart notifications.</Text>
-        </View>
+        <EmptyState icon="bar-chart-outline" title="AI modules active — ranking, momentum, match story" />
       )}
     </View>
   );
 }
 
 function TeamsPane() {
+  const selectedCompetitions = useOnboardingStore((s) => s.selectedCompetitions);
+  const preferred = selectedCompetitions.find((c) => c.espnLeague) ?? null;
+  const espnLeague = preferred?.espnLeague ?? "ned.1";
+  const sport = preferred?.sport ?? "soccer";
   const { data, isLoading, error, refetch } = useQuery({
-    queryKey: ["sports", "teams", "ned.1"],
-    queryFn: () => getCompetitionTeams({ espnLeague: "ned.1" }),
+    queryKey: ["sports", "teams", espnLeague],
+    queryFn: () => getCompetitionTeams({ espnLeague }),
     staleTime: 5 * 60_000,
     gcTime: 10 * 60_000,
     retry: 1,
@@ -773,7 +798,7 @@ function TeamsPane() {
           <TouchableOpacity
             key={team.id}
             style={styles.teamCard}
-            onPress={() => router.push({ pathname: "/team-detail", params: { teamId: team.id, teamName: team.name, espnLeague: "ned.1", sport: "soccer" } })}
+            onPress={() => router.push({ pathname: "/team-detail", params: { teamId: team.id, teamName: team.name, espnLeague, sport } })}
             activeOpacity={0.82}
           >
             {team.logo ? (
@@ -792,9 +817,12 @@ function TeamsPane() {
 }
 
 function StandingsPane() {
+  const selectedCompetitions = useOnboardingStore((s) => s.selectedCompetitions);
+  const preferred = selectedCompetitions.find((c) => c.espnLeague) ?? null;
+  const espnLeague = preferred?.espnLeague ?? "ned.1";
   const { data, isLoading, error, refetch } = useQuery({
-    queryKey: ["sports", "standings", "ned.1"],
-    queryFn: () => getCompetitionStandings({ espnLeague: "ned.1" }),
+    queryKey: ["sports", "standings", espnLeague],
+    queryFn: () => getCompetitionStandings({ espnLeague }),
     staleTime: 5 * 60_000,
     gcTime: 10 * 60_000,
     retry: 1,
@@ -840,10 +868,6 @@ function StandingsPane() {
     </View>
   );
 }
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// CARD COMPONENTS (DEPRECATED - MOVED TO SportCards.tsx)
-// ═══════════════════════════════════════════════════════════════════════════════
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // UTILITY COMPONENTS
@@ -895,14 +919,14 @@ const styles = StyleSheet.create({
   },
   bgGlow: {
     position: "absolute",
-    top: 0,
+    top: -80,
     left: "50%",
-    width: 400,
-    height: 400,
-    borderRadius: 200,
-    backgroundColor: "rgba(76,175,130,0.08)",
-    transform: [{ translateX: -200 }],
-    zIndex: 1,
+    width: 340,
+    height: 340,
+    borderRadius: 170,
+    backgroundColor: "rgba(229,9,20,0.06)",
+    transform: [{ translateX: -170 }],
+    zIndex: 0,
   },
 
   // ─────────────────────────────────────────────────────────────────────────────
@@ -989,12 +1013,12 @@ const styles = StyleSheet.create({
     fontFamily: "Inter_800ExtraBold",
   },
   countBadge: {
-    backgroundColor: "rgba(76,175,130,0.15)",
+    backgroundColor: "rgba(229,9,20,0.12)",
     borderRadius: 12,
     paddingHorizontal: 8,
     paddingVertical: 2,
     borderWidth: 1,
-    borderColor: "rgba(76,175,130,0.3)",
+    borderColor: "rgba(229,9,20,0.25)",
     marginLeft: 8,
   },
   countText: {
@@ -1013,28 +1037,47 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   smartTagsRow: {
-    marginTop: -2,
-    marginBottom: 8,
+    marginTop: -4,
+    marginBottom: 6,
     paddingLeft: 2,
     flexDirection: "row",
     flexWrap: "wrap",
     gap: 6,
   },
-  smartTag: {
-    color: "rgba(255,255,255,0.85)",
-    fontSize: 10,
-    fontFamily: "Inter_600SemiBold",
+  smartBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
     borderRadius: 999,
     borderWidth: 1,
-    borderColor: "rgba(229,9,20,0.3)",
-    backgroundColor: "rgba(229,9,20,0.16)",
     paddingHorizontal: 8,
     paddingVertical: 4,
+  },
+  smartBadgeFire: {
+    borderColor: "rgba(255,107,53,0.3)",
+    backgroundColor: "rgba(255,107,53,0.10)",
+  },
+  smartBadgeAlert: {
+    borderColor: "rgba(255,179,0,0.3)",
+    backgroundColor: "rgba(255,179,0,0.10)",
+  },
+  smartTagChip: {
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: "rgba(229,9,20,0.25)",
+    backgroundColor: "rgba(229,9,20,0.10)",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  smartTagText: {
+    fontSize: 10,
+    fontFamily: "Inter_600SemiBold",
+    color: "rgba(255,255,255,0.75)",
   },
   exploreSummary: {
     paddingHorizontal: 18,
     flexDirection: "row",
-    gap: 10,
+    gap: 8,
     marginBottom: 12,
   },
   exploreSummaryCard: {
@@ -1043,16 +1086,28 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     borderWidth: 1,
     borderColor: DS.border,
-    paddingHorizontal: 14,
+    paddingHorizontal: 10,
     paddingVertical: 12,
+    alignItems: "center",
+    gap: 2,
+  },
+  exploreSummaryLive: {
+    borderColor: "rgba(34,197,94,0.25)",
+    backgroundColor: "rgba(34,197,94,0.06)",
+  },
+  exploreSummaryLiveDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: "#22C55E",
+    marginBottom: 2,
   },
   exploreSummaryLabel: {
-    fontSize: 12,
+    fontSize: 10,
     color: DS.muted,
-    fontFamily: "Inter_600SemiBold",
+    fontFamily: "Inter_500Medium",
   },
   exploreSummaryValue: {
-    marginTop: 6,
     fontSize: 20,
     color: DS.text,
     fontFamily: "Inter_800ExtraBold",
@@ -1121,65 +1176,6 @@ const styles = StyleSheet.create({
     fontSize: 11,
   },
 
-  // AI Prediction Card
-  aiPredCard: {
-    marginTop: -4,
-    marginBottom: 6,
-    marginHorizontal: 2,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: "rgba(76,175,130,0.22)",
-    backgroundColor: "rgba(76,175,130,0.08)",
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    gap: 6,
-  },
-  aiPredKicker: {
-    color: DS.accent,
-    fontFamily: "Inter_700Bold",
-    fontSize: 9,
-    letterSpacing: 1.1,
-  },
-  aiPredPick: {
-    color: DS.text,
-    fontFamily: "Inter_700Bold",
-    fontSize: 13,
-  },
-  aiProbRow: {
-    flexDirection: "row",
-    height: 6,
-    borderRadius: 3,
-    overflow: "hidden",
-    gap: 1,
-  },
-  aiProbSegHome: {
-    backgroundColor: DS.accent,
-    borderRadius: 3,
-  },
-  aiProbSegDraw: {
-    backgroundColor: "rgba(255,255,255,0.22)",
-    borderRadius: 2,
-  },
-  aiProbSegAway: {
-    backgroundColor: "rgba(229,9,20,0.7)",
-    borderRadius: 3,
-  },
-  aiProbLabels: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-  },
-  aiProbLabel: {
-    color: DS.muted,
-    fontFamily: "Inter_600SemiBold",
-    fontSize: 10,
-  },
-  aiProbLabelCenter: {
-    color: DS.muted,
-    fontFamily: "Inter_600SemiBold",
-    fontSize: 10,
-    textAlign: "center",
-  },
-
   // ─────────────────────────────────────────────────────────────────────────────
   // DISABLED STATE
   // ─────────────────────────────────────────────────────────────────────────────
@@ -1229,15 +1225,18 @@ const styles = StyleSheet.create({
     marginTop: 16,
     marginHorizontal: 18,
     paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderRadius: 10,
+    paddingVertical: 13,
+    borderRadius: 12,
     borderWidth: 1,
-    borderColor: DS.accent,
+    borderColor: "rgba(229,9,20,0.30)",
+    backgroundColor: "rgba(229,9,20,0.06)",
+    flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
+    gap: 6,
   },
   viewAllText: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: "600",
     color: DS.accent,
     fontFamily: "Inter_600SemiBold",

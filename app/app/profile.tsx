@@ -953,7 +953,7 @@ const [showAddPlaylist, setShowAddPlaylist] = useState(false);
         const errData = await res.json().catch(() => ({}));
         throw new Error(errData.error || `Server error ${res.status}`);
       } catch (serverErr: any) {
-        console.log("Server-side Xtream failed, trying direct URL:", serverErr.message);
+        void serverErr;
       }
 
       // Fallback: direct URL method
@@ -992,7 +992,7 @@ const [showAddPlaylist, setShowAddPlaylist] = useState(false);
         setTimeout(() => setProgressVisible(false), 600);
         return;
       } catch (serverErr: any) {
-        console.log("Server-side fetch failed, trying client-side XHR:", serverErr.message);
+        void serverErr;
       }
 
       // Second try: direct XHR from client (bypasses server, works for many IPTV providers)

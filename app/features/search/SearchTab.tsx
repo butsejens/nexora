@@ -244,8 +244,19 @@ export function SearchTab({ onSelectResult }: SearchTabProps) {
         const movies = await apiRequestJson<any>('/api/movies/trending');
         const series = await apiRequestJson<any>('/api/series/trending');
         return {
-          movies: movies?.results || [],
-          series: series?.results || [],
+          // Server returns { trending, popular, newReleases, topRated } — no `results` key
+          movies: [
+            ...(movies?.trending || []),
+            ...(movies?.popular || []),
+            ...(movies?.newReleases || []),
+            ...(movies?.topRated || []),
+          ],
+          series: [
+            ...(series?.trending || []),
+            ...(series?.popular || []),
+            ...(series?.newReleases || []),
+            ...(series?.topRated || []),
+          ],
         };
       } catch {
         return { movies: [], series: [] };
@@ -363,31 +374,36 @@ export function SearchTab({ onSelectResult }: SearchTabProps) {
     const items: SearchResult[] = [];
     const data = (debouncedQuery.length >= 2 ? mediaSearchQuery.data : mediaQuery.data) || { movies: [], series: [] };
 
-    // Movies
+    // Movies — server mapTrendingItem already builds full `poster` URLs; fall back to
+    // constructing from poster_path for any items from other sources.
     (data.movies || []).slice(0, 80).forEach((movie: any) => {
       items.push({
         id: String(movie.id),
         title: movie.title || movie.name || '',
         type: 'movie',
-        poster: movie.poster_path
-          ? `https://image.tmdb.org/t/p/w342${movie.poster_path}`
-          : (movie.backdrop_path ? `https://image.tmdb.org/t/p/w342${movie.backdrop_path}` : undefined),
-        rating: movie.vote_average,
-        subtitle: String(movie.release_date || '').slice(0, 4),
+        poster: movie.poster
+          || (movie.poster_path ? `https://image.tmdb.org/t/p/w342${movie.poster_path}` : undefined)
+          || (movie.backdrop_path ? `https://image.tmdb.org/t/p/w342${movie.backdrop_path}` : undefined)
+          || movie.backdrop
+          || undefined,
+        rating: movie.vote_average ?? movie.imdb ?? undefined,
+        subtitle: String(movie.release_date || movie.releaseDate || movie.year || '').slice(0, 4),
       });
     });
 
-    // Series
+    // Series — same poster resolution strategy
     (data.series || []).slice(0, 80).forEach((show: any) => {
       items.push({
         id: String(show.id),
         title: show.name || show.title || '',
         type: 'series',
-        poster: show.poster_path
-          ? `https://image.tmdb.org/t/p/w342${show.poster_path}`
-          : (show.backdrop_path ? `https://image.tmdb.org/t/p/w342${show.backdrop_path}` : undefined),
-        rating: show.vote_average,
-        subtitle: String(show.first_air_date || '').slice(0, 4) || 'TV Series',
+        poster: show.poster
+          || (show.poster_path ? `https://image.tmdb.org/t/p/w342${show.poster_path}` : undefined)
+          || (show.backdrop_path ? `https://image.tmdb.org/t/p/w342${show.backdrop_path}` : undefined)
+          || show.backdrop
+          || undefined,
+        rating: show.vote_average ?? show.imdb ?? undefined,
+        subtitle: String(show.first_air_date || show.releaseDate || show.year || '').slice(0, 4) || 'TV Series',
       });
     });
 

@@ -3,7 +3,17 @@ name: Android APK Build
 on:
   push:
     branches: [main]
+    paths:
+      - 'app/**'
+      - 'android/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/android-apk.yml'
   workflow_dispatch:
+
+concurrency:
+  group: android-apk-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: write   # required to create/update GitHub Releases
@@ -15,7 +25,6 @@ jobs:
     timeout-minutes: 90
 
     env:
-      # Both names are used by different Android tooling versions
       ANDROID_HOME: /usr/local/lib/android/sdk
       ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
 

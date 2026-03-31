@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from "react";
-import { View, Text, StyleSheet, Image } from "react-native";
+import { View, Text, StyleSheet } from "react-native";
+import { Image as ExpoImage } from "expo-image";
 import { COLORS } from "@/constants/colors";
 import { getInitials, resolveTeamLogoUri, sanitizeRemoteLogoUri } from "@/lib/logo-manager";
 
@@ -30,16 +31,16 @@ export const TeamLogo = React.memo(function TeamLogo({
   
   const initials = useMemo(() => getInitials(teamName, 2), [teamName]);
 
+  // For local (bundled) images use the numeric require() id; for remote URLs use
+  // the uri string. expo-image handles both and adds disk caching for remote URLs.
   const imageSource =
     resolved != null
       ? typeof resolved === "number"
         ? resolved
-        : sanitizeRemoteLogoUri(resolved as string)
-          ? { uri: sanitizeRemoteLogoUri(resolved as string) as string }
-          : null
+        : sanitizeRemoteLogoUri(resolved as string) || null
       : null;
 
-  const showImage = imageSource && !(!imageLoaded && failCount > 0);
+  const showImage = imageSource != null && !(!imageLoaded && failCount > 0);
 
   return (
     <View
@@ -64,17 +65,19 @@ export const TeamLogo = React.memo(function TeamLogo({
         {initials}
       </Text>
 
-      {/* Logo image */}
+      {/* Logo image — expo-image caches remote logos to disk so they are not
+          re-downloaded on every session (unlike the plain RN Image component). */}
       {showImage ? (
-        <Image
-          source={imageSource as any}
+        <ExpoImage
+          source={typeof imageSource === "number" ? imageSource : { uri: imageSource as string }}
           style={{
             width: size,
             height: size,
             position: "absolute",
             borderRadius: size * 0.18,
           }}
-          resizeMode="center"
+          contentFit="contain"
+          cachePolicy="disk"
           onLoad={() => setImageLoaded(true)}
           onError={() => {
             setFailCount((c) => Math.min(c + 1, maxFails));
