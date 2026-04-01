@@ -5209,8 +5209,10 @@ app.get("/api/download/apk", async (req, res) => {
     const vf = join(__dirname, "app-version.json");
     if (existsSync(vf)) {
       const data = JSON.parse(readFileSync(vf, "utf8"));
-      if (data.apkUrl) {
-        return res.redirect(302, data.apkUrl);
+      const fallbackUrl = String(data.apkUrl || "").trim();
+      // Guard against redirect loops when apkUrl already points to this API route.
+      if (fallbackUrl && !/\/api\/download\/apk\/?$/i.test(fallbackUrl)) {
+        return res.redirect(302, fallbackUrl);
       }
     }
   } catch (err) {
