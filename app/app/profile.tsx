@@ -406,8 +406,8 @@ function UpdateModal({
   };
 
   const handleDownload = async () => {
-    // Prefer direct GitHub URL to avoid extra redirect hops through Render.
-    const url = directApkUrl || apkUrl;
+    // Prefer Render API URL so in-app updates are controlled by the backend.
+    const url = apkUrl || directApkUrl;
     if (!url) return;
     const normalized = url.replace(/^http:\/\//i, "https://");
 

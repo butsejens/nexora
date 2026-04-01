@@ -35,7 +35,7 @@ async function redisSet(key, value, ttlMs) {
 import fetch from "node-fetch";
 import { fileURLToPath } from "url";
 import { dirname, join } from "path";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "fs";
 import crypto from "crypto";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -5146,8 +5146,28 @@ app.get("/health", (req, res) => {
   res.json({ ok: true, time: new Date().toISOString(), source: footballSource(), tz: TZ, aiReady, integrationsReady: { zilliz: _zillizReady } });
 });
 
+function getHostedApkInfo() {
+  const downloadsDir = join(__dirname, "public", "downloads");
+  if (!existsSync(downloadsDir)) return null;
+
+  const apks = readdirSync(downloadsDir)
+    .filter((name) => /\.apk$/i.test(name))
+    .map((name) => {
+      const fullPath = join(downloadsDir, name);
+      const stats = statSync(fullPath);
+      return {
+        name,
+        fullPath,
+        mtimeMs: Number(stats.mtimeMs || 0),
+      };
+    })
+    .sort((a, b) => b.mtimeMs - a.mtimeMs);
+
+  return apks[0] || null;
+}
+
 // ── App version / update check ────────────────────────────────────────────────
-// Update server/app-version.json when you build a new APK (apkUrl is written by auto-release).
+// Update server/app-version.json when you publish a new native version.
 app.get("/api/app-version", (req, res) => {
   let version = "1.5.0";
   let storedApkUrl = null;
@@ -5163,15 +5183,29 @@ app.get("/api/app-version", (req, res) => {
   const isCloudHost = String(req.headers["x-forwarded-host"] || req.get("host") || "").includes("onrender.com");
   const proto = forwardedProto || (isCloudHost ? "https" : req.protocol);
   const host  = req.headers["x-forwarded-host"]  || req.get("host");
-  // Return the direct GitHub URL so the app can download without redirect hops.
-  const apkUrl = storedApkUrl || `${proto}://${host}/downloads/app-mobile-release.apk`;
-  res.json({ version, apkUrl, directApkUrl: storedApkUrl || null });
+  const renderApiDownloadUrl = `${proto}://${host}/api/download/apk`;
+
+  // Always prefer Render-hosted update path to avoid GitHub 404/missing-asset issues.
+  const hostedApk = getHostedApkInfo();
+  const directHostedUrl = hostedApk ? `${proto}://${host}/downloads/${encodeURIComponent(hostedApk.name)}` : null;
+
+  res.json({
+    version,
+    apkUrl: renderApiDownloadUrl,
+    directApkUrl: directHostedUrl,
+    fallbackUrl: storedApkUrl || null,
+  });
 });
 
 // ── APK download redirect ──────────────────────────────────────────────────────
-// Redirects to the GitHub release APK (streaming caused OOM on Render free tier).
+// Keeps download traffic anchored on Render and only falls back when explicitly configured.
 app.get("/api/download/apk", async (req, res) => {
   try {
+    const hostedApk = getHostedApkInfo();
+    if (hostedApk) {
+      return res.redirect(302, `/downloads/${encodeURIComponent(hostedApk.name)}`);
+    }
+
     const vf = join(__dirname, "app-version.json");
     if (existsSync(vf)) {
       const data = JSON.parse(readFileSync(vf, "utf8"));
@@ -5182,7 +5216,10 @@ app.get("/api/download/apk", async (req, res) => {
   } catch (err) {
     console.error("[apk-proxy] error:", err?.message);
   }
-  res.status(404).json({ error: "APK niet beschikbaar" });
+  res.status(404).json({
+    error: "APK niet beschikbaar op Render",
+    hint: "Upload een .apk naar server/public/downloads of zet een geldige fallback URL in server/app-version.json",
+  });
 });
 
 // Image proxy – forwards images that require specific Referer headers (e.g. Transfermarkt CDN)
