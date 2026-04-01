@@ -681,7 +681,7 @@ export function VodModuleHub({ initialPane = "home", initialFilter = "all" }: Vo
         ) : null}
 
         {/* Empty / error state — only when all sources are exhausted */}
-        {activePane === "home" && !homeQuery.isLoading && !catalogChunkOneQuery.isLoading && homeSections.length === 0 && collections.length === 0 && allItems.length === 0 ? (
+        {activePane === "home" && deepCatalogEnabled && !homeQuery.isLoading && !catalogChunkOneQuery.isLoading && !curatedCollectionsQuery.isLoading && !curatedStudiosQuery.isLoading && homeSections.length === 0 && collections.length === 0 && allItems.length === 0 ? (
           <View style={styles.emptyWrap}>
             <Ionicons name="film-outline" size={52} color={COLORS.accent} style={{ opacity: 0.5 }} />
             <Text style={styles.emptyTitle}>Catalog unavailable</Text>

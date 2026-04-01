@@ -20,6 +20,7 @@ import { apiRequestJson } from "@/lib/query-client";
 import { createContinueWatching } from "@/lib/vod-curation";
 import { enrichVodModuleItem } from "@/lib/vod-module";
 import { logRealtimeEvent, measureRealtimeTask } from "@/services/realtime-telemetry";
+import { getMatchdayYmd } from "@/lib/date/matchday";
 
 type QueryKey = readonly unknown[];
 
@@ -425,7 +426,7 @@ export function buildMediaSectionsQuery() {
 export function buildSportLiveQuery(enabled: boolean) {
   return buildRealtimeQueryOptions<Awaited<ReturnType<typeof getSportsLive>>>({
     queryKey: sportKeys.live(),
-    cacheKey: `sports:live:${new Date().toISOString().slice(0, 10)}`,
+    cacheKey: `sports:live:${getMatchdayYmd()}`,
     label: "sports-live",
     ttlMs: realtimePolicies.sportsLive.ttlMs,
     staleTime: realtimePolicies.sportsLive.staleTime,

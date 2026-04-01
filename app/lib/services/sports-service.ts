@@ -26,7 +26,7 @@ import {
 import { deduplicateLeaderboard } from "@/lib/domain/identity-resolver";
 import { fetchSportsLeagueResourceWithFallback, getLeaderboardRows } from "@/lib/sports-data";
 import { enrichPlayerProfilePayload, enrichTeamDetailPayload } from "@/lib/sports-enrichment";
-import { partitionMatches, normalizeStatusLabel } from "@/lib/match-state";
+import { getMatchdayYmd } from "@/lib/date/matchday";
 import type {
   Match,
   MatchDetail,
@@ -98,7 +98,7 @@ export interface SportsHomeData {
  * Used by the main sports tab and the live badge.
  */
 export async function getSportsHome(): Promise<SportsHomeData> {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = getMatchdayYmd(); // Brussels/device TZ, not UTC
   const raw = await safeFetch<any>(`/api/sports/by-date?date=${encodeURIComponent(today)}`, {});
   return normalizeSportsHomePayload(raw);
 }
@@ -119,36 +119,22 @@ function normalizeSportsHomePayload(raw: any): SportsHomeData {
     return list.map(m => normalizeMatchFromServer(m));
   };
 
-  const merged = [
-    ...mapList(raw?.live),
-    ...mapList(raw?.upcoming),
-    ...mapList(raw?.finished),
-  ];
+  // Trust the server's live/upcoming/finished bucketing.
+  // normalizeMatchFromServer uses resolveMatchStatus with the full statusDetail
+  // field (now passed by the server) to correctly detect halftime/postponed/etc.
+  // Re-merging and re-partitioning here would lose the detail signal.
+  const live = mapList(raw?.live);
+  const upcoming = mapList(raw?.upcoming);
+  const finished = mapList(raw?.finished);
 
-  const byId = new Map(merged.map((match) => [match.id, match]));
+  // Deduplicate across buckets (prefer live over finished/upcoming for same id)
+  const seen = new Set<string>();
+  const filtered = { live: [] as Match[], upcoming: [] as Match[], finished: [] as Match[] };
+  for (const m of live) { if (!seen.has(m.id)) { seen.add(m.id); filtered.live.push(m); } }
+  for (const m of upcoming) { if (!seen.has(m.id)) { seen.add(m.id); filtered.upcoming.push(m); } }
+  for (const m of finished) { if (!seen.has(m.id)) { seen.add(m.id); filtered.finished.push(m); } }
 
-  const partitioned = partitionMatches(
-    merged.map((match) => ({
-      id: match.id,
-      status: normalizeStatusLabel(match.status),
-      detail: match.status,
-      homeScore: match.score?.home,
-      awayScore: match.score?.away,
-      startDate: match.startTime,
-    })),
-  );
-
-  const toMatches = (bucket: { id?: unknown }[]): Match[] => {
-    return bucket
-      .map((row) => byId.get(String(row?.id || "")))
-      .filter(Boolean) as Match[];
-  };
-
-  return {
-    live: toMatches(partitioned.live),
-    upcoming: toMatches(partitioned.upcoming),
-    finished: toMatches(partitioned.finished),
-  };
+  return filtered;
 }
 
 // ─── Prefetch home ────────────────────────────────────────────────────────────
@@ -240,21 +226,13 @@ export async function getCompetitionMatches(params: {
   });
   if (!Array.isArray(raw?.matches)) return [];
   const normalized: Match[] = (raw.matches as any[]).map(normalizeMatchFromServer);
-  const byId = new Map(normalized.map((match) => [match.id, match]));
-  const partitioned = partitionMatches(
-    normalized.map((match) => ({
-      id: match.id,
-      status: normalizeStatusLabel(match.status),
-      detail: match.status,
-      homeScore: match.score?.home,
-      awayScore: match.score?.away,
-      startDate: match.startTime,
-    })),
-  );
-  const orderedIds = [...partitioned.live, ...partitioned.upcoming, ...partitioned.finished].map((row) => String((row as any)?.id || ""));
-  return orderedIds
-    .map((id) => byId.get(id))
-    .filter(Boolean) as Match[];
+  const statusRank = (m: Match): number => {
+    const s = m.status;
+    if (s === "live" || s === "halftime") return 0;
+    if (s === "scheduled") return 1;
+    return 2;
+  };
+  return [...normalized].sort((a, b) => statusRank(a) - statusRank(b));
 }
 
 export async function getCompetitionStats(params: {

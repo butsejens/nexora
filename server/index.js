@@ -503,15 +503,19 @@ async function espnScoreboard(dateYmd) {
 
 function normalizeStatusFromEspn(comp) {
   const state = comp?.status?.type?.state; // pre | in | post
+  // Pass the human-readable detail string (e.g. "Halftime", "Postponed - Weather", "End of Period")
+  // through to the client so it can refine the coarse live/finished/upcoming bucket.
+  const rawDetail = comp?.status?.type?.detail || comp?.status?.type?.shortDetail || "";
+  const detail = String(rawDetail).trim();
   const clock = comp?.status?.displayClock;
   let minute = undefined;
   if (typeof clock === "string") {
     const mm = parseInt(clock.replace("'", "").trim(), 10);
     if (!Number.isNaN(mm)) minute = mm;
   }
-  if (state === "in") return { status: "live", minute };
-  if (state === "post") return { status: "finished", minute };
-  return { status: "upcoming", minute };
+  if (state === "in") return { status: "live", minute, statusDetail: detail };
+  if (state === "post") return { status: "finished", minute, statusDetail: detail };
+  return { status: "upcoming", minute, statusDetail: detail };
 }
 
 // =============================================================
@@ -2608,7 +2612,7 @@ function inferFormationFromPlayers(players) {
 
 function mapEspnEventToMatch(ev) {
   const comp = (ev?.competitions || [])[0];
-  const { status, minute } = normalizeStatusFromEspn(comp);
+  const { status, minute, statusDetail } = normalizeStatusFromEspn(comp);
   const id = String(ev?.id || comp?.id || "");
   const leagueNameRaw =
     ev?.league?.name ||
@@ -2648,6 +2652,7 @@ function mapEspnEventToMatch(ev) {
     homeScore,
     awayScore,
     status,
+    statusDetail: statusDetail || "",
     minute,
     startDate: comp?.date || null,
     startTime: formatTime(comp?.date),
