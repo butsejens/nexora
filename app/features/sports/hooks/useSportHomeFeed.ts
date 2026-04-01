@@ -3,58 +3,9 @@ import { useQuery } from "@tanstack/react-query";
 
 import { buildSportLiveQuery, buildSportScheduleQuery } from "@/services/realtime-engine";
 import { getMatchdayYmd } from "@/lib/date/matchday";
-import { resolveMatchStatus, type MatchLifecycleStatus } from "@/lib/match-state";
+import { resolveMatchStatus } from "@/lib/match-state";
 
-type MatchLike = {
-  id?: unknown;
-  status?: unknown;
-  detail?: unknown;
-  statusDetail?: unknown;
-  minute?: unknown;
-  homeScore?: unknown;
-  awayScore?: unknown;
-  startTime?: unknown;
-  date?: unknown;
-  score?: { home?: unknown; away?: unknown };
-};
-
-function statusOf(match: MatchLike): MatchLifecycleStatus {
-  return resolveMatchStatus({
-    status: match?.status,
-    detail: match?.statusDetail ?? match?.detail,
-    minute: match?.minute,
-    homeScore: match?.score?.home ?? match?.homeScore,
-    awayScore: match?.score?.away ?? match?.awayScore,
-    startDate: match?.startTime ?? match?.date,
-  });
-}
-
-function splitByStatus(matches: MatchLike[]) {
-  const live: MatchLike[] = [];
-  const upcoming: MatchLike[] = [];
-  const finished: MatchLike[] = [];
-  const halftime: MatchLike[] = [];
-
-  for (const match of matches) {
-    const status = statusOf(match);
-    if (status === "halftime") {
-      halftime.push({ ...match, status });
-      live.push({ ...match, status });
-      continue;
-    }
-    if (status === "live" || status === "delayed") {
-      live.push({ ...match, status });
-      continue;
-    }
-    if (status === "finished" || status === "cancelled" || status === "postponed") {
-      finished.push({ ...match, status });
-      continue;
-    }
-    upcoming.push({ ...match, status: "upcoming" });
-  }
-
-  return { live, upcoming, finished, halftime };
-}
+type MatchLike = any;
 
 export function useMatchStatusResolver() {
   return useMemo(() => ({ resolveMatchStatus }), []);
@@ -65,12 +16,11 @@ export function useSportHomeFeed(enabled: boolean, date?: string) {
   const query = useQuery(buildSportScheduleQuery(selectedDate, enabled));
 
   const normalized = useMemo(() => {
-    const source = [
-      ...(query.data?.live || []),
-      ...(query.data?.upcoming || []),
-      ...(query.data?.finished || []),
-    ] as MatchLike[];
-    return splitByStatus(source);
+    const live = (Array.isArray(query.data?.live) ? query.data?.live : []) as any[];
+    const upcoming = (Array.isArray(query.data?.upcoming) ? query.data?.upcoming : []) as any[];
+    const finished = (Array.isArray(query.data?.finished) ? query.data?.finished : []) as any[];
+    const halftime = live.filter((match) => String(match?.status || "").toLowerCase() === "halftime");
+    return { live, upcoming, finished, halftime };
   }, [query.data?.finished, query.data?.live, query.data?.upcoming]);
 
   return {
@@ -90,18 +40,8 @@ export function useLiveMatches(enabled: boolean, date?: string) {
     : useQuery(buildSportLiveQuery(enabled));
 
   const live = useMemo(() => {
-    const source = date
-      ? [
-          ...(query.data?.live || []),
-          ...(query.data?.upcoming || []),
-          ...(query.data?.finished || []),
-        ]
-      : [
-          ...(query.data?.live || []),
-          ...(query.data?.upcoming || []),
-          ...(query.data?.finished || []),
-        ];
-    return splitByStatus(source as MatchLike[]).live;
+    const source = Array.isArray(query.data?.live) ? query.data.live : [];
+    return source as any[];
   }, [date, query.data?.finished, query.data?.live, query.data?.upcoming]);
 
   return { ...query, live, hasData: live.length > 0 };

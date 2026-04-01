@@ -67,7 +67,7 @@ export default function TabLayout() {
         name="home"
         options={{
           title: "Home",
-          tabBarIcon: ({ focused }) => (
+          tabBarIcon: ({ focused }: { focused: boolean }) => (
             <TabIcon focused={focused} icon={focused ? "home" : "home-outline"} />
           ),
         }}
@@ -76,7 +76,7 @@ export default function TabLayout() {
         name="search"
         options={{
           title: "Search",
-          tabBarIcon: ({ focused }) => (
+          tabBarIcon: ({ focused }: { focused: boolean }) => (
             <TabIcon focused={focused} icon={focused ? "search" : "search-outline"} />
           ),
         }}
@@ -86,7 +86,7 @@ export default function TabLayout() {
         options={{
           href: "/(tabs)/more",
           title: "Menu",
-          tabBarIcon: ({ focused }) => (
+          tabBarIcon: ({ focused }: { focused: boolean }) => (
             <TabIcon focused={focused} icon={focused ? "menu" : "menu-outline"} />
           ),
         }}

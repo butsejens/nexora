@@ -31,24 +31,35 @@ import type {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-export async function safeFetch<T>(route: string, fallback: T): Promise<T> {
+export async function safeFetch<T>(route: string, fallback?: T, allowFallback = false): Promise<T> {
   try {
     const res = await apiRequest("GET", route);
     if (!res.ok) {
-      console.warn(`[nexora:media] HTTP ${res.status} for ${route}`);
-      return fallback;
+      const body = await res.text().catch(() => "");
+      const error = new Error(`[nexora:media] HTTP ${res.status} for ${route} ${body}`.trim());
+      if (allowFallback) {
+        console.warn(String(error.message));
+        return fallback as T;
+      }
+      throw error;
     }
     const data = (await res.json()) as T;
     // Surface server-side config errors (e.g. missing TMDB key) so they are
     // visible in the developer console instead of silently returning empty data.
     if (data && typeof data === "object" && (data as any).error) {
-      console.warn(`[nexora:media] server error for ${route}:`, (data as any).error);
+      const error = new Error(`[nexora:media] server error for ${route}: ${(data as any).error}`);
+      if (allowFallback) {
+        console.warn(String(error.message));
+        return fallback as T;
+      }
+      throw error;
     }
     return data;
   } catch (err: unknown) {
+    if (!allowFallback) throw err;
     const msg = err instanceof Error ? err.message : String(err ?? "unknown");
     console.warn(`[nexora:media] fetch failed for ${route}: ${msg}`);
-    return fallback;
+    return fallback as T;
   }
 }
 
@@ -178,6 +189,36 @@ export async function getSeriesFull(tmdbId: number): Promise<Series | null> {
   return enforceMetadataOnly(normalizeSeriesFromTmdb(raw));
 }
 
+export async function getCatalog(): Promise<VodCatalogPayload> {
+  return getVodCatalogChunk(null);
+}
+
+export async function getMediaDetail(id: number, type: "movie" | "series"): Promise<Movie | Series | null> {
+  return type === "movie" ? getMovieFull(id) : getSeriesFull(id);
+}
+
+export async function getCast(id: number, type: "movie" | "series"): Promise<any[]> {
+  try {
+    const detail = await (type === "movie"
+      ? safeFetch<any>(`/api/movies/${id}/full`)
+      : safeFetch<any>(`/api/series/${id}/full`));
+    if (Array.isArray(detail?.cast)) return detail.cast;
+  } catch {
+    // fallback below
+  }
+
+  const endpoint = type === "series" ? "tv" : "movie";
+  const credits = await safeFetch<any>(`/api/tmdb/${endpoint}/${id}/credits`, { cast: [] }, true);
+  return Array.isArray(credits?.cast) ? credits.cast : [];
+}
+
+export async function getRecommendations(id: number, type: "movie" | "series"): Promise<(Movie | Series)[]> {
+  return getSimilarTitles(id, type);
+}
+
+export const getCollections = getVodCollections;
+export const getStudios = getVodStudios;
+
 export async function discoverMoviesByGenre(genreId: number, page = 1): Promise<Movie[]> {
   const raw = await safeFetch<any>(`/api/movies/discover-by-genre?genre_id=${genreId}&page=${page}`, {});
   return (Array.isArray(raw?.results) ? raw.results : []).map(
@@ -296,14 +337,6 @@ export async function getVodHomePayload(): Promise<VodHomePayload> {
 
   let allItems = dedupeModuleItems([...enrichedMovies, ...enrichedSeries]);
 
-  // Hard fallback for cases where trending endpoints return empty payloads while
-  // catalog data is still available. This prevents false "Catalog unavailable"
-  // empty states on flaky provider responses.
-  if (allItems.length === 0) {
-    const fallbackCatalog = await getVodCatalogChunk(null);
-    allItems = dedupeModuleItems(fallbackCatalog.items || []);
-  }
-
   return {
     featured: pickFeaturedItem(allItems),
     trendingMovies: enrichedMovies.filter((item) => item.isTrending).slice(0, 16),
@@ -347,7 +380,7 @@ export async function getVodCollections(): Promise<VodCollectionPayload[]> {
 
   const results = await Promise.all(
     collectionTargets.map(async (target) => {
-      const payload = await safeFetch<any>(`/api/vod/collection?title=${encodeURIComponent(target)}&depth=5`, null);
+      const payload = await safeFetch<any>(`/api/vod/collection?title=${encodeURIComponent(target)}&depth=5`, null, true);
       const items = dedupeModuleItems((payload?.items || []).map((item: any) => enrichVodModuleItem(item))).slice(0, 40);
       return {
         id: String(payload?.collection?.id || target).toLowerCase(),
@@ -360,39 +393,12 @@ export async function getVodCollections(): Promise<VodCollectionPayload[]> {
     })
   );
 
-  const curated = results.filter((item) => item.itemCount > 2);
-  if (curated.length > 0) return curated;
-
-  // Secondary fallback: synthesize collection rails from catalog slices so the
-  // home/discovery panes can still render useful content when curated endpoints
-  // are temporarily empty.
-  const fallbackCatalog = await getVodCatalogChunk(null);
-  const items = fallbackCatalog.items || [];
-  if (!items.length) return [];
-
-  return [
-    {
-      id: "fallback-trending",
-      name: "Trending",
-      itemCount: items.slice(0, 30).length,
-      items: items.slice(0, 30),
-      poster: items[0]?.poster || null,
-      backdrop: items[0]?.backdrop || null,
-    },
-    {
-      id: "fallback-top-rated",
-      name: "Top Rated",
-      itemCount: items.slice(30, 60).length,
-      items: [...items].sort((a, b) => Number(b.rating || b.imdb || 0) - Number(a.rating || a.imdb || 0)).slice(0, 30),
-      poster: items[1]?.poster || items[0]?.poster || null,
-      backdrop: items[1]?.backdrop || items[0]?.backdrop || null,
-    },
-  ].filter((entry) => entry.items.length > 0);
+  return results.filter((item) => item.itemCount > 2);
 }
 
 export async function getVodCollectionById(id: string) {
   if (!id) return null;
-  return await safeFetch<any>(`/api/vod/collection?id=${encodeURIComponent(id)}`, null);
+  return await safeFetch<any>(`/api/vod/collection?id=${encodeURIComponent(id)}`, null, true);
 }
 
 export async function getVodStudios(): Promise<VodStudioPayload[]> {
@@ -407,7 +413,7 @@ export async function getVodStudios(): Promise<VodStudioPayload[]> {
 
   const results = await Promise.all(
     studioTargets.map(async (target) => {
-      const payload = await safeFetch<any>(`/api/vod/studio?id=${encodeURIComponent(target.id)}&name=${encodeURIComponent(target.name)}&depth=7`, null);
+      const payload = await safeFetch<any>(`/api/vod/studio?id=${encodeURIComponent(target.id)}&name=${encodeURIComponent(target.name)}&depth=7`, null, true);
       const items = dedupeModuleItems((payload?.items || []).map((item: any) => enrichVodModuleItem(item))).slice(0, 60);
       return {
         id: String(payload?.studio?.id || target.id),
@@ -424,7 +430,7 @@ export async function getVodStudios(): Promise<VodStudioPayload[]> {
 
 export async function getVodStudioById(id: string) {
   if (!id) return null;
-  return await safeFetch<any>(`/api/vod/studio?id=${encodeURIComponent(id)}`, null);
+  return await safeFetch<any>(`/api/vod/studio?id=${encodeURIComponent(id)}`, null, true);
 }
 
 // ─── React Query key factories ────────────────────────────────────────────────

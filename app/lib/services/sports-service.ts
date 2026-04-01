@@ -27,6 +27,7 @@ import { deduplicateLeaderboard } from "@/lib/domain/identity-resolver";
 import { fetchSportsLeagueResourceWithFallback, getLeaderboardRows } from "@/lib/sports-data";
 import { enrichPlayerProfilePayload, enrichTeamDetailPayload } from "@/lib/sports-enrichment";
 import { getMatchdayYmd } from "@/lib/date/matchday";
+import { resolveMatchStatus } from "@/lib/match-state";
 import type {
   Match,
   MatchDetail,
@@ -46,19 +47,25 @@ import type {
 
 // ─── Shared helpers ───────────────────────────────────────────────────────────
 
-async function safeFetch<T>(route: string, fallback: T): Promise<T> {
+async function safeFetch<T>(route: string, fallback?: T, allowFallback = false): Promise<T> {
   try {
     const res = await apiRequest("GET", route);
     if (!res.ok) {
-      console.warn(`[nexora:sports] HTTP ${res.status} for ${route}`);
-      return fallback;
+      const body = await res.text().catch(() => "");
+      const error = new Error(`[nexora:sports] HTTP ${res.status} for ${route} ${body}`.trim());
+      if (allowFallback) {
+        console.warn(String(error.message));
+        return fallback as T;
+      }
+      throw error;
     }
     const data = (await res.json()) as T;
     return data;
   } catch (err: unknown) {
+    if (!allowFallback) throw err;
     const msg = err instanceof Error ? err.message : String(err ?? "unknown");
     console.warn(`[nexora:sports] fetch failed for ${route}: ${msg}`);
-    return fallback;
+    return fallback as T;
   }
 }
 
@@ -111,42 +118,75 @@ export interface SportsHomeData {
  */
 export async function getSportsHome(): Promise<SportsHomeData> {
   const today = getMatchdayYmd(); // Brussels/device TZ, not UTC
-  const raw = await safeFetch<any>(`/api/sports/by-date?date=${encodeURIComponent(today)}`, {});
+  const raw = await safeFetch<any>(`/api/sports/by-date?date=${encodeURIComponent(today)}`);
   return normalizeSportsHomePayload(raw);
 }
 
 export async function getSportsByDate(dateYmd: string): Promise<SportsHomeData> {
-  const raw = await safeFetch<any>(`/api/sports/by-date?date=${encodeURIComponent(dateYmd)}`, {});
+  const raw = await safeFetch<any>(`/api/sports/by-date?date=${encodeURIComponent(dateYmd)}`);
   return normalizeSportsHomePayload(raw);
 }
 
 export async function getSportsLive(): Promise<SportsHomeData> {
-  const raw = await safeFetch<any>("/api/sports/live", {});
+  const raw = await safeFetch<any>("/api/sports/live");
   return normalizeSportsHomePayload(raw);
 }
 
 function normalizeSportsHomePayload(raw: any): SportsHomeData {
-  const mapList = (list: any[]): Match[] => {
-    if (!Array.isArray(list)) return [];
-    return list.map(m => normalizeMatchFromServer(m));
-  };
+  const source = [
+    ...(Array.isArray(raw?.live) ? raw.live : []),
+    ...(Array.isArray(raw?.upcoming) ? raw.upcoming : []),
+    ...(Array.isArray(raw?.finished) ? raw.finished : []),
+    ...(Array.isArray(raw?.matches) ? raw.matches : []),
+  ];
 
-  // Trust the server's live/upcoming/finished bucketing.
-  // normalizeMatchFromServer uses resolveMatchStatus with the full statusDetail
-  // field (now passed by the server) to correctly detect halftime/postponed/etc.
-  // Re-merging and re-partitioning here would lose the detail signal.
-  const live = mapList(raw?.live);
-  const upcoming = mapList(raw?.upcoming);
-  const finished = mapList(raw?.finished);
+  const all = source
+    .map((item) => {
+      try {
+        return normalizeMatchFromServer(item);
+      } catch {
+        return null;
+      }
+    })
+    .filter(Boolean) as Match[];
 
-  // Deduplicate across buckets (prefer live over finished/upcoming for same id)
   const seen = new Set<string>();
   const filtered = { live: [] as Match[], upcoming: [] as Match[], finished: [] as Match[] };
-  for (const m of live) { if (!seen.has(m.id)) { seen.add(m.id); filtered.live.push(m); } }
-  for (const m of upcoming) { if (!seen.has(m.id)) { seen.add(m.id); filtered.upcoming.push(m); } }
-  for (const m of finished) { if (!seen.has(m.id)) { seen.add(m.id); filtered.finished.push(m); } }
+  for (const match of all) {
+    if (!match?.id || seen.has(match.id)) continue;
+    seen.add(match.id);
+
+    const status = resolveMatchStatus({
+      status: match.status,
+      detail: (match as any)?.statusDetail,
+      minute: (match as any)?.minute,
+      homeScore: match.score?.home,
+      awayScore: match.score?.away,
+      startDate: (match as any)?.startTime,
+    });
+
+    if (status === "live" || status === "halftime" || status === "delayed") {
+      filtered.live.push(match);
+      continue;
+    }
+
+    if (status === "finished" || status === "postponed" || status === "cancelled") {
+      filtered.finished.push(match);
+      continue;
+    }
+
+    filtered.upcoming.push(match);
+  }
 
   return filtered;
+}
+
+export const getSportHome = getSportsHome;
+export const getLiveMatches = getSportsLive;
+export const getMatchday = getSportsByDate;
+export async function getFinishedMatches(date: string): Promise<Match[]> {
+  const data = await getSportsByDate(date);
+  return data.finished;
 }
 
 // ─── Prefetch home ────────────────────────────────────────────────────────────
@@ -272,6 +312,8 @@ export async function getCompetitionInsights(params: CompetitionInsightParams): 
   };
 }
 
+export const getCompetition = getCompetitionInsights;
+
 // ─── Team ─────────────────────────────────────────────────────────────────────
 
 export async function getTeamOverview(params: {
@@ -288,19 +330,23 @@ export async function getTeamOverview(params: {
   if (params.teamName) query.set("teamName", params.teamName);
   if (params.countryCode) query.set("countryCode", params.countryCode);
   const route = `/api/sports/team/${encodeURIComponent(params.teamId)}${query.size ? `?${query.toString()}` : ""}`;
-  const raw = await safeFetch(route, null);
+  const raw = await safeFetch(route, null, true);
   if (!raw) return null;
   return enrichTeamDetailPayload(raw);
 }
 
+export const getTeam = getTeamOverview;
+
 // ─── Player ───────────────────────────────────────────────────────────────────
 
 export async function getPlayerProfile(playerId: string): Promise<Player | null> {
-  const raw = await safeFetch<any>(`/api/sports/player/${encodeURIComponent(playerId)}`, null);
+  const raw = await safeFetch<any>(`/api/sports/player/${encodeURIComponent(playerId)}`, null, true);
   if (!raw) return null;
   const enriched = enrichPlayerProfilePayload(raw);
   return normalizePlayer(enriched);
 }
+
+export const getPlayer = getPlayerProfile;
 
 // ─── Match detail ─────────────────────────────────────────────────────────────
 
@@ -320,7 +366,7 @@ export async function getMatchDetailRaw(params: {
   if (params.sport) query.set("sport", params.sport);
   if (params.league) query.set("league", params.league);
   const route = `/api/sports/match/${encodeURIComponent(params.matchId)}${query.size ? `?${query.toString()}` : ""}`;
-  return safeFetch<any>(route, null);
+  return safeFetch<any>(route, null, true);
 }
 
 export async function getMatchStream(params: {
@@ -330,11 +376,11 @@ export async function getMatchStream(params: {
   const query = new URLSearchParams();
   if (params.league) query.set("league", params.league);
   const route = `/api/sports/stream/${encodeURIComponent(params.matchId)}${query.size ? `?${query.toString()}` : ""}`;
-  return safeFetch<any>(route, {});
+  return safeFetch<any>(route, {}, true);
 }
 
 export async function getMatchDetail(matchId: string): Promise<MatchDetail | null> {
-  const raw = await safeFetch<RawMatchDetail>(`/api/sports/match/${encodeURIComponent(matchId)}`, null as any);
+  const raw = await safeFetch<RawMatchDetail>(`/api/sports/match/${encodeURIComponent(matchId)}`, null as any, true);
   if (!raw?.match && !raw) return null;
 
   const matchRaw = raw?.match ?? raw;
@@ -453,6 +499,7 @@ export async function getMultiSportScoreboard(
   return safeFetch<MultiSportScoreboardResult>(
     `/api/sports/multisport/scoreboard?${params}`,
     { sport, date: date ?? "", leagues: [], live: [], upcoming: [], finished: [], total: 0 },
+    true,
   );
 }
 
@@ -467,7 +514,7 @@ export async function getEspnNews(
   const params = new URLSearchParams({ limit: String(limit) });
   if (sport) params.set("sport", sport);
   if (league) params.set("league", league);
-  return safeFetch<EspnNewsItem[]>(`/api/sports/news?${params}`, []);
+  return safeFetch<EspnNewsItem[]>(`/api/sports/news?${params}`, [], true);
 }
 
 /**
@@ -479,7 +526,7 @@ export async function getMatchOdds(
   league = "eng.1",
 ): Promise<MatchOdds | null> {
   const params = new URLSearchParams({ sport, league });
-  return safeFetch<MatchOdds | null>(`/api/sports/match/${matchId}/odds?${params}`, null);
+  return safeFetch<MatchOdds | null>(`/api/sports/match/${matchId}/odds?${params}`, null, true);
 }
 
 /**
@@ -490,7 +537,7 @@ export async function getMultiSportTeams(
   league: string,
 ): Promise<MultiSportTeam[]> {
   const params = new URLSearchParams({ sport, league });
-  return safeFetch<MultiSportTeam[]>(`/api/sports/multisport/teams?${params}`, []);
+  return safeFetch<MultiSportTeam[]>(`/api/sports/multisport/teams?${params}`, [], true);
 }
 
 /**
@@ -501,7 +548,7 @@ export async function getMultiSportStandings(
   league: string,
 ): Promise<MultiSportStandingEntry[]> {
   const params = new URLSearchParams({ sport, league });
-  return safeFetch<MultiSportStandingEntry[]>(`/api/sports/multisport/standings?${params}`, []);
+  return safeFetch<MultiSportStandingEntry[]>(`/api/sports/multisport/standings?${params}`, [], true);
 }
 
 /**
@@ -517,7 +564,7 @@ export async function getMultiSportGameDetail(
   league: string,
 ): Promise<any> {
   const params = new URLSearchParams({ sport, league });
-  return safeFetch<any>(`/api/sports/multisport/game/${encodeURIComponent(gameId)}?${params}`, null);
+  return safeFetch<any>(`/api/sports/multisport/game/${encodeURIComponent(gameId)}?${params}`, null, true);
 }
 
 /**
@@ -530,7 +577,7 @@ export async function getMultiSportTeamDetail(
   league: string,
 ): Promise<any> {
   const params = new URLSearchParams({ sport, league });
-  return safeFetch<any>(`/api/sports/multisport/teams/${encodeURIComponent(teamId)}?${params}`, null);
+  return safeFetch<any>(`/api/sports/multisport/teams/${encodeURIComponent(teamId)}?${params}`, null, true);
 }
 
 /**
@@ -542,5 +589,5 @@ export async function getMultiSportRankings(
   league: string,
 ): Promise<any> {
   const params = new URLSearchParams({ sport, league });
-  return safeFetch<any>(`/api/sports/multisport/rankings?${params}`, { rankings: [] });
+  return safeFetch<any>(`/api/sports/multisport/rankings?${params}`, { rankings: [] }, true);
 }

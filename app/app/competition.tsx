@@ -12,7 +12,7 @@ import { NexoraSimpleHeader } from "@/components/NexoraSimpleHeader";
 import { useQuery } from "@tanstack/react-query";
 import { COLORS } from "@/constants/colors";
 import { fetchSportsLeagueResourceWithFallback, getLeaderboardRows } from "@/lib/sports-data";
-import { dedupeCanonicalMatches, toCanonicalMatch, toLegacyMatchCard } from "@/lib/canonical-match";
+import { dedupeCanonicalMatches, toCanonicalMatch } from "@/lib/canonical-match";
 import { normalizeApiError } from "@/lib/error-messages";
 import { getBestCachedOrSeedPlayerImage, resolvePlayerImageUri } from "@/lib/player-image-system";
 import { resolveCompetitionBrand, resolveTeamLogoUri } from "@/lib/logo-manager";
@@ -270,7 +270,6 @@ export default function CompetitionScreen() {
       .map((m: any) => toCanonicalMatch(m))
       .filter(Boolean) as any[];
     return dedupeCanonicalMatches(canonicalRows)
-      .map((m: any) => toLegacyMatchCard(m))
       .sort((a: any, b: any) => {
         const rank = (value: string) => value === "live" ? 0 : value === "upcoming" ? 1 : 2;
         const byState = rank(String(a?.status || "")) - rank(String(b?.status || ""));

@@ -360,6 +360,7 @@ export function buildVodHomeQuery(enabled: boolean) {
     refetchInterval: realtimePolicies.vodHome.refetchInterval,
     enabled,
     fetcher: getVodHomePayload,
+    shouldPersist: (data) => Array.isArray(data?.allItems) && data.allItems.length > 0,
     collectImageUrls: collectVodArtwork,
   });
 }
@@ -374,6 +375,7 @@ export function buildVodCatalogRootQuery(enabled: boolean) {
     refetchInterval: realtimePolicies.vodCatalog.refetchInterval,
     enabled,
     fetcher: () => getVodCatalogChunk(null),
+    shouldPersist: (data) => Array.isArray(data?.items) && data.items.length > 0,
     collectImageUrls: (data) => (data.items || []).flatMap((item) => [item.poster, item.backdrop]).filter(Boolean) as string[],
   });
 }
@@ -388,6 +390,7 @@ export function buildVodCollectionsQuery(enabled: boolean) {
     refetchInterval: realtimePolicies.collections.refetchInterval,
     enabled,
     fetcher: getVodCollections,
+    shouldPersist: (data) => Array.isArray(data) && data.length > 0,
     collectImageUrls: (collections) => collections.flatMap((entry) => [entry.poster || null, entry.backdrop || null]).filter(Boolean) as string[],
   });
 }
@@ -402,6 +405,7 @@ export function buildVodStudiosQuery(enabled: boolean) {
     refetchInterval: realtimePolicies.collections.refetchInterval,
     enabled,
     fetcher: getVodStudios,
+    shouldPersist: (data) => Array.isArray(data) && data.length > 0,
   });
 }
 
@@ -433,6 +437,7 @@ export function buildSportLiveQuery(enabled: boolean) {
     refetchInterval: realtimePolicies.sportsLive.refetchInterval,
     enabled,
     fetcher: getSportsLive,
+    shouldPersist: (data) => (data?.live?.length || 0) + (data?.upcoming?.length || 0) + (data?.finished?.length || 0) > 0,
   });
 }
 
@@ -446,6 +451,7 @@ export function buildSportScheduleQuery(date: string, enabled: boolean) {
     refetchInterval: realtimePolicies.sportsSchedule.refetchInterval,
     enabled,
     fetcher: () => getSportsByDate(date),
+    shouldPersist: (data) => (data?.live?.length || 0) + (data?.upcoming?.length || 0) + (data?.finished?.length || 0) > 0,
   });
 }
 

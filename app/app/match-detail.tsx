@@ -1774,7 +1774,7 @@ export default function MatchDetailScreen() {
                     <View style={styles.md_card}>
                       {substitutions.map((change, i) => (
                         <View key={`sub_${i}`} style={styles.md_subRow}>
-                          <Text style={styles.md_subMinute}>{change.minuteLabel || "--"}'</Text>
+                          <Text style={styles.md_subMinute}>{change.minuteLabel || "--"}&apos;</Text>
                           <Text style={styles.md_subTeam} numberOfLines={1}>
                             {change.teamName || (change.side === "home" ? homeTeamName : awayTeamName)}
                           </Text>
@@ -1829,8 +1829,8 @@ export default function MatchDetailScreen() {
                 <View style={{ flex: Math.max(0, 100 - timelineProgressPct) }} />
               </View>
               <View style={styles.md_progressLabels}>
-                <Text style={styles.md_progressLabel}>0'</Text>
-                <Text style={styles.md_progressLabel}>45'</Text>
+                <Text style={styles.md_progressLabel}>0&apos;</Text>
+                <Text style={styles.md_progressLabel}>45&apos;</Text>
                 <Text style={styles.md_progressLabel}>90+</Text>
               </View>
             </View>
