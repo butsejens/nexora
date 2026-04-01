@@ -189,6 +189,107 @@ export type MatchStatus =
   | "cancelled"
   | "delayed";
 
+/** ESPN sport slugs as documented in github.com/pseudo-r/Public-ESPN-API */
+export type SportSlug =
+  | "soccer"
+  | "basketball"
+  | "football"
+  | "hockey"
+  | "baseball"
+  | "racing"
+  | "tennis"
+  | "rugby"
+  | "golf"
+  | "mma"
+  | "cricket"
+  | "volleyball"
+  | "lacrosse";
+
+/** Normalized event from any ESPN sport (NBA, NFL, NHL, F1, ATP etc.) */
+export interface MultiSportEvent {
+  id: string;
+  sport: SportSlug | string;
+  espnLeague: string;
+  league: string;
+  homeTeamId: string;
+  awayTeamId: string;
+  homeTeam: string;
+  awayTeam: string;
+  homeTeamLogo: string | null;
+  awayTeamLogo: string | null;
+  homeScore: number;
+  awayScore: number;
+  status: MatchStatus;
+  statusDetail: string;
+  /** Minute (soccer) or null */
+  minute: number | null;
+  /** Period / quarter / half (basketball, hockey, football) */
+  period: number | null;
+  /** Game clock display string (e.g. "3:25", "Halftime") */
+  clock: string | null;
+  startDate: string | null;
+  startTime: string | null;
+  venue: string | null;
+  /** TV broadcast info */
+  broadcast: string | null;
+}
+
+export interface MultiSportStandingEntry {
+  teamId: string;
+  teamName: string;
+  abbreviation: string;
+  logo: string | null;
+  group: string;
+  wins: number;
+  losses: number;
+  winPct: number;
+  gamesBack: string | null;
+  streak: string | null;
+  stats: Record<string, string | number | null>;
+}
+
+export interface EspnNewsItem {
+  id: string;
+  headline: string;
+  description: string;
+  published: string;
+  imageUrl: string | null;
+  linkUrl: string | null;
+  sport: string;
+  league: string;
+  author: string;
+  categories: string[];
+}
+
+export interface MultiSportTeam {
+  id: string;
+  slug: string;
+  displayName: string;
+  shortName: string;
+  abbreviation: string;
+  location: string;
+  color: string;
+  alternateColor: string;
+  logo: string | null;
+  sport: string;
+  league: string;
+}
+
+export interface MatchOdds {
+  matchId: string;
+  sport: string;
+  league: string;
+  odds: Array<{
+    provider: string;
+    moneylineHome: number | null;
+    moneylineAway: number | null;
+    spreadHome: number | null;
+    spreadAway: number | null;
+    overUnder: number | null;
+    details: string;
+  }>;
+}
+
 export interface MatchScore {
   home: number | null;
   away: number | null;

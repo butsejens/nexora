@@ -36,6 +36,12 @@ import type {
   CompetitionId,
   Player,
   Team,
+  SportSlug,
+  MultiSportEvent,
+  MultiSportStandingEntry,
+  MultiSportTeam,
+  EspnNewsItem,
+  MatchOdds,
 } from "@/lib/domain/models";
 
 // ─── Shared helpers ───────────────────────────────────────────────────────────
@@ -399,4 +405,95 @@ export const sportKeys = {
   player: (playerId: string) => ["sports", "player", playerId] as const,
   matchDetail: (params: { matchId: string; espnLeague?: string; sport?: string }) => ["sports", "match", params.matchId, params.sport || "soccer", params.espnLeague || "default"] as const,
   matchStream: (params: { matchId: string; espnLeague?: string }) => ["sports", "match-stream", params.matchId, params.espnLeague || "default"] as const,
+  // Multi-sport keys
+  multiSportScoreboard: (sport: string, league?: string, date?: string) =>
+    ["sports", "multi", sport, league ?? "all", date ?? "today"] as const,
+  multiSportTeams: (sport: string, league: string) =>
+    ["sports", "multi", sport, league, "teams"] as const,
+  multiSportStandings: (sport: string, league: string) =>
+    ["sports", "multi", sport, league, "standings"] as const,
+  espnNews: (sport?: string, league?: string) =>
+    ["sports", "news", sport ?? "all", league ?? "all"] as const,
+  matchOdds: (matchId: string, sport?: string, league?: string) =>
+    ["sports", "odds", matchId, sport ?? "soccer", league ?? "default"] as const,
 } as const;
+
+// ─── Multi-sport service functions ───────────────────────────────────────────
+
+interface MultiSportScoreboardResult {
+  sport: string;
+  date: string;
+  leagues: string[];
+  live: MultiSportEvent[];
+  upcoming: MultiSportEvent[];
+  finished: MultiSportEvent[];
+  total: number;
+}
+
+/**
+ * Fetch scoreboard events for any ESPN sport.
+ * @param sport  ESPN sport slug — "basketball", "football", "hockey", "baseball", "racing", "tennis", "rugby", "golf", "mma"
+ * @param league Optional league slug — "nba", "nfl", "nhl", "mlb", "f1", "atp", etc.
+ * @param date   Optional YYYY-MM-DD (defaults to today on server)
+ */
+export async function getMultiSportScoreboard(
+  sport: SportSlug | string,
+  league?: string,
+  date?: string,
+): Promise<MultiSportScoreboardResult> {
+  const params = new URLSearchParams({ sport });
+  if (league) params.set("league", league);
+  if (date) params.set("date", date);
+  return safeFetch<MultiSportScoreboardResult>(
+    `/api/sports/multisport/scoreboard?${params}`,
+    { sport, date: date ?? "", leagues: [], live: [], upcoming: [], finished: [], total: 0 },
+  );
+}
+
+/**
+ * Fetch ESPN news feed — optionally scoped to a sport and/or league.
+ */
+export async function getEspnNews(
+  sport?: string,
+  league?: string,
+  limit = 20,
+): Promise<EspnNewsItem[]> {
+  const params = new URLSearchParams({ limit: String(limit) });
+  if (sport) params.set("sport", sport);
+  if (league) params.set("league", league);
+  return safeFetch<EspnNewsItem[]>(`/api/sports/news?${params}`, []);
+}
+
+/**
+ * Fetch betting odds for a specific match from ESPN core API.
+ */
+export async function getMatchOdds(
+  matchId: string,
+  sport = "soccer",
+  league = "eng.1",
+): Promise<MatchOdds | null> {
+  const params = new URLSearchParams({ sport, league });
+  return safeFetch<MatchOdds | null>(`/api/sports/match/${matchId}/odds?${params}`, null);
+}
+
+/**
+ * Fetch teams list for any ESPN sport/league.
+ */
+export async function getMultiSportTeams(
+  sport: SportSlug | string,
+  league: string,
+): Promise<MultiSportTeam[]> {
+  const params = new URLSearchParams({ sport, league });
+  return safeFetch<MultiSportTeam[]>(`/api/sports/multisport/teams?${params}`, []);
+}
+
+/**
+ * Fetch standings for any ESPN sport/league.
+ */
+export async function getMultiSportStandings(
+  sport: SportSlug | string,
+  league: string,
+): Promise<MultiSportStandingEntry[]> {
+  const params = new URLSearchParams({ sport, league });
+  return safeFetch<MultiSportStandingEntry[]>(`/api/sports/multisport/standings?${params}`, []);
+}
