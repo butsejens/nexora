@@ -465,9 +465,10 @@ function UpdateModal({
           }
         } catch {}
 
-        // Final fallback: open URL in browser so installer can continue there.
-        try { await Linking.openURL(normalized); } catch {}
-        Alert.alert("Installatie mislukt", e?.message || "Kon de installer niet openen.");
+        Alert.alert(
+          "Installatie mislukt",
+          e?.message || "Kon de installer niet openen. Probeer opnieuw via de updateknop."
+        );
       }
       return;
     }
