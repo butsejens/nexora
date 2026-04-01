@@ -1,17 +1,15 @@
 /**
- * (tabs)/index.tsx - Sport Tab
- * ════════════════════════════════════════════════════════════════════════════════
- * Clean wrapper that exports SportModuleHub.
- * Replaces 2887 lines of messy inline code.
+ * (tabs)/index.tsx
+ * Legacy entry — redirects to the Home hub.
+ * This tab is hidden (href: null in _layout.tsx) and never shown in the bar.
  */
+import { useEffect } from "react";
+import { useRouter } from "expo-router";
 
-import React from "react";
-import { SportModuleHub } from "../../components/sports/SportModuleHub";
-
-/**
- * Sport Tab Screen
- * Displays live matches, competitions, matchday, and insights
- */
-export default function SportScreen() {
-  return <SportModuleHub initialPane="explore" />;
+export default function IndexTabRedirect() {
+  const router = useRouter();
+  useEffect(() => {
+    router.replace("/(tabs)/home");
+  }, [router]);
+  return null;
 }

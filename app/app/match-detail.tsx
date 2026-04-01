@@ -1,33 +1,22 @@
-import React, { useState, useEffect, useRef, useMemo } from "react";
+import React, { useMemo, useState } from "react";
 import {
-  Alert, View, Text, StyleSheet, TouchableOpacity, Platform,
-  ScrollView, Image, ActivityIndicator, useWindowDimensions,
+  ActivityIndicator,
+  Image,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
-import { BlurView } from "expo-blur";
-import { useQuery, useMutation } from "@tanstack/react-query";
-import { COLORS } from "@/constants/colors";
-import { SafeHaptics } from "@/lib/safeHaptics";
+import { Ionicons } from "@expo/vector-icons";
+import { useQuery } from "@tanstack/react-query";
+
 import { TeamLogo } from "@/components/TeamLogo";
-import { StateBlock } from "@/components/ui/PremiumPrimitives";
-import { safeStr } from "@/lib/utils";
-import { resolveCompetitionBrand } from "@/lib/logo-manager";
-import { t as tFn } from "@/lib/i18n";
-import { getBestCachedOrSeedPlayerImage, resolvePlayerImageUri } from "@/lib/player-image-system";
-import { resolveMatchBucket } from "@/lib/match-state";
-import { toCanonicalMatch } from "@/lib/canonical-match";
-import { normalizeTeamName } from "@/lib/entity-normalization";
-import { cacheGetStale, cachePeekStale, cacheSet, CacheTTL } from "@/lib/services/cache-service";
-import { getCompetitionInsights, getMatchDetailRaw, sportKeys } from "../lib/services/sports-service";
-import { useNexora } from "@/context/NexoraContext";
 import { useFollowState } from "@/context/UserStateContext";
-import { showRewardedUnlockAd } from "@/lib/rewarded-ads";
-import { buildAiMatchStory, calculateMomentum, filterStatsByMode, generateAiMatchStoryCard, getStatsMode, runAiPredictionModel, setStatsMode } from "@/lib/ai";
-import type { StatsMode } from "@/lib/ai";
-import { MomentumBar } from "@/components/sports/MomentumBar";
 import {
   useH2H,
   useInjuries,
@@ -44,166 +33,195 @@ import {
   useLiveLineupChanges,
   useTimeline,
   useTimelineFilters,
+  type TeamLineupState,
+  type TimelineEventItem,
+  type TimelineFilter,
 } from "@/features/match/hooks/useLineupTimelineIntegration";
-import type { TimelineFilter } from "@/features/match/hooks/useLineupTimelineIntegration";
+import { resolveCompetitionBrand } from "@/lib/logo-manager";
+import { getMatchDetailRaw, sportKeys } from "@/lib/services/sports-service";
 
-const EXPERIENCE_TABS = [
+const TAB_ITEMS = [
+  { id: "overview", label: "Overview" },
   { id: "prematch", label: "Prematch" },
   { id: "predictions", label: "Predictions" },
-  { id: "ai", label: "AI ⚡" },
   { id: "stats", label: "Stats" },
   { id: "lineups", label: "Lineups" },
   { id: "timeline", label: "Timeline" },
   { id: "h2h", label: "H2H" },
 ] as const;
 
-type ExperienceTabId = "prematch" | "predictions" | "ai" | "stats" | "lineups" | "timeline" | "h2h";
+type MatchTab = (typeof TAB_ITEMS)[number]["id"];
 
-function shouldRetryRequest(failureCount: number, error: unknown): boolean {
-  if (failureCount >= 1) return false;
-  const msg = String((error as any)?.message || "").toLowerCase();
-  return (
-    msg.includes("network") ||
-    msg.includes("netwerk") ||
-    msg.includes("failed to fetch") ||
-    msg.includes("timed out") ||
-    msg.includes("timeout") ||
-    msg.includes("abort") ||
-    msg.includes("429") ||
-    msg.includes("500") ||
-    msg.includes("502") ||
-    msg.includes("503") ||
-    msg.includes("504")
-  );
+type MatchParams = {
+  matchId?: string;
+  homeTeam?: string;
+  awayTeam?: string;
+  homeTeamLogo?: string;
+  awayTeamLogo?: string;
+  homeTeamId?: string;
+  awayTeamId?: string;
+  homeScore?: string;
+  awayScore?: string;
+  league?: string;
+  espnLeague?: string;
+  minute?: string;
+  status?: string;
+  statusDetail?: string;
+  sport?: string;
+  startDate?: string;
+  initialTab?: string;
+};
+
+type ScreenState = "live" | "upcoming" | "finished" | "postponed" | "cancelled";
+
+const DS = {
+  bg: "#05070B",
+  panel: "#0B0F18",
+  panelRaised: "#101624",
+  border: "rgba(255,255,255,0.08)",
+  text: "#F8FAFC",
+  muted: "#94A3B8",
+  subtle: "#64748B",
+  accent: "#E50914",
+  accentSoft: "rgba(229,9,20,0.16)",
+  live: "#22C55E",
+  liveSoft: "rgba(34,197,94,0.16)",
+  home: "#60A5FA",
+  away: "#F97316",
+};
+
+function safeText(value: unknown, fallback = ""): string {
+  const text = String(value || "").trim();
+  return text || fallback;
+}
+
+function toNumber(value: unknown): number | null {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
 function normalizeLeague(value: unknown): string {
-  return String(value || "").trim().toLowerCase();
-}
-
-function looksDomesticCompetition(label: string): boolean {
-  return /premier|laliga|la liga|bundesliga|serie a|ligue 1|championship|eredivisie|pro league|super lig|primeira/.test(label);
+  return safeText(value).toLowerCase();
 }
 
 function hasCountryLogo(uri: unknown): boolean {
-  return String(uri || "").toLowerCase().includes("/countries/");
+  return safeText(uri).toLowerCase().includes("/countries/");
 }
 
-type LiveStatusTone = "live" | "warning" | "muted" | "finished";
+function statusToken(value: unknown): string {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+}
 
-function getLiveStatusMeta(input: {
-  status?: string;
-  detail?: string;
+function getScreenState(input: { status?: unknown; detail?: unknown; minute?: unknown }): ScreenState {
+  const combined = `${statusToken(input.status)}_${statusToken(input.detail)}`;
+  const minute = toNumber(input.minute);
+  if (/cancel|abandon/.test(combined)) return "cancelled";
+  if (/postpon|delay|suspend/.test(combined)) return "postponed";
+  if (/finished|ft|full_time|final/.test(combined)) return "finished";
+  if (/live|in_progress|pen|extra|ht|half_time/.test(combined) || (minute != null && minute > 0)) return "live";
+  return "upcoming";
+}
+
+function formatKickoff(value?: string) {
+  const ts = Date.parse(String(value || ""));
+  if (!Number.isFinite(ts)) return { date: "Kickoff TBD", time: "--:--" };
+  const date = new Date(ts);
+  return {
+    date: new Intl.DateTimeFormat("nl-BE", { weekday: "short", day: "numeric", month: "short" }).format(date),
+    time: new Intl.DateTimeFormat("nl-BE", { hour: "2-digit", minute: "2-digit" }).format(date),
+  };
+}
+
+function metricValue(value: number | null | undefined, suffix = "", decimals = 0) {
+  if (value == null || !Number.isFinite(value)) return "--";
+  return `${Number(value).toFixed(decimals)}${suffix}`;
+}
+
+function percentageClamp(value: number, min = 5, max = 90) {
+  return Math.max(min, Math.min(max, Math.round(value)));
+}
+
+function buildPrediction(input: {
+  homeRank?: number | null;
+  awayRank?: number | null;
+  homeForm?: number | null;
+  awayForm?: number | null;
+  homeWins?: number;
+  awayWins?: number;
+  homeScore?: number | null;
+  awayScore?: number | null;
   minute?: number | null;
-  isFinished?: boolean;
-  isPostponed?: boolean;
-}): { label: string; minuteLabel: string | null; tone: LiveStatusTone } {
-  const statusToken = String(input.status || "").toLowerCase();
-  const detailToken = String(input.detail || "").toLowerCase();
-  const minute = Number.isFinite(Number(input.minute)) ? Number(input.minute) : null;
-  const combined = `${statusToken} ${detailToken}`;
+  state: ScreenState;
+}) {
+  const rankEdge = (input.awayRank && input.homeRank) ? (input.awayRank - input.homeRank) * 2.2 : 0;
+  const formEdge = ((input.homeForm || 50) - (input.awayForm || 50)) * 0.32;
+  const h2hEdge = ((input.homeWins || 0) - (input.awayWins || 0)) * 3.5;
+  const liveEdge = input.state === "live"
+    ? (((input.homeScore || 0) - (input.awayScore || 0)) * 14) + ((input.minute || 0) > 70 ? ((input.homeScore || 0) - (input.awayScore || 0)) * 6 : 0)
+    : 0;
 
-  if (input.isPostponed || /postpon|cancel|afgelast|abandon/.test(combined)) {
-    return { label: "POSTPONED", minuteLabel: null, tone: "warning" };
-  }
-  if (/suspend|interrupted|abandon/.test(combined)) {
-    return { label: "SUSPENDED", minuteLabel: null, tone: "warning" };
-  }
-  if (/delay|delayed/.test(combined)) {
-    return { label: "DELAYED", minuteLabel: null, tone: "warning" };
-  }
-  if (/pen|shootout/.test(combined)) {
-    return { label: "PEN", minuteLabel: null, tone: "live" };
-  }
-  if (/extra|aet|et/.test(combined)) {
-    return { label: "EXTRA TIME", minuteLabel: minute != null ? `${minute}'` : null, tone: "live" };
-  }
-  if (/ht|half/.test(combined)) {
-    return { label: "HT", minuteLabel: null, tone: "warning" };
-  }
-  if (input.isFinished || /ft|finished|fulltime|final/.test(combined)) {
-    return { label: "FT", minuteLabel: null, tone: "finished" };
-  }
-  if (/live|in progress|in_play|inplay/.test(combined) || (minute != null && minute > 0)) {
-    return { label: "LIVE", minuteLabel: minute != null ? `${minute}'` : null, tone: "live" };
-  }
-  return { label: "UPCOMING", minuteLabel: null, tone: "muted" };
+  const rawHome = 50 + rankEdge + formEdge + h2hEdge + liveEdge;
+  const home = percentageClamp(rawHome);
+  const awayBase = percentageClamp(100 - rawHome, 5, 80);
+  const drawBase = input.state === "live" ? Math.max(6, 28 - Math.round((input.minute || 0) / 6)) : 24;
+  const swing = Math.abs(home - awayBase);
+  const draw = percentageClamp(drawBase - Math.round(swing / 10), 5, 30);
+  const remainder = 100 - draw;
+  const homeShare = Math.round((home / (home + awayBase)) * remainder);
+  const awayShare = remainder - homeShare;
+  const confidence = percentageClamp(58 + Math.abs(rankEdge) + Math.abs(formEdge) / 2 + Math.abs(liveEdge) / 3, 52, 92);
+
+  return {
+    home: homeShare,
+    draw,
+    away: awayShare,
+    confidence,
+  };
 }
 
-function inferEventSide(event: any, homeTeam: string, awayTeam: string): "home" | "away" | "center" {
-  const forced = String(event?.side || "").toLowerCase();
-  if (forced === "home" || forced === "away" || forced === "center") return forced;
+function inferVerdict(homeTeam: string, awayTeam: string, model: ReturnType<typeof buildPrediction>) {
+  if (model.home >= model.away + 12) return `${homeTeam} carry the stronger edge.`;
+  if (model.away >= model.home + 12) return `${awayTeam} look better placed.`;
+  return "The matchup projects as balanced with a live swing factor.";
+}
 
-  const team = safeStr(event?.team || event?.teamName || "").toLowerCase();
-  const home = safeStr(homeTeam).toLowerCase();
-  const away = safeStr(awayTeam).toLowerCase();
-  if (!team) return "center";
-  if (team.includes(home.split(" ")[0]) || home.includes(team.split(" ")[0])) return "home";
-  if (team.includes(away.split(" ")[0]) || away.includes(team.split(" ")[0])) return "away";
-  return "center";
+function liveStatRows(homeStats: any, awayStats: any) {
+  const rows = [
+    { label: "Possession", home: toNumber(homeStats?.ball_possession ?? homeStats?.possession), away: toNumber(awayStats?.ball_possession ?? awayStats?.possession), suffix: "%", decimals: 0 },
+    { label: "Shots", home: toNumber(homeStats?.shots_total ?? homeStats?.shots ?? homeStats?.shotsOnGoal), away: toNumber(awayStats?.shots_total ?? awayStats?.shots ?? awayStats?.shotsOnGoal), suffix: "", decimals: 0 },
+    { label: "Shots On Target", home: toNumber(homeStats?.shots_on_goal ?? homeStats?.shotsOnGoal), away: toNumber(awayStats?.shots_on_goal ?? awayStats?.shotsOnGoal), suffix: "", decimals: 0 },
+    { label: "Corners", home: toNumber(homeStats?.corner_kicks ?? homeStats?.corners), away: toNumber(awayStats?.corner_kicks ?? awayStats?.corners), suffix: "", decimals: 0 },
+    { label: "Fouls", home: toNumber(homeStats?.fouls), away: toNumber(awayStats?.fouls), suffix: "", decimals: 0 },
+    { label: "Yellow Cards", home: toNumber(homeStats?.yellow_cards ?? homeStats?.yellow), away: toNumber(awayStats?.yellow_cards ?? awayStats?.yellow), suffix: "", decimals: 0 },
+  ];
+  return rows.filter((row) => row.home != null || row.away != null);
+}
+
+function validInitialTab(value: unknown): MatchTab {
+  return TAB_ITEMS.some((tab) => tab.id === value) ? (value as MatchTab) : "overview";
 }
 
 export default function MatchDetailScreen() {
-  const params = useLocalSearchParams<{
-    matchId: string; homeTeam: string; awayTeam: string;
-    homeTeamLogo?: string; awayTeamLogo?: string;
-    homeScore?: string; awayScore?: string;
-    league: string; espnLeague?: string; minute?: string; status: string; sport: string;
-    startDate?: string; statusDetail?: string;
-    initialTab?: string;
-  }>();
-
+  const params = useLocalSearchParams<MatchParams>();
   const insets = useSafeAreaInsets();
-  const { width: screenWidth } = useWindowDimensions();
-  const { hasPremium, dailyPredictionUnlocksRemaining, isPredictionUnlocked, unlockPredictionWithRewardedAd } = useNexora();
   const { isFollowingMatch, followMatchAction, unfollowMatchAction } = useFollowState();
-  const [lineupView, setLineupView] = useState<"pitch" | "list">("pitch");
-  const [activeExperienceTab, setActiveExperienceTab] = useState<ExperienceTabId>("prematch");
-  const [visitedExperienceTabs, setVisitedExperienceTabs] = useState<Record<ExperienceTabId, boolean>>({
-    prematch: true,
-    predictions: false,
-    ai: false,
-    stats: false,
-    lineups: false,
-    timeline: false,
-    h2h: false,
-  });
-  const [rewardedAdRunning, setRewardedAdRunning] = useState(false);
-  const [statsMode, setStatsModeState] = useState<StatsMode>("basic");
-  const [aiStoryCollapsed, setAiStoryCollapsed] = useState(true);
+  const [activeTab, setActiveTab] = useState<MatchTab>(validInitialTab(params.initialTab));
   const [timelineFilter, setTimelineFilter] = useState<TimelineFilter>("all");
-  const paramCanonical = useMemo(() => toCanonicalMatch({
-    id: params.matchId,
-    homeTeam: params.homeTeam,
-    awayTeam: params.awayTeam,
-    homeTeamLogo: params.homeTeamLogo,
-    awayTeamLogo: params.awayTeamLogo,
-    homeScore: params.homeScore,
-    awayScore: params.awayScore,
-    status: params.status,
-    detail: params.statusDetail,
-    minute: params.minute,
-    startDate: params.startDate,
-    league: params.league,
-    espnLeague: params.espnLeague,
-    sport: params.sport,
-  }), [params.awayScore, params.awayTeam, params.awayTeamLogo, params.espnLeague, params.homeScore, params.homeTeam, params.homeTeamLogo, params.league, params.matchId, params.minute, params.sport, params.startDate, params.status, params.statusDetail]);
-  const paramBucket = paramCanonical?.status === "live"
-    ? "live"
-    : paramCanonical?.status === "finished"
-      ? "finished"
-      : "upcoming";
-  const espnSport = String(params.sport || "soccer");
-  const likelyInternationalFromParams = useMemo(() => {
-    const rawLeague = normalizeLeague(params.league);
-    if (/friendly|friendlies|international|fifa|nations|world cup|euro/.test(rawLeague)) return true;
+
+  const rawLeague = safeText(params.league, "Competition");
+  const likelyInternational = useMemo(() => {
+    if (/fifa\.|uefa\.nations|international|friendly|friendlies|world cup|euro/i.test(safeText(params.espnLeague))) return true;
+    if (/friendly|friendlies|international|fifa|nations|world cup|euro/.test(normalizeLeague(rawLeague))) return true;
     return hasCountryLogo(params.homeTeamLogo) && hasCountryLogo(params.awayTeamLogo);
-  }, [params.awayTeamLogo, params.homeTeamLogo, params.league]);
+  }, [params.awayTeamLogo, params.espnLeague, params.homeTeamLogo, rawLeague]);
 
   const espnLeague = useMemo(() => {
-    const direct = String(params.espnLeague || "").trim();
+    const direct = safeText(params.espnLeague);
     if (direct) return direct;
-    if (likelyInternationalFromParams) return "fifa.world";
+    if (likelyInternational) return "fifa.world";
     const map: Record<string, string> = {
       "Premier League": "eng.1",
       "Championship": "eng.2",
@@ -212,6265 +230,757 @@ export default function MatchDetailScreen() {
       "UEFA Europa League": "uefa.europa",
       "UEFA Conference League": "uefa.europa.conf",
       "La Liga": "esp.1",
-      "La Liga 2": "esp.2",
       "Copa del Rey": "esp.copa_del_rey",
       "Bundesliga": "ger.1",
-      "2. Bundesliga": "ger.2",
       "DFB Pokal": "ger.dfb_pokal",
-      "Jupiler Pro League": "bel.1",
-      "Challenger Pro League": "bel.2",
-      "Belgian Cup": "bel.cup",
-      "Ligue 1": "fra.1",
-      "Ligue 2": "fra.2",
-      "Coupe de France": "fra.coupe_de_france",
       "Serie A": "ita.1",
-      "Serie B": "ita.2",
       "Coppa Italia": "ita.coppa_italia",
+      "Ligue 1": "fra.1",
       "Eredivisie": "ned.1",
-      "Eerste Divisie": "ned.2",
-      "KNVB Beker": "ned.knvb_beker",
+      "Jupiler Pro League": "bel.1",
     };
-    return map[params.league] || "";
-  }, [likelyInternationalFromParams, params.espnLeague, params.league]);
-  const { data: matchDetail, isLoading: detailLoading } = useQuery({
-    queryKey: sportKeys.matchDetail({ matchId: params.matchId, espnLeague, sport: espnSport }),
-    placeholderData: () => cachePeekStale<any>(`sports:match-detail:${params.matchId}:${espnLeague}`) || undefined,
-    queryFn: async () => {
-      const key = `sports:match-detail:${params.matchId}:${espnLeague}`;
-      const stale = await cacheGetStale<any>(key);
-      try {
-        const payload = await getMatchDetailRaw({ matchId: params.matchId, sport: espnSport, league: espnLeague });
-        cacheSet(key, payload, CacheTTL.MATCH_DETAIL);
-        return payload;
-      } catch (error) {
-        if (stale) return stale;
-        throw error;
-      }
-    },
-    enabled: true,
-    // Poll only while match is effectively live.
-    refetchInterval: (query: any) => {
-      const payload = query?.state?.data;
-      const bucket = resolveMatchBucket({
-        status: payload?.status ?? params.status,
-        detail: payload?.statusDetail ?? payload?.status ?? params.statusDetail,
-        minute: payload?.minute ?? params.minute,
-        homeScore: payload?.homeScore ?? params.homeScore,
-        awayScore: payload?.awayScore ?? params.awayScore,
-        startDate: payload?.startDate ?? params.startDate,
-      });
-      return bucket === "live" ? 10000 : false;
+    return map[rawLeague] || "";
+  }, [likelyInternational, params.espnLeague, rawLeague]);
+
+  const detailQuery = useQuery({
+    queryKey: sportKeys.matchDetail({ matchId: safeText(params.matchId), espnLeague, sport: safeText(params.sport, "soccer") }),
+    queryFn: () => getMatchDetailRaw({ matchId: safeText(params.matchId), league: espnLeague, sport: safeText(params.sport, "soccer") }),
+    enabled: Boolean(params.matchId),
+    staleTime: 15_000,
+    retry: 1,
+    refetchInterval: (query) => {
+      const data = query.state.data as any;
+      const state = getScreenState({ status: data?.status || params.status, detail: data?.statusDetail || params.statusDetail, minute: data?.minute || params.minute });
+      return state === "live" ? 10_000 : false;
     },
     refetchIntervalInBackground: true,
-    staleTime: paramBucket === "live" ? 4000 : 30000,
-    retry: shouldRetryRequest,
-    refetchOnMount: false,
   });
 
-  const detailCanonical = useMemo(() => toCanonicalMatch(matchDetail), [matchDetail]);
-  const effectiveCanonical = detailCanonical || paramCanonical;
+  const detail = detailQuery.data as any;
+  const match = useMemo(() => ({
+    id: safeText(detail?.id || params.matchId),
+    homeTeam: safeText(detail?.homeTeam || params.homeTeam, "Home"),
+    awayTeam: safeText(detail?.awayTeam || params.awayTeam, "Away"),
+    homeTeamLogo: safeText(detail?.homeTeamLogo || params.homeTeamLogo),
+    awayTeamLogo: safeText(detail?.awayTeamLogo || params.awayTeamLogo),
+    homeTeamId: safeText(detail?.homeTeamId || params.homeTeamId),
+    awayTeamId: safeText(detail?.awayTeamId || params.awayTeamId),
+    homeScore: toNumber(detail?.homeScore ?? params.homeScore) ?? 0,
+    awayScore: toNumber(detail?.awayScore ?? params.awayScore) ?? 0,
+    league: safeText(detail?.competition || detail?.league || params.league, likelyInternational ? "International Friendly" : "Competition"),
+    startDate: safeText(detail?.startDate || detail?.date || params.startDate),
+    status: safeText(detail?.status || params.status, "upcoming"),
+    statusDetail: safeText(detail?.statusDetail || params.statusDetail),
+    minute: toNumber(detail?.minute ?? params.minute),
+    venue: safeText(detail?.venue),
+    city: safeText(detail?.city),
+    country: safeText(detail?.country),
+    referee: safeText(detail?.referee),
+    weather: safeText(detail?.weather),
+    round: safeText(detail?.round),
+    homeStats: detail?.homeStats || {},
+    awayStats: detail?.awayStats || {},
+    starters: Array.isArray(detail?.starters) ? detail.starters : [],
+    timeline: Array.isArray(detail?.timeline) ? detail.timeline : Array.isArray(detail?.keyEvents) ? detail.keyEvents : [],
+  }), [detail, likelyInternational, params.awayScore, params.awayTeam, params.awayTeamId, params.awayTeamLogo, params.homeScore, params.homeTeam, params.homeTeamId, params.homeTeamLogo, params.league, params.matchId, params.minute, params.startDate, params.status, params.statusDetail]);
 
-  const isLive = effectiveCanonical?.status === "live";
-  const isFinished = effectiveCanonical?.status === "finished";
-  const isPostponed = effectiveCanonical?.status === "postponed" || effectiveCanonical?.status === "cancelled";
-  const statusText = String(effectiveCanonical?.statusDetail || matchDetail?.status || params.status || "").toLowerCase();
-  const isHalfTime = isLive && (statusText.includes("ht") || statusText.includes("half"));
+  const state = getScreenState({ status: match.status, detail: match.statusDetail, minute: match.minute });
+  const kickoff = formatKickoff(match.startDate);
+  const competitionBrand = resolveCompetitionBrand({ name: match.league, espnLeague: espnLeague || null });
+  const isMatchFollowed = match.id ? isFollowingMatch(match.id) : false;
 
-  const liveHomeScore = effectiveCanonical?.homeScore ?? Number(params.homeScore ?? 0);
-  const liveAwayScore = effectiveCanonical?.awayScore ?? Number(params.awayScore ?? 0);
-  const liveMinute = effectiveCanonical?.minute ?? (params.minute ? parseInt(params.minute) : undefined);
-  const followMatchId = String(effectiveCanonical?.id || params.matchId || "");
-  const isMatchFollowed = followMatchId ? isFollowingMatch(followMatchId) : false;
-  const statusMeta = getLiveStatusMeta({
-    status: String(effectiveCanonical?.status || params.status || ""),
-    detail: String(effectiveCanonical?.statusDetail || matchDetail?.statusDetail || matchDetail?.status || params.statusDetail || ""),
-    minute: liveMinute ?? null,
-    isFinished,
-    isPostponed,
-  });
-  const competitionInsightsQuery = useQuery({
-    queryKey: sportKeys.competitionInsights({ leagueName: params.league, espnLeague, sport: espnSport }),
-    queryFn: () => getCompetitionInsights({ leagueName: params.league, espnLeague, sport: espnSport }),
-    enabled: Boolean(espnLeague || params.league),
-    staleTime: 10 * 60 * 1000,
-    retry: 1,
-  });
-  // AI Prediction
-  const requestPrediction = async (mode: "prematch" | "live") => {
-    const homeTag = normalizeTeamName(params.homeTeam);
-    const awayTag = normalizeTeamName(params.awayTeam);
-
-    const insightPayload = competitionInsightsQuery.data || await getCompetitionInsights({
-      leagueName: params.league,
-      espnLeague,
-      sport: espnSport,
-    });
-
-    const standings: any[] = Array.isArray(insightPayload?.standings) ? insightPayload.standings : [];
-    const scorers: any[] = Array.isArray(insightPayload?.topScorers) ? insightPayload.topScorers : [];
-    const assisters: any[] = Array.isArray(insightPayload?.topAssists) ? insightPayload.topAssists : [];
-
-    const matchStanding = (teamName?: string) => {
-      const teamKey = normalizeTeamName(teamName);
-      if (!teamKey) return null;
-      return standings.find((row: any) => {
-        const rowTeam = normalizeTeamName(row?.team);
-        return rowTeam === teamKey || rowTeam.includes(teamKey) || teamKey.includes(rowTeam);
-      }) || null;
-    };
-
-    const homeStanding = matchStanding(params.homeTeam);
-    const awayStanding = matchStanding(params.awayTeam);
-
-    const topByTeam = (tag: string, rows: any[], scoreKey: "goals" | "assists") => rows
-      .filter((row: any) => {
-        const team = normalizeTeamName(row?.team);
-        return team === tag || team.includes(tag) || tag.includes(team);
-      })
-      .sort((a: any, b: any) => Number(b?.[scoreKey] || b?.displayValue || 0) - Number(a?.[scoreKey] || a?.displayValue || 0))[0] || null;
-
-    const homeTopScorer = homeTag ? topByTeam(homeTag, scorers, "goals") : null;
-    const awayTopScorer = awayTag ? topByTeam(awayTag, scorers, "goals") : null;
-    const homeTopAssist = homeTag ? topByTeam(homeTag, assisters, "assists") : null;
-    const awayTopAssist = awayTag ? topByTeam(awayTag, assisters, "assists") : null;
-
-    const isLiveMode = mode === "live";
-    const isInternationalContext = /fifa|nations|international|friendly|euro|world cup|wereldkampioenschap/i.test(`${espnLeague} ${params.league || ""}`);
-    const homeLineupPlayers = Array.isArray(homeLineupTeam?.allPlayers) ? homeLineupTeam.allPlayers.length : 0;
-    const awayLineupPlayers = Array.isArray(awayLineupTeam?.allPlayers) ? awayLineupTeam.allPlayers.length : 0;
-    const homeLineupCertainty = homeLineupTeam?.lineupState === "confirmed" ? 0.95 : (homeLineupPlayers >= 11 ? 0.72 : 0.5);
-    const awayLineupCertainty = awayLineupTeam?.lineupState === "confirmed" ? 0.95 : (awayLineupPlayers >= 11 ? 0.72 : 0.5);
-
-    return runAiPredictionModel({
-      matchId: String(params.matchId || ""),
-      homeTeam: String(params.homeTeam || "Home"),
-      awayTeam: String(params.awayTeam || "Away"),
-      competition: String(params.league || espnLeague || ""),
-      competitionContext: String(params.league || espnLeague || ""),
-      isInternational: isInternationalContext,
-      isLive: isLiveMode,
-      status: effectiveCanonical?.status || params.status || null,
-      minute: isLiveMode ? liveMinute ?? null : null,
-      homeScore: Number(isLiveMode ? liveHomeScore ?? 0 : params.homeScore ?? 0),
-      awayScore: Number(isLiveMode ? liveAwayScore ?? 0 : params.awayScore ?? 0),
-      stats: {
-        home: isLiveMode ? (matchDetail?.homeStats || {}) : {},
-        away: isLiveMode ? (matchDetail?.awayStats || {}) : {},
-      },
-      events: Array.isArray(timelineRawEvents)
-        ? timelineRawEvents.slice(-40)
-        : (isLiveMode && Array.isArray(matchDetail?.keyEvents) ? matchDetail.keyEvents.slice(0, 25) : []),
-      headToHead: prematchH2H?.summary
-        ? {
-            homeWins: Number(prematchH2H.summary.homeWins || 0),
-            awayWins: Number(prematchH2H.summary.awayWins || 0),
-            draws: Number(prematchH2H.summary.draws || 0),
-          }
-        : null,
-      home: {
-        rank: homeStanding?.rank ?? null,
-        points: homeStanding?.points ?? null,
-        goalDiff: homeStanding?.goalDiff ?? null,
-        recentForm: homeStanding?.form ?? homeStanding?.recentForm ?? null,
-        recentResults5: prematchTeamForm?.homeForm?.sequence || null,
-        goalsFor: homeStanding?.goalsFor ?? homeStanding?.gf ?? null,
-        goalsAgainst: homeStanding?.goalsAgainst ?? homeStanding?.ga ?? null,
-        cleanSheets: homeStanding?.cleanSheets ?? null,
-        gamesPlayed: homeStanding?.played ?? homeStanding?.gamesPlayed ?? null,
-        homeFormPts: homeStanding?.homePoints ?? homeStanding?.homeFormPts ?? null,
-        awayFormPts: homeStanding?.awayPoints ?? homeStanding?.awayFormPts ?? null,
-        topScorer: homeTopScorer?.name || null,
-        topScorerGoals: homeTopScorer?.goals ?? null,
-        topAssist: homeTopAssist?.name || null,
-        topAssistCount: (homeTopAssist?.assists ?? Number(homeTopAssist?.displayValue || 0)) || null,
-        formation: homeLineupTeam?.formation || null,
-        injuries: prematchInjuries.home.length || null,
-        suspensions: 0,
-        lineupStrength: Math.min(1, homeLineupPlayers / 11),
-        lineupCertainty: homeLineupCertainty,
-      },
-      away: {
-        rank: awayStanding?.rank ?? null,
-        points: awayStanding?.points ?? null,
-        goalDiff: awayStanding?.goalDiff ?? null,
-        recentForm: awayStanding?.form ?? awayStanding?.recentForm ?? null,
-        recentResults5: prematchTeamForm?.awayForm?.sequence || null,
-        goalsFor: awayStanding?.goalsFor ?? awayStanding?.gf ?? null,
-        goalsAgainst: awayStanding?.goalsAgainst ?? awayStanding?.ga ?? null,
-        cleanSheets: awayStanding?.cleanSheets ?? null,
-        gamesPlayed: awayStanding?.played ?? awayStanding?.gamesPlayed ?? null,
-        homeFormPts: awayStanding?.homePoints ?? awayStanding?.homeFormPts ?? null,
-        awayFormPts: awayStanding?.awayPoints ?? awayStanding?.awayFormPts ?? null,
-        topScorer: awayTopScorer?.name || null,
-        topScorerGoals: awayTopScorer?.goals ?? null,
-        topAssist: awayTopAssist?.name || null,
-        topAssistCount: (awayTopAssist?.assists ?? Number(awayTopAssist?.displayValue || 0)) || null,
-        formation: awayLineupTeam?.formation || null,
-        injuries: prematchInjuries.away.length || null,
-        suspensions: 0,
-        lineupStrength: Math.min(1, awayLineupPlayers / 11),
-        lineupCertainty: awayLineupCertainty,
-      },
-    }, mode);
-  };
-
-  const {
-    data: preMatchPrediction,
-    isPending: preMatchLoading,
-    mutate: fetchPreMatchPrediction,
-  } = useMutation({
-    mutationFn: () => requestPrediction("prematch"),
-  });
-
-  const {
-    data: livePrediction,
-    isPending: livePredictionLoading,
-    mutate: fetchLivePrediction,
-  } = useMutation({
-    mutationFn: () => requestPrediction("live"),
-  });
-
-  const prematchInsightEnabled = !isLive && !isFinished && !isPostponed;
-  const liveInsightEnabled = isLive;
-  const prediction = liveInsightEnabled ? livePrediction : prematchInsightEnabled ? preMatchPrediction : null;
-  const predLoading = liveInsightEnabled
-    ? Boolean(livePredictionLoading && !livePrediction)
-    : prematchInsightEnabled
-      ? Boolean(preMatchLoading && !preMatchPrediction)
-      : false;
-
-  const handleExperienceTabChange = (tab: ExperienceTabId) => {
-    setActiveExperienceTab(tab);
-    setVisitedExperienceTabs((current) => (current[tab] ? current : { ...current, [tab]: true }));
-    SafeHaptics.impactLight();
-  };
-
-  const handleToggleFollowMatch = async () => {
-    if (!followMatchId) return;
-    SafeHaptics.impactLight();
-    try {
-      if (isMatchFollowed) {
-        await unfollowMatchAction(followMatchId);
-      } else {
-        await followMatchAction({
-          matchId: followMatchId,
-          homeTeam: safeStr(effectiveCanonical?.homeTeam || params.homeTeam),
-          awayTeam: safeStr(effectiveCanonical?.awayTeam || params.awayTeam),
-          competition: safeStr(effectiveCanonical?.league || params.league),
-          espnLeague: safeStr(espnLeague || params.espnLeague),
-          startTime: safeStr(effectiveCanonical?.startDate || params.startDate) || null,
-          notificationsEnabled: true,
-        });
-      }
-    } catch {
-      Alert.alert("Kon meldingen niet updaten", "Probeer opnieuw.");
-    }
-  };
-
-  useEffect(() => {
-    let mounted = true;
-    getStatsMode().then((mode) => {
-      if (mounted) setStatsModeState(mode);
-    }).catch(() => undefined);
-    return () => { mounted = false; };
-  }, []);
-
-  const hasFetchedPrematchRef = useRef(false);
-  const lastLivePredictionSignatureRef = useRef("");
-
-  useEffect(() => {
-    if (!prematchInsightEnabled) return;
-    if (!detailLoading && !hasFetchedPrematchRef.current && !preMatchLoading) {
-      hasFetchedPrematchRef.current = true;
-      const t = setTimeout(() => fetchPreMatchPrediction(), 700);
-      return () => clearTimeout(t);
-    }
-  }, [detailLoading, fetchPreMatchPrediction, preMatchLoading, prematchInsightEnabled]);
-
-  useEffect(() => {
-    if (!liveInsightEnabled || detailLoading) return;
-
-    fetchLivePrediction();
-    const id = setInterval(() => {
-      fetchLivePrediction();
-    }, 12_000);
-
-    return () => clearInterval(id);
-  }, [detailLoading, fetchLivePrediction, liveInsightEnabled, matchDetail?.homeScore, matchDetail?.awayScore, matchDetail?.minute, matchDetail?.statusDetail]);
-
-  useEffect(() => {
-    if (!liveInsightEnabled) return;
-    if (detailLoading || livePredictionLoading) return;
-    const signature = [
-      String(params.matchId || ""),
-      String(liveMinute ?? ""),
-      String(liveHomeScore ?? ""),
-      String(liveAwayScore ?? ""),
-      String(Array.isArray(matchDetail?.keyEvents) ? matchDetail.keyEvents.length : 0),
-    ].join(":");
-    if (signature === lastLivePredictionSignatureRef.current) return;
-    lastLivePredictionSignatureRef.current = signature;
-    const t = setTimeout(() => fetchLivePrediction(), livePrediction ? 250 : 700);
-    return () => clearTimeout(t);
-  }, [
-    detailLoading,
-    fetchLivePrediction,
-    isHalfTime,
-    isLive,
-    liveAwayScore,
-    liveHomeScore,
-    liveInsightEnabled,
-    liveMinute,
-    livePrediction,
-    livePredictionLoading,
-    matchDetail?.keyEvents,
-    params.matchId,
-  ]);
-
-  const topPad = Platform.OS === "web" ? 67 : insets.top;
-  const scoreFontSize = screenWidth < 350 ? 40 : screenWidth < 385 ? 44 : 48;
-  const rawCompetitionName = safeStr(effectiveCanonical?.league || matchDetail?.competition || matchDetail?.league || params.league);
-  const likelyInternational = useMemo(() => {
-    if (/fifa\.|uefa\.nations|international|friendly|friendlies|world cup|euro/i.test(espnLeague)) return true;
-    const normalized = normalizeLeague(rawCompetitionName);
-    if (/friendly|friendlies|international|fifa|nations|world cup|euro/.test(normalized)) return true;
-    return (hasCountryLogo(matchDetail?.homeTeamLogo || params.homeTeamLogo) && hasCountryLogo(matchDetail?.awayTeamLogo || params.awayTeamLogo));
-  }, [espnLeague, matchDetail?.awayTeamLogo, matchDetail?.homeTeamLogo, params.awayTeamLogo, params.homeTeamLogo, rawCompetitionName]);
-  const competitionName = useMemo(() => {
-    const normalized = normalizeLeague(rawCompetitionName);
-    if (likelyInternational && (!rawCompetitionName || looksDomesticCompetition(normalized))) {
-      return "International Friendly";
-    }
-    return rawCompetitionName || (likelyInternational ? "International Friendly" : "Competition");
-  }, [likelyInternational, rawCompetitionName]);
-  const competitionBrand = useMemo(
-    () => resolveCompetitionBrand({ name: competitionName, espnLeague }),
-    [competitionName, espnLeague],
-  );
-  const leagueLogoUri = competitionBrand.logo as string | null;
-  const homeTeamName = safeStr(matchDetail?.homeTeam || params.homeTeam || "Home");
-  const awayTeamName = safeStr(matchDetail?.awayTeam || params.awayTeam || "Away");
-  const kickoffRaw = safeStr(matchDetail?.startDate || matchDetail?.date || effectiveCanonical?.startDate || "");
-  const timelineRawEvents = useMemo(
-    () => (Array.isArray(matchDetail?.timeline) ? matchDetail.timeline : []),
-    [matchDetail?.timeline],
-  );
-
-  const prematchContext = useMatchContext({
-    kickoffRaw,
-    venue: matchDetail?.venue,
-    city: matchDetail?.city,
-    country: matchDetail?.country,
-    referee: matchDetail?.referee,
-    weather: (matchDetail as any)?.weather,
-    competition: competitionName,
-    round: matchDetail?.round,
-  });
-
-  const prematchStandings = useStandings({
-    leagueName: competitionName,
+  const standings = useStandings({
+    leagueName: match.league,
     espnLeague,
-    sport: espnSport,
-    homeTeam: homeTeamName,
-    awayTeam: awayTeamName,
+    sport: safeText(params.sport, "soccer"),
+    homeTeam: match.homeTeam,
+    awayTeam: match.awayTeam,
   });
 
-  const prematchTeamForm = useTeamForm({
-    homeTeamId: String((matchDetail as any)?.homeTeamId || "") || null,
-    awayTeamId: String((matchDetail as any)?.awayTeamId || "") || null,
-    homeTeam: homeTeamName,
-    awayTeam: awayTeamName,
+  const teamForm = useTeamForm({
+    homeTeamId: match.homeTeamId || null,
+    awayTeamId: match.awayTeamId || null,
+    homeTeam: match.homeTeam,
+    awayTeam: match.awayTeam,
     espnLeague,
-    sport: espnSport,
+    sport: safeText(params.sport, "soccer"),
   });
 
-  const prematchH2H = useH2H({
-    leagueName: competitionName,
+  const h2h = useH2H({
+    leagueName: match.league,
     espnLeague,
-    homeTeam: homeTeamName,
-    awayTeam: awayTeamName,
+    homeTeam: match.homeTeam,
+    awayTeam: match.awayTeam,
   });
 
-  const prematchTeamStats = useTeamStats({
-    homeStanding: prematchStandings.homeStanding,
-    awayStanding: prematchStandings.awayStanding,
-    homeForm: prematchTeamForm.homeForm,
-    awayForm: prematchTeamForm.awayForm,
-    homeOverview: prematchTeamForm.homeTeamOverview,
-    awayOverview: prematchTeamForm.awayTeamOverview,
+  const seasonStats = useTeamStats({
+    homeStanding: standings.homeStanding,
+    awayStanding: standings.awayStanding,
+    homeForm: teamForm.homeForm,
+    awayForm: teamForm.awayForm,
+    homeOverview: teamForm.homeTeamOverview,
+    awayOverview: teamForm.awayTeamOverview,
   });
 
-  const prematchKeyPlayers = useKeyPlayers({
-    homeTeam: homeTeamName,
-    awayTeam: awayTeamName,
-    competitionInsights: prematchStandings.data,
-    homeOverview: prematchTeamForm.homeTeamOverview,
-    awayOverview: prematchTeamForm.awayTeamOverview,
+  const keyPlayers = useKeyPlayers({
+    homeTeam: match.homeTeam,
+    awayTeam: match.awayTeam,
+    competitionInsights: standings.data,
+    homeOverview: teamForm.homeTeamOverview,
+    awayOverview: teamForm.awayTeamOverview,
   });
 
-  const prematchInjuries = useInjuries({
-    homeOverview: prematchTeamForm.homeTeamOverview,
-    awayOverview: prematchTeamForm.awayTeamOverview,
+  const injuries = useInjuries({
+    homeOverview: teamForm.homeTeamOverview,
+    awayOverview: teamForm.awayTeamOverview,
+  });
+
+  const matchContext = useMatchContext({
+    kickoffRaw: match.startDate,
+    venue: match.venue,
+    city: match.city,
+    country: match.country,
+    referee: match.referee,
+    weather: match.weather,
+    competition: match.league,
+    round: match.round,
   });
 
   const expectedLineups = useExpectedLineups({
-    homeOverview: prematchTeamForm.homeTeamOverview,
-    awayOverview: prematchTeamForm.awayTeamOverview,
+    homeOverview: teamForm.homeTeamOverview,
+    awayOverview: teamForm.awayTeamOverview,
   });
 
-  const timelineData = useTimeline({
-    events: timelineRawEvents,
-    homeTeam: homeTeamName,
-    awayTeam: awayTeamName,
-    status: String(effectiveCanonical?.statusDetail || effectiveCanonical?.status || params.status || ""),
+  const timeline = useTimeline({
+    events: match.timeline,
+    homeTeam: match.homeTeam,
+    awayTeam: match.awayTeam,
+    status: match.statusDetail || match.status,
   });
 
-  const { substitutions } = useLiveLineupChanges({ events: timelineData.events });
+  const { substitutions } = useLiveLineupChanges({ events: timeline.events });
 
   const integratedLineups = useLineups({
-    confirmedTeams: (matchDetail as any)?.starters || [],
-    homeTeam: homeTeamName,
-    awayTeam: awayTeamName,
+    confirmedTeams: match.starters,
+    homeTeam: match.homeTeam,
+    awayTeam: match.awayTeam,
     expectedHome: expectedLineups.homeExpected,
     expectedAway: expectedLineups.awayExpected,
     substitutions,
   });
-  const homeLineupTeam = integratedLineups.home;
-  const awayLineupTeam = integratedLineups.away;
-  const homeFormationLayout = useFormationLayout(homeLineupTeam);
-  const awayFormationLayout = useFormationLayout(awayLineupTeam);
 
-  const kickoffTs = Date.parse(kickoffRaw);
-  const hasKickoffDate = Number.isFinite(kickoffTs);
-  const kickoffDate = (() => {
-    if (!hasKickoffDate) return "";
-    try {
-      return new Intl.DateTimeFormat("nl-BE", {
-        weekday: "short",
-        day: "numeric",
-        month: "short",
-      }).format(new Date(kickoffTs));
-    } catch {
-      return "";
-    }
-  })();
-  const kickoffTime = (() => {
-    if (!hasKickoffDate) {
-      const hm = kickoffRaw.match(/(\d{1,2}:\d{2})/);
-      return hm?.[1] || "";
-    }
-    try {
-      return new Intl.DateTimeFormat("nl-BE", {
-        hour: "2-digit",
-        minute: "2-digit",
-      }).format(new Date(kickoffTs));
-    } catch {
-      return "";
-    }
-  })();
-  const orderedTimelineEvents = timelineData.events;
-  const timelineProgressMinute = Math.max(0, Math.min(120, Number(liveMinute || 0)));
-  const timelineProgressPct = Math.max(0, Math.min(100, Math.round((timelineProgressMinute / 90) * 100)));
-  const timelineEventCounts = useMemo(() => {
-    return orderedTimelineEvents.reduce((acc, event) => {
-      const kind = String(event.kind || "").toLowerCase();
-      if (event.filter === "goals") acc.goals += 1;
-      if (kind.includes("yellow")) acc.yellow += 1;
-      if (kind.includes("red")) acc.red += 1;
-      if (event.filter === "subs") acc.subs += 1;
-      if (kind.includes("penalty") || kind.includes("missed_penalty")) acc.penalties += 1;
-      return acc;
-    }, { goals: 0, yellow: 0, red: 0, subs: 0, penalties: 0 });
-  }, [orderedTimelineEvents]);
+  const homeFormation = useFormationLayout(integratedLineups.home);
+  const awayFormation = useFormationLayout(integratedLineups.away);
+
   const timelineFilters = useTimelineFilters({
-    events: orderedTimelineEvents,
+    events: timeline.events,
     activeFilter: timelineFilter,
   });
-  const filteredTimelineEvents = useMemo(
-    () => timelineFilters.filteredEvents,
-    [timelineFilters.filteredEvents],
-  );
-  const keyLiveEvents = useMemo(
-    () => orderedTimelineEvents.filter((event) => !event.isPhaseSeparator && event.isKeyMoment).slice(-6).reverse(),
-    [orderedTimelineEvents],
-  );
-  const momentumTrend = useMemo(
-    () => orderedTimelineEvents
-      .filter((event) => !event.isPhaseSeparator)
-      .slice(-8)
-      .map((event) => (event.side === "home" ? 14 : event.side === "away" ? -14 : 0)),
-    [orderedTimelineEvents],
-  );
-  const liveMatchFactors = useMemo(() => {
-    const homeStats = matchDetail?.homeStats || {};
-    const awayStats = matchDetail?.awayStats || {};
-    const factors: { label: string; value: string; tone: "home" | "away" | "neutral" }[] = [];
-    const hPoss = Number(homeStats?.ball_possession ?? homeStats?.possession ?? 0);
-    const aPoss = Number(awayStats?.ball_possession ?? awayStats?.possession ?? 0);
-    if (hPoss || aPoss) {
-      factors.push({ label: "Possession", value: `${hPoss}% – ${aPoss}%`, tone: hPoss > aPoss ? "home" : aPoss > hPoss ? "away" : "neutral" });
-    }
-    const hShots = Number(homeStats?.shots ?? homeStats?.total_shots ?? 0);
-    const aShots = Number(awayStats?.shots ?? awayStats?.total_shots ?? 0);
-    if (hShots || aShots) {
-      factors.push({ label: "Shots", value: `${hShots} – ${aShots}`, tone: hShots > aShots ? "home" : aShots > hShots ? "away" : "neutral" });
-    }
-    const hShotsOn = Number(homeStats?.shots_on_goal ?? homeStats?.shots_on_target ?? 0);
-    const aShotsOn = Number(awayStats?.shots_on_goal ?? awayStats?.shots_on_target ?? 0);
-    if (hShotsOn || aShotsOn) {
-      factors.push({ label: "On Target", value: `${hShotsOn} – ${aShotsOn}`, tone: hShotsOn > aShotsOn ? "home" : aShotsOn > hShotsOn ? "away" : "neutral" });
-    }
-    const hCorners = Number(homeStats?.corners ?? homeStats?.corner_kicks ?? 0);
-    const aCorners = Number(awayStats?.corners ?? awayStats?.corner_kicks ?? 0);
-    if (hCorners || aCorners) {
-      factors.push({ label: "Corners", value: `${hCorners} – ${aCorners}`, tone: hCorners > aCorners ? "home" : aCorners > hCorners ? "away" : "neutral" });
-    }
-    return factors;
-  }, [matchDetail?.homeStats, matchDetail?.awayStats]);
-  const momentumModel = useMemo(() => calculateMomentum({
-    homeStats: matchDetail?.homeStats || {},
-    awayStats: matchDetail?.awayStats || {},
-  }), [matchDetail?.awayStats, matchDetail?.homeStats]);
-  const aiStory = useMemo(() => buildAiMatchStory({
-    homeTeam: homeTeamName,
-    awayTeam: awayTeamName,
-    homeScore: Number(liveHomeScore || 0),
-    awayScore: Number(liveAwayScore || 0),
-    timeline: orderedTimelineEvents,
-    homeStats: matchDetail?.homeStats || {},
-    awayStats: matchDetail?.awayStats || {},
-  }), [awayTeamName, homeTeamName, liveAwayScore, liveHomeScore, matchDetail?.awayStats, matchDetail?.homeStats, orderedTimelineEvents]);
-  const scopedStats = useMemo(() => filterStatsByMode(
-    (matchDetail?.homeStats || {}) as Record<string, unknown>,
-    (matchDetail?.awayStats || {}) as Record<string, unknown>,
-    statsMode,
-  ), [matchDetail?.awayStats, matchDetail?.homeStats, statsMode]);
-  const predictionError = Boolean((prediction as any)?.error);
-  const safePrediction = prediction && !predictionError ? prediction : null;
-  const premiumStoryCard = useMemo(() => {
-    return generateAiMatchStoryCard({
-      prediction: safePrediction,
-      liveStory: aiStory,
-      isLive: liveInsightEnabled,
-      homeTeam: homeTeamName,
-      awayTeam: awayTeamName,
-    });
-  }, [aiStory, awayTeamName, homeTeamName, liveInsightEnabled, safePrediction]);
-  const predictionMatchId = followMatchId || `${params.homeTeam}-${params.awayTeam}-${params.startDate || ""}`;
-  const predictionUnlocked = hasPremium("sport") || isPredictionUnlocked(predictionMatchId);
-  const handleUnlockPrediction = async () => {
-    if (hasPremium("sport") || predictionUnlocked) return;
-    if (!predictionMatchId) return;
-    if (dailyPredictionUnlocksRemaining <= 0) {
-      Alert.alert(
-        "Premium vereist",
-        "Je gratis dagelijkse unlock is opgebruikt. Upgrade naar Premium om alle Match Intelligence direct te openen.",
-        [
-          { text: "Annuleren", style: "cancel" },
-          { text: "Bekijk Premium", onPress: () => router.push("/premium") },
-        ]
-      );
+
+  const liveRows = useMemo(() => liveStatRows(match.homeStats, match.awayStats), [match.awayStats, match.homeStats]);
+  const keyMoments = useMemo(() => timeline.events.filter((event) => !event.isPhaseSeparator && event.isKeyMoment).slice(-5).reverse(), [timeline.events]);
+  const prediction = useMemo(() => buildPrediction({
+    homeRank: toNumber(standings.homeStanding?.rank),
+    awayRank: toNumber(standings.awayStanding?.rank),
+    homeForm: teamForm.homeForm.aiFormScore,
+    awayForm: teamForm.awayForm.aiFormScore,
+    homeWins: h2h.summary.homeWins,
+    awayWins: h2h.summary.awayWins,
+    homeScore: match.homeScore,
+    awayScore: match.awayScore,
+    minute: match.minute,
+    state,
+  }), [h2h.summary.awayWins, h2h.summary.homeWins, match.awayScore, match.homeScore, match.minute, standings.awayStanding?.rank, standings.homeStanding?.rank, state, teamForm.awayForm.aiFormScore, teamForm.homeForm.aiFormScore]);
+
+  const predictionDrivers = useMemo(() => {
+    const drivers = [
+      standings.homeStanding?.rank && standings.awayStanding?.rank
+        ? `Table edge: ${match.homeTeam} #${standings.homeStanding.rank} vs ${match.awayTeam} #${standings.awayStanding.rank}`
+        : null,
+      `Form index: ${teamForm.homeForm.aiFormScore} vs ${teamForm.awayForm.aiFormScore}`,
+      h2h.rows.length ? `Recent H2H: ${h2h.summary.homeWins}-${h2h.summary.draws}-${h2h.summary.awayWins}` : null,
+      state === "live" ? `Live state: ${match.homeScore}-${match.awayScore}${match.minute ? ` at ${match.minute}'` : ""}` : null,
+    ];
+    return drivers.filter(Boolean) as string[];
+  }, [h2h.rows.length, h2h.summary.awayWins, h2h.summary.draws, h2h.summary.homeWins, match.awayScore, match.awayTeam, match.homeScore, match.homeTeam, match.minute, standings.awayStanding?.rank, standings.homeStanding?.rank, state, teamForm.awayForm.aiFormScore, teamForm.homeForm.aiFormScore]);
+
+  const loading = detailQuery.isLoading && !detailQuery.data;
+
+  async function handleFollowToggle() {
+    if (!match.id) return;
+    if (isMatchFollowed) {
+      await unfollowMatchAction(match.id);
       return;
     }
 
-    try {
-      setRewardedAdRunning(true);
-      const rewarded = await showRewardedUnlockAd();
-      if (!rewarded) return;
-      await unlockPredictionWithRewardedAd(predictionMatchId);
-      Alert.alert("Unlocked", "Nexora Match Intelligence is voor deze wedstrijd ontgrendeld.");
-    } catch {
-      Alert.alert("Unlock mislukt", "De rewarded unlock kon niet worden voltooid. Probeer opnieuw.");
-    } finally {
-      setRewardedAdRunning(false);
-    }
-  };
-  const formCards = [
-    { key: "home-form", label: `${homeTeamName} form`, value: safePrediction?.formHome || "- - - - -" },
-    { key: "away-form", label: `${awayTeamName} form`, value: safePrediction?.formAway || "- - - - -" },
-  ];
-  const homePct = Math.max(0, Math.min(100, Number(safePrediction?.homePct || 0)));
-  const drawPct = Math.max(0, Math.min(100, Number(safePrediction?.drawPct || 0)));
-  const awayPct = Math.max(0, Math.min(100, Number(safePrediction?.awayPct || 0)));
-  const normalizedTotal = homePct + drawPct + awayPct;
-  const normHomePct = normalizedTotal > 0 ? Math.round((homePct / normalizedTotal) * 100) : 34;
-  const normDrawPct = normalizedTotal > 0 ? Math.round((drawPct / normalizedTotal) * 100) : 33;
-  const normAwayPct = 100 - normHomePct - normDrawPct;
-
-  const homeDcPct = Number.isFinite(Number(safePrediction?.doubleChanceHomePct))
-    ? Math.round(Number(safePrediction?.doubleChanceHomePct))
-    : Math.max(normHomePct, Math.round(normHomePct + normDrawPct * 0.6));
-  const awayDcPct = Number.isFinite(Number(safePrediction?.doubleChanceAwayPct))
-    ? Math.round(Number(safePrediction?.doubleChanceAwayPct))
-    : Math.max(normAwayPct, Math.round(normAwayPct + normDrawPct * 0.6));
-  const bttsPct = Number.isFinite(Number(safePrediction?.bothTeamsToScorePct))
-    ? Math.round(Number(safePrediction?.bothTeamsToScorePct))
-    : 50;
-  const over25Pct = Number.isFinite(Number(safePrediction?.over25Pct))
-    ? Math.round(Number(safePrediction?.over25Pct))
-    : 50;
-  const under25Pct = 100 - over25Pct;
-  const over15Pct = Math.max(35, Math.min(92, over25Pct + 16));
-  const under35Pct = Math.max(22, Math.min(86, under25Pct + 18));
-  const confidencePct = Math.max(0, Math.min(100, Number(safePrediction?.confidence || 0)));
-  const edgeScorePct = Math.max(0, Math.min(100, Number(safePrediction?.edgeScore || 0)));
-
-  const predictionSummaryCards = [
-    { key: "optimal", label: "Optimal", value: safePrediction?.tip || safePrediction?.prediction || "No pick yet", accent: "#E50914", locked: false },
-    { key: "winner", label: "Match winner", value: safePrediction?.prediction || "Pending", accent: "#FF5A5F", locked: false },
-    { key: "double", label: "Double chance", value: `${homeDcPct}% 1X · ${awayDcPct}% X2`, accent: "#F04B3A", locked: false },
-    { key: "btts", label: "Both teams score", value: `${bttsPct}%`, accent: "#D9462A", locked: false },
-    { key: "ou", label: "Over/Under", value: `Over 2.5: ${over25Pct}%`, accent: "#B83C2A", locked: false },
-  ];
-
-  const detailedInfoRows = [
-    { key: "one", label: "1", value: `${normHomePct}%` },
-    { key: "draw", label: "X", value: `${normDrawPct}%` },
-    { key: "two", label: "2", value: `${normAwayPct}%` },
-    { key: "oneX", label: "1X", value: `${homeDcPct}%` },
-    { key: "xTwo", label: "X2", value: `${awayDcPct}%` },
-    { key: "goals", label: "Goals", value: `O2.5 ${over25Pct}%` },
-  ];
+    await followMatchAction({
+      matchId: match.id,
+      homeTeam: match.homeTeam,
+      awayTeam: match.awayTeam,
+      competition: match.league,
+      espnLeague,
+      startTime: match.startDate || null,
+      notificationsEnabled: true,
+    });
+  }
 
   return (
-
-      <View style={styles.container}>
-        <LinearGradient
-          colors={["#111521", "#0B0F1A", "#080B12"]}
-          style={[styles.header, styles.nxHeader, { paddingTop: topPad + 8 }]}
-        >
-          <View style={styles.heroTopRow}>
-            <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
-              <Ionicons name="chevron-back" size={22} color="#FFFFFF" />
+    <View style={styles.container}>
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={[styles.content, { paddingTop: insets.top + 8 }]}
+        refreshControl={<RefreshControl refreshing={detailQuery.isFetching && !loading} onRefresh={detailQuery.refetch} tintColor={DS.accent} />}
+        showsVerticalScrollIndicator={false}
+      >
+        <LinearGradient colors={["#17243B", "#0A0F18", "#06080D"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.heroCard}>
+          <View style={styles.topBar}>
+            <TouchableOpacity activeOpacity={0.84} onPress={() => router.back()} style={styles.iconButton}>
+              <Ionicons name="chevron-back" size={20} color={DS.text} />
             </TouchableOpacity>
-            <View style={[styles.nxStatusPill, statusMeta.tone === "live" ? styles.nxStatusPillLive : null]}>
-              {statusMeta.tone === "live" ? <View style={styles.nxStatusDot} /> : null}
-              <Text style={styles.nxStatusText}>
-                {statusMeta.minuteLabel ? `${statusMeta.label} ${statusMeta.minuteLabel}` : statusMeta.label}
+            <View style={styles.heroMetaCenter}>
+              <Text style={styles.heroMetaLabel}>Match Center</Text>
+              <Text style={styles.heroMetaSub}>{state === "live" ? "Live coverage" : state === "finished" ? "Final report" : "Prematch hub"}</Text>
+            </View>
+            <TouchableOpacity activeOpacity={0.84} onPress={handleFollowToggle} style={[styles.iconButton, isMatchFollowed && styles.iconButtonActive]}>
+              <Ionicons name={isMatchFollowed ? "notifications" : "notifications-outline"} size={18} color={isMatchFollowed ? DS.accent : DS.text} />
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.heroLeagueRow}>
+            {competitionBrand.logo ? <Image source={typeof competitionBrand.logo === "number" ? competitionBrand.logo : { uri: competitionBrand.logo as string }} style={styles.heroLeagueLogo} resizeMode="contain" /> : null}
+            <Text numberOfLines={1} style={styles.heroLeague}>{match.league}</Text>
+            <View style={[styles.statePill, state === "live" ? styles.statePillLive : state === "upcoming" ? styles.statePillUpcoming : styles.statePillMuted]}>
+              <Text style={[styles.statePillText, state === "live" ? styles.statePillTextLive : undefined]}>
+                {state === "live" ? (match.minute ? `${match.minute}'` : "LIVE") : state === "finished" ? "FT" : state === "postponed" ? "POSTPONED" : state === "cancelled" ? "CANCELLED" : kickoff.time}
               </Text>
             </View>
-            <TouchableOpacity
-              style={[styles.heroActionBtn, isMatchFollowed ? styles.heroActionBtnActive : null]}
-              onPress={handleToggleFollowMatch}
-              activeOpacity={0.7}
-            >
-              <Ionicons
-                name={isMatchFollowed ? "notifications" : "notifications-outline"}
-                size={20}
-                color={isMatchFollowed ? "#FFFFFF" : "rgba(255,255,255,0.7)"}
-              />
-            </TouchableOpacity>
           </View>
-          <View style={styles.matchHeader}>
-            <View style={styles.competitionRowCenterOnly}>
-              <View style={styles.competitionCenter}>
-                {leagueLogoUri ? (
-                  <Image source={{ uri: leagueLogoUri }} style={{ width: 16, height: 16, borderRadius: 2 }} resizeMode="contain" />
-                ) : null}
-                <Text style={styles.leagueName} numberOfLines={1}>{competitionName}</Text>
-              </View>
-            </View>
-            <View style={styles.scoreRow}>
-              <TeamSide
-                name={homeTeamName}
-                logo={matchDetail?.homeTeamLogo || params.homeTeamLogo}
-                logoSize={screenWidth < 360 ? 58 : 68}
-                width={screenWidth}
-                onPress={() => router.push({ pathname: "/team-detail", params: { teamId: String((matchDetail as any)?.homeTeamId || ""), teamName: homeTeamName, espnLeague, sport: espnSport } })}
-              />
-              <View style={styles.scoreCenter}>
-                {(isLive || isFinished) ? (
-                  <Text style={[styles.score, { fontSize: scoreFontSize }]}>{liveHomeScore} - {liveAwayScore}</Text>
-                ) : (
-                  <>
-                    <Text style={styles.vsText}>VS</Text>
-                    {kickoffTime ? <Text style={styles.scheduledTime}>{kickoffTime}</Text> : null}
-                    {kickoffDate ? <Text style={styles.scheduledDate}>{kickoffDate}</Text> : null}
-                  </>
-                )}
-              </View>
-              <TeamSide
-                name={awayTeamName}
-                logo={matchDetail?.awayTeamLogo || params.awayTeamLogo}
-                logoSize={screenWidth < 360 ? 58 : 68}
-                width={screenWidth}
-                onPress={() => router.push({ pathname: "/team-detail", params: { teamId: String((matchDetail as any)?.awayTeamId || ""), teamName: awayTeamName, espnLeague, sport: espnSport } })}
-              />
-            </View>
-          </View>
-          {matchDetail?.venue ? (
-            <View style={styles.venueRow}> 
-              <Ionicons name="location-outline" size={12} color="rgba(255,255,255,0.62)" />
-              <Text style={[styles.venueText, { color: "rgba(255,255,255,0.72)" }]}>{matchDetail.venue}</Text>
-            </View>
-          ) : null}
 
-          {momentumModel.hasData ? (
-            <View style={styles.headerMomentumWrap}>
-              <MomentumBar
-                model={momentumModel}
-                homeLabel={homeTeamName.slice(0, 3).toUpperCase() || "HOM"}
-                awayLabel={awayTeamName.slice(0, 3).toUpperCase() || "AWY"}
-              />
+          <View style={styles.scoreboard}>
+            <View style={styles.teamColumn}>
+              <TeamLogo uri={match.homeTeamLogo} teamName={match.homeTeam} size={68} />
+              <Text style={styles.teamName}>{match.homeTeam}</Text>
             </View>
-          ) : null}
+            <View style={styles.scoreColumn}>
+              {loading ? <ActivityIndicator color={DS.accent} /> : <Text style={styles.scoreText}>{match.homeScore} - {match.awayScore}</Text>}
+              <Text style={styles.scoreSub}>{match.statusDetail || (state === "upcoming" ? `${kickoff.date} • ${kickoff.time}` : kickoff.date)}</Text>
+              <Text style={styles.scoreMicro}>{match.round || matchContext.venue || "Premium live intelligence"}</Text>
+            </View>
+            <View style={styles.teamColumn}>
+              <TeamLogo uri={match.awayTeamLogo} teamName={match.awayTeam} size={68} />
+              <Text style={styles.teamName}>{match.awayTeam}</Text>
+            </View>
+          </View>
+
+          <View style={styles.heroStatsRow}>
+            <HeroStat label="Kickoff" value={kickoff.date} />
+            <HeroStat label="Venue" value={matchContext.venue || "TBA"} />
+            <HeroStat label="Referee" value={matchContext.referee || "TBA"} />
+          </View>
         </LinearGradient>
 
-        {aiStory.available ? (
-          <View style={styles.aiStoryWrap}>
-            <TouchableOpacity
-              activeOpacity={0.82}
-              style={styles.aiStoryHeader}
-              onPress={() => setAiStoryCollapsed((value) => !value)}
-            >
-              <View style={styles.aiStoryTitleWrap}>
-                <Ionicons name="sparkles-outline" size={15} color={COLORS.accent} />
-                <Text style={styles.aiStoryTitle}>{aiStory.title}</Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tabStrip}>
+          {TAB_ITEMS.map((tab) => {
+            const active = tab.id === activeTab;
+            return (
+              <TouchableOpacity key={tab.id} activeOpacity={0.84} onPress={() => setActiveTab(tab.id)} style={[styles.tabPill, active && styles.tabPillActive]}>
+                <Text style={[styles.tabText, active && styles.tabTextActive]}>{tab.label}</Text>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
+
+        {activeTab === "overview" ? (
+          <View style={styles.sectionStack}>
+            <SectionCard title="Snapshot" subtitle="The fastest read on the fixture right now">
+              <View style={styles.quickStatsGrid}>
+                <QuickStat label="State" value={state.toUpperCase()} tone={state === "live" ? "live" : "default"} />
+                <QuickStat label="Confidence" value={`${prediction.confidence}%`} />
+                <QuickStat label="Timeline" value={`${timeline.events.length} events`} />
               </View>
-              <Ionicons name={aiStoryCollapsed ? "chevron-down" : "chevron-up"} size={16} color={COLORS.textMuted} />
-            </TouchableOpacity>
-            {!aiStoryCollapsed ? (
-              <View style={styles.aiStoryBody}>
-                <Text style={styles.aiStoryText}>{aiStory.summary}</Text>
-                {aiStory.turningPoint ? <Text style={styles.aiStoryTurning}>{aiStory.turningPoint}</Text> : null}
-                {(aiStory.bullets || []).slice(0, 3).map((line) => (
-                  <Text key={line} style={styles.aiStoryBullet}>• {line}</Text>
-                ))}
+              <Text style={styles.bodyCopy}>{inferVerdict(match.homeTeam, match.awayTeam, prediction)}</Text>
+            </SectionCard>
+
+            <SectionCard title="Prediction Split" subtitle="Built from table, form, H2H and live score state">
+              <ProbabilityBar homeLabel={match.homeTeam} awayLabel={match.awayTeam} homeValue={prediction.home} drawValue={prediction.draw} awayValue={prediction.away} />
+              <View style={styles.driverList}>
+                {predictionDrivers.map((driver) => <BulletRow key={driver} label={driver} />)}
               </View>
-            ) : null}
+            </SectionCard>
+
+            <SectionCard title="Key Moments" subtitle="Latest turning points pulled from the event stream">
+              {keyMoments.length ? keyMoments.map((event) => <TimelineEventRow key={event.id} event={event} />) : <EmptyBlock title="No major events yet" subtitle="Timeline moments will surface here as the match develops." />}
+            </SectionCard>
+
+            <SectionCard title="Season Edge" subtitle="Quick comparison view from current team profiles">
+              {seasonStats.hasAnyMetric ? seasonStats.metrics.slice(0, 3).map((metric) => (
+                <ComparisonMetricRow key={metric.key} label={metric.label} home={metric.home} away={metric.away} suffix={metric.suffix} decimals={metric.decimals} />
+              )) : <EmptyBlock title="Season comparison is still loading" />}
+            </SectionCard>
           </View>
         ) : null}
 
-        <View style={styles.nxTabBarWrap}>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.nxTabBarInner}>
-            {EXPERIENCE_TABS.map((tab) => {
-              const active = activeExperienceTab === tab.id;
-              return (
-                <TouchableOpacity
-                  key={tab.id}
-                  onPress={() => handleExperienceTabChange(tab.id)}
-                  style={styles.nxTabItem}
-                  activeOpacity={0.85}
-                >
-                  <Text style={[styles.nxTabLabel, active ? styles.nxTabLabelActive : null]}>{tab.label}</Text>
-                  <View style={[styles.nxTabUnderline, active ? styles.nxTabUnderlineActive : null]} />
-                </TouchableOpacity>
-              );
-            })}
-          </ScrollView>
-        </View>
-
-        {/* ─── PREMATCH TAB ─── */}
-        {visitedExperienceTabs.prematch ? (
-          <ScrollView
-            style={[styles.tabContent, activeExperienceTab !== "prematch" ? styles.hiddenTabContent : null]}
-            contentContainerStyle={styles.nxContentWrap}
-            showsVerticalScrollIndicator={false}
-            decelerationRate="fast"
-            scrollEventThrottle={16}
-          >
-            {/* Live context — only when match is live */}
-            {(isLive || isHalfTime) ? (
-              <View style={styles.liveSectionWrap}>
-                {keyLiveEvents.length > 0 ? (
-                  <View style={styles.md_card}>
-                    <SectionHead icon="radio-outline" label="Live Key Events" accent={COLORS.live} />
-                    {keyLiveEvents.map((event, idx) => {
-                      const evColor = event.filter === "goals" ? COLORS.live
-                        : event.filter === "cards" ? "#FF3040"
-                        : event.filter === "var" ? "#A78BFA"
-                        : COLORS.textMuted;
-                      return (
-                        <View key={`lke_${idx}`} style={styles.md_liveEventRow}>
-                          <Text style={[styles.md_liveMin, { color: evColor }]}>{event.minuteLabel || "--"}</Text>
-                          <View style={{ flex: 1 }}>
-                            <Text style={styles.md_liveTitle} numberOfLines={1}>{safeStr(event.title || "Event")}</Text>
-                            {event.description ? <Text style={styles.md_liveMeta} numberOfLines={1}>{safeStr(event.description)}</Text> : null}
-                          </View>
-                          <View style={[styles.md_livePill, { backgroundColor: `${evColor}22`, borderColor: `${evColor}55` }]}>
-                            <Text style={[styles.md_livePillText, { color: evColor }]}>{event.filter.toUpperCase()}</Text>
-                          </View>
-                        </View>
-                      );
-                    })}
-                  </View>
-                ) : null}
-                {liveMatchFactors.length > 0 ? (
-                  <View style={styles.md_card}>
-                    <SectionHead icon="pulse-outline" label="Live Match Factors" accent={COLORS.live} />
-                    {liveMatchFactors.map((factor) => (
-                      <View key={factor.label} style={styles.md_factorRow}>
-                        <Text style={styles.md_factorLabel}>{factor.label}</Text>
-                        <Text style={[
-                          styles.md_factorValue,
-                          factor.tone === "home" ? { color: COLORS.accent } : factor.tone === "away" ? { color: "#5D9EFF" } : null,
-                        ]}>{factor.value}</Text>
-                      </View>
-                    ))}
-                  </View>
-                ) : null}
+        {activeTab === "prematch" ? (
+          <View style={styles.sectionStack}>
+            <SectionCard title="Table Position" subtitle="Current league standing and points context">
+              <View style={styles.dualGrid}>
+                <StandingCard team={match.homeTeam} standing={standings.homeStanding} formScore={teamForm.homeForm.aiFormScore} color={DS.home} />
+                <StandingCard team={match.awayTeam} standing={standings.awayStanding} formScore={teamForm.awayForm.aiFormScore} color={DS.away} />
               </View>
-            ) : null}
+            </SectionCard>
 
-            {/* Match info */}
-            <View style={styles.md_card}>
-              <SectionHead icon="information-circle-outline" label="Match Info" />
-              {prematchContext.kickoffDate ? (
-                <InfoRow icon="calendar-outline" text={`${prematchContext.kickoffDate} · ${prematchContext.kickoffTime || "--:--"}`} />
-              ) : null}
-              <InfoRow
-                icon="trophy-outline"
-                text={`${prematchContext.competition || "Competition"}${prematchContext.round ? ` · ${prematchContext.round}` : ""}`}
-              />
-              {prematchContext.venue ? (
-                <InfoRow
-                  icon="location-outline"
-                  text={`${prematchContext.venue}${prematchContext.city ? ` · ${prematchContext.city}` : ""}${prematchContext.country ? `, ${prematchContext.country}` : ""}`}
-                />
-              ) : null}
-              {prematchContext.referee ? <InfoRow icon="person-outline" text={`Referee: ${prematchContext.referee}`} /> : null}
-              {prematchContext.weather ? <InfoRow icon="cloud-outline" text={`Weather: ${prematchContext.weather}`} /> : null}
-            </View>
+            <SectionCard title="Recent Form" subtitle="Last five results and scoring direction">
+              <View style={styles.dualGrid}>
+                <FormCard team={match.homeTeam} summary={teamForm.homeForm} />
+                <FormCard team={match.awayTeam} summary={teamForm.awayForm} />
+              </View>
+            </SectionCard>
 
-            {/* Team Form */}
-            <SectionTitle label="Team Form" />
-            <View style={styles.md_grid2}>
-              {([
-                { team: homeTeamName, form: prematchTeamForm.homeForm },
-                { team: awayTeamName, form: prematchTeamForm.awayForm },
-              ] as const).map(({ team, form }) => (
-                <View key={team} style={styles.md_gridCard}>
-                  <Text style={styles.md_gridLabel} numberOfLines={1}>{team}</Text>
-                  <View style={styles.md_formRow}>
-                    {(form.sequence as string[]).slice(-5).map((r, i) => (
-                      <View key={i} style={[styles.md_formDot, r === "W" ? styles.md_formDotW : r === "D" ? styles.md_formDotD : styles.md_formDotL]}>
-                        <Text style={styles.md_formDotText}>{r}</Text>
-                      </View>
-                    ))}
-                    {(form.sequence as string[]).length === 0 ? <Text style={styles.md_metaText}>No form data</Text> : null}
-                  </View>
-                  <Text style={styles.md_metaText}>GF {form.goalsScored} · GA {form.goalsConceded}</Text>
-                  <View style={[styles.md_scoreBar, { backgroundColor: `rgba(229,9,20,${Math.max(0.15, form.aiFormScore / 100 * 0.7)})` }]}>
-                    <Text style={styles.md_scoreBarText}>Form {form.aiFormScore}/100</Text>
-                  </View>
-                </View>
-              ))}
-            </View>
+            <SectionCard title="Key Players" subtitle="Most relevant contributors from team and competition data">
+              <View style={styles.dualGrid}>
+                <PlayerCard sideLabel={match.homeTeam} data={keyPlayers.home} accent={DS.home} />
+                <PlayerCard sideLabel={match.awayTeam} data={keyPlayers.away} accent={DS.away} />
+              </View>
+            </SectionCard>
 
-            {/* Standings */}
-            <SectionTitle label="Standings" />
-            <View style={styles.md_grid2}>
-              {([
-                { team: homeTeamName, standing: prematchStandings.homeStanding },
-                { team: awayTeamName, standing: prematchStandings.awayStanding },
-              ] as const).map(({ team, standing }) => (
-                <View key={team} style={styles.md_gridCard}>
-                  <Text style={styles.md_gridLabel} numberOfLines={1}>{team}</Text>
-                  {standing ? (
-                    <>
-                      <Text style={styles.md_gridValue}>#{standing.rank ?? "--"}</Text>
-                      <Text style={styles.md_metaText}>{standing.points ?? "--"} pts{standing.played ? ` · ${standing.played} GP` : ""}</Text>
-                      {standing.form ? <Text style={styles.md_metaText}>Form: {standing.form}</Text> : null}
-                      {standing.goalsFor != null ? <Text style={styles.md_metaText}>GF {standing.goalsFor} · GA {standing.goalsAgainst ?? "--"}</Text> : null}
-                    </>
-                  ) : (
-                    <Text style={styles.md_metaText}>Not available</Text>
-                  )}
-                </View>
-              ))}
-            </View>
+            <SectionCard title="Absences" subtitle="Injuries and suspensions surfaced from team overview data">
+              <View style={styles.dualGrid}>
+                <AbsenceCard title={match.homeTeam} rows={injuries.home} />
+                <AbsenceCard title={match.awayTeam} rows={injuries.away} />
+              </View>
+            </SectionCard>
 
-            {/* Key Players */}
-            <SectionTitle label="Key Players" />
-            <View style={styles.md_grid2}>
-              {([
-                { team: homeTeamName, kp: prematchKeyPlayers.home },
-                { team: awayTeamName, kp: prematchKeyPlayers.away },
-              ] as const).map(({ team, kp }) => (
-                <View key={team} style={styles.md_gridCard}>
-                  <Text style={styles.md_gridLabel} numberOfLines={1}>{team}</Text>
-                  {kp.topScorer ? (
-                    <View style={styles.md_playerChip}>
-                      <Ionicons name="football-outline" size={12} color={COLORS.accent} />
-                      <Text style={styles.md_playerChipText} numberOfLines={1}>{kp.topScorer.name}</Text>
-                    </View>
-                  ) : null}
-                  {kp.assistLeader ? (
-                    <View style={styles.md_playerChip}>
-                      <Ionicons name="arrow-forward-circle-outline" size={12} color="#5D9EFF" />
-                      <Text style={styles.md_playerChipText} numberOfLines={1}>{kp.assistLeader.name}</Text>
-                    </View>
-                  ) : null}
-                  {kp.keyPlayer ? (
-                    <View style={styles.md_playerChip}>
-                      <Ionicons name="sparkles-outline" size={12} color="#FFD700" />
-                      <Text style={styles.md_playerChipText} numberOfLines={1}>{kp.keyPlayer.player?.name || "AI pick"}</Text>
-                    </View>
-                  ) : null}
-                  {!kp.topScorer && !kp.assistLeader && !kp.keyPlayer ? (
-                    <Text style={styles.md_metaText}>Not available</Text>
-                  ) : null}
-                </View>
-              ))}
-            </View>
-
-            {/* Injuries */}
-            <SectionTitle label="Injuries & Absences" />
-            <View style={styles.md_card}>
-              {prematchInjuries.hasVerifiedData ? (
-                <>
-                  {([
-                    { team: homeTeamName, list: prematchInjuries.home },
-                    { team: awayTeamName, list: prematchInjuries.away },
-                  ] as const).map(({ team, list }, sIdx) => (
-                    <View key={team} style={sIdx > 0 ? { marginTop: 12 } : undefined}>
-                      <Text style={styles.md_cardKicker}>{team}</Text>
-                      {(list as any[]).length > 0 ? (
-                        (list as any[]).map((item: any, i: number) => (
-                          <View key={`inj_${sIdx}_${i}`} style={styles.md_injRow}>
-                            <Ionicons name="medkit-outline" size={11} color="#FF6B35" />
-                            <Text style={styles.md_injName} numberOfLines={1}>{item.name}</Text>
-                            <Text style={styles.md_injReason} numberOfLines={1}>{item.reason || "Injury"}</Text>
-                          </View>
-                        ))
-                      ) : (
-                        <Text style={styles.md_metaText}>No absences reported</Text>
-                      )}
-                    </View>
-                  ))}
-                </>
-              ) : (
-                <EmptySlate icon="medkit-outline" title="No injury data" subtitle="Verified injury updates are not available for this match." />
-              )}
-            </View>
-
-            {/* Expected Lineups (compact) */}
-            <SectionTitle label="Expected Lineups" />
-            <View style={styles.md_grid2}>
-              {([
-                { team: homeTeamName, lineup: homeLineupTeam },
-                { team: awayTeamName, lineup: awayLineupTeam },
-              ] as const).map(({ team, lineup }) => (
-                <View key={team} style={styles.md_gridCard}>
-                  <Text style={styles.md_gridLabel} numberOfLines={1}>{team}</Text>
-                  <Text style={styles.md_gridValue}>{lineup?.formation || "--"}</Text>
-                  <View style={[
-                    styles.md_stateBadge,
-                    lineup?.lineupState === "confirmed" ? styles.md_stateBadgeConfirmed
-                      : lineup?.lineupState === "expected" ? styles.md_stateBadgeExpected
-                      : styles.md_stateBadgeUnknown,
-                  ]}>
-                    <Text style={styles.md_stateBadgeText}>
-                      {lineup?.lineupState === "confirmed" ? "CONFIRMED"
-                        : lineup?.lineupState === "expected" ? "EXPECTED"
-                        : "PENDING"}
-                    </Text>
-                  </View>
-                  <Text style={styles.md_metaText}>
-                    XI: {lineup?.starters?.length || 0} · Bench: {lineup?.bench?.length || 0}
-                  </Text>
-                </View>
-              ))}
-            </View>
-          </ScrollView>
+            <SectionCard title="Match Context" subtitle="Venue, timing and setup details">
+              <View style={styles.contextList}>
+                <ContextRow label="Kickoff" value={`${matchContext.kickoffDate || kickoff.date} • ${matchContext.kickoffTime || kickoff.time}`} />
+                <ContextRow label="Venue" value={matchContext.venue || "TBA"} />
+                <ContextRow label="City" value={matchContext.city || "TBA"} />
+                <ContextRow label="Referee" value={matchContext.referee || "TBA"} />
+                <ContextRow label="Weather" value={matchContext.weather || "TBA"} />
+              </View>
+            </SectionCard>
+          </View>
         ) : null}
 
-        {/* ─── PREDICTIONS TAB ─── */}
-        {visitedExperienceTabs.predictions ? (
-          <ScrollView
-            style={[styles.tabContent, activeExperienceTab !== "predictions" ? styles.hiddenTabContent : null]}
-            contentContainerStyle={styles.nxContentWrap}
-            showsVerticalScrollIndicator={false}
-            decelerationRate="fast"
-            scrollEventThrottle={16}
-          >
-            {/* Main Prediction Card */}
-            <View style={styles.md_card}>
-              <View style={styles.md_cardTopRow}>
-                <SectionHead
-                  icon="sparkles-outline"
-                  label={liveInsightEnabled ? "Live AI Coach" : "AI Prediction"}
-                  accent={COLORS.accent}
-                />
-                <TouchableOpacity
-                  style={styles.md_refreshBtn}
-                  onPress={() => liveInsightEnabled ? fetchLivePrediction() : fetchPreMatchPrediction()}
-                >
-                  <Ionicons name="refresh-outline" size={12} color={COLORS.textMuted} />
-                  <Text style={styles.md_refreshText}>Refresh</Text>
-                </TouchableOpacity>
+        {activeTab === "predictions" ? (
+          <View style={styles.sectionStack}>
+            <SectionCard title="Outcome Model" subtitle="Structured probability split for win, draw and away win">
+              <ProbabilityBar homeLabel={match.homeTeam} awayLabel={match.awayTeam} homeValue={prediction.home} drawValue={prediction.draw} awayValue={prediction.away} />
+              <View style={styles.predictionSummary}>
+                <PredictionTile label={match.homeTeam} value={`${prediction.home}%`} accent={DS.home} />
+                <PredictionTile label="Draw" value={`${prediction.draw}%`} accent={DS.muted} />
+                <PredictionTile label={match.awayTeam} value={`${prediction.away}%`} accent={DS.away} />
               </View>
-              {predLoading && !safePrediction ? (
-                <View style={styles.md_loadingRow}>
-                  <ActivityIndicator size="small" color={COLORS.accent} />
-                  <Text style={styles.md_loadingText}>Analyzing match data…</Text>
-                </View>
-              ) : safePrediction ? (
-                <>
-                  <Text style={styles.md_predictionOutcome}>{safePrediction.prediction || "Analysis pending"}</Text>
-                  {(safePrediction.live_shift_summary || safePrediction.summary) ? (
-                    <Text style={styles.md_bodyText}>{safePrediction.live_shift_summary || safePrediction.summary}</Text>
-                  ) : null}
-                  {safePrediction.tip ? (
-                    <View style={styles.md_tipRow}>
-                      <Ionicons name="bulb-outline" size={13} color="#FFD700" />
-                      <Text style={styles.md_tipText}>{safePrediction.tip}</Text>
-                    </View>
-                  ) : null}
-                </>
-              ) : (
-                <EmptySlate
-                  icon="analytics-outline"
-                  title="No prediction yet"
-                  subtitle="Prediction loads once match context is ready."
-                />
-              )}
-            </View>
+            </SectionCard>
 
-            {/* 1X2 Probability Bar */}
-            {safePrediction ? (
-              <>
-                <SectionTitle label="Outcome Probabilities" />
-                <View style={styles.md_card}>
-                  <View style={styles.md_probTeamRow}>
-                    <Text style={styles.md_probTeamName} numberOfLines={1}>{homeTeamName}</Text>
-                    <Text style={styles.md_probCenterLabel}>DRAW</Text>
-                    <Text style={[styles.md_probTeamName, { textAlign: "right" }]} numberOfLines={1}>{awayTeamName}</Text>
-                  </View>
-                  <View style={styles.md_probBarWrap}>
-                    <View style={[styles.md_probFillHome, { flex: normHomePct }]} />
-                    <View style={[styles.md_probFillDraw, { flex: normDrawPct }]} />
-                    <View style={[styles.md_probFillAway, { flex: normAwayPct }]} />
-                  </View>
-                  <View style={styles.md_probValues}>
-                    <Text style={[styles.md_probVal, { color: COLORS.accent }]}>{normHomePct}%</Text>
-                    <Text style={[styles.md_probVal, { color: COLORS.textMuted }]}>{normDrawPct}%</Text>
-                    <Text style={[styles.md_probVal, { color: "#5D9EFF" }]}>{normAwayPct}%</Text>
-                  </View>
-                </View>
-              </>
-            ) : null}
-
-            {/* Premium lock */}
-            {safePrediction && !predictionUnlocked ? (
-              <View style={styles.md_lockCard}>
-                <View style={styles.md_lockContent}>
-                  <Ionicons name="lock-closed" size={22} color={COLORS.accent} style={{ marginBottom: 6 }} />
-                  <Text style={styles.md_lockTitle}>Unlock Full Intelligence</Text>
-                  <Text style={styles.md_lockBody}>
-                    Win%, BTTS, Over/Under, clean sheets, upset risk and live momentum for this match.
-                  </Text>
-                  <TouchableOpacity
-                    style={styles.md_unlockBtn}
-                    onPress={handleUnlockPrediction}
-                    disabled={rewardedAdRunning}
-                  >
-                    <Ionicons
-                      name={rewardedAdRunning ? "hourglass-outline" : "play-circle-outline"}
-                      size={15}
-                      color="#FFF"
-                    />
-                    <Text style={styles.md_unlockBtnText}>
-                      {rewardedAdRunning ? "Unlocking…" : `Watch Ad · Unlock (${dailyPredictionUnlocksRemaining} left)`}
-                    </Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity style={styles.md_premiumLink} onPress={() => router.push("/premium")}>
-                    <Ionicons name="diamond-outline" size={13} color={COLORS.textMuted} />
-                    <Text style={styles.md_premiumLinkText}>View Premium Plans</Text>
-                  </TouchableOpacity>
-                </View>
-                <BlurView intensity={40} tint="dark" style={styles.md_lockBlur} pointerEvents="none" />
+            <SectionCard title="Why The Model Leans This Way" subtitle="Real drivers instead of placeholder copy">
+              <View style={styles.driverList}>
+                {predictionDrivers.map((driver) => <BulletRow key={driver} label={driver} />)}
               </View>
-            ) : null}
+            </SectionCard>
 
-            {/* Full unlocked data */}
-            {safePrediction && predictionUnlocked ? (
-              <>
-                <SectionTitle label="Smart Markets" />
-                <View style={styles.md_marketsGrid}>
-                  {[
-                    { label: "Home Win", value: `${normHomePct}%`, color: COLORS.accent },
-                    { label: "Draw", value: `${normDrawPct}%`, color: COLORS.textMuted },
-                    { label: "Away Win", value: `${normAwayPct}%`, color: "#5D9EFF" },
-                    { label: "1X", value: `${homeDcPct}%`, color: COLORS.accent },
-                    { label: "X2", value: `${awayDcPct}%`, color: "#5D9EFF" },
-                    { label: "BTTS", value: `${bttsPct}%`, color: COLORS.live },
-                    { label: "Over 1.5", value: `${over15Pct}%`, color: "#FFD700" },
-                    { label: "Over 2.5", value: `${over25Pct}%`, color: "#FFD700" },
-                    { label: "Under 2.5", value: `${under25Pct}%`, color: COLORS.textMuted },
-                    { label: "Under 3.5", value: `${under35Pct}%`, color: COLORS.textMuted },
-                    { label: `CS ${homeTeamName.split(" ")[0]}`, value: `${Math.round(Number(safePrediction.cleanSheetHomePct || 0))}%`, color: COLORS.accent },
-                    { label: `CS ${awayTeamName.split(" ")[0]}`, value: `${Math.round(Number(safePrediction.cleanSheetAwayPct || 0))}%`, color: "#5D9EFF" },
-                  ].map((item) => (
-                    <View key={item.label} style={styles.md_marketCard}>
-                      <Text style={[styles.md_marketValue, { color: item.color }]}>{item.value}</Text>
-                      <Text style={styles.md_marketLabel}>{item.label}</Text>
-                    </View>
-                  ))}
-                </View>
-
-                {safePrediction.probabilityEngine?.goals ? (
-                  <>
-                    <SectionTitle label="Expected Goals (xG)" />
-                    <View style={styles.md_card}>
-                      <View style={styles.md_xgRow}>
-                        <View style={{ flex: 1, alignItems: "center" }}>
-                          <Text style={[styles.md_xgValue, { color: COLORS.accent }]}>
-                            {Number(safePrediction.probabilityEngine.goals.expectedGoals?.home || 0).toFixed(2)}
-                          </Text>
-                          <Text style={styles.md_xgLabel} numberOfLines={1}>{homeTeamName}</Text>
-                        </View>
-                        <Text style={styles.md_xgCenter}>xG</Text>
-                        <View style={{ flex: 1, alignItems: "center" }}>
-                          <Text style={[styles.md_xgValue, { color: "#5D9EFF" }]}>
-                            {Number(safePrediction.probabilityEngine.goals.expectedGoals?.away || 0).toFixed(2)}
-                          </Text>
-                          <Text style={styles.md_xgLabel} numberOfLines={1}>{awayTeamName}</Text>
-                        </View>
-                      </View>
-                      <Text style={[styles.md_metaText, { textAlign: "center", marginTop: 6 }]}>
-                        Total xG: {Number(safePrediction.probabilityEngine.goals.expectedGoals?.total || 0).toFixed(2)}
-                      </Text>
-                    </View>
-                  </>
-                ) : null}
-
-                <SectionTitle label="Confidence & Risk" />
-                <View style={styles.md_card}>
-                  <View style={styles.md_confRow}>
-                    <Text style={styles.md_gridLabel}>Model Confidence</Text>
-                    <Text style={[styles.md_gridValue, { fontSize: 20 }]}>{confidencePct}%</Text>
-                  </View>
-                  <View style={styles.md_confTrack}>
-                    <View style={[
-                      styles.md_confFill,
-                      { flex: confidencePct },
-                      confidencePct >= 70 ? styles.md_confFillHigh
-                        : confidencePct >= 50 ? styles.md_confFillMed
-                        : styles.md_confFillLow,
-                    ]} />
-                    <View style={{ flex: 100 - confidencePct }} />
-                  </View>
-                  <Text style={styles.md_metaText}>{safePrediction.confidence_label || safePrediction.riskLevel || "Moderate"}</Text>
-                  <View style={styles.md_grid2}>
-                    <View style={styles.md_gridCard}><Text style={styles.md_gridLabel}>Edge</Text><Text style={styles.md_gridValue}>{edgeScorePct}/100</Text></View>
-                    <View style={styles.md_gridCard}><Text style={styles.md_gridLabel}>Upset Risk</Text><Text style={styles.md_gridValue}>{Math.round(Number(safePrediction.upsetProbabilityPct || 0))}%</Text></View>
-                    <View style={styles.md_gridCard}><Text style={styles.md_gridLabel}>Draw Risk</Text><Text style={styles.md_gridValue}>{Math.round(Number(safePrediction.scoreDrawRiskPct || 0))}%</Text></View>
-                    <View style={styles.md_gridCard}><Text style={styles.md_gridLabel}>Pressure</Text><Text style={styles.md_gridValue}>{Math.round(Number(safePrediction.pressureIndex || 0))}/100</Text></View>
-                  </View>
-                </View>
-
-                <SectionTitle label="Risk Factors" />
-                {(safePrediction.riskFactors || []).length > 0 ? (
-                  <View style={styles.md_grid2}>
-                    {(safePrediction.riskFactors || []).slice(0, 6).map((risk: any, i: number) => (
-                      <View key={`risk_${i}`} style={styles.md_gridCard}>
-                        <Text style={styles.md_gridLabel} numberOfLines={2}>{risk?.label || "Risk"}</Text>
-                        <Text style={styles.md_gridValue}>{Math.round(Number(risk?.impact || 0))}/100</Text>
-                        <Text style={[styles.md_metaText, { textTransform: "capitalize" }]}>{risk?.tone || "medium"}</Text>
-                      </View>
-                    ))}
-                  </View>
-                ) : (
-                  <View style={styles.md_card}>
-                    <EmptySlate icon="shield-outline" title="No risk data" subtitle="Risk factors are part of the premium prediction model." />
-                  </View>
-                )}
-
-                {safePrediction.dataSignals ? (
-                  <>
-                    <SectionTitle label="Data Fusion" />
-                    <View style={styles.md_card}>
-                      <View style={styles.md_signalGrid}>
-                        {[
-                          { key: "form", label: "Form" },
-                          { key: "standings", label: "Standings" },
-                          { key: "headToHead", label: "H2H" },
-                          { key: "injuries", label: "Injuries" },
-                          { key: "lineups", label: "Lineups" },
-                          { key: "liveStats", label: "Live Stats" },
-                        ].map((sig) => (
-                          <View key={sig.key} style={[styles.md_signalChip, (safePrediction.dataSignals as any)[sig.key] ? styles.md_signalChipActive : null]}>
-                            <Ionicons
-                              name={(safePrediction.dataSignals as any)[sig.key] ? "checkmark-circle" : "close-circle-outline"}
-                              size={12}
-                              color={(safePrediction.dataSignals as any)[sig.key] ? COLORS.live : COLORS.textMuted}
-                            />
-                            <Text style={[styles.md_signalText, (safePrediction.dataSignals as any)[sig.key] ? styles.md_signalTextActive : null]}>{sig.label}</Text>
-                          </View>
-                        ))}
-                      </View>
-                    </View>
-                  </>
-                ) : null}
-              </>
-            ) : null}
-          </ScrollView>
+            <SectionCard title="Model Verdict" subtitle="Short read for the premium sports layer">
+              <Text style={styles.verdictTitle}>{inferVerdict(match.homeTeam, match.awayTeam, prediction)}</Text>
+              <Text style={styles.bodyCopy}>Confidence sits at {prediction.confidence}%. This tab is fed by the same standings, form, H2H and live-state data already used by the rest of the sports stack.</Text>
+            </SectionCard>
+          </View>
         ) : null}
 
-        {/* ─── AI TAB ─── */}
-        {visitedExperienceTabs.ai ? (
-          <ScrollView
-            style={[styles.tabContent, activeExperienceTab !== "ai" ? styles.hiddenTabContent : null]}
-            contentContainerStyle={styles.nxContentWrap}
-            showsVerticalScrollIndicator={false}
-            decelerationRate="fast"
-            scrollEventThrottle={16}
-          >
-            {/* Match Story */}
-            <View style={styles.md_aiCard}>
-              <View style={styles.md_aiCardHeader}>
-                <Ionicons name="sparkles" size={16} color={COLORS.accent} />
-                <Text style={styles.md_aiCardTitle}>{aiStory.available ? aiStory.title : "AI Match Story"}</Text>
-              </View>
-              {aiStory.available ? (
-                <>
-                  <Text style={styles.md_aiSummary}>{aiStory.summary}</Text>
-                  {aiStory.turningPoint ? (
-                    <View style={styles.md_turningPoint}>
-                      <Ionicons name="git-branch-outline" size={13} color="#FFD700" />
-                      <Text style={styles.md_turningPointText}>{aiStory.turningPoint}</Text>
-                    </View>
-                  ) : null}
-                  {(aiStory.bullets || []).slice(0, 4).map((bullet, i) => (
-                    <View key={i} style={styles.md_aiBullet}>
-                      <View style={styles.md_aiBulletDot} />
-                      <Text style={styles.md_aiBulletText}>{bullet}</Text>
-                    </View>
-                  ))}
-                </>
-              ) : (
-                <EmptySlate
-                  icon="document-text-outline"
-                  title="Story loading"
-                  subtitle={isLive || isFinished
-                    ? "AI narrative generates as events arrive."
-                    : "AI story activates once the match starts."}
-                />
-              )}
-            </View>
+        {activeTab === "stats" ? (
+          <View style={styles.sectionStack}>
+            <SectionCard title="Live Match Stats" subtitle="Current match stats when the feed exposes them">
+              {liveRows.length ? liveRows.map((row) => (
+                <LiveStatRow key={row.label} label={row.label} home={row.home} away={row.away} suffix={row.suffix} decimals={row.decimals} />
+              )) : <EmptyBlock title="No live stats available yet" subtitle="The feed has not returned possession, shots or card counts for this fixture." />}
+            </SectionCard>
 
-            {/* Tactical Analysis */}
-            <SectionTitle label="Tactical Analysis" />
-            <View style={styles.md_card}>
-              <View style={styles.md_tacticRow}>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.md_tacticTeam} numberOfLines={1}>{homeTeamName}</Text>
-                  <Text style={styles.md_tacticFormation}>{homeLineupTeam?.formation || "Unknown"}</Text>
-                  <Text style={styles.md_tacticState}>
-                    {homeLineupTeam?.lineupState === "confirmed" ? "Confirmed"
-                      : homeLineupTeam?.lineupState === "expected" ? "Expected" : "Pending"}
-                  </Text>
-                </View>
-                <View style={styles.md_tacticVs}><Text style={styles.md_tacticVsText}>VS</Text></View>
-                <View style={{ flex: 1, alignItems: "flex-end" }}>
-                  <Text style={[styles.md_tacticTeam, { textAlign: "right" }]} numberOfLines={1}>{awayTeamName}</Text>
-                  <Text style={[styles.md_tacticFormation, { textAlign: "right" }]}>{awayLineupTeam?.formation || "Unknown"}</Text>
-                  <Text style={[styles.md_tacticState, { textAlign: "right" }]}>
-                    {awayLineupTeam?.lineupState === "confirmed" ? "Confirmed"
-                      : awayLineupTeam?.lineupState === "expected" ? "Expected" : "Pending"}
-                  </Text>
-                </View>
-              </View>
-              {(prematchKeyPlayers.home.keyPlayer || prematchKeyPlayers.away.keyPlayer) ? (
-                <>
-                  <View style={styles.md_divider} />
-                  <View style={styles.md_tacticPlayersRow}>
-                    <View style={{ flex: 1 }}>
-                      {prematchKeyPlayers.home.keyPlayer ? (
-                        <>
-                          <Text style={styles.md_cardKicker}>Key Player</Text>
-                          <Text style={styles.md_bodyText} numberOfLines={1}>
-                            {prematchKeyPlayers.home.keyPlayer.player?.name || "--"}
-                          </Text>
-                        </>
-                      ) : null}
-                    </View>
-                    <View style={{ flex: 1, alignItems: "flex-end" }}>
-                      {prematchKeyPlayers.away.keyPlayer ? (
-                        <>
-                          <Text style={[styles.md_cardKicker, { textAlign: "right" }]}>Key Player</Text>
-                          <Text style={[styles.md_bodyText, { textAlign: "right" }]} numberOfLines={1}>
-                            {prematchKeyPlayers.away.keyPlayer.player?.name || "--"}
-                          </Text>
-                        </>
-                      ) : null}
-                    </View>
-                  </View>
-                </>
-              ) : null}
-            </View>
-
-            {/* AI Narrative (from premiumStoryCard) */}
-            {safePrediction && premiumStoryCard ? (
-              <>
-                <SectionTitle label="AI Narrative" />
-                <View style={styles.md_aiCard}>
-                  <View style={styles.md_aiCardHeader}>
-                    <Ionicons name="document-text-outline" size={15} color={COLORS.accent} />
-                    <Text style={styles.md_aiCardTitle}>{premiumStoryCard.title}</Text>
-                  </View>
-                  <Text style={styles.md_aiSummary}>{premiumStoryCard.summary}</Text>
-                  {(premiumStoryCard.keyFactors || []).map((factor, i) => (
-                    <View key={i} style={styles.md_aiBullet}>
-                      <View style={styles.md_aiBulletDot} />
-                      <Text style={styles.md_aiBulletText}>{factor}</Text>
-                    </View>
-                  ))}
-                  {(premiumStoryCard.dataEvidence || []).slice(0, 3).map((line, i) => (
-                    <Text key={i} style={styles.md_evidenceText}>• {line}</Text>
-                  ))}
-                </View>
-              </>
-            ) : null}
-
-            {/* Momentum */}
-            {momentumModel.hasData ? (
-              <>
-                <SectionTitle label="Momentum" />
-                <View style={styles.md_card}>
-                  <MomentumBar
-                    model={momentumModel}
-                    homeLabel={homeTeamName.slice(0, 4).toUpperCase() || "HOME"}
-                    awayLabel={awayTeamName.slice(0, 4).toUpperCase() || "AWAY"}
-                  />
-                  {safePrediction ? (
-                    <View style={[styles.md_grid2, { marginTop: 12 }]}>
-                      <View style={styles.md_gridCard}>
-                        <Text style={styles.md_gridLabel}>Momentum</Text>
-                        <Text style={styles.md_gridValue}>{safePrediction.momentum || "--"}</Text>
-                      </View>
-                      <View style={styles.md_gridCard}>
-                        <Text style={styles.md_gridLabel}>Danger</Text>
-                        <Text style={styles.md_gridValue}>{safePrediction.danger || "--"}</Text>
-                      </View>
-                      <View style={styles.md_gridCard}>
-                        <Text style={styles.md_gridLabel}>Pattern</Text>
-                        <Text style={[styles.md_bodyText, { marginTop: 2 }]} numberOfLines={2}>{safePrediction.matchPattern || "--"}</Text>
-                      </View>
-                      <View style={styles.md_gridCard}>
-                        <Text style={styles.md_gridLabel}>Mom. Score</Text>
-                        <Text style={styles.md_gridValue}>{Math.round(Number(safePrediction.momentumScore || 0))}/100</Text>
-                      </View>
-                    </View>
-                  ) : null}
-                </View>
-              </>
-            ) : null}
-
-            {/* Outcome Projection */}
-            {safePrediction ? (
-              <>
-                <SectionTitle label="AI Outcome Projection" />
-                <View style={styles.md_aiCard}>
-                  <View style={styles.md_aiCardHeader}>
-                    <Ionicons name="analytics-outline" size={15} color={COLORS.accent} />
-                    <Text style={styles.md_aiCardTitle}>Predicted: {safePrediction.prediction || "Analyzing"}</Text>
-                  </View>
-                  <Text style={styles.md_aiSummary}>
-                    {safePrediction.live_shift_summary || safePrediction.summary || "Outcome details update as match context evolves."}
-                  </Text>
-                  <View style={styles.md_grid2}>
-                    <View style={styles.md_gridCard}>
-                      <Text style={styles.md_gridLabel}>Confidence</Text>
-                      <Text style={styles.md_gridValue}>{confidencePct}%</Text>
-                    </View>
-                    <View style={styles.md_gridCard}>
-                      <Text style={styles.md_gridLabel}>Edge</Text>
-                      <Text style={styles.md_gridValue}>{edgeScorePct}/100</Text>
-                    </View>
-                  </View>
-                </View>
-              </>
-            ) : (
-              <View style={styles.md_card}>
-                <EmptySlate
-                  icon="analytics-outline"
-                  title="AI not yet available"
-                  subtitle="Load predictions first to see AI analysis."
-                />
-              </View>
-            )}
-          </ScrollView>
+            <SectionCard title="Season Metrics" subtitle="Team profile comparison from standings and overview endpoints">
+              {seasonStats.hasAnyMetric ? seasonStats.metrics.map((metric) => (
+                <ComparisonMetricRow key={metric.key} label={metric.label} home={metric.home} away={metric.away} suffix={metric.suffix} decimals={metric.decimals} />
+              )) : <EmptyBlock title="Season metrics unavailable" />}
+            </SectionCard>
+          </View>
         ) : null}
 
-        {/* ─── STATS TAB ─── */}
-        {visitedExperienceTabs.stats ? (
-          <ScrollView
-            style={[styles.tabContent, activeExperienceTab !== "stats" ? styles.hiddenTabContent : null]}
-            contentContainerStyle={styles.nxContentWrap}
-            showsVerticalScrollIndicator={false}
-            decelerationRate="fast"
-            scrollEventThrottle={16}
-          >
-            <View style={styles.md_modeRow}>
-              <Text style={styles.md_sectionTitle}>Match Stats</Text>
-              <View style={styles.md_modeToggle}>
-                {(["basic", "pro"] as const).map((mode) => (
-                  <TouchableOpacity
-                    key={mode}
-                    style={[styles.md_modeBtn, statsMode === mode ? styles.md_modeBtnActive : null]}
-                    onPress={() => { setStatsModeState(mode); void setStatsMode(mode); }}
-                  >
-                    <Text style={[styles.md_modeBtnText, statsMode === mode ? styles.md_modeBtnTextActive : null]}>
-                      {mode.charAt(0).toUpperCase() + mode.slice(1)}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
+        {activeTab === "lineups" ? (
+          <View style={styles.sectionStack}>
+            <SectionCard title="Lineups" subtitle="Confirmed squads when available, otherwise expected structures">
+              <View style={styles.dualGrid}>
+                <LineupCard team={integratedLineups.home} rows={homeFormation.rows} accent={DS.home} unavailable={expectedLineups.unavailablePlayers.home} />
+                <LineupCard team={integratedLineups.away} rows={awayFormation.rows} accent={DS.away} unavailable={expectedLineups.unavailablePlayers.away} />
               </View>
-            </View>
-            {scopedStats.isReduced ? (
-              <Text style={styles.md_hintText}>Basic mode shows core signals. Switch to Pro for xG and advanced metrics.</Text>
-            ) : null}
-            {detailLoading ? (
-              <LoadingState />
-            ) : matchDetail ? (
-              <>
-                <View style={styles.md_grid2}>
-                  <View style={styles.md_gridCard}>
-                    <Text style={styles.md_gridLabel}>Model Edge</Text>
-                    <Text style={styles.md_gridValue}>{edgeScorePct}/100</Text>
-                  </View>
-                  <View style={styles.md_gridCard}>
-                    <Text style={styles.md_gridLabel}>Confidence</Text>
-                    <Text style={styles.md_gridValue}>{confidencePct}%</Text>
-                  </View>
-                  <View style={styles.md_gridCard}>
-                    <Text style={styles.md_gridLabel}>Win Tilt</Text>
-                    <Text style={styles.md_gridValue}>{Math.abs(normHomePct - normAwayPct)}%</Text>
-                  </View>
-                  <View style={styles.md_gridCard}>
-                    <Text style={styles.md_gridLabel}>Goal Pressure</Text>
-                    <Text style={styles.md_gridValue}>{Math.round((over25Pct + bttsPct) / 2)}%</Text>
-                  </View>
-                </View>
-                <StatsBars
-                  homeTeam={homeTeamName}
-                  awayTeam={awayTeamName}
-                  homeStats={scopedStats.homeStats || {}}
-                  awayStats={scopedStats.awayStats || {}}
-                />
-                <MatchHeatmap
-                  homeTeam={homeTeamName}
-                  awayTeam={awayTeamName}
-                  homeStats={scopedStats.homeStats || {}}
-                  awayStats={scopedStats.awayStats || {}}
-                />
-              </>
-            ) : (
-              <EmptySlate icon="stats-chart-outline" title="Stats unavailable" subtitle="Match statistics are not currently available." />
-            )}
-          </ScrollView>
+            </SectionCard>
+          </View>
         ) : null}
 
-        {/* ─── LINEUPS TAB ─── */}
-        {visitedExperienceTabs.lineups ? (
-          <ScrollView
-            style={[styles.tabContent, activeExperienceTab !== "lineups" ? styles.hiddenTabContent : null]}
-            contentContainerStyle={styles.nxContentWrap}
-            showsVerticalScrollIndicator={false}
-            decelerationRate="fast"
-            scrollEventThrottle={16}
-          >
-            {/* Formation header */}
-            <View style={styles.md_lineupHeader}>
-              <View style={{ flex: 1, alignItems: "center" }}>
-                <Text style={styles.md_lineupTeamName} numberOfLines={1}>{homeTeamName}</Text>
-                <Text style={styles.md_lineupFormation}>{homeLineupTeam?.formation || "--"}</Text>
-                <View style={[
-                  styles.md_stateBadge,
-                  homeLineupTeam?.lineupState === "confirmed" ? styles.md_stateBadgeConfirmed
-                    : homeLineupTeam?.lineupState === "expected" ? styles.md_stateBadgeExpected
-                    : styles.md_stateBadgeUnknown,
-                ]}>
-                  <Text style={styles.md_stateBadgeText}>
-                    {homeLineupTeam?.lineupState === "confirmed" ? "CONFIRMED"
-                      : homeLineupTeam?.lineupState === "expected" ? "EXPECTED" : "PENDING"}
-                  </Text>
-                </View>
+        {activeTab === "timeline" ? (
+          <View style={styles.sectionStack}>
+            <SectionCard title="Timeline" subtitle="Filtered event stream for goals, cards, subs, VAR and key moments">
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterStrip}>
+                {timelineFilters.availableFilters.map((filter) => {
+                  const active = filter.key === timelineFilter;
+                  return (
+                    <TouchableOpacity key={filter.key} activeOpacity={0.84} onPress={() => setTimelineFilter(filter.key)} style={[styles.filterPill, active && styles.filterPillActive]}>
+                      <Text style={[styles.filterPillText, active && styles.filterPillTextActive]}>{filter.label}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+              <View style={styles.timelineStack}>
+                {timelineFilters.filteredEvents.length ? timelineFilters.filteredEvents.map((event) => <TimelineEventRow key={event.id} event={event} />) : <EmptyBlock title="No timeline entries for this filter" />}
               </View>
-              <View style={styles.md_lineupVsDivider}>
-                <Text style={styles.md_lineupVsText}>VS</Text>
-              </View>
-              <View style={{ flex: 1, alignItems: "center" }}>
-                <Text style={styles.md_lineupTeamName} numberOfLines={1}>{awayTeamName}</Text>
-                <Text style={styles.md_lineupFormation}>{awayLineupTeam?.formation || "--"}</Text>
-                <View style={[
-                  styles.md_stateBadge,
-                  awayLineupTeam?.lineupState === "confirmed" ? styles.md_stateBadgeConfirmed
-                    : awayLineupTeam?.lineupState === "expected" ? styles.md_stateBadgeExpected
-                    : styles.md_stateBadgeUnknown,
-                ]}>
-                  <Text style={styles.md_stateBadgeText}>
-                    {awayLineupTeam?.lineupState === "confirmed" ? "CONFIRMED"
-                      : awayLineupTeam?.lineupState === "expected" ? "EXPECTED" : "PENDING"}
-                  </Text>
-                </View>
-              </View>
-            </View>
-
-            {/* View toggle */}
-            <View style={styles.md_viewToggleRow}>
-              {([
-                { id: "pitch" as const, icon: "football-outline" as const, label: "Field" },
-                { id: "list" as const, icon: "list-outline" as const, label: "List" },
-              ]).map((opt) => (
-                <TouchableOpacity
-                  key={opt.id}
-                  style={[styles.md_viewBtn, lineupView === opt.id ? styles.md_viewBtnActive : null]}
-                  onPress={() => setLineupView(opt.id)}
-                >
-                  <Ionicons name={opt.icon} size={14} color={lineupView === opt.id ? COLORS.accent : COLORS.textMuted} />
-                  <Text style={[styles.md_viewBtnText, lineupView === opt.id ? styles.md_viewBtnTextActive : null]}>{opt.label}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-
-            {detailLoading ? (
-              <LoadingState />
-            ) : integratedLineups.hasAnyLineups ? (
-              <>
-                {lineupView === "pitch" ? (
-                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingVertical: 4 }}>
-                    <PremiumLineupField
-                      homeTeam={homeLineupTeam}
-                      awayTeam={awayLineupTeam}
-                      homeRows={homeFormationLayout.rows}
-                      awayRows={awayFormationLayout.rows}
-                      league={espnLeague}
-                    />
-                  </ScrollView>
-                ) : (
-                  [homeLineupTeam, awayLineupTeam].map((team, teamIdx) => (
-                    <View key={team.teamName} style={styles.md_lineupSection}>
-                      <View style={styles.md_lineupSectionHead}>
-                        <View style={[styles.md_lineupTeamDot, { backgroundColor: teamIdx === 0 ? COLORS.accent : "#5D9EFF" }]} />
-                        <Text style={styles.md_lineupSectionTitle}>{team.teamName?.toUpperCase()}</Text>
-                        <Text style={styles.md_lineupSectionMeta}>{team.formation || "?"}</Text>
-                      </View>
-                      <Text style={styles.md_lineupListLabel}>STARTING XI</Text>
-                      {(team.starters || []).length > 0 ? (
-                        (team.starters || []).map((p: any, i: number) => (
-                          <PlayerRow key={`st_${teamIdx}_${p?.id || p?.name || i}`} player={p} sport={params.sport} teamName={team.teamName} league={espnLeague} />
-                        ))
-                      ) : (
-                        <Text style={styles.md_metaText}>Starting XI not available</Text>
-                      )}
-                      <Text style={[styles.md_lineupListLabel, { marginTop: 10 }]}>BENCH</Text>
-                      {(team.bench || []).length > 0 ? (
-                        (team.bench || []).map((p: any, i: number) => (
-                          <PlayerRow key={`bn_${teamIdx}_${p?.id || p?.name || i}`} player={p} sport={params.sport} teamName={team.teamName} league={espnLeague} compact />
-                        ))
-                      ) : (
-                        <Text style={styles.md_metaText}>No bench data</Text>
-                      )}
-                    </View>
-                  ))
-                )}
-
-                {substitutions.length > 0 ? (
-                  <>
-                    <SectionTitle label="Live Substitutions" />
-                    <View style={styles.md_card}>
-                      {substitutions.map((change, i) => (
-                        <View key={`sub_${i}`} style={styles.md_subRow}>
-                          <Text style={styles.md_subMinute}>{change.minuteLabel || "--"}&apos;</Text>
-                          <Text style={styles.md_subTeam} numberOfLines={1}>
-                            {change.teamName || (change.side === "home" ? homeTeamName : awayTeamName)}
-                          </Text>
-                          <View style={{ flex: 1, flexDirection: "row", alignItems: "center", gap: 4 }}>
-                            <Text style={styles.md_subOut} numberOfLines={1}>{change.playerOut || "?"}</Text>
-                            <Ionicons name="arrow-forward" size={11} color={COLORS.live} />
-                            <Text style={styles.md_subIn} numberOfLines={1}>{change.playerIn || "?"}</Text>
-                          </View>
-                        </View>
-                      ))}
-                    </View>
-                  </>
-                ) : null}
-              </>
-            ) : (
-              <EmptySlate
-                icon="people-outline"
-                title="Lineups not available"
-                subtitle="Starting lineups appear once teams are announced."
-              />
-            )}
-          </ScrollView>
+            </SectionCard>
+          </View>
         ) : null}
 
-        {/* ─── TIMELINE TAB ─── */}
-        {visitedExperienceTabs.timeline ? (
-          <ScrollView
-            style={[styles.tabContent, activeExperienceTab !== "timeline" ? styles.hiddenTabContent : null]}
-            contentContainerStyle={styles.nxContentWrap}
-            showsVerticalScrollIndicator={false}
-            decelerationRate="fast"
-            scrollEventThrottle={16}
-          >
-            {/* Match progress */}
-            <View style={styles.md_card}>
-              <View style={styles.md_progressHeader}>
-                <Text style={styles.md_cardKicker}>Match Progress</Text>
-                <View style={[
-                  styles.md_statusChip,
-                  statusMeta.tone === "live" ? styles.md_statusChipLive
-                    : statusMeta.tone === "finished" ? styles.md_statusChipFt
-                    : styles.md_statusChipDefault,
-                ]}>
-                  {statusMeta.tone === "live" ? <View style={styles.md_liveDot} /> : null}
-                  <Text style={styles.md_statusChipText}>
-                    {statusMeta.minuteLabel ? `${statusMeta.label} ${statusMeta.minuteLabel}` : statusMeta.label}
-                  </Text>
-                </View>
+        {activeTab === "h2h" ? (
+          <View style={styles.sectionStack}>
+            <SectionCard title="Head To Head" subtitle="Recent completed meetings between both teams">
+              <View style={styles.quickStatsGrid}>
+                <QuickStat label={match.homeTeam} value={String(h2h.summary.homeWins)} />
+                <QuickStat label="Draws" value={String(h2h.summary.draws)} />
+                <QuickStat label={match.awayTeam} value={String(h2h.summary.awayWins)} />
               </View>
-              <View style={styles.md_progressTrack}>
-                <View style={[styles.md_progressFill, { flex: timelineProgressPct }]} />
-                <View style={{ flex: Math.max(0, 100 - timelineProgressPct) }} />
+              <View style={styles.timelineStack}>
+                {h2h.rows.length ? h2h.rows.map((row) => (
+                  <View key={row.id} style={styles.h2hRow}>
+                    <Text style={styles.h2hTeams}>{row.homeTeam} {row.homeScore} - {row.awayScore} {row.awayTeam}</Text>
+                    <Text style={styles.h2hMeta}>{formatKickoff(row.date).date}</Text>
+                  </View>
+                )) : <EmptyBlock title="No completed H2H matches found" subtitle="The competition feed did not return historical meetings." />}
               </View>
-              <View style={styles.md_progressLabels}>
-                <Text style={styles.md_progressLabel}>0&apos;</Text>
-                <Text style={styles.md_progressLabel}>45&apos;</Text>
-                <Text style={styles.md_progressLabel}>90+</Text>
-              </View>
-            </View>
-
-            {/* Event counts */}
-            <View style={styles.md_eventCountGrid}>
-              {[
-                { label: "Goals", icon: "football-outline" as const, count: timelineEventCounts.goals, color: COLORS.live },
-                { label: "Yellow", icon: "card-outline" as const, count: timelineEventCounts.yellow, color: "#FFD700" },
-                { label: "Red", icon: "card-outline" as const, count: timelineEventCounts.red, color: "#FF3040" },
-                { label: "Subs", icon: "swap-horizontal-outline" as const, count: timelineEventCounts.subs, color: "#5D9EFF" },
-                { label: "Pens", icon: "radio-button-on-outline" as const, count: timelineEventCounts.penalties, color: "#FF9800" },
-              ].map((item) => (
-                <View key={item.label} style={styles.md_eventCountCard}>
-                  <Ionicons name={item.icon} size={16} color={item.color} />
-                  <Text style={[styles.md_eventCountNum, { color: item.color }]}>{item.count}</Text>
-                  <Text style={styles.md_eventCountLabel}>{item.label}</Text>
-                </View>
-              ))}
-            </View>
-
-            {/* Filter chips */}
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              style={styles.md_chipScroll}
-              contentContainerStyle={styles.md_chipScrollInner}
-            >
-              {([
-                { key: "all", label: "All" },
-                { key: "goals", label: "\u26bd Goals" },
-                { key: "cards", label: "\ud83d\udfe8 Cards" },
-                { key: "subs", label: "\ud83d\udd01 Subs" },
-                { key: "var", label: "\ud83d\udcf9 VAR" },
-                { key: "key", label: "\u26a1 Key" },
-              ] as const).map((chip) => (
-                <TouchableOpacity
-                  key={chip.key}
-                  style={[styles.md_chip, timelineFilter === chip.key ? styles.md_chipActive : null]}
-                  onPress={() => setTimelineFilter(chip.key as TimelineFilter)}
-                >
-                  <Text style={[styles.md_chipText, timelineFilter === chip.key ? styles.md_chipTextActive : null]}>{chip.label}</Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-
-            {/* Events */}
-            {filteredTimelineEvents.length > 0 ? (
-              <MatchTimeline
-                events={filteredTimelineEvents}
-                homeTeam={homeTeamName}
-                awayTeam={awayTeamName}
-              />
-            ) : (
-              <EmptySlate
-                icon="git-branch-outline"
-                title={timelineFilter === "all" ? "No events yet" : `No ${timelineFilter} events`}
-                subtitle={timelineFilter === "all"
-                  ? "Timeline events appear once the match starts."
-                  : "No events match this filter."}
-              />
-            )}
-          </ScrollView>
+            </SectionCard>
+          </View>
         ) : null}
-
-        {/* ─── H2H TAB ─── */}
-        {visitedExperienceTabs.h2h ? (
-          <ScrollView
-            style={[styles.tabContent, activeExperienceTab !== "h2h" ? styles.hiddenTabContent : null]}
-            contentContainerStyle={styles.nxContentWrap}
-            showsVerticalScrollIndicator={false}
-            decelerationRate="fast"
-            scrollEventThrottle={16}
-          >
-            {/* H2H Summary */}
-            <View style={styles.md_card}>
-              <SectionHead icon="git-compare-outline" label="Head to Head" />
-              {(prematchH2H.summary.homeWins + prematchH2H.summary.draws + prematchH2H.summary.awayWins) > 0 ? (
-                <>
-                  <View style={styles.md_h2hTeamRow}>
-                    <Text style={styles.md_h2hTeamLabel} numberOfLines={1}>{homeTeamName}</Text>
-                    <Text style={styles.md_h2hVs}>vs</Text>
-                    <Text style={[styles.md_h2hTeamLabel, { textAlign: "right" }]} numberOfLines={1}>{awayTeamName}</Text>
-                  </View>
-                  <View style={styles.md_h2hBar}>
-                    <View style={[styles.md_h2hFillHome, { flex: Math.max(1, prematchH2H.summary.homeWins) }]}>
-                      <Text style={styles.md_h2hFillText}>{prematchH2H.summary.homeWins}W</Text>
-                    </View>
-                    {prematchH2H.summary.draws > 0 ? (
-                      <View style={[styles.md_h2hFillDraw, { flex: Math.max(1, prematchH2H.summary.draws) }]}>
-                        <Text style={styles.md_h2hFillTextDraw}>{prematchH2H.summary.draws}D</Text>
-                      </View>
-                    ) : null}
-                    <View style={[styles.md_h2hFillAway, { flex: Math.max(1, prematchH2H.summary.awayWins) }]}>
-                      <Text style={styles.md_h2hFillText}>{prematchH2H.summary.awayWins}W</Text>
-                    </View>
-                  </View>
-                  {safePrediction?.h2hSummary ? (
-                    <Text style={styles.md_bodyText}>{safePrediction.h2hSummary}</Text>
-                  ) : null}
-                </>
-              ) : (
-                <EmptySlate icon="git-compare-outline" title="No H2H data" subtitle="Head-to-head history is not available for this matchup." />
-              )}
-            </View>
-
-            {/* Recent meetings */}
-            {(prematchH2H.rows || []).length > 0 ? (
-              <>
-                <SectionTitle label="Recent Meetings" />
-                <View style={styles.md_card}>
-                  {(prematchH2H.rows || []).map((row: any, i: number) => {
-                    const isHomeWin = row.homeScore > row.awayScore;
-                    const isAwayWin = row.awayScore > row.homeScore;
-                    return (
-                      <View
-                        key={row.id || i}
-                        style={[styles.md_h2hMatchRow, i > 0 ? { borderTopWidth: 1, borderTopColor: COLORS.border } : undefined]}
-                      >
-                        <Text style={styles.md_h2hMatchDate}>{row.date || "--"}</Text>
-                        <View style={{ flex: 1, flexDirection: "row", alignItems: "center", gap: 6 }}>
-                          <Text style={[styles.md_h2hMatchTeam, { flex: 1, textAlign: "right" }]} numberOfLines={1}>{row.homeTeam}</Text>
-                          <View style={styles.md_h2hScoreBadge}>
-                            <Text style={styles.md_h2hScore}>{row.homeScore}-{row.awayScore}</Text>
-                          </View>
-                          <Text style={[styles.md_h2hMatchTeam, { flex: 1 }]} numberOfLines={1}>{row.awayTeam}</Text>
-                        </View>
-                        <View style={[
-                          styles.md_h2hResult,
-                          isHomeWin ? styles.md_h2hResultHome : isAwayWin ? styles.md_h2hResultAway : styles.md_h2hResultDraw,
-                        ]}>
-                          <Text style={styles.md_h2hResultText}>{isHomeWin ? "H" : isAwayWin ? "A" : "D"}</Text>
-                        </View>
-                      </View>
-                    );
-                  })}
-                </View>
-              </>
-            ) : null}
-
-            {/* Form comparison */}
-            <SectionTitle label="Recent Form" />
-            <View style={styles.md_grid2}>
-              {([
-                { team: homeTeamName, form: prematchTeamForm.homeForm },
-                { team: awayTeamName, form: prematchTeamForm.awayForm },
-              ] as const).map(({ team, form }) => (
-                <View key={team} style={styles.md_gridCard}>
-                  <Text style={styles.md_gridLabel} numberOfLines={1}>{team}</Text>
-                  <View style={styles.md_formRow}>
-                    {(form.sequence as string[]).slice(-5).map((r, i) => (
-                      <View key={i} style={[styles.md_formDot, r === "W" ? styles.md_formDotW : r === "D" ? styles.md_formDotD : styles.md_formDotL]}>
-                        <Text style={styles.md_formDotText}>{r}</Text>
-                      </View>
-                    ))}
-                    {(form.sequence as string[]).length === 0 ? <Text style={styles.md_metaText}>—</Text> : null}
-                  </View>
-                  <Text style={styles.md_metaText}>GF {form.goalsScored} · GA {form.goalsConceded}</Text>
-                </View>
-              ))}
-            </View>
-
-            {/* Team stats comparison */}
-            {(prematchTeamStats.metrics || []).length > 0 ? (
-              <>
-                <SectionTitle label="Team Stats Comparison" />
-                <View style={styles.md_card}>
-                  {(prematchTeamStats.metrics || []).slice(0, 8).map((metric: any) => {
-                    const hv = typeof metric.home === "number" ? metric.home : 0;
-                    const av = typeof metric.away === "number" ? metric.away : 0;
-                    const total = Math.max(1, hv + av);
-                    const hPct = Math.round((hv / total) * 100);
-                    const aPct = 100 - hPct;
-                    const dec = Number.isFinite(metric.decimals) ? metric.decimals : 1;
-                    const sfx = metric.suffix || "";
-                    return (
-                      <View key={metric.key} style={styles.md_compareRow}>
-                        <Text style={styles.md_compareVal}>{metric.home == null ? "--" : `${hv.toFixed(dec)}${sfx}`}</Text>
-                        <View style={{ flex: 1 }}>
-                          <Text style={styles.md_compareLabel}>{metric.label}</Text>
-                          <View style={styles.md_compareBarWrap}>
-                            <View style={[styles.md_compareBarHome, { flex: hPct }]} />
-                            <View style={[styles.md_compareBarAway, { flex: aPct }]} />
-                          </View>
-                        </View>
-                        <Text style={[styles.md_compareVal, { textAlign: "right" }]}>{metric.away == null ? "--" : `${av.toFixed(dec)}${sfx}`}</Text>
-                      </View>
-                    );
-                  })}
-                </View>
-              </>
-            ) : null}
-
-            {/* AI Form analysis (unlocked) */}
-            {predictionUnlocked && safePrediction?.formGuide ? (
-              <>
-                <SectionTitle label="AI Form Analysis" />
-                <View style={styles.md_card}>
-                  {safePrediction.formGuide.homeForm ? (
-                    <View style={{ marginBottom: 10 }}>
-                      <Text style={styles.md_cardKicker}>{homeTeamName}</Text>
-                      <Text style={styles.md_bodyText}>{safePrediction.formGuide.homeForm}</Text>
-                    </View>
-                  ) : null}
-                  {safePrediction.formGuide.awayForm ? (
-                    <View>
-                      <Text style={styles.md_cardKicker}>{awayTeamName}</Text>
-                      <Text style={styles.md_bodyText}>{safePrediction.formGuide.awayForm}</Text>
-                    </View>
-                  ) : null}
-                </View>
-              </>
-            ) : null}
-          </ScrollView>
-        ) : null}
-      </View>
-    );
-}
-
-// ─── Utility Sub-components ───────────────────────────────────────────────────
-
-function EmptySlate({ icon, title, subtitle }: { icon: React.ComponentProps<typeof Ionicons>["name"]; title: string; subtitle?: string }) {
-  return (
-    <View style={styles.md_emptySlate}>
-      <Ionicons name={icon} size={28} color={COLORS.textMuted} />
-      <Text style={styles.md_emptyTitle}>{title}</Text>
-      {subtitle ? <Text style={styles.md_emptySubtitle}>{subtitle}</Text> : null}
+      </ScrollView>
     </View>
   );
 }
 
-function SectionHead({ icon, label, accent }: { icon: React.ComponentProps<typeof Ionicons>["name"]; label: string; accent?: string }) {
+function SectionCard({ title, subtitle, children }: { title: string; subtitle?: string; children: React.ReactNode }) {
   return (
-    <View style={styles.md_sectionHead}>
-      <Ionicons name={icon} size={13} color={accent || COLORS.textMuted} />
-      <Text style={[styles.md_sectionHeadText, accent ? { color: accent } : null]}>{label}</Text>
+    <View style={styles.sectionCard}>
+      <View style={styles.sectionHead}>
+        <Text style={styles.sectionTitle}>{title}</Text>
+        {subtitle ? <Text style={styles.sectionSubtitle}>{subtitle}</Text> : null}
+      </View>
+      {children}
     </View>
   );
 }
 
-function SectionTitle({ label }: { label: string }) {
-  return <Text style={styles.md_sectionTitle}>{label}</Text>;
-}
-
-function InfoRow({ icon, text }: { icon: React.ComponentProps<typeof Ionicons>["name"]; text: string }) {
+function HeroStat({ label, value }: { label: string; value: string }) {
   return (
-    <View style={styles.md_infoRow}>
-      <Ionicons name={icon} size={13} color={COLORS.textMuted} />
-      <Text style={styles.md_infoText} numberOfLines={2}>{text}</Text>
+    <View style={styles.heroStat}>
+      <Text style={styles.heroStatLabel}>{label}</Text>
+      <Text numberOfLines={1} style={styles.heroStatValue}>{value}</Text>
     </View>
   );
 }
 
-// ──────────────────────────────────────────────────────────────────────────────
-
-function TeamSide({ name, logo, logoSize: logoSizeProp, width: widthProp, onPress }: { name: string; logo?: string; logoSize?: number; width?: number; onPress?: () => void }) {
-  const { width: windowWidth } = useWindowDimensions();
-  const width = widthProp ?? windowWidth;
-  const logoSize = logoSizeProp ?? (width < 360 ? 40 : width < 400 ? 46 : 52);
+function QuickStat({ label, value, tone = "default" }: { label: string; value: string; tone?: "default" | "live" }) {
   return (
-    <View style={styles.teamSideWrap}>
-      <TouchableOpacity
-        style={styles.teamSideCard}
-        onPress={onPress}
-        activeOpacity={onPress ? 0.7 : 1}
-      >
-        <TeamLogo uri={logo} teamName={name} size={logoSize} />
-        <Text style={[styles.teamName, width < 360 && { fontSize: 10 }]} numberOfLines={2}>{name}</Text>
-      </TouchableOpacity>
+    <View style={[styles.quickStat, tone === "live" && styles.quickStatLive]}>
+      <Text style={styles.quickStatValue}>{value}</Text>
+      <Text style={[styles.quickStatLabel, tone === "live" && styles.quickStatLabelLive]}>{label}</Text>
     </View>
   );
 }
 
-function MatchTimelineInner({ events, homeTeam, awayTeam }: { events: any[]; homeTeam: string; awayTeam: string }) {
-  const orderedEvents = useMemo(() => (Array.isArray(events) ? events : []), [events]);
-
-  if (!orderedEvents?.length) {
-    return <EmptyState icon="timer-outline" text="No timeline events available" />;
-  }
-
-  const getEventConfig = (event: any) => {
-    const t = String(event?.kind || event?.type || "").toLowerCase();
-    if (t.includes("kickoff")) {
-      return { icon: "play-outline" as const, color: COLORS.accent, label: "Kick-off", dot: COLORS.accent };
-    }
-    if (t.includes("halftime")) {
-      return { icon: "pause-outline" as const, color: "#FFD166", label: "Half-time", dot: "#FFD166" };
-    }
-    if (t.includes("fulltime")) {
-      return { icon: "stop-outline" as const, color: COLORS.textMuted, label: "Full Time", dot: COLORS.textMuted };
-    }
-    if (t.includes("own") || t.includes("eigen")) {
-      return { icon: "football-outline" as const, color: "#FF6B35", label: "Own Goal", dot: "#FF6B35" };
-    }
-    if (t.includes("goal")) {
-      return { icon: "football-outline" as const, color: "#00E676", label: "Goal", dot: "#00E676" };
-    }
-    if (t.includes("missed_penalty")) {
-      return { icon: "close-circle-outline" as const, color: "#FF9F1C", label: "Missed Penalty", dot: "#FF9F1C" };
-    }
-    if (t.includes("chance")) {
-      return { icon: "flash-outline" as const, color: "#7BDFF2", label: "Big Chance", dot: "#7BDFF2" };
-    }
-    if (t.includes("red")) {
-      return { icon: "card-outline" as const, color: "#FF3040", label: "Red Card", dot: "#FF3040" };
-    }
-    if (t.includes("yellow_red") || t.includes("second yellow")) {
-      return { icon: "card-outline" as const, color: "#FF8C00", label: "2nd Yellow", dot: "#FF8C00" };
-    }
-    if (t.includes("yellow")) {
-      return { icon: "card-outline" as const, color: "#FFD700", label: "Yellow Card", dot: "#FFD700" };
-    }
-    if (t.includes("sub") || t.includes("substitut")) {
-      return { icon: "swap-horizontal-outline" as const, color: "#5D9EFF", label: "Substitution", dot: "#5D9EFF" };
-    }
-    if (t.includes("pen") || t.includes("penalty")) {
-      return { icon: "radio-button-on-outline" as const, color: "#FF9800", label: "Penalty", dot: "#FF9800" };
-    }
-    if (t.includes("var")) {
-      return { icon: "videocam-outline" as const, color: "#A78BFA", label: "VAR", dot: "#A78BFA" };
-    }
-    if (t.includes("miss") || t.includes("saved")) {
-      return { icon: "close-circle-outline" as const, color: COLORS.textMuted, label: "Missed", dot: COLORS.textMuted };
-    }
-    return { icon: "ellipse-outline" as const, color: COLORS.textMuted, label: "Event", dot: COLORS.textMuted };
-  };
-
+function BulletRow({ label }: { label: string }) {
   return (
-    <View style={styles.timelineWrapper}>
-      <View style={[styles.timelineConnector, { left: "50%", marginLeft: -1 }]} />
-      {orderedEvents.map((ev: any, i: number) => {
-        const cfg = getEventConfig(ev);
-        const side = (ev?.side || inferEventSide(ev, homeTeam, awayTeam)) as "home" | "away" | "center";
-        const onHome = side === "home";
-        const minute = safeStr(ev?.minuteLabel || ev?.minute || "");
-        const title = safeStr(ev?.title || cfg.label);
-        const description = safeStr(ev?.description || ev?.player || ev?.name || ev?.text || ev?.detail || "");
-        const secondary = safeStr(ev?.secondary || ev?.assist || "");
-        const kind = String(ev?.kind || ev?.type || "").toLowerCase();
-        const isCenterEvent = Boolean(ev?.isPhaseSeparator) || side === "center" || ["kickoff", "halftime", "fulltime", "extra_time", "penalties"].includes(kind);
-
-        return (
-          <View key={i} style={styles.timelineRow}>
-            {isCenterEvent ? (
-              <>
-                <View style={styles.timelineSide} />
-                <View style={styles.timelineCenterCardWrap}>
-                  <View style={styles.timelineCenter}>
-                    <View style={[styles.timelineDot, { backgroundColor: cfg.dot, borderColor: `${cfg.dot}88` }]} />
-                    {minute ? <Text style={styles.timelineMinute}>{minute}</Text> : null}
-                  </View>
-                  <View style={styles.timelineCenterCard}>
-                    <View style={[styles.timelineEventBadge, { backgroundColor: `${cfg.dot}22`, borderColor: `${cfg.dot}55` }]}>
-                      <Ionicons name={cfg.icon} size={12} color={cfg.color} />
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.timelineTitle}>{title}</Text>
-                      {description ? <Text style={styles.timelineDescription}>{description}</Text> : null}
-                    </View>
-                  </View>
-                </View>
-                <View style={styles.timelineSide} />
-              </>
-            ) : (
-              <>
-            {/* Home side */}
-            <View style={styles.timelineSide}>
-              {onHome ? (
-                <View style={styles.timelineEventHome}>
-                  <View style={styles.timelineTextBlockHome}>
-                    <Text style={styles.timelineTitleHome} numberOfLines={1}>{title}</Text>
-                    <Text style={styles.timelinePlayer} numberOfLines={2}>{description}</Text>
-                    {secondary ? <Text style={styles.timelineSecondaryHome} numberOfLines={1}>{secondary}</Text> : null}
-                  </View>
-                  <View style={[styles.timelineEventBadge, { backgroundColor: `${cfg.dot}22`, borderColor: `${cfg.dot}55` }]}>
-                    <Ionicons name={cfg.icon} size={12} color={cfg.color} />
-                  </View>
-                </View>
-              ) : null}
-            </View>
-
-            {/* Center: minute + line */}
-            <View style={styles.timelineCenter}>
-              <View style={[styles.timelineDot, { backgroundColor: cfg.dot, borderColor: `${cfg.dot}88` }]} />
-              {minute ? <Text style={styles.timelineMinute}>{minute}</Text> : null}
-            </View>
-
-            {/* Away side */}
-            <View style={[styles.timelineSide, styles.timelineSideAway]}>
-              {!onHome ? (
-                <View style={styles.timelineEventAway}>
-                  <View style={[styles.timelineEventBadge, { backgroundColor: `${cfg.dot}22`, borderColor: `${cfg.dot}55` }]}>
-                    <Ionicons name={cfg.icon} size={12} color={cfg.color} />
-                  </View>
-                  <View style={styles.timelineTextBlockAway}>
-                    <Text style={styles.timelineTitle} numberOfLines={1}>{title}</Text>
-                    <Text style={[styles.timelinePlayer, { textAlign: "left" }]} numberOfLines={2}>{description}</Text>
-                    {secondary ? <Text style={styles.timelineSecondary} numberOfLines={1}>{secondary}</Text> : null}
-                  </View>
-                </View>
-              ) : null}
-            </View>
-              </>
-            )}
-          </View>
-        );
-      })}
+    <View style={styles.bulletRow}>
+      <View style={styles.bulletDot} />
+      <Text style={styles.bulletText}>{label}</Text>
     </View>
   );
 }
 
-const MatchTimeline = React.memo(MatchTimelineInner);
-
-// ── Match Heatmap – zone-based pitch visualization ──────────────────────────
-function MatchHeatmapInner({ homeTeam, awayTeam, homeStats, awayStats }: { homeTeam: string; awayTeam: string; homeStats: any; awayStats: any }) {
-  const toNum = (v: any) => { const n = parseFloat(String(v ?? "0").replace("%", "")); return Number.isFinite(n) ? n : 0; };
-
-  const hPoss = toNum(homeStats?.ball_possession ?? homeStats?.possession ?? homeStats?.possessionPct);
-  const aPoss = toNum(awayStats?.ball_possession ?? awayStats?.possession ?? awayStats?.possessionPct);
-  const hShots = toNum(homeStats?.total_shots ?? homeStats?.shots ?? homeStats?.totalShots);
-  const aShots = toNum(awayStats?.total_shots ?? awayStats?.shots ?? awayStats?.totalShots);
-  const hOnTarget = toNum(homeStats?.shots_on_goal ?? homeStats?.shots_on_target ?? homeStats?.shotsOnTarget);
-  const aOnTarget = toNum(awayStats?.shots_on_goal ?? awayStats?.shots_on_target ?? awayStats?.shotsOnTarget);
-  const hCorners = toNum(homeStats?.corner_kicks ?? homeStats?.corners ?? homeStats?.cornerKicks);
-  const aCorners = toNum(awayStats?.corner_kicks ?? awayStats?.corners ?? awayStats?.cornerKicks);
-  const hInsideBox = toNum(homeStats?.shots_insidebox ?? homeStats?.shotsInsideBox);
-  const aInsideBox = toNum(awayStats?.shots_insidebox ?? awayStats?.shotsInsideBox);
-
-  const hasData = hPoss > 0 || aPoss > 0 || hShots > 0 || aShots > 0;
-  if (!hasData) return null;
-
-  const maxShots = Math.max(hShots, aShots, 1);
-  const maxCorners = Math.max(hCorners, aCorners, 1);
-
-  const hDefIntensity = Math.min(1, ((aShots - aOnTarget) / Math.max(maxShots, 1)) * 0.65 + (hPoss / 100) * 0.2 + 0.08);
-  const hMidIntensity = Math.min(1, (hPoss / 100) * 0.95 + ((hShots + hCorners) / Math.max(maxShots + maxCorners, 1)) * 0.25 + 0.08);
-  const hAttackIntensity = Math.min(1, ((hInsideBox || hOnTarget) / Math.max(maxShots, 1)) * 1.35 + (hCorners / Math.max(maxCorners, 1)) * 0.18 + 0.1);
-
-  const aDefIntensity = Math.min(1, ((hShots - hOnTarget) / Math.max(maxShots, 1)) * 0.65 + (aPoss / 100) * 0.2 + 0.08);
-  const aMidIntensity = Math.min(1, (aPoss / 100) * 0.95 + ((aShots + aCorners) / Math.max(maxShots + maxCorners, 1)) * 0.25 + 0.08);
-  const aAttackIntensity = Math.min(1, ((aInsideBox || aOnTarget) / Math.max(maxShots, 1)) * 1.35 + (aCorners / Math.max(maxCorners, 1)) * 0.18 + 0.1);
-
-  const homeControl = (hPoss * 1.15) + (hShots * 2.1) + (hOnTarget * 2.8) + (hCorners * 1.25);
-  const awayControl = (aPoss * 1.15) + (aShots * 2.1) + (aOnTarget * 2.8) + (aCorners * 1.25);
-  const controlTotal = Math.max(1, homeControl + awayControl);
-  const controlDiff = (homeControl - awayControl) / controlTotal;
-  const splitShift = Math.max(-14, Math.min(14, Math.round(controlDiff * 100 * 0.38)));
-  const splitPct = 50 + splitShift;
-  const homeZoneWidth = splitPct / 3;
-  const awayZoneWidth = (100 - splitPct) / 3;
-
-  const homeStarts = [0, homeZoneWidth, homeZoneWidth * 2];
-  const awayStarts = [splitPct, splitPct + awayZoneWidth, splitPct + awayZoneWidth * 2];
-  const homeSpreadBoost = Math.max(0, controlDiff) * 0.22;
-  const awaySpreadBoost = Math.max(0, -controlDiff) * 0.22;
-
-  const shotDots: { x: number; y: number; color: string; onTarget: boolean }[] = [];
-  const seedRng = (s: number) => { let v = s; return () => { v = (v * 16807 + 0) % 2147483647; return (v & 0x7fffffff) / 0x7fffffff; }; };
-  const rng = seedRng(hShots * 100 + aShots * 7 + hOnTarget * 33);
-
-  for (let i = 0; i < Math.min(hShots, 12); i++) {
-    const onTarget = i < hOnTarget;
-    shotDots.push({ x: 8 + rng() * 33, y: 16 + rng() * 66, color: COLORS.accent, onTarget });
-  }
-  for (let i = 0; i < Math.min(aShots, 12); i++) {
-    const onTarget = i < aOnTarget;
-    shotDots.push({ x: 59 + rng() * 33, y: 16 + rng() * 66, color: "#5B8DEF", onTarget });
-  }
-
-  const intensityToColor = (intensity: number, side: "home" | "away", dominanceBoost = 0) => {
-    const alpha = Math.max(0.08, Math.min(0.56, (intensity + dominanceBoost) * 0.56));
-    return side === "home"
-      ? `rgba(229,9,20,${alpha.toFixed(2)})`
-      : `rgba(70,130,255,${alpha.toFixed(2)})`;
-  };
-
-  const dynamicZones = [
-    { left: homeStarts[0], width: homeZoneWidth, color: intensityToColor(hDefIntensity, "home", homeSpreadBoost * 0.35), label: "DEF" },
-    { left: homeStarts[1], width: homeZoneWidth, color: intensityToColor(hMidIntensity, "home", homeSpreadBoost * 0.55), label: "MID" },
-    { left: homeStarts[2], width: homeZoneWidth, color: intensityToColor(hAttackIntensity, "home", homeSpreadBoost), label: "ATT" },
-    { left: awayStarts[0], width: awayZoneWidth, color: intensityToColor(aAttackIntensity, "away", awaySpreadBoost), label: "ATT" },
-    { left: awayStarts[1], width: awayZoneWidth, color: intensityToColor(aMidIntensity, "away", awaySpreadBoost * 0.55), label: "MID" },
-    { left: awayStarts[2], width: awayZoneWidth, color: intensityToColor(aDefIntensity, "away", awaySpreadBoost * 0.35), label: "DEF" },
-  ];
-  const laneCards = [
-    { label: "Defense", home: hDefIntensity, away: aDefIntensity },
-    { label: "Midfield", home: hMidIntensity, away: aMidIntensity },
-    { label: "Attack", home: hAttackIntensity, away: aAttackIntensity },
-  ];
-
+function ProbabilityBar({ homeLabel, awayLabel, homeValue, drawValue, awayValue }: { homeLabel: string; awayLabel: string; homeValue: number; drawValue: number; awayValue: number }) {
   return (
-    <View style={heatmapStyles.card}>
-      <View style={heatmapStyles.header}>
-        <View style={heatmapStyles.headerAccent} />
-        <View style={heatmapStyles.headerIconWrap}>
-          <MaterialCommunityIcons name="soccer-field" size={16} color={COLORS.accent} />
-        </View>
-        <View style={{ flex: 1 }}>
-          <Text style={heatmapStyles.headerTitle}>FIELD CONTROL</Text>
-          <Text style={heatmapStyles.headerSub}>Dominant team pushes control deeper into the opposite half</Text>
-        </View>
+    <View style={styles.probabilityWrap}>
+      <View style={styles.probabilityBar}>
+        <View style={[styles.probabilityHome, { flex: homeValue }]} />
+        <View style={[styles.probabilityDraw, { flex: drawValue }]} />
+        <View style={[styles.probabilityAway, { flex: awayValue }]} />
       </View>
-
-      <View style={heatmapStyles.teamScaleRow}>
-        <View style={heatmapStyles.teamScaleSide}>
-          <View style={[heatmapStyles.teamScaleDot, { backgroundColor: COLORS.accent }]} />
-          <Text style={heatmapStyles.teamScaleText} numberOfLines={1}>{safeStr(homeTeam)}</Text>
-        </View>
-        <Text style={heatmapStyles.teamScaleCenter}>ZONE MODEL</Text>
-        <View style={[heatmapStyles.teamScaleSide, { justifyContent: "flex-end" }]}>
-          <Text style={[heatmapStyles.teamScaleText, { textAlign: "right" }]} numberOfLines={1}>{safeStr(awayTeam)}</Text>
-          <View style={[heatmapStyles.teamScaleDot, { backgroundColor: "#5B8DEF" }]} />
-        </View>
-      </View>
-
-      <View style={heatmapStyles.pitch}>
-        <LinearGradient colors={["#081711", "#0c2519", "#113225", "#113225", "#0c2519", "#081711"]} style={heatmapStyles.pitchGradient}>
-          {dynamicZones.map((zone, idx) => (
-            <View
-              key={`zone_${idx}`}
-              style={[
-                heatmapStyles.horizontalZone,
-                {
-                  left: `${zone.left}%`,
-                  width: `${zone.width}%`,
-                  backgroundColor: zone.color,
-                },
-              ]}
-            />
-          ))}
-
-          <View style={heatmapStyles.fieldBorder} />
-          <View style={heatmapStyles.fieldMidline} />
-          <View style={heatmapStyles.fieldCenterCircle} />
-          <View style={heatmapStyles.fieldCenterSpot} />
-          <View style={heatmapStyles.leftPenaltyArea} />
-          <View style={heatmapStyles.leftGoalArea} />
-          <View style={heatmapStyles.rightPenaltyArea} />
-          <View style={heatmapStyles.rightGoalArea} />
-          <View style={heatmapStyles.leftGoalSlot} />
-          <View style={heatmapStyles.rightGoalSlot} />
-          <View style={heatmapStyles.leftPenaltySpot} />
-          <View style={heatmapStyles.rightPenaltySpot} />
-          <View style={heatmapStyles.leftArc} />
-          <View style={heatmapStyles.rightArc} />
-
-          {dynamicZones.map((zone, idx) => (
-            <View key={`zone_label_${idx}`} style={[heatmapStyles.zoneLabelChip, { left: `${zone.left + (zone.width / 2) - 4}%` }]}> 
-              <Text style={heatmapStyles.zoneLabel}>{zone.label}</Text>
-            </View>
-          ))}
-
-          {/* Shot dots overlay */}
-          {shotDots.map((dot, i) => (
-            <View
-              key={`shot_${i}`}
-              style={[
-                heatmapStyles.shotDot,
-                {
-                  left: `${dot.x}%`,
-                  top: `${dot.y}%`,
-                  backgroundColor: dot.onTarget ? dot.color : "transparent",
-                  borderColor: dot.color,
-                },
-              ]}
-            />
-          ))}
-        </LinearGradient>
-      </View>
-
-      <View style={heatmapStyles.shotStatsRow}>
-        {[
-          { label: "Shots", home: hShots, away: aShots },
-          { label: "On Target", home: hOnTarget, away: aOnTarget },
-          { label: "Corners", home: hCorners, away: aCorners },
-        ].map((stat) => (
-          <View key={stat.label} style={heatmapStyles.shotStatCard}>
-            <Text style={[heatmapStyles.shotStatValue, { color: COLORS.accent }]}>{stat.home}</Text>
-            <Text style={heatmapStyles.shotStatLabel}>{stat.label}</Text>
-            <Text style={[heatmapStyles.shotStatValue, { color: "#5B8DEF" }]}>{stat.away}</Text>
-          </View>
-        ))}
-      </View>
-
-      <View style={heatmapStyles.laneSummaryRow}>
-        {laneCards.map((lane) => (
-          <View key={lane.label} style={heatmapStyles.laneCard}>
-            <Text style={heatmapStyles.laneTitle}>{lane.label}</Text>
-            <View style={heatmapStyles.laneTrack}>
-              <View style={[heatmapStyles.laneFillHome, { flex: Math.max(8, Math.round(lane.home * 100)) }]} />
-              <View style={[heatmapStyles.laneFillAway, { flex: Math.max(8, Math.round(lane.away * 100)) }]} />
-            </View>
-            <View style={heatmapStyles.laneFooter}>
-              <Text style={heatmapStyles.laneHomeText}>{Math.round(lane.home * 100)}</Text>
-              <Text style={heatmapStyles.laneAwayText}>{Math.round(lane.away * 100)}</Text>
-            </View>
-          </View>
-        ))}
-      </View>
-
-      {(hPoss > 0 || aPoss > 0) && (
-        <View style={heatmapStyles.possessionBar}>
-          <Text style={[heatmapStyles.possessionLabel, { color: COLORS.accent }]}>{hPoss}%</Text>
-          <View style={heatmapStyles.possessionTrack}>
-            <View style={[heatmapStyles.possessionHome, { flex: Math.max(1, hPoss) }]} />
-            <View style={[heatmapStyles.possessionAway, { flex: Math.max(1, aPoss || (100 - hPoss)) }]} />
-          </View>
-          <Text style={[heatmapStyles.possessionLabel, { color: "#5B8DEF" }]}>{aPoss || (100 - hPoss)}%</Text>
-        </View>
-      )}
-    </View>
-  );
-}
-
-const MatchHeatmap = React.memo(MatchHeatmapInner);
-
-const heatmapStyles = StyleSheet.create({
-  card: {
-    backgroundColor: COLORS.card,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    overflow: "hidden",
-  },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
-  },
-  headerAccent: {
-    width: 3,
-    height: 16,
-    borderRadius: 2,
-    backgroundColor: COLORS.accent,
-  },
-  headerIconWrap: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "rgba(229,9,20,0.12)",
-    borderWidth: 1,
-    borderColor: "rgba(229,9,20,0.24)",
-  },
-  headerTitle: {
-    fontFamily: "Inter_700Bold",
-    fontSize: 12,
-    color: COLORS.text,
-    letterSpacing: 1.2,
-  },
-  headerSub: {
-    marginTop: 2,
-    fontFamily: "Inter_400Regular",
-    fontSize: 10,
-    color: COLORS.textMuted,
-  },
-  teamScaleRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 14,
-    paddingBottom: 4,
-  },
-  teamScaleSide: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-  },
-  teamScaleDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-  },
-  teamScaleText: {
-    flex: 1,
-    fontFamily: "Inter_600SemiBold",
-    fontSize: 11,
-    color: COLORS.text,
-    textTransform: "uppercase",
-    letterSpacing: 0.4,
-  },
-  teamScaleCenter: {
-    fontFamily: "Inter_700Bold",
-    fontSize: 10,
-    color: COLORS.textMuted,
-    letterSpacing: 1.3,
-    textTransform: "uppercase",
-  },
-  pitch: {
-    marginHorizontal: 12,
-    marginVertical: 12,
-    borderRadius: 14,
-    overflow: "hidden",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.12)",
-  },
-  pitchGradient: {
-    aspectRatio: 1.62,
-    position: "relative",
-  },
-  horizontalZone: {
-    position: "absolute",
-    top: 0,
-    bottom: 0,
-  },
-  homeZoneDefense: { left: 0, width: "16.66%" },
-  homeZoneMidfield: { left: "16.66%", width: "16.66%" },
-  homeZoneAttack: { left: "33.32%", width: "16.68%" },
-  awayZoneAttack: { left: "50%", width: "16.68%" },
-  awayZoneMidfield: { left: "66.68%", width: "16.66%" },
-  awayZoneDefense: { right: 0, width: "16.66%" },
-  fieldBorder: {
-    position: "absolute",
-    top: 8,
-    bottom: 8,
-    left: 8,
-    right: 8,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.34)",
-  },
-  fieldMidline: {
-    position: "absolute",
-    top: 8,
-    bottom: 8,
-    left: "50%",
-    width: 1,
-    marginLeft: -0.5,
-    backgroundColor: "rgba(255,255,255,0.34)",
-  },
-  fieldCenterCircle: {
-    position: "absolute",
-    left: "50%",
-    top: "50%",
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    marginLeft: -32,
-    marginTop: -32,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.34)",
-  },
-  fieldCenterSpot: {
-    position: "absolute",
-    left: "50%",
-    top: "50%",
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    marginLeft: -3,
-    marginTop: -3,
-    backgroundColor: "rgba(255,255,255,0.38)",
-  },
-  leftPenaltyArea: {
-    position: "absolute",
-    left: 8,
-    top: "22%",
-    width: "16%",
-    height: "56%",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.34)",
-    borderLeftWidth: 0,
-  },
-  leftGoalArea: {
-    position: "absolute",
-    left: 8,
-    top: "35%",
-    width: "7.5%",
-    height: "30%",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.34)",
-    borderLeftWidth: 0,
-  },
-  rightPenaltyArea: {
-    position: "absolute",
-    right: 8,
-    top: "22%",
-    width: "16%",
-    height: "56%",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.34)",
-    borderRightWidth: 0,
-  },
-  rightGoalArea: {
-    position: "absolute",
-    right: 8,
-    top: "35%",
-    width: "7.5%",
-    height: "30%",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.34)",
-    borderRightWidth: 0,
-  },
-  leftGoalSlot: {
-    position: "absolute",
-    left: 3,
-    top: "43%",
-    width: 5,
-    height: "14%",
-    borderRadius: 2,
-    backgroundColor: "rgba(255,255,255,0.18)",
-  },
-  rightGoalSlot: {
-    position: "absolute",
-    right: 3,
-    top: "43%",
-    width: 5,
-    height: "14%",
-    borderRadius: 2,
-    backgroundColor: "rgba(255,255,255,0.18)",
-  },
-  leftPenaltySpot: {
-    position: "absolute",
-    left: "11.5%",
-    top: "50%",
-    width: 4,
-    height: 4,
-    borderRadius: 2,
-    marginTop: -2,
-    backgroundColor: "rgba(255,255,255,0.38)",
-  },
-  rightPenaltySpot: {
-    position: "absolute",
-    right: "11.5%",
-    top: "50%",
-    width: 4,
-    height: 4,
-    borderRadius: 2,
-    marginTop: -2,
-    backgroundColor: "rgba(255,255,255,0.38)",
-  },
-  leftArc: {
-    position: "absolute",
-    left: "16.7%",
-    top: "39%",
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.28)",
-    borderLeftWidth: 0,
-    backgroundColor: "transparent",
-  },
-  rightArc: {
-    position: "absolute",
-    right: "16.7%",
-    top: "39%",
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.28)",
-    borderRightWidth: 0,
-    backgroundColor: "transparent",
-  },
-  zoneLabelChip: {
-    position: "absolute",
-    top: 10,
-    borderRadius: 999,
-    backgroundColor: "rgba(0,0,0,0.28)",
-    paddingHorizontal: 7,
-    paddingVertical: 3,
-  },
-  zoneLabel: {
-    fontFamily: "Inter_700Bold",
-    fontSize: 8,
-    color: "rgba(255,255,255,0.58)",
-    letterSpacing: 1.5,
-  },
-  shotDot: {
-    position: "absolute",
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    borderWidth: 1.5,
-    marginLeft: -4,
-    marginTop: -4,
-  },
-  legend: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderTopWidth: 1,
-    borderTopColor: COLORS.border,
-  },
-  legendItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-  },
-  legendDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-  },
-  legendDotOutline: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    borderWidth: 1.5,
-    backgroundColor: "transparent",
-  },
-  legendZone: {
-    width: 14,
-    height: 8,
-    borderRadius: 2,
-  },
-  legendText: {
-    fontFamily: "Inter_500Medium",
-    fontSize: 10,
-    color: COLORS.textMuted,
-  },
-  shotStatsRow: {
-    flexDirection: "row",
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    gap: 8,
-  },
-  shotStatCard: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    backgroundColor: "rgba(255,255,255,0.05)",
-    borderRadius: 12,
-    paddingVertical: 9,
-    paddingHorizontal: 11,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.06)",
-  },
-  shotStatValue: {
-    fontFamily: "Inter_700Bold",
-    fontSize: 13,
-    minWidth: 18,
-    textAlign: "center",
-  },
-  shotStatLabel: {
-    fontFamily: "Inter_500Medium",
-    fontSize: 10,
-    color: COLORS.textMuted,
-    letterSpacing: 0.3,
-    textAlign: "center",
-  },
-  laneSummaryRow: {
-    flexDirection: "row",
-    gap: 8,
-    paddingHorizontal: 12,
-    paddingBottom: 6,
-  },
-  laneCard: {
-    flex: 1,
-    backgroundColor: "rgba(255,255,255,0.04)",
-    borderRadius: 12,
-    paddingHorizontal: 10,
-    paddingVertical: 10,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.06)",
-    gap: 8,
-  },
-  laneTitle: {
-    fontFamily: "Inter_700Bold",
-    fontSize: 10,
-    color: COLORS.text,
-    textTransform: "uppercase",
-    letterSpacing: 1,
-  },
-  laneTrack: {
-    flexDirection: "row",
-    height: 6,
-    borderRadius: 3,
-    overflow: "hidden",
-    backgroundColor: "rgba(255,255,255,0.05)",
-  },
-  laneFillHome: { backgroundColor: COLORS.accent },
-  laneFillAway: { backgroundColor: "#5B8DEF" },
-  laneFooter: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-  },
-  laneHomeText: { fontFamily: "Inter_700Bold", fontSize: 10, color: COLORS.accent },
-  laneAwayText: { fontFamily: "Inter_700Bold", fontSize: 10, color: "#5B8DEF" },
-  possessionBar: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    paddingHorizontal: 16,
-    paddingBottom: 12,
-  },
-  possessionTrack: {
-    flex: 1,
-    height: 6,
-    borderRadius: 3,
-    flexDirection: "row",
-    overflow: "hidden",
-  },
-  possessionHome: {
-    backgroundColor: COLORS.accent,
-    borderTopLeftRadius: 3,
-    borderBottomLeftRadius: 3,
-  },
-  possessionAway: {
-    backgroundColor: "#5B8DEF",
-    borderTopRightRadius: 3,
-    borderBottomRightRadius: 3,
-  },
-  possessionLabel: {
-    fontFamily: "Inter_700Bold",
-    fontSize: 12,
-    minWidth: 32,
-    textAlign: "center",
-  },
-});
-
-function StatsBarsInner({ homeTeam, awayTeam, homeStats, awayStats }: { homeTeam: string; awayTeam: string; homeStats: any; awayStats: any }) {
-  const STAT_LABELS: Record<string, string> = {
-    // Core / Possession
-    ball_possession:       "Possession %",
-    possession:            "Possession %",
-    possessionPct:         "Possession %",
-    // Shots
-    total_shots:           "Total Shots",
-    shots:                 "Total Shots",
-    totalShots:            "Total Shots",
-    shots_on_goal:         "Shots on Target",
-    shots_on_target:       "Shots on Target",
-    shotsOnTarget:         "Shots on Target",
-    shotsOnGoal:           "Shots on Target",
-    shots_off_goal:        "Shots off Target",
-    shots_off_target:      "Shots off Target",
-    shotsOffTarget:        "Shots off Target",
-    blocked_shots:         "Shots Blocked",
-    shots_blocked:         "Shots Blocked",
-    blockedShots:          "Shots Blocked",
-    shots_insidebox:       "Shots Inside Box",
-    shotsInsideBox:        "Shots Inside Box",
-    shots_outsidebox:      "Shots Outside Box",
-    shotsOutsideBox:       "Shots Outside Box",
-    big_chances:           "Big Chances",
-    bigChances:            "Big Chances",
-    big_chances_missed:    "Big Chances Missed",
-    bigChancesMissed:      "Big Chances Missed",
-    expected_goals:        "Expected Goals (xG)",
-    xg:                    "Expected Goals (xG)",
-    expectedGoals:         "Expected Goals (xG)",
-    goals_prevented:       "Goals Prevented",
-    goalsPrevented:        "Goals Prevented",
-    hit_woodwork:          "Hit Woodwork",
-    hitWoodwork:           "Hit Woodwork",
-    // Attacking
-    corner_kicks:          "Corners",
-    corners:               "Corners",
-    cornerKicks:           "Corners",
-    crosses:               "Crosses",
-    crossesTotal:          "Crosses",
-    crosses_successful:    "Successful Crosses",
-    successful_dribbles:   "Successful Dribbles",
-    dribbles_completed:    "Successful Dribbles",
-    dribblesCompleted:     "Successful Dribbles",
-    dribbles_attempted:    "Dribbles Attempted",
-    offsides:              "Offsides",
-    // Passing
-    total_passes:          "Total Passes",
-    totalPasses:           "Total Passes",
-    passes:                "Total Passes",
-    accurate_passes:       "Accurate Passes",
-    accuratePasses:        "Accurate Passes",
-    pass_accuracy:         "Pass Accuracy %",
-    passAccuracy:          "Pass Accuracy %",
-    key_passes:            "Key Passes",
-    keyPasses:             "Key Passes",
-    passes_final_third:    "Passes in Final Third",
-    passesFinalThird:      "Passes in Final Third",
-    touches_in_box:        "Touches In Box",
-    touchesInBox:          "Touches In Box",
-    progressive_passes:    "Progressive Passes",
-    progressivePasses:     "Progressive Passes",
-    through_balls:         "Through Balls",
-    throughBalls:          "Through Balls",
-    long_balls:            "Long Balls",
-    longBalls:             "Long Balls",
-    long_balls_accurate:   "Accurate Long Balls",
-    // Defending
-    total_tackles:         "Tackles",
-    tackles:               "Tackles",
-    tacklesWon:            "Tackles",
-    interceptions:         "Interceptions",
-    clearances:            "Clearances",
-    blocks:                "Blocks",
-    aerial_won:            "Aerial Duels Won",
-    aerialWon:             "Aerial Duels Won",
-    total_duels:           "Total Duels",
-    totalDuels:            "Total Duels",
-    duels_won:             "Duels Won",
-    duelsWon:              "Duels Won",
-    ground_duels_won:      "Ground Duels Won",
-    // Goalkeeping
-    goalkeeper_saves:      "Saves",
-    saves:                 "Saves",
-    goalkeeperSaves:       "Saves",
-    punches:               "Punches",
-    // Discipline
-    fouls:                 "Fouls Committed",
-    foulsCommitted:        "Fouls Committed",
-    yellow_cards:          "Yellow Cards",
-    yellowCards:           "Yellow Cards",
-    red_cards:             "Red Cards",
-    redCards:              "Red Cards",
-    // Other
-    throw_ins:             "Throw-ins",
-    throwIns:              "Throw-ins",
-    free_kicks:            "Free Kicks",
-    freeKicks:             "Free Kicks",
-    goal_kicks:            "Goal Kicks",
-    goalKicks:             "Goal Kicks",
-  };
-
-  const STAT_SECTIONS: { label: string; icon: string; keys: string[] }[] = [
-    {
-      label: "CORE",
-      icon: "chart-box-outline",
-      keys: ["ball_possession", "possession", "possessionPct", "total_shots", "shots", "totalShots",
-             "shots_on_goal", "shots_on_target", "shotsOnTarget", "shotsOnGoal",
-             "shots_off_goal", "shots_off_target", "shotsOffTarget",
-             "blocked_shots", "shots_blocked", "blockedShots",
-             "shots_insidebox", "shotsInsideBox", "shots_outsidebox", "shotsOutsideBox",
-             "big_chances", "bigChances", "big_chances_missed", "bigChancesMissed",
-             "expected_goals", "xg", "expectedGoals", "hit_woodwork", "hitWoodwork"],
-    },
-    {
-      label: "ATTACKING",
-      icon: "target",
-      keys: ["corner_kicks", "corners", "cornerKicks", "crosses", "crossesTotal", "crosses_successful",
-             "successful_dribbles", "dribbles_completed", "dribblesCompleted", "dribbles_attempted", "offsides"],
-    },
-    {
-      label: "PASSING",
-      icon: "vector-polyline",
-      keys: ["total_passes", "totalPasses", "passes", "accurate_passes", "accuratePasses",
-             "pass_accuracy", "passAccuracy", "key_passes", "keyPasses",
-             "passes_final_third", "passesFinalThird", "long_balls", "longBalls", "long_balls_accurate"],
-    },
-    {
-      label: "DEFENDING",
-      icon: "shield-outline",
-      keys: ["total_tackles", "tackles", "tacklesWon", "interceptions", "clearances", "blocks",
-             "aerial_won", "aerialWon", "total_duels", "totalDuels", "duels_won", "duelsWon", "ground_duels_won"],
-    },
-    {
-      label: "GOALKEEPING",
-      icon: "hand-back-right-outline",
-      keys: ["goalkeeper_saves", "saves", "goalkeeperSaves", "goals_prevented", "goalsPrevented", "punches"],
-    },
-    {
-      label: "DISCIPLINE",
-      icon: "clipboard-alert-outline",
-      keys: ["fouls", "foulsCommitted", "yellow_cards", "yellowCards", "red_cards", "redCards"],
-    },
-  ];
-
-  const seenLabels = new Set<string>();
-  const dedupedStats = Object.keys(STAT_LABELS).filter((k) => {
-    const label = STAT_LABELS[k];
-    const hasData = (homeStats?.[k] != null && String(homeStats[k]).trim() !== "") ||
-                    (awayStats?.[k] != null && String(awayStats[k]).trim() !== "");
-    if (!hasData) return false;
-    if (seenLabels.has(label)) return false;
-    seenLabels.add(label);
-    return true;
-  });
-
-  if (dedupedStats.length === 0) {
-    return (
-      <View style={styles.infoCard}>
-        <View style={{ alignItems: "center", gap: 8, paddingVertical: 12 }}>
-          <Ionicons name="stats-chart-outline" size={28} color={COLORS.textMuted} />
-          <Text style={styles.noStatsText}>{tFn("matchDetail.statsLoadingDuringMatch")}</Text>
-        </View>
-      </View>
-    );
-  }
-
-  const renderStatRow = (key: string, idx: number, arr: string[]) => {
-    const rawH = String(homeStats?.[key] ?? "0");
-    const rawA = String(awayStats?.[key] ?? "0");
-    const hVal = parseFloat(rawH.replace("%", "")) || 0;
-    const aVal = parseFloat(rawA.replace("%", "")) || 0;
-    const bothZero = hVal === 0 && aVal === 0;
-    const total = bothZero ? 1 : (hVal + aVal || 1);
-    const hPct = bothZero ? 0 : (hVal / total) * 100;
-    const aPct = bothZero ? 0 : 100 - hPct;
-    const isPossession = key === "ball_possession" || key === "possession" || key === "pass_accuracy";
-    const isLast = idx === arr.length - 1;
-    const hDisplay = `${homeStats?.[key] ?? "0"}${isPossession && typeof homeStats?.[key] === "number" ? "%" : ""}`;
-    const aDisplay = `${awayStats?.[key] ?? "0"}${isPossession && typeof awayStats?.[key] === "number" ? "%" : ""}`;
-    return (
-      <View key={key}>
-        <View style={styles.statRow}>
-          <View style={styles.statValueCol}>
-            <Text style={styles.statSideLabel}>HOME</Text>
-            <Text style={[styles.statVal, hVal > aVal && styles.statValWinner, styles.statValHome]}>{hDisplay}</Text>
-          </View>
-          <View style={styles.statBarContainer}>
-            <Text style={styles.statName} numberOfLines={1}>{STAT_LABELS[key]}</Text>
-            <View style={styles.statBarsWrapper}>
-              {/* Home bar — grows right-to-left from center */}
-              <View style={styles.statBarHalf}>
-                {hPct < 100 ? <View style={{ flex: 100 - hPct }} /> : null}
-                {hPct > 0 ? <View style={[styles.statBarHomeFill, { flex: hPct }]} /> : null}
-              </View>
-              <View style={styles.statBarCenterGap} />
-              {/* Away bar — grows left-to-right from center */}
-              <View style={styles.statBarHalf}>
-                {aPct > 0 ? <View style={[styles.statBarAwayFill, { flex: aPct }]} /> : null}
-                {aPct < 100 ? <View style={{ flex: 100 - aPct }} /> : null}
-              </View>
-            </View>
-          </View>
-          <View style={[styles.statValueCol, styles.statValueColRight]}>
-            <Text style={[styles.statSideLabel, styles.statSideLabelRight]}>AWAY</Text>
-            <Text style={[styles.statVal, styles.statValRight, aVal > hVal && styles.statValWinner, styles.statValAway]}>{aDisplay}</Text>
-          </View>
-        </View>
-        {!isLast && <View style={styles.statDivider} />}
-      </View>
-    );
-  };
-
-  const sectionedKeys = new Set(STAT_SECTIONS.flatMap(s => s.keys));
-  const unsectionedStats = dedupedStats.filter(k => !sectionedKeys.has(k));
-
-  return (
-    <View style={{ gap: 12 }}>
-      <View style={styles.statsHeaderCard}>
-        <View style={styles.statsTeamHeader}>
-          <View style={styles.statsTeamSide}>
-            <View style={[styles.statsLegendDot, { backgroundColor: COLORS.accent }]} />
-            <Text style={[styles.statsTeamName, { textAlign: "left" }]} numberOfLines={1}>{safeStr(homeTeam)}</Text>
-          </View>
-          <Text style={styles.statsVsLabel}>VS</Text>
-          <View style={[styles.statsTeamSide, { justifyContent: "flex-end" }]}>
-            <Text style={[styles.statsTeamName, { textAlign: "right" }]} numberOfLines={1}>{safeStr(awayTeam)}</Text>
-            <View style={[styles.statsLegendDot, { backgroundColor: "#2DD4FF" }]} />
-          </View>
-        </View>
-        {dedupedStats.length > 0 && (() => {
-          let homeWins = 0, awayWins = 0;
-          dedupedStats.forEach(k => {
-            const hV = parseFloat(String(homeStats?.[k] ?? "0").replace("%", "")) || 0;
-            const aV = parseFloat(String(awayStats?.[k] ?? "0").replace("%", "")) || 0;
-            if (hV > aV) homeWins++;
-            else if (aV > hV) awayWins++;
-          });
-          const total = homeWins + awayWins;
-          const homePct = total === 0 ? 50 : Math.round((homeWins / total) * 100);
-          return (
-            <View style={styles.momentumContainer}>
-              <Text style={styles.momentumLabel}>DOMINANTIE</Text>
-              <View style={styles.momentumTrack}>
-                <View style={[styles.momentumHome, { flex: Math.max(1, homePct) }]} />
-                <View style={[styles.momentumAway, { flex: Math.max(1, 100 - homePct) }]} />
-              </View>
-              <View style={styles.momentumFooter}>
-                <Text style={styles.momentumHomeLabel}>{homeWins} stat{homeWins !== 1 ? "s" : ""}</Text>
-                <Text style={styles.momentumAwayLabel}>{awayWins} stat{awayWins !== 1 ? "s" : ""}</Text>
-              </View>
-            </View>
-          );
-        })()}
-      </View>
-      {STAT_SECTIONS.map(section => {
-        const sectionStats = section.keys.filter(k => dedupedStats.includes(k));
-        if (sectionStats.length === 0) return null;
-        return (
-          <View key={section.label} style={styles.statSectionCard}>
-            <View style={styles.statSectionHeader}>
-              <View style={styles.statSectionAccent} />
-              <MaterialCommunityIcons name={section.icon as any} size={15} color={COLORS.accent} />
-              <Text style={styles.statSectionTitle}>{section.label}</Text>
-            </View>
-            {sectionStats.map((k, i, a) => renderStatRow(k, i, a))}
-          </View>
-        );
-      })}
-      {unsectionedStats.length > 0 && (
-        <View style={styles.statSectionCard}>
-          <View style={styles.statSectionHeader}>
-            <View style={styles.statSectionAccent} />
-            <Text style={styles.statSectionTitle}>OTHER</Text>
-          </View>
-          {unsectionedStats.map((k, i, a) => renderStatRow(k, i, a))}
-        </View>
-      )}
-    </View>
-  );
-}
-
-const StatsBars = React.memo(StatsBarsInner);
-
-function PlayerRow({ player, sport, compact = false, teamName = "", league = "eng.1" }: { player: any; sport: string; compact?: boolean; teamName?: string; league?: string }) {
-  const seed = useMemo(() => ({
-    id: String(player?.id || ""),
-    name: String(player?.name || ""),
-    team: String(teamName || player?.team || ""),
-    league: String(league || "eng.1"),
-    sport: String(sport || "soccer"),
-    nationality: String(player?.nationality || ""),
-    position: String(player?.position || player?.positionName || ""),
-    age: Number(player?.age || 0) || undefined,
-    photo: player?.photo || null,
-    theSportsDbPhoto: player?.theSportsDbPhoto || null,
-  }), [player?.id, player?.name, player?.team, player?.nationality, player?.position, player?.positionName, player?.age, player?.photo, player?.theSportsDbPhoto, teamName, league, sport]);
-
-  const [resolvedPhoto, setResolvedPhoto] = useState<string | null>(getBestCachedOrSeedPlayerImage(seed));
-  const [imageFailed, setImageFailed] = useState(false);
-  const photoUri = !imageFailed ? resolvedPhoto : null;
-
-  useEffect(() => {
-    setResolvedPhoto(getBestCachedOrSeedPlayerImage(seed));
-    setImageFailed(false);
-  }, [seed]);
-
-  useEffect(() => {
-    let disposed = false;
-    void resolvePlayerImageUri(seed, { allowNetwork: true }).then((uri) => {
-      if (disposed || !uri) return;
-      setResolvedPhoto(uri);
-      setImageFailed(false);
-    }).catch(() => undefined);
-    return () => { disposed = true; };
-  }, [seed]);
-
-  const compactStyle = compact ? styles.playerRowCompact : null;
-  const handleOpenProfile = () => {
-    router.push({
-      pathname: "/player-profile",
-      params: {
-        playerId: String(player?.id || ""),
-        name: String(player?.name || ""),
-        team: String(teamName || ""),
-        league: String(league || "eng.1"),
-        marketValue: String(player?.marketValue || ""),
-        age: player?.age ? String(player.age) : "",
-        height: String(player?.height || ""),
-        weight: String(player?.weight || ""),
-        position: String(player?.positionName || player?.position || ""),
-        nationality: String(player?.nationality || ""),
-      },
-    });
-  };
-
-  return (
-    <TouchableOpacity style={[styles.playerRow, compactStyle]} activeOpacity={0.82} onPress={handleOpenProfile}>
-      <View style={styles.playerJersey}>
-        <Text style={styles.playerJerseyNum}>{player.jersey || "—"}</Text>
-      </View>
-      {photoUri ? (
-        <Image
-          source={{ uri: photoUri }}
-          style={styles.playerPhoto}
-          onError={() => {
-            setImageFailed(true);
-          }}
-        />
-      ) : (
-        <View style={[styles.playerPhoto, styles.playerPhotoPlaceholder]}>
-          <Ionicons name="person" size={16} color={COLORS.textMuted} />
-        </View>
-      )}
-      <View style={styles.playerInfo}>
-        <View style={styles.playerNameRow}>
-          <Text style={[styles.playerName, compact ? styles.playerNameCompact : null]} numberOfLines={1}>{player.name}</Text>
-          {!compact && player.marketValue ? (
-            <Text style={styles.playerInlineValue} numberOfLines={1}>{player.marketValue}</Text>
-          ) : null}
-        </View>
-        <Text style={[styles.playerPos, compact ? styles.playerPosCompact : null]} numberOfLines={1}>{player.positionName || player.position}</Text>
-        <View style={styles.playerFlagRow}>
-          {player.isCaptain ? <Text style={styles.playerFlagPill}>C</Text> : null}
-          {player.isGoalkeeper ? <Text style={styles.playerFlagPill}>GK</Text> : null}
-          {player.subInMinute ? <Text style={styles.playerFlagPill}>IN {player.subInMinute}&#39;</Text> : null}
-          {player.subOutMinute ? <Text style={styles.playerFlagPill}>OUT {player.subOutMinute}&#39;</Text> : null}
-        </View>
-      </View>
-      {!compact && <View style={{ alignItems: "flex-end", gap: 4 }}>
-        {player.marketValue && (
-          <View style={styles.marketValueBadge}>
-            <MaterialCommunityIcons name="trending-up" size={10} color="#00C896" />
-            <Text style={styles.marketValueText}>{player.marketValue}</Text>
-          </View>
-        )}
-        {player.starter && (
-          <View style={styles.starterBadge}>
-            <Text style={styles.starterText}>{tFn("matchDetail.starter")}</Text>
-          </View>
-        )}
-      </View>}
-    </TouchableOpacity>
-  );
-}
-
-function shortPlayerName(name: string): string {
-  const parts = (name || "").trim().split(/\s+/);
-  if (parts.length <= 1) return (parts[0] || "").slice(0, 9);
-  return `${parts[0][0]}. ${parts[parts.length - 1]}`.slice(0, 12);
-}
-
-function PitchDot({ player, color, teamName, league, rowSize = 4 }: { player: any; color: string; teamName?: string; league?: string; rowSize?: number }) {
-  const seed = useMemo(() => ({
-    id: String(player?.id || ""),
-    name: String(player?.name || ""),
-    team: String(teamName || player?.team || ""),
-    league: String(league || "eng.1"),
-    sport: "soccer",
-    nationality: String(player?.nationality || ""),
-    position: String(player?.position || player?.positionName || ""),
-    age: Number(player?.age || 0) || undefined,
-    photo: player?.photo || null,
-    theSportsDbPhoto: player?.theSportsDbPhoto || null,
-  }), [player?.id, player?.name, player?.team, player?.nationality, player?.position, player?.positionName, player?.age, player?.photo, player?.theSportsDbPhoto, teamName, league]);
-
-  const [resolvedPhoto, setResolvedPhoto] = React.useState<string | null>(getBestCachedOrSeedPlayerImage(seed));
-  const [imageFailed, setImageFailed] = React.useState(false);
-  const currentPhoto = !imageFailed ? resolvedPhoto : null;
-  const showPhoto = Boolean(currentPhoto);
-  const tightRow = rowSize >= 4;
-  const circleSize = tightRow ? 34 : 40;
-  const wrapSize = tightRow ? 58 : 68;
-  const showName = rowSize <= 3;
-
-  useEffect(() => {
-    setResolvedPhoto(getBestCachedOrSeedPlayerImage(seed));
-    setImageFailed(false);
-  }, [seed]);
-
-  useEffect(() => {
-    let disposed = false;
-    void resolvePlayerImageUri(seed, { allowNetwork: true }).then((uri) => {
-      if (disposed || !uri) return;
-      setResolvedPhoto(uri);
-      setImageFailed(false);
-    }).catch(() => undefined);
-    return () => { disposed = true; };
-  }, [seed]);
-
-  return (
-    <View style={[styles.pitchDotWrap, { width: wrapSize, maxWidth: wrapSize }]}>
-      <View style={[styles.pitchDotCircle, { borderColor: color, width: circleSize, height: circleSize, borderRadius: tightRow ? 7 : 8 }]}>
-        {showPhoto ? (
-          <Image
-            source={{ uri: currentPhoto! }}
-            style={[styles.pitchDotPhoto, { width: circleSize - 3, height: circleSize - 3, borderRadius: tightRow ? 6 : 7 }]}
-            onError={() => {
-              setImageFailed(true);
-            }}
-          />
-        ) : null}
-        {!showPhoto ? <Ionicons name="person" size={tightRow ? 13 : 15} color={COLORS.textMuted} /> : null}
-      </View>
-      {showName ? <Text style={styles.pitchDotName} numberOfLines={1}>{shortPlayerName(player.name)}</Text> : null}
-    </View>
-  );
-}
-
-function PremiumLineupFieldInner({
-  homeTeam,
-  awayTeam,
-  homeRows,
-  awayRows,
-  league,
-}: {
-  homeTeam: any;
-  awayTeam: any;
-  homeRows: any[][];
-  awayRows: any[][];
-  league?: string;
-}) {
-  const homeColumns = [...(homeRows || [])].reverse();
-  const awayColumns = awayRows || [];
-
-  return (
-    <LinearGradient colors={["#07150f", "#0b2418", "#123423", "#123423", "#0b2418", "#07150f"]} style={styles.combinedPitch}>
-      <View style={styles.pitchFieldBorder} />
-      <View style={styles.pitchVerticalCenterLine} />
-      <View style={styles.pitchHorizontalCenterLine} />
-      <View style={styles.pitchCenterCircleWide} />
-      <View style={styles.pitchCenterSpotWide} />
-      <View style={styles.pitchPenaltyBoxLeft} />
-      <View style={styles.pitchGoalBoxLeft} />
-      <View style={styles.pitchPenaltyBoxRight} />
-      <View style={styles.pitchGoalBoxRight} />
-      <View style={styles.pitchArcLeft} />
-      <View style={styles.pitchArcRight} />
-
-      <View style={styles.pitchTopTeamsRow}>
-        <View style={styles.pitchTopTeamCard}>
-          <TeamLogo uri={null} teamName={homeTeam?.teamName || "Home"} size={28} />
-          <View style={{ flex: 1 }}>
-            <Text style={[styles.pitchTopTeamName, { color: COLORS.accent }]} numberOfLines={1}>{homeTeam?.teamName}</Text>
-            {homeTeam?.formation ? <Text style={styles.pitchTopTeamMeta}>{homeTeam.formation}</Text> : null}
-          </View>
-        </View>
-        <View style={styles.pitchTopBadge}><Text style={styles.pitchTopBadgeText}>LINEUP</Text></View>
-        <View style={[styles.pitchTopTeamCard, { justifyContent: "flex-end" }]}>
-          <View style={{ flex: 1, alignItems: "flex-end" }}>
-            <Text style={[styles.pitchTopTeamName, { color: "#5D9EFF", textAlign: "right" }]} numberOfLines={1}>{awayTeam?.teamName}</Text>
-            {awayTeam?.formation ? <Text style={styles.pitchTopTeamMeta}>{awayTeam.formation}</Text> : null}
-          </View>
-          <TeamLogo uri={null} teamName={awayTeam?.teamName || "Away"} size={28} />
-        </View>
-      </View>
-
-      <View style={styles.pitchHorizontalFormationRow}>
-        <View style={styles.pitchHalfSide}>
-          {homeColumns.map((column, columnIndex) => (
-            <View key={`home_col_${columnIndex}`} style={styles.pitchVerticalColumn}>
-              {column.map((player: any, playerIndex: number) => (
-                <PitchDot
-                  key={`home_${player?.id || player?.name || playerIndex}`}
-                  player={player}
-                  color={COLORS.accent}
-                  teamName={homeTeam?.teamName}
-                  league={league}
-                  rowSize={column.length}
-                />
-              ))}
-            </View>
-          ))}
-        </View>
-
-        <View style={styles.pitchMiddleDividerCol}>
-          <View style={styles.pitchMidBadge}><Text style={styles.pitchMidBadgeText}>MIDFIELD</Text></View>
-        </View>
-
-        <View style={styles.pitchHalfSide}>
-          {awayColumns.map((column, columnIndex) => (
-            <View key={`away_col_${columnIndex}`} style={styles.pitchVerticalColumn}>
-              {column.map((player: any, playerIndex: number) => (
-                <PitchDot
-                  key={`away_${player?.id || player?.name || playerIndex}`}
-                  player={player}
-                  color="#5D9EFF"
-                  teamName={awayTeam?.teamName}
-                  league={league}
-                  rowSize={column.length}
-                />
-              ))}
-            </View>
-          ))}
-        </View>
-      </View>
-    </LinearGradient>
-  );
-}
-
-const PremiumLineupField = React.memo(PremiumLineupFieldInner);
-
-function LoadingState() {
-  const skeletonRows = [0, 1, 2, 3];
-  return (
-    <View style={styles.loadingState}>
-      <View style={styles.skeletonCard}>
-        <View style={styles.skeletonTitle} />
-        {skeletonRows.map((row) => (
-          <View key={row} style={styles.skeletonRow}>
-            <View style={styles.skeletonPill} />
-            <View style={styles.skeletonBar} />
-            <View style={styles.skeletonPill} />
-          </View>
-        ))}
+      <View style={styles.probabilityLegend}>
+        <Text style={styles.probabilityText}>{homeLabel} {homeValue}%</Text>
+        <Text style={styles.probabilityText}>Draw {drawValue}%</Text>
+        <Text style={styles.probabilityText}>{awayLabel} {awayValue}%</Text>
       </View>
     </View>
   );
 }
 
-function EmptyState({ icon, text }: { icon: any; text: string }) {
+function PredictionTile({ label, value, accent }: { label: string; value: string; accent: string }) {
   return (
-    <StateBlock icon={icon} title={text} />
+    <View style={styles.predictionTile}>
+      <View style={[styles.predictionAccent, { backgroundColor: accent }]} />
+      <Text numberOfLines={1} style={styles.predictionLabel}>{label}</Text>
+      <Text style={styles.predictionValue}>{value}</Text>
+    </View>
+  );
+}
+
+function StandingCard({ team, standing, formScore, color }: { team: string; standing: any; formScore: number; color: string }) {
+  return (
+    <View style={styles.infoCard}>
+      <View style={[styles.infoAccent, { backgroundColor: color }]} />
+      <Text style={styles.infoTitle}>{team}</Text>
+      <Text style={styles.infoPrimary}>{standing?.rank ? `#${standing.rank}` : "--"}</Text>
+      <Text style={styles.infoMeta}>{standing?.points != null ? `${standing.points} pts` : "No table data"}</Text>
+      <Text style={styles.infoMeta}>Form index {formScore}</Text>
+    </View>
+  );
+}
+
+function FormCard({ team, summary }: { team: string; summary: { sequence: ("W" | "D" | "L")[]; goalsScored: number; goalsConceded: number; aiFormScore: number } }) {
+  return (
+    <View style={styles.infoCard}>
+      <Text style={styles.infoTitle}>{team}</Text>
+      <View style={styles.formDots}>
+        {summary.sequence.length ? summary.sequence.map((result, index) => (
+          <View key={`${team}_${index}`} style={[styles.formDot, result === "W" ? styles.formDotWin : result === "D" ? styles.formDotDraw : styles.formDotLoss]}>
+            <Text style={styles.formDotText}>{result}</Text>
+          </View>
+        )) : <Text style={styles.infoMeta}>No recent form loaded</Text>}
+      </View>
+      <Text style={styles.infoMeta}>Goals: {summary.goalsScored} for • {summary.goalsConceded} against</Text>
+      <Text style={styles.infoMeta}>Form index {summary.aiFormScore}</Text>
+    </View>
+  );
+}
+
+function PlayerCard({ sideLabel, data, accent }: { sideLabel: string; data: any; accent: string }) {
+  const topScorer = data?.topScorer;
+  const assistLeader = data?.assistLeader;
+  const keyPlayer = data?.keyPlayer?.player || null;
+  return (
+    <View style={styles.infoCard}>
+      <View style={[styles.infoAccent, { backgroundColor: accent }]} />
+      <Text style={styles.infoTitle}>{sideLabel}</Text>
+      <Text style={styles.playerHeadline}>{safeText(topScorer?.name || keyPlayer?.name, "No scorer data")}</Text>
+      <Text style={styles.infoMeta}>Top scorer: {topScorer ? `${safeText(topScorer.name)} (${safeText(topScorer.goals, "0")})` : "--"}</Text>
+      <Text style={styles.infoMeta}>Assist leader: {assistLeader ? safeText(assistLeader.name) : "--"}</Text>
+      <Text style={styles.infoMeta}>Key player: {keyPlayer ? safeText(keyPlayer.name) : "--"}</Text>
+    </View>
+  );
+}
+
+function AbsenceCard({ title, rows }: { title: string; rows: { name: string; reason: string; status: string }[] }) {
+  return (
+    <View style={styles.infoCard}>
+      <Text style={styles.infoTitle}>{title}</Text>
+      {rows.length ? rows.map((row) => (
+        <View key={`${title}_${row.name}_${row.reason}`} style={styles.absenceRow}>
+          <Text style={styles.absenceName}>{row.name}</Text>
+          <Text style={styles.absenceReason}>{row.reason}</Text>
+        </View>
+      )) : <Text style={styles.infoMeta}>No verified absences surfaced.</Text>}
+    </View>
+  );
+}
+
+function ContextRow({ label, value }: { label: string; value: string }) {
+  return (
+    <View style={styles.contextRow}>
+      <Text style={styles.contextLabel}>{label}</Text>
+      <Text style={styles.contextValue}>{value}</Text>
+    </View>
+  );
+}
+
+function ComparisonMetricRow({ label, home, away, suffix = "", decimals = 0 }: { label: string; home: number | null; away: number | null; suffix?: string; decimals?: number }) {
+  const left = home ?? 0;
+  const right = away ?? 0;
+  const total = Math.max(1, left + right);
+  return (
+    <View style={styles.metricRow}>
+      <View style={styles.metricHeader}>
+        <Text style={styles.metricValue}>{metricValue(home, suffix, decimals)}</Text>
+        <Text style={styles.metricLabel}>{label}</Text>
+        <Text style={styles.metricValue}>{metricValue(away, suffix, decimals)}</Text>
+      </View>
+      <View style={styles.metricBar}>
+        <View style={[styles.metricBarHome, { flex: left / total }]} />
+        <View style={[styles.metricBarAway, { flex: right / total }]} />
+      </View>
+    </View>
+  );
+}
+
+function LiveStatRow({ label, home, away, suffix = "", decimals = 0 }: { label: string; home: number | null; away: number | null; suffix?: string; decimals?: number }) {
+  return <ComparisonMetricRow label={label} home={home} away={away} suffix={suffix} decimals={decimals} />;
+}
+
+function LineupCard({ team, rows, accent, unavailable }: { team: TeamLineupState; rows: any[]; accent: string; unavailable: string[] }) {
+  return (
+    <View style={styles.lineupCard}>
+      <View style={[styles.infoAccent, { backgroundColor: accent }]} />
+      <Text style={styles.infoTitle}>{team.teamName}</Text>
+      <Text style={styles.infoMeta}>{team.lineupState === "confirmed" ? `Confirmed • ${team.formation || "formation pending"}` : team.lineupState === "expected" ? `Expected • ${team.formation || "shape pending"}` : "Unavailable"}</Text>
+      <View style={styles.lineupPitch}>
+        {rows.length ? rows.map((row: any[], index: number) => (
+          <View key={`${team.teamName}_row_${index}`} style={styles.lineupRow}>
+            {row.map((player: any) => (
+              <View key={player.id} style={styles.lineupPlayerChip}>
+                <Text numberOfLines={1} style={styles.lineupPlayerName}>{player.name}</Text>
+                <Text style={styles.lineupPlayerMeta}>{player.jersey}</Text>
+              </View>
+            ))}
+          </View>
+        )) : <Text style={styles.infoMeta}>No lineup rows available.</Text>}
+      </View>
+      <Text style={styles.benchTitle}>Bench</Text>
+      <Text style={styles.benchList}>{team.bench.length ? team.bench.slice(0, 8).map((player) => player.name).join(" • ") : "No bench data"}</Text>
+      {!!unavailable.length && <Text style={styles.absenceReason}>Unavailable: {unavailable.join(" • ")}</Text>}
+    </View>
+  );
+}
+
+function TimelineEventRow({ event }: { event: TimelineEventItem }) {
+  const sideTone = event.side === "home" ? DS.home : event.side === "away" ? DS.away : DS.muted;
+  return (
+    <View style={styles.timelineRow}>
+      <View style={[styles.timelineMinute, { backgroundColor: event.isPhaseSeparator ? DS.accentSoft : "rgba(255,255,255,0.06)" }]}>
+        <Text style={styles.timelineMinuteText}>{event.minuteLabel}</Text>
+      </View>
+      <View style={styles.timelineContent}>
+        <Text style={styles.timelineTitle}>{event.title}</Text>
+        <Text style={styles.timelineDescription}>{event.description || event.teamName || "Match event"}</Text>
+      </View>
+      <View style={[styles.timelineSideDot, { backgroundColor: sideTone }]} />
+    </View>
+  );
+}
+
+function EmptyBlock({ title, subtitle }: { title: string; subtitle?: string }) {
+  return (
+    <View style={styles.emptyBlock}>
+      <Text style={styles.emptyTitle}>{title}</Text>
+      {subtitle ? <Text style={styles.emptySubtitle}>{subtitle}</Text> : null}
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: COLORS.background },
-  nxHeader: {
-    borderBottomWidth: 1,
-    borderBottomColor: "rgba(255,255,255,0.08)",
-    zIndex: 20,
-    elevation: 20,
-  },
-  nxHeaderCollapsed: {
-    paddingBottom: 4,
-  },
-  nxMatchHeaderCollapsed: {
-    gap: 8,
-    paddingBottom: 4,
-  },
-  nxLiveGlowPill: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderWidth: 1,
-    borderColor: "rgba(229,9,20,0.65)",
-    backgroundColor: "rgba(229,9,20,0.18)",
-    // @ts-ignore
-    shadowColor: "#E50914",
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.6,
-    shadowRadius: 9,
-    elevation: 6,
-  },
-  nxLiveDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 4,
-    backgroundColor: "#FF3040",
-  },
-  nxLiveText: {
-    color: "#FF6B71",
-    fontFamily: "Inter_700Bold",
-    fontSize: 10,
-    letterSpacing: 0.8,
-  },
-  nxStatusPill: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.2)",
-    backgroundColor: "rgba(255,255,255,0.06)",
-  },
-  nxStatusPillLive: {
-    borderColor: "rgba(229,9,20,0.65)",
-    backgroundColor: "rgba(229,9,20,0.18)",
-  },
-  nxStatusPillWarning: {
-    borderColor: "rgba(255,173,51,0.55)",
-    backgroundColor: "rgba(255,173,51,0.14)",
-  },
-  nxStatusPillFinished: {
-    borderColor: "rgba(255,255,255,0.18)",
-    backgroundColor: "rgba(255,255,255,0.04)",
-  },
-  nxStatusDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 999,
-    backgroundColor: "#A5AEC4",
-  },
-  nxStatusDotLive: {
-    backgroundColor: "#FF3040",
-  },
-  nxStatusDotWarning: {
-    backgroundColor: "#FFAD33",
-  },
-  nxStatusText: {
-    color: "#FFFFFF",
-    fontFamily: "Inter_700Bold",
-    fontSize: 10,
-    letterSpacing: 0.8,
-  },
-  nxUpcomingPill: {
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.15)",
-    backgroundColor: "rgba(255,255,255,0.05)",
-  },
-  nxUpcomingText: {
-    color: "#A5AEC4",
-    fontFamily: "Inter_700Bold",
-    fontSize: 10,
-    letterSpacing: 0.8,
-  },
-  headerMomentumWrap: {
-    marginTop: 8,
-    paddingHorizontal: 8,
-  },
-  aiStoryWrap: {
-    marginHorizontal: 16,
-    marginTop: 6,
-    marginBottom: 6,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: "rgba(229,9,20,0.24)",
-    backgroundColor: "rgba(229,9,20,0.11)",
-    overflow: "hidden",
-  },
-  aiStoryHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-  },
-  aiStoryTitleWrap: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-  aiStoryTitle: {
-    color: "#FFFFFF",
-    fontFamily: "Inter_700Bold",
-    fontSize: 13,
-  },
-  aiStoryBody: {
-    paddingHorizontal: 12,
-    paddingBottom: 12,
-    gap: 6,
-  },
-  aiStoryText: {
-    color: "rgba(255,255,255,0.88)",
-    fontFamily: "Inter_500Medium",
-    fontSize: 12,
-    lineHeight: 18,
-  },
-  aiStoryTurning: {
-    color: "#FF979B",
-    fontFamily: "Inter_600SemiBold",
-    fontSize: 11,
-  },
-  aiStoryBullet: {
-    color: "rgba(255,255,255,0.72)",
-    fontFamily: "Inter_500Medium",
-    fontSize: 11,
-    lineHeight: 16,
-  },
-  liveSignalWrap: {
-    marginHorizontal: 16,
-    marginTop: 4,
-    marginBottom: 8,
-    gap: 10,
-  },
-  liveSignalCard: {
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.09)",
-    backgroundColor: "#0B0F1A",
-    paddingHorizontal: 12,
-    paddingVertical: 12,
-    gap: 9,
-  },
-  liveSignalTitle: {
-    color: "#FFFFFF",
-    fontFamily: "Inter_700Bold",
-    fontSize: 13,
-  },
-  liveSignalEventRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-  },
-  liveSignalMinute: {
-    width: 44,
-    color: "#AAB4C8",
-    fontFamily: "Inter_700Bold",
-    fontSize: 11,
-  },
-  liveSignalEventBody: {
-    flex: 1,
-    gap: 2,
-  },
-  liveSignalEventTitle: {
-    color: "#FFFFFF",
-    fontFamily: "Inter_600SemiBold",
-    fontSize: 12,
-  },
-  liveSignalEventDetail: {
-    color: "#8E98AF",
-    fontFamily: "Inter_500Medium",
-    fontSize: 11,
-  },
-  liveSignalTypePill: {
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.18)",
-    backgroundColor: "rgba(255,255,255,0.07)",
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-  },
-  liveSignalTypeGoal: { borderColor: "rgba(0,230,118,0.58)", backgroundColor: "rgba(0,230,118,0.16)" },
-  liveSignalTypeCard: { borderColor: "rgba(255,87,87,0.58)", backgroundColor: "rgba(255,87,87,0.16)" },
-  liveSignalTypeSub: { borderColor: "rgba(93,158,255,0.58)", backgroundColor: "rgba(93,158,255,0.16)" },
-  liveSignalTypeVar: { borderColor: "rgba(167,139,250,0.58)", backgroundColor: "rgba(167,139,250,0.16)" },
-  liveSignalTypePen: { borderColor: "rgba(255,152,0,0.58)", backgroundColor: "rgba(255,152,0,0.16)" },
-  liveSignalTypeText: {
-    color: "#E6ECF9",
-    fontFamily: "Inter_700Bold",
-    fontSize: 9,
-    letterSpacing: 0.7,
-  },
-  liveFactorGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
-  },
-  liveFactorChip: {
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.1)",
-    backgroundColor: "rgba(255,255,255,0.05)",
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    minWidth: 90,
-    flex: 1,
-    gap: 2,
-  },
-  liveFactorLabel: {
-    color: "#8E98AF",
-    fontFamily: "Inter_500Medium",
-    fontSize: 10,
-    letterSpacing: 0.4,
-  },
-  liveFactorValue: {
-    color: "#FFFFFF",
-    fontFamily: "Inter_700Bold",
-    fontSize: 12,
-  },
-  liveFactorValueHome: {
-    color: "#1FDB8E",
-  },
-  liveFactorValueAway: {
-    color: "#3E78FF",
-  },
-  liveTrendWrap: {
-    marginTop: 4,
-    gap: 8,
-  },
-  liveTrendLabel: {
-    color: "#8D99B2",
-    fontFamily: "Inter_600SemiBold",
-    fontSize: 10,
-    letterSpacing: 0.5,
-  },
-  liveTrendBars: {
-    height: 24,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.08)",
-    backgroundColor: "rgba(255,255,255,0.03)",
-    flexDirection: "row",
-    alignItems: "stretch",
-    paddingHorizontal: 6,
-    gap: 3,
-  },
-  liveTrendBar: {
-    flex: 1,
-    borderRadius: 2,
-    marginVertical: 1,
-  },
-  nxTabBarWrap: {
-    backgroundColor: "#0B0F1A",
-    borderBottomWidth: 1,
-    borderBottomColor: "rgba(255,255,255,0.08)",
-    zIndex: 0,
-    elevation: 0,
-    marginBottom: 6,
-  },
-  nxTabBarInner: {
-    flexDirection: "row",
-    paddingHorizontal: 16,
-    paddingVertical: 6,
-    gap: 18,
-  },
-  nxTabItem: {
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: 6,
-  },
-  nxTabLabel: {
-    fontFamily: "Inter_600SemiBold",
-    fontSize: 13,
-    color: "#93A0BA",
-  },
-  nxTabLabelActive: {
-    color: "#FFFFFF",
-  },
-  nxTabUnderline: {
-    marginTop: 7,
-    width: "100%",
-    minWidth: 18,
-    height: 2,
-    borderRadius: 2,
-    backgroundColor: "transparent",
-  },
-  nxTabUnderlineActive: {
-    backgroundColor: "#E50914",
-  },
-  nxContentWrap: {
-    paddingHorizontal: 16,
-    paddingTop: 20,
-    paddingBottom: 38,
-    gap: 12,
-  },
-  nxSectionHeadRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 10,
-  },
-  statsModeRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 12,
-  },
-  statsModeToggleWrap: {
-    flexDirection: "row",
-    alignItems: "center",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.12)",
-    borderRadius: 999,
-    padding: 2,
-    backgroundColor: "rgba(255,255,255,0.04)",
-  },
-  statsModeBtn: {
-    borderRadius: 999,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-  },
-  statsModeBtnActive: {
-    backgroundColor: "rgba(229,9,20,0.2)",
-  },
-  statsModeBtnText: {
-    color: "#9CA7BF",
-    fontFamily: "Inter_600SemiBold",
-    fontSize: 11,
-  },
-  statsModeBtnTextActive: {
-    color: "#FFFFFF",
-  },
-  statsModeHint: {
-    color: "rgba(255,255,255,0.7)",
-    fontFamily: "Inter_500Medium",
-    fontSize: 11,
-    lineHeight: 16,
-    marginTop: -4,
-  },
-  nxSectionTitle: {
-    fontFamily: "Inter_700Bold",
-    fontSize: 12,
-    color: "#E8EDF9",
-    letterSpacing: 1,
-    textTransform: "uppercase",
-    marginTop: 2,
-    marginBottom: 4,
-  },
-  nxCard: {
-    backgroundColor: "#0B0F1A",
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.08)",
-    paddingHorizontal: 14,
-    paddingVertical: 14,
-    // @ts-ignore
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 5 },
-    shadowOpacity: 0.2,
-    shadowRadius: 10,
-    elevation: 5,
-  },
-  nxCardKicker: {
-    fontFamily: "Inter_700Bold",
-    fontSize: 10,
-    color: "#9AA5BF",
-    letterSpacing: 1,
-    textTransform: "uppercase",
-    marginBottom: 5,
-  },
-  nxCardTitle: {
-    fontFamily: "Inter_700Bold",
-    fontSize: 16,
-    color: "#FFFFFF",
-    marginBottom: 8,
-  },
-  nxBodyText: {
-    fontFamily: "Inter_400Regular",
-    fontSize: 13,
-    color: "#A8B1C8",
-    lineHeight: 20,
-  },
-  nxMetaRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    marginTop: 4,
-  },
-  nxMetaText: {
-    fontFamily: "Inter_500Medium",
-    fontSize: 12,
-    color: "#B9C2D7",
-  },
-  nxListRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 10,
-    paddingVertical: 6,
-    borderBottomWidth: 1,
-    borderBottomColor: "rgba(255,255,255,0.06)",
-  },
-  nxListPrimary: {
-    flex: 1,
-    fontFamily: "Inter_600SemiBold",
-    fontSize: 12,
-    color: "#E9EEFA",
-  },
-  nxListMeta: {
-    fontFamily: "Inter_500Medium",
-    fontSize: 11,
-    color: "#A8B2C8",
-  },
-  formBadgeRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    marginTop: 8,
-    marginBottom: 6,
-  },
-  formBadge: {
-    minWidth: 22,
-    paddingHorizontal: 6,
-    paddingVertical: 4,
-    borderRadius: 8,
-    alignItems: "center",
-  },
-  formBadgeWin: {
-    backgroundColor: "rgba(34,197,94,0.2)",
-    borderWidth: 1,
-    borderColor: "rgba(34,197,94,0.45)",
-  },
-  formBadgeDraw: {
-    backgroundColor: "rgba(251,191,36,0.2)",
-    borderWidth: 1,
-    borderColor: "rgba(251,191,36,0.45)",
-  },
-  formBadgeLoss: {
-    backgroundColor: "rgba(239,68,68,0.2)",
-    borderWidth: 1,
-    borderColor: "rgba(239,68,68,0.45)",
-  },
-  formBadgeText: {
-    fontFamily: "Inter_700Bold",
-    fontSize: 10,
-    color: "#FFFFFF",
-  },
-  compareRow: {
-    paddingVertical: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: "rgba(255,255,255,0.06)",
-    gap: 6,
-  },
-  compareLabel: {
-    fontFamily: "Inter_600SemiBold",
-    fontSize: 12,
-    color: "#CBD3E8",
-  },
-  compareBars: {
-    flexDirection: "row",
-    width: "100%",
-    height: 8,
-    borderRadius: 999,
-    overflow: "hidden",
-    backgroundColor: "rgba(255,255,255,0.08)",
-  },
-  compareBarHome: {
-    height: "100%",
-    backgroundColor: "rgba(229,9,20,0.75)",
-  },
-  compareBarAway: {
-    height: "100%",
-    backgroundColor: "rgba(72,93,129,0.9)",
-  },
-  compareValuesRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-  compareValue: {
-    fontFamily: "Inter_600SemiBold",
-    fontSize: 11,
-    color: "#AEB9D0",
-  },
-  nxTimelineMinute: {
-    fontFamily: "Inter_700Bold",
-    fontSize: 16,
-    color: "#FF5E66",
-  },
-  nxTimelineTrack: {
-    height: 8,
-    borderRadius: 999,
-    backgroundColor: "rgba(255,255,255,0.08)",
-    overflow: "hidden",
-    marginTop: 6,
-  },
-  nxTimelineFill: {
-    height: "100%",
-    borderRadius: 999,
-    backgroundColor: "#E50914",
-  },
-  nxTimelineRangeRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginTop: 8,
-  },
-  nxTimelineRangeText: {
-    fontFamily: "Inter_500Medium",
-    fontSize: 11,
-    color: "#8F9AAF",
-  },
-  timelineFilterRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
-  },
-  timelineFilterChip: {
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.14)",
-    backgroundColor: "rgba(255,255,255,0.05)",
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-  },
-  timelineFilterChipActive: {
-    borderColor: "rgba(229,9,20,0.58)",
-    backgroundColor: "rgba(229,9,20,0.18)",
-  },
-  timelineFilterText: {
-    color: "#9BA6BE",
-    fontFamily: "Inter_600SemiBold",
-    fontSize: 11,
-  },
-  timelineFilterTextActive: {
-    color: "#FFFFFF",
-  },
-  nxGridWrap: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    justifyContent: "space-between",
-    gap: 10,
-  },
-  nxGridCard: {
-    width: "48.5%",
-    minHeight: 82,
-    backgroundColor: "#0B0F1A",
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.08)",
-    paddingHorizontal: 12,
-    paddingVertical: 11,
-    justifyContent: "space-between",
-    // @ts-ignore
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.16,
-    shadowRadius: 9,
-    elevation: 4,
-  },
-  nxGridLabel: {
-    fontFamily: "Inter_600SemiBold",
-    fontSize: 11,
-    color: "#94A0BB",
-    letterSpacing: 0.4,
-  },
-  nxGridValue: {
-    fontFamily: "Inter_700Bold",
-    fontSize: 14,
-    color: "#FFFFFF",
-    marginTop: 8,
-  },
-  nxGoalsCard: {
-    backgroundColor: "#0B0F1A",
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.08)",
-    paddingHorizontal: 14,
-    paddingVertical: 14,
-  },
-  nxGoalsGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
-    marginTop: 4,
-  },
-  nxGoalPill: {
-    backgroundColor: "rgba(229,9,20,0.12)",
-    borderColor: "rgba(229,9,20,0.32)",
-    borderWidth: 1,
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-  },
-  nxGoalPillText: {
-    fontFamily: "Inter_600SemiBold",
-    fontSize: 11,
-    color: "#F0B0B5",
-  },
-  nxLockedCard: {
-    position: "relative",
-    minHeight: 106,
-    backgroundColor: "#0B0F1A",
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.08)",
-    paddingHorizontal: 14,
-    paddingVertical: 14,
-    overflow: "hidden",
-  },
-  nxLockOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 6,
-    borderWidth: 1,
-    borderColor: "rgba(229,9,20,0.45)",
-    borderRadius: 18,
-    backgroundColor: "rgba(9,12,20,0.25)",
-  },
-  nxLockText: {
-    fontFamily: "Inter_700Bold",
-    fontSize: 12,
-    color: "#F3636D",
-    letterSpacing: 0.3,
-  },
-  header: { paddingHorizontal: 20, paddingBottom: 10 },
-  heroTopRow: {
-    width: "100%",
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: 10,
-  },
-  backBtn: {
-    width: 44,
-    height: 44,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "rgba(255,255,255,0.09)",
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.12)",
-  },
-  heroActionBtn: {
-    width: 44,
-    height: 44,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "rgba(255,255,255,0.09)",
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.12)",
-  },
-  heroActionBtnActive: {
-    borderColor: "rgba(229,9,20,0.6)",
-    backgroundColor: "rgba(229,9,20,0.22)",
-  },
-  matchHeader: {
-    width: "100%",
-    alignItems: "center",
-    gap: 14,
-    paddingHorizontal: 2,
-    paddingTop: 2,
-    paddingBottom: 10,
-  },
-  competitionRowCenterOnly: {
-    width: "100%",
-    alignItems: "center",
-    justifyContent: "center",
-    paddingTop: 0,
-  },
-  competitionCenter: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 10,
-    maxWidth: "100%",
-  },
-  leagueFallbackIcon: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  leagueName: {
-    fontFamily: "Inter_700Bold",
-    fontSize: 13,
-    color: "#FFFFFF",
-    letterSpacing: 0.2,
-    textTransform: "uppercase",
-    maxWidth: "88%",
-    textAlign: "center",
-  },
-  scoreRow: { flexDirection: "row", alignItems: "flex-start", width: "100%", paddingHorizontal: 0, justifyContent: "space-between", gap: 10 },
-  teamSideWrap: { flex: 1, alignItems: "center", justifyContent: "flex-start", position: "relative", minWidth: 86 },
-  teamSideCard: {
-    width: "100%",
-    alignItems: "center",
-    gap: 8,
-    paddingVertical: 8,
-    paddingHorizontal: 4,
-    minHeight: 96,
-    justifyContent: "center",
-  },
-  teamFollowBtnFloating: {
-    position: "absolute",
-    top: -6,
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "rgba(255,255,255,0.07)",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.18)",
-  },
-  teamFollowBtnActive: {
-    backgroundColor: COLORS.accent,
-    borderColor: `${COLORS.accent}77`,
-  },
-  heroActionRow: {
-    width: "100%",
-    flexDirection: "row",
-    justifyContent: "center",
-    marginTop: 2,
-  },
-  teamName: {
-    fontFamily: "Inter_700Bold",
-    fontSize: 13,
-    color: "#FFFFFF",
-    lineHeight: 17,
-    textAlign: "center",
-    maxWidth: 118,
-  },
-  scoreCenter: { minWidth: 106, alignItems: "center", gap: 6, justifyContent: "center", paddingTop: 2 },
-  score: {
-    fontFamily: "Inter_800ExtraBold",
-    fontSize: 48,
-    color: "#FFFFFF",
-    flexDirection: "row",
-    // @ts-ignore
-    textShadowColor: "rgba(255,48,64,0.8)",
-    textShadowOffset: { width: 0, height: 0 },
-    textShadowRadius: 20,
-    textAlign: "center",
-    fontWeight: "900",
-  },
-  vsText: {
-    fontFamily: "Inter_800ExtraBold",
-    fontSize: 23,
-    color: "rgba(255,255,255,0.48)",
-    letterSpacing: 2.6,
-  },
-  scheduledDate: {
-    fontFamily: "Inter_600SemiBold",
-    fontSize: 11,
-    color: COLORS.textMuted,
-    textTransform: "capitalize",
-    letterSpacing: 0.3,
-  },
-  scheduledTime: {
-    fontFamily: "Inter_700Bold",
-    fontSize: 19,
-    color: "#FFFFFF",
-    lineHeight: 24,
-    letterSpacing: 0.4,
-  },
-  kickoffPendingNote: {
-    fontFamily: "Inter_500Medium",
-    fontSize: 10,
-    color: COLORS.textMuted,
-    textAlign: "center",
-    marginTop: 2,
-  },
-  finishedLabel: {
-    fontFamily: "Inter_700Bold",
-    fontSize: 11,
-    color: COLORS.textMuted,
-    letterSpacing: 1.5,
-    textTransform: "uppercase",
-    marginTop: 2,
-  },
-  venueRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-    marginTop: 4,
-    opacity: 0.95,
-    paddingHorizontal: 2,
-    paddingVertical: 3,
-  },
-  venueText: { fontFamily: "Inter_400Regular", fontSize: 12, color: COLORS.textMuted, textAlign: "center", maxWidth: 280 },
-  tabBarScroll: {
-    flexGrow: 0,
-    marginTop: 6,
-    backgroundColor: COLORS.surface,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
-  },
-  tabBar: {
-    flexDirection: "row",
-    paddingHorizontal: 14,
-    paddingVertical: 11,
-    gap: 6,
-  },
-  streamContainer: { flex: 1 },
-  videoBox: { width: "100%", aspectRatio: 16 / 9, backgroundColor: "#000" },
-  serverSection: {
-    padding: 18,
-    gap: 12,
-    backgroundColor: COLORS.surface,
-    borderTopWidth: 1,
-    borderTopColor: "rgba(255,255,255,0.07)",
-  },
-  streamErrorCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    backgroundColor: "rgba(255,48,64,0.1)",
-    borderColor: `${COLORS.live}88`,
-    borderWidth: 1,
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-  },
-  streamErrorText: { fontFamily: "Inter_500Medium", fontSize: 12, color: COLORS.textSecondary, flex: 1, lineHeight: 17 },
-  streamErrorRef: { fontFamily: "Inter_500Medium", fontSize: 10, color: COLORS.textMuted },
-  serverBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    paddingHorizontal: 16,
-    paddingVertical: 11,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: `${COLORS.accent}44`,
-    backgroundColor: COLORS.accentGlow,
-  },
-  serverBtnText: { fontFamily: "Inter_600SemiBold", fontSize: 13, color: COLORS.accent },
-  notLiveContainer: { flex: 1, alignItems: "center", justifyContent: "center", gap: 16, padding: 36 },
-  notLiveTitle: {
-    fontFamily: "Inter_700Bold",
-    fontSize: 20,
-    color: COLORS.text,
-    textAlign: "center",
-  },
-  notLiveText: {
-    fontFamily: "Inter_400Regular",
-    fontSize: 14,
-    color: COLORS.textMuted,
-    textAlign: "center",
-    lineHeight: 22,
-    maxWidth: 280,
-  },
-  tabContent: { flex: 1 },
-  hiddenTabContent: {
-    display: "none",
-  },
-  tabContentInner: { paddingHorizontal: 16, paddingTop: 14, paddingBottom: 20, gap: 0 },
-  prematchInsightSection: {
-    paddingHorizontal: 16,
-    paddingTop: 14,
-    gap: 10,
-  },
-  prematchInsightHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 10,
-  },
-  prematchInsightLoading: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    backgroundColor: COLORS.card,
-    borderRadius: 16,
-    paddingHorizontal: 14,
-    paddingVertical: 14,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.07)",
-  },
-  sectionLabel: {
-    fontFamily: "Inter_700Bold",
-    fontSize: 11,
-    color: COLORS.accent,
-    letterSpacing: 1.5,
-    textTransform: "uppercase",
-    marginBottom: 12,
-    marginTop: 2,
-  },
-  infoCard: {
-    backgroundColor: COLORS.card,
-    borderRadius: 18,
-    paddingHorizontal: 15,
-    paddingVertical: 14,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.07)",
-    marginBottom: 8,
-    // @ts-ignore
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  infoCardTitle: {
-    fontFamily: "Inter_700Bold",
-    fontSize: 10,
-    color: COLORS.textMuted,
-    letterSpacing: 1.5,
-    textTransform: "uppercase",
-    marginBottom: 10,
-  },
-  infoRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingVertical: 9,
-    borderBottomWidth: 1,
-    borderBottomColor: "rgba(255,255,255,0.05)",
-  },
-  infoLabelRow: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  infoLabel: { fontFamily: "Inter_400Regular", fontSize: 13, color: COLORS.textMuted },
-  infoValue: { fontFamily: "Inter_600SemiBold", fontSize: 13, color: COLORS.text, maxWidth: "55%", textAlign: "right" },
-  infoValueHighlight: { color: COLORS.live },
-  statsTeamHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 2 },
-  statsTeamSide: { flexDirection: "row", alignItems: "center", gap: 8, flex: 1 },
-  statsTeamName: {
-    fontFamily: "Inter_700Bold",
-    fontSize: 13,
-    color: COLORS.text,
-    flex: 1,
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
-  },
-  statsHeaderCard: {
-    backgroundColor: COLORS.card,
-    borderRadius: 18,
-    paddingHorizontal: 14,
-    paddingTop: 12,
-    paddingBottom: 14,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.07)",
-  },
-  momentumContainer: { marginTop: 12, gap: 5 },
-  momentumLabel: {
-    fontFamily: "Inter_600SemiBold",
-    fontSize: 9,
-    color: COLORS.textMuted,
-    textAlign: "center",
-    letterSpacing: 1.5,
-    textTransform: "uppercase",
-    marginBottom: 2,
-  },
-  momentumTrack: {
-    flexDirection: "row",
-    height: 6,
-    borderRadius: 3,
-    overflow: "hidden",
-    backgroundColor: "rgba(255,255,255,0.06)",
-  },
-  momentumHome: { height: 6, backgroundColor: COLORS.accent, borderRadius: 3 },
-  momentumAway: { height: 6, backgroundColor: COLORS.cyan, borderRadius: 3 },
-  momentumFooter: { flexDirection: "row", justifyContent: "space-between", marginTop: 2 },
-  momentumHomeLabel: { fontFamily: "Inter_600SemiBold", fontSize: 10, color: COLORS.accent },
-  momentumAwayLabel: { fontFamily: "Inter_600SemiBold", fontSize: 10, color: COLORS.cyan },
-  statsVsLabel: {
-    fontFamily: "Inter_800ExtraBold",
-    fontSize: 11,
-    color: COLORS.textMuted,
-    letterSpacing: 2,
-    textAlign: "center",
-    marginHorizontal: 10,
-  },
-  statsLegendDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-  },
-  statSectionCard: {
-    backgroundColor: COLORS.card,
-    borderRadius: 14,
-    paddingHorizontal: 12,
-    paddingTop: 10,
-    paddingBottom: 4,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.06)",
-  },
-  statSectionHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    marginBottom: 10,
-    paddingBottom: 8,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: "rgba(255,255,255,0.08)",
-  },
-  statSectionAccent: {
-    width: 3,
-    height: 14,
-    borderRadius: 1.5,
-    backgroundColor: COLORS.accent,
-  },
-  statSectionTitle: {
-    fontFamily: "Inter_700Bold",
-    fontSize: 11,
-    color: COLORS.accent,
-    letterSpacing: 1.5,
-    textTransform: "uppercase",
-  },
-  statRow: { flexDirection: "row", alignItems: "center", gap: 8, paddingVertical: 10, paddingHorizontal: 2 },
-  statValueCol: {
-    width: 56,
-    alignItems: "flex-start",
-    gap: 2,
-  },
-  statValueColRight: {
-    alignItems: "flex-end",
-  },
-  statSideLabel: {
-    fontFamily: "Inter_700Bold",
-    fontSize: 9,
-    color: COLORS.textMuted,
-    letterSpacing: 1,
-    textTransform: "uppercase",
-  },
-  statSideLabelRight: { textAlign: "right" },
-  statVal: {
-    fontFamily: "Inter_700Bold",
-    fontSize: 16,
-    color: COLORS.textSecondary,
-    width: 56,
-    textAlign: "left",
-  },
-  statValRight: {
-    textAlign: "right",
-  },
-  statValHome: { color: COLORS.accent },
-  statValAway: { color: "#2DD4FF" },
-  statValWinner: {
-    color: COLORS.text,
-    fontFamily: "Inter_800ExtraBold",
-    fontSize: 17,
-  },
-  statBarContainer: { flex: 1, alignItems: "center", gap: 6 },
-  statName: {
-    fontFamily: "Inter_600SemiBold",
-    fontSize: 10,
-    color: COLORS.text,
-    textAlign: "center",
-    letterSpacing: 0.8,
-    textTransform: "uppercase",
-  },
-  statBarsWrapper: {
-    flexDirection: "row",
-    alignItems: "center",
-    width: "100%",
-    height: 9,
-  },
-  statBarHalf: {
-    flex: 1,
-    flexDirection: "row",
-    height: 9,
-    borderRadius: 4.5,
-    overflow: "hidden",
-    backgroundColor: "rgba(255,255,255,0.05)",
-  },
-  statBarHomeFill: {
-    height: 9,
-    backgroundColor: COLORS.accent,
-    borderRadius: 4.5,
-  },
-  statBarCenterGap: {
-    width: 4,
-  },
-  statBarAwayFill: {
-    height: 9,
-    backgroundColor: "#2DD4FF",
-    borderRadius: 4.5,
-  },
-  statDivider: {
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: "rgba(255,255,255,0.06)",
-    marginHorizontal: 4,
-  },
-  noStatsText: {
-    fontFamily: "Inter_400Regular",
-    fontSize: 14,
-    color: COLORS.textMuted,
-    textAlign: "center",
-    lineHeight: 22,
-  },
-  // Timeline
-  timelineWrapper: {
-    backgroundColor: COLORS.card,
-    borderRadius: 18,
-    paddingHorizontal: 14,
-    paddingVertical: 16,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.07)",
-    marginBottom: 12,
-    gap: 2,
-    position: "relative",
-    overflow: "hidden",
-  },
-  timelineConnector: {
-    position: "absolute",
-    width: 2,
-    backgroundColor: "rgba(255,255,255,0.09)",
-    top: 14,
-    bottom: 14,
-    zIndex: 0,
-  },
-  timelineRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    minHeight: 48,
-    borderBottomWidth: 1,
-    borderBottomColor: "rgba(255,255,255,0.04)",
-    zIndex: 1,
-  },
-  timelineSide: {
-    flex: 1,
-    paddingVertical: 5,
-    paddingHorizontal: 4,
-  },
-  timelineSideAway: {
-    alignItems: "flex-start",
-  },
-  timelineCenter: {
-    width: 60,
-    alignItems: "center",
-    gap: 4,
-  },
-  timelineDot: {
-    width: 11,
-    height: 11,
-    borderRadius: 6,
-    borderWidth: 2,
-  },
-  timelineMinute: {
-    fontFamily: "Inter_700Bold",
-    fontSize: 10,
-    color: COLORS.textSecondary,
-    textAlign: "center",
-  },
-  timelineCenterCardWrap: {
-    width: 196,
-    alignItems: "center",
-    gap: 6,
-    paddingVertical: 6,
-  },
-  timelineCenterCard: {
-    width: "100%",
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 11,
-    borderRadius: 12,
-    backgroundColor: "rgba(255,255,255,0.07)",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.12)",
-  },
-  timelineEventHome: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "flex-end",
-    gap: 6,
-  },
-  timelineEventAway: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-  },
-  timelineEventBadge: {
-    width: 26,
-    height: 26,
-    borderRadius: 13,
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 1,
-    flexShrink: 0,
-  },
-  timelineTextBlockHome: {
-    flex: 1,
-    alignItems: "flex-end",
-    gap: 1,
-  },
-  timelineTextBlockAway: {
-    flex: 1,
-    alignItems: "flex-start",
-    gap: 1,
-  },
-  timelineTitleHome: {
-    fontFamily: "Inter_700Bold",
-    fontSize: 12,
-    color: COLORS.text,
-    textAlign: "right",
-  },
-  timelineTitle: {
-    fontFamily: "Inter_700Bold",
-    fontSize: 12,
-    color: COLORS.text,
-  },
-  timelinePlayer: {
-    fontFamily: "Inter_500Medium",
-    fontSize: 12,
-    color: COLORS.textSecondary,
-    flex: 1,
-    textAlign: "right",
-  },
-  timelineDescription: {
-    fontFamily: "Inter_400Regular",
-    fontSize: 12,
-    color: COLORS.textSecondary,
-    lineHeight: 16,
-  },
-  timelineSecondaryHome: {
-    fontFamily: "Inter_500Medium",
-    fontSize: 10,
-    color: COLORS.accentDim,
-    textAlign: "right",
-  },
-  timelineSecondary: {
-    fontFamily: "Inter_500Medium",
-    fontSize: 10,
-    color: COLORS.accentDim,
-  },
-  highlightsHeroCard: {
-    borderRadius: 18,
-    paddingHorizontal: 15,
-    paddingVertical: 14,
-    borderWidth: 1,
-    borderColor: `${COLORS.accent}33`,
-    backgroundColor: "rgba(229,9,20,0.1)",
-    marginBottom: 10,
-    gap: 8,
-  },
-  highlightsHeroHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-  highlightsHeroTitle: {
-    fontFamily: "Inter_700Bold",
-    fontSize: 11,
-    color: COLORS.accent,
-    textTransform: "uppercase",
-    letterSpacing: 1.1,
-  },
-  highlightsHeroText: {
-    fontFamily: "Inter_500Medium",
-    fontSize: 13,
-    color: COLORS.text,
-    lineHeight: 19,
-  },
-  highlightRecapGrid: {
-    gap: 8,
-    marginBottom: 10,
-  },
-  highlightRecapCard: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: 10,
-    borderRadius: 14,
-    paddingHorizontal: 12,
-    paddingVertical: 11,
-    backgroundColor: COLORS.card,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.07)",
-  },
-  highlightRecapIndex: {
-    fontFamily: "Inter_800ExtraBold",
-    fontSize: 11,
-    color: COLORS.accent,
-    minWidth: 20,
-  },
-  highlightRecapText: {
-    flex: 1,
-    fontFamily: "Inter_400Regular",
-    fontSize: 12,
-    color: COLORS.textSecondary,
-    lineHeight: 18,
-  },
-  highlightRatingCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    backgroundColor: COLORS.card,
-    borderRadius: 14,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    borderWidth: 1,
-    borderColor: "rgba(255,152,0,0.2)",
-    marginBottom: 10,
-  },
-  highlightRatingTitle: {
-    fontFamily: "Inter_700Bold",
-    fontSize: 12,
-    color: COLORS.text,
-    flex: 1,
-  },
-  highlightRatingSub: {
-    fontFamily: "Inter_400Regular",
-    fontSize: 11,
-    color: COLORS.textMuted,
-  },
-  lineupTeamHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: COLORS.card,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.08)",
-    padding: 15,
-    marginBottom: 16,
-    gap: 10,
-  },
-  lineupTeamSide: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-  lineupTeamName: {
-    fontFamily: "Inter_700Bold",
-    fontSize: 14,
-    color: COLORS.text,
-  },
-  lineupFormation: {
-    fontFamily: "Inter_500Medium",
-    fontSize: 11,
-    color: COLORS.accent,
-    marginTop: 1,
-  },
-  lineupTeamDivider: {
-    width: 28,
-    alignItems: "center",
-  },
-  lineupVsSmall: {
-    fontFamily: "Inter_800ExtraBold",
-    fontSize: 11,
-    color: COLORS.textMuted,
-    letterSpacing: 1,
-  },
-  lineupTeamSection: { marginBottom: 22 },
-  lineupPitchScroller: {
-    paddingHorizontal: 4,
-    justifyContent: "center",
-  },
-  lineupViewToggleRow: { flexDirection: "row", gap: 8, marginBottom: 16 },
-  lineupViewBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    paddingHorizontal: 15,
-    paddingVertical: 10,
-    borderRadius: 15,
-    backgroundColor: COLORS.card,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.12)",
-  },
-  lineupViewBtnActive: { borderColor: COLORS.accent, backgroundColor: COLORS.accentGlow },
-  lineupViewBtnText: { fontFamily: "Inter_600SemiBold", fontSize: 12, color: COLORS.textMuted },
-  lineupViewBtnTextActive: { color: COLORS.accent },
-  lineupHeaderRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: 10,
-    gap: 8,
-  },
-  pitchCard: {
-    width: 720,
-    minHeight: 368,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.15)",
-    borderRadius: 18,
-    paddingVertical: 14,
-    paddingHorizontal: 8,
-    gap: 10,
-    position: "relative",
-    overflow: "hidden",
-  },
-  pitchCenterCircle: {
-    position: "absolute",
-    width: 88,
-    height: 88,
-    borderRadius: 44,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.2)",
-    left: "50%",
-    marginLeft: -44,
-    top: "50%",
-    marginTop: -44,
-  },
-  pitchHalfLine: {
-    position: "absolute",
-    left: 8,
-    right: 8,
-    top: "50%",
-    borderTopWidth: 1,
-    borderTopColor: "rgba(255,255,255,0.2)",
-  },
-  pitchRow: {
-    flexDirection: "row",
-    justifyContent: "center",
-    alignItems: "center",
-    gap: 8,
-    zIndex: 2,
-  },
-  pitchPlayerWrap: { minWidth: 92, maxWidth: 120 },
-  lineupListCard: {
-    backgroundColor: COLORS.card,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.07)",
-    borderRadius: 16,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    // @ts-ignore
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.2,
-    shadowRadius: 6,
-    elevation: 3,
-  },
-  lineupListLabel: {
-    fontFamily: "Inter_700Bold",
-    fontSize: 10,
-    color: COLORS.accent,
-    letterSpacing: 1,
-    textTransform: "uppercase",
-    marginBottom: 6,
-  },
-  playerRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: "rgba(255,255,255,0.05)",
-  },
-  playerRowCompact: {
-    borderBottomWidth: 0,
-    paddingVertical: 3,
-    paddingHorizontal: 4,
-    backgroundColor: "rgba(0,0,0,0.3)",
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.1)",
-    gap: 5,
-  },
-  playerJersey: {
-    width: 28,
-    height: 28,
-    borderRadius: 8,
-    backgroundColor: COLORS.cardElevated,
-    borderWidth: 1,
-    borderColor: `${COLORS.accent}44`,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  playerJerseyNum: { fontFamily: "Inter_700Bold", fontSize: 12, color: COLORS.accent },
-  playerPhoto: { width: 42, height: 42, borderRadius: 10 },
-  playerPhotoPlaceholder: { backgroundColor: COLORS.card, alignItems: "center", justifyContent: "center" },
-  playerInfo: { flex: 1 },
-  playerNameRow: { flexDirection: "row", alignItems: "center", gap: 6 },
-  playerName: { fontFamily: "Inter_600SemiBold", fontSize: 13, color: COLORS.text },
-  playerNameCompact: { fontSize: 11 },
-  playerInlineValue: { fontFamily: "Inter_700Bold", fontSize: 10, color: "#00C896" },
-  playerPos: { fontFamily: "Inter_400Regular", fontSize: 11, color: COLORS.textMuted, marginTop: 1 },
-  playerPosCompact: { fontSize: 9, marginTop: 0 },
-  playerFlagRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    alignItems: "center",
-    gap: 5,
-    marginTop: 4,
-  },
-  playerFlagPill: {
-    fontFamily: "Inter_600SemiBold",
-    fontSize: 9,
-    color: COLORS.text,
-    backgroundColor: "rgba(255,255,255,0.08)",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.16)",
-    borderRadius: 999,
-    paddingHorizontal: 7,
-    paddingVertical: 2,
-  },
-  starterBadge: {
-    backgroundColor: COLORS.accentGlow,
-    borderRadius: 6,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderWidth: 1,
-    borderColor: `${COLORS.accent}55`,
-  },
-  starterText: { fontFamily: "Inter_600SemiBold", fontSize: 10, color: COLORS.accent },
-  marketValueBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 3,
-    backgroundColor: "rgba(0,200,150,0.12)",
-    borderRadius: 6,
-    paddingHorizontal: 7,
-    paddingVertical: 3,
-    borderWidth: 1,
-    borderColor: "rgba(0,200,150,0.3)",
-  },
-  marketValueText: { fontFamily: "Inter_700Bold", fontSize: 10, color: "#00C896" },
-  loadingState: { flex: 1, alignItems: "stretch", justifyContent: "flex-start", paddingVertical: 2, gap: 10 },
-  skeletonCard: {
-    backgroundColor: "#0B0F1A",
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.08)",
-    paddingHorizontal: 14,
-    paddingVertical: 14,
-    gap: 10,
-  },
-  skeletonTitle: {
-    width: "42%",
-    height: 14,
-    borderRadius: 999,
-    backgroundColor: "rgba(255,255,255,0.14)",
-  },
-  skeletonRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-  skeletonPill: {
-    width: 42,
-    height: 10,
-    borderRadius: 999,
-    backgroundColor: "rgba(255,255,255,0.12)",
-  },
-  skeletonBar: {
-    flex: 1,
-    height: 8,
-    borderRadius: 999,
-    backgroundColor: "rgba(255,255,255,0.1)",
-  },
-  loadingText: { fontFamily: "Inter_500Medium", fontSize: 14, color: COLORS.textMuted },
-  emptyState: { alignItems: "center", paddingVertical: 60, gap: 14 },
-  emptyText: { fontFamily: "Inter_500Medium", fontSize: 14, color: COLORS.textMuted, textAlign: "center" },
-  aiLoading: { flex: 1, alignItems: "center", justifyContent: "center", paddingVertical: 60, gap: 16 },
-  aiLoadingText: { fontFamily: "Inter_400Regular", fontSize: 14, color: COLORS.textMuted },
-  aiTrigger: { marginTop: 20, borderRadius: 20, overflow: "hidden" },
-  aiTriggerGrad: { padding: 32, alignItems: "center", gap: 12, borderRadius: 20, borderWidth: 1, borderColor: COLORS.borderLight },
-  aiTriggerTitle: { fontFamily: "Inter_700Bold", fontSize: 18, color: COLORS.text },
-  aiTriggerSub: { fontFamily: "Inter_400Regular", fontSize: 14, color: COLORS.textMuted, textAlign: "center" },
-  aiTriggerBtn: { flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: COLORS.accent, borderRadius: 20, paddingHorizontal: 20, paddingVertical: 10, marginTop: 4 },
-  aiTriggerBtnText: { fontFamily: "Inter_700Bold", fontSize: 14, color: "#fff" },
-  aiMainCard: { borderRadius: 20, padding: 20, borderWidth: 1, borderColor: "rgba(255,255,255,0.08)", gap: 10, marginBottom: 2 },
-  aiHeader: { flexDirection: "row", alignItems: "center", gap: 8 },
-  aiTitle: { fontFamily: "Inter_700Bold", fontSize: 15, color: COLORS.text, flex: 1 },
-  aiConfidenceBadge: { backgroundColor: COLORS.accentGlow, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 4, borderWidth: 1, borderColor: `${COLORS.accent}44` },
-  aiConfidenceText: { fontFamily: "Inter_600SemiBold", fontSize: 11, color: COLORS.accent },
-  aiWarnCard: {
-    marginTop: 8,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    backgroundColor: "rgba(255,255,255,0.05)",
-    borderColor: COLORS.border,
-    borderWidth: 1,
-    borderRadius: 10,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-  },
-  aiWarnText: { fontFamily: "Inter_400Regular", fontSize: 12, color: COLORS.textSecondary, flex: 1 },
-  aiPrediction: { fontFamily: "Inter_800ExtraBold", fontSize: 22, textAlign: "center", marginVertical: 4 },
-  aiScore: { fontFamily: "Inter_500Medium", fontSize: 14, color: COLORS.textMuted, textAlign: "center" },
-  aiSummary: { fontFamily: "Inter_400Regular", fontSize: 14, color: COLORS.textSecondary, lineHeight: 22 },
-  marketGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
-    marginTop: 2,
-  },
-  marketCard: {
-    width: "48%",
-    borderRadius: 12,
-    padding: 10,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    backgroundColor: COLORS.cardElevated,
-    gap: 2,
-  },
-  marketLabel: { fontFamily: "Inter_700Bold", fontSize: 11, color: COLORS.textSecondary },
-  marketValue: { fontFamily: "Inter_800ExtraBold", fontSize: 20, color: COLORS.text },
-  marketSub: { fontFamily: "Inter_400Regular", fontSize: 10, color: COLORS.textMuted },
-  edgeRow: {
-    marginTop: 10,
-    borderTopWidth: 1,
-    borderTopColor: COLORS.border,
-    paddingTop: 10,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-  edgeLabel: { fontFamily: "Inter_500Medium", fontSize: 12, color: COLORS.textMuted },
-  edgeValue: { fontFamily: "Inter_700Bold", fontSize: 14, color: COLORS.accent },
-  factorRow: { flexDirection: "row", alignItems: "flex-start", gap: 8, paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: COLORS.border },
-  factorDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: COLORS.accent, marginTop: 6 },
-  factorText: { fontFamily: "Inter_400Regular", fontSize: 13, color: COLORS.text, flex: 1 },
-  tipCard: { flexDirection: "row", alignItems: "flex-start", gap: 10, backgroundColor: "rgba(255,215,0,0.08)", borderRadius: 14, padding: 14, borderWidth: 1, borderColor: "rgba(255,215,0,0.25)" },
-  tipText: { fontFamily: "Inter_400Regular", fontSize: 13, color: COLORS.textSecondary, flex: 1, lineHeight: 20 },
-  aiDisclaimer: { fontFamily: "Inter_400Regular", fontSize: 11, color: COLORS.textMuted, textAlign: "center", marginTop: 4, paddingBottom: 20 },
-  metaBadge: {
-    backgroundColor: COLORS.card, borderRadius: 12, padding: 10, borderWidth: 1,
-    borderColor: COLORS.border, alignItems: "center", gap: 4,
-  },
-  metaBadgeLabel: { fontFamily: "Inter_400Regular", fontSize: 10, color: COLORS.textMuted },
-  metaBadgeValue: { fontFamily: "Inter_700Bold", fontSize: 12, color: COLORS.text },
-  combinedPitch: {
-    borderRadius: 22,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.14)",
-    paddingVertical: 14,
-    paddingHorizontal: 12,
-    gap: 10,
-    overflow: "hidden",
-    position: "relative",
-    alignItems: "stretch",
-    alignSelf: "center",
-    width: 760,
-    minHeight: 420,
-  },
-  pitchFieldBorder: {
-    position: "absolute",
-    top: 10,
-    left: 10,
-    right: 10,
-    bottom: 10,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.26)",
-    borderRadius: 18,
-  },
-  pitchVerticalCenterLine: {
-    position: "absolute",
-    top: 10,
-    bottom: 10,
-    left: "50%",
-    width: 1,
-    marginLeft: -0.5,
-    backgroundColor: "rgba(255,255,255,0.22)",
-  },
-  pitchHorizontalCenterLine: {
-    position: "absolute",
-    left: 10,
-    right: 10,
-    top: "50%",
-    height: 1,
-    marginTop: -0.5,
-    backgroundColor: "rgba(255,255,255,0.12)",
-  },
-  pitchCenterCircleWide: {
-    position: "absolute",
-    width: 84,
-    height: 84,
-    borderRadius: 42,
-    left: "50%",
-    top: "50%",
-    marginLeft: -42,
-    marginTop: -42,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.22)",
-  },
-  pitchCenterSpotWide: {
-    position: "absolute",
-    left: "50%",
-    top: "50%",
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    marginLeft: -3,
-    marginTop: -3,
-    backgroundColor: "rgba(255,255,255,0.26)",
-  },
-  pitchPenaltyBoxLeft: {
-    position: "absolute",
-    left: 10,
-    top: "22%",
-    width: "14%",
-    height: "56%",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.2)",
-    borderLeftWidth: 0,
-  },
-  pitchGoalBoxLeft: {
-    position: "absolute",
-    left: 10,
-    top: "35%",
-    width: "6.5%",
-    height: "30%",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.2)",
-    borderLeftWidth: 0,
-  },
-  pitchPenaltyBoxRight: {
-    position: "absolute",
-    right: 10,
-    top: "22%",
-    width: "14%",
-    height: "56%",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.2)",
-    borderRightWidth: 0,
-  },
-  pitchGoalBoxRight: {
-    position: "absolute",
-    right: 10,
-    top: "35%",
-    width: "6.5%",
-    height: "30%",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.2)",
-    borderRightWidth: 0,
-  },
-  pitchArcLeft: {
-    position: "absolute",
-    left: "14%",
-    top: "41%",
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.18)",
-    borderLeftWidth: 0,
-  },
-  pitchArcRight: {
-    position: "absolute",
-    right: "14%",
-    top: "41%",
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.18)",
-    borderRightWidth: 0,
-  },
-  pitchTopTeamsRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 10,
-    zIndex: 2,
-    marginBottom: 2,
-  },
-  pitchTopTeamCard: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    backgroundColor: "rgba(0,0,0,0.22)",
-    borderRadius: 14,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.08)",
-  },
-  pitchTopTeamName: {
-    fontFamily: "Inter_700Bold",
-    fontSize: 10,
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
-  },
-  pitchTopTeamMeta: {
-    fontFamily: "Inter_500Medium",
-    fontSize: 10,
-    color: "rgba(255,255,255,0.56)",
-    marginTop: 2,
-  },
-  pitchTopBadge: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 999,
-    backgroundColor: "rgba(255,255,255,0.06)",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.08)",
-  },
-  pitchTopBadgeText: {
-    fontFamily: "Inter_700Bold",
-    fontSize: 9,
-    color: COLORS.textMuted,
-    textTransform: "uppercase",
-    letterSpacing: 1.1,
-  },
-  pitchHorizontalFormationRow: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "stretch",
-    zIndex: 2,
-    gap: 6,
-  },
-  pitchHalfSide: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "stretch",
-    justifyContent: "space-evenly",
-    gap: 4,
-  },
-  pitchVerticalColumn: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "space-around",
-    gap: 3,
-    minHeight: 280,
-  },
-  pitchMiddleDividerCol: {
-    width: 28,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  pitchMidBadge: {
-    transform: [{ rotate: "-90deg" }],
-    borderRadius: 999,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    backgroundColor: "rgba(0,0,0,0.22)",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.08)",
-  },
-  pitchMidBadgeText: {
-    fontFamily: "Inter_700Bold",
-    fontSize: 9,
-    color: COLORS.textMuted,
-    textTransform: "uppercase",
-    letterSpacing: 1.1,
-  },
-  pitchDotWrap: {
-    alignItems: "center",
-    gap: 4,
-    width: 56,
-    maxWidth: 56,
-    flexShrink: 0,
-    paddingVertical: 2,
-  },
-  pitchDotCircle: {
-    width: 34,
-    height: 34,
-    borderRadius: 10,
-    borderWidth: 1.5,
-    backgroundColor: "rgba(0,0,0,0.5)",
-    alignItems: "center",
-    justifyContent: "center",
-    overflow: "hidden",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.18,
-    shadowRadius: 8,
-    elevation: 3,
-  },
-  pitchDotPhoto: {
-    width: 30,
-    height: 30,
-    borderRadius: 6,
-    position: "absolute",
-  },
-  pitchDotNum: {
-    fontFamily: "Inter_800ExtraBold",
-    fontSize: 11,
-  },
-  pitchDotName: {
-    fontFamily: "Inter_500Medium",
-    fontSize: 7,
-    lineHeight: 9,
-    color: "rgba(255,255,255,0.88)",
-    textAlign: "center",
-    maxWidth: 56,
-  },
-  // AI redesign styles
-  chanceRow: {
-    flexDirection: "row",
-    gap: 8,
-    marginTop: 10,
-    paddingTop: 10,
-    borderTopWidth: 1,
-    borderTopColor: "rgba(255,255,255,0.08)",
-  },
-  chanceBlock: {
-    flex: 1,
-    alignItems: "center",
-    gap: 2,
-    backgroundColor: "rgba(255,255,255,0.04)",
-    borderRadius: 14,
-    paddingVertical: 10,
-    borderWidth: 1,
-  },
-  chancePct: {
-    fontFamily: "Inter_800ExtraBold",
-    fontSize: 22,
-  },
-  chanceLabel: {
-    fontFamily: "Inter_600SemiBold",
-    fontSize: 11,
-    color: COLORS.text,
-    textAlign: "center",
-  },
-  chanceSubLabel: {
-    fontFamily: "Inter_400Regular",
-    fontSize: 9,
-    color: COLORS.textMuted,
-  },
-  xgRow: {
-    flexDirection: "row",
-    justifyContent: "space-around",
-    alignItems: "center",
-    marginTop: 12,
-    paddingTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: "rgba(255,255,255,0.08)",
-  },
-  xgValue: {
-    fontFamily: "Inter_800ExtraBold",
-    fontSize: 22,
-    color: COLORS.accent,
-  },
-  xgLabel: {
-    fontFamily: "Inter_400Regular",
-    fontSize: 10,
-    color: COLORS.textMuted,
-    marginTop: 2,
-  },
-  nextGoalCard: {
-    backgroundColor: COLORS.card,
-    borderRadius: 14,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: `${COLORS.accent}33`,
-    gap: 10,
-  },
-  nextGoalHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-  nextGoalTitle: {
-    fontFamily: "Inter_600SemiBold",
-    fontSize: 13,
-    color: COLORS.text,
-    flex: 1,
-  },
-  nextGoalPct: {
-    fontFamily: "Inter_800ExtraBold",
-    fontSize: 16,
-    color: COLORS.accent,
-  },
-  nextGoalBar: {
-    height: 6,
-    backgroundColor: COLORS.border,
-    borderRadius: 3,
-    overflow: "hidden",
-  },
-  nextGoalFill: {
-    height: "100%",
-    backgroundColor: COLORS.accent,
-    borderRadius: 3,
-  },
-  // AI tab refresh button
-  aiRefreshBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 6,
-    paddingVertical: 12,
-    marginTop: 4,
-  },
-  aiRefreshText: {
-    fontFamily: "Inter_400Regular",
-    fontSize: 12,
-    color: COLORS.textMuted,
-  },
-  aiWaitCard: {
-    gap: 10,
-  },
-
-  // ─── md_* styles for rewritten 7-tab content ─────────────────────────────
-  liveSectionWrap: {
-    gap: 0,
-    marginBottom: 4,
-  },
-  md_card: {
-    backgroundColor: COLORS.card,
-    borderRadius: 14,
-    padding: 14,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    gap: 8,
-  },
-  md_cardKicker: {
-    fontFamily: "Inter_600SemiBold",
-    fontSize: 10,
-    color: COLORS.textMuted,
-    letterSpacing: 0.8,
-    textTransform: "uppercase",
-    marginBottom: 2,
-  },
-  md_cardTopRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-  md_sectionTitle: {
-    fontFamily: "Inter_700Bold",
-    fontSize: 13,
-    color: COLORS.textSecondary,
-    letterSpacing: 0.4,
-    textTransform: "uppercase",
-    marginBottom: 6,
-    marginTop: 8,
-  },
-  md_sectionHead: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    marginBottom: 2,
-  },
-  md_sectionHeadText: {
-    fontFamily: "Inter_600SemiBold",
-    fontSize: 12,
-    color: COLORS.textMuted,
-    textTransform: "uppercase",
-    letterSpacing: 0.6,
-  },
-  md_metaText: {
-    fontFamily: "Inter_400Regular",
-    fontSize: 12,
-    color: COLORS.textMuted,
-  },
-  md_bodyText: {
-    fontFamily: "Inter_400Regular",
-    fontSize: 13,
-    color: COLORS.textSecondary,
-    lineHeight: 19,
-  },
-  md_grid2: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 10,
-    marginBottom: 12,
-  },
-  md_gridCard: {
-    flex: 1,
-    minWidth: "45%",
-    backgroundColor: COLORS.card,
-    borderRadius: 12,
-    padding: 12,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    gap: 4,
-  },
-  md_gridLabel: {
-    fontFamily: "Inter_400Regular",
-    fontSize: 11,
-    color: COLORS.textMuted,
-    textTransform: "uppercase",
-    letterSpacing: 0.4,
-  },
-  md_gridValue: {
-    fontFamily: "Inter_700Bold",
-    fontSize: 18,
-    color: COLORS.text,
-  },
-  md_formRow: {
-    flexDirection: "row",
-    gap: 4,
-    marginTop: 4,
-    flexWrap: "wrap",
-  },
-  md_formDot: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: COLORS.border,
-  },
-  md_formDotText: {
-    fontFamily: "Inter_700Bold",
-    fontSize: 10,
-    color: "#FFF",
-  },
-  md_formDotW: { backgroundColor: "#22C55E" },
-  md_formDotD: { backgroundColor: "#6B7280" },
-  md_formDotL: { backgroundColor: "#EF4444" },
-  md_scoreBar: {
-    borderRadius: 6,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    alignSelf: "flex-start",
-    marginTop: 4,
-  },
-  md_scoreBarText: {
-    fontFamily: "Inter_600SemiBold",
-    fontSize: 11,
-    color: "#FFF",
-  },
-  md_stateBadge: {
-    borderRadius: 4,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    alignSelf: "flex-start",
-    marginTop: 4,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    backgroundColor: "transparent",
-  },
-  md_stateBadgeConfirmed: {
-    borderColor: "#22C55E55",
-    backgroundColor: "#22C55E18",
-  },
-  md_stateBadgeExpected: {
-    borderColor: "#5D9EFF55",
-    backgroundColor: "#5D9EFF18",
-  },
-  md_stateBadgeUnknown: {
-    borderColor: COLORS.border,
-    backgroundColor: "transparent",
-  },
-  md_stateBadgeText: {
-    fontFamily: "Inter_600SemiBold",
-    fontSize: 9,
-    color: COLORS.textMuted,
-    letterSpacing: 0.6,
-  },
-  md_divider: {
-    height: 1,
-    backgroundColor: COLORS.border,
-    marginVertical: 10,
-  },
-  md_infoRow: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: 8,
-    paddingVertical: 3,
-  },
-  md_infoText: {
-    flex: 1,
-    fontFamily: "Inter_400Regular",
-    fontSize: 13,
-    color: COLORS.textSecondary,
-    lineHeight: 18,
-  },
-  md_emptySlate: {
-    alignItems: "center",
-    padding: 24,
-    gap: 8,
-  },
-  md_emptyTitle: {
-    fontFamily: "Inter_600SemiBold",
-    fontSize: 14,
-    color: COLORS.textSecondary,
-    textAlign: "center",
-  },
-  md_emptySubtitle: {
-    fontFamily: "Inter_400Regular",
-    fontSize: 12,
-    color: COLORS.textMuted,
-    textAlign: "center",
-    lineHeight: 18,
-  },
-  md_liveEventRow: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: 10,
-    paddingVertical: 6,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
-  },
-  md_liveMin: {
-    fontFamily: "Inter_700Bold",
-    fontSize: 12,
-    width: 28,
-    textAlign: "right",
-  },
-  md_liveTitle: {
-    fontFamily: "Inter_600SemiBold",
-    fontSize: 13,
-    color: COLORS.text,
-  },
-  md_liveMeta: {
-    fontFamily: "Inter_400Regular",
-    fontSize: 11,
-    color: COLORS.textMuted,
-    marginTop: 1,
-  },
-  md_livePill: {
-    borderRadius: 4,
-    paddingHorizontal: 5,
-    paddingVertical: 2,
-    borderWidth: 1,
-    alignSelf: "center",
-  },
-  md_livePillText: {
-    fontFamily: "Inter_700Bold",
-    fontSize: 8,
-    letterSpacing: 0.6,
-  },
-  md_factorRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingVertical: 4,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
-  },
-  md_factorLabel: {
-    fontFamily: "Inter_400Regular",
-    fontSize: 13,
-    color: COLORS.textSecondary,
-    flex: 1,
-  },
-  md_factorValue: {
-    fontFamily: "Inter_700Bold",
-    fontSize: 13,
-    color: COLORS.text,
-  },
-  md_probTeamRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 8,
-  },
-  md_probTeamName: {
-    fontFamily: "Inter_600SemiBold",
-    fontSize: 12,
-    color: COLORS.textSecondary,
-    flex: 1,
-  },
-  md_probCenterLabel: {
-    fontFamily: "Inter_400Regular",
-    fontSize: 11,
-    color: COLORS.textMuted,
-    textAlign: "center",
-    paddingHorizontal: 8,
-  },
-  md_probBarWrap: {
-    flexDirection: "row",
-    height: 10,
-    borderRadius: 5,
-    overflow: "hidden",
-  },
-  md_probFillHome: {
-    backgroundColor: COLORS.accent,
-    height: 10,
-  },
-  md_probFillDraw: {
-    backgroundColor: "#6B7280",
-    height: 10,
-  },
-  md_probFillAway: {
-    backgroundColor: "#5D9EFF",
-    height: 10,
-  },
-  md_probValues: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginTop: 6,
-  },
-  md_probVal: {
-    fontFamily: "Inter_700Bold",
-    fontSize: 13,
-  },
-  md_predictionOutcome: {
-    fontFamily: "Inter_800ExtraBold",
-    fontSize: 18,
-    color: COLORS.text,
-    marginBottom: 6,
-  },
-  md_tipRow: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: 8,
-    marginTop: 6,
-    padding: 10,
-    backgroundColor: "#FFD70010",
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: "#FFD70030",
-  },
-  md_tipText: {
-    fontFamily: "Inter_400Regular",
-    fontSize: 13,
-    color: COLORS.textSecondary,
-    flex: 1,
-    lineHeight: 18,
-  },
-  md_loadingRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    padding: 12,
-  },
-  md_loadingText: {
-    fontFamily: "Inter_400Regular",
-    fontSize: 13,
-    color: COLORS.textMuted,
-  },
-  md_lockCard: {
-    borderRadius: 14,
-    overflow: "hidden",
-    marginBottom: 12,
-    minHeight: 180,
-  },
-  md_lockContent: {
-    padding: 20,
-    alignItems: "center",
-    gap: 8,
-    zIndex: 2,
-  },
-  md_lockTitle: {
-    fontFamily: "Inter_700Bold",
-    fontSize: 16,
-    color: COLORS.text,
-    textAlign: "center",
-  },
-  md_lockBody: {
-    fontFamily: "Inter_400Regular",
-    fontSize: 13,
-    color: COLORS.textMuted,
-    textAlign: "center",
-    lineHeight: 18,
-  },
-  md_lockBlur: {
-    ...StyleSheet.absoluteFillObject,
-    zIndex: 1,
-  },
-  md_unlockBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    backgroundColor: COLORS.accent,
-    borderRadius: 10,
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    marginTop: 8,
-  },
-  md_unlockBtnText: {
-    fontFamily: "Inter_600SemiBold",
-    fontSize: 14,
-    color: "#FFF",
-  },
-  md_premiumLink: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    marginTop: 6,
-  },
-  md_premiumLinkText: {
-    fontFamily: "Inter_400Regular",
-    fontSize: 12,
-    color: COLORS.textMuted,
-    textDecorationLine: "underline",
-  },
-  md_refreshBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    backgroundColor: COLORS.border,
-    borderRadius: 6,
-  },
-  md_refreshText: {
-    fontFamily: "Inter_400Regular",
-    fontSize: 11,
-    color: COLORS.textMuted,
-  },
-  md_marketsGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
-    marginBottom: 12,
-  },
-  md_marketCard: {
-    width: "30%",
-    flex: 1,
-    minWidth: "28%",
-    backgroundColor: COLORS.card,
-    borderRadius: 10,
-    padding: 10,
-    alignItems: "center",
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    gap: 4,
-  },
-  md_marketValue: {
-    fontFamily: "Inter_700Bold",
-    fontSize: 16,
-    color: COLORS.text,
-  },
-  md_marketLabel: {
-    fontFamily: "Inter_400Regular",
-    fontSize: 10,
-    color: COLORS.textMuted,
-    textAlign: "center",
-  },
-  md_confRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  md_confTrack: {
-    flexDirection: "row",
-    height: 8,
-    borderRadius: 4,
-    overflow: "hidden",
-    backgroundColor: COLORS.border,
-  },
-  md_confFill: {
-    height: 8,
-    borderRadius: 4,
-  },
-  md_confFillHigh: { backgroundColor: "#22C55E" },
-  md_confFillMed: { backgroundColor: "#FFD700" },
-  md_confFillLow: { backgroundColor: "#EF4444" },
-  md_modeRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: 10,
-  },
-  md_modeToggle: {
-    flexDirection: "row",
-    backgroundColor: COLORS.card,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    overflow: "hidden",
-  },
-  md_modeBtn: {
-    paddingHorizontal: 14,
-    paddingVertical: 6,
-  },
-  md_modeBtnActive: {
-    backgroundColor: COLORS.accent,
-  },
-  md_modeBtnText: {
-    fontFamily: "Inter_500Medium",
-    fontSize: 12,
-    color: COLORS.textMuted,
-  },
-  md_modeBtnTextActive: {
-    color: "#FFF",
-  },
-  md_hintText: {
-    fontFamily: "Inter_400Regular",
-    fontSize: 12,
-    color: COLORS.textMuted,
-    marginBottom: 10,
-    lineHeight: 17,
-  },
-  md_signalGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
-  },
-  md_signalChip: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 20,
-    backgroundColor: COLORS.border,
-    borderWidth: 1,
-    borderColor: "transparent",
-  },
-  md_signalChipActive: {
-    backgroundColor: "#22C55E15",
-    borderColor: "#22C55E40",
-  },
-  md_signalText: {
-    fontFamily: "Inter_500Medium",
-    fontSize: 11,
-    color: COLORS.textMuted,
-  },
-  md_signalTextActive: {
-    color: COLORS.live,
-  },
-  md_aiCard: {
-    backgroundColor: COLORS.card,
-    borderRadius: 14,
-    padding: 14,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: `${COLORS.accent}30`,
-    gap: 8,
-  },
-  md_aiCardHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-  md_aiCardTitle: {
-    fontFamily: "Inter_700Bold",
-    fontSize: 15,
-    color: COLORS.text,
-    flex: 1,
-  },
-  md_aiSummary: {
-    fontFamily: "Inter_400Regular",
-    fontSize: 13,
-    color: COLORS.textSecondary,
-    lineHeight: 20,
-  },
-  md_aiBullet: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: 8,
-    marginTop: 4,
-  },
-  md_aiBulletDot: {
-    width: 5,
-    height: 5,
-    borderRadius: 3,
-    backgroundColor: COLORS.accent,
-    marginTop: 7,
-    flexShrink: 0,
-  },
-  md_aiBulletText: {
-    fontFamily: "Inter_400Regular",
-    fontSize: 13,
-    color: COLORS.textSecondary,
-    lineHeight: 19,
-    flex: 1,
-  },
-  md_turningPoint: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: 8,
-    padding: 10,
-    backgroundColor: "#FFD70015",
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: "#FFD70035",
-  },
-  md_turningPointText: {
-    fontFamily: "Inter_400Regular",
-    fontSize: 12,
-    color: COLORS.textSecondary,
-    flex: 1,
-    lineHeight: 18,
-  },
-  md_evidenceText: {
-    fontFamily: "Inter_400Regular",
-    fontSize: 11,
-    color: COLORS.textMuted,
-    lineHeight: 16,
-    marginLeft: 4,
-  },
-  md_tacticRow: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: 10,
-  },
-  md_tacticTeam: {
-    fontFamily: "Inter_700Bold",
-    fontSize: 14,
-    color: COLORS.text,
-  },
-  md_tacticFormation: {
-    fontFamily: "Inter_800ExtraBold",
-    fontSize: 22,
-    color: COLORS.accent,
-    marginTop: 2,
-  },
-  md_tacticState: {
-    fontFamily: "Inter_400Regular",
-    fontSize: 11,
-    color: COLORS.textMuted,
-    marginTop: 2,
-  },
-  md_tacticVs: {
-    width: 32,
-    alignItems: "center",
-    paddingTop: 4,
-  },
-  md_tacticVsText: {
-    fontFamily: "Inter_600SemiBold",
-    fontSize: 11,
-    color: COLORS.textMuted,
-  },
-  md_tacticPlayersRow: {
-    flexDirection: "row",
-    gap: 12,
-  },
-  md_xgRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-around",
-  },
-  md_xgValue: {
-    fontFamily: "Inter_800ExtraBold",
-    fontSize: 28,
-  },
-  md_xgLabel: {
-    fontFamily: "Inter_400Regular",
-    fontSize: 12,
-    color: COLORS.textMuted,
-    textAlign: "center",
-    marginTop: 2,
-  },
-  md_xgCenter: {
-    fontFamily: "Inter_700Bold",
-    fontSize: 12,
-    color: COLORS.textMuted,
-    textTransform: "uppercase",
-    letterSpacing: 1,
-  },
-  md_lineupHeader: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    backgroundColor: COLORS.card,
-    borderRadius: 14,
-    padding: 14,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  md_lineupTeamName: {
-    fontFamily: "Inter_700Bold",
-    fontSize: 13,
-    color: COLORS.text,
-    textAlign: "center",
-  },
-  md_lineupFormation: {
-    fontFamily: "Inter_800ExtraBold",
-    fontSize: 20,
-    color: COLORS.accent,
-    textAlign: "center",
-    marginTop: 2,
-  },
-  md_lineupVsDivider: {
-    paddingHorizontal: 10,
-    paddingTop: 8,
-    alignItems: "center",
-  },
-  md_lineupVsText: {
-    fontFamily: "Inter_600SemiBold",
-    fontSize: 11,
-    color: COLORS.textMuted,
-  },
-  md_viewToggleRow: {
-    flexDirection: "row",
-    gap: 8,
-    marginBottom: 12,
-  },
-  md_viewBtn: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 6,
-    paddingVertical: 8,
-    borderRadius: 8,
-    backgroundColor: COLORS.card,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  md_viewBtnActive: {
-    backgroundColor: `${COLORS.accent}18`,
-    borderColor: `${COLORS.accent}55`,
-  },
-  md_viewBtnText: {
-    fontFamily: "Inter_500Medium",
-    fontSize: 13,
-    color: COLORS.textMuted,
-  },
-  md_viewBtnTextActive: {
-    color: COLORS.accent,
-    fontFamily: "Inter_600SemiBold",
-  },
-  md_lineupSection: {
-    marginBottom: 16,
-  },
-  md_lineupSectionHead: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    marginBottom: 6,
-    paddingBottom: 6,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
-  },
-  md_lineupTeamDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-  },
-  md_lineupSectionTitle: {
-    fontFamily: "Inter_700Bold",
-    fontSize: 12,
-    color: COLORS.text,
-    flex: 1,
-    letterSpacing: 0.5,
-  },
-  md_lineupSectionMeta: {
-    fontFamily: "Inter_400Regular",
-    fontSize: 12,
-    color: COLORS.textMuted,
-  },
-  md_lineupListLabel: {
-    fontFamily: "Inter_600SemiBold",
-    fontSize: 10,
-    color: COLORS.textMuted,
-    letterSpacing: 0.8,
-    textTransform: "uppercase",
-    marginTop: 8,
-    marginBottom: 4,
-  },
-  md_subRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    paddingVertical: 6,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
-  },
-  md_subMinute: {
-    fontFamily: "Inter_700Bold",
-    fontSize: 12,
-    color: COLORS.textMuted,
-    width: 28,
-    textAlign: "right",
-  },
-  md_subTeam: {
-    fontFamily: "Inter_400Regular",
-    fontSize: 11,
-    color: COLORS.textMuted,
-    width: 60,
-  },
-  md_subOut: {
-    fontFamily: "Inter_400Regular",
-    fontSize: 12,
-    color: "#EF4444",
-    flex: 1,
-  },
-  md_subIn: {
-    fontFamily: "Inter_400Regular",
-    fontSize: 12,
-    color: COLORS.live,
-    flex: 1,
-  },
-  md_progressHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 8,
-  },
-  md_statusChip: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 20,
-    backgroundColor: COLORS.border,
-  },
-  md_statusChipLive: {
-    backgroundColor: "#22C55E20",
-    borderWidth: 1,
-    borderColor: "#22C55E50",
-  },
-  md_statusChipFt: {
-    backgroundColor: "#5D9EFF20",
-    borderWidth: 1,
-    borderColor: "#5D9EFF50",
-  },
-  md_statusChipDefault: {
-    backgroundColor: COLORS.border,
-  },
-  md_liveDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: COLORS.live,
-  },
-  md_statusChipText: {
-    fontFamily: "Inter_600SemiBold",
-    fontSize: 11,
-    color: COLORS.text,
-  },
-  md_progressTrack: {
-    flexDirection: "row",
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: COLORS.border,
-    overflow: "hidden",
-  },
-  md_progressFill: {
-    backgroundColor: COLORS.accent,
-    height: 6,
-    borderRadius: 3,
-  },
-  md_progressLabels: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginTop: 4,
-  },
-  md_progressLabel: {
-    fontFamily: "Inter_400Regular",
-    fontSize: 10,
-    color: COLORS.textMuted,
-  },
-  md_eventCountGrid: {
-    flexDirection: "row",
-    justifyContent: "space-around",
-    backgroundColor: COLORS.card,
-    borderRadius: 12,
-    padding: 12,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  md_eventCountCard: {
-    alignItems: "center",
-    gap: 3,
-  },
-  md_eventCountNum: {
-    fontFamily: "Inter_700Bold",
-    fontSize: 18,
-  },
-  md_eventCountLabel: {
-    fontFamily: "Inter_400Regular",
-    fontSize: 10,
-    color: COLORS.textMuted,
-  },
-  md_chipScroll: {
-    marginBottom: 12,
-  },
-  md_chipScrollInner: {
-    paddingHorizontal: 0,
-    gap: 8,
-    flexDirection: "row",
-  },
-  md_chip: {
-    paddingHorizontal: 14,
-    paddingVertical: 6,
-    borderRadius: 20,
-    backgroundColor: COLORS.card,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  md_chipActive: {
-    backgroundColor: `${COLORS.accent}18`,
-    borderColor: `${COLORS.accent}60`,
-  },
-  md_chipText: {
-    fontFamily: "Inter_500Medium",
-    fontSize: 12,
-    color: COLORS.textMuted,
-  },
-  md_chipTextActive: {
-    color: COLORS.accent,
-    fontFamily: "Inter_600SemiBold",
-  },
-  md_h2hTeamRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 8,
-  },
-  md_h2hTeamLabel: {
-    fontFamily: "Inter_700Bold",
-    fontSize: 13,
-    color: COLORS.text,
-    flex: 1,
-  },
-  md_h2hVs: {
-    fontFamily: "Inter_400Regular",
-    fontSize: 11,
-    color: COLORS.textMuted,
-    paddingHorizontal: 8,
-  },
-  md_h2hBar: {
-    flexDirection: "row",
-    height: 28,
-    borderRadius: 6,
-    overflow: "hidden",
-    marginBottom: 8,
-  },
-  md_h2hFillHome: {
-    backgroundColor: `${COLORS.accent}CC`,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  md_h2hFillAway: {
-    backgroundColor: "#5D9EFFCC",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  md_h2hFillDraw: {
-    backgroundColor: "#6B7280CC",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  md_h2hFillText: {
-    fontFamily: "Inter_700Bold",
-    fontSize: 11,
-    color: "#FFF",
-  },
-  md_h2hFillTextDraw: {
-    fontFamily: "Inter_700Bold",
-    fontSize: 11,
-    color: "#FFF",
-  },
-  md_h2hMatchRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    paddingVertical: 8,
-  },
-  md_h2hMatchDate: {
-    fontFamily: "Inter_400Regular",
-    fontSize: 10,
-    color: COLORS.textMuted,
-    width: 52,
-  },
-  md_h2hMatchTeam: {
-    fontFamily: "Inter_500Medium",
-    fontSize: 12,
-    color: COLORS.textSecondary,
-  },
-  md_h2hScoreBadge: {
-    backgroundColor: COLORS.border,
-    borderRadius: 4,
-    paddingHorizontal: 7,
-    paddingVertical: 2,
-  },
-  md_h2hScore: {
-    fontFamily: "Inter_700Bold",
-    fontSize: 12,
-    color: COLORS.text,
-  },
-  md_h2hResult: {
-    width: 20,
-    height: 20,
-    borderRadius: 4,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  md_h2hResultHome: { backgroundColor: `${COLORS.accent}CC` },
-  md_h2hResultAway: { backgroundColor: "#5D9EFFCC" },
-  md_h2hResultDraw: { backgroundColor: "#6B7280CC" },
-  md_h2hResultText: {
-    fontFamily: "Inter_700Bold",
-    fontSize: 10,
-    color: "#FFF",
-  },
-  md_compareRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    paddingVertical: 6,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
-  },
-  md_compareVal: {
-    fontFamily: "Inter_600SemiBold",
-    fontSize: 12,
-    color: COLORS.text,
-    width: 44,
-  },
-  md_compareLabel: {
-    fontFamily: "Inter_400Regular",
-    fontSize: 11,
-    color: COLORS.textMuted,
-    textAlign: "center",
-    marginBottom: 3,
-  },
-  md_compareBarWrap: {
-    flexDirection: "row",
-    height: 5,
-    borderRadius: 3,
-    overflow: "hidden",
-    backgroundColor: COLORS.border,
-  },
-  md_compareBarHome: {
-    backgroundColor: COLORS.accent,
-    height: 5,
-  },
-  md_compareBarAway: {
-    backgroundColor: "#5D9EFF",
-    height: 5,
-  },
-  md_playerChip: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-    backgroundColor: COLORS.border,
-    borderRadius: 20,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    alignSelf: "flex-start",
-    marginTop: 4,
-  },
-  md_playerChipText: {
-    fontFamily: "Inter_500Medium",
-    fontSize: 11,
-    color: COLORS.textSecondary,
-    maxWidth: 100,
-  },
-  md_injRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    paddingVertical: 4,
-  },
-  md_injName: {
-    fontFamily: "Inter_600SemiBold",
-    fontSize: 12,
-    color: COLORS.text,
-    flex: 1,
-  },
-  md_injReason: {
-    fontFamily: "Inter_400Regular",
-    fontSize: 11,
-    color: COLORS.textMuted,
-  },
+  container: { flex: 1, backgroundColor: DS.bg },
+  scroll: { flex: 1 },
+  content: { paddingHorizontal: 16, paddingBottom: 120, gap: 18 },
+  heroCard: { borderRadius: 28, paddingHorizontal: 18, paddingTop: 16, paddingBottom: 18, borderWidth: 1, borderColor: "rgba(255,255,255,0.08)" },
+  topBar: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 18 },
+  iconButton: { width: 42, height: 42, borderRadius: 21, backgroundColor: "rgba(255,255,255,0.08)", alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: "rgba(255,255,255,0.08)" },
+  iconButtonActive: { backgroundColor: DS.accentSoft, borderColor: "rgba(229,9,20,0.28)" },
+  heroMetaCenter: { alignItems: "center", gap: 2 },
+  heroMetaLabel: { color: DS.text, fontSize: 16, fontFamily: "Inter_800ExtraBold" },
+  heroMetaSub: { color: DS.muted, fontSize: 12, fontFamily: "Inter_500Medium" },
+  heroLeagueRow: { flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 22 },
+  heroLeagueLogo: { width: 24, height: 24 },
+  heroLeague: { flex: 1, color: DS.text, fontSize: 14, fontFamily: "Inter_700Bold" },
+  statePill: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999 },
+  statePillLive: { backgroundColor: DS.liveSoft },
+  statePillUpcoming: { backgroundColor: "rgba(96,165,250,0.16)" },
+  statePillMuted: { backgroundColor: "rgba(255,255,255,0.08)" },
+  statePillText: { color: DS.text, fontSize: 12, fontFamily: "Inter_800ExtraBold" },
+  statePillTextLive: { color: DS.live },
+  scoreboard: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 22 },
+  teamColumn: { flex: 1, alignItems: "center", gap: 10 },
+  teamName: { color: DS.text, fontSize: 15, fontFamily: "Inter_700Bold", textAlign: "center" },
+  scoreColumn: { alignItems: "center", gap: 6 },
+  scoreText: { color: DS.text, fontSize: 42, fontFamily: "Inter_900Black" },
+  scoreSub: { color: DS.muted, fontSize: 13, fontFamily: "Inter_600SemiBold", textAlign: "center" },
+  scoreMicro: { color: DS.subtle, fontSize: 12, fontFamily: "Inter_500Medium", textAlign: "center" },
+  heroStatsRow: { flexDirection: "row", gap: 10 },
+  heroStat: { flex: 1, borderRadius: 18, backgroundColor: "rgba(255,255,255,0.06)", paddingHorizontal: 12, paddingVertical: 12, gap: 5 },
+  heroStatLabel: { color: DS.subtle, fontSize: 11, fontFamily: "Inter_700Bold" },
+  heroStatValue: { color: DS.text, fontSize: 13, fontFamily: "Inter_600SemiBold" },
+  tabStrip: { gap: 10, paddingVertical: 4 },
+  tabPill: { paddingHorizontal: 16, paddingVertical: 10, borderRadius: 999, backgroundColor: DS.panel, borderWidth: 1, borderColor: DS.border },
+  tabPillActive: { backgroundColor: DS.accentSoft, borderColor: "rgba(229,9,20,0.3)" },
+  tabText: { color: DS.muted, fontSize: 13, fontFamily: "Inter_700Bold" },
+  tabTextActive: { color: DS.text },
+  sectionStack: { gap: 16 },
+  sectionCard: { backgroundColor: DS.panel, borderRadius: 24, borderWidth: 1, borderColor: DS.border, padding: 16, gap: 14 },
+  sectionHead: { gap: 4 },
+  sectionTitle: { color: DS.text, fontSize: 20, fontFamily: "Inter_800ExtraBold" },
+  sectionSubtitle: { color: DS.muted, fontSize: 13, fontFamily: "Inter_500Medium" },
+  quickStatsGrid: { flexDirection: "row", gap: 10 },
+  quickStat: { flex: 1, borderRadius: 18, backgroundColor: DS.panelRaised, paddingHorizontal: 14, paddingVertical: 14, gap: 6 },
+  quickStatLive: { backgroundColor: DS.liveSoft },
+  quickStatValue: { color: DS.text, fontSize: 24, fontFamily: "Inter_900Black" },
+  quickStatLabel: { color: DS.muted, fontSize: 12, fontFamily: "Inter_600SemiBold" },
+  quickStatLabelLive: { color: DS.live },
+  bodyCopy: { color: DS.muted, fontSize: 14, lineHeight: 21, fontFamily: "Inter_500Medium" },
+  driverList: { gap: 10 },
+  bulletRow: { flexDirection: "row", alignItems: "flex-start", gap: 10 },
+  bulletDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: DS.accent, marginTop: 6 },
+  bulletText: { flex: 1, color: DS.text, fontSize: 14, lineHeight: 20, fontFamily: "Inter_500Medium" },
+  probabilityWrap: { gap: 12 },
+  probabilityBar: { flexDirection: "row", height: 14, borderRadius: 999, overflow: "hidden", backgroundColor: "rgba(255,255,255,0.05)" },
+  probabilityHome: { backgroundColor: DS.home },
+  probabilityDraw: { backgroundColor: DS.muted },
+  probabilityAway: { backgroundColor: DS.away },
+  probabilityLegend: { flexDirection: "row", justifyContent: "space-between", gap: 10 },
+  probabilityText: { color: DS.text, fontSize: 12, fontFamily: "Inter_700Bold" },
+  predictionSummary: { flexDirection: "row", gap: 10 },
+  predictionTile: { flex: 1, backgroundColor: DS.panelRaised, borderRadius: 18, paddingHorizontal: 14, paddingVertical: 14, gap: 6 },
+  predictionAccent: { width: 28, height: 4, borderRadius: 999 },
+  predictionLabel: { color: DS.muted, fontSize: 12, fontFamily: "Inter_600SemiBold" },
+  predictionValue: { color: DS.text, fontSize: 24, fontFamily: "Inter_900Black" },
+  verdictTitle: { color: DS.text, fontSize: 18, lineHeight: 24, fontFamily: "Inter_800ExtraBold" },
+  dualGrid: { gap: 12 },
+  infoCard: { backgroundColor: DS.panelRaised, borderRadius: 20, padding: 14, gap: 8 },
+  infoAccent: { width: 34, height: 4, borderRadius: 999, marginBottom: 4 },
+  infoTitle: { color: DS.text, fontSize: 16, fontFamily: "Inter_800ExtraBold" },
+  infoPrimary: { color: DS.text, fontSize: 30, fontFamily: "Inter_900Black" },
+  infoMeta: { color: DS.muted, fontSize: 13, lineHeight: 18, fontFamily: "Inter_500Medium" },
+  formDots: { flexDirection: "row", gap: 8, flexWrap: "wrap" },
+  formDot: { width: 34, height: 34, borderRadius: 17, alignItems: "center", justifyContent: "center" },
+  formDotWin: { backgroundColor: "rgba(34,197,94,0.18)" },
+  formDotDraw: { backgroundColor: "rgba(148,163,184,0.18)" },
+  formDotLoss: { backgroundColor: "rgba(249,115,22,0.18)" },
+  formDotText: { color: DS.text, fontSize: 12, fontFamily: "Inter_800ExtraBold" },
+  playerHeadline: { color: DS.text, fontSize: 18, fontFamily: "Inter_700Bold" },
+  absenceRow: { paddingVertical: 8, borderTopWidth: 1, borderTopColor: DS.border },
+  absenceName: { color: DS.text, fontSize: 14, fontFamily: "Inter_600SemiBold" },
+  absenceReason: { color: DS.muted, fontSize: 12, lineHeight: 17, fontFamily: "Inter_500Medium" },
+  contextList: { gap: 10 },
+  contextRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 16 },
+  contextLabel: { color: DS.subtle, fontSize: 12, fontFamily: "Inter_700Bold", textTransform: "uppercase" },
+  contextValue: { flex: 1, color: DS.text, fontSize: 14, fontFamily: "Inter_500Medium", textAlign: "right" },
+  metricRow: { gap: 8 },
+  metricHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 },
+  metricValue: { color: DS.text, fontSize: 13, fontFamily: "Inter_800ExtraBold", minWidth: 54 },
+  metricLabel: { flex: 1, color: DS.muted, fontSize: 13, textAlign: "center", fontFamily: "Inter_600SemiBold" },
+  metricBar: { flexDirection: "row", height: 10, borderRadius: 999, overflow: "hidden", backgroundColor: "rgba(255,255,255,0.05)" },
+  metricBarHome: { backgroundColor: DS.home },
+  metricBarAway: { backgroundColor: DS.away },
+  lineupCard: { backgroundColor: DS.panelRaised, borderRadius: 20, padding: 14, gap: 10 },
+  lineupPitch: { borderRadius: 18, padding: 12, backgroundColor: "rgba(34,197,94,0.08)", borderWidth: 1, borderColor: "rgba(34,197,94,0.12)", gap: 8 },
+  lineupRow: { flexDirection: "row", justifyContent: "center", gap: 8, flexWrap: "wrap" },
+  lineupPlayerChip: { minWidth: 82, paddingHorizontal: 10, paddingVertical: 8, borderRadius: 14, backgroundColor: "rgba(5,7,11,0.52)", alignItems: "center", gap: 3 },
+  lineupPlayerName: { color: DS.text, fontSize: 12, fontFamily: "Inter_700Bold" },
+  lineupPlayerMeta: { color: DS.muted, fontSize: 11, fontFamily: "Inter_500Medium" },
+  benchTitle: { color: DS.text, fontSize: 12, fontFamily: "Inter_800ExtraBold", textTransform: "uppercase" },
+  benchList: { color: DS.muted, fontSize: 13, lineHeight: 18, fontFamily: "Inter_500Medium" },
+  filterStrip: { gap: 10, paddingBottom: 4 },
+  filterPill: { paddingHorizontal: 14, paddingVertical: 9, borderRadius: 999, backgroundColor: DS.panelRaised, borderWidth: 1, borderColor: DS.border },
+  filterPillActive: { backgroundColor: DS.accentSoft, borderColor: "rgba(229,9,20,0.3)" },
+  filterPillText: { color: DS.muted, fontSize: 12, fontFamily: "Inter_700Bold" },
+  filterPillTextActive: { color: DS.text },
+  timelineStack: { gap: 10 },
+  timelineRow: { flexDirection: "row", alignItems: "flex-start", gap: 12, paddingVertical: 10, borderTopWidth: 1, borderTopColor: DS.border },
+  timelineMinute: { minWidth: 54, paddingHorizontal: 10, paddingVertical: 8, borderRadius: 999, alignItems: "center" },
+  timelineMinuteText: { color: DS.text, fontSize: 12, fontFamily: "Inter_800ExtraBold" },
+  timelineContent: { flex: 1, gap: 3 },
+  timelineTitle: { color: DS.text, fontSize: 14, fontFamily: "Inter_700Bold" },
+  timelineDescription: { color: DS.muted, fontSize: 13, lineHeight: 18, fontFamily: "Inter_500Medium" },
+  timelineSideDot: { width: 10, height: 10, borderRadius: 5, marginTop: 6 },
+  h2hRow: { paddingVertical: 12, borderTopWidth: 1, borderTopColor: DS.border, gap: 4 },
+  h2hTeams: { color: DS.text, fontSize: 14, lineHeight: 19, fontFamily: "Inter_700Bold" },
+  h2hMeta: { color: DS.muted, fontSize: 12, fontFamily: "Inter_500Medium" },
+  emptyBlock: { borderRadius: 18, padding: 16, backgroundColor: DS.panelRaised, gap: 6 },
+  emptyTitle: { color: DS.text, fontSize: 14, fontFamily: "Inter_700Bold" },
+  emptySubtitle: { color: DS.muted, fontSize: 13, lineHeight: 18, fontFamily: "Inter_500Medium" },
 });

@@ -89,27 +89,6 @@ export default function MoreScreen() {
         icon: "tv-outline",
         route: "/iptv",
       },
-      {
-        id: "anime",
-        title: "Anime",
-        subtitle: "Anime discovery from media categories",
-        icon: "sparkles-outline",
-        route: "/media-category?type=anime",
-      },
-      {
-        id: "manga",
-        title: "Manga",
-        subtitle: "Browse manga category rails",
-        icon: "book-outline",
-        route: "/media-category?type=manga",
-      },
-      {
-        id: "music",
-        title: "Music",
-        subtitle: "Soundtracks and music selections",
-        icon: "musical-notes-outline",
-        route: "/media-category?type=music",
-      },
     ],
     [],
   );
@@ -129,13 +108,6 @@ export default function MoreScreen() {
 
   const userItems = useMemo<MenuItem[]>(
     () => [
-      {
-        id: "premium",
-        title: "Premium",
-        subtitle: "AI analysis + full access from €2.99/week",
-        icon: "diamond-outline",
-        route: "/premium",
-      },
       {
         id: "watchlist",
         title: "Watchlist",
@@ -170,6 +142,13 @@ export default function MoreScreen() {
         subtitle: "Modules, onboarding and preferences",
         icon: "settings-outline",
         route: "/settings",
+      },
+      {
+        id: "premium",
+        title: "Premium",
+        subtitle: "AI analysis + full access from €2.99/week",
+        icon: "diamond-outline",
+        route: "/premium",
       },
       {
         id: "legal",

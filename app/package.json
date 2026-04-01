@@ -1,7 +1,7 @@
 {
   "name": "expo-app",
   "main": "expo-router/entry",
-  "version": "2.6.26",
+  "version": "2.6.27",
   "scripts": {
     "postinstall": "patch-package || true",
     "expo:start:static:build": "npx expo start --no-dev --minify --localhost --port 18081",

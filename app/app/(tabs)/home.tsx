@@ -18,7 +18,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useRenderTelemetry } from "@/hooks/useRenderTelemetry";
 import { NexoraHeader } from "@/components/NexoraHeader";
 import { RealContentCard } from "@/components/RealContentCard";
-import { MatchStatusCard, resolveMatchVisualState } from "@/components/sports/SportCards";
+import { MatchStatusCard, resolveMatchVisualState, type PremiumSportMatch } from "@/components/sports/SportCards";
 import { COLORS } from "@/constants/colors";
 import { ms, s, screenWidth, vs } from "@/lib/responsive";
 import { useNexora } from "@/context/NexoraContext";
@@ -138,7 +138,7 @@ export default function CuratedHomeScreen() {
   const upcomingMatches = useMemo(() => (sportsEnabled ? (sportsQuery.data?.upcoming || []) : []), [sportsEnabled, sportsQuery.data?.upcoming]);
   const finishedMatches = useMemo(() => (sportsEnabled ? (sportsQuery.data?.finished || []) : []), [sportsEnabled, sportsQuery.data?.finished]);
   const curatedSportsPool = useMemo(
-    () => (sportsEnabled ? [...liveMatches, ...upcomingMatches, ...finishedMatches].filter(isRenderableMatch) : []),
+    () => (sportsEnabled ? ([...liveMatches, ...upcomingMatches, ...finishedMatches].filter(isRenderableMatch) as unknown as PremiumSportMatch[]) : []),
     [finishedMatches, liveMatches, sportsEnabled, upcomingMatches],
   );
   const featuredMatch = useMemo(() => {

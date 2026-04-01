@@ -662,7 +662,7 @@ export function VodModuleHub({ initialPane = "home", initialFilter = "all" }: Vo
     <View style={styles.container}>
       <NexoraHeader
         variant="module"
-        title="Films & Series"
+        title="FILMS & SERIES"
         titleColor={COLORS.accent}
         showSearch
         showNotification

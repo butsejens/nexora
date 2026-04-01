@@ -16,5 +16,5 @@ export default function SeriesScreen() {
   );
 
   if (!moviesEnabled) return null;
-  return <VodModuleHub initialPane="search" initialFilter="series" />;
+  return <VodModuleHub initialPane="home" initialFilter="series" />;
 }
