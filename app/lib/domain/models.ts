@@ -186,7 +186,8 @@ export type MatchStatus =
   | "halftime"
   | "finished"
   | "postponed"
-  | "cancelled";
+  | "cancelled"
+  | "delayed";
 
 export interface MatchScore {
   home: number | null;

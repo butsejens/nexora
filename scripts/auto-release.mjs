@@ -138,8 +138,18 @@ function buildApk(expectedVersion, expectedPackage) {
 }
 
 function publishGithubRelease(version) {
-  // Upload APK with a versioned filename so users see "Nexora-v2.6.x.apk" in the release assets
-  run(`gh release create "v${version}" "${releaseApkPath}#Nexora-v${version}.apk" --title "v${version}" --notes "Nexora v${version}" --latest --draft=false --repo butsejens/nexora`);
+  const releaseTag = `v${version}`;
+  const assetName = `nexora-v${version}.apk`;
+
+  // Recreate release for deterministic reruns.
+  run(`gh release delete "${releaseTag}" --yes --repo butsejens/nexora || true`);
+  run(`git push origin ":refs/tags/${releaseTag}" || true`);
+
+  run(`gh release create "${releaseTag}" --title "${releaseTag}" --notes "Nexora ${releaseTag}" --draft --repo butsejens/nexora`);
+  run(`gh release upload "${releaseTag}" "${releaseApkPath}#${assetName}" --clobber --repo butsejens/nexora`);
+
+  // Hard guard: fail if APK asset is missing from the release.
+  run(`gh release view "${releaseTag}" --json assets --jq '.assets[].name' --repo butsejens/nexora | grep -Fx "${assetName}" >/dev/null`);
 }
 
 function main() {

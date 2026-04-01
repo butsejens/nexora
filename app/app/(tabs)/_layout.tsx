@@ -5,15 +5,13 @@ import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { COLORS } from "../../constants/colors";
-import { ms, isSmallDevice } from "../../lib/responsive";
 
-const TAB_ICON_SIZE = ms(20);
-const TAB_BASE_HEIGHT = isSmallDevice ? 56 : 62;
+const TAB_BAR_MIN_HEIGHT = 64;
 
 function TabIcon({ focused, icon }: { focused: boolean; icon: keyof typeof Ionicons.glyphMap }) {
   return (
     <View style={[styles.iconWrap, focused ? styles.iconWrapActive : null]}>
-      <Ionicons name={icon} size={TAB_ICON_SIZE} color={focused ? COLORS.accent : COLORS.textSecondary} />
+      <Ionicons name={icon} size={20} color={focused ? COLORS.accent : COLORS.textSecondary} />
     </View>
   );
 }
@@ -31,15 +29,15 @@ export default function TabLayout() {
         tabBarInactiveTintColor: COLORS.textSecondary,
         tabBarLabelStyle: styles.label,
         tabBarItemStyle: styles.tabItem,
+        tabBarHideOnKeyboard: true,
         tabBarStyle: {
           backgroundColor: COLORS.background,
           borderTopWidth: 1,
           borderTopColor: COLORS.border,
-          height: Platform.OS === "ios"
-            ? TAB_BASE_HEIGHT + Math.max(0, insets.bottom)
-            : TAB_BASE_HEIGHT + 6,
-          paddingBottom: Platform.OS === "ios" ? Math.max(8, insets.bottom) : 10,
-          paddingTop: isSmallDevice ? 6 : 8,
+          minHeight: TAB_BAR_MIN_HEIGHT + Math.max(insets.bottom, Platform.OS === "ios" ? 2 : 0),
+          height: TAB_BAR_MIN_HEIGHT + Math.max(insets.bottom, Platform.OS === "ios" ? 2 : 0),
+          paddingBottom: Math.max(insets.bottom, 8),
+          paddingTop: 8,
           paddingHorizontal: 6,
         },
       }}
@@ -86,9 +84,9 @@ export default function TabLayout() {
 
 const styles = StyleSheet.create({
   iconWrap: {
-    width: ms(34),
-    height: ms(30),
-    borderRadius: 10,
+    width: 34,
+    height: 30,
+    borderRadius: 11,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -97,10 +95,15 @@ const styles = StyleSheet.create({
   },
   label: {
     fontFamily: "Inter_600SemiBold",
-    fontSize: ms(isSmallDevice ? 9 : 10),
-    marginTop: 2,
+    fontSize: 11,
+    lineHeight: 14,
+    marginTop: 1,
   },
   tabItem: {
     minWidth: 0,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingVertical: 2,
+    flex: 1,
   },
 });

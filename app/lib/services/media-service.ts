@@ -283,7 +283,15 @@ export async function getVodHomePayload(): Promise<VodHomePayload> {
     ...(seriesData?.topRated || []).slice(0, 14),
   ], "series");
 
-  const allItems = dedupeModuleItems([...enrichedMovies, ...enrichedSeries]);
+  let allItems = dedupeModuleItems([...enrichedMovies, ...enrichedSeries]);
+
+  // Hard fallback for cases where trending endpoints return empty payloads while
+  // catalog data is still available. This prevents false "Catalog unavailable"
+  // empty states on flaky provider responses.
+  if (allItems.length === 0) {
+    const fallbackCatalog = await getVodCatalogChunk(null);
+    allItems = dedupeModuleItems(fallbackCatalog.items || []);
+  }
 
   return {
     featured: pickFeaturedItem(allItems),
@@ -341,7 +349,34 @@ export async function getVodCollections(): Promise<VodCollectionPayload[]> {
     })
   );
 
-  return results.filter((item) => item.itemCount > 2);
+  const curated = results.filter((item) => item.itemCount > 2);
+  if (curated.length > 0) return curated;
+
+  // Secondary fallback: synthesize collection rails from catalog slices so the
+  // home/discovery panes can still render useful content when curated endpoints
+  // are temporarily empty.
+  const fallbackCatalog = await getVodCatalogChunk(null);
+  const items = fallbackCatalog.items || [];
+  if (!items.length) return [];
+
+  return [
+    {
+      id: "fallback-trending",
+      name: "Trending",
+      itemCount: items.slice(0, 30).length,
+      items: items.slice(0, 30),
+      poster: items[0]?.poster || null,
+      backdrop: items[0]?.backdrop || null,
+    },
+    {
+      id: "fallback-top-rated",
+      name: "Top Rated",
+      itemCount: items.slice(30, 60).length,
+      items: [...items].sort((a, b) => Number(b.rating || b.imdb || 0) - Number(a.rating || a.imdb || 0)).slice(0, 30),
+      poster: items[1]?.poster || items[0]?.poster || null,
+      backdrop: items[1]?.backdrop || items[0]?.backdrop || null,
+    },
+  ].filter((entry) => entry.items.length > 0);
 }
 
 export async function getVodCollectionById(id: string) {

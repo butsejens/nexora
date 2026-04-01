@@ -680,12 +680,12 @@ export function VodModuleHub({ initialPane = "home", initialFilter = "all" }: Vo
           </View>
         ) : null}
 
-        {/* Empty / error state — API returned but with no content */}
-        {activePane === "home" && !homeQuery.isLoading && homeSections.length === 0 && collections.length === 0 ? (
+        {/* Empty / error state — only when all sources are exhausted */}
+        {activePane === "home" && !homeQuery.isLoading && !catalogChunkOneQuery.isLoading && homeSections.length === 0 && collections.length === 0 && allItems.length === 0 ? (
           <View style={styles.emptyWrap}>
             <Ionicons name="film-outline" size={52} color={COLORS.accent} style={{ opacity: 0.5 }} />
             <Text style={styles.emptyTitle}>Catalog unavailable</Text>
-            <Text style={styles.emptyMessage}>Could not reach the server. Check your connection and try again.</Text>
+            <Text style={styles.emptyMessage}>No media data was returned from home, collections, studios, or catalog endpoints.</Text>
             <TouchableOpacity
               style={styles.retryButton}
               activeOpacity={0.8}
@@ -693,6 +693,10 @@ export function VodModuleHub({ initialPane = "home", initialFilter = "all" }: Vo
                 homeQuery.refetch();
                 curatedCollectionsQuery.refetch();
                 curatedStudiosQuery.refetch();
+                catalogChunkOneQuery.refetch();
+                catalogChunkTwoQuery.refetch();
+                catalogChunkThreeQuery.refetch();
+                catalogChunkFourQuery.refetch();
               }}
             >
               <Ionicons name="refresh-outline" size={15} color="#fff" />

@@ -136,25 +136,33 @@ jobs:
           retention-days: 30
           if-no-files-found: error
 
-      - name: Create or update GitHub Release with APK
+      - name: Create or update GitHub Draft Release with APK
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           VERSION="${{ steps.version.outputs.version }}"
           APK="android/app/build/outputs/apk/release/nexora-v${VERSION}.apk"
 
-          echo "Publishing release v${VERSION} with APK: $APK"
+          echo "Publishing draft release v${VERSION} with APK: $APK"
 
           # Remove existing release + tag if present (handles re-runs for the same version)
           gh release delete "v${VERSION}" --yes 2>/dev/null || true
           git push origin ":refs/tags/v${VERSION}" 2>/dev/null || true
 
-          # Create the release and attach the APK
+          # Create the draft release first.
           gh release create "v${VERSION}" \
-            "$APK" \
             --title "Nexora v${VERSION}" \
             --notes "Android APK — commit ${{ github.sha }} (branch: ${{ github.ref_name }})" \
-            --latest \
+            --draft \
             --repo "${{ github.repository }}"
+
+          # Upload APK as an explicit asset (clobber handles reruns safely).
+          gh release upload "v${VERSION}" \
+            "$APK" \
+            --clobber \
+            --repo "${{ github.repository }}"
+
+          # Fail fast if APK asset is missing from the release.
+          gh release view "v${VERSION}" --json assets --jq '.assets[].name' --repo "${{ github.repository }}" | grep -Fx "nexora-v${VERSION}.apk" >/dev/null
 
           echo "Release published: https://github.com/${{ github.repository }}/releases/tag/v${VERSION}"

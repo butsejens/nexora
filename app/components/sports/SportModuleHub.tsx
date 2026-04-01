@@ -19,12 +19,14 @@ import { useRenderTelemetry } from "@/hooks/useRenderTelemetry";
 import { NexoraHeader } from "@/components/NexoraHeader";
 import { useOnboardingStore } from "@/store/onboarding-store";
 import { useTranslation } from "@/lib/useTranslation";
-import { buildSportLiveQuery, buildSportScheduleQuery } from "@/services/realtime-engine";
+import { classifyRelativeDay, getMatchdayYmd, shiftYmd } from "@/lib/date/matchday";
+import { useExploreMatches, useLiveMatches, useMatchdayMatches } from "@/features/sports/hooks/useSportHomeFeed";
 import { useFollowState } from "@/context/UserStateContext";
 import {
   LiveMatchCard,
   UpcomingMatchCard,
-  FinishedMatchCard,
+  MatchStatusCard,
+  resolveMatchVisualState,
   SkeletonMatchCard,
 } from "@/components/sports/SportCards";
 import { resolveMatchCompetitionLabel, resolveMatchEspnLeagueCode } from "@/lib/sports-competition";
@@ -36,14 +38,6 @@ import { getCompetitionTeams, getCompetitionStandings } from "@/lib/services/spo
 // ═══════════════════════════════════════════════════════════════════════════════
 
 type SportPane = "explore" | "live" | "matchday" | "insights" | "teams" | "standings";
-
-type SportsPayload = {
-  date?: string;
-  live?: any[];
-  upcoming?: any[];
-  finished?: any[];
-  error?: string;
-};
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // DESIGN SYSTEM
@@ -100,13 +94,16 @@ function toSportCardMatch(match: any) {
   return match;
 }
 
-function toSportCardPayload(payload: SportsPayload): SportsPayload {
-  return {
-    ...payload,
-    live: Array.isArray(payload?.live) ? payload.live.map(toSportCardMatch) : [],
-    upcoming: Array.isArray(payload?.upcoming) ? payload.upcoming.map(toSportCardMatch) : [],
-    finished: Array.isArray(payload?.finished) ? payload.finished.map(toSportCardMatch) : [],
-  };
+function parseDateLocal(dateStr: string) {
+  const [y, m, d] = dateStr.split("-").map(Number);
+  return new Date(y, m - 1, d);
+}
+
+function isRenderableMatch(match: any): boolean {
+  if (!match) return false;
+  const home = getTeamName(match?.homeTeam, "");
+  const away = getTeamName(match?.awayTeam, "");
+  return Boolean(home && away);
 }
 
 /**
@@ -201,10 +198,7 @@ export function SportModuleHub({ initialPane = "explore" }: SportModuleHubProps)
 
   // ─ State ─────────────────────────────────────────────────────────────────────
   const [activePane, setActivePane] = useState<SportPane>(initialPane);
-  const [selectedDate, setSelectedDate] = useState(() => {
-    const d = new Date();
-    return d.toISOString().slice(0, 10);
-  });
+  const [selectedDate, setSelectedDate] = useState(() => getMatchdayYmd());
   const [refreshing, setRefreshing] = useState(false);
 
   // ─ Data Queries ──────────────────────────────────────────────────────────────
@@ -214,15 +208,9 @@ export function SportModuleHub({ initialPane = "explore" }: SportModuleHubProps)
   const { followedTeams } = useFollowState();
   const [matchInteractions, setMatchInteractions] = useState<any>(null);
 
-  const liveQuery = useQuery({
-    ...buildSportLiveQuery(sportsEnabled),
-    select: toSportCardPayload,
-  });
-
-  const todayQuery = useQuery({
-    ...buildSportScheduleQuery(selectedDate, sportsEnabled),
-    select: toSportCardPayload,
-  });
+  const liveQuery = useLiveMatches(sportsEnabled);
+  const todayQuery = useMatchdayMatches(selectedDate, sportsEnabled);
+  const exploreQuery = useExploreMatches(selectedDate, sportsEnabled);
 
   useEffect(() => {
     let mounted = true;
@@ -235,8 +223,8 @@ export function SportModuleHub({ initialPane = "explore" }: SportModuleHubProps)
   }, []);
 
   const allMatches = useMemo(
-    () => [...(liveQuery.data?.live || []), ...(todayQuery.data?.upcoming || [])],
-    [liveQuery.data?.live, todayQuery.data?.upcoming],
+    () => [...(liveQuery.live || []), ...(exploreQuery.matches || [])].map(toSportCardMatch),
+    [liveQuery.live, exploreQuery.matches],
   );
   const favoriteTeamNames = useMemo(
     () => [
@@ -270,11 +258,12 @@ export function SportModuleHub({ initialPane = "explore" }: SportModuleHubProps)
       await Promise.all([
         liveQuery.refetch(),
         todayQuery.refetch(),
+        exploreQuery.refetch(),
       ]);
     } finally {
       setRefreshing(false);
     }
-  }, [liveQuery, todayQuery]);
+  }, [exploreQuery, liveQuery, todayQuery]);
 
   if (!sportsEnabled) {
     return (
@@ -283,7 +272,6 @@ export function SportModuleHub({ initialPane = "explore" }: SportModuleHubProps)
           variant="module"
           title="SPORT"
           titleColor={DS.accent}
-          compact
           showSearch
           showNotification
           showFavorites
@@ -318,7 +306,6 @@ export function SportModuleHub({ initialPane = "explore" }: SportModuleHubProps)
           variant="module"
           title="SPORT"
           titleColor={DS.accent}
-          compact
           showSearch
           showNotification
           showFavorites
@@ -378,25 +365,30 @@ export function SportModuleHub({ initialPane = "explore" }: SportModuleHubProps)
       >
         {activePane === "explore" && (
           <ExplorePane
-            liveMatches={liveQuery.data?.live || []}
-            upcomingMatches={todayQuery.data?.upcoming || []}
+            liveMatches={(liveQuery.live || []).map(toSportCardMatch)}
+            upcomingMatches={(todayQuery.upcoming || []).map(toSportCardMatch)}
             rankedFeed={rankedFeed}
             isLoading={Boolean(liveQuery.isLoading || todayQuery.isLoading)}
             onOpenMatch={openMatch}
             onViewSchedule={() => setActivePane("matchday")}
           />
         )}
-        {activePane === "live" && <LivePane matches={liveQuery.data?.live || []} onOpenMatch={openMatch} />}
+        {activePane === "live" && <LivePane matches={(liveQuery.live || []).map(toSportCardMatch)} onOpenMatch={openMatch} />}
         {activePane === "matchday" && (
           <MatchdayPane
             matches={[
-              ...(todayQuery.data?.live || []),
-              ...(todayQuery.data?.upcoming || []),
-              ...(todayQuery.data?.finished || []),
-            ]}
+              ...(todayQuery.live || []),
+              ...(todayQuery.upcoming || []),
+              ...(todayQuery.finished || []),
+            ].map(toSportCardMatch)}
             onOpenMatch={openMatch}
             selectedDate={selectedDate}
             onDateChange={setSelectedDate}
+            isLoading={Boolean(todayQuery.isLoading)}
+            isError={Boolean(todayQuery.isError)}
+            onRetry={() => {
+              void todayQuery.refetch();
+            }}
           />
         )}
         {activePane === "insights" && <InsightsPane rankedFeed={rankedFeed} onOpenMatch={openMatch} />}
@@ -614,94 +606,201 @@ interface MatchdayPaneProps {
   onOpenMatch: (match: any) => void;
   selectedDate: string;
   onDateChange: (date: string) => void;
+  isLoading: boolean;
+  isError: boolean;
+  onRetry: () => void;
 }
 
-function MatchdayPane({ matches, onOpenMatch, selectedDate, onDateChange }: MatchdayPaneProps) {
+function MatchdayPane({
+  matches,
+  onOpenMatch,
+  selectedDate,
+  onDateChange,
+  isLoading,
+  isError,
+  onRetry,
+}: MatchdayPaneProps) {
   const { t } = useTranslation();
 
-  // Parse date string as LOCAL date (avoids UTC-offset shifting the day)
-  const parseDateLocal = (dateStr: string) => {
-    const [y, m, d] = dateStr.split("-").map(Number);
-    return new Date(y, m - 1, d);
-  };
-
-  const formatDateStr = (date: Date) =>
-    `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
-
   const goToPrevDay = () => {
-    const d = parseDateLocal(selectedDate);
-    d.setDate(d.getDate() - 1);
-    onDateChange(formatDateStr(d));
+    onDateChange(shiftYmd(selectedDate, -1));
   };
 
   const goToNextDay = () => {
-    const d = parseDateLocal(selectedDate);
-    d.setDate(d.getDate() + 1);
-    onDateChange(formatDateStr(d));
+    onDateChange(shiftYmd(selectedDate, 1));
   };
+
+  const goToToday = () => {
+    onDateChange(getMatchdayYmd());
+  };
+
+  const renderableMatches = useMemo(
+    () => (Array.isArray(matches) ? matches.filter(isRenderableMatch) : []),
+    [matches],
+  );
+
+  const grouped = useMemo(() => {
+    const live: any[] = [];
+    const upcoming: any[] = [];
+    const finished: any[] = [];
+    const postponedCancelled: any[] = [];
+
+    for (const match of renderableMatches) {
+      const visual = resolveMatchVisualState(match);
+      if (visual === "live") {
+        live.push(match);
+        continue;
+      }
+      if (visual === "upcoming") {
+        upcoming.push(match);
+        continue;
+      }
+      if (visual === "finished") {
+        finished.push(match);
+        continue;
+      }
+      postponedCancelled.push(match);
+    }
+
+    return { live, upcoming, finished, postponedCancelled };
+  }, [renderableMatches]);
 
   const formattedDate = (() => {
     const target = parseDateLocal(selectedDate);
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    target.setHours(0, 0, 0, 0);
-    const diff = Math.round((target.getTime() - today.getTime()) / (24 * 60 * 60 * 1000));
-    if (diff === 0) return "Today";
-    if (diff === 1) return "Tomorrow";
-    if (diff === -1) return "Yesterday";
+    const relative = classifyRelativeDay(selectedDate, getMatchdayYmd());
+    if (relative === "today") return "Today";
+    if (relative === "tomorrow") return "Tomorrow";
+    if (relative === "yesterday") return "Yesterday";
     return new Intl.DateTimeFormat("nl-BE", { weekday: "short", day: "numeric", month: "short" }).format(target);
   })();
 
+  const isToday = selectedDate === getMatchdayYmd();
+  const totalMatches = renderableMatches.length;
+
   return (
     <View style={{ paddingBottom: 40 }}>
-      {/* Date Navigation */}
       <View style={styles.dateNavRow}>
         <TouchableOpacity style={styles.dateNavBtn} onPress={goToPrevDay} activeOpacity={0.7}>
           <Ionicons name="chevron-back" size={20} color={DS.text} />
         </TouchableOpacity>
-        <Text style={styles.dateNavLabel}>{formattedDate}</Text>
+        <View style={styles.dateNavCenter}>
+          <Text style={styles.dateNavLabel}>{formattedDate}</Text>
+          <Text style={styles.dateNavMeta}>{selectedDate}</Text>
+        </View>
         <TouchableOpacity style={styles.dateNavBtn} onPress={goToNextDay} activeOpacity={0.7}>
           <Ionicons name="chevron-forward" size={20} color={DS.text} />
         </TouchableOpacity>
       </View>
-      {!matches || matches.length === 0 ? (
-        <EmptyState icon="calendar-outline" title={t("sportsHome.noUpcomingMatches")} />
-      ) : (
+
+      <View style={styles.matchdayTopActions}>
+        <TouchableOpacity
+          style={[styles.todayBtn, isToday && styles.todayBtnActive]}
+          onPress={goToToday}
+          activeOpacity={0.8}
+        >
+          <Text style={[styles.todayBtnText, isToday && styles.todayBtnTextActive]}>Today</Text>
+        </TouchableOpacity>
+        <View style={styles.matchdayCountPill}>
+          <Text style={styles.matchdayCountText}>{totalMatches} matches</Text>
+        </View>
+      </View>
+
+      <View style={styles.matchdayStatusGrid}>
+        <StatusCounter label="Live" value={grouped.live.length} state="live" />
+        <StatusCounter label="Upcoming" value={grouped.upcoming.length} state="upcoming" />
+        <StatusCounter label="Finished" value={grouped.finished.length} state="finished" />
+        <StatusCounter label="Post/Can" value={grouped.postponedCancelled.length} state="postponed" />
+      </View>
+
+      {isLoading ? (
+        <View style={styles.matchList}>
+          <SkeletonMatchCard />
+          <SkeletonMatchCard />
+          <SkeletonMatchCard />
+        </View>
+      ) : null}
+
+      {!isLoading && isError ? (
+        <EmptyState
+          icon="alert-circle-outline"
+          title="Matchday data kon niet geladen worden"
+          subtitle="Check je verbinding of kies een andere datum."
+          actions={[
+            { label: "Retry", onPress: onRetry },
+            { label: "Today", onPress: goToToday, secondary: true },
+          ]}
+        />
+      ) : null}
+
+      {!isLoading && !isError && totalMatches === 0 ? (
+        <EmptyState
+          icon="calendar-outline"
+          title={t("sportsHome.noUpcomingMatches")}
+          subtitle="Geen wedstrijden op deze datum. Probeer een dag eerder of later."
+          actions={[
+            { label: "Vorige dag", onPress: goToPrevDay, secondary: true },
+            { label: "Volgende dag", onPress: goToNextDay, secondary: true },
+            { label: "Today", onPress: goToToday },
+          ]}
+        />
+      ) : null}
+
+      {!isLoading && !isError && totalMatches > 0 ? (
         <>
-          <SectionTitle title={t("sportsHome.matchday")} count={matches.length} />
+          <SectionTitle title={t("sportsHome.matchday")} count={totalMatches} />
+
+          {grouped.live.length > 0 ? (
+            <>
+              <SectionTitle title="Live Now" count={grouped.live.length} />
+              <View style={styles.matchList}>
+                {grouped.live.map((match, idx) => (
+                  <MatchStatusCard key={`${match.id}-${idx}-live`} match={match} onPress={() => onOpenMatch(match)} />
+                ))}
+              </View>
+            </>
+          ) : null}
+
+          {grouped.upcoming.length > 0 ? (
+            <>
+              <SectionTitle title="Upcoming" count={grouped.upcoming.length} />
+              <View style={styles.matchList}>
+                {grouped.upcoming.map((match, idx) => (
+                  <MatchStatusCard key={`${match.id}-${idx}-up`} match={match} onPress={() => onOpenMatch(match)} />
+                ))}
+              </View>
+            </>
+          ) : null}
+
+          {grouped.finished.length > 0 ? (
+            <>
+              <SectionTitle title="Finished" count={grouped.finished.length} />
+              <View style={styles.matchList}>
+                {grouped.finished.map((match, idx) => (
+                  <MatchStatusCard key={`${match.id}-${idx}-ft`} match={match} onPress={() => onOpenMatch(match)} />
+                ))}
+              </View>
+            </>
+          ) : null}
+
+          {grouped.postponedCancelled.length > 0 ? (
+            <>
+              <SectionTitle title="Schedule Updates" count={grouped.postponedCancelled.length} />
+              <View style={styles.matchList}>
+                {grouped.postponedCancelled.map((match, idx) => (
+                  <MatchStatusCard key={`${match.id}-${idx}-pc`} match={match} onPress={() => onOpenMatch(match)} />
+                ))}
+              </View>
+            </>
+          ) : null}
+
           <View style={styles.matchList}>
-            {matches.map((match, idx) => {
-              const isLive = match?.status === "live" || (match?.minute != null && match?.minute !== "");
-              const isFinished = match?.status === "finished" || match?.status === "ft" || match?.status === "post";
-              if (isLive) {
-                return (
-                  <LiveMatchCard
-                    key={`${match.id}-${idx}`}
-                    match={match}
-                    onPress={() => onOpenMatch(match)}
-                  />
-                );
-              }
-              if (isFinished) {
-                return (
-                  <FinishedMatchCard
-                    key={`${match.id}-${idx}`}
-                    match={match}
-                    onPress={() => onOpenMatch(match)}
-                  />
-                );
-              }
-              return (
-                <UpcomingMatchCard
-                  key={`${match.id}-${idx}`}
-                  match={match}
-                  onPress={() => onOpenMatch(match)}
-                />
-              );
-            })}
+            <TouchableOpacity style={styles.viewAllButton} onPress={onRetry} activeOpacity={0.7}>
+              <Ionicons name="refresh-outline" size={14} color={DS.accent} />
+              <Text style={styles.viewAllText}>Refresh Matchday</Text>
+            </TouchableOpacity>
           </View>
         </>
-      )}
+      ) : null}
     </View>
   );
 }
@@ -897,13 +996,47 @@ function SectionTitle({ title, count }: SectionTitleProps) {
 interface EmptyStateProps {
   icon: string;
   title: string;
+  subtitle?: string;
+  actions?: { label: string; onPress: () => void; secondary?: boolean }[];
 }
 
-function EmptyState({ icon, title }: EmptyStateProps) {
+function EmptyState({ icon, title, subtitle, actions = [] }: EmptyStateProps) {
   return (
     <View style={styles.emptyState}>
       <Ionicons name={icon as any} size={48} color={DS.muted} />
       <Text style={styles.emptyStateText}>{title}</Text>
+      {subtitle ? <Text style={styles.emptyStateSubtext}>{subtitle}</Text> : null}
+      {actions.length > 0 ? (
+        <View style={styles.emptyStateActions}>
+          {actions.map((action) => (
+            <TouchableOpacity
+              key={action.label}
+              onPress={action.onPress}
+              style={[styles.emptyStateBtn, action.secondary && styles.emptyStateBtnSecondary]}
+              activeOpacity={0.85}
+            >
+              <Text style={[styles.emptyStateBtnText, action.secondary && styles.emptyStateBtnTextSecondary]}>{action.label}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+function StatusCounter({ label, value, state }: { label: string; value: number; state: "live" | "upcoming" | "finished" | "postponed" }) {
+  const color = state === "live"
+    ? "#22C55E"
+    : state === "upcoming"
+      ? "#93A6BE"
+      : state === "finished"
+        ? "#9CA3AF"
+        : "#C084FC";
+
+  return (
+    <View style={[styles.matchdayStatCard, { borderColor: `${color}40` }]}>
+      <Text style={[styles.matchdayStatValue, { color }]}>{value}</Text>
+      <Text style={styles.matchdayStatLabel}>{label}</Text>
     </View>
   );
 }
@@ -1121,12 +1254,49 @@ const styles = StyleSheet.create({
     marginTop: 60,
     alignItems: "center",
     gap: 12,
+    paddingHorizontal: 20,
   },
   emptyStateText: {
-    fontSize: 14,
-    fontWeight: "500",
+    fontSize: 16,
+    fontWeight: "700",
+    color: DS.text,
+    fontFamily: "Inter_700Bold",
+    textAlign: "center",
+  },
+  emptyStateSubtext: {
+    fontSize: 13,
     color: DS.muted,
     fontFamily: "Inter_500Medium",
+    textAlign: "center",
+    lineHeight: 18,
+    maxWidth: 320,
+  },
+  emptyStateActions: {
+    marginTop: 8,
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "center",
+    gap: 8,
+  },
+  emptyStateBtn: {
+    borderRadius: 999,
+    backgroundColor: "rgba(229,9,20,0.18)",
+    borderWidth: 1,
+    borderColor: "rgba(229,9,20,0.35)",
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+  },
+  emptyStateBtnSecondary: {
+    backgroundColor: DS.elevated,
+    borderColor: DS.border,
+  },
+  emptyStateBtnText: {
+    color: DS.accent,
+    fontFamily: "Inter_700Bold",
+    fontSize: 12,
+  },
+  emptyStateBtnTextSecondary: {
+    color: DS.text,
   },
   placeholderText: {
     fontSize: 14,
@@ -1362,10 +1532,89 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+  dateNavCenter: {
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 2,
+  },
   dateNavLabel: {
     fontSize: 16,
     fontWeight: "700",
     color: DS.text,
     fontFamily: "Inter_700Bold",
+  },
+  dateNavMeta: {
+    fontSize: 11,
+    color: DS.muted,
+    fontFamily: "Inter_500Medium",
+  },
+  matchdayTopActions: {
+    paddingHorizontal: 18,
+    paddingTop: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
+  },
+  todayBtn: {
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: DS.border,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    backgroundColor: DS.elevated,
+  },
+  todayBtnActive: {
+    borderColor: "rgba(229,9,20,0.40)",
+    backgroundColor: "rgba(229,9,20,0.12)",
+  },
+  todayBtnText: {
+    fontFamily: "Inter_700Bold",
+    color: DS.text,
+    fontSize: 12,
+  },
+  todayBtnTextActive: {
+    color: DS.accent,
+  },
+  matchdayCountPill: {
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: DS.border,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    backgroundColor: DS.card,
+  },
+  matchdayCountText: {
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 11,
+    color: DS.muted,
+  },
+  matchdayStatusGrid: {
+    marginTop: 10,
+    marginBottom: 8,
+    paddingHorizontal: 18,
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  matchdayStatCard: {
+    flexGrow: 1,
+    minWidth: "46%",
+    borderRadius: 12,
+    borderWidth: 1,
+    backgroundColor: DS.card,
+    paddingHorizontal: 10,
+    paddingVertical: 10,
+    alignItems: "center",
+    gap: 2,
+  },
+  matchdayStatValue: {
+    fontFamily: "Inter_800ExtraBold",
+    fontSize: 20,
+  },
+  matchdayStatLabel: {
+    fontFamily: "Inter_500Medium",
+    fontSize: 11,
+    color: DS.muted,
   },
 });

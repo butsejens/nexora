@@ -1,5 +1,5 @@
 import React, { useMemo } from "react";
-import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { ScrollView, StyleSheet, Text, TouchableOpacity, View, useWindowDimensions } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -65,6 +65,8 @@ function Section({ title, items }: { title: string; items: MenuItem[] }) {
 
 export default function MoreScreen() {
   const insets = useSafeAreaInsets();
+  const { width } = useWindowDimensions();
+  const horizontalPadding = Math.max(12, Math.min(18, Math.round(width * 0.04)));
   const sportsEnabled = useOnboardingStore((s) => s.sportsEnabled);
   const moviesEnabled = useOnboardingStore((s) => s.moviesEnabled);
   const iptvEnabled = useOnboardingStore((s) => s.iptvEnabled);
@@ -189,7 +191,6 @@ export default function MoreScreen() {
         variant="module"
         title="MENU"
         titleColor={P.accent}
-        compact
         showSearch={false}
       />
 
@@ -198,7 +199,7 @@ export default function MoreScreen() {
         contentContainerStyle={{
           paddingTop: 16,
           paddingBottom: insets.bottom + 98,
-          paddingHorizontal: 16,
+          paddingHorizontal: horizontalPadding,
         }}
       >
         <Section

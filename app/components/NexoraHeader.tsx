@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, Platform, useWindowDimensions } from "react-nat
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
-import { BlurView } from "expo-blur";
+
 import { COLORS } from "@/constants/colors";
 import { ScalePress } from "@/components/ui/ScalePress";
 import { useUiStore } from "@/store/uiStore";
@@ -51,11 +51,9 @@ export function NexoraHeader({
 }: Props) {
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
-  const isTV = width >= 1200;
-  const isTablet = width >= 760;
-  const containerMax = isTV ? 1320 : 960;
-  const isIOS = Platform.OS === "ios";
   const topPad = Platform.OS === "web" ? 0 : insets.top;
+  const isNarrow = width < 360;
+  const isTablet = width >= 760;
   const isModuleVariant = variant === "module";
   const openMenu = useUiStore((state) => state.openNexoraMenu);
 
@@ -68,251 +66,190 @@ export function NexoraHeader({
   const handleMenu = () => openMenu();
 
   const moduleTitleColor = titleColor ?? COLORS.accent;
-  const iconSize = compact ? 17 : isTablet ? 20 : 18;
-  const actionSize = compact ? 34 : isTablet ? 40 : 36;
-
-  const brandWordmark = (
-    <Text
-      style={[
-        styles.brandWordmark,
-        compact ? styles.brandWordmarkCompact : null,
-        isModuleVariant ? styles.brandWordmarkModule : null,
-      ]}
-    >
-      NEXORA
-    </Text>
-  );
-
-  const backButton = (
-    <ScalePress style={[styles.iconBtn, { width: actionSize, height: actionSize, borderRadius: actionSize / 2 }]} onPress={handleBack}>
-      <Ionicons name="chevron-back" size={iconSize} color={COLORS.textSecondary} />
-    </ScalePress>
-  );
-
-  const content = compact ? (
-    <View style={styles.contentRow}>
-      {showBack ? backButton : null}
-      <View style={styles.brandAreaCompact}>
-        {brandWordmark}
-        {title ? (
-          <Text style={[styles.sectionTitleCompact, { color: isModuleVariant ? moduleTitleColor : (titleColor ?? COLORS.textSecondary) }]}>
-            {title}
-          </Text>
-        ) : null}
-      </View>
-
-      <View style={styles.actions}>
-        {rightElement}
-        {showMenu && (
-          <ScalePress style={[styles.iconBtn, { width: actionSize, height: actionSize, borderRadius: actionSize / 2 }]} onPress={handleMenu}>
-            <Ionicons name="menu" size={iconSize} color={COLORS.textSecondary} />
-          </ScalePress>
-        )}
-        {showSearch && (
-          <ScalePress style={[styles.iconBtn, { width: actionSize, height: actionSize, borderRadius: actionSize / 2 }]} onPress={handleSearch}>
-            <Ionicons name="search" size={iconSize} color={COLORS.textSecondary} />
-          </ScalePress>
-        )}
-        {showNotification && (
-          <ScalePress style={[styles.iconBtn, { width: actionSize, height: actionSize, borderRadius: actionSize / 2 }]} onPress={handleNotification}>
-            <Ionicons name="notifications-outline" size={iconSize} color={COLORS.textSecondary} />
-          </ScalePress>
-        )}
-        {showFavorites && (
-          <ScalePress style={[styles.iconBtn, { width: actionSize, height: actionSize, borderRadius: actionSize / 2 }]} onPress={handleFavorites}>
-            <Ionicons name="heart-outline" size={iconSize} color={COLORS.textSecondary} />
-          </ScalePress>
-        )}
-        {showProfile && (
-          <ScalePress style={[styles.profileBtn, { width: actionSize, height: actionSize, borderRadius: actionSize / 2 }]} onPress={handleProfile}>
-            <Ionicons name="person" size={compact ? 16 : 17} color={COLORS.accent} />
-          </ScalePress>
-        )}
-      </View>
-    </View>
-  ) : (
-    <View style={styles.contentRow}>
-      {showBack ? backButton : null}
-      <View style={styles.brandArea}>
-        <View style={styles.brandTopRow}>
-          {brandWordmark}
-          {badgeLabel ? (
-            <View
-              style={[
-                styles.headerBadge,
-                badgeTone === "live" ? styles.headerBadgeLive : null,
-                badgeTone === "accent" ? styles.headerBadgeAccent : null,
-              ]}
-            >
-              <Text style={[styles.headerBadgeText, badgeTone === "live" ? styles.headerBadgeTextLive : null]} numberOfLines={1}>
-                {badgeLabel}
-              </Text>
-            </View>
-          ) : null}
-        </View>
-        {title ? (
-          <Text style={[styles.sectionTitle, { color: isModuleVariant ? moduleTitleColor : (titleColor ?? COLORS.textSecondary) }]}>
-            {title}
-          </Text>
-        ) : null}
-      </View>
-
-      <View style={styles.actions}>
-        {rightElement}
-        {showMenu && (
-          <ScalePress style={[styles.iconBtn, { width: actionSize, height: actionSize, borderRadius: actionSize / 2 }]} onPress={handleMenu}>
-            <Ionicons name="menu" size={iconSize} color={COLORS.textSecondary} />
-          </ScalePress>
-        )}
-        {showSearch && (
-          <ScalePress style={[styles.iconBtn, { width: actionSize, height: actionSize, borderRadius: actionSize / 2 }]} onPress={handleSearch}>
-            <Ionicons name="search" size={iconSize} color={COLORS.textSecondary} />
-          </ScalePress>
-        )}
-        {showNotification && (
-          <ScalePress style={[styles.iconBtn, { width: actionSize, height: actionSize, borderRadius: actionSize / 2 }]} onPress={handleNotification}>
-            <Ionicons name="notifications-outline" size={iconSize} color={COLORS.textSecondary} />
-          </ScalePress>
-        )}
-        {showFavorites && (
-          <ScalePress style={[styles.iconBtn, { width: actionSize, height: actionSize, borderRadius: actionSize / 2 }]} onPress={handleFavorites}>
-            <Ionicons name="heart-outline" size={iconSize} color={COLORS.textSecondary} />
-          </ScalePress>
-        )}
-        {showProfile && (
-          <ScalePress style={[styles.profileBtn, { width: actionSize, height: actionSize, borderRadius: actionSize / 2 }]} onPress={handleProfile}>
-            <Ionicons name="person" size={17} color={COLORS.accent} />
-          </ScalePress>
-        )}
-      </View>
-    </View>
-  );
+  const actionSize = isNarrow ? 32 : compact ? 34 : isTablet ? 40 : 36;
+  const iconSize = isNarrow ? 17 : compact ? 18 : isTablet ? 20 : 18;
+  const hasTitle = Boolean(title && String(title).trim().length > 0);
+  const shouldStackLabel = hasTitle && (isNarrow || String(title).trim().length > 10);
 
   return (
     <View
       style={[
         styles.container,
-        isModuleVariant && styles.containerModule,
-        compact && styles.containerCompact,
-        { paddingTop: compact ? topPad + 2 : topPad + 5, maxWidth: containerMax, alignSelf: "center", width: "100%" },
+        isModuleVariant ? styles.containerModule : null,
+        { paddingTop: topPad + (compact ? 6 : 8) },
       ]}
     >
-      {isIOS && !isModuleVariant ? (
-        <>
-          <BlurView intensity={50} tint="dark" style={styles.bgBlur} />
-          {content}
-        </>
-      ) : (
-        <View style={styles.flatWrap}>{content}</View>
-      )}
+      <View style={styles.row}>
+        {showBack ? (
+          <ScalePress style={[styles.iconBtn, styles.leadingAction, { width: actionSize, height: actionSize, borderRadius: actionSize / 2 }]} onPress={handleBack}>
+            <Ionicons name="chevron-back" size={iconSize} color={COLORS.textSecondary} />
+          </ScalePress>
+        ) : null}
+
+        <View style={styles.brandBlock}>
+          {shouldStackLabel ? (
+            <View style={styles.brandStacked}>
+              <Text style={[styles.wordmark, compact ? styles.wordmarkCompact : null]}>NEXORA</Text>
+              <Text
+                style={[
+                  styles.moduleLabel,
+                  styles.moduleLabelStacked,
+                  compact ? styles.moduleLabelCompact : null,
+                  { color: isModuleVariant ? moduleTitleColor : (titleColor ?? COLORS.textSecondary) },
+                ]}
+                numberOfLines={1}
+                ellipsizeMode="tail"
+              >
+                {String(title)}
+              </Text>
+            </View>
+          ) : (
+            <View style={styles.brandLine}>
+              <Text style={[styles.wordmark, compact ? styles.wordmarkCompact : null]}>NEXORA</Text>
+              {hasTitle ? (
+                <Text
+                  style={[
+                    styles.moduleLabel,
+                    compact ? styles.moduleLabelCompact : null,
+                    { color: isModuleVariant ? moduleTitleColor : (titleColor ?? COLORS.textSecondary) },
+                  ]}
+                  numberOfLines={1}
+                  ellipsizeMode="tail"
+                >
+                  {String(title)}
+                </Text>
+              ) : null}
+            </View>
+          )}
+
+          {badgeLabel ? (
+            <Text
+              style={[
+                styles.badge,
+                badgeTone === "live" ? styles.badgeLive : null,
+                badgeTone === "accent" ? styles.badgeAccent : null,
+              ]}
+              numberOfLines={1}
+            >
+              {badgeLabel}
+            </Text>
+          ) : null}
+        </View>
+
+        <View style={styles.actions}>
+          {rightElement}
+          {showMenu ? (
+            <ScalePress style={[styles.iconBtn, { width: actionSize, height: actionSize, borderRadius: actionSize / 2 }]} onPress={handleMenu}>
+              <Ionicons name="menu" size={iconSize} color={COLORS.textSecondary} />
+            </ScalePress>
+          ) : null}
+          {showSearch ? (
+            <ScalePress style={[styles.iconBtn, { width: actionSize, height: actionSize, borderRadius: actionSize / 2 }]} onPress={handleSearch}>
+              <Ionicons name="search" size={iconSize} color={COLORS.textSecondary} />
+            </ScalePress>
+          ) : null}
+          {showNotification ? (
+            <ScalePress style={[styles.iconBtn, { width: actionSize, height: actionSize, borderRadius: actionSize / 2 }]} onPress={handleNotification}>
+              <Ionicons name="notifications-outline" size={iconSize} color={COLORS.textSecondary} />
+            </ScalePress>
+          ) : null}
+          {showFavorites ? (
+            <ScalePress style={[styles.iconBtn, { width: actionSize, height: actionSize, borderRadius: actionSize / 2 }]} onPress={handleFavorites}>
+              <Ionicons name="heart-outline" size={iconSize} color={COLORS.textSecondary} />
+            </ScalePress>
+          ) : null}
+          {showProfile ? (
+            <ScalePress style={[styles.profileBtn, { width: actionSize, height: actionSize, borderRadius: actionSize / 2 }]} onPress={handleProfile}>
+              <Ionicons name="person" size={isNarrow ? 15 : 17} color={COLORS.accent} />
+            </ScalePress>
+          ) : null}
+        </View>
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
-    paddingHorizontal: 14,
-    paddingBottom: 2,
+    paddingHorizontal: 12,
+    paddingBottom: 8,
     backgroundColor: COLORS.background,
     borderBottomWidth: 1,
     borderBottomColor: COLORS.border,
   },
   containerModule: {
-    paddingHorizontal: 16,
-    paddingBottom: 4,
     borderBottomColor: "rgba(255,255,255,0.08)",
   },
-  flatWrap: {
-    backgroundColor: "transparent",
-  },
-  bgBlur: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(8,8,12,0.38)",
-  },
-  contentRow: {
+  row: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 0,
-    paddingVertical: 6,
+    minHeight: 40,
   },
-  brandArea: {
-    flexDirection: "column",
-    alignItems: "flex-start",
-    justifyContent: "center",
-    gap: 2,
+  leadingAction: {
+    marginRight: 8,
+  },
+  brandBlock: {
     flex: 1,
     minWidth: 0,
   },
-  brandAreaCompact: {
+  brandLine: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
-    flex: 1,
+    gap: 7,
     minWidth: 0,
   },
-  brandTopRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
+  brandStacked: {
     minWidth: 0,
+    gap: 0,
   },
-  brandWordmark: {
-    fontSize: 18,
+  wordmark: {
+    fontSize: 17,
     lineHeight: 20,
-    letterSpacing: 2.4,
+    letterSpacing: 1.9,
     fontFamily: "Inter_800ExtraBold",
     color: COLORS.text,
-    flexShrink: 1,
+    flexShrink: 0,
   },
-  brandWordmarkCompact: {
-    fontSize: 15,
+  wordmarkCompact: {
+    fontSize: 16,
     lineHeight: 18,
-    letterSpacing: 1.9,
+    letterSpacing: 1.7,
   },
-  brandWordmarkModule: {
-    letterSpacing: 2.8,
-  },
-  sectionTitle: {
-    fontSize: 10,
-    lineHeight: 14,
+  moduleLabel: {
+    fontSize: 13,
+    lineHeight: 18,
     fontFamily: "Inter_700Bold",
-    letterSpacing: 1.4,
+    letterSpacing: 0.7,
     textTransform: "uppercase",
     flexShrink: 1,
   },
-  headerBadge: {
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.14)",
-    backgroundColor: "rgba(255,255,255,0.08)",
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    maxWidth: 112,
+  moduleLabelCompact: {
+    fontSize: 12,
+    letterSpacing: 0.5,
   },
-  headerBadgeLive: {
-    borderColor: `${COLORS.live}55`,
-    backgroundColor: `${COLORS.live}22`,
+  moduleLabelStacked: {
+    fontSize: 11,
+    lineHeight: 14,
   },
-  headerBadgeAccent: {
-    borderColor: `${COLORS.accent}55`,
-    backgroundColor: `${COLORS.accent}22`,
-  },
-  headerBadgeText: {
+  badge: {
+    marginTop: 2,
     color: COLORS.textMuted,
     fontSize: 10,
-    fontFamily: "Inter_700Bold",
+    fontFamily: "Inter_600SemiBold",
     letterSpacing: 0.4,
     textTransform: "uppercase",
   },
-  headerBadgeTextLive: {
+  badgeLive: {
     color: COLORS.live,
+  },
+  badgeAccent: {
+    color: COLORS.accent,
   },
   actions: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
-    marginLeft: 10,
+    gap: 5,
+    marginLeft: 8,
   },
   iconBtn: {
     width: 36,
@@ -343,17 +280,5 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.18,
     shadowRadius: 5,
     elevation: 3,
-  },
-  containerCompact: {
-    paddingBottom: 2,
-  },
-  sectionTitleCompact: {
-    fontSize: 10,
-    lineHeight: 14,
-    fontFamily: "Inter_700Bold",
-    color: COLORS.textSecondary,
-    letterSpacing: 1.1,
-    textTransform: "uppercase",
-    flexShrink: 1,
   },
 });

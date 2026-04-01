@@ -89,14 +89,15 @@ export function normalizeCompetitionId(raw: {
 function mapEspnStatusToMatchStatus(state: string, detail?: string): MatchStatus {
   const s = ensureStr(state).toLowerCase();
   const d = ensureStr(detail).toLowerCase();
+  if (d.includes("postponed") || s === "postponed") return "postponed";
+  if (d.includes("cancel") || s === "cancelled" || s === "canceled") return "cancelled";
+  if (d.includes("delay") || d.includes("suspend") || s === "delayed") return "delayed";
   if (s === "in" || s === "inprogress") {
     if (d.includes("halftime") || d.includes("half time")) return "halftime";
     return "live";
   }
   if (s === "post" || s === "final") return "finished";
   if (s === "pre") return "scheduled";
-  if (d.includes("postponed")) return "postponed";
-  if (d.includes("cancel")) return "cancelled";
   return "scheduled";
 }
 

@@ -1,47 +1,106 @@
-/**
- * SportCards.tsx — Premium Match Card Components
- * ════════════════════════════════════════════════════════════════════════════════
- * LiveMatchCard     — Real-time match: logo | glowing score | logo
- * UpcomingMatchCard — Future match: logo | kickoff badge | logo
- * FinishedMatchCard — Completed: logo | FT score | logo (winner highlight)
- * SkeletonMatchCard — Animated loading skeleton
- */
-
-import React, { useEffect, useRef } from "react";
-import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  Image,
-  Animated,
-} from "react-native";
-import { LinearGradient } from "expo-linear-gradient";
+import React, { useEffect, useMemo, useRef } from "react";
+import { View, Text, StyleSheet, TouchableOpacity, Image, Animated } from "react-native";
 import { TeamLogo } from "@/components/TeamLogo";
 import { resolveCompetitionBrand } from "@/lib/logo-manager";
-import { calculateMomentum } from "@/lib/ai/momentum-calculator";
-import { MomentumBar } from "@/components/sports/MomentumBar";
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // DESIGN TOKENS — aligned with films/series premium theme
 // ═══════════════════════════════════════════════════════════════════════════════
 
 const DS = {
-  bg:         "#050505",
-  card:       "#0B0F1A",
-  elevated:   "#12192A",
-  cardBright: "#1A2338",
-  accent:     "#E50914",
-  accentGlow: "rgba(229,9,20,0.18)",
-  live:       "#22C55E",
-  liveGlow:   "rgba(34,197,94,0.18)",
-  text:       "#FFFFFF",
-  textSec:    "#A1A1AA",
-  muted:      "#71717A",
-  faint:      "#3F3F46",
-  border:     "#1F2937",
-  borderSoft: "rgba(255,255,255,0.06)",
+  card: "#0B0F1A",
+  cardRaised: "#12192A",
+  cardBorder: "#1F2937",
+  text: "#FFFFFF",
+  muted: "#A1A1AA",
+  subtle: "#71717A",
+  live: "#22C55E",
+  liveBg: "rgba(34,197,94,0.14)",
+  upcoming: "#9FB2C9",
+  upcomingBg: "rgba(159,178,201,0.14)",
+  finished: "#9CA3AF",
+  finishedBg: "rgba(156,163,175,0.14)",
+  postponed: "#C084FC",
+  postponedBg: "rgba(192,132,252,0.15)",
+  cancelled: "#F87171",
+  cancelledBg: "rgba(248,113,113,0.15)",
 };
+
+export type MatchVisualState = "live" | "upcoming" | "finished" | "postponed" | "cancelled";
+
+const LIVE_TOKENS = new Set(["live", "in_progress", "inprogress", "1h", "2h", "ht", "halftime", "extra_time", "et", "pen"]);
+const FINISHED_TOKENS = new Set(["finished", "ft", "full_time", "final", "post", "ended"]);
+const POSTPONED_TOKENS = new Set(["postponed", "postpone", "ppd", "delayed", "suspended"]);
+const CANCELLED_TOKENS = new Set(["cancelled", "canceled", "abandoned", "void"]);
+
+function tokenOf(value: unknown): string {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+}
+
+function numericMinute(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  const match = String(value || "").match(/\d{1,3}/);
+  if (!match) return null;
+  const parsed = Number(match[0]);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function teamName(match: any, side: "home" | "away"): string {
+  const raw = side === "home" ? match?.homeTeam : match?.awayTeam;
+  if (typeof raw === "string") return raw.trim();
+  return String(raw?.name || raw?.displayName || "").trim();
+}
+
+function teamLogo(match: any, side: "home" | "away"): string {
+  const direct = side === "home" ? match?.homeTeamLogo : match?.awayTeamLogo;
+  if (typeof direct === "string" && direct.trim()) return direct;
+  const nested = side === "home" ? match?.homeTeam?.logo : match?.awayTeam?.logo;
+  return typeof nested === "string" ? nested : "";
+}
+
+function scoreOf(match: any, side: "home" | "away"): number | null {
+  const direct = side === "home" ? match?.homeScore : match?.awayScore;
+  const value = Number(direct);
+  if (Number.isFinite(value)) return value;
+  const nested = Number(side === "home" ? match?.score?.home : match?.score?.away);
+  return Number.isFinite(nested) ? nested : null;
+}
+
+function formatKickoff(value: unknown): string {
+  const raw = String(value || "").trim();
+  if (!raw) return "TBD";
+  const parsed = Date.parse(raw);
+  if (!Number.isFinite(parsed)) {
+    const hhmm = raw.match(/\b\d{1,2}:\d{2}\b/);
+    return hhmm ? hhmm[0] : "TBD";
+  }
+  return new Intl.DateTimeFormat("nl-BE", { hour: "2-digit", minute: "2-digit" }).format(new Date(parsed));
+}
+
+export function resolveMatchVisualState(match: any): MatchVisualState {
+  const status = tokenOf(match?.status);
+  const detail = tokenOf(match?.statusDetail || match?.detail);
+  const minute = numericMinute(match?.minute);
+
+  if (CANCELLED_TOKENS.has(status) || CANCELLED_TOKENS.has(detail)) return "cancelled";
+  if (POSTPONED_TOKENS.has(status) || POSTPONED_TOKENS.has(detail)) return "postponed";
+  if (LIVE_TOKENS.has(status) || LIVE_TOKENS.has(detail)) return "live";
+  if (FINISHED_TOKENS.has(status) || FINISHED_TOKENS.has(detail)) return "finished";
+
+  if (minute != null && minute > 0) return "live";
+
+  const home = scoreOf(match, "home");
+  const away = scoreOf(match, "away");
+  const kickoffMs = Date.parse(String(match?.startDate || match?.startTime || ""));
+  if (home != null && away != null && Number.isFinite(kickoffMs) && kickoffMs < Date.now() - 2 * 60 * 60 * 1000) {
+    return "finished";
+  }
+
+  return "upcoming";
+}
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // SKELETON LOADER
@@ -88,7 +147,7 @@ const sk = StyleSheet.create({
     backgroundColor: DS.card,
     borderRadius: 18,
     borderWidth: 1,
-    borderColor: DS.border,
+    borderColor: DS.cardBorder,
     padding: 16,
     marginBottom: 10,
     gap: 14,
@@ -99,483 +158,200 @@ const sk = StyleSheet.create({
     justifyContent: "space-between",
   },
   teamBlock: { flex: 1, alignItems: "center", gap: 8 },
-  logo: { width: 48, height: 48, borderRadius: 24, backgroundColor: DS.cardBright },
-  name: { width: 56, height: 8, borderRadius: 4, backgroundColor: DS.cardBright },
+  logo: { width: 42, height: 42, borderRadius: 21, backgroundColor: DS.cardRaised },
+  name: { width: 56, height: 8, borderRadius: 4, backgroundColor: DS.cardRaised },
   scoreBlock: { alignItems: "center", gap: 6, minWidth: 90 },
-  badge: { width: 52, height: 16, borderRadius: 8, backgroundColor: DS.cardBright },
-  badgeSmall: { width: 36, height: 8, borderRadius: 4, backgroundColor: DS.cardBright },
-  score: { width: 72, height: 30, borderRadius: 6, backgroundColor: DS.cardBright },
-  bar: { height: 5, borderRadius: 3, backgroundColor: DS.cardBright },
+  badge: { width: 52, height: 16, borderRadius: 8, backgroundColor: DS.cardRaised },
+  badgeSmall: { width: 36, height: 8, borderRadius: 4, backgroundColor: DS.cardRaised },
+  score: { width: 72, height: 30, borderRadius: 6, backgroundColor: DS.cardRaised },
+  bar: { height: 5, borderRadius: 3, backgroundColor: DS.cardRaised },
 });
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// LIVE MATCH CARD
-// ═══════════════════════════════════════════════════════════════════════════════
-
-type LiveMatchCardProps = {
+type MatchStatusCardProps = {
   match: any;
   onPress?: () => void;
+  forceState?: MatchVisualState;
+  compact?: boolean;
 };
 
-export function LiveMatchCard({ match, onPress }: LiveMatchCardProps) {
-  const leagueLogo = resolveCompetitionBrand({
-    name: match?.league || "",
-    espnLeague: match?.espnLeague || null,
-  }).logo;
-
-  const homeScore = match?.homeScore ?? "–";
-  const awayScore = match?.awayScore ?? "–";
-  const minute = match?.minute ? `${match.minute}'` : "LIVE";
-
-  const momentum = calculateMomentum({
-    homeStats: match?.homeStats || {
-      possession: match?.possession?.home,
-      shotsOnTarget: match?.shotsOnGoal?.home,
-      attacks: match?.attacks?.home,
-      xg: match?.xg?.home,
-    },
-    awayStats: match?.awayStats || {
-      possession: match?.possession?.away,
-      shotsOnTarget: match?.shotsOnGoal?.away,
-      attacks: match?.attacks?.away,
-      xg: match?.xg?.away,
-    },
-  });
-
-  return (
-    <TouchableOpacity onPress={onPress} activeOpacity={0.84} style={lc.wrap}>
-      <LinearGradient
-        colors={["#150A0D", "#0C0F1C", "#090D18"]}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={lc.card}
-      >
-        {/* Green live strip across the top */}
-        <View style={lc.liveStrip} />
-
-        {/* Header: live pill + minute + league logo */}
-        <View style={lc.headerRow}>
-          <View style={lc.livePill}>
-            <View style={lc.liveDot} />
-            <Text style={lc.livePillText}>{minute}</Text>
-          </View>
-          {leagueLogo ? (
-            <Image
-              source={typeof leagueLogo === "number" ? leagueLogo : { uri: leagueLogo as string }}
-              style={lc.leagueLogo}
-              resizeMode="contain"
-            />
-          ) : null}
-        </View>
-
-        {/* Teams + Score */}
-        <View style={lc.teamsRow}>
-          {/* Home */}
-          <View style={lc.teamCol}>
-            <View style={lc.logoRing}>
-              <TeamLogo uri={match?.homeTeamLogo} teamName={match?.homeTeam || ""} size={50} />
-            </View>
-            <Text style={lc.teamName} numberOfLines={1}>{match?.homeTeam || ""}</Text>
-          </View>
-
-          {/* Score centre with glow */}
-          <View style={lc.scoreCol}>
-            <View style={lc.scoreGlow} />
-            <Text style={lc.scoreText}>
-              {homeScore}
-              <Text style={lc.scoreSep}> : </Text>
-              {awayScore}
-            </Text>
-          </View>
-
-          {/* Away */}
-          <View style={lc.teamCol}>
-            <View style={lc.logoRing}>
-              <TeamLogo uri={match?.awayTeamLogo} teamName={match?.awayTeam || ""} size={50} />
-            </View>
-            <Text style={lc.teamName} numberOfLines={1}>{match?.awayTeam || ""}</Text>
-          </View>
-        </View>
-
-        {/* Momentum bar */}
-        <MomentumBar
-          model={momentum}
-          compact
-          homeLabel={String(match?.homeTeam || "HOM").slice(0, 3).toUpperCase()}
-          awayLabel={String(match?.awayTeam || "AWY").slice(0, 3).toUpperCase()}
-        />
-
-        {match?.stadium ? (
-          <Text style={lc.stadiumText} numberOfLines={1}>{match.stadium}</Text>
-        ) : null}
-      </LinearGradient>
-    </TouchableOpacity>
-  );
-}
-
-const lc = StyleSheet.create({
-  wrap: {
-    marginBottom: 10,
-    shadowColor: "#E50914",
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.22,
-    shadowRadius: 14,
-    elevation: 8,
-  },
-  card: {
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: "rgba(229,9,20,0.28)",
-    paddingHorizontal: 16,
-    paddingTop: 12,
-    paddingBottom: 14,
-    gap: 12,
-    overflow: "hidden",
-  },
-  liveStrip: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    height: 2.5,
-    backgroundColor: "#22C55E",
-    borderTopLeftRadius: 18,
-    borderTopRightRadius: 18,
-  },
-  headerRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginTop: 4,
-  },
-  livePill: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-    backgroundColor: "rgba(34,197,94,0.12)",
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: "rgba(34,197,94,0.25)",
-  },
-  liveDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: "#22C55E",
-  },
-  livePillText: {
-    fontSize: 10,
-    fontWeight: "800",
-    color: "#22C55E",
-    letterSpacing: 1,
-    fontFamily: "Inter_800ExtraBold",
-  },
-  leagueLogo: { width: 22, height: 22, opacity: 0.75 },
-  teamsRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-  teamCol: { flex: 1, alignItems: "center", gap: 7 },
-  logoRing: {
-    padding: 3,
-    borderRadius: 30,
-    backgroundColor: "rgba(255,255,255,0.04)",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.06)",
-  },
-  teamName: {
-    fontSize: 11,
-    fontWeight: "600",
-    color: DS.textSec,
-    textAlign: "center",
-    fontFamily: "Inter_600SemiBold",
-    maxWidth: 80,
-  },
-  scoreCol: {
-    alignItems: "center",
-    justifyContent: "center",
-    minWidth: 100,
-    position: "relative",
-  },
-  scoreGlow: {
-    position: "absolute",
-    width: 90,
-    height: 90,
-    borderRadius: 45,
-    backgroundColor: "rgba(229,9,20,0.10)",
-    top: "50%",
-    left: "50%",
-    transform: [{ translateX: -45 }, { translateY: -22 }],
-  },
-  scoreText: {
-    fontSize: 32,
-    fontWeight: "900",
-    color: DS.text,
-    letterSpacing: 0.5,
-    fontFamily: "Inter_800ExtraBold",
-  },
-  scoreSep: { fontSize: 22, fontWeight: "300", color: DS.faint },
-  stadiumText: {
-    fontSize: 10,
-    color: DS.muted,
-    textAlign: "center",
-    fontFamily: "Inter_500Medium",
-    opacity: 0.7,
-  },
-});
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// UPCOMING MATCH CARD
-// ═══════════════════════════════════════════════════════════════════════════════
-
-type UpcomingMatchCardProps = {
-  match: any;
-  onPress?: () => void;
+const STATUS_THEME: Record<MatchVisualState, { label: string; fg: string; bg: string }> = {
+  live: { label: "LIVE", fg: DS.live, bg: DS.liveBg },
+  upcoming: { label: "UPCOMING", fg: DS.upcoming, bg: DS.upcomingBg },
+  finished: { label: "FT", fg: DS.finished, bg: DS.finishedBg },
+  postponed: { label: "POSTPONED", fg: DS.postponed, bg: DS.postponedBg },
+  cancelled: { label: "CANCELLED", fg: DS.cancelled, bg: DS.cancelledBg },
 };
 
-export function UpcomingMatchCard({ match, onPress }: UpcomingMatchCardProps) {
-  const leagueLogo = resolveCompetitionBrand({
-    name: match?.league || "",
-    espnLeague: match?.espnLeague || null,
-  }).logo;
+export function MatchStatusCard({ match, onPress, forceState, compact = false }: MatchStatusCardProps) {
+  const status = forceState || resolveMatchVisualState(match);
+  const statusTheme = STATUS_THEME[status];
+  const homeName = teamName(match, "home") || "Home";
+  const awayName = teamName(match, "away") || "Away";
+  const homeScore = scoreOf(match, "home");
+  const awayScore = scoreOf(match, "away");
+  const kickoff = formatKickoff(match?.startDate || match?.startTime);
+  const minute = numericMinute(match?.minute);
+  const league = String(match?.league || match?.competition?.name || "Competition").trim();
+  const leagueLogo = resolveCompetitionBrand({ name: league, espnLeague: match?.espnLeague || null }).logo;
+
+  const centerLabel = useMemo(() => {
+    if (status === "live") return minute != null && minute > 0 ? `${minute}'` : "LIVE";
+    if (status === "upcoming") return kickoff;
+    if (status === "postponed") return "Date pending";
+    if (status === "cancelled") return "No kickoff";
+    return "Full time";
+  }, [kickoff, minute, status]);
+
+  const centerValue = useMemo(() => {
+    if (status === "upcoming") return "vs";
+    if (status === "postponed" || status === "cancelled") return "-";
+    return `${homeScore ?? 0} : ${awayScore ?? 0}`;
+  }, [awayScore, homeScore, status]);
 
   return (
-    <TouchableOpacity onPress={onPress} activeOpacity={0.84} style={uc.wrap}>
-      <View style={uc.card}>
-        {/* Top row: league logo + kickoff time */}
-        <View style={uc.topRow}>
-          {leagueLogo ? (
-            <Image
-              source={typeof leagueLogo === "number" ? leagueLogo : { uri: leagueLogo as string }}
-              style={uc.leagueLogo}
-              resizeMode="contain"
-            />
-          ) : (
-            <View style={uc.leagueLogoPlaceholder} />
-          )}
-          <View style={uc.kickoffBadge}>
-            <Text style={uc.kickoffText}>{match?.startTime || "TBD"}</Text>
+    <TouchableOpacity onPress={onPress} activeOpacity={0.86} style={mc.wrap}>
+      <View style={[mc.card, compact && mc.cardCompact]}>
+        <View style={mc.topRow}>
+          <View style={mc.leagueRow}>
+            {leagueLogo ? (
+              <Image source={typeof leagueLogo === "number" ? leagueLogo : { uri: leagueLogo as string }} style={mc.leagueLogo} resizeMode="contain" />
+            ) : null}
+            <Text style={mc.leagueText} numberOfLines={1}>{league}</Text>
+          </View>
+          <View style={[mc.statusPill, { backgroundColor: statusTheme.bg }]}>
+            <Text style={[mc.statusText, { color: statusTheme.fg }]}>{statusTheme.label}</Text>
           </View>
         </View>
 
-        {/* Teams */}
-        <View style={uc.teamsRow}>
-          <View style={uc.teamCol}>
-            <TeamLogo uri={match?.homeTeamLogo} teamName={match?.homeTeam || ""} size={44} />
-            <Text style={uc.teamName} numberOfLines={1}>{match?.homeTeam || ""}</Text>
+        <View style={mc.mainRow}>
+          <View style={mc.teamCol}>
+            <TeamLogo uri={teamLogo(match, "home")} teamName={homeName} size={compact ? 36 : 44} />
+            <Text style={mc.teamName} numberOfLines={1}>{homeName}</Text>
           </View>
-          <View style={uc.vsCol}>
-            <Text style={uc.vsText}>VS</Text>
+
+          <View style={mc.centerCol}>
+            <Text style={mc.centerLabel}>{centerLabel}</Text>
+            <Text style={mc.centerValue}>{centerValue}</Text>
           </View>
-          <View style={uc.teamCol}>
-            <TeamLogo uri={match?.awayTeamLogo} teamName={match?.awayTeam || ""} size={44} />
-            <Text style={uc.teamName} numberOfLines={1}>{match?.awayTeam || ""}</Text>
+
+          <View style={mc.teamCol}>
+            <TeamLogo uri={teamLogo(match, "away")} teamName={awayName} size={compact ? 36 : 44} />
+            <Text style={mc.teamName} numberOfLines={1}>{awayName}</Text>
           </View>
         </View>
+
+        <Text style={mc.metaText} numberOfLines={1}>
+          {String(match?.statusDetail || match?.detail || "").trim() || "Reliable live data sync enabled"}
+        </Text>
       </View>
     </TouchableOpacity>
   );
 }
 
-const uc = StyleSheet.create({
+const mc = StyleSheet.create({
   wrap: { marginBottom: 10 },
   card: {
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: DS.cardBorder,
     backgroundColor: DS.card,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: DS.border,
-    paddingVertical: 12,
     paddingHorizontal: 14,
+    paddingVertical: 12,
     gap: 10,
+  },
+  cardCompact: {
+    paddingHorizontal: 12,
+    paddingVertical: 10,
   },
   topRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
+    gap: 8,
   },
-  leagueLogo: { width: 18, height: 18, opacity: 0.65, borderRadius: 4 },
-  leagueLogoPlaceholder: { width: 18, height: 18 },
-  kickoffBadge: {
-    backgroundColor: DS.elevated,
+  leagueRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    flex: 1,
+    minWidth: 0,
+  },
+  leagueLogo: { width: 16, height: 16, opacity: 0.72 },
+  leagueText: {
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 11,
+    color: DS.muted,
+    flex: 1,
+  },
+  statusPill: {
+    borderRadius: 999,
     paddingHorizontal: 10,
     paddingVertical: 4,
-    borderRadius: 999,
     borderWidth: 1,
-    borderColor: DS.border,
+    borderColor: "rgba(255,255,255,0.08)",
   },
-  kickoffText: {
-    fontSize: 11,
-    fontWeight: "700",
-    color: DS.textSec,
+  statusText: {
     fontFamily: "Inter_700Bold",
-    letterSpacing: 0.4,
+    fontSize: 10,
+    letterSpacing: 0.8,
   },
-  teamsRow: {
+  mainRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
   },
-  teamCol: { flex: 1, alignItems: "center", gap: 7 },
-  teamName: {
-    fontSize: 11,
-    fontWeight: "600",
-    color: DS.text,
-    textAlign: "center",
-    fontFamily: "Inter_600SemiBold",
-    maxWidth: 80,
+  teamCol: {
+    flex: 1,
+    alignItems: "center",
+    gap: 6,
+    minWidth: 0,
   },
-  vsCol: { alignItems: "center", justifyContent: "center", paddingHorizontal: 8 },
-  vsText: {
+  teamName: {
+    color: DS.text,
+    fontFamily: "Inter_600SemiBold",
     fontSize: 12,
-    fontWeight: "800",
-    color: DS.faint,
-    fontFamily: "Inter_700Bold",
-    letterSpacing: 1.5,
+    maxWidth: 96,
+  },
+  centerCol: {
+    minWidth: 92,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 2,
+    paddingHorizontal: 6,
+  },
+  centerLabel: {
+    color: DS.subtle,
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 10,
+    textTransform: "uppercase",
+    letterSpacing: 0.8,
+  },
+  centerValue: {
+    color: DS.text,
+    fontFamily: "Inter_800ExtraBold",
+    fontSize: 22,
+  },
+  metaText: {
+    color: DS.subtle,
+    fontFamily: "Inter_500Medium",
+    fontSize: 10,
+    textAlign: "center",
   },
 });
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// FINISHED MATCH CARD
-// ═══════════════════════════════════════════════════════════════════════════════
-
-type FinishedMatchCardProps = {
+type LegacyCardProps = {
   match: any;
   onPress?: () => void;
 };
 
-export function FinishedMatchCard({ match, onPress }: FinishedMatchCardProps) {
-  const leagueLogo = resolveCompetitionBrand({
-    name: match?.league || "",
-    espnLeague: match?.espnLeague || null,
-  }).logo;
-
-  const homeScore = Number(match?.homeScore ?? 0);
-  const awayScore = Number(match?.awayScore ?? 0);
-  const homeWon = homeScore > awayScore;
-  const awayWon = awayScore > homeScore;
-
-  return (
-    <TouchableOpacity onPress={onPress} activeOpacity={0.84} style={fc.wrap}>
-      <View style={fc.card}>
-        {/* League / FT row */}
-        <View style={fc.topRow}>
-          {leagueLogo ? (
-            <Image
-              source={typeof leagueLogo === "number" ? leagueLogo : { uri: leagueLogo as string }}
-              style={fc.leagueLogo}
-              resizeMode="contain"
-            />
-          ) : (
-            <View style={fc.leagueLogoPlaceholder} />
-          )}
-          <View style={fc.ftBadge}>
-            <Text style={fc.ftText}>FT</Text>
-          </View>
-        </View>
-
-        {/* Teams + Score */}
-        <View style={fc.teamsRow}>
-          <View style={fc.teamCol}>
-            <View style={[fc.logoWrap, homeWon && fc.logoWrapWin]}>
-              <TeamLogo uri={match?.homeTeamLogo} teamName={match?.homeTeam || ""} size={42} />
-            </View>
-            <Text style={[fc.teamName, homeWon && fc.teamNameWin]} numberOfLines={1}>
-              {match?.homeTeam || ""}
-            </Text>
-          </View>
-          <View style={fc.scoreCol}>
-            <Text style={[fc.scoreNum, homeWon && fc.scoreNumWin]}>{homeScore}</Text>
-            <Text style={fc.scoreDash}> – </Text>
-            <Text style={[fc.scoreNum, awayWon && fc.scoreNumWin]}>{awayScore}</Text>
-          </View>
-          <View style={fc.teamCol}>
-            <View style={[fc.logoWrap, awayWon && fc.logoWrapWin]}>
-              <TeamLogo uri={match?.awayTeamLogo} teamName={match?.awayTeam || ""} size={42} />
-            </View>
-            <Text style={[fc.teamName, awayWon && fc.teamNameWin]} numberOfLines={1}>
-              {match?.awayTeam || ""}
-            </Text>
-          </View>
-        </View>
-      </View>
-    </TouchableOpacity>
-  );
+export function LiveMatchCard({ match, onPress }: LegacyCardProps) {
+  return <MatchStatusCard match={match} onPress={onPress} forceState="live" />;
 }
 
-const fc = StyleSheet.create({
-  wrap: { marginBottom: 10 },
-  card: {
-    backgroundColor: "#080B12",
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.05)",
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    gap: 10,
-  },
-  topRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-  leagueLogo: { width: 16, height: 16, opacity: 0.45, borderRadius: 3 },
-  leagueLogoPlaceholder: { width: 16, height: 16 },
-  ftBadge: {
-    backgroundColor: "rgba(255,255,255,0.06)",
-    paddingHorizontal: 10,
-    paddingVertical: 3,
-    borderRadius: 999,
-  },
-  ftText: {
-    fontSize: 10,
-    fontWeight: "700",
-    color: DS.muted,
-    fontFamily: "Inter_700Bold",
-    letterSpacing: 1.2,
-  },
-  teamsRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-  teamCol: { flex: 1, alignItems: "center", gap: 6 },
-  logoWrap: { opacity: 0.5 },
-  logoWrapWin: { opacity: 1 },
-  teamName: {
-    fontSize: 11,
-    fontWeight: "600",
-    color: DS.muted,
-    textAlign: "center",
-    fontFamily: "Inter_600SemiBold",
-    maxWidth: 80,
-  },
-  teamNameWin: {
-    color: DS.text,
-    fontWeight: "700",
-    fontFamily: "Inter_700Bold",
-  },
-  scoreCol: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 8,
-    minWidth: 84,
-    justifyContent: "center",
-  },
-  scoreNum: {
-    fontSize: 26,
-    fontWeight: "800",
-    color: DS.textSec,
-    fontFamily: "Inter_800ExtraBold",
-  },
-  scoreNumWin: { color: DS.text },
-  scoreDash: {
-    fontSize: 16,
-    fontWeight: "400",
-    color: DS.faint,
-    marginHorizontal: 2,
-    fontFamily: "Inter_500Medium",
-  },
-});
+export function UpcomingMatchCard({ match, onPress }: LegacyCardProps) {
+  return <MatchStatusCard match={match} onPress={onPress} forceState="upcoming" />;
+}
+
+export function FinishedMatchCard({ match, onPress }: LegacyCardProps) {
+  return <MatchStatusCard match={match} onPress={onPress} forceState="finished" />;
+}
