@@ -126,9 +126,11 @@ app.get("/api/config-check", (_req, res) => {
       apify: Boolean(process.env.APIFY_TOKEN),
       redis: Boolean(process.env.REDIS_URL),
       zilliz: Boolean(process.env.ZILLIZ_URI && process.env.ZILLIZ_API_KEY),
+      omdb: Boolean(process.env.OMDB_API_KEY),
     },
     warnings: [
       ...(!process.env.TMDB_API_KEY ? ["TMDB_API_KEY not set — movies/series will be empty. Get a free key at https://www.themoviedb.org/settings/api"] : []),
+      ...(!process.env.OMDB_API_KEY ? ["OMDB_API_KEY not set — real IMDb ratings, Rotten Tomatoes scores and awards will be unavailable"] : []),
       ...(!process.env.GEMINI_API_KEY && !process.env.OPENROUTER_API_KEY && !process.env.OPENAI_API_KEY && !process.env.DEEPSEEK_API_KEY && !process.env.GROQ_API_KEY
         ? ["No AI provider key set — match analysis / recommendations will be disabled"] : []),
     ],
@@ -9193,6 +9195,48 @@ async function tmdbVideosAllLangs(mediaType, tmdbId) {
   } catch { return null; }
 }
 
+// ─── OMDB (Open Movie Database) enrichment ───────────────────────────────────
+// Provides real IMDb ratings, Rotten Tomatoes %, Metacritic, awards, box office.
+// Free tier: 1 000 req/day — mitigated by 24 h per-title cache.
+const OMDB_BASE = "https://www.omdbapi.com";
+const OMDB_CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 h
+
+async function omdbFetch(imdbId) {
+  const key = process.env.OMDB_API_KEY;
+  if (!key || !imdbId) return null;
+  const cacheKey = `omdb:${imdbId}`;
+  const cached = await cacheGet(cacheKey);
+  if (cached) return cached;
+  try {
+    const url = `${OMDB_BASE}/?apikey=${encodeURIComponent(key)}&i=${encodeURIComponent(imdbId)}&plot=full`;
+    const r = await fetch(url, { signal: AbortSignal.timeout(5000) });
+    if (!r.ok) return null;
+    const data = await r.json();
+    if (data?.Response === "False") return null;
+    await cacheSet(cacheKey, data, OMDB_CACHE_TTL_MS);
+    return data;
+  } catch { return null; }
+}
+
+// Returns only non-null OMDB fields to safely spread over mapFullDetail() output.
+// The `imdb` key overrides the TMDB vote_average with the real IMDb rating when available.
+function mergeOmdb(omdb) {
+  if (!omdb) return {};
+  const ratings = Array.isArray(omdb.Ratings) ? omdb.Ratings : [];
+  const omdbImdb = omdb.imdbRating && omdb.imdbRating !== "N/A" ? omdb.imdbRating : null;
+  return {
+    ...(omdbImdb ? { imdb: omdbImdb } : {}),
+    imdbId:         omdb.imdbID || null,
+    imdbRating:     omdbImdb,
+    imdbVotes:      omdb.imdbVotes && omdb.imdbVotes !== "N/A" ? omdb.imdbVotes : null,
+    rottenTomatoes: ratings.find((r) => r.Source === "Rotten Tomatoes")?.Value || null,
+    metacritic:     omdb.Metascore && omdb.Metascore !== "N/A" ? omdb.Metascore : null,
+    rated:          omdb.Rated && omdb.Rated !== "N/A" ? omdb.Rated : null,
+    awards:         omdb.Awards && omdb.Awards !== "N/A" ? omdb.Awards : null,
+    boxOffice:      omdb.BoxOffice && omdb.BoxOffice !== "N/A" ? omdb.BoxOffice : null,
+  };
+}
+
 function pickTrailerCandidates(videos, limit = 5) {
   const items = Array.isArray(videos?.results) ? videos.results : [];
   const ranked = items
@@ -9584,8 +9628,8 @@ app.get("/api/tmdb/search", tmdbLimiter, async (req, res) => {
     const mediaType = type === "tv" ? "series" : "movie";
     const detail = await tmdb(
       type === "tv"
-        ? `/tv/${first.id}?append_to_response=keywords,videos,credits`
-        : `/movie/${first.id}?append_to_response=keywords,videos,credits`
+        ? `/tv/${first.id}?append_to_response=keywords,videos,credits,external_ids`
+        : `/movie/${first.id}?append_to_response=keywords,videos,credits,external_ids`
     );
     let videos = detail?.videos || { results: [] };
     const credits = detail?.credits || { cast: [], crew: [] };
@@ -9594,7 +9638,8 @@ app.get("/api/tmdb/search", tmdbLimiter, async (req, res) => {
       const allLangVideos = await tmdbVideosAllLangs(type === "tv" ? "tv" : "movie", first.id);
       if (allLangVideos && pickTrailerKey(allLangVideos)) finalVideos = allLangVideos;
     }
-    res.json(mapFullDetail(detail, finalVideos, credits, mediaType));
+    const omdbData = await omdbFetch(detail?.external_ids?.imdb_id);
+    res.json({ ...mapFullDetail(detail, finalVideos, credits, mediaType), ...mergeOmdb(omdbData) });
   } catch (e) {
     res.status(500).json({ error: String(e?.message || e) });
   }
@@ -9691,7 +9736,7 @@ app.get("/api/movies/:id/full", tmdbLimiter, async (req, res) => {
     let detail;
 
     try {
-      detail = await tmdb(`/movie/${encodeURIComponent(id)}?append_to_response=keywords,videos,credits`);
+      detail = await tmdb(`/movie/${encodeURIComponent(id)}?append_to_response=keywords,videos,credits,external_ids`);
     } catch (idErr) {
       // Fallback: search by title if direct ID lookup fails (e.g. 404)
       const title = String(req.query.title || "").trim();
@@ -9700,7 +9745,7 @@ app.get("/api/movies/:id/full", tmdbLimiter, async (req, res) => {
         const first = search?.results?.[0];
         if (first?.id) {
           id = String(first.id);
-          detail = await tmdb(`/movie/${encodeURIComponent(id)}?append_to_response=keywords,videos,credits`);
+          detail = await tmdb(`/movie/${encodeURIComponent(id)}?append_to_response=keywords,videos,credits,external_ids`);
         } else {
           throw idErr;
         }
@@ -9719,7 +9764,8 @@ app.get("/api/movies/:id/full", tmdbLimiter, async (req, res) => {
       if (allLangVideos && pickTrailerKey(allLangVideos)) finalVideos = allLangVideos;
     }
 
-    const payload = mapFullDetail(detail, finalVideos, credits, "movie");
+    const omdbData = await omdbFetch(detail?.external_ids?.imdb_id);
+    const payload = { ...mapFullDetail(detail, finalVideos, credits, "movie"), ...mergeOmdb(omdbData) };
     cacheSet(cacheKey, payload, 30 * 60 * 1000);
     res.json(payload);
   } catch (e) {
@@ -9740,7 +9786,7 @@ app.get("/api/series/:id/full", tmdbLimiter, async (req, res) => {
     let detail;
 
     try {
-      detail = await tmdb(`/tv/${encodeURIComponent(id)}?append_to_response=keywords,videos,credits`);
+      detail = await tmdb(`/tv/${encodeURIComponent(id)}?append_to_response=keywords,videos,credits,external_ids`);
     } catch (idErr) {
       // Fallback: search by title if direct ID lookup fails (e.g. 404)
       const title = String(req.query.title || "").trim();
@@ -9749,7 +9795,7 @@ app.get("/api/series/:id/full", tmdbLimiter, async (req, res) => {
         const first = search?.results?.[0];
         if (first?.id) {
           id = String(first.id);
-          detail = await tmdb(`/tv/${encodeURIComponent(id)}?append_to_response=keywords,videos,credits`);
+          detail = await tmdb(`/tv/${encodeURIComponent(id)}?append_to_response=keywords,videos,credits,external_ids`);
         } else {
           throw idErr;
         }
@@ -9768,7 +9814,8 @@ app.get("/api/series/:id/full", tmdbLimiter, async (req, res) => {
       if (allLangVideos && pickTrailerKey(allLangVideos)) finalVideos = allLangVideos;
     }
 
-    const payload = mapFullDetail(detail, finalVideos, credits, "series");
+    const omdbData = await omdbFetch(detail?.external_ids?.imdb_id);
+    const payload = { ...mapFullDetail(detail, finalVideos, credits, "series"), ...mergeOmdb(omdbData) };
     cacheSet(cacheKey, payload, 30 * 60 * 1000);
     res.json(payload);
   } catch (e) {

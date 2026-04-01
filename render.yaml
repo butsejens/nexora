@@ -26,6 +26,8 @@ services:
         sync: false
       - key: SPORTSRC_API_KEY
         sync: false
+      - key: OPENAI_API_KEY
+        sync: false
       - key: APIFY_TOKEN
         sync: false
       - key: APIFY_SOFASCORE_ACTOR
