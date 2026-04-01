@@ -1,23 +1,37 @@
 import { Tabs } from "expo-router";
 import React from "react";
-import { Platform, StyleSheet, View } from "react-native";
+import { StyleSheet, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { COLORS } from "../../constants/colors";
 
-const TAB_BAR_MIN_HEIGHT = 64;
+// Minimum content height of the tab bar (above safe-area bottom inset)
+const TAB_CONTENT_HEIGHT = 56;
 
-function TabIcon({ focused, icon }: { focused: boolean; icon: keyof typeof Ionicons.glyphMap }) {
+function TabIcon({
+  focused,
+  icon,
+}: {
+  focused: boolean;
+  icon: keyof typeof Ionicons.glyphMap;
+}) {
   return (
-    <View style={[styles.iconWrap, focused ? styles.iconWrapActive : null]}>
-      <Ionicons name={icon} size={20} color={focused ? COLORS.accent : COLORS.textSecondary} />
+    <View style={[styles.iconWrap, focused && styles.iconWrapActive]}>
+      <Ionicons
+        name={icon}
+        size={22}
+        color={focused ? COLORS.accent : COLORS.textSecondary}
+      />
     </View>
   );
 }
 
 export default function TabLayout() {
   const insets = useSafeAreaInsets();
+  // Always give at least 16px bottom padding so items don't sit on the edge
+  const bottomPad = Math.max(insets.bottom, 16);
+  const barHeight = TAB_CONTENT_HEIGHT + bottomPad;
 
   return (
     <Tabs
@@ -31,47 +45,59 @@ export default function TabLayout() {
         tabBarItemStyle: styles.tabItem,
         tabBarHideOnKeyboard: true,
         tabBarStyle: {
-          backgroundColor: COLORS.background,
-          borderTopWidth: 1,
-          borderTopColor: COLORS.border,
-          minHeight: TAB_BAR_MIN_HEIGHT + Math.max(insets.bottom, Platform.OS === "ios" ? 2 : 0),
-          height: TAB_BAR_MIN_HEIGHT + Math.max(insets.bottom, Platform.OS === "ios" ? 2 : 0),
-          paddingBottom: Math.max(insets.bottom, 8),
-          paddingTop: 8,
-          paddingHorizontal: 6,
+          backgroundColor: COLORS.tabBar,
+          borderTopWidth: StyleSheet.hairlineWidth,
+          borderTopColor: COLORS.tabBarBorder,
+          height: barHeight,
+          paddingTop: 6,
+          paddingBottom: bottomPad,
+          paddingHorizontal: 8,
+          // Elevation/shadow for Android depth
+          elevation: 16,
+          // iOS shadow
+          shadowColor: "#000",
+          shadowOffset: { width: 0, height: -3 },
+          shadowOpacity: 0.3,
+          shadowRadius: 8,
         },
       }}
     >
+      {/* ── Visible tabs ── */}
       <Tabs.Screen
         name="home"
         options={{
           title: "Home",
-          tabBarIcon: ({ focused }: { focused: boolean }) => <TabIcon focused={focused} icon={focused ? "home" : "home-outline"} />,
+          tabBarIcon: ({ focused }) => (
+            <TabIcon focused={focused} icon={focused ? "home" : "home-outline"} />
+          ),
         }}
       />
       <Tabs.Screen
         name="search"
         options={{
           title: "Search",
-          tabBarIcon: ({ focused }: { focused: boolean }) => <TabIcon focused={focused} icon={focused ? "search" : "search-outline"} />,
+          tabBarIcon: ({ focused }) => (
+            <TabIcon focused={focused} icon={focused ? "search" : "search-outline"} />
+          ),
         }}
       />
-
-      <Tabs.Screen name="sports-home" options={{ href: null }} />
-      <Tabs.Screen name="teams" options={{ href: null }} />
-      <Tabs.Screen name="standings" options={{ href: null }} />
-      <Tabs.Screen name="game-detail" options={{ href: null }} />
-      <Tabs.Screen name="sports-demo" options={{ href: null }} />
-
       <Tabs.Screen
         name="more"
         options={{
           href: "/(tabs)/more",
           title: "Menu",
-          tabBarIcon: ({ focused }: { focused: boolean }) => <TabIcon focused={focused} icon={focused ? "menu" : "menu-outline"} />,
+          tabBarIcon: ({ focused }) => (
+            <TabIcon focused={focused} icon={focused ? "menu" : "menu-outline"} />
+          ),
         }}
       />
 
+      {/* ── Hidden routes (still need to be declared) ── */}
+      <Tabs.Screen name="sports-home" options={{ href: null }} />
+      <Tabs.Screen name="teams" options={{ href: null }} />
+      <Tabs.Screen name="standings" options={{ href: null }} />
+      <Tabs.Screen name="game-detail" options={{ href: null }} />
+      <Tabs.Screen name="sports-demo" options={{ href: null }} />
       <Tabs.Screen name="index" options={{ href: null }} />
       <Tabs.Screen name="livetv" options={{ href: null }} />
       <Tabs.Screen name="movies" options={{ href: null }} />
@@ -83,27 +109,28 @@ export default function TabLayout() {
 }
 
 const styles = StyleSheet.create({
+  // Icon container — shows a red pill when active
   iconWrap: {
-    width: 34,
+    width: 44,
     height: 30,
-    borderRadius: 11,
+    borderRadius: 12,
     alignItems: "center",
     justifyContent: "center",
   },
   iconWrapActive: {
-    backgroundColor: "rgba(229,9,20,0.14)",
+    backgroundColor: "rgba(229,9,20,0.16)",
   },
+  // Tab label
   label: {
     fontFamily: "Inter_600SemiBold",
     fontSize: 11,
     lineHeight: 14,
-    marginTop: 1,
   },
+  // Each tab item — flex:1 ensures equal width across all 3 tabs
   tabItem: {
-    minWidth: 0,
-    justifyContent: "center",
-    alignItems: "center",
-    paddingVertical: 2,
     flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 0,
   },
 });

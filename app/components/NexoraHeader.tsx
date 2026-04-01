@@ -1,5 +1,22 @@
+/**
+ * NexoraHeader — premium app header (ESPN / Netflix / DAZN quality)
+ *
+ * Layout:
+ *   [← back?]  NEXORA          [search] [notif] [fav]
+ *              HOME
+ *
+ * The brand block always gets flex:1 so action buttons NEVER push
+ * the wordmark or label off-screen. Module label is always on its
+ * own line — zero text clipping risk on any screen size.
+ */
 import React from "react";
-import { View, Text, StyleSheet, Platform, useWindowDimensions } from "react-native";
+import {
+  Platform,
+  StyleSheet,
+  Text,
+  View,
+  useWindowDimensions,
+} from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
@@ -8,12 +25,17 @@ import { COLORS } from "@/constants/colors";
 import { ScalePress } from "@/components/ui/ScalePress";
 import { useUiStore } from "@/store/uiStore";
 
-interface Props {
+export interface NexoraHeaderProps {
+  /** Page/module title shown below NEXORA wordmark (HOME, SPORT, MENU …) */
   title?: string;
+  /** Label colour — defaults to accent red */
   titleColor?: string;
+  /** Optional small badge (e.g. "LIVE") */
   badgeLabel?: string;
   badgeTone?: "live" | "accent" | "neutral";
+  /** "default" = standard border; "module" = subtle tinted border */
   variant?: "default" | "module";
+  /** Accepted for legacy compat — has no visual effect any more */
   compact?: boolean;
   showBack?: boolean;
   showMenu?: boolean;
@@ -29,13 +51,16 @@ interface Props {
   rightElement?: React.ReactNode;
 }
 
+// Keep old name as alias so any `Props` reference still works
+type Props = NexoraHeaderProps;
+
 export function NexoraHeader({
   title,
   titleColor,
   badgeLabel,
   badgeTone = "neutral",
   variant = "default",
-  compact = false,
+  compact: _compact = false,
   showBack = false,
   showSearch = true,
   showNotification = false,
@@ -52,12 +77,10 @@ export function NexoraHeader({
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const topPad = Platform.OS === "web" ? 0 : insets.top;
-  const isNarrow = width < 360;
   const isTablet = width >= 760;
-  const isModuleVariant = variant === "module";
+  const isModule = variant === "module";
   const openMenu = useUiStore((state) => state.openNexoraMenu);
 
-  // Fallbacks: always navigate even if prop is not passed
   const handleBack = onBack ?? (() => router.back());
   const handleNotification = onNotification ?? (() => router.push("/follow-center"));
   const handleFavorites = onFavorites ?? (() => router.push("/favorites"));
@@ -65,102 +88,85 @@ export function NexoraHeader({
   const handleSearch = onSearch ?? (() => router.navigate("/(tabs)/search"));
   const handleMenu = () => openMenu();
 
-  const moduleTitleColor = titleColor ?? COLORS.accent;
-  const actionSize = isNarrow ? 32 : compact ? 34 : isTablet ? 40 : 36;
-  const iconSize = isNarrow ? 17 : compact ? 18 : isTablet ? 20 : 18;
-  const hasTitle = Boolean(title && String(title).trim().length > 0);
-  const shouldStackLabel = hasTitle && (isNarrow || String(title).trim().length > 10);
+  const labelColor = titleColor ?? COLORS.accent;
+  const hasTitle = Boolean(title?.trim());
+  const btnSize = isTablet ? 40 : 36;
+  const iconSize = isTablet ? 20 : 18;
+
+  const badgeStyle =
+    badgeTone === "live" ? styles.badgeLive :
+    badgeTone === "accent" ? styles.badgeAccent : null;
 
   return (
     <View
       style={[
         styles.container,
-        isModuleVariant ? styles.containerModule : null,
-        { paddingTop: topPad + (compact ? 6 : 8) },
+        isModule && styles.containerModule,
+        { paddingTop: topPad + 10 },
       ]}
     >
       <View style={styles.row}>
+        {/* Leading back button */}
         {showBack ? (
-          <ScalePress style={[styles.iconBtn, styles.leadingAction, { width: actionSize, height: actionSize, borderRadius: actionSize / 2 }]} onPress={handleBack}>
+          <ScalePress
+            style={[styles.btn, styles.backBtn, { width: btnSize, height: btnSize, borderRadius: btnSize / 2 }]}
+            onPress={handleBack}
+          >
             <Ionicons name="chevron-back" size={iconSize} color={COLORS.textSecondary} />
           </ScalePress>
         ) : null}
 
-        <View style={styles.brandBlock}>
-          {shouldStackLabel ? (
-            <View style={styles.brandStacked}>
-              <Text style={[styles.wordmark, compact ? styles.wordmarkCompact : null]}>NEXORA</Text>
-              <Text
-                style={[
-                  styles.moduleLabel,
-                  styles.moduleLabelStacked,
-                  compact ? styles.moduleLabelCompact : null,
-                  { color: isModuleVariant ? moduleTitleColor : (titleColor ?? COLORS.textSecondary) },
-                ]}
-                numberOfLines={1}
-                ellipsizeMode="tail"
-              >
-                {String(title)}
-              </Text>
-            </View>
-          ) : (
-            <View style={styles.brandLine}>
-              <Text style={[styles.wordmark, compact ? styles.wordmarkCompact : null]}>NEXORA</Text>
-              {hasTitle ? (
-                <Text
-                  style={[
-                    styles.moduleLabel,
-                    compact ? styles.moduleLabelCompact : null,
-                    { color: isModuleVariant ? moduleTitleColor : (titleColor ?? COLORS.textSecondary) },
-                  ]}
-                  numberOfLines={1}
-                  ellipsizeMode="tail"
-                >
-                  {String(title)}
-                </Text>
-              ) : null}
-            </View>
-          )}
-
-          {badgeLabel ? (
+        {/* Brand block — always flex:1, never compressed by actions */}
+        <View style={styles.brand}>
+          <Text style={styles.wordmark} numberOfLines={1}>NEXORA</Text>
+          {hasTitle ? (
             <Text
-              style={[
-                styles.badge,
-                badgeTone === "live" ? styles.badgeLive : null,
-                badgeTone === "accent" ? styles.badgeAccent : null,
-              ]}
+              style={[styles.moduleLabel, { color: labelColor }]}
               numberOfLines={1}
+              ellipsizeMode="tail"
             >
-              {badgeLabel}
+              {title}
             </Text>
+          ) : null}
+          {badgeLabel ? (
+            <Text style={[styles.badge, badgeStyle]} numberOfLines={1}>{badgeLabel}</Text>
           ) : null}
         </View>
 
+        {/* Action buttons — fixed, never flex-grow */}
         <View style={styles.actions}>
-          {rightElement}
+          {rightElement ?? null}
+
           {showMenu ? (
-            <ScalePress style={[styles.iconBtn, { width: actionSize, height: actionSize, borderRadius: actionSize / 2 }]} onPress={handleMenu}>
+            <ActionBtn size={btnSize} onPress={handleMenu}>
               <Ionicons name="menu" size={iconSize} color={COLORS.textSecondary} />
-            </ScalePress>
+            </ActionBtn>
           ) : null}
+
           {showSearch ? (
-            <ScalePress style={[styles.iconBtn, { width: actionSize, height: actionSize, borderRadius: actionSize / 2 }]} onPress={handleSearch}>
+            <ActionBtn size={btnSize} onPress={handleSearch}>
               <Ionicons name="search" size={iconSize} color={COLORS.textSecondary} />
-            </ScalePress>
+            </ActionBtn>
           ) : null}
+
           {showNotification ? (
-            <ScalePress style={[styles.iconBtn, { width: actionSize, height: actionSize, borderRadius: actionSize / 2 }]} onPress={handleNotification}>
+            <ActionBtn size={btnSize} onPress={handleNotification}>
               <Ionicons name="notifications-outline" size={iconSize} color={COLORS.textSecondary} />
-            </ScalePress>
+            </ActionBtn>
           ) : null}
+
           {showFavorites ? (
-            <ScalePress style={[styles.iconBtn, { width: actionSize, height: actionSize, borderRadius: actionSize / 2 }]} onPress={handleFavorites}>
+            <ActionBtn size={btnSize} onPress={handleFavorites}>
               <Ionicons name="heart-outline" size={iconSize} color={COLORS.textSecondary} />
-            </ScalePress>
+            </ActionBtn>
           ) : null}
+
           {showProfile ? (
-            <ScalePress style={[styles.profileBtn, { width: actionSize, height: actionSize, borderRadius: actionSize / 2 }]} onPress={handleProfile}>
-              <Ionicons name="person" size={isNarrow ? 15 : 17} color={COLORS.accent} />
+            <ScalePress
+              style={[styles.btn, styles.profileBtn, { width: btnSize, height: btnSize, borderRadius: btnSize / 2 }]}
+              onPress={handleProfile}
+            >
+              <Ionicons name="person" size={iconSize - 1} color={COLORS.accent} />
             </ScalePress>
           ) : null}
         </View>
@@ -169,116 +175,100 @@ export function NexoraHeader({
   );
 }
 
+// ─── Reusable action button ───────────────────────────────────────────────────
+
+function ActionBtn({
+  size,
+  onPress,
+  children,
+}: {
+  size: number;
+  onPress: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <ScalePress
+      style={[styles.btn, { width: size, height: size, borderRadius: size / 2 }]}
+      onPress={onPress}
+    >
+      {children}
+    </ScalePress>
+  );
+}
+
+// ─── Styles ──────────────────────────────────────────────────────────────────
+
 const styles = StyleSheet.create({
   container: {
-    paddingHorizontal: 12,
-    paddingBottom: 8,
+    paddingHorizontal: 16,
+    paddingBottom: 10,
     backgroundColor: COLORS.background,
-    borderBottomWidth: 1,
+    borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: COLORS.border,
   },
   containerModule: {
-    borderBottomColor: "rgba(255,255,255,0.08)",
+    borderBottomColor: "rgba(255,255,255,0.07)",
   },
   row: {
     flexDirection: "row",
     alignItems: "center",
-    minHeight: 40,
+    minHeight: 44,
   },
-  leadingAction: {
-    marginRight: 8,
-  },
-  brandBlock: {
+  brand: {
     flex: 1,
     minWidth: 0,
-  },
-  brandLine: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 7,
-    minWidth: 0,
-  },
-  brandStacked: {
-    minWidth: 0,
-    gap: 0,
+    justifyContent: "center",
   },
   wordmark: {
-    fontSize: 17,
-    lineHeight: 20,
-    letterSpacing: 1.9,
+    fontSize: 18,
+    lineHeight: 22,
+    letterSpacing: 2.2,
     fontFamily: "Inter_800ExtraBold",
     color: COLORS.text,
-    flexShrink: 0,
-  },
-  wordmarkCompact: {
-    fontSize: 16,
-    lineHeight: 18,
-    letterSpacing: 1.7,
   },
   moduleLabel: {
-    fontSize: 13,
-    lineHeight: 18,
-    fontFamily: "Inter_700Bold",
-    letterSpacing: 0.7,
-    textTransform: "uppercase",
-    flexShrink: 1,
-  },
-  moduleLabelCompact: {
-    fontSize: 12,
-    letterSpacing: 0.5,
-  },
-  moduleLabelStacked: {
     fontSize: 11,
-    lineHeight: 14,
+    lineHeight: 16,
+    fontFamily: "Inter_700Bold",
+    letterSpacing: 1.6,
+    textTransform: "uppercase",
+    marginTop: 1,
   },
   badge: {
     marginTop: 2,
-    color: COLORS.textMuted,
-    fontSize: 10,
+    fontSize: 9,
+    lineHeight: 12,
     fontFamily: "Inter_600SemiBold",
-    letterSpacing: 0.4,
+    letterSpacing: 0.6,
     textTransform: "uppercase",
+    color: COLORS.textMuted,
   },
-  badgeLive: {
-    color: COLORS.live,
-  },
-  badgeAccent: {
-    color: COLORS.accent,
-  },
+  badgeLive: { color: COLORS.live },
+  badgeAccent: { color: COLORS.accent },
   actions: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 5,
-    marginLeft: 8,
+    gap: 6,
+    marginLeft: 10,
+    flexShrink: 0,
   },
-  iconBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+  btn: {
     backgroundColor: COLORS.cardElevated,
-    borderWidth: 1,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: COLORS.border,
     alignItems: "center",
     justifyContent: "center",
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.2,
-    shadowRadius: 6,
-    elevation: 3,
-  },
-  profileBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: "rgba(229,9,20,0.10)",
-    borderWidth: 1,
-    borderColor: `${COLORS.accent}66`,
-    alignItems: "center",
-    justifyContent: "center",
-    shadowColor: COLORS.accent,
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.18,
-    shadowRadius: 5,
+    shadowRadius: 4,
     elevation: 3,
+  },
+  backBtn: {
+    marginRight: 10,
+  },
+  profileBtn: {
+    backgroundColor: "rgba(229,9,20,0.10)",
+    borderColor: `${COLORS.accent}55`,
   },
 });

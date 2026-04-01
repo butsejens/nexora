@@ -49,14 +49,15 @@ import type { TimelineFilter } from "@/features/match/hooks/useLineupTimelineInt
 
 const EXPERIENCE_TABS = [
   { id: "prematch", label: "Prematch" },
-  { id: "predictions", label: "Predictions ⚡ AI" },
+  { id: "predictions", label: "Predictions" },
+  { id: "ai", label: "AI ⚡" },
   { id: "stats", label: "Stats" },
   { id: "lineups", label: "Lineups" },
   { id: "timeline", label: "Timeline" },
   { id: "h2h", label: "H2H" },
 ] as const;
 
-type ExperienceTabId = "prematch" | "predictions" | "stats" | "lineups" | "timeline" | "h2h";
+type ExperienceTabId = "prematch" | "predictions" | "ai" | "stats" | "lineups" | "timeline" | "h2h";
 
 function shouldRetryRequest(failureCount: number, error: unknown): boolean {
   if (failureCount >= 1) return false;
@@ -161,6 +162,7 @@ export default function MatchDetailScreen() {
   const [visitedExperienceTabs, setVisitedExperienceTabs] = useState<Record<ExperienceTabId, boolean>>({
     prematch: true,
     predictions: false,
+    ai: false,
     stats: false,
     lineups: false,
     timeline: false,
@@ -958,6 +960,7 @@ export default function MatchDetailScreen() {
           </ScrollView>
         </View>
 
+        {/* ─── PREMATCH TAB ─── */}
         {visitedExperienceTabs.prematch ? (
           <ScrollView
             style={[styles.tabContent, activeExperienceTab !== "prematch" ? styles.hiddenTabContent : null]}
@@ -966,258 +969,213 @@ export default function MatchDetailScreen() {
             decelerationRate="fast"
             scrollEventThrottle={16}
           >
+            {/* Live context — only when match is live */}
             {(isLive || isHalfTime) ? (
-              <View style={styles.liveSignalWrap}>
+              <View style={styles.liveSectionWrap}>
                 {keyLiveEvents.length > 0 ? (
-                  <View style={styles.liveSignalCard}>
-                    <Text style={styles.liveSignalTitle}>Live Key Events</Text>
+                  <View style={styles.md_card}>
+                    <SectionHead icon="radio-outline" label="Live Key Events" accent={COLORS.live} />
                     {keyLiveEvents.map((event, idx) => {
-                      const minute = event.minuteLabel || "--";
-                      const token = event.filter;
-                      const side = event.side;
-                      const title = safeStr(event.title || "Event");
-                      const detail = safeStr(event.description || "");
+                      const evColor = event.filter === "goals" ? COLORS.live
+                        : event.filter === "cards" ? "#FF3040"
+                        : event.filter === "var" ? "#A78BFA"
+                        : COLORS.textMuted;
                       return (
-                        <View key={`${title}_${minute}_${idx}`} style={styles.liveSignalEventRow}>
-                          <Text style={styles.liveSignalMinute}>{minute || "--"}</Text>
-                          <View style={styles.liveSignalEventBody}>
-                            <Text style={styles.liveSignalEventTitle} numberOfLines={1}>{title}</Text>
-                            {detail ? <Text style={styles.liveSignalEventDetail} numberOfLines={1}>{detail}</Text> : null}
+                        <View key={`lke_${idx}`} style={styles.md_liveEventRow}>
+                          <Text style={[styles.md_liveMin, { color: evColor }]}>{event.minuteLabel || "--"}</Text>
+                          <View style={{ flex: 1 }}>
+                            <Text style={styles.md_liveTitle} numberOfLines={1}>{safeStr(event.title || "Event")}</Text>
+                            {event.description ? <Text style={styles.md_liveMeta} numberOfLines={1}>{safeStr(event.description)}</Text> : null}
                           </View>
-                          <View
-                            style={[
-                              styles.liveSignalTypePill,
-                              token === "goals" ? styles.liveSignalTypeGoal : null,
-                              token === "cards" ? styles.liveSignalTypeCard : null,
-                              token === "subs" ? styles.liveSignalTypeSub : null,
-                              token === "var" ? styles.liveSignalTypeVar : null,
-                              token === "key" ? styles.liveSignalTypePen : null,
-                            ]}
-                          >
-                            <Text style={styles.liveSignalTypeText}>{side === "center" ? token.toUpperCase() : side === "home" ? "HOME" : "AWAY"}</Text>
+                          <View style={[styles.md_livePill, { backgroundColor: `${evColor}22`, borderColor: `${evColor}55` }]}>
+                            <Text style={[styles.md_livePillText, { color: evColor }]}>{event.filter.toUpperCase()}</Text>
                           </View>
                         </View>
                       );
                     })}
                   </View>
                 ) : null}
-                <View style={styles.liveSignalCard}>
-                  <Text style={styles.liveSignalTitle}>Live Match Factors</Text>
-                  <View style={styles.liveFactorGrid}>
+                {liveMatchFactors.length > 0 ? (
+                  <View style={styles.md_card}>
+                    <SectionHead icon="pulse-outline" label="Live Match Factors" accent={COLORS.live} />
                     {liveMatchFactors.map((factor) => (
-                      <View key={factor.label} style={styles.liveFactorChip}>
-                        <Text style={styles.liveFactorLabel}>{factor.label}</Text>
-                        <Text
-                          style={[
-                            styles.liveFactorValue,
-                            factor.tone === "home" ? styles.liveFactorValueHome : null,
-                            factor.tone === "away" ? styles.liveFactorValueAway : null,
-                          ]}
-                        >
-                          {factor.value}
-                        </Text>
+                      <View key={factor.label} style={styles.md_factorRow}>
+                        <Text style={styles.md_factorLabel}>{factor.label}</Text>
+                        <Text style={[
+                          styles.md_factorValue,
+                          factor.tone === "home" ? { color: COLORS.accent } : factor.tone === "away" ? { color: "#5D9EFF" } : null,
+                        ]}>{factor.value}</Text>
                       </View>
                     ))}
                   </View>
-                  {momentumTrend.length > 0 ? (
-                    <View style={styles.liveTrendWrap}>
-                      <Text style={styles.liveTrendLabel}>Momentum trend</Text>
-                      <View style={styles.liveTrendBars}>
-                        {momentumTrend.map((point, idx) => {
-                          const height = Math.max(5, Math.min(22, Math.round(Math.abs(point) * 2)));
-                          const positive = point >= 0;
-                          return (
-                            <View
-                              key={`trend_${idx}`}
-                              style={[
-                                styles.liveTrendBar,
-                                {
-                                  height,
-                                  backgroundColor: positive ? "rgba(31,219,142,0.88)" : "rgba(62,120,255,0.88)",
-                                  alignSelf: positive ? "flex-end" : "flex-start",
-                                },
-                              ]}
-                            />
-                          );
-                        })}
-                      </View>
-                    </View>
-                  ) : null}
-                </View>
+                ) : null}
               </View>
             ) : null}
-            <Text style={styles.nxSectionTitle}>Match Context</Text>
-            <View style={styles.nxCard}>
-              <Text style={styles.nxCardKicker}>Context</Text>
-              <Text style={styles.nxCardTitle}>{homeTeamName} vs {awayTeamName}</Text>
-              <View style={styles.nxMetaRow}><Ionicons name="calendar-outline" size={14} color="#8F98AE" /><Text style={styles.nxMetaText}>{prematchContext.kickoffDate || "Datum volgt"} · {prematchContext.kickoffTime || "--:--"}</Text></View>
-              <View style={styles.nxMetaRow}><Ionicons name="time-outline" size={14} color="#8F98AE" /><Text style={styles.nxMetaText}>Tijdzone: {prematchContext.timezone}</Text></View>
-              <View style={styles.nxMetaRow}><Ionicons name="trophy-outline" size={14} color="#8F98AE" /><Text style={styles.nxMetaText}>{prematchContext.competition || "Competitie onbekend"}{prematchContext.round ? ` · ${prematchContext.round}` : ""}</Text></View>
-              <View style={styles.nxMetaRow}><Ionicons name="location-outline" size={14} color="#8F98AE" /><Text style={styles.nxMetaText}>{prematchContext.venue || "Stadion onbekend"}{prematchContext.city ? ` · ${prematchContext.city}` : ""}{prematchContext.country ? `, ${prematchContext.country}` : ""}</Text></View>
-              <View style={styles.nxMetaRow}><Ionicons name="person-outline" size={14} color="#8F98AE" /><Text style={styles.nxMetaText}>Scheidsrechter: {prematchContext.referee || "Niet beschikbaar"}</Text></View>
-              <View style={styles.nxMetaRow}><Ionicons name="cloud-outline" size={14} color="#8F98AE" /><Text style={styles.nxMetaText}>Weer: {prematchContext.weather || "Niet beschikbaar"}</Text></View>
+
+            {/* Match info */}
+            <View style={styles.md_card}>
+              <SectionHead icon="information-circle-outline" label="Match Info" />
+              {prematchContext.kickoffDate ? (
+                <InfoRow icon="calendar-outline" text={`${prematchContext.kickoffDate} · ${prematchContext.kickoffTime || "--:--"}`} />
+              ) : null}
+              <InfoRow
+                icon="trophy-outline"
+                text={`${prematchContext.competition || "Competition"}${prematchContext.round ? ` · ${prematchContext.round}` : ""}`}
+              />
+              {prematchContext.venue ? (
+                <InfoRow
+                  icon="location-outline"
+                  text={`${prematchContext.venue}${prematchContext.city ? ` · ${prematchContext.city}` : ""}${prematchContext.country ? `, ${prematchContext.country}` : ""}`}
+                />
+              ) : null}
+              {prematchContext.referee ? <InfoRow icon="person-outline" text={`Referee: ${prematchContext.referee}`} /> : null}
+              {prematchContext.weather ? <InfoRow icon="cloud-outline" text={`Weather: ${prematchContext.weather}`} /> : null}
             </View>
 
-            <Text style={styles.nxSectionTitle}>Team Form</Text>
-            <View style={styles.nxGridWrap}>
-              <View style={styles.nxGridCard}>
-                <Text style={styles.nxGridLabel}>{homeTeamName}</Text>
-                <View style={styles.formBadgeRow}>
-                  {prematchTeamForm.homeForm.sequence.map((r: string, idx: number) => (
-                    <View key={`home_form_${idx}`} style={[styles.formBadge, r === "W" ? styles.formBadgeWin : r === "D" ? styles.formBadgeDraw : styles.formBadgeLoss]}>
-                      <Text style={styles.formBadgeText}>{r}</Text>
-                    </View>
-                  ))}
-                </View>
-                <Text style={styles.nxMetaText}>Goals: {prematchTeamForm.homeForm.goalsScored} · Tegen: {prematchTeamForm.homeForm.goalsConceded}</Text>
-                <Text style={styles.nxGridValue}>AI Form: {prematchTeamForm.homeForm.aiFormScore}/100</Text>
-              </View>
-              <View style={styles.nxGridCard}>
-                <Text style={styles.nxGridLabel}>{awayTeamName}</Text>
-                <View style={styles.formBadgeRow}>
-                  {prematchTeamForm.awayForm.sequence.map((r: string, idx: number) => (
-                    <View key={`away_form_${idx}`} style={[styles.formBadge, r === "W" ? styles.formBadgeWin : r === "D" ? styles.formBadgeDraw : styles.formBadgeLoss]}>
-                      <Text style={styles.formBadgeText}>{r}</Text>
-                    </View>
-                  ))}
-                </View>
-                <Text style={styles.nxMetaText}>Goals: {prematchTeamForm.awayForm.goalsScored} · Tegen: {prematchTeamForm.awayForm.goalsConceded}</Text>
-                <Text style={styles.nxGridValue}>AI Form: {prematchTeamForm.awayForm.aiFormScore}/100</Text>
-              </View>
-            </View>
-
-            <Text style={styles.nxSectionTitle}>Head to Head</Text>
-            <View style={styles.nxCard}>
-              <Text style={styles.nxCardKicker}>Last 5 meetings</Text>
-              <Text style={styles.nxBodyText}>{homeTeamName} wins {prematchH2H.summary.homeWins} · Draws {prematchH2H.summary.draws} · {awayTeamName} wins {prematchH2H.summary.awayWins}</Text>
-              {(prematchH2H.rows || []).map((row: any) => (
-                <View key={row.id} style={styles.nxListRow}>
-                  <Text style={styles.nxListPrimary}>{row.homeTeam} {row.homeScore}-{row.awayScore} {row.awayTeam}</Text>
-                  <Text style={styles.nxListMeta}>{row.location === "home" ? "Home" : row.location === "away" ? "Away" : "Neutral"}</Text>
+            {/* Team Form */}
+            <SectionTitle label="Team Form" />
+            <View style={styles.md_grid2}>
+              {([
+                { team: homeTeamName, form: prematchTeamForm.homeForm },
+                { team: awayTeamName, form: prematchTeamForm.awayForm },
+              ] as const).map(({ team, form }) => (
+                <View key={team} style={styles.md_gridCard}>
+                  <Text style={styles.md_gridLabel} numberOfLines={1}>{team}</Text>
+                  <View style={styles.md_formRow}>
+                    {(form.sequence as string[]).slice(-5).map((r, i) => (
+                      <View key={i} style={[styles.md_formDot, r === "W" ? styles.md_formDotW : r === "D" ? styles.md_formDotD : styles.md_formDotL]}>
+                        <Text style={styles.md_formDotText}>{r}</Text>
+                      </View>
+                    ))}
+                    {(form.sequence as string[]).length === 0 ? <Text style={styles.md_metaText}>No form data</Text> : null}
+                  </View>
+                  <Text style={styles.md_metaText}>GF {form.goalsScored} · GA {form.goalsConceded}</Text>
+                  <View style={[styles.md_scoreBar, { backgroundColor: `rgba(229,9,20,${Math.max(0.15, form.aiFormScore / 100 * 0.7)})` }]}>
+                    <Text style={styles.md_scoreBarText}>Form {form.aiFormScore}/100</Text>
+                  </View>
                 </View>
               ))}
-              {(!prematchH2H.rows || prematchH2H.rows.length === 0) ? <Text style={styles.nxBodyText}>Geen recente onderlinge matchen gevonden in deze competitiecontext.</Text> : null}
             </View>
 
-            <Text style={styles.nxSectionTitle}>Team Stats Comparison</Text>
-            <View style={styles.nxCard}>
-              {(prematchTeamStats.metrics || []).map((metric: any) => {
-                const homeVal = typeof metric.home === "number" ? metric.home : 0;
-                const awayVal = typeof metric.away === "number" ? metric.away : 0;
-                const total = Math.max(1, homeVal + awayVal);
-                const homePctBar = Math.round((homeVal / total) * 100);
-                const awayPctBar = 100 - homePctBar;
-                const decimals = Number.isFinite(metric.decimals) ? metric.decimals : 1;
-                const suffix = metric.suffix || "";
-                return (
-                  <View key={metric.key} style={styles.compareRow}>
-                    <Text style={styles.compareLabel}>{metric.label}</Text>
-                    <View style={styles.compareBars}>
-                      <View style={[styles.compareBarHome, { width: `${homePctBar}%` }]} />
-                      <View style={[styles.compareBarAway, { width: `${awayPctBar}%` }]} />
+            {/* Standings */}
+            <SectionTitle label="Standings" />
+            <View style={styles.md_grid2}>
+              {([
+                { team: homeTeamName, standing: prematchStandings.homeStanding },
+                { team: awayTeamName, standing: prematchStandings.awayStanding },
+              ] as const).map(({ team, standing }) => (
+                <View key={team} style={styles.md_gridCard}>
+                  <Text style={styles.md_gridLabel} numberOfLines={1}>{team}</Text>
+                  {standing ? (
+                    <>
+                      <Text style={styles.md_gridValue}>#{standing.rank ?? "--"}</Text>
+                      <Text style={styles.md_metaText}>{standing.points ?? "--"} pts{standing.played ? ` · ${standing.played} GP` : ""}</Text>
+                      {standing.form ? <Text style={styles.md_metaText}>Form: {standing.form}</Text> : null}
+                      {standing.goalsFor != null ? <Text style={styles.md_metaText}>GF {standing.goalsFor} · GA {standing.goalsAgainst ?? "--"}</Text> : null}
+                    </>
+                  ) : (
+                    <Text style={styles.md_metaText}>Not available</Text>
+                  )}
+                </View>
+              ))}
+            </View>
+
+            {/* Key Players */}
+            <SectionTitle label="Key Players" />
+            <View style={styles.md_grid2}>
+              {([
+                { team: homeTeamName, kp: prematchKeyPlayers.home },
+                { team: awayTeamName, kp: prematchKeyPlayers.away },
+              ] as const).map(({ team, kp }) => (
+                <View key={team} style={styles.md_gridCard}>
+                  <Text style={styles.md_gridLabel} numberOfLines={1}>{team}</Text>
+                  {kp.topScorer ? (
+                    <View style={styles.md_playerChip}>
+                      <Ionicons name="football-outline" size={12} color={COLORS.accent} />
+                      <Text style={styles.md_playerChipText} numberOfLines={1}>{kp.topScorer.name}</Text>
                     </View>
-                    <View style={styles.compareValuesRow}>
-                      <Text style={styles.compareValue}>{metric.home == null ? "--" : `${homeVal.toFixed(decimals)}${suffix}`}</Text>
-                      <Text style={styles.compareValue}>{metric.away == null ? "--" : `${awayVal.toFixed(decimals)}${suffix}`}</Text>
+                  ) : null}
+                  {kp.assistLeader ? (
+                    <View style={styles.md_playerChip}>
+                      <Ionicons name="arrow-forward-circle-outline" size={12} color="#5D9EFF" />
+                      <Text style={styles.md_playerChipText} numberOfLines={1}>{kp.assistLeader.name}</Text>
                     </View>
-                  </View>
-                );
-              })}
+                  ) : null}
+                  {kp.keyPlayer ? (
+                    <View style={styles.md_playerChip}>
+                      <Ionicons name="sparkles-outline" size={12} color="#FFD700" />
+                      <Text style={styles.md_playerChipText} numberOfLines={1}>{kp.keyPlayer.player?.name || "AI pick"}</Text>
+                    </View>
+                  ) : null}
+                  {!kp.topScorer && !kp.assistLeader && !kp.keyPlayer ? (
+                    <Text style={styles.md_metaText}>Not available</Text>
+                  ) : null}
+                </View>
+              ))}
             </View>
 
-            <Text style={styles.nxSectionTitle}>Standings Context</Text>
-            <View style={styles.nxGridWrap}>
-              <View style={styles.nxGridCard}>
-                <Text style={styles.nxGridLabel}>{homeTeamName}</Text>
-                <Text style={styles.nxGridValue}>#{prematchStandings.homeStanding?.rank ?? "--"} · {prematchStandings.homeStanding?.points ?? "--"} pts</Text>
-                <Text style={styles.nxMetaText}>Vorm: {prematchStandings.homeStanding?.form || "Niet beschikbaar"}</Text>
-              </View>
-              <View style={styles.nxGridCard}>
-                <Text style={styles.nxGridLabel}>{awayTeamName}</Text>
-                <Text style={styles.nxGridValue}>#{prematchStandings.awayStanding?.rank ?? "--"} · {prematchStandings.awayStanding?.points ?? "--"} pts</Text>
-                <Text style={styles.nxMetaText}>Vorm: {prematchStandings.awayStanding?.form || "Niet beschikbaar"}</Text>
-              </View>
-            </View>
-
-            <Text style={styles.nxSectionTitle}>Key Players</Text>
-            <View style={styles.nxGridWrap}>
-              <View style={styles.nxGridCard}>
-                <Text style={styles.nxGridLabel}>{homeTeamName}</Text>
-                <Text style={styles.nxMetaText}>Top scorer: {prematchKeyPlayers.home.topScorer?.name || "Niet beschikbaar"}</Text>
-                <Text style={styles.nxMetaText}>Assist leader: {prematchKeyPlayers.home.assistLeader?.name || "Niet beschikbaar"}</Text>
-                <Text style={styles.nxMetaText}>AI key player: {prematchKeyPlayers.home.keyPlayer?.player?.name || "Niet beschikbaar"}</Text>
-              </View>
-              <View style={styles.nxGridCard}>
-                <Text style={styles.nxGridLabel}>{awayTeamName}</Text>
-                <Text style={styles.nxMetaText}>Top scorer: {prematchKeyPlayers.away.topScorer?.name || "Niet beschikbaar"}</Text>
-                <Text style={styles.nxMetaText}>Assist leader: {prematchKeyPlayers.away.assistLeader?.name || "Niet beschikbaar"}</Text>
-                <Text style={styles.nxMetaText}>AI key player: {prematchKeyPlayers.away.keyPlayer?.player?.name || "Niet beschikbaar"}</Text>
-              </View>
-            </View>
-
-            <Text style={styles.nxSectionTitle}>Injuries / Suspensions</Text>
-            <View style={styles.nxCard}>
+            {/* Injuries */}
+            <SectionTitle label="Injuries & Absences" />
+            <View style={styles.md_card}>
               {prematchInjuries.hasVerifiedData ? (
                 <>
-                  <Text style={styles.nxGridLabel}>{homeTeamName}</Text>
-                  {(prematchInjuries.home || []).map((item: any, idx: number) => (
-                    <View key={`home_abs_${idx}`} style={styles.nxListRow}>
-                      <Text style={styles.nxListPrimary}>{item.name}</Text>
-                      <Text style={styles.nxListMeta}>{item.reason}</Text>
-                    </View>
-                  ))}
-                  <Text style={[styles.nxGridLabel, { marginTop: 10 }]}>{awayTeamName}</Text>
-                  {(prematchInjuries.away || []).map((item: any, idx: number) => (
-                    <View key={`away_abs_${idx}`} style={styles.nxListRow}>
-                      <Text style={styles.nxListPrimary}>{item.name}</Text>
-                      <Text style={styles.nxListMeta}>{item.reason}</Text>
+                  {([
+                    { team: homeTeamName, list: prematchInjuries.home },
+                    { team: awayTeamName, list: prematchInjuries.away },
+                  ] as const).map(({ team, list }, sIdx) => (
+                    <View key={team} style={sIdx > 0 ? { marginTop: 12 } : undefined}>
+                      <Text style={styles.md_cardKicker}>{team}</Text>
+                      {(list as any[]).length > 0 ? (
+                        (list as any[]).map((item: any, i: number) => (
+                          <View key={`inj_${sIdx}_${i}`} style={styles.md_injRow}>
+                            <Ionicons name="medkit-outline" size={11} color="#FF6B35" />
+                            <Text style={styles.md_injName} numberOfLines={1}>{item.name}</Text>
+                            <Text style={styles.md_injReason} numberOfLines={1}>{item.reason || "Injury"}</Text>
+                          </View>
+                        ))
+                      ) : (
+                        <Text style={styles.md_metaText}>No absences reported</Text>
+                      )}
                     </View>
                   ))}
                 </>
               ) : (
-                <Text style={styles.nxBodyText}>Geen geverifieerde blessures of schorsingen beschikbaar in de huidige databronnen.</Text>
+                <EmptySlate icon="medkit-outline" title="No injury data" subtitle="Verified injury updates are not available for this match." />
               )}
             </View>
 
-            <Text style={styles.nxSectionTitle}>Expected Lineups</Text>
-            <View style={styles.nxGridWrap}>
-              <View style={styles.nxGridCard}>
-                <Text style={styles.nxGridLabel}>{homeTeamName}</Text>
-                <Text style={styles.nxGridValue}>{homeLineupTeam?.formation || "Onbekend"}</Text>
-                <Text style={styles.nxMetaText}>Status: {homeLineupTeam?.lineupState === "confirmed" ? "Confirmed lineup" : homeLineupTeam?.lineupState === "expected" ? "Expected lineup" : "Lineup not available"}</Text>
-                <Text style={styles.nxMetaText}>XI: {homeLineupTeam?.starters?.length || 0} · Bench: {homeLineupTeam?.bench?.length || 0}</Text>
-                {prematchInjuries.home.length > 0 ? <Text style={styles.nxMetaText}>Afwezig: {prematchInjuries.home.slice(0, 3).map((item) => item.name).join(", ")}</Text> : null}
-              </View>
-              <View style={styles.nxGridCard}>
-                <Text style={styles.nxGridLabel}>{awayTeamName}</Text>
-                <Text style={styles.nxGridValue}>{awayLineupTeam?.formation || "Onbekend"}</Text>
-                <Text style={styles.nxMetaText}>Status: {awayLineupTeam?.lineupState === "confirmed" ? "Confirmed lineup" : awayLineupTeam?.lineupState === "expected" ? "Expected lineup" : "Lineup not available"}</Text>
-                <Text style={styles.nxMetaText}>XI: {awayLineupTeam?.starters?.length || 0} · Bench: {awayLineupTeam?.bench?.length || 0}</Text>
-                {prematchInjuries.away.length > 0 ? <Text style={styles.nxMetaText}>Afwezig: {prematchInjuries.away.slice(0, 3).map((item) => item.name).join(", ")}</Text> : null}
-              </View>
-            </View>
-
-            <View style={styles.nxCard}>
-              <Text style={styles.nxCardKicker}>Tactical setup preview</Text>
-              <Text style={styles.nxBodyText}>{homeTeamName} likely setup: {homeLineupTeam?.formation || "Unknown"} · {awayTeamName} likely setup: {awayLineupTeam?.formation || "Unknown"}.</Text>
-              <Text style={[styles.nxMetaText, { marginTop: 8 }]}>Deze preview wordt automatisch bijgewerkt zodra confirmed lineups of late absences binnenkomen.</Text>
-            </View>
-
-            <Text style={styles.nxSectionTitle}>Odds</Text>
-            <View style={styles.nxCard}>
-              {safePrediction ? (
-                <>
-                  <View style={styles.nxListRow}><Text style={styles.nxListPrimary}>Home</Text><Text style={styles.nxListMeta}>{normHomePct}% · {(normHomePct > 0 ? (100 / normHomePct).toFixed(2) : "--")}</Text></View>
-                  <View style={styles.nxListRow}><Text style={styles.nxListPrimary}>Draw</Text><Text style={styles.nxListMeta}>{normDrawPct}% · {(normDrawPct > 0 ? (100 / normDrawPct).toFixed(2) : "--")}</Text></View>
-                  <View style={styles.nxListRow}><Text style={styles.nxListPrimary}>Away</Text><Text style={styles.nxListMeta}>{normAwayPct}% · {(normAwayPct > 0 ? (100 / normAwayPct).toFixed(2) : "--")}</Text></View>
-                </>
-              ) : (
-                <Text style={styles.nxBodyText}>Odds niet beschikbaar voor deze wedstrijdcontext.</Text>
-              )}
+            {/* Expected Lineups (compact) */}
+            <SectionTitle label="Expected Lineups" />
+            <View style={styles.md_grid2}>
+              {([
+                { team: homeTeamName, lineup: homeLineupTeam },
+                { team: awayTeamName, lineup: awayLineupTeam },
+              ] as const).map(({ team, lineup }) => (
+                <View key={team} style={styles.md_gridCard}>
+                  <Text style={styles.md_gridLabel} numberOfLines={1}>{team}</Text>
+                  <Text style={styles.md_gridValue}>{lineup?.formation || "--"}</Text>
+                  <View style={[
+                    styles.md_stateBadge,
+                    lineup?.lineupState === "confirmed" ? styles.md_stateBadgeConfirmed
+                      : lineup?.lineupState === "expected" ? styles.md_stateBadgeExpected
+                      : styles.md_stateBadgeUnknown,
+                  ]}>
+                    <Text style={styles.md_stateBadgeText}>
+                      {lineup?.lineupState === "confirmed" ? "CONFIRMED"
+                        : lineup?.lineupState === "expected" ? "EXPECTED"
+                        : "PENDING"}
+                    </Text>
+                  </View>
+                  <Text style={styles.md_metaText}>
+                    XI: {lineup?.starters?.length || 0} · Bench: {lineup?.bench?.length || 0}
+                  </Text>
+                </View>
+              ))}
             </View>
           </ScrollView>
         ) : null}
 
+        {/* ─── PREDICTIONS TAB ─── */}
         {visitedExperienceTabs.predictions ? (
           <ScrollView
             style={[styles.tabContent, activeExperienceTab !== "predictions" ? styles.hiddenTabContent : null]}
@@ -1226,197 +1184,417 @@ export default function MatchDetailScreen() {
             decelerationRate="fast"
             scrollEventThrottle={16}
           >
-            <View style={styles.nxSectionHeadRow}>
-              <Text style={styles.nxSectionTitle}>AI Predictions</Text>
-              <TouchableOpacity style={styles.aiRefreshBtn} onPress={() => liveInsightEnabled ? fetchLivePrediction() : fetchPreMatchPrediction()}>
-                <Ionicons name="refresh-outline" size={13} color={COLORS.textMuted} />
-                <Text style={styles.aiRefreshText}>{liveInsightEnabled ? "Live refresh" : tFn("matchDetail.preMatchRefresh")}</Text>
-              </TouchableOpacity>
+            {/* Main Prediction Card */}
+            <View style={styles.md_card}>
+              <View style={styles.md_cardTopRow}>
+                <SectionHead
+                  icon="sparkles-outline"
+                  label={liveInsightEnabled ? "Live AI Coach" : "AI Prediction"}
+                  accent={COLORS.accent}
+                />
+                <TouchableOpacity
+                  style={styles.md_refreshBtn}
+                  onPress={() => liveInsightEnabled ? fetchLivePrediction() : fetchPreMatchPrediction()}
+                >
+                  <Ionicons name="refresh-outline" size={12} color={COLORS.textMuted} />
+                  <Text style={styles.md_refreshText}>Refresh</Text>
+                </TouchableOpacity>
+              </View>
+              {predLoading && !safePrediction ? (
+                <View style={styles.md_loadingRow}>
+                  <ActivityIndicator size="small" color={COLORS.accent} />
+                  <Text style={styles.md_loadingText}>Analyzing match data…</Text>
+                </View>
+              ) : safePrediction ? (
+                <>
+                  <Text style={styles.md_predictionOutcome}>{safePrediction.prediction || "Analysis pending"}</Text>
+                  {(safePrediction.live_shift_summary || safePrediction.summary) ? (
+                    <Text style={styles.md_bodyText}>{safePrediction.live_shift_summary || safePrediction.summary}</Text>
+                  ) : null}
+                  {safePrediction.tip ? (
+                    <View style={styles.md_tipRow}>
+                      <Ionicons name="bulb-outline" size={13} color="#FFD700" />
+                      <Text style={styles.md_tipText}>{safePrediction.tip}</Text>
+                    </View>
+                  ) : null}
+                </>
+              ) : (
+                <EmptySlate
+                  icon="analytics-outline"
+                  title="No prediction yet"
+                  subtitle="Prediction loads once match context is ready."
+                />
+              )}
             </View>
 
-            {!safePrediction ? (
-              <View style={styles.nxCard}>
-                <Text style={styles.nxCardKicker}>Nexora Match Intelligence</Text>
-                {predLoading ? (
-                  <View style={styles.prematchInsightLoading}>
-                    <ActivityIndicator size="small" color={COLORS.accent} />
-                    <Text style={styles.aiLoadingText}>{tFn("matchDetail.preMatchLoading")}</Text>
-                  </View>
-                ) : (
-                  <Text style={styles.nxBodyText}>Nog geen modeloutput ontvangen. Controleer of standings/live stats en line-up context beschikbaar zijn.</Text>
-                )}
-              </View>
-            ) : null}
-
+            {/* 1X2 Probability Bar */}
             {safePrediction ? (
-              <View style={styles.nxCard}>
-                <Text style={styles.nxCardKicker}>{liveInsightEnabled ? "Live AI coach" : "AI Match Summary"}</Text>
-                <Text style={styles.nxCardTitle}>{safePrediction.prediction || "Model updating"}</Text>
-                <Text style={styles.nxBodyText}>{safePrediction.live_shift_summary || safePrediction.summary || "AI is analyzing the match context."}</Text>
-                <View style={[styles.nxMetaRow, { marginTop: 12 }]}> 
-                  <Ionicons name="sparkles-outline" size={14} color="#8F98AE" />
-                  <Text style={styles.nxMetaText}>{safePrediction.tip || "No primary angle yet"}</Text>
+              <>
+                <SectionTitle label="Outcome Probabilities" />
+                <View style={styles.md_card}>
+                  <View style={styles.md_probTeamRow}>
+                    <Text style={styles.md_probTeamName} numberOfLines={1}>{homeTeamName}</Text>
+                    <Text style={styles.md_probCenterLabel}>DRAW</Text>
+                    <Text style={[styles.md_probTeamName, { textAlign: "right" }]} numberOfLines={1}>{awayTeamName}</Text>
+                  </View>
+                  <View style={styles.md_probBarWrap}>
+                    <View style={[styles.md_probFillHome, { flex: normHomePct }]} />
+                    <View style={[styles.md_probFillDraw, { flex: normDrawPct }]} />
+                    <View style={[styles.md_probFillAway, { flex: normAwayPct }]} />
+                  </View>
+                  <View style={styles.md_probValues}>
+                    <Text style={[styles.md_probVal, { color: COLORS.accent }]}>{normHomePct}%</Text>
+                    <Text style={[styles.md_probVal, { color: COLORS.textMuted }]}>{normDrawPct}%</Text>
+                    <Text style={[styles.md_probVal, { color: "#5D9EFF" }]}>{normAwayPct}%</Text>
+                  </View>
                 </View>
-              </View>
+              </>
             ) : null}
 
-            {safePrediction && premiumStoryCard ? (
-              <View style={styles.nxCard}>
-                <Text style={styles.nxCardKicker}>AI Story Layer</Text>
-                <Text style={styles.nxCardTitle}>{premiumStoryCard.title}</Text>
-                <Text style={styles.nxBodyText}>{premiumStoryCard.summary}</Text>
-                {premiumStoryCard.keyFactors.map((factor) => (
-                  <Text key={factor} style={styles.aiStoryBullet}>• {factor}</Text>
-                ))}
-              </View>
-            ) : null}
-
+            {/* Premium lock */}
             {safePrediction && !predictionUnlocked ? (
-              <View style={styles.nxLockedCard}>
-                <Text style={styles.nxGridLabel}>Unlock Match Intelligence</Text>
-                <Text style={styles.nxBodyText}>Open winnaar-kansen, BTTS, O/U-lijnen, clean sheets, upset-risk en live momentum voor deze match.</Text>
-                <View style={[styles.nxGridWrap, { marginTop: 14 }]}> 
-                  <View style={styles.nxGridCard}>
-                    <Text style={styles.nxGridLabel}>Winner lean</Text>
-                    <Text style={styles.nxGridValue}>{safePrediction.prediction}</Text>
-                  </View>
-                  <View style={styles.nxGridCard}>
-                    <Text style={styles.nxGridLabel}>Confidence</Text>
-                    <Text style={styles.nxGridValue}>{confidencePct}%</Text>
-                  </View>
-                </View>
-                <BlurView intensity={45} tint="dark" style={styles.nxLockOverlay}>
-                  <Ionicons name="lock-closed" size={18} color="#E50914" />
-                  <Text style={styles.nxLockText}>Premium intelligence locked</Text>
-                </BlurView>
-                <TouchableOpacity
-                  style={[styles.aiRefreshBtn, { alignSelf: "flex-start", marginTop: 16, borderColor: "#E50914" }]}
-                  onPress={handleUnlockPrediction}
-                  disabled={rewardedAdRunning}
-                >
-                  <Ionicons name={rewardedAdRunning ? "hourglass-outline" : "play-circle-outline"} size={14} color="#FFFFFF" />
-                  <Text style={[styles.aiRefreshText, { color: "#FFFFFF" }]}>
-                    {rewardedAdRunning ? "Unlocking..." : `Unlock via ad (${dailyPredictionUnlocksRemaining} left)`}
+              <View style={styles.md_lockCard}>
+                <View style={styles.md_lockContent}>
+                  <Ionicons name="lock-closed" size={22} color={COLORS.accent} style={{ marginBottom: 6 }} />
+                  <Text style={styles.md_lockTitle}>Unlock Full Intelligence</Text>
+                  <Text style={styles.md_lockBody}>
+                    Win%, BTTS, Over/Under, clean sheets, upset risk and live momentum for this match.
                   </Text>
-                </TouchableOpacity>
-                {!hasPremium ? (
                   <TouchableOpacity
-                    style={[styles.aiRefreshBtn, { alignSelf: "flex-start", marginTop: 12 }]}
-                    onPress={() => router.push("/premium")}
+                    style={styles.md_unlockBtn}
+                    onPress={handleUnlockPrediction}
+                    disabled={rewardedAdRunning}
                   >
-                    <Ionicons name="diamond-outline" size={14} color={COLORS.textMuted} />
-                    <Text style={styles.aiRefreshText}>Bekijk Premium</Text>
+                    <Ionicons
+                      name={rewardedAdRunning ? "hourglass-outline" : "play-circle-outline"}
+                      size={15}
+                      color="#FFF"
+                    />
+                    <Text style={styles.md_unlockBtnText}>
+                      {rewardedAdRunning ? "Unlocking…" : `Watch Ad · Unlock (${dailyPredictionUnlocksRemaining} left)`}
+                    </Text>
                   </TouchableOpacity>
-                ) : null}
+                  <TouchableOpacity style={styles.md_premiumLink} onPress={() => router.push("/premium")}>
+                    <Ionicons name="diamond-outline" size={13} color={COLORS.textMuted} />
+                    <Text style={styles.md_premiumLinkText}>View Premium Plans</Text>
+                  </TouchableOpacity>
+                </View>
+                <BlurView intensity={40} tint="dark" style={styles.md_lockBlur} pointerEvents="none" />
               </View>
             ) : null}
 
+            {/* Full unlocked data */}
             {safePrediction && predictionUnlocked ? (
               <>
-                <Text style={styles.nxSectionTitle}>Outcome Probabilities</Text>
-                <View style={styles.nxGridWrap}>
-                  {predictionSummaryCards.map((card) => (
-                    <View key={card.key} style={[styles.nxGridCard, { borderColor: `${card.accent}44` }]}> 
-                      <Text style={styles.nxGridLabel}>{card.label}</Text>
-                      <Text style={[styles.nxGridValue, { color: card.accent }]} numberOfLines={2}>{card.value}</Text>
+                <SectionTitle label="Smart Markets" />
+                <View style={styles.md_marketsGrid}>
+                  {[
+                    { label: "Home Win", value: `${normHomePct}%`, color: COLORS.accent },
+                    { label: "Draw", value: `${normDrawPct}%`, color: COLORS.textMuted },
+                    { label: "Away Win", value: `${normAwayPct}%`, color: "#5D9EFF" },
+                    { label: "1X", value: `${homeDcPct}%`, color: COLORS.accent },
+                    { label: "X2", value: `${awayDcPct}%`, color: "#5D9EFF" },
+                    { label: "BTTS", value: `${bttsPct}%`, color: COLORS.live },
+                    { label: "Over 1.5", value: `${over15Pct}%`, color: "#FFD700" },
+                    { label: "Over 2.5", value: `${over25Pct}%`, color: "#FFD700" },
+                    { label: "Under 2.5", value: `${under25Pct}%`, color: COLORS.textMuted },
+                    { label: "Under 3.5", value: `${under35Pct}%`, color: COLORS.textMuted },
+                    { label: `CS ${homeTeamName.split(" ")[0]}`, value: `${Math.round(Number(safePrediction.cleanSheetHomePct || 0))}%`, color: COLORS.accent },
+                    { label: `CS ${awayTeamName.split(" ")[0]}`, value: `${Math.round(Number(safePrediction.cleanSheetAwayPct || 0))}%`, color: "#5D9EFF" },
+                  ].map((item) => (
+                    <View key={item.label} style={styles.md_marketCard}>
+                      <Text style={[styles.md_marketValue, { color: item.color }]}>{item.value}</Text>
+                      <Text style={styles.md_marketLabel}>{item.label}</Text>
                     </View>
                   ))}
                 </View>
 
-                <View style={styles.nxCard}>
-                  <Text style={styles.nxCardKicker}>Probability Engine</Text>
-                  <Text style={styles.nxBodyText}>1X2: {safePrediction.probabilityEngine.oneXTwo.home}% / {safePrediction.probabilityEngine.oneXTwo.draw}% / {safePrediction.probabilityEngine.oneXTwo.away}%</Text>
-                  <Text style={[styles.nxBodyText, { marginTop: 8 }]}>Goals: O2.5 {safePrediction.probabilityEngine.goals.over25}% · U2.5 {safePrediction.probabilityEngine.goals.under25}% · BTTS {safePrediction.probabilityEngine.goals.btts}%</Text>
-                  <Text style={[styles.nxMetaText, { marginTop: 10 }]}>xG: {safePrediction.probabilityEngine.goals.expectedGoals.home.toFixed(2)} - {safePrediction.probabilityEngine.goals.expectedGoals.away.toFixed(2)} (total {safePrediction.probabilityEngine.goals.expectedGoals.total.toFixed(2)})</Text>
-                </View>
-
-                <View style={styles.nxGridWrap}>
-                  {detailedInfoRows.map((row) => (
-                    <View key={row.key} style={styles.nxGridCard}>
-                      <Text style={styles.nxGridLabel}>{row.label}</Text>
-                      <Text style={styles.nxGridValue}>{row.value}</Text>
+                {safePrediction.probabilityEngine?.goals ? (
+                  <>
+                    <SectionTitle label="Expected Goals (xG)" />
+                    <View style={styles.md_card}>
+                      <View style={styles.md_xgRow}>
+                        <View style={{ flex: 1, alignItems: "center" }}>
+                          <Text style={[styles.md_xgValue, { color: COLORS.accent }]}>
+                            {Number(safePrediction.probabilityEngine.goals.expectedGoals?.home || 0).toFixed(2)}
+                          </Text>
+                          <Text style={styles.md_xgLabel} numberOfLines={1}>{homeTeamName}</Text>
+                        </View>
+                        <Text style={styles.md_xgCenter}>xG</Text>
+                        <View style={{ flex: 1, alignItems: "center" }}>
+                          <Text style={[styles.md_xgValue, { color: "#5D9EFF" }]}>
+                            {Number(safePrediction.probabilityEngine.goals.expectedGoals?.away || 0).toFixed(2)}
+                          </Text>
+                          <Text style={styles.md_xgLabel} numberOfLines={1}>{awayTeamName}</Text>
+                        </View>
+                      </View>
+                      <Text style={[styles.md_metaText, { textAlign: "center", marginTop: 6 }]}>
+                        Total xG: {Number(safePrediction.probabilityEngine.goals.expectedGoals?.total || 0).toFixed(2)}
+                      </Text>
                     </View>
-                  ))}
-                </View>
+                  </>
+                ) : null}
 
-                <Text style={styles.nxSectionTitle}>Smart Markets</Text>
-                <View style={styles.nxGoalsCard}>
-                  <Text style={styles.nxCardKicker}>Goals grid</Text>
-                  <View style={styles.nxGoalsGrid}>
-                    <View style={styles.nxGoalPill}><Text style={styles.nxGoalPillText}>Over 1.5 · {over15Pct}%</Text></View>
-                    <View style={styles.nxGoalPill}><Text style={styles.nxGoalPillText}>Over 2.5 · {over25Pct}%</Text></View>
-                    <View style={styles.nxGoalPill}><Text style={styles.nxGoalPillText}>Under 2.5 · {under25Pct}%</Text></View>
-                    <View style={styles.nxGoalPill}><Text style={styles.nxGoalPillText}>Under 3.5 · {under35Pct}%</Text></View>
-                    <View style={styles.nxGoalPill}><Text style={styles.nxGoalPillText}>BTTS · {bttsPct}%</Text></View>
-                    <View style={styles.nxGoalPill}><Text style={styles.nxGoalPillText}>Clean sheet {homeTeamName} · {Math.round(Number(safePrediction.cleanSheetHomePct || 0))}%</Text></View>
-                    <View style={styles.nxGoalPill}><Text style={styles.nxGoalPillText}>Clean sheet {awayTeamName} · {Math.round(Number(safePrediction.cleanSheetAwayPct || 0))}%</Text></View>
-                    <View style={styles.nxGoalPill}><Text style={styles.nxGoalPillText}>First to score · {safePrediction.firstTeamToScore} {Math.round(Number(safePrediction.firstTeamToScorePct || 0))}%</Text></View>
+                <SectionTitle label="Confidence & Risk" />
+                <View style={styles.md_card}>
+                  <View style={styles.md_confRow}>
+                    <Text style={styles.md_gridLabel}>Model Confidence</Text>
+                    <Text style={[styles.md_gridValue, { fontSize: 20 }]}>{confidencePct}%</Text>
+                  </View>
+                  <View style={styles.md_confTrack}>
+                    <View style={[
+                      styles.md_confFill,
+                      { flex: confidencePct },
+                      confidencePct >= 70 ? styles.md_confFillHigh
+                        : confidencePct >= 50 ? styles.md_confFillMed
+                        : styles.md_confFillLow,
+                    ]} />
+                    <View style={{ flex: 100 - confidencePct }} />
+                  </View>
+                  <Text style={styles.md_metaText}>{safePrediction.confidence_label || safePrediction.riskLevel || "Moderate"}</Text>
+                  <View style={styles.md_grid2}>
+                    <View style={styles.md_gridCard}><Text style={styles.md_gridLabel}>Edge</Text><Text style={styles.md_gridValue}>{edgeScorePct}/100</Text></View>
+                    <View style={styles.md_gridCard}><Text style={styles.md_gridLabel}>Upset Risk</Text><Text style={styles.md_gridValue}>{Math.round(Number(safePrediction.upsetProbabilityPct || 0))}%</Text></View>
+                    <View style={styles.md_gridCard}><Text style={styles.md_gridLabel}>Draw Risk</Text><Text style={styles.md_gridValue}>{Math.round(Number(safePrediction.scoreDrawRiskPct || 0))}%</Text></View>
+                    <View style={styles.md_gridCard}><Text style={styles.md_gridLabel}>Pressure</Text><Text style={styles.md_gridValue}>{Math.round(Number(safePrediction.pressureIndex || 0))}/100</Text></View>
                   </View>
                 </View>
 
-                <Text style={styles.nxSectionTitle}>Risk Factors</Text>
-                <View style={styles.nxGridWrap}>
-                  {(safePrediction.riskFactors || []).slice(0, 4).map((risk: any, index: number) => (
-                    <View key={`${risk?.label || "risk"}-${index}`} style={styles.nxGridCard}>
-                      <Text style={styles.nxGridLabel}>{risk?.label || "Risk"}</Text>
-                      <Text style={styles.nxGridValue}>{Math.round(Number(risk?.impact || 0))}/100</Text>
-                      <Text style={styles.nxMetaText}>{risk?.tone || "warning"}</Text>
+                <SectionTitle label="Risk Factors" />
+                {(safePrediction.riskFactors || []).length > 0 ? (
+                  <View style={styles.md_grid2}>
+                    {(safePrediction.riskFactors || []).slice(0, 6).map((risk: any, i: number) => (
+                      <View key={`risk_${i}`} style={styles.md_gridCard}>
+                        <Text style={styles.md_gridLabel} numberOfLines={2}>{risk?.label || "Risk"}</Text>
+                        <Text style={styles.md_gridValue}>{Math.round(Number(risk?.impact || 0))}/100</Text>
+                        <Text style={[styles.md_metaText, { textTransform: "capitalize" }]}>{risk?.tone || "medium"}</Text>
+                      </View>
+                    ))}
+                  </View>
+                ) : (
+                  <View style={styles.md_card}>
+                    <EmptySlate icon="shield-outline" title="No risk data" subtitle="Risk factors are part of the premium prediction model." />
+                  </View>
+                )}
+
+                {safePrediction.dataSignals ? (
+                  <>
+                    <SectionTitle label="Data Fusion" />
+                    <View style={styles.md_card}>
+                      <View style={styles.md_signalGrid}>
+                        {[
+                          { key: "form", label: "Form" },
+                          { key: "standings", label: "Standings" },
+                          { key: "headToHead", label: "H2H" },
+                          { key: "injuries", label: "Injuries" },
+                          { key: "lineups", label: "Lineups" },
+                          { key: "liveStats", label: "Live Stats" },
+                        ].map((sig) => (
+                          <View key={sig.key} style={[styles.md_signalChip, (safePrediction.dataSignals as any)[sig.key] ? styles.md_signalChipActive : null]}>
+                            <Ionicons
+                              name={(safePrediction.dataSignals as any)[sig.key] ? "checkmark-circle" : "close-circle-outline"}
+                              size={12}
+                              color={(safePrediction.dataSignals as any)[sig.key] ? COLORS.live : COLORS.textMuted}
+                            />
+                            <Text style={[styles.md_signalText, (safePrediction.dataSignals as any)[sig.key] ? styles.md_signalTextActive : null]}>{sig.label}</Text>
+                          </View>
+                        ))}
+                      </View>
                     </View>
-                  ))}
-                </View>
-
-                <View style={styles.nxCard}>
-                  <Text style={styles.nxCardKicker}>Data Fusion Signals</Text>
-                  <View style={styles.nxGoalsGrid}>
-                    <View style={styles.nxGoalPill}><Text style={styles.nxGoalPillText}>Form: {safePrediction.dataSignals.form ? "Live" : "Missing"}</Text></View>
-                    <View style={styles.nxGoalPill}><Text style={styles.nxGoalPillText}>Standings: {safePrediction.dataSignals.standings ? "Live" : "Missing"}</Text></View>
-                    <View style={styles.nxGoalPill}><Text style={styles.nxGoalPillText}>H2H: {safePrediction.dataSignals.headToHead ? "Live" : "Missing"}</Text></View>
-                    <View style={styles.nxGoalPill}><Text style={styles.nxGoalPillText}>Injuries: {safePrediction.dataSignals.injuries ? "Live" : "Missing"}</Text></View>
-                    <View style={styles.nxGoalPill}><Text style={styles.nxGoalPillText}>Lineups: {safePrediction.dataSignals.lineups ? "Live" : "Missing"}</Text></View>
-                    <View style={styles.nxGoalPill}><Text style={styles.nxGoalPillText}>Live stats: {safePrediction.dataSignals.liveStats ? "Live" : "Missing"}</Text></View>
-                  </View>
-                  {premiumStoryCard ? (
-                    <>
-                      <Text style={[styles.nxCardKicker, { marginTop: 14 }]}>Evidence</Text>
-                      {premiumStoryCard.dataEvidence.map((line) => (
-                        <Text key={line} style={styles.nxMetaText}>• {line}</Text>
-                      ))}
-                    </>
-                  ) : null}
-                </View>
-
-                <Text style={styles.nxSectionTitle}>Confidence Meter</Text>
-                <View style={styles.nxCard}>
-                  <Text style={styles.nxCardKicker}>Model confidence</Text>
-                  <Text style={styles.nxCardTitle}>{confidencePct}% · {safePrediction.confidence_label || safePrediction.riskLevel}</Text>
-                  <View style={styles.nxTimelineTrack}>
-                    <View style={[styles.nxTimelineFill, { width: `${confidencePct}%` }]} />
-                  </View>
-                  <View style={[styles.nxGridWrap, { marginTop: 16 }]}> 
-                    <View style={styles.nxGridCard}><Text style={styles.nxGridLabel}>Edge</Text><Text style={styles.nxGridValue}>{edgeScorePct}/100</Text></View>
-                    <View style={styles.nxGridCard}><Text style={styles.nxGridLabel}>Draw risk</Text><Text style={styles.nxGridValue}>{Math.round(Number(safePrediction.scoreDrawRiskPct || 0))}%</Text></View>
-                    <View style={styles.nxGridCard}><Text style={styles.nxGridLabel}>Upset risk</Text><Text style={styles.nxGridValue}>{Math.round(Number(safePrediction.upsetProbabilityPct || 0))}%</Text></View>
-                    <View style={styles.nxGridCard}><Text style={styles.nxGridLabel}>Pressure</Text><Text style={styles.nxGridValue}>{Math.round(Number(safePrediction.pressureIndex || 0))}/100</Text></View>
-                  </View>
-                </View>
-
-                <Text style={styles.nxSectionTitle}>Live Momentum</Text>
-                <View style={styles.nxCard}>
-                  <Text style={styles.nxCardKicker}>Flow state</Text>
-                  <Text style={styles.nxCardTitle}>{safePrediction.momentum || "Balanced"} · {safePrediction.danger || "Balanced"}</Text>
-                  <Text style={styles.nxBodyText}>{safePrediction.live_shift_summary || safePrediction.matchPattern || "Momentum updates zodra live events binnenkomen."}</Text>
-                  <View style={[styles.nxGridWrap, { marginTop: 16 }]}> 
-                    <View style={styles.nxGridCard}><Text style={styles.nxGridLabel}>xG</Text><Text style={styles.nxGridValue}>{Number(safePrediction.xgHome || 0).toFixed(1)} - {Number(safePrediction.xgAway || 0).toFixed(1)}</Text></View>
-                    <View style={styles.nxGridCard}><Text style={styles.nxGridLabel}>Momentum</Text><Text style={styles.nxGridValue}>{Math.round(Number(safePrediction.momentumScore || 0))}/100</Text></View>
-                    <View style={styles.nxGridCard}><Text style={styles.nxGridLabel}>Attacking strength</Text><Text style={styles.nxGridValue}>{Math.round(Number(safePrediction.attackingStrength?.home || 0))} - {Math.round(Number(safePrediction.attackingStrength?.away || 0))}</Text></View>
-                    <View style={styles.nxGridCard}><Text style={styles.nxGridLabel}>Forms</Text><Text style={styles.nxGridValue}>{formCards[0]?.value} / {formCards[1]?.value}</Text></View>
-                  </View>
-                </View>
+                  </>
+                ) : null}
               </>
             ) : null}
           </ScrollView>
         ) : null}
 
+        {/* ─── AI TAB ─── */}
+        {visitedExperienceTabs.ai ? (
+          <ScrollView
+            style={[styles.tabContent, activeExperienceTab !== "ai" ? styles.hiddenTabContent : null]}
+            contentContainerStyle={styles.nxContentWrap}
+            showsVerticalScrollIndicator={false}
+            decelerationRate="fast"
+            scrollEventThrottle={16}
+          >
+            {/* Match Story */}
+            <View style={styles.md_aiCard}>
+              <View style={styles.md_aiCardHeader}>
+                <Ionicons name="sparkles" size={16} color={COLORS.accent} />
+                <Text style={styles.md_aiCardTitle}>{aiStory.available ? aiStory.title : "AI Match Story"}</Text>
+              </View>
+              {aiStory.available ? (
+                <>
+                  <Text style={styles.md_aiSummary}>{aiStory.summary}</Text>
+                  {aiStory.turningPoint ? (
+                    <View style={styles.md_turningPoint}>
+                      <Ionicons name="git-branch-outline" size={13} color="#FFD700" />
+                      <Text style={styles.md_turningPointText}>{aiStory.turningPoint}</Text>
+                    </View>
+                  ) : null}
+                  {(aiStory.bullets || []).slice(0, 4).map((bullet, i) => (
+                    <View key={i} style={styles.md_aiBullet}>
+                      <View style={styles.md_aiBulletDot} />
+                      <Text style={styles.md_aiBulletText}>{bullet}</Text>
+                    </View>
+                  ))}
+                </>
+              ) : (
+                <EmptySlate
+                  icon="document-text-outline"
+                  title="Story loading"
+                  subtitle={isLive || isFinished
+                    ? "AI narrative generates as events arrive."
+                    : "AI story activates once the match starts."}
+                />
+              )}
+            </View>
+
+            {/* Tactical Analysis */}
+            <SectionTitle label="Tactical Analysis" />
+            <View style={styles.md_card}>
+              <View style={styles.md_tacticRow}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.md_tacticTeam} numberOfLines={1}>{homeTeamName}</Text>
+                  <Text style={styles.md_tacticFormation}>{homeLineupTeam?.formation || "Unknown"}</Text>
+                  <Text style={styles.md_tacticState}>
+                    {homeLineupTeam?.lineupState === "confirmed" ? "Confirmed"
+                      : homeLineupTeam?.lineupState === "expected" ? "Expected" : "Pending"}
+                  </Text>
+                </View>
+                <View style={styles.md_tacticVs}><Text style={styles.md_tacticVsText}>VS</Text></View>
+                <View style={{ flex: 1, alignItems: "flex-end" }}>
+                  <Text style={[styles.md_tacticTeam, { textAlign: "right" }]} numberOfLines={1}>{awayTeamName}</Text>
+                  <Text style={[styles.md_tacticFormation, { textAlign: "right" }]}>{awayLineupTeam?.formation || "Unknown"}</Text>
+                  <Text style={[styles.md_tacticState, { textAlign: "right" }]}>
+                    {awayLineupTeam?.lineupState === "confirmed" ? "Confirmed"
+                      : awayLineupTeam?.lineupState === "expected" ? "Expected" : "Pending"}
+                  </Text>
+                </View>
+              </View>
+              {(prematchKeyPlayers.home.keyPlayer || prematchKeyPlayers.away.keyPlayer) ? (
+                <>
+                  <View style={styles.md_divider} />
+                  <View style={styles.md_tacticPlayersRow}>
+                    <View style={{ flex: 1 }}>
+                      {prematchKeyPlayers.home.keyPlayer ? (
+                        <>
+                          <Text style={styles.md_cardKicker}>Key Player</Text>
+                          <Text style={styles.md_bodyText} numberOfLines={1}>
+                            {prematchKeyPlayers.home.keyPlayer.player?.name || "--"}
+                          </Text>
+                        </>
+                      ) : null}
+                    </View>
+                    <View style={{ flex: 1, alignItems: "flex-end" }}>
+                      {prematchKeyPlayers.away.keyPlayer ? (
+                        <>
+                          <Text style={[styles.md_cardKicker, { textAlign: "right" }]}>Key Player</Text>
+                          <Text style={[styles.md_bodyText, { textAlign: "right" }]} numberOfLines={1}>
+                            {prematchKeyPlayers.away.keyPlayer.player?.name || "--"}
+                          </Text>
+                        </>
+                      ) : null}
+                    </View>
+                  </View>
+                </>
+              ) : null}
+            </View>
+
+            {/* AI Narrative (from premiumStoryCard) */}
+            {safePrediction && premiumStoryCard ? (
+              <>
+                <SectionTitle label="AI Narrative" />
+                <View style={styles.md_aiCard}>
+                  <View style={styles.md_aiCardHeader}>
+                    <Ionicons name="document-text-outline" size={15} color={COLORS.accent} />
+                    <Text style={styles.md_aiCardTitle}>{premiumStoryCard.title}</Text>
+                  </View>
+                  <Text style={styles.md_aiSummary}>{premiumStoryCard.summary}</Text>
+                  {(premiumStoryCard.keyFactors || []).map((factor, i) => (
+                    <View key={i} style={styles.md_aiBullet}>
+                      <View style={styles.md_aiBulletDot} />
+                      <Text style={styles.md_aiBulletText}>{factor}</Text>
+                    </View>
+                  ))}
+                  {(premiumStoryCard.dataEvidence || []).slice(0, 3).map((line, i) => (
+                    <Text key={i} style={styles.md_evidenceText}>• {line}</Text>
+                  ))}
+                </View>
+              </>
+            ) : null}
+
+            {/* Momentum */}
+            {momentumModel.hasData ? (
+              <>
+                <SectionTitle label="Momentum" />
+                <View style={styles.md_card}>
+                  <MomentumBar
+                    model={momentumModel}
+                    homeLabel={homeTeamName.slice(0, 4).toUpperCase() || "HOME"}
+                    awayLabel={awayTeamName.slice(0, 4).toUpperCase() || "AWAY"}
+                  />
+                  {safePrediction ? (
+                    <View style={[styles.md_grid2, { marginTop: 12 }]}>
+                      <View style={styles.md_gridCard}>
+                        <Text style={styles.md_gridLabel}>Momentum</Text>
+                        <Text style={styles.md_gridValue}>{safePrediction.momentum || "--"}</Text>
+                      </View>
+                      <View style={styles.md_gridCard}>
+                        <Text style={styles.md_gridLabel}>Danger</Text>
+                        <Text style={styles.md_gridValue}>{safePrediction.danger || "--"}</Text>
+                      </View>
+                      <View style={styles.md_gridCard}>
+                        <Text style={styles.md_gridLabel}>Pattern</Text>
+                        <Text style={[styles.md_bodyText, { marginTop: 2 }]} numberOfLines={2}>{safePrediction.matchPattern || "--"}</Text>
+                      </View>
+                      <View style={styles.md_gridCard}>
+                        <Text style={styles.md_gridLabel}>Mom. Score</Text>
+                        <Text style={styles.md_gridValue}>{Math.round(Number(safePrediction.momentumScore || 0))}/100</Text>
+                      </View>
+                    </View>
+                  ) : null}
+                </View>
+              </>
+            ) : null}
+
+            {/* Outcome Projection */}
+            {safePrediction ? (
+              <>
+                <SectionTitle label="AI Outcome Projection" />
+                <View style={styles.md_aiCard}>
+                  <View style={styles.md_aiCardHeader}>
+                    <Ionicons name="analytics-outline" size={15} color={COLORS.accent} />
+                    <Text style={styles.md_aiCardTitle}>Predicted: {safePrediction.prediction || "Analyzing"}</Text>
+                  </View>
+                  <Text style={styles.md_aiSummary}>
+                    {safePrediction.live_shift_summary || safePrediction.summary || "Outcome details update as match context evolves."}
+                  </Text>
+                  <View style={styles.md_grid2}>
+                    <View style={styles.md_gridCard}>
+                      <Text style={styles.md_gridLabel}>Confidence</Text>
+                      <Text style={styles.md_gridValue}>{confidencePct}%</Text>
+                    </View>
+                    <View style={styles.md_gridCard}>
+                      <Text style={styles.md_gridLabel}>Edge</Text>
+                      <Text style={styles.md_gridValue}>{edgeScorePct}/100</Text>
+                    </View>
+                  </View>
+                </View>
+              </>
+            ) : (
+              <View style={styles.md_card}>
+                <EmptySlate
+                  icon="analytics-outline"
+                  title="AI not yet available"
+                  subtitle="Load predictions first to see AI analysis."
+                />
+              </View>
+            )}
+          </ScrollView>
+        ) : null}
+
+        {/* ─── STATS TAB ─── */}
         {visitedExperienceTabs.stats ? (
           <ScrollView
             style={[styles.tabContent, activeExperienceTab !== "stats" ? styles.hiddenTabContent : null]}
@@ -1425,71 +1603,67 @@ export default function MatchDetailScreen() {
             decelerationRate="fast"
             scrollEventThrottle={16}
           >
-            <View style={styles.statsModeRow}>
-              <Text style={styles.nxSectionTitle}>Stats</Text>
-              <View style={styles.statsModeToggleWrap}>
-                <TouchableOpacity
-                  style={[styles.statsModeBtn, statsMode === "basic" ? styles.statsModeBtnActive : null]}
-                  onPress={() => {
-                    setStatsModeState("basic");
-                    void setStatsMode("basic");
-                  }}
-                >
-                  <Text style={[styles.statsModeBtnText, statsMode === "basic" ? styles.statsModeBtnTextActive : null]}>Basic</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.statsModeBtn, statsMode === "pro" ? styles.statsModeBtnActive : null]}
-                  onPress={() => {
-                    setStatsModeState("pro");
-                    void setStatsMode("pro");
-                  }}
-                >
-                  <Text style={[styles.statsModeBtnText, statsMode === "pro" ? styles.statsModeBtnTextActive : null]}>Pro</Text>
-                </TouchableOpacity>
+            <View style={styles.md_modeRow}>
+              <Text style={styles.md_sectionTitle}>Match Stats</Text>
+              <View style={styles.md_modeToggle}>
+                {(["basic", "pro"] as const).map((mode) => (
+                  <TouchableOpacity
+                    key={mode}
+                    style={[styles.md_modeBtn, statsMode === mode ? styles.md_modeBtnActive : null]}
+                    onPress={() => { setStatsModeState(mode); void setStatsMode(mode); }}
+                  >
+                    <Text style={[styles.md_modeBtnText, statsMode === mode ? styles.md_modeBtnTextActive : null]}>
+                      {mode.charAt(0).toUpperCase() + mode.slice(1)}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
               </View>
             </View>
-            {scopedStats.isReduced ? <Text style={styles.statsModeHint}>Basic mode shows the core match signals. Switch to Pro for xG and advanced metrics.</Text> : null}
+            {scopedStats.isReduced ? (
+              <Text style={styles.md_hintText}>Basic mode shows core signals. Switch to Pro for xG and advanced metrics.</Text>
+            ) : null}
             {detailLoading ? (
               <LoadingState />
             ) : matchDetail ? (
               <>
-                <View style={styles.nxGridWrap}>
-                  <View style={styles.nxGridCard}>
-                    <Text style={styles.nxGridLabel}>Model edge</Text>
-                    <Text style={styles.nxGridValue}>{edgeScorePct}/100</Text>
+                <View style={styles.md_grid2}>
+                  <View style={styles.md_gridCard}>
+                    <Text style={styles.md_gridLabel}>Model Edge</Text>
+                    <Text style={styles.md_gridValue}>{edgeScorePct}/100</Text>
                   </View>
-                  <View style={styles.nxGridCard}>
-                    <Text style={styles.nxGridLabel}>Confidence</Text>
-                    <Text style={styles.nxGridValue}>{confidencePct}%</Text>
+                  <View style={styles.md_gridCard}>
+                    <Text style={styles.md_gridLabel}>Confidence</Text>
+                    <Text style={styles.md_gridValue}>{confidencePct}%</Text>
                   </View>
-                  <View style={styles.nxGridCard}>
-                    <Text style={styles.nxGridLabel}>Win tilt</Text>
-                    <Text style={styles.nxGridValue}>{Math.abs(normHomePct - normAwayPct)}%</Text>
+                  <View style={styles.md_gridCard}>
+                    <Text style={styles.md_gridLabel}>Win Tilt</Text>
+                    <Text style={styles.md_gridValue}>{Math.abs(normHomePct - normAwayPct)}%</Text>
                   </View>
-                  <View style={styles.nxGridCard}>
-                    <Text style={styles.nxGridLabel}>Goals pressure</Text>
-                    <Text style={styles.nxGridValue}>{Math.round((over25Pct + bttsPct) / 2)}%</Text>
+                  <View style={styles.md_gridCard}>
+                    <Text style={styles.md_gridLabel}>Goal Pressure</Text>
+                    <Text style={styles.md_gridValue}>{Math.round((over25Pct + bttsPct) / 2)}%</Text>
                   </View>
                 </View>
                 <StatsBars
-                  homeTeam={params.homeTeam}
-                  awayTeam={params.awayTeam}
+                  homeTeam={homeTeamName}
+                  awayTeam={awayTeamName}
                   homeStats={scopedStats.homeStats || {}}
                   awayStats={scopedStats.awayStats || {}}
                 />
                 <MatchHeatmap
-                  homeTeam={params.homeTeam}
-                  awayTeam={params.awayTeam}
+                  homeTeam={homeTeamName}
+                  awayTeam={awayTeamName}
                   homeStats={scopedStats.homeStats || {}}
                   awayStats={scopedStats.awayStats || {}}
                 />
               </>
             ) : (
-              <EmptyState icon="stats-chart-outline" text={tFn("matchDetail.statsUnavailable")} />
+              <EmptySlate icon="stats-chart-outline" title="Stats unavailable" subtitle="Match statistics are not currently available." />
             )}
           </ScrollView>
         ) : null}
 
+        {/* ─── LINEUPS TAB ─── */}
         {visitedExperienceTabs.lineups ? (
           <ScrollView
             style={[styles.tabContent, activeExperienceTab !== "lineups" ? styles.hiddenTabContent : null]}
@@ -1498,27 +1672,58 @@ export default function MatchDetailScreen() {
             decelerationRate="fast"
             scrollEventThrottle={16}
           >
-            <Text style={styles.nxSectionTitle}>Lineups</Text>
-            <View style={styles.nxCard}>
-              <Text style={styles.nxCardKicker}>Availability states</Text>
-              <Text style={styles.nxMetaText}>{homeTeamName}: {homeLineupTeam.lineupState === "confirmed" ? "confirmed lineup" : homeLineupTeam.lineupState === "expected" ? "expected lineup" : "lineup not available"}</Text>
-              <Text style={styles.nxMetaText}>{awayTeamName}: {awayLineupTeam.lineupState === "confirmed" ? "confirmed lineup" : awayLineupTeam.lineupState === "expected" ? "expected lineup" : "lineup not available"}</Text>
+            {/* Formation header */}
+            <View style={styles.md_lineupHeader}>
+              <View style={{ flex: 1, alignItems: "center" }}>
+                <Text style={styles.md_lineupTeamName} numberOfLines={1}>{homeTeamName}</Text>
+                <Text style={styles.md_lineupFormation}>{homeLineupTeam?.formation || "--"}</Text>
+                <View style={[
+                  styles.md_stateBadge,
+                  homeLineupTeam?.lineupState === "confirmed" ? styles.md_stateBadgeConfirmed
+                    : homeLineupTeam?.lineupState === "expected" ? styles.md_stateBadgeExpected
+                    : styles.md_stateBadgeUnknown,
+                ]}>
+                  <Text style={styles.md_stateBadgeText}>
+                    {homeLineupTeam?.lineupState === "confirmed" ? "CONFIRMED"
+                      : homeLineupTeam?.lineupState === "expected" ? "EXPECTED" : "PENDING"}
+                  </Text>
+                </View>
+              </View>
+              <View style={styles.md_lineupVsDivider}>
+                <Text style={styles.md_lineupVsText}>VS</Text>
+              </View>
+              <View style={{ flex: 1, alignItems: "center" }}>
+                <Text style={styles.md_lineupTeamName} numberOfLines={1}>{awayTeamName}</Text>
+                <Text style={styles.md_lineupFormation}>{awayLineupTeam?.formation || "--"}</Text>
+                <View style={[
+                  styles.md_stateBadge,
+                  awayLineupTeam?.lineupState === "confirmed" ? styles.md_stateBadgeConfirmed
+                    : awayLineupTeam?.lineupState === "expected" ? styles.md_stateBadgeExpected
+                    : styles.md_stateBadgeUnknown,
+                ]}>
+                  <Text style={styles.md_stateBadgeText}>
+                    {awayLineupTeam?.lineupState === "confirmed" ? "CONFIRMED"
+                      : awayLineupTeam?.lineupState === "expected" ? "EXPECTED" : "PENDING"}
+                  </Text>
+                </View>
+              </View>
             </View>
-            <View style={styles.lineupViewToggleRow}>
-              <TouchableOpacity
-                style={[styles.lineupViewBtn, lineupView === "pitch" ? styles.lineupViewBtnActive : null]}
-                onPress={() => setLineupView("pitch")}
-              >
-                <Ionicons name="football-outline" size={14} color={lineupView === "pitch" ? COLORS.accent : COLORS.textMuted} />
-                <Text style={[styles.lineupViewBtnText, lineupView === "pitch" ? styles.lineupViewBtnTextActive : null]}>Field</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.lineupViewBtn, lineupView === "list" ? styles.lineupViewBtnActive : null]}
-                onPress={() => setLineupView("list")}
-              >
-                <Ionicons name="list-outline" size={14} color={lineupView === "list" ? COLORS.accent : COLORS.textMuted} />
-                <Text style={[styles.lineupViewBtnText, lineupView === "list" ? styles.lineupViewBtnTextActive : null]}>List</Text>
-              </TouchableOpacity>
+
+            {/* View toggle */}
+            <View style={styles.md_viewToggleRow}>
+              {([
+                { id: "pitch" as const, icon: "football-outline" as const, label: "Field" },
+                { id: "list" as const, icon: "list-outline" as const, label: "List" },
+              ]).map((opt) => (
+                <TouchableOpacity
+                  key={opt.id}
+                  style={[styles.md_viewBtn, lineupView === opt.id ? styles.md_viewBtnActive : null]}
+                  onPress={() => setLineupView(opt.id)}
+                >
+                  <Ionicons name={opt.icon} size={14} color={lineupView === opt.id ? COLORS.accent : COLORS.textMuted} />
+                  <Text style={[styles.md_viewBtnText, lineupView === opt.id ? styles.md_viewBtnTextActive : null]}>{opt.label}</Text>
+                </TouchableOpacity>
+              ))}
             </View>
 
             {detailLoading ? (
@@ -1526,7 +1731,7 @@ export default function MatchDetailScreen() {
             ) : integratedLineups.hasAnyLineups ? (
               <>
                 {lineupView === "pitch" ? (
-                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.lineupPitchScroller}>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingVertical: 4 }}>
                     <PremiumLineupField
                       homeTeam={homeLineupTeam}
                       awayTeam={awayLineupTeam}
@@ -1536,50 +1741,65 @@ export default function MatchDetailScreen() {
                     />
                   </ScrollView>
                 ) : (
-                  [homeLineupTeam, awayLineupTeam].map((team) => (
-                    <View key={team.teamName} style={styles.lineupTeamSection}>
-                      <View style={styles.lineupHeaderRow}>
-                        <Text style={styles.sectionLabel}>{team.teamName?.toUpperCase()}</Text>
-                        <Text style={styles.nxMetaText}>{team.formation || "No formation"}</Text>
+                  [homeLineupTeam, awayLineupTeam].map((team, teamIdx) => (
+                    <View key={team.teamName} style={styles.md_lineupSection}>
+                      <View style={styles.md_lineupSectionHead}>
+                        <View style={[styles.md_lineupTeamDot, { backgroundColor: teamIdx === 0 ? COLORS.accent : "#5D9EFF" }]} />
+                        <Text style={styles.md_lineupSectionTitle}>{team.teamName?.toUpperCase()}</Text>
+                        <Text style={styles.md_lineupSectionMeta}>{team.formation || "?"}</Text>
                       </View>
-                      <View style={styles.lineupListCard}>
-                        <Text style={styles.lineupListLabel}>STARTING XI</Text>
-                        {(team.starters || []).map((p: any, i: number) => (
-                          <PlayerRow key={`st_${p?.id || p?.name || i}`} player={p} sport={params.sport} teamName={team.teamName} league={espnLeague} />
-                        ))}
-                        <Text style={[styles.lineupListLabel, { marginTop: 10 }]}>BENCH / SUBSTITUTES</Text>
-                        {(team.bench || []).length > 0 ? (
-                          (team.bench || []).map((p: any, i: number) => (
-                            <PlayerRow key={`bn_${p?.id || p?.name || i}`} player={p} sport={params.sport} teamName={team.teamName} league={espnLeague} compact />
-                          ))
-                        ) : (
-                          <Text style={styles.nxMetaText}>No bench data available.</Text>
-                        )}
-                      </View>
+                      <Text style={styles.md_lineupListLabel}>STARTING XI</Text>
+                      {(team.starters || []).length > 0 ? (
+                        (team.starters || []).map((p: any, i: number) => (
+                          <PlayerRow key={`st_${teamIdx}_${p?.id || p?.name || i}`} player={p} sport={params.sport} teamName={team.teamName} league={espnLeague} />
+                        ))
+                      ) : (
+                        <Text style={styles.md_metaText}>Starting XI not available</Text>
+                      )}
+                      <Text style={[styles.md_lineupListLabel, { marginTop: 10 }]}>BENCH</Text>
+                      {(team.bench || []).length > 0 ? (
+                        (team.bench || []).map((p: any, i: number) => (
+                          <PlayerRow key={`bn_${teamIdx}_${p?.id || p?.name || i}`} player={p} sport={params.sport} teamName={team.teamName} league={espnLeague} compact />
+                        ))
+                      ) : (
+                        <Text style={styles.md_metaText}>No bench data</Text>
+                      )}
                     </View>
                   ))
                 )}
 
                 {substitutions.length > 0 ? (
-                  <View style={styles.nxCard}>
-                    <Text style={styles.nxCardKicker}>Live substitutions</Text>
-                    {substitutions.map((change, index) => {
-                      return (
-                        <View key={`${change.id}_${index}`} style={styles.nxListRow}>
-                          <Text style={styles.nxListPrimary}>{change.minuteLabel || "--"} · {change.teamName || (change.side === "home" ? homeTeamName : awayTeamName)}</Text>
-                          <Text style={styles.nxListMeta}>{change.playerOut || "?"} → {change.playerIn || "?"}</Text>
+                  <>
+                    <SectionTitle label="Live Substitutions" />
+                    <View style={styles.md_card}>
+                      {substitutions.map((change, i) => (
+                        <View key={`sub_${i}`} style={styles.md_subRow}>
+                          <Text style={styles.md_subMinute}>{change.minuteLabel || "--"}'</Text>
+                          <Text style={styles.md_subTeam} numberOfLines={1}>
+                            {change.teamName || (change.side === "home" ? homeTeamName : awayTeamName)}
+                          </Text>
+                          <View style={{ flex: 1, flexDirection: "row", alignItems: "center", gap: 4 }}>
+                            <Text style={styles.md_subOut} numberOfLines={1}>{change.playerOut || "?"}</Text>
+                            <Ionicons name="arrow-forward" size={11} color={COLORS.live} />
+                            <Text style={styles.md_subIn} numberOfLines={1}>{change.playerIn || "?"}</Text>
+                          </View>
                         </View>
-                      );
-                    })}
-                  </View>
+                      ))}
+                    </View>
+                  </>
                 ) : null}
               </>
             ) : (
-              <EmptyState icon="people-outline" text={tFn("matchDetail.lineupsUnavailable")} />
+              <EmptySlate
+                icon="people-outline"
+                title="Lineups not available"
+                subtitle="Starting lineups appear once teams are announced."
+              />
             )}
           </ScrollView>
         ) : null}
 
+        {/* ─── TIMELINE TAB ─── */}
         {visitedExperienceTabs.timeline ? (
           <ScrollView
             style={[styles.tabContent, activeExperienceTab !== "timeline" ? styles.hiddenTabContent : null]}
@@ -1588,63 +1808,95 @@ export default function MatchDetailScreen() {
             decelerationRate="fast"
             scrollEventThrottle={16}
           >
-            <View style={styles.nxCard}>
-              <View style={styles.nxSectionHeadRow}>
-                <Text style={styles.nxCardTitle}>Real-time timeline</Text>
-                <Text style={styles.nxTimelineMinute}>
-                  {statusMeta.label}
-                  {statusMeta.minuteLabel ? ` ${statusMeta.minuteLabel}` : ""}
-                </Text>
+            {/* Match progress */}
+            <View style={styles.md_card}>
+              <View style={styles.md_progressHeader}>
+                <Text style={styles.md_cardKicker}>Match Progress</Text>
+                <View style={[
+                  styles.md_statusChip,
+                  statusMeta.tone === "live" ? styles.md_statusChipLive
+                    : statusMeta.tone === "finished" ? styles.md_statusChipFt
+                    : styles.md_statusChipDefault,
+                ]}>
+                  {statusMeta.tone === "live" ? <View style={styles.md_liveDot} /> : null}
+                  <Text style={styles.md_statusChipText}>
+                    {statusMeta.minuteLabel ? `${statusMeta.label} ${statusMeta.minuteLabel}` : statusMeta.label}
+                  </Text>
+                </View>
               </View>
-              <View style={styles.nxTimelineTrack}>
-                <View style={[styles.nxTimelineFill, { width: `${timelineProgressPct}%` }]} />
+              <View style={styles.md_progressTrack}>
+                <View style={[styles.md_progressFill, { flex: timelineProgressPct }]} />
+                <View style={{ flex: Math.max(0, 100 - timelineProgressPct) }} />
               </View>
-              <View style={styles.nxTimelineRangeRow}>
-                <Text style={styles.nxTimelineRangeText}>0&#39;</Text>
-                <Text style={styles.nxTimelineRangeText}>45&#39;</Text>
-                <Text style={styles.nxTimelineRangeText}>90+&#39;</Text>
+              <View style={styles.md_progressLabels}>
+                <Text style={styles.md_progressLabel}>0'</Text>
+                <Text style={styles.md_progressLabel}>45'</Text>
+                <Text style={styles.md_progressLabel}>90+</Text>
               </View>
             </View>
 
-            <View style={styles.timelineFilterRow}>
+            {/* Event counts */}
+            <View style={styles.md_eventCountGrid}>
               {[
-                { key: "all", label: "All" },
-                { key: "goal", label: "Goals" },
-                { key: "card", label: "Cards" },
-                { key: "sub", label: "Subs" },
-                { key: "var", label: "VAR" },
-                { key: "pen", label: "Pens" },
-              ].map((chip) => (
-                <TouchableOpacity
-                  key={chip.key}
-                  onPress={() => setTimelineFilter(chip.key as TimelineFilter)}
-                  style={[styles.timelineFilterChip, timelineFilter === chip.key ? styles.timelineFilterChipActive : null]}
-                >
-                  <Text style={[styles.timelineFilterText, timelineFilter === chip.key ? styles.timelineFilterTextActive : null]}>{chip.label}</Text>
-                </TouchableOpacity>
+                { label: "Goals", icon: "football-outline" as const, count: timelineEventCounts.goals, color: COLORS.live },
+                { label: "Yellow", icon: "card-outline" as const, count: timelineEventCounts.yellow, color: "#FFD700" },
+                { label: "Red", icon: "card-outline" as const, count: timelineEventCounts.red, color: "#FF3040" },
+                { label: "Subs", icon: "swap-horizontal-outline" as const, count: timelineEventCounts.subs, color: "#5D9EFF" },
+                { label: "Pens", icon: "radio-button-on-outline" as const, count: timelineEventCounts.penalties, color: "#FF9800" },
+              ].map((item) => (
+                <View key={item.label} style={styles.md_eventCountCard}>
+                  <Ionicons name={item.icon} size={16} color={item.color} />
+                  <Text style={[styles.md_eventCountNum, { color: item.color }]}>{item.count}</Text>
+                  <Text style={styles.md_eventCountLabel}>{item.label}</Text>
+                </View>
               ))}
             </View>
 
-            <View style={styles.nxGridWrap}>
-              <View style={styles.nxGridCard}><Text style={styles.nxGridLabel}>⚽ Goals</Text><Text style={styles.nxGridValue}>{timelineEventCounts.goals}</Text></View>
-              <View style={styles.nxGridCard}><Text style={styles.nxGridLabel}>🟨 Yellow</Text><Text style={styles.nxGridValue}>{timelineEventCounts.yellow}</Text></View>
-              <View style={styles.nxGridCard}><Text style={styles.nxGridLabel}>🟥 Red</Text><Text style={styles.nxGridValue}>{timelineEventCounts.red}</Text></View>
-              <View style={styles.nxGridCard}><Text style={styles.nxGridLabel}>🔁 Subs</Text><Text style={styles.nxGridValue}>{timelineEventCounts.subs}</Text></View>
-              <View style={styles.nxGridCard}><Text style={styles.nxGridLabel}>⚡ Penalty</Text><Text style={styles.nxGridValue}>{timelineEventCounts.penalties}</Text></View>
-            </View>
+            {/* Filter chips */}
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              style={styles.md_chipScroll}
+              contentContainerStyle={styles.md_chipScrollInner}
+            >
+              {([
+                { key: "all", label: "All" },
+                { key: "goals", label: "\u26bd Goals" },
+                { key: "cards", label: "\ud83d\udfe8 Cards" },
+                { key: "subs", label: "\ud83d\udd01 Subs" },
+                { key: "var", label: "\ud83d\udcf9 VAR" },
+                { key: "key", label: "\u26a1 Key" },
+              ] as const).map((chip) => (
+                <TouchableOpacity
+                  key={chip.key}
+                  style={[styles.md_chip, timelineFilter === chip.key ? styles.md_chipActive : null]}
+                  onPress={() => setTimelineFilter(chip.key as TimelineFilter)}
+                >
+                  <Text style={[styles.md_chipText, timelineFilter === chip.key ? styles.md_chipTextActive : null]}>{chip.label}</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
 
+            {/* Events */}
             {filteredTimelineEvents.length > 0 ? (
               <MatchTimeline
                 events={filteredTimelineEvents}
-                homeTeam={params.homeTeam}
-                awayTeam={params.awayTeam}
+                homeTeam={homeTeamName}
+                awayTeam={awayTeamName}
               />
             ) : (
-              <EmptyState icon="git-branch-outline" text={timelineFilter === "all" ? tFn("matchDetail.timelineUnavailable") : "Geen key moments voor deze filter"} />
+              <EmptySlate
+                icon="git-branch-outline"
+                title={timelineFilter === "all" ? "No events yet" : `No ${timelineFilter} events`}
+                subtitle={timelineFilter === "all"
+                  ? "Timeline events appear once the match starts."
+                  : "No events match this filter."}
+              />
             )}
           </ScrollView>
         ) : null}
 
+        {/* ─── H2H TAB ─── */}
         {visitedExperienceTabs.h2h ? (
           <ScrollView
             style={[styles.tabContent, activeExperienceTab !== "h2h" ? styles.hiddenTabContent : null]}
@@ -1653,35 +1905,186 @@ export default function MatchDetailScreen() {
             decelerationRate="fast"
             scrollEventThrottle={16}
           >
-            <Text style={styles.nxSectionTitle}>H2H</Text>
-            {predictionUnlocked && safePrediction?.h2hSummary ? (
-              <View style={styles.nxCard}>
-                <Text style={styles.nxCardKicker}>Head to head</Text>
-                <Text style={styles.nxBodyText}>{safePrediction.h2hSummary}</Text>
-              </View>
-            ) : (
-              <View style={styles.nxLockedCard}>
-                <Text style={styles.nxGridLabel}>Head to head data</Text>
-                <Text style={styles.nxBodyText}>Vergelijkbare ontmoetingen, trendlines en contextuele edge.</Text>
-                <BlurView intensity={45} tint="dark" style={styles.nxLockOverlay}>
-                  <Ionicons name="lock-closed" size={18} color="#E50914" />
-                  <Text style={styles.nxLockText}>Unlock required</Text>
-                </BlurView>
-              </View>
-            )}
+            {/* H2H Summary */}
+            <View style={styles.md_card}>
+              <SectionHead icon="git-compare-outline" label="Head to Head" />
+              {(prematchH2H.summary.homeWins + prematchH2H.summary.draws + prematchH2H.summary.awayWins) > 0 ? (
+                <>
+                  <View style={styles.md_h2hTeamRow}>
+                    <Text style={styles.md_h2hTeamLabel} numberOfLines={1}>{homeTeamName}</Text>
+                    <Text style={styles.md_h2hVs}>vs</Text>
+                    <Text style={[styles.md_h2hTeamLabel, { textAlign: "right" }]} numberOfLines={1}>{awayTeamName}</Text>
+                  </View>
+                  <View style={styles.md_h2hBar}>
+                    <View style={[styles.md_h2hFillHome, { flex: Math.max(1, prematchH2H.summary.homeWins) }]}>
+                      <Text style={styles.md_h2hFillText}>{prematchH2H.summary.homeWins}W</Text>
+                    </View>
+                    {prematchH2H.summary.draws > 0 ? (
+                      <View style={[styles.md_h2hFillDraw, { flex: Math.max(1, prematchH2H.summary.draws) }]}>
+                        <Text style={styles.md_h2hFillTextDraw}>{prematchH2H.summary.draws}D</Text>
+                      </View>
+                    ) : null}
+                    <View style={[styles.md_h2hFillAway, { flex: Math.max(1, prematchH2H.summary.awayWins) }]}>
+                      <Text style={styles.md_h2hFillText}>{prematchH2H.summary.awayWins}W</Text>
+                    </View>
+                  </View>
+                  {safePrediction?.h2hSummary ? (
+                    <Text style={styles.md_bodyText}>{safePrediction.h2hSummary}</Text>
+                  ) : null}
+                </>
+              ) : (
+                <EmptySlate icon="git-compare-outline" title="No H2H data" subtitle="Head-to-head history is not available for this matchup." />
+              )}
+            </View>
 
-            {predictionUnlocked && (safePrediction?.formGuide?.homeForm || safePrediction?.formGuide?.awayForm) ? (
-              <View style={styles.nxCard}>
-                <Text style={styles.nxCardKicker}>Form analysis</Text>
-                {safePrediction?.formGuide?.homeForm ? <Text style={styles.nxBodyText}>{homeTeamName}: {safePrediction.formGuide.homeForm}</Text> : null}
-                {safePrediction?.formGuide?.awayForm ? <Text style={[styles.nxBodyText, { marginTop: 10 }]}>{awayTeamName}: {safePrediction.formGuide.awayForm}</Text> : null}
-              </View>
+            {/* Recent meetings */}
+            {(prematchH2H.rows || []).length > 0 ? (
+              <>
+                <SectionTitle label="Recent Meetings" />
+                <View style={styles.md_card}>
+                  {(prematchH2H.rows || []).map((row: any, i: number) => {
+                    const isHomeWin = row.homeScore > row.awayScore;
+                    const isAwayWin = row.awayScore > row.homeScore;
+                    return (
+                      <View
+                        key={row.id || i}
+                        style={[styles.md_h2hMatchRow, i > 0 ? { borderTopWidth: 1, borderTopColor: COLORS.border } : undefined]}
+                      >
+                        <Text style={styles.md_h2hMatchDate}>{row.date || "--"}</Text>
+                        <View style={{ flex: 1, flexDirection: "row", alignItems: "center", gap: 6 }}>
+                          <Text style={[styles.md_h2hMatchTeam, { flex: 1, textAlign: "right" }]} numberOfLines={1}>{row.homeTeam}</Text>
+                          <View style={styles.md_h2hScoreBadge}>
+                            <Text style={styles.md_h2hScore}>{row.homeScore}-{row.awayScore}</Text>
+                          </View>
+                          <Text style={[styles.md_h2hMatchTeam, { flex: 1 }]} numberOfLines={1}>{row.awayTeam}</Text>
+                        </View>
+                        <View style={[
+                          styles.md_h2hResult,
+                          isHomeWin ? styles.md_h2hResultHome : isAwayWin ? styles.md_h2hResultAway : styles.md_h2hResultDraw,
+                        ]}>
+                          <Text style={styles.md_h2hResultText}>{isHomeWin ? "H" : isAwayWin ? "A" : "D"}</Text>
+                        </View>
+                      </View>
+                    );
+                  })}
+                </View>
+              </>
+            ) : null}
+
+            {/* Form comparison */}
+            <SectionTitle label="Recent Form" />
+            <View style={styles.md_grid2}>
+              {([
+                { team: homeTeamName, form: prematchTeamForm.homeForm },
+                { team: awayTeamName, form: prematchTeamForm.awayForm },
+              ] as const).map(({ team, form }) => (
+                <View key={team} style={styles.md_gridCard}>
+                  <Text style={styles.md_gridLabel} numberOfLines={1}>{team}</Text>
+                  <View style={styles.md_formRow}>
+                    {(form.sequence as string[]).slice(-5).map((r, i) => (
+                      <View key={i} style={[styles.md_formDot, r === "W" ? styles.md_formDotW : r === "D" ? styles.md_formDotD : styles.md_formDotL]}>
+                        <Text style={styles.md_formDotText}>{r}</Text>
+                      </View>
+                    ))}
+                    {(form.sequence as string[]).length === 0 ? <Text style={styles.md_metaText}>—</Text> : null}
+                  </View>
+                  <Text style={styles.md_metaText}>GF {form.goalsScored} · GA {form.goalsConceded}</Text>
+                </View>
+              ))}
+            </View>
+
+            {/* Team stats comparison */}
+            {(prematchTeamStats.metrics || []).length > 0 ? (
+              <>
+                <SectionTitle label="Team Stats Comparison" />
+                <View style={styles.md_card}>
+                  {(prematchTeamStats.metrics || []).slice(0, 8).map((metric: any) => {
+                    const hv = typeof metric.home === "number" ? metric.home : 0;
+                    const av = typeof metric.away === "number" ? metric.away : 0;
+                    const total = Math.max(1, hv + av);
+                    const hPct = Math.round((hv / total) * 100);
+                    const aPct = 100 - hPct;
+                    const dec = Number.isFinite(metric.decimals) ? metric.decimals : 1;
+                    const sfx = metric.suffix || "";
+                    return (
+                      <View key={metric.key} style={styles.md_compareRow}>
+                        <Text style={styles.md_compareVal}>{metric.home == null ? "--" : `${hv.toFixed(dec)}${sfx}`}</Text>
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.md_compareLabel}>{metric.label}</Text>
+                          <View style={styles.md_compareBarWrap}>
+                            <View style={[styles.md_compareBarHome, { flex: hPct }]} />
+                            <View style={[styles.md_compareBarAway, { flex: aPct }]} />
+                          </View>
+                        </View>
+                        <Text style={[styles.md_compareVal, { textAlign: "right" }]}>{metric.away == null ? "--" : `${av.toFixed(dec)}${sfx}`}</Text>
+                      </View>
+                    );
+                  })}
+                </View>
+              </>
+            ) : null}
+
+            {/* AI Form analysis (unlocked) */}
+            {predictionUnlocked && safePrediction?.formGuide ? (
+              <>
+                <SectionTitle label="AI Form Analysis" />
+                <View style={styles.md_card}>
+                  {safePrediction.formGuide.homeForm ? (
+                    <View style={{ marginBottom: 10 }}>
+                      <Text style={styles.md_cardKicker}>{homeTeamName}</Text>
+                      <Text style={styles.md_bodyText}>{safePrediction.formGuide.homeForm}</Text>
+                    </View>
+                  ) : null}
+                  {safePrediction.formGuide.awayForm ? (
+                    <View>
+                      <Text style={styles.md_cardKicker}>{awayTeamName}</Text>
+                      <Text style={styles.md_bodyText}>{safePrediction.formGuide.awayForm}</Text>
+                    </View>
+                  ) : null}
+                </View>
+              </>
             ) : null}
           </ScrollView>
         ) : null}
       </View>
     );
 }
+
+// ─── Utility Sub-components ───────────────────────────────────────────────────
+
+function EmptySlate({ icon, title, subtitle }: { icon: React.ComponentProps<typeof Ionicons>["name"]; title: string; subtitle?: string }) {
+  return (
+    <View style={styles.md_emptySlate}>
+      <Ionicons name={icon} size={28} color={COLORS.textMuted} />
+      <Text style={styles.md_emptyTitle}>{title}</Text>
+      {subtitle ? <Text style={styles.md_emptySubtitle}>{subtitle}</Text> : null}
+    </View>
+  );
+}
+
+function SectionHead({ icon, label, accent }: { icon: React.ComponentProps<typeof Ionicons>["name"]; label: string; accent?: string }) {
+  return (
+    <View style={styles.md_sectionHead}>
+      <Ionicons name={icon} size={13} color={accent || COLORS.textMuted} />
+      <Text style={[styles.md_sectionHeadText, accent ? { color: accent } : null]}>{label}</Text>
+    </View>
+  );
+}
+
+function SectionTitle({ label }: { label: string }) {
+  return <Text style={styles.md_sectionTitle}>{label}</Text>;
+}
+
+function InfoRow({ icon, text }: { icon: React.ComponentProps<typeof Ionicons>["name"]; text: string }) {
+  return (
+    <View style={styles.md_infoRow}>
+      <Ionicons name={icon} size={13} color={COLORS.textMuted} />
+      <Text style={styles.md_infoText} numberOfLines={2}>{text}</Text>
+    </View>
+  );
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
 
 function TeamSide({ name, logo, logoSize: logoSizeProp, width: widthProp, onPress }: { name: string; logo?: string; logoSize?: number; width?: number; onPress?: () => void }) {
   const { width: windowWidth } = useWindowDimensions();
@@ -5023,5 +5426,1051 @@ const styles = StyleSheet.create({
   },
   aiWaitCard: {
     gap: 10,
+  },
+
+  // ─── md_* styles for rewritten 7-tab content ─────────────────────────────
+  liveSectionWrap: {
+    gap: 0,
+    marginBottom: 4,
+  },
+  md_card: {
+    backgroundColor: COLORS.card,
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    gap: 8,
+  },
+  md_cardKicker: {
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 10,
+    color: COLORS.textMuted,
+    letterSpacing: 0.8,
+    textTransform: "uppercase",
+    marginBottom: 2,
+  },
+  md_cardTopRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  md_sectionTitle: {
+    fontFamily: "Inter_700Bold",
+    fontSize: 13,
+    color: COLORS.textSecondary,
+    letterSpacing: 0.4,
+    textTransform: "uppercase",
+    marginBottom: 6,
+    marginTop: 8,
+  },
+  md_sectionHead: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginBottom: 2,
+  },
+  md_sectionHeadText: {
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 12,
+    color: COLORS.textMuted,
+    textTransform: "uppercase",
+    letterSpacing: 0.6,
+  },
+  md_metaText: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 12,
+    color: COLORS.textMuted,
+  },
+  md_bodyText: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 13,
+    color: COLORS.textSecondary,
+    lineHeight: 19,
+  },
+  md_grid2: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 10,
+    marginBottom: 12,
+  },
+  md_gridCard: {
+    flex: 1,
+    minWidth: "45%",
+    backgroundColor: COLORS.card,
+    borderRadius: 12,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    gap: 4,
+  },
+  md_gridLabel: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 11,
+    color: COLORS.textMuted,
+    textTransform: "uppercase",
+    letterSpacing: 0.4,
+  },
+  md_gridValue: {
+    fontFamily: "Inter_700Bold",
+    fontSize: 18,
+    color: COLORS.text,
+  },
+  md_formRow: {
+    flexDirection: "row",
+    gap: 4,
+    marginTop: 4,
+    flexWrap: "wrap",
+  },
+  md_formDot: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: COLORS.border,
+  },
+  md_formDotText: {
+    fontFamily: "Inter_700Bold",
+    fontSize: 10,
+    color: "#FFF",
+  },
+  md_formDotW: { backgroundColor: "#22C55E" },
+  md_formDotD: { backgroundColor: "#6B7280" },
+  md_formDotL: { backgroundColor: "#EF4444" },
+  md_scoreBar: {
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    alignSelf: "flex-start",
+    marginTop: 4,
+  },
+  md_scoreBarText: {
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 11,
+    color: "#FFF",
+  },
+  md_stateBadge: {
+    borderRadius: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    alignSelf: "flex-start",
+    marginTop: 4,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: "transparent",
+  },
+  md_stateBadgeConfirmed: {
+    borderColor: "#22C55E55",
+    backgroundColor: "#22C55E18",
+  },
+  md_stateBadgeExpected: {
+    borderColor: "#5D9EFF55",
+    backgroundColor: "#5D9EFF18",
+  },
+  md_stateBadgeUnknown: {
+    borderColor: COLORS.border,
+    backgroundColor: "transparent",
+  },
+  md_stateBadgeText: {
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 9,
+    color: COLORS.textMuted,
+    letterSpacing: 0.6,
+  },
+  md_divider: {
+    height: 1,
+    backgroundColor: COLORS.border,
+    marginVertical: 10,
+  },
+  md_infoRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 8,
+    paddingVertical: 3,
+  },
+  md_infoText: {
+    flex: 1,
+    fontFamily: "Inter_400Regular",
+    fontSize: 13,
+    color: COLORS.textSecondary,
+    lineHeight: 18,
+  },
+  md_emptySlate: {
+    alignItems: "center",
+    padding: 24,
+    gap: 8,
+  },
+  md_emptyTitle: {
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 14,
+    color: COLORS.textSecondary,
+    textAlign: "center",
+  },
+  md_emptySubtitle: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 12,
+    color: COLORS.textMuted,
+    textAlign: "center",
+    lineHeight: 18,
+  },
+  md_liveEventRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 10,
+    paddingVertical: 6,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+  },
+  md_liveMin: {
+    fontFamily: "Inter_700Bold",
+    fontSize: 12,
+    width: 28,
+    textAlign: "right",
+  },
+  md_liveTitle: {
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 13,
+    color: COLORS.text,
+  },
+  md_liveMeta: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 11,
+    color: COLORS.textMuted,
+    marginTop: 1,
+  },
+  md_livePill: {
+    borderRadius: 4,
+    paddingHorizontal: 5,
+    paddingVertical: 2,
+    borderWidth: 1,
+    alignSelf: "center",
+  },
+  md_livePillText: {
+    fontFamily: "Inter_700Bold",
+    fontSize: 8,
+    letterSpacing: 0.6,
+  },
+  md_factorRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingVertical: 4,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+  },
+  md_factorLabel: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 13,
+    color: COLORS.textSecondary,
+    flex: 1,
+  },
+  md_factorValue: {
+    fontFamily: "Inter_700Bold",
+    fontSize: 13,
+    color: COLORS.text,
+  },
+  md_probTeamRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 8,
+  },
+  md_probTeamName: {
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 12,
+    color: COLORS.textSecondary,
+    flex: 1,
+  },
+  md_probCenterLabel: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 11,
+    color: COLORS.textMuted,
+    textAlign: "center",
+    paddingHorizontal: 8,
+  },
+  md_probBarWrap: {
+    flexDirection: "row",
+    height: 10,
+    borderRadius: 5,
+    overflow: "hidden",
+  },
+  md_probFillHome: {
+    backgroundColor: COLORS.accent,
+    height: 10,
+  },
+  md_probFillDraw: {
+    backgroundColor: "#6B7280",
+    height: 10,
+  },
+  md_probFillAway: {
+    backgroundColor: "#5D9EFF",
+    height: 10,
+  },
+  md_probValues: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginTop: 6,
+  },
+  md_probVal: {
+    fontFamily: "Inter_700Bold",
+    fontSize: 13,
+  },
+  md_predictionOutcome: {
+    fontFamily: "Inter_800ExtraBold",
+    fontSize: 18,
+    color: COLORS.text,
+    marginBottom: 6,
+  },
+  md_tipRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 8,
+    marginTop: 6,
+    padding: 10,
+    backgroundColor: "#FFD70010",
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#FFD70030",
+  },
+  md_tipText: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 13,
+    color: COLORS.textSecondary,
+    flex: 1,
+    lineHeight: 18,
+  },
+  md_loadingRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    padding: 12,
+  },
+  md_loadingText: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 13,
+    color: COLORS.textMuted,
+  },
+  md_lockCard: {
+    borderRadius: 14,
+    overflow: "hidden",
+    marginBottom: 12,
+    minHeight: 180,
+  },
+  md_lockContent: {
+    padding: 20,
+    alignItems: "center",
+    gap: 8,
+    zIndex: 2,
+  },
+  md_lockTitle: {
+    fontFamily: "Inter_700Bold",
+    fontSize: 16,
+    color: COLORS.text,
+    textAlign: "center",
+  },
+  md_lockBody: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 13,
+    color: COLORS.textMuted,
+    textAlign: "center",
+    lineHeight: 18,
+  },
+  md_lockBlur: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 1,
+  },
+  md_unlockBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: COLORS.accent,
+    borderRadius: 10,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    marginTop: 8,
+  },
+  md_unlockBtnText: {
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 14,
+    color: "#FFF",
+  },
+  md_premiumLink: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginTop: 6,
+  },
+  md_premiumLinkText: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 12,
+    color: COLORS.textMuted,
+    textDecorationLine: "underline",
+  },
+  md_refreshBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    backgroundColor: COLORS.border,
+    borderRadius: 6,
+  },
+  md_refreshText: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 11,
+    color: COLORS.textMuted,
+  },
+  md_marketsGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    marginBottom: 12,
+  },
+  md_marketCard: {
+    width: "30%",
+    flex: 1,
+    minWidth: "28%",
+    backgroundColor: COLORS.card,
+    borderRadius: 10,
+    padding: 10,
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    gap: 4,
+  },
+  md_marketValue: {
+    fontFamily: "Inter_700Bold",
+    fontSize: 16,
+    color: COLORS.text,
+  },
+  md_marketLabel: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 10,
+    color: COLORS.textMuted,
+    textAlign: "center",
+  },
+  md_confRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  md_confTrack: {
+    flexDirection: "row",
+    height: 8,
+    borderRadius: 4,
+    overflow: "hidden",
+    backgroundColor: COLORS.border,
+  },
+  md_confFill: {
+    height: 8,
+    borderRadius: 4,
+  },
+  md_confFillHigh: { backgroundColor: "#22C55E" },
+  md_confFillMed: { backgroundColor: "#FFD700" },
+  md_confFillLow: { backgroundColor: "#EF4444" },
+  md_modeRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 10,
+  },
+  md_modeToggle: {
+    flexDirection: "row",
+    backgroundColor: COLORS.card,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    overflow: "hidden",
+  },
+  md_modeBtn: {
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+  },
+  md_modeBtnActive: {
+    backgroundColor: COLORS.accent,
+  },
+  md_modeBtnText: {
+    fontFamily: "Inter_500Medium",
+    fontSize: 12,
+    color: COLORS.textMuted,
+  },
+  md_modeBtnTextActive: {
+    color: "#FFF",
+  },
+  md_hintText: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 12,
+    color: COLORS.textMuted,
+    marginBottom: 10,
+    lineHeight: 17,
+  },
+  md_signalGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  md_signalChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 20,
+    backgroundColor: COLORS.border,
+    borderWidth: 1,
+    borderColor: "transparent",
+  },
+  md_signalChipActive: {
+    backgroundColor: "#22C55E15",
+    borderColor: "#22C55E40",
+  },
+  md_signalText: {
+    fontFamily: "Inter_500Medium",
+    fontSize: 11,
+    color: COLORS.textMuted,
+  },
+  md_signalTextActive: {
+    color: COLORS.live,
+  },
+  md_aiCard: {
+    backgroundColor: COLORS.card,
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: `${COLORS.accent}30`,
+    gap: 8,
+  },
+  md_aiCardHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  md_aiCardTitle: {
+    fontFamily: "Inter_700Bold",
+    fontSize: 15,
+    color: COLORS.text,
+    flex: 1,
+  },
+  md_aiSummary: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 13,
+    color: COLORS.textSecondary,
+    lineHeight: 20,
+  },
+  md_aiBullet: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 8,
+    marginTop: 4,
+  },
+  md_aiBulletDot: {
+    width: 5,
+    height: 5,
+    borderRadius: 3,
+    backgroundColor: COLORS.accent,
+    marginTop: 7,
+    flexShrink: 0,
+  },
+  md_aiBulletText: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 13,
+    color: COLORS.textSecondary,
+    lineHeight: 19,
+    flex: 1,
+  },
+  md_turningPoint: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 8,
+    padding: 10,
+    backgroundColor: "#FFD70015",
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#FFD70035",
+  },
+  md_turningPointText: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 12,
+    color: COLORS.textSecondary,
+    flex: 1,
+    lineHeight: 18,
+  },
+  md_evidenceText: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 11,
+    color: COLORS.textMuted,
+    lineHeight: 16,
+    marginLeft: 4,
+  },
+  md_tacticRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 10,
+  },
+  md_tacticTeam: {
+    fontFamily: "Inter_700Bold",
+    fontSize: 14,
+    color: COLORS.text,
+  },
+  md_tacticFormation: {
+    fontFamily: "Inter_800ExtraBold",
+    fontSize: 22,
+    color: COLORS.accent,
+    marginTop: 2,
+  },
+  md_tacticState: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 11,
+    color: COLORS.textMuted,
+    marginTop: 2,
+  },
+  md_tacticVs: {
+    width: 32,
+    alignItems: "center",
+    paddingTop: 4,
+  },
+  md_tacticVsText: {
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 11,
+    color: COLORS.textMuted,
+  },
+  md_tacticPlayersRow: {
+    flexDirection: "row",
+    gap: 12,
+  },
+  md_xgRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-around",
+  },
+  md_xgValue: {
+    fontFamily: "Inter_800ExtraBold",
+    fontSize: 28,
+  },
+  md_xgLabel: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 12,
+    color: COLORS.textMuted,
+    textAlign: "center",
+    marginTop: 2,
+  },
+  md_xgCenter: {
+    fontFamily: "Inter_700Bold",
+    fontSize: 12,
+    color: COLORS.textMuted,
+    textTransform: "uppercase",
+    letterSpacing: 1,
+  },
+  md_lineupHeader: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    backgroundColor: COLORS.card,
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  md_lineupTeamName: {
+    fontFamily: "Inter_700Bold",
+    fontSize: 13,
+    color: COLORS.text,
+    textAlign: "center",
+  },
+  md_lineupFormation: {
+    fontFamily: "Inter_800ExtraBold",
+    fontSize: 20,
+    color: COLORS.accent,
+    textAlign: "center",
+    marginTop: 2,
+  },
+  md_lineupVsDivider: {
+    paddingHorizontal: 10,
+    paddingTop: 8,
+    alignItems: "center",
+  },
+  md_lineupVsText: {
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 11,
+    color: COLORS.textMuted,
+  },
+  md_viewToggleRow: {
+    flexDirection: "row",
+    gap: 8,
+    marginBottom: 12,
+  },
+  md_viewBtn: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    paddingVertical: 8,
+    borderRadius: 8,
+    backgroundColor: COLORS.card,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  md_viewBtnActive: {
+    backgroundColor: `${COLORS.accent}18`,
+    borderColor: `${COLORS.accent}55`,
+  },
+  md_viewBtnText: {
+    fontFamily: "Inter_500Medium",
+    fontSize: 13,
+    color: COLORS.textMuted,
+  },
+  md_viewBtnTextActive: {
+    color: COLORS.accent,
+    fontFamily: "Inter_600SemiBold",
+  },
+  md_lineupSection: {
+    marginBottom: 16,
+  },
+  md_lineupSectionHead: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginBottom: 6,
+    paddingBottom: 6,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+  },
+  md_lineupTeamDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  md_lineupSectionTitle: {
+    fontFamily: "Inter_700Bold",
+    fontSize: 12,
+    color: COLORS.text,
+    flex: 1,
+    letterSpacing: 0.5,
+  },
+  md_lineupSectionMeta: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 12,
+    color: COLORS.textMuted,
+  },
+  md_lineupListLabel: {
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 10,
+    color: COLORS.textMuted,
+    letterSpacing: 0.8,
+    textTransform: "uppercase",
+    marginTop: 8,
+    marginBottom: 4,
+  },
+  md_subRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingVertical: 6,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+  },
+  md_subMinute: {
+    fontFamily: "Inter_700Bold",
+    fontSize: 12,
+    color: COLORS.textMuted,
+    width: 28,
+    textAlign: "right",
+  },
+  md_subTeam: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 11,
+    color: COLORS.textMuted,
+    width: 60,
+  },
+  md_subOut: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 12,
+    color: "#EF4444",
+    flex: 1,
+  },
+  md_subIn: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 12,
+    color: COLORS.live,
+    flex: 1,
+  },
+  md_progressHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 8,
+  },
+  md_statusChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 20,
+    backgroundColor: COLORS.border,
+  },
+  md_statusChipLive: {
+    backgroundColor: "#22C55E20",
+    borderWidth: 1,
+    borderColor: "#22C55E50",
+  },
+  md_statusChipFt: {
+    backgroundColor: "#5D9EFF20",
+    borderWidth: 1,
+    borderColor: "#5D9EFF50",
+  },
+  md_statusChipDefault: {
+    backgroundColor: COLORS.border,
+  },
+  md_liveDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: COLORS.live,
+  },
+  md_statusChipText: {
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 11,
+    color: COLORS.text,
+  },
+  md_progressTrack: {
+    flexDirection: "row",
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: COLORS.border,
+    overflow: "hidden",
+  },
+  md_progressFill: {
+    backgroundColor: COLORS.accent,
+    height: 6,
+    borderRadius: 3,
+  },
+  md_progressLabels: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginTop: 4,
+  },
+  md_progressLabel: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 10,
+    color: COLORS.textMuted,
+  },
+  md_eventCountGrid: {
+    flexDirection: "row",
+    justifyContent: "space-around",
+    backgroundColor: COLORS.card,
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  md_eventCountCard: {
+    alignItems: "center",
+    gap: 3,
+  },
+  md_eventCountNum: {
+    fontFamily: "Inter_700Bold",
+    fontSize: 18,
+  },
+  md_eventCountLabel: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 10,
+    color: COLORS.textMuted,
+  },
+  md_chipScroll: {
+    marginBottom: 12,
+  },
+  md_chipScrollInner: {
+    paddingHorizontal: 0,
+    gap: 8,
+    flexDirection: "row",
+  },
+  md_chip: {
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 20,
+    backgroundColor: COLORS.card,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  md_chipActive: {
+    backgroundColor: `${COLORS.accent}18`,
+    borderColor: `${COLORS.accent}60`,
+  },
+  md_chipText: {
+    fontFamily: "Inter_500Medium",
+    fontSize: 12,
+    color: COLORS.textMuted,
+  },
+  md_chipTextActive: {
+    color: COLORS.accent,
+    fontFamily: "Inter_600SemiBold",
+  },
+  md_h2hTeamRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 8,
+  },
+  md_h2hTeamLabel: {
+    fontFamily: "Inter_700Bold",
+    fontSize: 13,
+    color: COLORS.text,
+    flex: 1,
+  },
+  md_h2hVs: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 11,
+    color: COLORS.textMuted,
+    paddingHorizontal: 8,
+  },
+  md_h2hBar: {
+    flexDirection: "row",
+    height: 28,
+    borderRadius: 6,
+    overflow: "hidden",
+    marginBottom: 8,
+  },
+  md_h2hFillHome: {
+    backgroundColor: `${COLORS.accent}CC`,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  md_h2hFillAway: {
+    backgroundColor: "#5D9EFFCC",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  md_h2hFillDraw: {
+    backgroundColor: "#6B7280CC",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  md_h2hFillText: {
+    fontFamily: "Inter_700Bold",
+    fontSize: 11,
+    color: "#FFF",
+  },
+  md_h2hFillTextDraw: {
+    fontFamily: "Inter_700Bold",
+    fontSize: 11,
+    color: "#FFF",
+  },
+  md_h2hMatchRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingVertical: 8,
+  },
+  md_h2hMatchDate: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 10,
+    color: COLORS.textMuted,
+    width: 52,
+  },
+  md_h2hMatchTeam: {
+    fontFamily: "Inter_500Medium",
+    fontSize: 12,
+    color: COLORS.textSecondary,
+  },
+  md_h2hScoreBadge: {
+    backgroundColor: COLORS.border,
+    borderRadius: 4,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+  },
+  md_h2hScore: {
+    fontFamily: "Inter_700Bold",
+    fontSize: 12,
+    color: COLORS.text,
+  },
+  md_h2hResult: {
+    width: 20,
+    height: 20,
+    borderRadius: 4,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  md_h2hResultHome: { backgroundColor: `${COLORS.accent}CC` },
+  md_h2hResultAway: { backgroundColor: "#5D9EFFCC" },
+  md_h2hResultDraw: { backgroundColor: "#6B7280CC" },
+  md_h2hResultText: {
+    fontFamily: "Inter_700Bold",
+    fontSize: 10,
+    color: "#FFF",
+  },
+  md_compareRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingVertical: 6,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+  },
+  md_compareVal: {
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 12,
+    color: COLORS.text,
+    width: 44,
+  },
+  md_compareLabel: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 11,
+    color: COLORS.textMuted,
+    textAlign: "center",
+    marginBottom: 3,
+  },
+  md_compareBarWrap: {
+    flexDirection: "row",
+    height: 5,
+    borderRadius: 3,
+    overflow: "hidden",
+    backgroundColor: COLORS.border,
+  },
+  md_compareBarHome: {
+    backgroundColor: COLORS.accent,
+    height: 5,
+  },
+  md_compareBarAway: {
+    backgroundColor: "#5D9EFF",
+    height: 5,
+  },
+  md_playerChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    backgroundColor: COLORS.border,
+    borderRadius: 20,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    alignSelf: "flex-start",
+    marginTop: 4,
+  },
+  md_playerChipText: {
+    fontFamily: "Inter_500Medium",
+    fontSize: 11,
+    color: COLORS.textSecondary,
+    maxWidth: 100,
+  },
+  md_injRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingVertical: 4,
+  },
+  md_injName: {
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 12,
+    color: COLORS.text,
+    flex: 1,
+  },
+  md_injReason: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 11,
+    color: COLORS.textMuted,
   },
 });
