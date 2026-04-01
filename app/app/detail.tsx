@@ -45,6 +45,13 @@ async function fetchRelatedTitles(id: string, type: "movie" | "series") {
   return { items: Array.isArray(data?.items) ? data.items : [] };
 }
 
+async function fetchProviders(id: string, type: "movie" | "series") {
+  const path = type === "movie" ? `/api/movies/${encodeURIComponent(id)}/providers` : `/api/series/${encodeURIComponent(id)}/providers`;
+  const res = await apiRequest("GET", path);
+  if (!res.ok) return { results: {} };
+  return res.json();
+}
+
 function summarizeList(values: unknown, limit = 3): string {
   if (!Array.isArray(values)) return "";
   return values
@@ -368,6 +375,14 @@ export default function DetailScreen() {
     retry: 0,
   });
 
+  const providersQuery = useQuery({
+    queryKey: ["providers", type, tmdbId],
+    queryFn: () => fetchProviders(String(tmdbId), type === "series" ? "series" : "movie"),
+    enabled: Boolean(tmdbId) && (type === "movie" || type === "series"),
+    staleTime: 6 * 60 * 60 * 1000,
+    retry: 0,
+  });
+
   // ── Fallback: search TMDB by title if IPTV has no tmdbId ─────────────────
   const searchTitle = iptvChannel?.title || iptvChannel?.name || paramTitle;
   const { data: searchData, isLoading: searchLoading, error: searchError } = useQuery({
@@ -493,7 +508,20 @@ export default function DetailScreen() {
       if (out.length >= 14) break;
     }
     return out;
-  }, [relatedQuery.data?.items]);
+  }, [relatedQuery.data]);
+
+  // "Where to Watch" — pick providers for NL, fall back to US, then first available country
+  const watchProviders = useMemo(() => {
+    const results = (providersQuery.data as any)?.results ?? {};
+    const countryData = results["NL"] ?? results["US"] ?? Object.values(results)[0] ?? null;
+    if (!countryData) return null;
+    return {
+      flatrate: Array.isArray(countryData.flatrate) ? countryData.flatrate : [],
+      rent: Array.isArray(countryData.rent) ? countryData.rent : [],
+      buy: Array.isArray(countryData.buy) ? countryData.buy : [],
+      link: countryData.link ?? null,
+    };
+  }, [providersQuery.data]);
 
   const openTrailer = () => {
     SafeHaptics.impactLight();
@@ -816,6 +844,51 @@ export default function DetailScreen() {
                   <Text style={styles.networkValue}>{data.creators.join(", ")}</Text>
                 </View>
               )}
+              {watchProviders && (watchProviders.flatrate.length > 0 || watchProviders.rent.length > 0) ? (
+                <View style={styles.providersSection}>
+                  <Text style={styles.providersSectionTitle}>Where to Watch</Text>
+                  {watchProviders.flatrate.length > 0 ? (
+                    <View style={styles.providersGroup}>
+                      <Text style={styles.providersGroupLabel}>Streaming</Text>
+                      <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                        <View style={styles.providersRow}>
+                          {watchProviders.flatrate.map((p: any) => (
+                            <View key={p.provider_id} style={styles.providerItem}>
+                              {p.logo_path ? (
+                                <Image
+                                  source={{ uri: `https://image.tmdb.org/t/p/w45${p.logo_path}` }}
+                                  style={styles.providerLogo}
+                                />
+                              ) : null}
+                              <Text style={styles.providerName} numberOfLines={2}>{p.provider_name}</Text>
+                            </View>
+                          ))}
+                        </View>
+                      </ScrollView>
+                    </View>
+                  ) : null}
+                  {watchProviders.rent.length > 0 ? (
+                    <View style={styles.providersGroup}>
+                      <Text style={styles.providersGroupLabel}>Rent / Buy</Text>
+                      <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                        <View style={styles.providersRow}>
+                          {[...watchProviders.rent, ...watchProviders.buy.filter((b: any) => !watchProviders.rent.some((r: any) => r.provider_id === b.provider_id))].map((p: any) => (
+                            <View key={p.provider_id} style={styles.providerItem}>
+                              {p.logo_path ? (
+                                <Image
+                                  source={{ uri: `https://image.tmdb.org/t/p/w45${p.logo_path}` }}
+                                  style={styles.providerLogo}
+                                />
+                              ) : null}
+                              <Text style={styles.providerName} numberOfLines={2}>{p.provider_name}</Text>
+                            </View>
+                          ))}
+                        </View>
+                      </ScrollView>
+                    </View>
+                  ) : null}
+                </View>
+              ) : null}
             </View>
           )}
 
@@ -1092,6 +1165,14 @@ const styles = StyleSheet.create({
   networkRow: { flexDirection: "row", marginBottom: 8 },
   networkLabel: { fontFamily: "Inter_600SemiBold", fontSize: 13, color: COLORS.textMuted },
   networkValue: { fontFamily: "Inter_400Regular", fontSize: 13, color: COLORS.textSecondary },
+  providersSection: { marginTop: 20, marginBottom: 8 },
+  providersSectionTitle: { fontFamily: "Inter_700Bold", fontSize: 16, color: COLORS.text, marginBottom: 10 },
+  providersGroup: { marginBottom: 12 },
+  providersGroupLabel: { fontFamily: "Inter_600SemiBold", fontSize: 11, color: COLORS.textMuted, textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 8 },
+  providersRow: { flexDirection: "row", gap: 10, paddingVertical: 2 },
+  providerItem: { alignItems: "center", width: 64, gap: 5 },
+  providerLogo: { width: 52, height: 52, borderRadius: 12, backgroundColor: COLORS.card },
+  providerName: { fontFamily: "Inter_500Medium", fontSize: 10, color: COLORS.textSecondary, textAlign: "center" },
   castRow: { flexDirection: "row", gap: 12, paddingVertical: 4 },
   castCard: { width: 80, alignItems: "center", gap: 6 },
   castPhoto: { width: 76, height: 76, borderRadius: 14, backgroundColor: COLORS.card },
