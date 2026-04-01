@@ -1,4 +1,4 @@
 <resources>
-    <string name="app_name">NEXORA</string>
-    <string name="expo_runtime_version" translatable="false">2.6.19</string>
+  <string name="app_name">NEXORA</string>
+  <string name="expo_runtime_version">2.6.25</string>
 </resources>
