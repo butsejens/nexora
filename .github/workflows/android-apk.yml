@@ -149,11 +149,11 @@ jobs:
           gh release delete "v${VERSION}" --yes 2>/dev/null || true
           git push origin ":refs/tags/v${VERSION}" 2>/dev/null || true
 
-          # Create the draft release first.
+          # Create the release (published immediately, not a draft).
           gh release create "v${VERSION}" \
             --title "Nexora v${VERSION}" \
             --notes "Android APK — commit ${{ github.sha }} (branch: ${{ github.ref_name }})" \
-            --draft \
+            --latest \
             --repo "${{ github.repository }}"
 
           # Upload APK as an explicit asset (clobber handles reruns safely).
