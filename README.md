@@ -142,3 +142,33 @@ Optional custom league set:
 ```bash
 node scripts/sports-standings-smoke.mjs --leagues=eng.1,bel.1,uefa.champions
 ```
+
+## Smart deploy workflow (data-saving)
+Gebruik de slimme deploy-router zodat alleen het noodzakelijke pad wordt uitgevoerd:
+
+```bash
+npm run deploy:smart
+```
+
+Beschikbare intent-commando's:
+
+```bash
+npm run deploy:push
+npm run deploy:commit-upload
+npm run deploy:apk
+npm run deploy:ota
+npm run deploy:server
+```
+
+Router logica:
+- Alleen JS/UI/data mapping in `app/` -> OTA update.
+- Native wijziging (`android/`, `ios/`, `app/app.json`, Expo config/deps) -> APK/native build.
+- Alleen server/cloudflare/render wijziging -> server deploy.
+- Mixed wijzigingen -> combinatie (bijvoorbeeld OTA + server).
+
+Valideren van routekeuze:
+
+```bash
+npm run deploy:test-routing
+node scripts/smart-deploy.mjs auto --dry-run
+```

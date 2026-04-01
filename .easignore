@@ -15,3 +15,25 @@ scripts/
 # Placeholder native projecten (EAS genereert zelf via expo prebuild)
 app/android/
 app/ios/
+
+# Build artifacts and local caches
+node_modules/
+**/node_modules/
+.expo/
+app/.expo/
+dist/
+app/dist/
+android/.gradle/
+android/build/
+android/app/build/
+android/app/.cxx/
+ios/build/
+ios/DerivedData/
+
+# Local diagnostics / binaries
+*.apk
+*.aab
+*.ipa
+*.hprof
+*.log
+*.tmp

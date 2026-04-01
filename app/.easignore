@@ -1,6 +1,9 @@
 node_modules
+../node_modules
 .expo
+../.expo
 dist
+../dist
 dist-android
 web-build
 ios
@@ -13,4 +16,7 @@ android
 *.mobileprovision
 *.log
 *.apk
+*.aab
+*.ipa
+*.hprof
 expo-env.d.ts

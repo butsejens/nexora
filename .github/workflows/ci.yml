@@ -48,3 +48,9 @@ jobs:
       - name: Type check (app)
         run: npx tsc --noEmit
         working-directory: app
+
+      - name: Routing logic tests
+        run: npm run deploy:test-routing
+
+      - name: Server syntax sanity
+        run: node --check server/index.js
