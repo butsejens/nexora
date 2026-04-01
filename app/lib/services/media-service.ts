@@ -162,7 +162,7 @@ export async function getMediaHome(): Promise<MediaHomeRail[]> {
 }
 
 export async function getTrendingMovies(page = 1): Promise<Movie[]> {
-  const raw = await safeFetch<any>(`/api/movies/trending?page=${page}`, {});
+  const raw = await safeFetch<any>(`/api/movies/trending?page=${page}`, {}, true);
   return mapTrendingRail(
     page > 1 ? raw?.popular : [...(raw?.trending || []), ...(raw?.popular || []), ...(raw?.newReleases || []), ...(raw?.topRated || [])],
     normalizeMovieFromTmdb,
@@ -170,7 +170,7 @@ export async function getTrendingMovies(page = 1): Promise<Movie[]> {
 }
 
 export async function getTrendingSeries(page = 1): Promise<Series[]> {
-  const raw = await safeFetch<any>(`/api/series/trending?page=${page}`, {});
+  const raw = await safeFetch<any>(`/api/series/trending?page=${page}`, {}, true);
   return mapTrendingRail(
     page > 1 ? raw?.popular : [...(raw?.trending || []), ...(raw?.popular || []), ...(raw?.newReleases || []), ...(raw?.topRated || [])],
     normalizeSeriesFromTmdb,
@@ -317,8 +317,8 @@ export async function searchMedia(query: string): Promise<SearchResult> {
 
 export async function getVodHomePayload(): Promise<VodHomePayload> {
   const [movieData, seriesData] = await Promise.all([
-    safeFetch<any>("/api/movies/trending", {}),
-    safeFetch<any>("/api/series/trending", {}),
+    safeFetch<any>("/api/movies/trending", {}, true),
+    safeFetch<any>("/api/series/trending", {}, true),
   ]);
 
   const enrichedMovies = buildVodItems([
@@ -336,6 +336,13 @@ export async function getVodHomePayload(): Promise<VodHomePayload> {
   ], "series");
 
   let allItems = dedupeModuleItems([...enrichedMovies, ...enrichedSeries]);
+
+  // Hard fallback when trending rails are temporarily empty: use catalog chunk
+  // so Home never renders a fully-empty VOD state.
+  if (allItems.length === 0) {
+    const fallbackCatalog = await getVodCatalogChunk(null);
+    allItems = dedupeModuleItems(fallbackCatalog.items || []);
+  }
 
   return {
     featured: pickFeaturedItem(allItems),

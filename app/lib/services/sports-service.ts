@@ -27,7 +27,6 @@ import { deduplicateLeaderboard } from "@/lib/domain/identity-resolver";
 import { fetchSportsLeagueResourceWithFallback, getLeaderboardRows } from "@/lib/sports-data";
 import { enrichPlayerProfilePayload, enrichTeamDetailPayload } from "@/lib/sports-enrichment";
 import { getMatchdayYmd } from "@/lib/date/matchday";
-import { resolveMatchStatus } from "@/lib/match-state";
 import type {
   Match,
   MatchDetail,
@@ -118,67 +117,41 @@ export interface SportsHomeData {
  */
 export async function getSportsHome(): Promise<SportsHomeData> {
   const today = getMatchdayYmd(); // Brussels/device TZ, not UTC
-  const raw = await safeFetch<any>(`/api/sports/by-date?date=${encodeURIComponent(today)}`);
+  const raw = await safeFetch<any>(`/api/sports/by-date?date=${encodeURIComponent(today)}`, {}, true);
   return normalizeSportsHomePayload(raw);
 }
 
 export async function getSportsByDate(dateYmd: string): Promise<SportsHomeData> {
-  const raw = await safeFetch<any>(`/api/sports/by-date?date=${encodeURIComponent(dateYmd)}`);
+  const raw = await safeFetch<any>(`/api/sports/by-date?date=${encodeURIComponent(dateYmd)}`, {}, true);
   return normalizeSportsHomePayload(raw);
 }
 
 export async function getSportsLive(): Promise<SportsHomeData> {
-  const raw = await safeFetch<any>("/api/sports/live");
+  const raw = await safeFetch<any>("/api/sports/live", {}, true);
   return normalizeSportsHomePayload(raw);
 }
 
 function normalizeSportsHomePayload(raw: any): SportsHomeData {
-  const source = [
-    ...(Array.isArray(raw?.live) ? raw.live : []),
-    ...(Array.isArray(raw?.upcoming) ? raw.upcoming : []),
-    ...(Array.isArray(raw?.finished) ? raw.finished : []),
-    ...(Array.isArray(raw?.matches) ? raw.matches : []),
-  ];
+  const mapList = (list: any[]): Match[] => {
+    if (!Array.isArray(list)) return [];
+    return list
+      .map((item) => {
+        try {
+          return normalizeMatchFromServer(item);
+        } catch {
+          return null;
+        }
+      })
+      .filter(Boolean) as Match[];
+  };
 
-  const all = source
-    .map((item) => {
-      try {
-        return normalizeMatchFromServer(item);
-      } catch {
-        return null;
-      }
-    })
-    .filter(Boolean) as Match[];
-
-  const seen = new Set<string>();
-  const filtered = { live: [] as Match[], upcoming: [] as Match[], finished: [] as Match[] };
-  for (const match of all) {
-    if (!match?.id || seen.has(match.id)) continue;
-    seen.add(match.id);
-
-    const status = resolveMatchStatus({
-      status: match.status,
-      detail: (match as any)?.statusDetail,
-      minute: (match as any)?.minute,
-      homeScore: match.score?.home,
-      awayScore: match.score?.away,
-      startDate: (match as any)?.startTime,
-    });
-
-    if (status === "live" || status === "halftime" || status === "delayed") {
-      filtered.live.push(match);
-      continue;
-    }
-
-    if (status === "finished" || status === "postponed" || status === "cancelled") {
-      filtered.finished.push(match);
-      continue;
-    }
-
-    filtered.upcoming.push(match);
-  }
-
-  return filtered;
+  // Trust server-side bucketing; avoids client-side status drift when upstream
+  // providers use non-standard status/detail combinations.
+  return {
+    live: mapList(raw?.live),
+    upcoming: mapList(raw?.upcoming),
+    finished: mapList(raw?.finished),
+  };
 }
 
 export const getSportHome = getSportsHome;
