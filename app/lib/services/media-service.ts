@@ -34,9 +34,20 @@ import type {
 export async function safeFetch<T>(route: string, fallback: T): Promise<T> {
   try {
     const res = await apiRequest("GET", route);
-    if (!res.ok) return fallback;
-    return (await res.json()) as T;
-  } catch {
+    if (!res.ok) {
+      console.warn(`[nexora:media] HTTP ${res.status} for ${route}`);
+      return fallback;
+    }
+    const data = (await res.json()) as T;
+    // Surface server-side config errors (e.g. missing TMDB key) so they are
+    // visible in the developer console instead of silently returning empty data.
+    if (data && typeof data === "object" && (data as any).error) {
+      console.warn(`[nexora:media] server error for ${route}:`, (data as any).error);
+    }
+    return data;
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err ?? "unknown");
+    console.warn(`[nexora:media] fetch failed for ${route}: ${msg}`);
     return fallback;
   }
 }

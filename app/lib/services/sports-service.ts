@@ -43,9 +43,15 @@ import type {
 async function safeFetch<T>(route: string, fallback: T): Promise<T> {
   try {
     const res = await apiRequest("GET", route);
-    if (!res.ok) return fallback;
-    return (await res.json()) as T;
-  } catch {
+    if (!res.ok) {
+      console.warn(`[nexora:sports] HTTP ${res.status} for ${route}`);
+      return fallback;
+    }
+    const data = (await res.json()) as T;
+    return data;
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err ?? "unknown");
+    console.warn(`[nexora:sports] fetch failed for ${route}: ${msg}`);
     return fallback;
   }
 }
