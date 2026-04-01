@@ -451,11 +451,6 @@ function UpdateModal({
           });
         }
 
-        // Some Android vendors silently ignore install intents from app cache.
-        // Opening the hosted APK URL ensures Download Manager / package installer takes over.
-        setTimeout(() => {
-          void Linking.openURL(normalized).catch(() => undefined);
-        }, 900);
         setStatus("idle");
       } catch (e: any) {
         setStatus("update");
