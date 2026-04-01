@@ -116,8 +116,13 @@ app.get("/api/config-check", (_req, res) => {
     ok: true,
     services: {
       tmdb: Boolean(process.env.TMDB_API_KEY),
+      tmdbProviders: Boolean(process.env.TMDB_API_KEY), // watch/providers uses same TMDB key
       sportsrc: Boolean(process.env.SPORTSRC_API_KEY),
       espn: true, // ESPN is keyless — always available
+      scorebat: true, // football highlights — keyless, always available
+      tvmaze: true, // TV schedules & next episode — keyless, always available
+      radioBrowser: true, // internet radio stations — keyless, always available
+      openMeteo: true, // weather forecasts — keyless, always available
       gemini: Boolean(process.env.GEMINI_API_KEY),
       openrouter: Boolean(process.env.OPENROUTER_API_KEY),
       openai: Boolean(process.env.OPENAI_API_KEY),
@@ -8606,6 +8611,226 @@ app.get("/api/sports/multisport/standings", async (req, res) => {
   }
 });
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Multi-sport game detail  — GET /api/sports/multisport/game/:gameId?sport=basketball&league=nba
+// Source: site.api.espn.com/apis/site/v2/sports/{sport}/{league}/summary?event={gameId}
+// Returns: header (teams, score, status), boxscore, plays, leaders, videos, news
+// ─────────────────────────────────────────────────────────────────────────────
+app.get("/api/sports/multisport/game/:gameId", async (req, res) => {
+  try {
+    const gameId = String(req.params.gameId || "").trim();
+    const sport = String(req.query.sport || "").trim().toLowerCase();
+    const league = String(req.query.league || "").trim().toLowerCase();
+    if (!gameId || !sport || !league) {
+      return res.status(400).json({ error: "gameId, sport, and league are required" });
+    }
+
+    const url = `https://site.api.espn.com/apis/site/v2/sports/${encodeURIComponent(sport)}/${encodeURIComponent(league)}/summary?event=${encodeURIComponent(gameId)}`;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 8000);
+    const resp = await fetch(url, { headers: espnRequestHeaders(), signal: controller.signal });
+    clearTimeout(timer);
+
+    if (!resp.ok) return res.status(200).json({ gameId, sport, league, error: `ESPN summary ${resp.status}` });
+    const data = await resp.json();
+
+    const header = data?.header || {};
+    const comp = (header?.competitions || [])[0] || {};
+    const competitors = comp?.competitors || [];
+    const home = competitors.find((c) => c?.homeAway === "home") || competitors[0] || {};
+    const away = competitors.find((c) => c?.homeAway === "away") || competitors[1] || {};
+    const logoPath = ESPN_SPORT_LOGO_PATH[sport] || sport;
+
+    return res.json({
+      gameId,
+      sport,
+      league,
+      header: {
+        name: header?.name || "",
+        date: comp?.date || null,
+        status: comp?.status?.type?.description || "",
+        period: comp?.status?.period ?? null,
+        clock: comp?.status?.displayClock ?? null,
+        venue: comp?.venue?.fullName || comp?.venue?.address?.city || null,
+        broadcast: (comp?.broadcasts || [])[0]?.media?.shortName || null,
+        odds: data?.odds?.[0]
+          ? { details: String(data.odds[0].details || ""), overUnder: data.odds[0]?.overUnder ?? null }
+          : null,
+        homeTeam: {
+          id: String(home?.team?.id || ""),
+          name: home?.team?.displayName || home?.team?.name || "",
+          abbreviation: home?.team?.abbreviation || "",
+          score: home?.score ?? null,
+          record: home?.record?.items?.[0]?.summary || null,
+          logo: home?.team?.logo || home?.team?.logos?.[0]?.href ||
+            (home?.team?.id ? `https://a.espncdn.com/i/teamlogos/${logoPath}/500/${home.team.id}.png` : null),
+          linescores: (home?.linescores || []).map((ls) => ls?.displayValue ?? ls?.value ?? null),
+          leaders: (home?.leaders || []).slice(0, 3).map((l) => ({
+            name: l?.displayName || "",
+            leaders: (l?.leaders || []).slice(0, 1).map((p) => ({
+              displayValue: p?.displayValue || "",
+              athlete: { fullName: p?.athlete?.displayName || "", id: String(p?.athlete?.id || "") },
+            })),
+          })),
+        },
+        awayTeam: {
+          id: String(away?.team?.id || ""),
+          name: away?.team?.displayName || away?.team?.name || "",
+          abbreviation: away?.team?.abbreviation || "",
+          score: away?.score ?? null,
+          record: away?.record?.items?.[0]?.summary || null,
+          logo: away?.team?.logo || away?.team?.logos?.[0]?.href ||
+            (away?.team?.id ? `https://a.espncdn.com/i/teamlogos/${logoPath}/500/${away.team.id}.png` : null),
+          linescores: (away?.linescores || []).map((ls) => ls?.displayValue ?? ls?.value ?? null),
+          leaders: (away?.leaders || []).slice(0, 3).map((l) => ({
+            name: l?.displayName || "",
+            leaders: (l?.leaders || []).slice(0, 1).map((p) => ({
+              displayValue: p?.displayValue || "",
+              athlete: { fullName: p?.athlete?.displayName || "", id: String(p?.athlete?.id || "") },
+            })),
+          })),
+        },
+      },
+      boxscore: data?.boxscore || null,
+      plays: data?.plays ? (data.plays).slice(-30) : null,
+      leaders: data?.leaders || null,
+      videos: (data?.videos || []).slice(0, 5).map((v) => ({
+        id: String(v?.id || ""),
+        headline: v?.headline || "",
+        thumbnail: v?.thumbnail || null,
+        links: v?.links?.source?.HD?.href || v?.links?.source?.full?.href || null,
+      })),
+      news: (data?.news || []).slice(0, 5).map((n) => ({
+        headline: n?.headline || "",
+        description: n?.description || n?.summary || "",
+        imageUrl: n?.images?.[0]?.url || null,
+        linkUrl: n?.links?.web?.href || null,
+      })),
+      standings: data?.standings || null,
+    });
+  } catch (e) {
+    return res.status(200).json({
+      gameId: String(req.params.gameId || ""),
+      sport: String(req.query.sport || ""),
+      league: String(req.query.league || ""),
+      error: String(e?.message || e),
+    });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Multi-sport team detail  — GET /api/sports/multisport/teams/:teamId?sport=basketball&league=nba
+// Source: site.api.espn.com/apis/site/v2/sports/{sport}/{league}/teams/{teamId}
+// Returns: team info, roster, record, next event, links
+// ─────────────────────────────────────────────────────────────────────────────
+app.get("/api/sports/multisport/teams/:teamId", async (req, res) => {
+  try {
+    const teamId = String(req.params.teamId || "").trim();
+    const sport = String(req.query.sport || "").trim().toLowerCase();
+    const league = String(req.query.league || "").trim().toLowerCase();
+    if (!teamId || !sport || !league) {
+      return res.status(400).json({ error: "teamId, sport, and league are required" });
+    }
+
+    const url = `https://site.api.espn.com/apis/site/v2/sports/${encodeURIComponent(sport)}/${encodeURIComponent(league)}/teams/${encodeURIComponent(teamId)}`;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 8000);
+    const resp = await fetch(url, { headers: espnRequestHeaders(), signal: controller.signal });
+    clearTimeout(timer);
+
+    if (!resp.ok) return res.status(200).json({ teamId, sport, league, error: `ESPN team detail ${resp.status}` });
+    const data = await resp.json();
+
+    const team = data?.team || data;
+    const logoPath = ESPN_SPORT_LOGO_PATH[sport] || sport;
+
+    return res.json({
+      teamId,
+      sport,
+      league,
+      team: {
+        id: String(team?.id || teamId),
+        slug: String(team?.slug || ""),
+        displayName: String(team?.displayName || team?.name || ""),
+        shortName: String(team?.shortDisplayName || team?.abbreviation || ""),
+        abbreviation: String(team?.abbreviation || ""),
+        location: String(team?.location || ""),
+        color: String(team?.color || ""),
+        alternateColor: String(team?.alternateColor || ""),
+        logo: team?.logos?.[0]?.href || team?.logo ||
+          (team?.id ? `https://a.espncdn.com/i/teamlogos/${logoPath}/500/${team.id}.png` : null),
+        record: team?.record?.items?.[0]?.summary || null,
+        standingSummary: team?.standingSummary || null,
+        nextEvent: (team?.nextEvent || []).slice(0, 1)[0] || null,
+        athletes: (team?.athletes || []).slice(0, 30).map((a) => ({
+          id: String(a?.id || ""),
+          fullName: String(a?.fullName || a?.displayName || ""),
+          position: String(a?.position?.abbreviation || a?.position?.name || ""),
+          jersey: String(a?.jersey || ""),
+          headshot: a?.headshot?.href || null,
+        })),
+      },
+    });
+  } catch (e) {
+    return res.status(200).json({
+      teamId: String(req.params.teamId || ""),
+      sport: String(req.query.sport || ""),
+      league: String(req.query.league || ""),
+      error: String(e?.message || e),
+    });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Multi-sport rankings — GET /api/sports/multisport/rankings?sport=football&league=college-football
+// Source: site.api.espn.com/apis/site/v2/sports/{sport}/{league}/rankings
+// Returns: list of polls (AP Top 25, Coaches Poll, etc.) with ranked teams
+// ─────────────────────────────────────────────────────────────────────────────
+app.get("/api/sports/multisport/rankings", async (req, res) => {
+  try {
+    const sport = String(req.query.sport || "football").trim().toLowerCase();
+    const league = String(req.query.league || "college-football").trim().toLowerCase();
+
+    const url = `https://site.api.espn.com/apis/site/v2/sports/${encodeURIComponent(sport)}/${encodeURIComponent(league)}/rankings`;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 6000);
+    const resp = await fetch(url, { headers: espnRequestHeaders(), signal: controller.signal });
+    clearTimeout(timer);
+
+    if (!resp.ok) return res.status(200).json({ sport, league, rankings: [], error: `ESPN rankings ${resp.status}` });
+    const data = await resp.json();
+
+    const polls = (data?.rankings || []).map((poll) => ({
+      id: String(poll?.id || ""),
+      name: String(poll?.name || poll?.displayName || ""),
+      shortName: String(poll?.shortName || ""),
+      date: String(poll?.occurrence?.date || ""),
+      type: String(poll?.type || ""),
+      ranks: (poll?.ranks || []).slice(0, 25).map((rank) => ({
+        rank: Number(rank?.current ?? rank?.rank ?? 0),
+        previous: rank?.previous ?? null,
+        points: rank?.points ?? null,
+        team: {
+          id: String(rank?.team?.id || ""),
+          name: String(rank?.team?.displayName || rank?.team?.name || ""),
+          abbreviation: String(rank?.team?.abbreviation || ""),
+          logo: rank?.team?.logo || rank?.team?.logos?.[0]?.href || null,
+          record: rank?.recordSummary || null,
+        },
+      })),
+    }));
+
+    return res.json({ sport, league, total: polls.length, rankings: polls });
+  } catch (e) {
+    return res.status(200).json({
+      sport: String(req.query.sport || ""),
+      league: String(req.query.league || ""),
+      rankings: [],
+      error: String(e?.message || e),
+    });
+  }
+});
+
 app.get("/api/sports/stream/:matchId", async (req, res) => {
   try {
     const matchId = String(req.params.matchId || "").trim();
@@ -11090,6 +11315,289 @@ app.delete("/api/user/followed-teams/:teamId", (req, res) => {
     res.json({ ok: true, teams: [...state.followedTeams] });
   } catch (e) {
     res.status(500).json({ error: "Internal error" });
+  }
+});
+
+// ─── TMDB Watch Providers ────────────────────────────────────────────────────
+// Returns streaming/rent/buy availability per country (uses existing TMDB key).
+// TMDB /watch/providers returns `results` keyed by ISO-3166-1 country code.
+// Cache: 6 h — streaming catalogs change infrequently.
+const TMDB_PROVIDERS_CACHE_TTL_MS = 6 * 60 * 60 * 1000; // 6 h
+
+app.get("/api/movies/:id/providers", tmdbLimiter, async (req, res) => {
+  try {
+    if (!process.env.TMDB_API_KEY) return res.json({ results: {} });
+    const id = String(req.params.id || "").trim();
+    if (!id || id.length > 20) return res.status(400).json({ error: "Invalid id" });
+    const cacheKey = `tmdb-providers-movie:${id}`;
+    const cached = await cacheGet(cacheKey);
+    if (cached) return res.json(cached);
+    const data = await tmdb(`/movie/${encodeURIComponent(id)}/watch/providers`, { cacheTtlMs: 0 });
+    const payload = { results: data?.results ?? {} };
+    await cacheSet(cacheKey, payload, TMDB_PROVIDERS_CACHE_TTL_MS);
+    return res.json(payload);
+  } catch (e) {
+    return res.status(200).json({ results: {} });
+  }
+});
+
+app.get("/api/series/:id/providers", tmdbLimiter, async (req, res) => {
+  try {
+    if (!process.env.TMDB_API_KEY) return res.json({ results: {} });
+    const id = String(req.params.id || "").trim();
+    if (!id || id.length > 20) return res.status(400).json({ error: "Invalid id" });
+    const cacheKey = `tmdb-providers-tv:${id}`;
+    const cached = await cacheGet(cacheKey);
+    if (cached) return res.json(cached);
+    const data = await tmdb(`/tv/${encodeURIComponent(id)}/watch/providers`, { cacheTtlMs: 0 });
+    const payload = { results: data?.results ?? {} };
+    await cacheSet(cacheKey, payload, TMDB_PROVIDERS_CACHE_TTL_MS);
+    return res.json(payload);
+  } catch (e) {
+    return res.status(200).json({ results: {} });
+  }
+});
+
+// ─── TVMaze TV Schedule & Show Data ──────────────────────────────────────────
+// No API key required. Free public API for TV schedules and show data.
+// Cache: 1 h for schedule, 24 h for show lookups.
+const TVMAZE_BASE = "https://api.tvmaze.com";
+const TVMAZE_SCHEDULE_TTL_MS = 60 * 60 * 1000; // 1 h
+const TVMAZE_SHOW_TTL_MS = 24 * 60 * 60 * 1000; // 24 h
+
+// Search shows by name
+app.get("/api/tvmaze/search", async (req, res) => {
+  try {
+    const q = String(req.query.q || "").trim().slice(0, 200);
+    if (!q) return res.status(400).json({ error: "q is required" });
+    const cacheKey = `tvmaze-search:${q.toLowerCase()}`;
+    const cached = await cacheGet(cacheKey);
+    if (cached) return res.json(cached);
+    const url = `${TVMAZE_BASE}/search/shows?q=${encodeURIComponent(q)}`;
+    const r = await fetch(url, { signal: AbortSignal.timeout(8000), headers: { accept: "application/json" } });
+    if (!r.ok) return res.json([]);
+    const data = await r.json();
+    const shows = Array.isArray(data) ? data.slice(0, 10).map((item) => ({
+      id: item.show?.id,
+      name: item.show?.name,
+      type: item.show?.type,
+      language: item.show?.language,
+      genres: item.show?.genres,
+      status: item.show?.status,
+      premiered: item.show?.premiered,
+      rating: item.show?.rating?.average,
+      image: item.show?.image?.medium || null,
+      summary: (item.show?.summary || "").replace(/<[^>]+>/g, ""),
+      network: item.show?.network?.name || item.show?.webChannel?.name || null,
+    })) : [];
+    await cacheSet(cacheKey, shows, TVMAZE_SHOW_TTL_MS);
+    return res.json(shows);
+  } catch (e) {
+    return res.status(200).json([]);
+  }
+});
+
+// Look up a show by IMDB ID — returns details + next episode
+app.get("/api/tvmaze/show/imdb/:imdbId", async (req, res) => {
+  try {
+    const imdbId = String(req.params.imdbId || "").trim();
+    if (!imdbId || !/^tt\d+$/.test(imdbId)) return res.status(400).json({ error: "Invalid IMDB ID" });
+    const cacheKey = `tvmaze-imdb:${imdbId}`;
+    const cached = await cacheGet(cacheKey);
+    if (cached) return res.json(cached);
+    const url = `${TVMAZE_BASE}/lookup/shows?imdb=${encodeURIComponent(imdbId)}`;
+    const r = await fetch(url, { signal: AbortSignal.timeout(8000), headers: { accept: "application/json" } });
+    if (!r.ok) return res.json(null);
+    const show = await r.json();
+    const nextEpisodeUrl = show?._links?.nextepisode?.href;
+    const nextEpisode = nextEpisodeUrl
+      ? await fetch(nextEpisodeUrl, { signal: AbortSignal.timeout(5000), headers: { accept: "application/json" } })
+          .then((r2) => (r2.ok ? r2.json() : null))
+          .catch(() => null)
+      : null;
+    const payload = {
+      id: show.id,
+      name: show.name,
+      status: show.status,
+      rating: show.rating?.average,
+      genres: show.genres,
+      network: show.network?.name || show.webChannel?.name || null,
+      nextEpisode: nextEpisode ? {
+        season: nextEpisode.season,
+        number: nextEpisode.number,
+        name: nextEpisode.name,
+        airdate: nextEpisode.airdate,
+        runtime: nextEpisode.runtime,
+        summary: (nextEpisode.summary || "").replace(/<[^>]+>/g, ""),
+      } : null,
+    };
+    await cacheSet(cacheKey, payload, TVMAZE_SHOW_TTL_MS);
+    return res.json(payload);
+  } catch (e) {
+    return res.status(200).json(null);
+  }
+});
+
+// Today's TV schedule by country (ISO 3166-1 code, default NL)
+app.get("/api/tvmaze/schedule", async (req, res) => {
+  try {
+    const country = /^[A-Z]{2}$/.test(String(req.query.country || "").toUpperCase())
+      ? String(req.query.country).toUpperCase()
+      : "NL";
+    const date = /^\d{4}-\d{2}-\d{2}$/.test(String(req.query.date || ""))
+      ? String(req.query.date)
+      : new Date().toISOString().slice(0, 10);
+    const cacheKey = `tvmaze-schedule:${country}:${date}`;
+    const cached = await cacheGet(cacheKey);
+    if (cached) return res.json(cached);
+    const url = `${TVMAZE_BASE}/schedule?country=${country}&date=${date}`;
+    const r = await fetch(url, { signal: AbortSignal.timeout(8000), headers: { accept: "application/json" } });
+    if (!r.ok) return res.json([]);
+    const data = await r.json();
+    const items = Array.isArray(data) ? data.slice(0, 60).map((ep) => ({
+      id: ep.id,
+      season: ep.season,
+      number: ep.number,
+      name: ep.name,
+      airtime: ep.airtime,
+      runtime: ep.runtime,
+      showId: ep.show?.id,
+      showName: ep.show?.name,
+      network: ep.show?.network?.name || ep.show?.webChannel?.name || null,
+      image: ep.show?.image?.medium || null,
+    })) : [];
+    await cacheSet(cacheKey, items, TVMAZE_SCHEDULE_TTL_MS);
+    return res.json(items);
+  } catch (e) {
+    return res.status(200).json([]);
+  }
+});
+
+// ─── Radio Browser ────────────────────────────────────────────────────────────
+// No API key required. Community-maintained directory of 30k+ internet radio stations.
+// Cache: 1 h — station catalog is relatively stable.
+const RADIO_BROWSER_BASE = "https://de1.api.radio-browser.info/json";
+const RADIO_BROWSER_TTL_MS = 60 * 60 * 1000; // 1 h
+
+function mapRadioStation(s) {
+  return {
+    id: s.stationuuid,
+    name: s.name,
+    url: s.url_resolved || s.url,
+    homepageUrl: s.homepage || null,
+    favicon: s.favicon || null,
+    country: s.country || null,
+    countryCode: s.countrycode || null,
+    language: s.language || null,
+    tags: s.tags ? s.tags.split(",").map((t) => t.trim()).filter(Boolean).slice(0, 6) : [],
+    codec: s.codec || null,
+    bitrate: s.bitrate || null,
+    votes: s.votes || 0,
+    clickCount: s.clickcount || 0,
+  };
+}
+
+// Search/filter stations (name, country code, tag)
+app.get("/api/radio/stations", async (req, res) => {
+  try {
+    const name = String(req.query.name || "").trim().slice(0, 100);
+    const country = String(req.query.country || "").trim().slice(0, 2);
+    const tag = String(req.query.tag || "").trim().slice(0, 50);
+    const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 30));
+    const cacheKey = `radio-stations:${name}:${country}:${tag}:${limit}`;
+    const cached = await cacheGet(cacheKey);
+    if (cached) return res.json(cached);
+    const params = new URLSearchParams({ limit: String(limit), order: "votes", reverse: "true", hidebroken: "true" });
+    if (name) params.set("name", name);
+    if (country) params.set("countrycode", country.toUpperCase());
+    if (tag) params.set("tag", tag);
+    const r = await fetch(`${RADIO_BROWSER_BASE}/stations/search?${params}`, {
+      signal: AbortSignal.timeout(8000),
+      headers: { "User-Agent": "Nexora/1.0", accept: "application/json" },
+    });
+    if (!r.ok) return res.json([]);
+    const data = await r.json();
+    const stations = Array.isArray(data) ? data.map(mapRadioStation) : [];
+    await cacheSet(cacheKey, stations, RADIO_BROWSER_TTL_MS);
+    return res.json(stations);
+  } catch (e) {
+    return res.status(200).json([]);
+  }
+});
+
+// Top voted stations worldwide
+app.get("/api/radio/top", async (req, res) => {
+  try {
+    const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 30));
+    const cacheKey = `radio-top:${limit}`;
+    const cached = await cacheGet(cacheKey);
+    if (cached) return res.json(cached);
+    const r = await fetch(`${RADIO_BROWSER_BASE}/stations/topvote/${limit}?hidebroken=true`, {
+      signal: AbortSignal.timeout(8000),
+      headers: { "User-Agent": "Nexora/1.0", accept: "application/json" },
+    });
+    if (!r.ok) return res.json([]);
+    const data = await r.json();
+    const stations = Array.isArray(data) ? data.map(mapRadioStation) : [];
+    await cacheSet(cacheKey, stations, RADIO_BROWSER_TTL_MS);
+    return res.json(stations);
+  } catch (e) {
+    return res.status(200).json([]);
+  }
+});
+
+// ─── Open-Meteo Weather ───────────────────────────────────────────────────────
+// No API key needed. Free weather forecast API.
+// Cache: 30 min — forecasts update hourly.
+const OPEN_METEO_BASE = "https://api.open-meteo.com/v1";
+const OPEN_METEO_TTL_MS = 30 * 60 * 1000; // 30 min
+
+app.get("/api/weather", async (req, res) => {
+  try {
+    const lat = parseFloat(String(req.query.lat || ""));
+    const lon = parseFloat(String(req.query.lon || ""));
+    if (!isFinite(lat) || !isFinite(lon) || lat < -90 || lat > 90 || lon < -180 || lon > 180) {
+      return res.status(400).json({ error: "lat and lon are required (valid coordinates)" });
+    }
+    const timezone = /^[\w/]+$/.test(String(req.query.timezone || "auto"))
+      ? String(req.query.timezone || "auto").slice(0, 50)
+      : "auto";
+    const cacheKey = `weather:${lat.toFixed(2)}:${lon.toFixed(2)}:${timezone}`;
+    const cached = await cacheGet(cacheKey);
+    if (cached) return res.json(cached);
+    const params = new URLSearchParams({
+      latitude: lat.toFixed(4),
+      longitude: lon.toFixed(4),
+      timezone,
+      current: "temperature_2m,relative_humidity_2m,precipitation,wind_speed_10m,weather_code",
+      hourly: "temperature_2m,precipitation_probability,weather_code",
+      forecast_days: "3",
+      wind_speed_unit: "kmh",
+    });
+    const r = await fetch(`${OPEN_METEO_BASE}/forecast?${params}`, { signal: AbortSignal.timeout(8000) });
+    if (!r.ok) return res.json({ current: null, hourly: null });
+    const data = await r.json();
+    const payload = {
+      current: data.current ? {
+        temperature: data.current.temperature_2m,
+        humidity: data.current.relative_humidity_2m,
+        precipitation: data.current.precipitation,
+        windSpeed: data.current.wind_speed_10m,
+        weatherCode: data.current.weather_code,
+      } : null,
+      hourly: data.hourly ? {
+        times: (data.hourly.time || []).slice(0, 24),
+        temperatures: (data.hourly.temperature_2m || []).slice(0, 24),
+        precipitationProbability: (data.hourly.precipitation_probability || []).slice(0, 24),
+        weatherCodes: (data.hourly.weather_code || []).slice(0, 24),
+      } : null,
+      timezone: data.timezone,
+      units: { temperature: "°C", windSpeed: "km/h", precipitation: "mm" },
+    };
+    await cacheSet(cacheKey, payload, OPEN_METEO_TTL_MS);
+    return res.json(payload);
+  } catch (e) {
+    return res.status(200).json({ current: null, hourly: null });
   }
 });
 

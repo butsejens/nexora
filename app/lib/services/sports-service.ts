@@ -410,8 +410,14 @@ export const sportKeys = {
     ["sports", "multi", sport, league ?? "all", date ?? "today"] as const,
   multiSportTeams: (sport: string, league: string) =>
     ["sports", "multi", sport, league, "teams"] as const,
+  multiSportTeamDetail: (teamId: string, sport: string, league: string) =>
+    ["sports", "multi", sport, league, "team", teamId] as const,
   multiSportStandings: (sport: string, league: string) =>
     ["sports", "multi", sport, league, "standings"] as const,
+  multiSportGame: (gameId: string, sport: string, league: string) =>
+    ["sports", "multi", sport, league, "game", gameId] as const,
+  multiSportRankings: (sport: string, league: string) =>
+    ["sports", "multi", sport, league, "rankings"] as const,
   espnNews: (sport?: string, league?: string) =>
     ["sports", "news", sport ?? "all", league ?? "all"] as const,
   matchOdds: (matchId: string, sport?: string, league?: string) =>
@@ -496,4 +502,45 @@ export async function getMultiSportStandings(
 ): Promise<MultiSportStandingEntry[]> {
   const params = new URLSearchParams({ sport, league });
   return safeFetch<MultiSportStandingEntry[]>(`/api/sports/multisport/standings?${params}`, []);
+}
+
+/**
+ * Fetch full game detail / box score for any ESPN sport.
+ * Uses ESPN's summary endpoint which provides box scores, play-by-play, leaders, and videos.
+ * @param gameId ESPN event ID
+ * @param sport  ESPN sport slug — "basketball", "football", "hockey", "baseball", etc.
+ * @param league ESPN league slug — "nba", "nfl", "nhl", "mlb", etc.
+ */
+export async function getMultiSportGameDetail(
+  gameId: string,
+  sport: SportSlug | string,
+  league: string,
+): Promise<any> {
+  const params = new URLSearchParams({ sport, league });
+  return safeFetch<any>(`/api/sports/multisport/game/${encodeURIComponent(gameId)}?${params}`, null);
+}
+
+/**
+ * Fetch detail for a specific team in any ESPN sport/league.
+ * Returns team info, current roster (up to 30 athletes), record, and next scheduled event.
+ */
+export async function getMultiSportTeamDetail(
+  teamId: string,
+  sport: SportSlug | string,
+  league: string,
+): Promise<any> {
+  const params = new URLSearchParams({ sport, league });
+  return safeFetch<any>(`/api/sports/multisport/teams/${encodeURIComponent(teamId)}?${params}`, null);
+}
+
+/**
+ * Fetch rankings / polls for any ESPN sport+league that publishes them.
+ * Primarily useful for college-football (AP Top 25, Coaches Poll) and college-basketball.
+ */
+export async function getMultiSportRankings(
+  sport: SportSlug | string,
+  league: string,
+): Promise<any> {
+  const params = new URLSearchParams({ sport, league });
+  return safeFetch<any>(`/api/sports/multisport/rankings?${params}`, { rankings: [] });
 }

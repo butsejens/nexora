@@ -18,6 +18,9 @@ import {
   getMatchOdds,
   getMultiSportTeams,
   getMultiSportStandings,
+  getMultiSportGameDetail,
+  getMultiSportTeamDetail,
+  getMultiSportRankings,
   sportKeys,
 } from "@/lib/services/sports-service";
 import type { SportSlug } from "@/lib/domain/models";
@@ -178,6 +181,73 @@ export function useMultiSportStandings(
   return useQuery({
     queryKey: sportKeys.multiSportStandings(sport, league),
     queryFn: () => getMultiSportStandings(sport, league),
+    enabled: enabled && Boolean(sport) && Boolean(league),
+    staleTime: SLOW_STALE,
+    gcTime: SLOW_GC,
+    retry: 1,
+  });
+}
+
+// ─── Game detail ──────────────────────────────────────────────────────────────
+
+/**
+ * Full game summary for any ESPN sport — box score, play-by-play, leaders, videos.
+ * @param gameId ESPN event ID (from scoreboard response)
+ * @param sport  ESPN sport slug — "basketball", "football", "hockey", "baseball"
+ * @param league ESPN league slug — "nba", "nfl", "nhl", "mlb", etc.
+ */
+export function useMultiSportGameDetail(
+  gameId: string | null | undefined,
+  sport: SportSlug | string,
+  league: string,
+  enabled = true,
+) {
+  return useQuery({
+    queryKey: sportKeys.multiSportGame(gameId ?? "", sport, league),
+    queryFn: () => getMultiSportGameDetail(gameId!, sport, league),
+    enabled: enabled && Boolean(gameId) && Boolean(sport) && Boolean(league),
+    staleTime: LIVE_STALE,
+    gcTime: LIVE_GC,
+    retry: 1,
+  });
+}
+
+// ─── Team detail ──────────────────────────────────────────────────────────────
+
+/**
+ * Detailed team profile — roster, record, next event, for any ESPN sport.
+ */
+export function useMultiSportTeamDetail(
+  teamId: string | null | undefined,
+  sport: SportSlug | string,
+  league: string,
+  enabled = true,
+) {
+  return useQuery({
+    queryKey: sportKeys.multiSportTeamDetail(teamId ?? "", sport, league),
+    queryFn: () => getMultiSportTeamDetail(teamId!, sport, league),
+    enabled: enabled && Boolean(teamId) && Boolean(sport) && Boolean(league),
+    staleTime: SLOW_STALE,
+    gcTime: SLOW_GC,
+    retry: 1,
+  });
+}
+
+// ─── Rankings ─────────────────────────────────────────────────────────────────
+
+/**
+ * Rankings / polls for college sports.
+ * Works best for sport="football" + league="college-football"
+ * and sport="basketball" + league="mens-college-basketball".
+ */
+export function useMultiSportRankings(
+  sport: SportSlug | string,
+  league: string,
+  enabled = true,
+) {
+  return useQuery({
+    queryKey: sportKeys.multiSportRankings(sport, league),
+    queryFn: () => getMultiSportRankings(sport, league),
     enabled: enabled && Boolean(sport) && Boolean(league),
     staleTime: SLOW_STALE,
     gcTime: SLOW_GC,
