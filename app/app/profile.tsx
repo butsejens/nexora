@@ -356,12 +356,16 @@ function UpdateModal({
       //    never silently skips the OTA check.
       if (!__DEV__ && Updates.isEnabled) {
         try {
-          const update = await Updates.checkForUpdateAsync();
-          if (update.isAvailable) {
+          const timeout = new Promise<null>((resolve) => setTimeout(() => resolve(null), 8000));
+          const update = await Promise.race([Updates.checkForUpdateAsync(), timeout]);
+          if (update?.isAvailable) {
             setStatus("downloading");
-            await Updates.fetchUpdateAsync();
-            setStatus("ready");
-            return;
+            const fetchTimeout = new Promise<null>((resolve) => setTimeout(() => resolve(null), 30000));
+            const result = await Promise.race([Updates.fetchUpdateAsync(), fetchTimeout]);
+            if (result) {
+              setStatus("ready");
+              return;
+            }
           }
         } catch {}
       }
