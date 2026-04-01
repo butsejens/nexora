@@ -5205,22 +5205,12 @@ app.get("/api/download/apk", async (req, res) => {
     if (hostedApk) {
       return res.redirect(302, `/downloads/${encodeURIComponent(hostedApk.name)}`);
     }
-
-    const vf = join(__dirname, "app-version.json");
-    if (existsSync(vf)) {
-      const data = JSON.parse(readFileSync(vf, "utf8"));
-      const fallbackUrl = String(data.apkUrl || "").trim();
-      // Guard against redirect loops when apkUrl already points to this API route.
-      if (fallbackUrl && !/\/api\/download\/apk\/?$/i.test(fallbackUrl)) {
-        return res.redirect(302, fallbackUrl);
-      }
-    }
   } catch (err) {
     console.error("[apk-proxy] error:", err?.message);
   }
   res.status(404).json({
     error: "APK niet beschikbaar op Render",
-    hint: "Upload een .apk naar server/public/downloads of zet een geldige fallback URL in server/app-version.json",
+    hint: "Upload een .apk naar server/public/downloads en deploy de server opnieuw",
   });
 });
 
