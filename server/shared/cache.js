@@ -61,7 +61,13 @@ export function initRedis(redisUrl) {
     log.info('Redis URL not set — using in-memory cache only');
     return;
   }
-  redis = createClient({ url: redisUrl });
+  redis = createClient({
+    url: redisUrl,
+    socket: {
+      connectTimeout: 5000,
+      reconnectStrategy: (retries) => retries >= 3 ? false : Math.min(retries * 500, 3000),
+    },
+  });
   redis.on('error', (err) => log.error('Redis error', { message: err.message }));
   redis.connect()
     .then(() => log.info('Redis connected'))

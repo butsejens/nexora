@@ -31,17 +31,20 @@ import { router as usersRouter } from "./modules/users.js";
 
 // --- Redis client setup (legacy + shared module) ---
 dotenv.config();
-const redisUrl = process.env.REDIS_URL || "redis://localhost:6379";
+// Only create Redis client when REDIS_URL is explicitly set (not the default localhost fallback)
+const redisUrl = process.env.REDIS_URL || "";
 let redisClient;
 if (redisUrl) {
-  redisClient = createClient({ url: redisUrl });
+  redisClient = createClient({ url: redisUrl, socket: { connectTimeout: 5000, reconnectStrategy: (retries) => retries >= 3 ? false : Math.min(retries * 500, 3000) } });
   redisClient.on("error", (err) => serverLog.error("Redis error (legacy client)", { message: err.message }));
   redisClient.connect()
     .then(() => serverLog.info("Redis connected (legacy client)"))
-    .catch(e => serverLog.warn("Redis connect failed (legacy client)", { message: e.message }));
+    .catch(e => { serverLog.warn("Redis connect failed (legacy client)", { message: e.message }); redisClient = null; });
+} else {
+  serverLog.info("REDIS_URL not set — using in-memory cache only");
 }
-// Initialize the shared cache module with the same Redis URL
-initRedis(redisUrl);
+// Initialize the shared cache module with the same Redis URL (empty string = skip Redis)
+initRedis(redisUrl || null);
 
 // Redis get/set helpers (async) — keep for legacy inline routes
 let redisReady = false;
