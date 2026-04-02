@@ -1,6 +1,5 @@
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useMemo, useState } from "react";
 import {
-  ActivityIndicator,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -9,243 +8,99 @@ import {
   View,
 } from "react-native";
 import { router } from "expo-router";
-import { Ionicons } from "@expo/vector-icons";
 
 import { NexoraHeader } from "@/components/NexoraHeader";
-import { useFollowState } from "@/context/UserStateContext";
-import { shiftYmd, getMatchdayYmd } from "@/lib/date/matchday";
-import { useExploreMatches, useLiveMatches, useMatchdayMatches } from "@/features/sports/hooks/useSportHomeFeed";
-import { useOnboardingStore } from "@/store/onboarding-store";
 import {
-  CompetitionClusterCard,
-  CountryClusterCard,
   EmptySection,
   FinishedMatchCard,
-  FollowingMatchCard,
-  HeroMatchCard,
   LiveMatchCard,
   MatchCard,
   normalizeSportMatch,
-  type PremiumSportMatch,
   resolveMatchVisualState,
-  SectionHeader,
-  SkeletonMatchCard,
-  UpcomingMatchCard,
+  type PremiumSportMatch,
 } from "@/components/sports/SportCards";
+import { getMatchdayYmd, shiftYmd } from "@/lib/date/matchday";
+import { useExploreMatches, useLiveMatches, useMatchdayMatches } from "@/features/sports/hooks/useSportHomeFeed";
+import { COLORS } from "@/constants/colors";
 
-type SportPane = "explore" | "live" | "matchday" | "competitions" | "countries";
+type SportPane = "explore" | "live" | "matchday";
 
 type SportModuleHubProps = {
   initialPane?: SportPane;
 };
 
-const DS = {
-  bg: "#05070B",
-  panel: "#0B0F18",
-  border: "rgba(255,255,255,0.08)",
-  text: "#F8FAFC",
-  muted: "#94A3B8",
-  subtle: "#64748B",
-  accent: "#E50914",
-  live: "#22C55E",
-  liveSoft: "rgba(34,197,94,0.14)",
-};
-
-function makeMatchParams(match: PremiumSportMatch) {
+function toMatchParams(match: PremiumSportMatch) {
   return {
-    matchId: match.id,
-    homeTeam: match.homeTeam,
-    awayTeam: match.awayTeam,
+    matchId: String(match.id || ""),
+    homeTeam: String(match.homeTeam || "Home"),
+    awayTeam: String(match.awayTeam || "Away"),
     homeTeamId: String(match.homeTeamId || ""),
     awayTeamId: String(match.awayTeamId || ""),
-    homeTeamLogo: match.homeTeamLogo || "",
-    awayTeamLogo: match.awayTeamLogo || "",
+    homeTeamLogo: String(match.homeTeamLogo || ""),
+    awayTeamLogo: String(match.awayTeamLogo || ""),
     homeScore: String(match.homeScore ?? 0),
     awayScore: String(match.awayScore ?? 0),
-    league: match.league,
-    espnLeague: match.espnLeague || "",
+    league: String(match.league || "Competition"),
+    espnLeague: String(match.espnLeague || ""),
     minute: String(match.minute ?? ""),
-    status: match.status,
-    statusDetail: match.statusDetail || "",
-    sport: match.sport || "soccer",
-    startDate: match.startDate || "",
+    status: String(match.status || "upcoming"),
+    statusDetail: String(match.statusDetail || ""),
+    sport: String(match.sport || "soccer"),
+    startDate: String(match.startDate || ""),
   };
 }
 
-function uniqById(matches: PremiumSportMatch[]) {
-  const seen = new Set<string>();
-  return matches.filter((match) => {
-    if (!match.id || seen.has(match.id)) return false;
-    seen.add(match.id);
-    return true;
-  });
-}
-
-function formatPaneDateLabel(dateYmd: string) {
+function formatDateLabel(dateYmd: string) {
   const ts = Date.parse(`${dateYmd}T12:00:00`);
   if (!Number.isFinite(ts)) return dateYmd;
   return new Intl.DateTimeFormat("nl-BE", { weekday: "short", day: "numeric", month: "short" }).format(new Date(ts));
 }
 
-function inferCountry(match: PremiumSportMatch) {
-  const direct = String(match.competitionCountry || "").trim();
-  if (direct) return direct;
-  const league = match.league.toLowerCase();
-  if (league.includes("eng") || league.includes("premier") || league.includes("fa cup") || league.includes("championship")) return "England";
-  if (league.includes("laliga") || league.includes("la liga") || league.includes("copa del rey")) return "Spain";
-  if (league.includes("bundesliga") || league.includes("dfb")) return "Germany";
-  if (league.includes("serie a") || league.includes("coppa")) return "Italy";
-  if (league.includes("ligue")) return "France";
-  if (league.includes("jupiler") || league.includes("challenger") || league.includes("belgian")) return "Belgium";
-  if (league.includes("eredivisie") || league.includes("knvb")) return "Netherlands";
-  if (league.includes("champions") || league.includes("europa") || league.includes("conference")) return "Europe";
-  return "Global";
-}
-
-function groupByLeague(matches: PremiumSportMatch[]) {
-  const map = new Map<string, PremiumSportMatch[]>();
-  for (const match of matches) {
-    const key = match.league || "Competition";
-    const bucket = map.get(key) || [];
-    bucket.push(match);
-    map.set(key, bucket);
-  }
-  return [...map.entries()]
-    .map(([league, items]) => ({
-      league,
-      items,
-      country: inferCountry(items[0]!),
-      liveCount: items.filter((item) => resolveMatchVisualState(item) === "live").length,
-    }))
-    .sort((a, b) => b.items.length - a.items.length);
-}
-
-function groupByCountry(matches: PremiumSportMatch[]) {
-  const map = new Map<string, PremiumSportMatch[]>();
-  for (const match of matches) {
-    const key = inferCountry(match);
-    const bucket = map.get(key) || [];
-    bucket.push(match);
-    map.set(key, bucket);
-  }
-  return [...map.entries()]
-    .map(([country, items]) => ({
-      country,
-      items,
-      leagues: [...new Set(items.map((item) => item.league))],
-    }))
-    .sort((a, b) => b.items.length - a.items.length);
-}
-
-function SectionRail({ children }: { children: React.ReactNode }) {
-  return (
-    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.railContent}>
-      {children}
-    </ScrollView>
-  );
-}
-
-function DateStrip({ selectedDate, onChange }: { selectedDate: string; onChange: (next: string) => void }) {
-  const days = useMemo(() => [-2, -1, 0, 1, 2, 3, 4].map((offset) => shiftYmd(getMatchdayYmd(), offset)), []);
-  return (
-    <SectionRail>
-      {days.map((day) => {
-        const active = day === selectedDate;
-        return (
-          <TouchableOpacity key={day} activeOpacity={0.85} onPress={() => onChange(day)} style={[styles.dateChip, active && styles.dateChipActive]}>
-            <Text style={[styles.dateChipLabel, active && styles.dateChipLabelActive]}>{formatPaneDateLabel(day)}</Text>
-          </TouchableOpacity>
-        );
-      })}
-    </SectionRail>
-  );
-}
-
-function Subnav({ activePane, onChange }: { activePane: SportPane; onChange: (pane: SportPane) => void }) {
-  const items: { key: SportPane; label: string }[] = [
-    { key: "explore", label: "Explore" },
-    { key: "live", label: "Live" },
-    { key: "matchday", label: "Matchday" },
-    { key: "competitions", label: "Competitions" },
-    { key: "countries", label: "Countries" },
-  ];
-
-  return (
-    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.subnavContent}>
-      {items.map((item) => {
-        const active = item.key === activePane;
-        return (
-          <TouchableOpacity key={item.key} activeOpacity={0.86} onPress={() => onChange(item.key)} style={[styles.subnavPill, active && styles.subnavPillActive]}>
-            <Text style={[styles.subnavText, active && styles.subnavTextActive]}>{item.label}</Text>
-          </TouchableOpacity>
-        );
-      })}
-    </ScrollView>
-  );
+function uniqueById(matches: PremiumSportMatch[]) {
+  const seen = new Set<string>();
+  return matches.filter((item) => {
+    if (!item.id || seen.has(item.id)) return false;
+    seen.add(item.id);
+    return true;
+  });
 }
 
 export function SportModuleHub({ initialPane = "explore" }: SportModuleHubProps) {
-  const [activePane, setActivePane] = useState<SportPane>(initialPane);
-  const [selectedDate, setSelectedDate] = useState(getMatchdayYmd());
+  const [pane, setPane] = useState<SportPane>(initialPane);
+  const [dateYmd, setDateYmd] = useState(getMatchdayYmd());
   const [refreshing, setRefreshing] = useState(false);
 
-  const selectedTeams = useOnboardingStore((state) => state.selectedTeams);
-  const { followedTeams } = useFollowState();
-
   const liveQuery = useLiveMatches(true);
-  const matchdayQuery = useMatchdayMatches(selectedDate, true);
-  const exploreQuery = useExploreMatches(selectedDate, true);
+  const dayQuery = useMatchdayMatches(dateYmd, true);
+  const exploreQuery = useExploreMatches(dateYmd, true);
 
-  const liveMatches = useMemo(() => uniqById((liveQuery.live || []).map(normalizeSportMatch)), [liveQuery.live]);
-  const todayLive = useMemo(() => (matchdayQuery.live || []).map(normalizeSportMatch), [matchdayQuery.live]);
-  const todayUpcoming = useMemo(() => (matchdayQuery.upcoming || []).map(normalizeSportMatch), [matchdayQuery.upcoming]);
-  const todayFinished = useMemo(() => (matchdayQuery.finished || []).map(normalizeSportMatch), [matchdayQuery.finished]);
-  const allMatchdayMatches = useMemo(() => uniqById([...todayLive, ...todayUpcoming, ...todayFinished]), [todayFinished, todayLive, todayUpcoming]);
-  const exploreMatches = useMemo(() => uniqById((exploreQuery.matches || []).map(normalizeSportMatch)), [exploreQuery.matches]);
+  const live = useMemo(() => uniqueById((liveQuery.live || []).map(normalizeSportMatch)), [liveQuery.live]);
+  const matchday = useMemo(
+    () => uniqueById([...(dayQuery.live || []), ...(dayQuery.upcoming || []), ...(dayQuery.finished || [])].map(normalizeSportMatch)),
+    [dayQuery.finished, dayQuery.live, dayQuery.upcoming],
+  );
+  const explore = useMemo(() => uniqueById((exploreQuery.matches || []).map(normalizeSportMatch)), [exploreQuery.matches]);
 
-  const featuredMatch = liveMatches[0] || todayLive[0] || todayUpcoming[0] || exploreMatches[0] || null;
-  const highlights = useMemo(() => uniqById([...todayFinished, ...exploreMatches.filter((match) => resolveMatchVisualState(match) === "finished")]).slice(0, 8), [exploreMatches, todayFinished]);
-  const competitionGroups = useMemo(() => groupByLeague(allMatchdayMatches.length ? allMatchdayMatches : exploreMatches), [allMatchdayMatches, exploreMatches]);
-  const countryGroups = useMemo(() => groupByCountry(allMatchdayMatches.length ? allMatchdayMatches : exploreMatches), [allMatchdayMatches, exploreMatches]);
+  const finished = useMemo(
+    () => matchday.filter((m) => resolveMatchVisualState(m) === "finished").slice(0, 10),
+    [matchday],
+  );
 
-  const favoriteTeamNames = useMemo(() => {
-    return [
-      ...followedTeams.map((row) => String(row?.teamName || "")),
-      ...selectedTeams.map((row) => String(row?.name || "")),
-    ].filter(Boolean);
-  }, [followedTeams, selectedTeams]);
-
-  const followingMatches = useMemo(() => {
-    if (!favoriteTeamNames.length) return [] as PremiumSportMatch[];
-    const names = favoriteTeamNames.map((value) => value.toLowerCase());
-    return allMatchdayMatches.filter((match) => {
-      const home = match.homeTeam.toLowerCase();
-      const away = match.awayTeam.toLowerCase();
-      return names.some((name) => home.includes(name) || away.includes(name) || name.includes(home) || name.includes(away));
-    }).slice(0, 8);
-  }, [allMatchdayMatches, favoriteTeamNames]);
-
-  const handleRefresh = useCallback(async () => {
+  const handleRefresh = async () => {
     setRefreshing(true);
     try {
-      await Promise.all([liveQuery.refetch(), matchdayQuery.refetch(), exploreQuery.refetch()]);
+      await Promise.all([liveQuery.refetch(), dayQuery.refetch(), exploreQuery.refetch()]);
     } finally {
       setRefreshing(false);
     }
-  }, [exploreQuery, liveQuery, matchdayQuery]);
-
-  const openMatch = useCallback((match: PremiumSportMatch) => {
-    router.push({ pathname: "/match-detail", params: makeMatchParams(match) });
-  }, []);
-
-  const isLoading = (liveQuery.isLoading || matchdayQuery.isLoading || exploreQuery.isLoading) && !featuredMatch;
+  };
 
   return (
-    <View style={styles.container}>
+    <View style={styles.screen}>
       <NexoraHeader
         variant="module"
         title="SPORT"
-        titleColor={DS.accent}
+        titleColor={COLORS.accent}
         showSearch
         showNotification
         showFavorites
@@ -254,218 +109,330 @@ export function SportModuleHub({ initialPane = "explore" }: SportModuleHubProps)
         onFavorites={() => router.push("/favorites")}
       />
 
-      <Subnav activePane={activePane} onChange={setActivePane} />
+      <PaneTabs pane={pane} onChange={setPane} />
 
       <ScrollView
-        style={styles.scroll}
         contentContainerStyle={styles.content}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={DS.accent} />}
         showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={COLORS.accent} />}
       >
-        {isLoading ? (
-          <View style={styles.loadingBlock}>
-            <ActivityIndicator color={DS.accent} size="large" />
-            <Text style={styles.loadingText}>Building premium sports feed...</Text>
-            <SectionRail>
-              <SkeletonMatchCard />
-              <SkeletonMatchCard />
-            </SectionRail>
-          </View>
+        <View style={styles.kpiRow}>
+          <Metric label="Live now" value={String(live.length)} tone="live" />
+          <Metric label="Today" value={String(matchday.length)} />
+          <Metric label="Explore" value={String(explore.length)} />
+        </View>
+
+        {pane !== "live" ? (
+          <DateStrip selectedDate={dateYmd} onChange={setDateYmd} />
         ) : null}
 
-        {!isLoading && featuredMatch ? <HeroMatchCard match={featuredMatch} onPress={() => openMatch(featuredMatch)} /> : null}
-
-        {activePane === "explore" ? (
+        {pane === "explore" ? (
           <>
-            <View style={styles.statStrip}>
-              <StatPill label="Live now" value={String(liveMatches.length)} tone="live" />
-              <StatPill label="Today" value={String(allMatchdayMatches.length)} />
-              <StatPill label="Competitions" value={String(competitionGroups.length)} />
-            </View>
-
-            <SectionBlock title="Live Now" subtitle="Fast reads on every live fixture" actionLabel="Open live" onAction={() => setActivePane("live")}>
-              {liveMatches.length ? (
-                <SectionRail>
-                  {liveMatches.map((match) => <LiveMatchCard key={match.id} match={match} onPress={() => openMatch(match)} />)}
-                </SectionRail>
-              ) : <EmptySection title="No live matches right now" subtitle="Match center stays ready when the next game kicks off." />}
-            </SectionBlock>
-
-            <SectionBlock title="Today" subtitle={`Matchday snapshot for ${formatPaneDateLabel(selectedDate)}`} actionLabel="Open matchday" onAction={() => setActivePane("matchday")}>
-              {allMatchdayMatches.length ? (
-                <SectionRail>
-                  {allMatchdayMatches.slice(0, 10).map((match) => {
-                    const state = resolveMatchVisualState(match);
-                    const Card = state === "live" ? LiveMatchCard : state === "finished" ? FinishedMatchCard : UpcomingMatchCard;
-                    return <Card key={match.id} match={match} onPress={() => openMatch(match)} />;
-                  })}
-                </SectionRail>
-              ) : <EmptySection title="No fixtures on this date" subtitle="Pick another day to explore the schedule." />}
-            </SectionBlock>
-
-            <SectionBlock title="Highlights" subtitle="Finished games and replay-ready stories">
-              {highlights.length ? (
-                <SectionRail>
-                  {highlights.map((match) => <FinishedMatchCard key={match.id} match={match} onPress={() => openMatch(match)} />)}
-                </SectionRail>
-              ) : <EmptySection title="No highlights yet" subtitle="Finished matches land here automatically." />}
-            </SectionBlock>
-
-            <SectionBlock title="Competitions" subtitle="Standout leagues grouped for quick scanning" actionLabel="Browse" onAction={() => setActivePane("competitions")}>
-              {competitionGroups.length ? (
-                <SectionRail>
-                  {competitionGroups.slice(0, 10).map((group) => (
-                    <CompetitionClusterCard
-                      key={group.league}
-                      title={group.league}
-                      subtitle={group.country}
-                      meta={`${group.items.length} matches${group.liveCount ? ` • ${group.liveCount} live` : ""}`}
-                      tone={group.liveCount ? "live" : "default"}
-                      onPress={() => setActivePane("competitions")}
-                    />
-                  ))}
-                </SectionRail>
-              ) : <EmptySection title="Competitions load from current matchday" />}
-            </SectionBlock>
-
-            <SectionBlock title="Countries" subtitle="National entry points built from the same live dataset" actionLabel="Browse" onAction={() => setActivePane("countries")}>
-              {countryGroups.length ? (
-                <SectionRail>
-                  {countryGroups.slice(0, 10).map((group) => (
-                    <CountryClusterCard
-                      key={group.country}
-                      title={group.country}
-                      subtitle={group.leagues.slice(0, 2).join(" • ") || "League coverage"}
-                      meta={`${group.items.length} matches • ${group.leagues.length} leagues`}
-                      onPress={() => setActivePane("countries")}
-                    />
-                  ))}
-                </SectionRail>
-              ) : <EmptySection title="Country hubs populate from fixture metadata" />}
-            </SectionBlock>
-
-            <SectionBlock title="Favorites / Following" subtitle="Matches involving teams you care about most">
-              {followingMatches.length ? (
-                <View>
-                  {followingMatches.map((match) => (
-                    <FollowingMatchCard
+            <Section title="Live matches" actionLabel="Open live" onAction={() => setPane("live")}>
+              {live.length ? (
+                <HorizontalList>
+                  {live.slice(0, 12).map((match) => (
+                    <LiveMatchCard
                       key={match.id}
                       match={match}
-                      contextLabel={`${match.league} • ${match.competitionCountry || inferCountry(match)}`}
-                      onPress={() => openMatch(match)}
+                      onPress={() => router.push({ pathname: "/match-detail", params: toMatchParams(match) })}
                     />
                   ))}
-                </View>
-              ) : <EmptySection title="Follow teams to pin them here" subtitle="Your onboarding and follow choices drive this block." />}
-            </SectionBlock>
+                </HorizontalList>
+              ) : (
+                <EmptySection title="No live matches right now" subtitle="We keep scanning live feeds automatically." />
+              )}
+            </Section>
+
+            <Section title={`Matchday • ${formatDateLabel(dateYmd)}`}>
+              {matchday.length ? (
+                <HorizontalList>
+                  {matchday.slice(0, 14).map((match) => (
+                    <MatchCard
+                      key={match.id}
+                      match={match}
+                      onPress={() => router.push({ pathname: "/match-detail", params: toMatchParams(match) })}
+                    />
+                  ))}
+                </HorizontalList>
+              ) : (
+                <EmptySection title="No fixtures on this day" subtitle="Try another date or refresh." />
+              )}
+            </Section>
+
+            <Section title="Recent results">
+              {finished.length ? (
+                <HorizontalList>
+                  {finished.map((match) => (
+                    <FinishedMatchCard
+                      key={match.id}
+                      match={match}
+                      onPress={() => router.push({ pathname: "/match-detail", params: toMatchParams(match) })}
+                    />
+                  ))}
+                </HorizontalList>
+              ) : (
+                <EmptySection title="No finished games yet" subtitle="Results appear automatically after full time." />
+              )}
+            </Section>
           </>
         ) : null}
 
-        {activePane === "live" ? (
-          <SectionBlock title="Live" subtitle="Every active fixture in one premium list">
-            {liveMatches.length ? (
-              <View style={styles.stack}>
-                {liveMatches.map((match) => <MatchCard key={match.id} match={match} compact onPress={() => openMatch(match)} />)}
-              </View>
-            ) : <EmptySection title="No live fixtures" subtitle="Switch back to Explore or Matchday for upcoming matches." />}
-          </SectionBlock>
-        ) : null}
-
-        {activePane === "matchday" ? (
-          <>
-            <SectionBlock title="Matchday" subtitle="Live, upcoming and finished in one scroll">
-              <DateStrip selectedDate={selectedDate} onChange={setSelectedDate} />
-            </SectionBlock>
-            <View style={styles.stack}>
-              {allMatchdayMatches.length ? allMatchdayMatches.map((match) => <MatchCard key={match.id} match={match} compact onPress={() => openMatch(match)} />) : <EmptySection title="No matches on this date" subtitle="Try another day in the strip above." />}
-            </View>
-          </>
-        ) : null}
-
-        {activePane === "competitions" ? (
-          <SectionBlock title="Competitions" subtitle="Clear grouped views with live priority at the top">
-            {competitionGroups.length ? (
-              <View style={styles.groupStack}>
-                {competitionGroups.map((group) => (
-                  <View key={group.league} style={styles.groupBlock}>
-                    <SectionHeader title={group.league} subtitle={`${group.country} • ${group.items.length} matches`} />
-                    <View style={styles.stack}>
-                      {group.items.slice(0, 4).map((match) => <MatchCard key={match.id} match={match} compact onPress={() => openMatch(match)} />)}
-                    </View>
+        {pane === "live" ? (
+          <Section title="Live center">
+            {live.length ? (
+              <View style={styles.verticalList}>
+                {live.map((match) => (
+                  <View key={match.id} style={styles.verticalRow}>
+                    <LiveMatchCard
+                      match={match}
+                      onPress={() => router.push({ pathname: "/match-detail", params: toMatchParams(match) })}
+                    />
                   </View>
                 ))}
               </View>
-            ) : <EmptySection title="No competitions available" />}
-          </SectionBlock>
+            ) : (
+              <EmptySection title="No live matches at the moment" subtitle="This updates continuously every refresh cycle." />
+            )}
+          </Section>
         ) : null}
 
-        {activePane === "countries" ? (
-          <SectionBlock title="Countries" subtitle="Country-first browse flow built on current fixture coverage">
-            {countryGroups.length ? (
-              <View style={styles.groupStack}>
-                {countryGroups.map((group) => (
-                  <View key={group.country} style={styles.groupBlock}>
-                    <SectionHeader title={group.country} subtitle={group.leagues.slice(0, 3).join(" • ") || "League coverage"} />
-                    <View style={styles.stack}>
-                      {group.items.slice(0, 4).map((match) => <MatchCard key={match.id} match={match} compact onPress={() => openMatch(match)} />)}
+        {pane === "matchday" ? (
+          <Section title={`All fixtures • ${formatDateLabel(dateYmd)}`}>
+            {matchday.length ? (
+              <View style={styles.verticalList}>
+                {matchday.map((match) => {
+                  const state = resolveMatchVisualState(match);
+                  const Card = state === "live" ? LiveMatchCard : state === "finished" ? FinishedMatchCard : MatchCard;
+                  return (
+                    <View key={match.id} style={styles.verticalRow}>
+                      <Card
+                        match={match}
+                        onPress={() => router.push({ pathname: "/match-detail", params: toMatchParams(match) })}
+                      />
                     </View>
-                  </View>
-                ))}
+                  );
+                })}
               </View>
-            ) : <EmptySection title="No country rails available" />}
-          </SectionBlock>
+            ) : (
+              <EmptySection title="No fixtures available" subtitle="Try selecting a different date." />
+            )}
+          </Section>
         ) : null}
       </ScrollView>
     </View>
   );
 }
 
-function SectionBlock({ title, subtitle, actionLabel, onAction, children }: { title: string; subtitle?: string; actionLabel?: string; onAction?: () => void; children: React.ReactNode; }) {
+function PaneTabs({ pane, onChange }: { pane: SportPane; onChange: (next: SportPane) => void }) {
+  const items: { key: SportPane; label: string }[] = [
+    { key: "explore", label: "Explore" },
+    { key: "live", label: "Live" },
+    { key: "matchday", label: "Matchday" },
+  ];
+
+  return (
+    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tabRow}>
+      {items.map((item) => {
+        const active = item.key === pane;
+        return (
+          <TouchableOpacity
+            key={item.key}
+            style={[styles.tabPill, active && styles.tabPillActive]}
+            onPress={() => onChange(item.key)}
+            activeOpacity={0.86}
+          >
+            <Text style={[styles.tabText, active && styles.tabTextActive]}>{item.label}</Text>
+          </TouchableOpacity>
+        );
+      })}
+    </ScrollView>
+  );
+}
+
+function DateStrip({ selectedDate, onChange }: { selectedDate: string; onChange: (next: string) => void }) {
+  const days = useMemo(() => [-2, -1, 0, 1, 2, 3, 4].map((offset) => shiftYmd(getMatchdayYmd(), offset)), []);
+  return (
+    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.dateRow}>
+      {days.map((day) => {
+        const active = day === selectedDate;
+        return (
+          <TouchableOpacity
+            key={day}
+            style={[styles.datePill, active && styles.datePillActive]}
+            onPress={() => onChange(day)}
+            activeOpacity={0.86}
+          >
+            <Text style={[styles.dateText, active && styles.dateTextActive]}>{formatDateLabel(day)}</Text>
+          </TouchableOpacity>
+        );
+      })}
+    </ScrollView>
+  );
+}
+
+function Metric({ label, value, tone = "default" }: { label: string; value: string; tone?: "default" | "live" }) {
+  return (
+    <View style={[styles.metric, tone === "live" && styles.metricLive]}>
+      <Text style={styles.metricValue}>{value}</Text>
+      <Text style={[styles.metricLabel, tone === "live" && styles.metricLabelLive]}>{label}</Text>
+    </View>
+  );
+}
+
+function Section({
+  title,
+  actionLabel,
+  onAction,
+  children,
+}: {
+  title: string;
+  actionLabel?: string;
+  onAction?: () => void;
+  children: React.ReactNode;
+}) {
   return (
     <View style={styles.section}>
-      <SectionHeader title={title} subtitle={subtitle} actionLabel={actionLabel} onAction={onAction} />
+      <View style={styles.sectionHead}>
+        <Text style={styles.sectionTitle}>{title}</Text>
+        {actionLabel && onAction ? (
+          <TouchableOpacity onPress={onAction} activeOpacity={0.8}>
+            <Text style={styles.sectionAction}>{actionLabel}</Text>
+          </TouchableOpacity>
+        ) : null}
+      </View>
       {children}
     </View>
   );
 }
 
-function StatPill({ label, value, tone = "default" }: { label: string; value: string; tone?: "default" | "live" }) {
-  const live = tone === "live";
+function HorizontalList({ children }: { children: React.ReactNode }) {
   return (
-    <View style={[styles.statPill, live && styles.statPillLive]}>
-      <Text style={styles.statValue}>{value}</Text>
-      <Text style={[styles.statLabel, live && styles.statLabelLive]}>{label}</Text>
-    </View>
+    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.horizontalRail}>
+      {children}
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: DS.bg },
-  scroll: { flex: 1 },
-  content: { paddingHorizontal: 16, paddingBottom: 120, paddingTop: 8 },
-  subnavContent: { paddingHorizontal: 16, paddingBottom: 10, gap: 10 },
-  subnavPill: { paddingHorizontal: 16, paddingVertical: 10, borderRadius: 999, backgroundColor: DS.panel, borderWidth: 1, borderColor: DS.border },
-  subnavPillActive: { backgroundColor: "rgba(229,9,20,0.16)", borderColor: "rgba(229,9,20,0.32)" },
-  subnavText: { color: DS.muted, fontSize: 13, fontFamily: "Inter_700Bold" },
-  subnavTextActive: { color: DS.text },
-  section: { marginBottom: 30 },
-  railContent: { paddingRight: 8 },
-  statStrip: { flexDirection: "row", gap: 10, marginBottom: 24 },
-  statPill: { flex: 1, borderRadius: 18, backgroundColor: DS.panel, borderWidth: 1, borderColor: DS.border, paddingHorizontal: 14, paddingVertical: 14, gap: 6 },
-  statPillLive: { backgroundColor: DS.liveSoft, borderColor: "rgba(34,197,94,0.28)" },
-  statValue: { color: DS.text, fontSize: 24, fontFamily: "Inter_800ExtraBold" },
-  statLabel: { color: DS.muted, fontSize: 12, fontFamily: "Inter_600SemiBold" },
-  statLabelLive: { color: DS.live },
-  loadingBlock: { gap: 16, paddingVertical: 18 },
-  loadingText: { color: DS.muted, fontSize: 14, fontFamily: "Inter_600SemiBold" },
-  stack: { gap: 12 },
-  groupStack: { gap: 24 },
-  groupBlock: { gap: 10 },
-  dateChip: { paddingHorizontal: 14, paddingVertical: 10, borderRadius: 999, borderWidth: 1, borderColor: DS.border, backgroundColor: DS.panel, marginRight: 10 },
-  dateChipActive: { backgroundColor: "rgba(229,9,20,0.16)", borderColor: "rgba(229,9,20,0.28)" },
-  dateChipLabel: { color: DS.muted, fontSize: 12, fontFamily: "Inter_700Bold" },
-  dateChipLabelActive: { color: DS.text },
-  disabledWrap: { flex: 1, alignItems: "center", justifyContent: "center", paddingHorizontal: 28, gap: 10 },
-  disabledTitle: { color: DS.text, fontSize: 22, fontFamily: "Inter_800ExtraBold", textAlign: "center" },
-  disabledCopy: { color: DS.muted, fontSize: 14, fontFamily: "Inter_500Medium", textAlign: "center" },
+  screen: {
+    flex: 1,
+    backgroundColor: COLORS.background,
+  },
+  tabRow: {
+    paddingHorizontal: 16,
+    paddingTop: 10,
+    paddingBottom: 8,
+    gap: 10,
+  },
+  tabPill: {
+    minHeight: 42,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: COLORS.glassBorder,
+    backgroundColor: COLORS.card,
+    paddingHorizontal: 18,
+    justifyContent: "center",
+  },
+  tabPillActive: {
+    backgroundColor: "rgba(229,9,20,0.22)",
+    borderColor: "rgba(229,9,20,0.40)",
+  },
+  tabText: {
+    color: COLORS.textSecondary,
+    fontSize: 15,
+    fontFamily: "Inter_700Bold",
+  },
+  tabTextActive: {
+    color: COLORS.text,
+  },
+  content: {
+    paddingHorizontal: 16,
+    paddingBottom: 110,
+    gap: 16,
+  },
+  kpiRow: {
+    flexDirection: "row",
+    gap: 10,
+  },
+  metric: {
+    flex: 1,
+    minHeight: 88,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: COLORS.glassBorder,
+    backgroundColor: COLORS.card,
+    padding: 14,
+    justifyContent: "space-between",
+  },
+  metricLive: {
+    backgroundColor: "rgba(5,33,21,0.9)",
+    borderColor: "rgba(34,197,94,0.25)",
+  },
+  metricValue: {
+    color: COLORS.text,
+    fontSize: 31,
+    fontFamily: "Inter_800ExtraBold",
+  },
+  metricLabel: {
+    color: COLORS.textSecondary,
+    fontSize: 14,
+    fontFamily: "Inter_600SemiBold",
+  },
+  metricLabelLive: {
+    color: COLORS.live,
+  },
+  dateRow: {
+    gap: 8,
+    paddingBottom: 2,
+  },
+  datePill: {
+    minHeight: 38,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: COLORS.glassBorder,
+    backgroundColor: COLORS.card,
+    paddingHorizontal: 14,
+    justifyContent: "center",
+  },
+  datePillActive: {
+    backgroundColor: "rgba(229,9,20,0.18)",
+    borderColor: "rgba(229,9,20,0.35)",
+  },
+  dateText: {
+    color: COLORS.textSecondary,
+    fontSize: 13,
+    fontFamily: "Inter_700Bold",
+  },
+  dateTextActive: {
+    color: COLORS.text,
+  },
+  section: {
+    gap: 10,
+  },
+  sectionHead: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  sectionTitle: {
+    color: COLORS.text,
+    fontSize: 22,
+    letterSpacing: 0.2,
+    fontFamily: "Inter_800ExtraBold",
+  },
+  sectionAction: {
+    color: COLORS.accent,
+    fontSize: 14,
+    fontFamily: "Inter_700Bold",
+  },
+  horizontalRail: {
+    paddingRight: 12,
+  },
+  verticalList: {
+    gap: 8,
+  },
+  verticalRow: {
+    alignItems: "flex-start",
+  },
 });

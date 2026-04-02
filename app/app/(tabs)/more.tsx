@@ -1,11 +1,23 @@
+/**
+ * NEXORA Menu — Premium Control Center
+ * Feature cards for main modules + compact grouped rows for personal/system.
+ */
 import React, { useMemo } from "react";
-import { ScrollView, StyleSheet, Text, TouchableOpacity, View, useWindowDimensions } from "react-native";
+import {
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from "react-native";
+import { LinearGradient } from "expo-linear-gradient";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useFollowState } from "@/context/UserStateContext";
 import { NexoraHeader } from "@/components/NexoraHeader";
 import { APP_MODULES_BY_ID } from "@/constants/module-registry";
+import { COLORS } from "@/constants/colors";
 
 type MenuItem = {
   id: string;
@@ -16,46 +28,93 @@ type MenuItem = {
   badge?: string;
 };
 
-const P = {
-  bg: "#050505",
-  card: "#0B0F1A",
-  accent: "#E50914",
-  text: "#FFFFFF",
-  muted: "#9797A5",
-  border: "rgba(255,255,255,0.09)",
-};
+// ─── Feature card (large, for primary modules) ───────────────────────────────
 
-function Row({ item }: { item: MenuItem }) {
+function FeatureCard({
+  icon,
+  title,
+  subtitle,
+  route,
+  accent = false,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  title: string;
+  subtitle: string;
+  route: string;
+  accent?: boolean;
+}) {
   return (
-    <TouchableOpacity style={styles.row} onPress={() => router.push(item.route as any)} activeOpacity={0.84}>
-      <View style={styles.rowIconWrap}>
-        <Ionicons name={item.icon} size={18} color={P.accent} />
+    <TouchableOpacity
+      style={styles.featureCard}
+      onPress={() => router.push(route as any)}
+      activeOpacity={0.88}
+    >
+      <LinearGradient
+        colors={
+          accent
+            ? ["rgba(229,9,20,0.20)", COLORS.card]
+            : ["rgba(255,255,255,0.05)", COLORS.card]
+        }
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={styles.featureGradient}
+      >
+        <View style={[styles.featureIconWrap, accent && styles.featureIconAccent]}>
+          <Ionicons
+            name={icon}
+            size={22}
+            color={accent ? COLORS.accent : COLORS.textSecondary}
+          />
+        </View>
+        <Text style={styles.featureTitle} numberOfLines={1}>
+          {title}
+        </Text>
+        <Text style={styles.featureSubtitle} numberOfLines={2}>
+          {subtitle}
+        </Text>
+      </LinearGradient>
+    </TouchableOpacity>
+  );
+}
+
+// ─── Compact row (for secondary modules) ─────────────────────────────────────
+
+function MenuRow({ item }: { item: MenuItem }) {
+  return (
+    <TouchableOpacity
+      style={styles.menuRow}
+      onPress={() => router.push(item.route as any)}
+      activeOpacity={0.82}
+    >
+      <View style={styles.menuIconWrap}>
+        <Ionicons name={item.icon} size={17} color={COLORS.accent} />
       </View>
-      <View style={styles.rowTextWrap}>
-        <Text style={styles.rowTitle}>{item.title}</Text>
-        <Text style={styles.rowSubtitle}>{item.subtitle}</Text>
+      <View style={styles.menuRowText}>
+        <Text style={styles.menuRowTitle}>{item.title}</Text>
+        <Text style={styles.menuRowSub} numberOfLines={1}>
+          {item.subtitle}
+        </Text>
       </View>
       {item.badge ? (
         <View style={styles.badge}>
           <Text style={styles.badgeText}>{item.badge}</Text>
         </View>
       ) : null}
-      <Ionicons name="chevron-forward" size={15} color={P.muted} />
+      <Ionicons name="chevron-forward" size={14} color={COLORS.textMuted} />
     </TouchableOpacity>
   );
 }
 
-function Section({ title, items }: { title: string; items: MenuItem[] }) {
+function MenuSection({ title, items }: { title: string; items: MenuItem[] }) {
   if (!items.length) return null;
-
   return (
-    <View style={styles.section}>
-      <Text style={styles.sectionTitle}>{title}</Text>
-      <View style={styles.sectionCard}>
-        {items.map((item, index) => (
+    <View style={styles.menuSection}>
+      <Text style={styles.menuSectionTitle}>{title}</Text>
+      <View style={styles.menuSectionCard}>
+        {items.map((item, i) => (
           <React.Fragment key={item.id}>
-            <Row item={item} />
-            {index < items.length - 1 ? <View style={styles.divider} /> : null}
+            <MenuRow item={item} />
+            {i < items.length - 1 ? <View style={styles.menuDivider} /> : null}
           </React.Fragment>
         ))}
       </View>
@@ -63,45 +122,12 @@ function Section({ title, items }: { title: string; items: MenuItem[] }) {
   );
 }
 
+// ─── Screen ──────────────────────────────────────────────────────────────────
+
 export default function MoreScreen() {
   const insets = useSafeAreaInsets();
-  const { width } = useWindowDimensions();
-  const horizontalPadding = Math.max(12, Math.min(18, Math.round(width * 0.04)));
   const { followedTeams, followedMatches } = useFollowState();
   const followCount = followedTeams.length + followedMatches.length;
-
-  const mediaItems = useMemo<MenuItem[]>(
-    () => [
-      {
-        id: APP_MODULES_BY_ID.filmsSeries.id,
-        title: APP_MODULES_BY_ID.filmsSeries.label,
-        subtitle: APP_MODULES_BY_ID.filmsSeries.subtitle,
-        icon: APP_MODULES_BY_ID.filmsSeries.icon as keyof typeof Ionicons.glyphMap,
-        route: APP_MODULES_BY_ID.filmsSeries.route,
-      },
-      {
-        id: APP_MODULES_BY_ID.iptv.id,
-        title: APP_MODULES_BY_ID.iptv.label,
-        subtitle: APP_MODULES_BY_ID.iptv.subtitle,
-        icon: APP_MODULES_BY_ID.iptv.icon as keyof typeof Ionicons.glyphMap,
-        route: APP_MODULES_BY_ID.iptv.route,
-      },
-    ],
-    [],
-  );
-
-  const sportItems = useMemo<MenuItem[]>(
-    () => [
-      {
-        id: APP_MODULES_BY_ID.sport.id,
-        title: APP_MODULES_BY_ID.sport.label,
-        subtitle: APP_MODULES_BY_ID.sport.subtitle,
-        icon: APP_MODULES_BY_ID.sport.icon as keyof typeof Ionicons.glyphMap,
-        route: APP_MODULES_BY_ID.sport.route,
-      },
-    ],
-    [],
-  );
 
   const userItems = useMemo<MenuItem[]>(
     () => [
@@ -149,9 +175,9 @@ export default function MoreScreen() {
       },
       {
         id: "legal",
-        title: "Legal/DMCA",
+        title: "Legal & DMCA",
         subtitle: "Privacy, rights and takedown policy",
-        icon: "shield-checkmark-outline",
+        icon: "shield-checkmark-outline" as keyof typeof Ionicons.glyphMap,
         route: "/legal",
       },
     ],
@@ -160,122 +186,228 @@ export default function MoreScreen() {
 
   return (
     <View style={styles.screen}>
-      <View style={styles.glowTop} />
-      <View style={styles.glowBottom} />
+      {/* Ambient background glow */}
+      <View style={styles.glowBg} pointerEvents="none" />
 
       <NexoraHeader
         variant="module"
         title="MENU"
-        titleColor={P.accent}
+        titleColor={COLORS.accent}
         showSearch={false}
       />
 
       <ScrollView
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={{
-          paddingTop: 16,
-          paddingBottom: insets.bottom + 98,
-          paddingHorizontal: horizontalPadding,
-        }}
+        contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 98 }]}
       >
-        <Section
-          title="MEDIA"
-          items={mediaItems}
-        />
-        <Section title="SPORT" items={sportItems} />
-        <Section title="USER" items={userItems} />
-        <Section title="SYSTEM" items={systemItems} />
+        {/* ── Primary module cards (2-column grid) */}
+        <View style={styles.featureGrid}>
+          <FeatureCard
+            icon={APP_MODULES_BY_ID.sport.icon as keyof typeof Ionicons.glyphMap}
+            title={APP_MODULES_BY_ID.sport.label}
+            subtitle={APP_MODULES_BY_ID.sport.subtitle}
+            route={APP_MODULES_BY_ID.sport.route}
+            accent
+          />
+          <FeatureCard
+            icon={APP_MODULES_BY_ID.filmsSeries.icon as keyof typeof Ionicons.glyphMap}
+            title={APP_MODULES_BY_ID.filmsSeries.label}
+            subtitle={APP_MODULES_BY_ID.filmsSeries.subtitle}
+            route={APP_MODULES_BY_ID.filmsSeries.route}
+          />
+        </View>
+
+        {/* ── IPTV — full-width row */}
+        <TouchableOpacity
+          style={styles.iptvRow}
+          onPress={() => router.push(APP_MODULES_BY_ID.iptv.route as any)}
+          activeOpacity={0.88}
+        >
+          <View style={styles.iptvIcon}>
+            <Ionicons
+              name={APP_MODULES_BY_ID.iptv.icon as keyof typeof Ionicons.glyphMap}
+              size={20}
+              color={COLORS.cyan}
+            />
+          </View>
+          <View style={styles.iptvText}>
+            <Text style={styles.iptvTitle}>{APP_MODULES_BY_ID.iptv.label}</Text>
+            <Text style={styles.iptvSub}>{APP_MODULES_BY_ID.iptv.subtitle}</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={16} color={COLORS.textMuted} />
+        </TouchableOpacity>
+
+        {/* ── Personal + System sections */}
+        <MenuSection title="PERSOONLIJK" items={userItems} />
+        <MenuSection title="SYSTEEM" items={systemItems} />
       </ScrollView>
     </View>
   );
 }
 
+// ─── Styles ──────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: P.bg },
-  glowTop: {
+  screen: { flex: 1, backgroundColor: COLORS.background },
+
+  glowBg: {
     position: "absolute",
-    top: -80,
-    left: -60,
-    width: 240,
-    height: 240,
-    borderRadius: 240,
-    backgroundColor: "rgba(229,9,20,0.11)",
-  },
-  glowBottom: {
-    position: "absolute",
-    right: -70,
-    bottom: 100,
-    width: 210,
-    height: 210,
-    borderRadius: 210,
+    top: -60,
+    left: -80,
+    width: 300,
+    height: 300,
+    borderRadius: 300,
     backgroundColor: "rgba(229,9,20,0.08)",
   },
-  section: {
-    marginBottom: 16,
+
+  content: {
+    paddingHorizontal: 16,
+    paddingTop: 14,
+    gap: 14,
   },
-  sectionTitle: {
-    color: P.text,
-    fontSize: 10,
-    letterSpacing: 1.9,
-    marginBottom: 10,
-    marginLeft: 3,
-    fontFamily: "Inter_700Bold",
-  },
-  sectionCard: {
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: P.border,
-    overflow: "hidden",
-    backgroundColor: P.card,
-  },
-  row: {
+
+  // ─ Feature grid ─
+  featureGrid: {
     flexDirection: "row",
-    alignItems: "center",
     gap: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 12,
   },
-  rowIconWrap: {
-    width: 34,
-    height: 34,
-    borderRadius: 10,
+  featureCard: {
+    flex: 1,
+    borderRadius: 18,
+    overflow: "hidden",
+    borderWidth: 1,
+    borderColor: COLORS.glassBorder,
+  },
+  featureGradient: {
+    padding: 16,
+    minHeight: 148,
+    gap: 6,
+  },
+  featureIconWrap: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: COLORS.glass,
     alignItems: "center",
     justifyContent: "center",
+    marginBottom: 6,
     borderWidth: 1,
-    borderColor: "rgba(229,9,20,0.32)",
-    backgroundColor: "rgba(229,9,20,0.1)",
+    borderColor: COLORS.glassBorder,
   },
-  rowTextWrap: {
-    flex: 1,
-    minWidth: 0,
+  featureIconAccent: {
+    backgroundColor: "rgba(229,9,20,0.16)",
+    borderColor: "rgba(229,9,20,0.28)",
   },
-  rowTitle: {
-    color: P.text,
+  featureTitle: {
+    color: COLORS.text,
+    fontSize: 15,
+    fontFamily: "Inter_700Bold",
+  },
+  featureSubtitle: {
+    color: COLORS.textSecondary,
+    fontSize: 12,
+    fontFamily: "Inter_500Medium",
+    lineHeight: 17,
+  },
+
+  // ─ IPTV row ─
+  iptvRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    backgroundColor: COLORS.card,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: COLORS.glassBorder,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+  },
+  iptvIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 10,
+    backgroundColor: "rgba(45,212,255,0.08)",
+    borderWidth: 1,
+    borderColor: "rgba(45,212,255,0.18)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  iptvText: { flex: 1 },
+  iptvTitle: {
+    color: COLORS.text,
     fontSize: 14,
     fontFamily: "Inter_600SemiBold",
   },
-  rowSubtitle: {
-    color: P.muted,
-    fontSize: 11,
-    lineHeight: 16,
+  iptvSub: {
+    color: COLORS.textSecondary,
+    fontSize: 12,
     fontFamily: "Inter_500Medium",
   },
-  divider: {
-    height: 1,
-    backgroundColor: P.border,
-    marginLeft: 56,
+
+  // ─ Menu section ─
+  menuSection: {
+    gap: 8,
   },
+  menuSectionTitle: {
+    color: COLORS.textMuted,
+    fontSize: 10,
+    letterSpacing: 1.8,
+    fontFamily: "Inter_700Bold",
+    marginLeft: 2,
+    textTransform: "uppercase",
+  },
+  menuSectionCard: {
+    backgroundColor: COLORS.card,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: COLORS.glassBorder,
+    overflow: "hidden",
+  },
+  menuRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 13,
+  },
+  menuIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 9,
+    backgroundColor: "rgba(229,9,20,0.10)",
+    borderWidth: 1,
+    borderColor: "rgba(229,9,20,0.20)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  menuRowText: { flex: 1 },
+  menuRowTitle: {
+    color: COLORS.text,
+    fontSize: 14,
+    fontFamily: "Inter_600SemiBold",
+  },
+  menuRowSub: {
+    color: COLORS.textSecondary,
+    fontSize: 11,
+    fontFamily: "Inter_500Medium",
+    lineHeight: 16,
+  },
+  menuDivider: {
+    height: 1,
+    backgroundColor: COLORS.glassBorder,
+    marginLeft: 62,
+  },
+
+  // ─ Badge ─
   badge: {
-    backgroundColor: "rgba(229,9,20,0.18)",
-    borderColor: "rgba(229,9,20,0.32)",
+    backgroundColor: "rgba(229,9,20,0.16)",
+    borderColor: "rgba(229,9,20,0.28)",
     borderWidth: 1,
     borderRadius: 99,
-    paddingHorizontal: 7,
+    paddingHorizontal: 8,
     paddingVertical: 2,
-    marginRight: 4,
   },
   badgeText: {
-    color: P.accent,
+    color: COLORS.accent,
     fontSize: 10,
     fontFamily: "Inter_700Bold",
   },

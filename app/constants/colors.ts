@@ -34,6 +34,24 @@ export const COLORS = {
   cyan:  "#2DD4FF",
   yellow:"#FFB300",
 
+  // Match state colors
+  upcoming:       "#93C5FD",
+  upcomingGlow:   "rgba(147, 197, 253, 0.14)",
+  finished:       "#CBD5E1",
+  finishedGlow:   "rgba(203, 213, 225, 0.12)",
+  warning:        "#F59E0B",
+  warningGlow:    "rgba(245, 158, 11, 0.14)",
+  cancelled:      "#F87171",
+  cancelledGlow:  "rgba(248, 113, 113, 0.14)",
+
+  // Glass / transparent surfaces
+  glass:       "rgba(255, 255, 255, 0.04)",
+  glassBorder: "rgba(255, 255, 255, 0.08)",
+
+  // Skeleton animation
+  skeleton:          "#0D1420",
+  skeletonHighlight: "#1A2438",
+
   // Overlays
   overlay:      "rgba(5, 5, 5, 0.92)",
   overlayLight: "rgba(11, 15, 26, 0.84)",

@@ -19,6 +19,7 @@ import * as WebBrowser from "expo-web-browser";
 import * as Crypto from "expo-crypto";
 
 import { ENV } from "@/constants/env";
+import { COLORS } from "@/constants/colors";
 import { useNexora } from "@/context/NexoraContext";
 import { authenticateWithAppleToken, authenticateWithGoogleIdToken } from "@/lib/firebase-auth";
 
@@ -192,10 +193,10 @@ export default function AuthScreen() {
             activeOpacity={0.88}
           >
             {loadingProvider === "google" ? (
-              <ActivityIndicator color="#FFFFFF" />
+              <ActivityIndicator color={COLORS.text} />
             ) : (
               <>
-                <Ionicons name="logo-google" size={18} color="#FFFFFF" />
+                <Ionicons name="logo-google" size={18} color={COLORS.text} />
                 <Text style={styles.primaryCtaText}>
                   {hasGoogleClientId
                     ? (mode === "signin" ? "Continue with Google" : "Sign up with Google")
@@ -212,10 +213,10 @@ export default function AuthScreen() {
             activeOpacity={0.85}
           >
             {loadingProvider === "apple" ? (
-              <ActivityIndicator color="#E6E6EA" />
+              <ActivityIndicator color={COLORS.text} />
             ) : (
               <>
-                <Ionicons name="logo-apple" size={18} color="#E6E6EA" />
+                <Ionicons name="logo-apple" size={18} color={COLORS.text} />
                 <Text style={styles.secondaryBtnText}>{mode === "signin" ? "Continue with Apple" : "Sign up with Apple"}</Text>
               </>
             )}
@@ -230,7 +231,7 @@ export default function AuthScreen() {
               autoCapitalize="none"
               keyboardType="email-address"
               placeholder="you@example.com"
-              placeholderTextColor="#6D6E7A"
+              placeholderTextColor={COLORS.textMuted}
             />
             <TextInput
               value={password}
@@ -238,7 +239,7 @@ export default function AuthScreen() {
               style={styles.emailInput}
               secureTextEntry
               placeholder={mode === "signin" ? "Password" : "Choose a password"}
-              placeholderTextColor="#6D6E7A"
+              placeholderTextColor={COLORS.textMuted}
             />
             <TouchableOpacity
               style={[styles.emailBtn, loadingProvider === "email" && styles.disabledButton]}
@@ -247,7 +248,7 @@ export default function AuthScreen() {
               activeOpacity={0.88}
             >
               {loadingProvider === "email" ? (
-                <ActivityIndicator color="#FFFFFF" />
+                <ActivityIndicator color={COLORS.text} />
               ) : (
                 <Text style={styles.emailBtnText}>{mode === "signin" ? "Continue with Email" : "Create with Email"}</Text>
               )}
@@ -265,7 +266,7 @@ export default function AuthScreen() {
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: "#050507",
+    backgroundColor: COLORS.background,
   },
   inner: {
     flex: 1,
@@ -280,15 +281,15 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
   logoN: {
-    color: "#E10612",
+    color: COLORS.accent,
     fontFamily: "Inter_800ExtraBold",
     fontSize: 54,
     letterSpacing: 1,
-    textShadowColor: "rgba(225,6,18,0.5)",
+    textShadowColor: COLORS.accentGlowStrong,
     textShadowRadius: 18,
   },
   logoWord: {
-    color: "#FFFFFF",
+    color: COLORS.text,
     fontFamily: "Inter_700Bold",
     letterSpacing: 3.8,
     fontSize: 34,
@@ -301,48 +302,48 @@ const styles = StyleSheet.create({
   },
   modeChip: {
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.14)",
+    borderColor: COLORS.glassBorder,
     minHeight: 36,
     borderRadius: 99,
     alignItems: "center",
     justifyContent: "center",
     paddingHorizontal: 14,
-    backgroundColor: "rgba(255,255,255,0.03)",
+    backgroundColor: COLORS.glass,
   },
   modeChipActive: {
-    borderColor: "rgba(225,6,18,0.74)",
-    backgroundColor: "rgba(225,6,18,0.14)",
+    borderColor: COLORS.accentGlowStrong,
+    backgroundColor: COLORS.accentGlow,
   },
   modeText: {
-    color: "#AEB3BD",
+    color: COLORS.textSecondary,
     fontFamily: "Inter_600SemiBold",
     fontSize: 12,
   },
   modeTextActive: {
-    color: "#FFFFFF",
+    color: COLORS.text,
   },
   panel: {
-    backgroundColor: "#0E0F14",
+    backgroundColor: COLORS.card,
     borderRadius: 22,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.08)",
+    borderColor: COLORS.glassBorder,
     padding: 18,
     gap: 12,
   },
   panelTitle: {
-    color: "#FFFFFF",
+    color: COLORS.text,
     fontFamily: "Inter_700Bold",
     fontSize: 23,
   },
   panelText: {
-    color: "#B7B8C5",
+    color: COLORS.textSecondary,
     fontFamily: "Inter_400Regular",
     fontSize: 13,
     lineHeight: 18,
   },
   primaryCta: {
     marginTop: 6,
-    backgroundColor: "#E50914",
+    backgroundColor: COLORS.accent,
     borderRadius: 14,
     minHeight: 52,
     flexDirection: "row",
@@ -351,23 +352,23 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   primaryCtaText: {
-    color: "#FFFFFF",
+    color: COLORS.text,
     fontFamily: "Inter_700Bold",
     fontSize: 16,
   },
   secondaryBtn: {
-    backgroundColor: "#191A22",
+    backgroundColor: COLORS.cardElevated,
     borderRadius: 14,
     minHeight: 48,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.14)",
+    borderColor: COLORS.glassBorder,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     gap: 10,
   },
   secondaryBtnText: {
-    color: "#E6E6EA",
+    color: COLORS.text,
     fontFamily: "Inter_600SemiBold",
     fontSize: 15,
   },
@@ -376,7 +377,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   emailLabel: {
-    color: "#CBCBD4",
+    color: COLORS.textSecondary,
     fontFamily: "Inter_600SemiBold",
     fontSize: 13,
   },
@@ -384,27 +385,27 @@ const styles = StyleSheet.create({
     minHeight: 46,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.12)",
-    backgroundColor: "#11121A",
+    borderColor: COLORS.glassBorder,
+    backgroundColor: COLORS.card,
     paddingHorizontal: 12,
-    color: "#FFFFFF",
+    color: COLORS.text,
     fontFamily: "Inter_500Medium",
     fontSize: 14,
   },
   emailBtn: {
     minHeight: 48,
     borderRadius: 12,
-    backgroundColor: "#E50914",
+    backgroundColor: COLORS.accent,
     alignItems: "center",
     justifyContent: "center",
   },
   emailBtnText: {
-    color: "#FFFFFF",
+    color: COLORS.text,
     fontFamily: "Inter_700Bold",
     fontSize: 15,
   },
   emailHint: {
-    color: "#888B98",
+    color: COLORS.textMuted,
     fontFamily: "Inter_400Regular",
     fontSize: 11,
     lineHeight: 16,
@@ -413,7 +414,7 @@ const styles = StyleSheet.create({
     opacity: 0.65,
   },
   errorText: {
-    color: "#FF6B72",
+    color: COLORS.cancelled,
     fontFamily: "Inter_500Medium",
     fontSize: 12,
   },

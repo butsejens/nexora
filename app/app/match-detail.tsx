@@ -16,6 +16,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useQuery } from "@tanstack/react-query";
 
 import { TeamLogo } from "@/components/TeamLogo";
+import { COLORS } from "@/constants/colors";
 import { useFollowState } from "@/context/UserStateContext";
 import {
   useH2H,
@@ -75,19 +76,19 @@ type MatchParams = {
 type ScreenState = "live" | "upcoming" | "finished" | "postponed" | "cancelled";
 
 const DS = {
-  bg: "#05070B",
-  panel: "#0B0F18",
-  panelRaised: "#101624",
-  border: "rgba(255,255,255,0.08)",
-  text: "#F8FAFC",
-  muted: "#94A3B8",
-  subtle: "#64748B",
-  accent: "#E50914",
-  accentSoft: "rgba(229,9,20,0.16)",
-  live: "#22C55E",
-  liveSoft: "rgba(34,197,94,0.16)",
-  home: "#60A5FA",
-  away: "#F97316",
+  bg:          COLORS.background,
+  panel:       COLORS.card,
+  panelRaised: COLORS.cardElevated,
+  border:      COLORS.glassBorder,
+  text:        COLORS.text,
+  muted:       COLORS.textSecondary,
+  subtle:      COLORS.textMuted,
+  accent:      COLORS.accent,
+  accentSoft:  COLORS.accentGlow,
+  live:        COLORS.live,
+  liveSoft:    COLORS.liveGlow,
+  home:        "#60A5FA",   // home-team blue (deliberate, not in COLORS)
+  away:        "#F97316",   // away-team orange (deliberate, not in COLORS)
 };
 
 function safeText(value: unknown, fallback = ""): string {
@@ -432,7 +433,7 @@ export default function MatchDetailScreen() {
         refreshControl={<RefreshControl refreshing={detailQuery.isFetching && !loading} onRefresh={detailQuery.refetch} tintColor={DS.accent} />}
         showsVerticalScrollIndicator={false}
       >
-        <LinearGradient colors={["#17243B", "#0A0F18", "#06080D"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.heroCard}>
+        <LinearGradient colors={[COLORS.cardBright, COLORS.cardElevated, COLORS.background]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.heroCard}>
           <View style={styles.topBar}>
             <TouchableOpacity activeOpacity={0.84} onPress={() => router.back()} style={styles.iconButton}>
               <Ionicons name="chevron-back" size={20} color={DS.text} />
@@ -911,7 +912,7 @@ const styles = StyleSheet.create({
   sectionStack: { gap: 16 },
   sectionCard: { backgroundColor: DS.panel, borderRadius: 24, borderWidth: 1, borderColor: DS.border, padding: 16, gap: 14 },
   sectionHead: { gap: 4 },
-  sectionTitle: { color: DS.text, fontSize: 20, fontFamily: "Inter_800ExtraBold" },
+  sectionTitle: { color: DS.text, fontSize: 17, fontFamily: "Inter_700Bold" },
   sectionSubtitle: { color: DS.muted, fontSize: 13, fontFamily: "Inter_500Medium" },
   quickStatsGrid: { flexDirection: "row", gap: 10 },
   quickStat: { flex: 1, borderRadius: 18, backgroundColor: DS.panelRaised, paddingHorizontal: 14, paddingVertical: 14, gap: 6 },

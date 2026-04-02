@@ -176,7 +176,7 @@ export function VodModuleHub({ initialPane = "home", initialFilter = "all" }: Vo
             value={query}
             onChangeText={setQuery}
             placeholder="Search films, series or studios"
-            placeholderTextColor="#61708A"
+            placeholderTextColor={COLORS.textMuted}
             style={styles.searchInput}
             onFocus={() => setPane("search")}
           />
@@ -352,7 +352,7 @@ function Panel({ title, subtitle }: { title: string; subtitle: string }) {
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: "#040508",
+    backgroundColor: COLORS.background,
   },
   loadingWrap: {
     paddingVertical: 40,
@@ -368,22 +368,22 @@ const styles = StyleSheet.create({
     minHeight: 40,
     borderRadius: 999,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.08)",
-    backgroundColor: "#081122",
+    borderColor: COLORS.glassBorder,
+    backgroundColor: COLORS.card,
     justifyContent: "center",
     paddingHorizontal: 16,
   },
   tabPillActive: {
-    backgroundColor: "rgba(229,9,20,0.24)",
-    borderColor: "rgba(229,9,20,0.45)",
+    backgroundColor: COLORS.accentGlow,
+    borderColor: COLORS.accentGlowStrong,
   },
   tabText: {
-    color: "#AAB6C9",
+    color: COLORS.textSecondary,
     fontSize: 14,
     fontFamily: "Inter_700Bold",
   },
   tabTextActive: {
-    color: "#F8FAFC",
+    color: COLORS.text,
   },
   content: {
     paddingHorizontal: 16,
@@ -396,9 +396,9 @@ const styles = StyleSheet.create({
     minHeight: 46,
     borderRadius: 13,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.08)",
-    backgroundColor: "#08111F",
-    color: "#F8FAFC",
+    borderColor: COLORS.glassBorder,
+    backgroundColor: COLORS.card,
+    color: COLORS.text,
     paddingHorizontal: 14,
     fontSize: 15,
     fontFamily: "Inter_500Medium",
@@ -410,22 +410,22 @@ const styles = StyleSheet.create({
     minHeight: 34,
     borderRadius: 999,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.08)",
-    backgroundColor: "#0A1322",
+    borderColor: COLORS.glassBorder,
+    backgroundColor: COLORS.card,
     justifyContent: "center",
     paddingHorizontal: 12,
   },
   filterChipActive: {
-    backgroundColor: "rgba(229,9,20,0.16)",
-    borderColor: "rgba(229,9,20,0.4)",
+    backgroundColor: COLORS.accentGlow,
+    borderColor: COLORS.accentGlowStrong,
   },
   filterText: {
-    color: "#9DB0CA",
+    color: COLORS.textSecondary,
     fontSize: 13,
     fontFamily: "Inter_600SemiBold",
   },
   filterTextActive: {
-    color: "#FCA5A5",
+    color: COLORS.text,
   },
   kpiRow: {
     flexDirection: "row",
@@ -433,32 +433,32 @@ const styles = StyleSheet.create({
   },
   kpiCard: {
     flex: 1,
-    minHeight: 82,
+    minHeight: 68,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.08)",
-    backgroundColor: "#0A1120",
+    borderColor: COLORS.glassBorder,
+    backgroundColor: COLORS.card,
     padding: 12,
     justifyContent: "space-between",
   },
   kpiValue: {
-    color: "#F8FAFC",
-    fontSize: 29,
+    color: COLORS.text,
+    fontSize: 24,
     fontFamily: "Inter_800ExtraBold",
   },
   kpiLabel: {
-    color: "#93A4BD",
-    fontSize: 13,
+    color: COLORS.textSecondary,
+    fontSize: 12,
     fontFamily: "Inter_600SemiBold",
   },
   section: {
     gap: 10,
   },
   sectionTitle: {
-    color: "#F8FAFC",
-    fontSize: 28,
-    fontFamily: "Inter_800ExtraBold",
-    letterSpacing: 0.2,
+    color: COLORS.text,
+    fontSize: 17,
+    fontFamily: "Inter_700Bold",
+    letterSpacing: 0.1,
   },
   rail: {
     paddingRight: 12,
@@ -474,18 +474,18 @@ const styles = StyleSheet.create({
     minHeight: 88,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.08)",
-    backgroundColor: "#081321",
+    borderColor: COLORS.glassBorder,
+    backgroundColor: COLORS.card,
     padding: 12,
     justifyContent: "space-between",
   },
   collectionTitle: {
-    color: "#F8FAFC",
+    color: COLORS.text,
     fontSize: 14,
     fontFamily: "Inter_700Bold",
   },
   collectionMeta: {
-    color: "#94A3B8",
+    color: COLORS.textSecondary,
     fontSize: 12,
     fontFamily: "Inter_500Medium",
   },
@@ -494,36 +494,36 @@ const styles = StyleSheet.create({
     minHeight: 86,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.08)",
-    backgroundColor: "#081321",
+    borderColor: COLORS.glassBorder,
+    backgroundColor: COLORS.card,
     padding: 12,
     justifyContent: "space-between",
   },
   platformTitle: {
-    color: "#F8FAFC",
+    color: COLORS.text,
     fontSize: 14,
     fontFamily: "Inter_700Bold",
   },
   platformMeta: {
-    color: "#94A3B8",
+    color: COLORS.textSecondary,
     fontSize: 12,
     fontFamily: "Inter_500Medium",
   },
   panel: {
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.08)",
-    backgroundColor: "#09111D",
+    borderColor: COLORS.glassBorder,
+    backgroundColor: COLORS.card,
     padding: 14,
     gap: 6,
   },
   panelTitle: {
-    color: "#F8FAFC",
+    color: COLORS.text,
     fontSize: 16,
     fontFamily: "Inter_700Bold",
   },
   panelSubtitle: {
-    color: "#94A3B8",
+    color: COLORS.textSecondary,
     fontSize: 14,
     lineHeight: 20,
     fontFamily: "Inter_500Medium",

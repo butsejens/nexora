@@ -12,24 +12,26 @@ import { Ionicons } from "@expo/vector-icons";
 
 import { TeamLogo } from "@/components/TeamLogo";
 import { resolveCompetitionBrand } from "@/lib/logo-manager";
+import { COLORS } from "@/constants/colors";
 
+// Unified design tokens — pulled from COLORS so the whole app stays consistent
 const DS = {
-  card: "#0B0F18",
-  cardRaised: "#121929",
-  cardSoft: "#101522",
-  border: "rgba(255,255,255,0.08)",
-  text: "#F8FAFC",
-  muted: "#94A3B8",
-  subtle: "#64748B",
-  accent: "#E50914",
-  live: "#22C55E",
-  liveBg: "rgba(34,197,94,0.16)",
-  upcoming: "#93C5FD",
-  upcomingBg: "rgba(147,197,253,0.14)",
-  finished: "#CBD5E1",
-  finishedBg: "rgba(203,213,225,0.14)",
-  warning: "#F59E0B",
-  warningBg: "rgba(245,158,11,0.14)",
+  card:        COLORS.card,
+  cardRaised:  COLORS.cardElevated,
+  cardSoft:    COLORS.surface,
+  border:      COLORS.glassBorder,
+  text:        COLORS.text,
+  muted:       COLORS.textSecondary,
+  subtle:      COLORS.textMuted,
+  accent:      COLORS.accent,
+  live:        COLORS.live,
+  liveBg:      COLORS.liveGlow,
+  upcoming:    COLORS.upcoming,
+  upcomingBg:  COLORS.upcomingGlow,
+  finished:    COLORS.finished,
+  finishedBg:  COLORS.finishedGlow,
+  warning:     COLORS.warning,
+  warningBg:   COLORS.warningGlow,
 };
 
 export type MatchVisualState = "live" | "upcoming" | "finished" | "postponed" | "cancelled";
