@@ -114,6 +114,17 @@ function testSlowDeviceAndNetworkFallbackBehavior() {
     skipRequested: false,
   });
   assert(!poorNetworkStillBlocked, "poor network should keep gate blocked until safe fallback takes over");
+
+  const authHydrationStuck = canFinishStartupGate({
+    variant: "standard",
+    startedAtMs: 0,
+    nowMs: 5400,
+    introCompleted: true,
+    criticalBootstrapDone: true,
+    authReady: false,
+    skipRequested: false,
+  });
+  assert(authHydrationStuck, "startup gate should release at max duration when auth hydration is delayed");
 }
 
 function runAllTests() {

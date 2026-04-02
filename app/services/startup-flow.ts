@@ -91,16 +91,22 @@ export function canFinishStartupGate(input: StartupGateInput): boolean {
   const elapsedMs = Math.max(0, input.nowMs - input.startedAtMs);
   const timings = getIntroTimings(input.variant);
 
-  if (!input.criticalBootstrapDone || !input.authReady) {
+  if (!input.criticalBootstrapDone) {
+    return false;
+  }
+
+  // Safe valve: never block indefinitely on auth hydration.
+  // If bootstrap is done and intro reached max duration, release to routing.
+  if (elapsedMs >= timings.maxDurationMs) {
+    return true;
+  }
+
+  if (!input.authReady) {
     return false;
   }
 
   if (input.skipRequested && input.variant === "extended") {
     return elapsedMs >= timings.skipAfterMs;
-  }
-
-  if (elapsedMs >= timings.maxDurationMs) {
-    return true;
   }
 
   return input.introCompleted && elapsedMs >= timings.minDurationMs;

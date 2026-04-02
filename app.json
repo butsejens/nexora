@@ -2,7 +2,7 @@
   "expo": {
     "name": "Nexora",
     "slug": "nexora",
-    "version": "2.6.29",
+    "version": "2.6.30",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "userInterfaceStyle": "automatic",
@@ -38,7 +38,7 @@
         "projectId": "d41d5b43-95e5-427b-b25f-780826d001e8"
       }
     },
-    "runtimeVersion": "2.6.29",
+    "runtimeVersion": "2.6.30",
     "updates": {
       "url": "https://u.expo.dev/d41d5b43-95e5-427b-b25f-780826d001e8"
     }
