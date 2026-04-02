@@ -267,13 +267,9 @@ const __cache = new Map(); // key -> { value, expiresAt, staleValue, staleAt }
 const __inflight = new Map();
 
 
-async function cacheGet(key) {
-  // Prefer Redis if available and connected
-  if (redisClient && redisReady) {
-    const val = await redisGet(key);
-    if (val !== null) return val;
-  }
-  // Fallback to in-memory
+function cacheGet(key) {
+  // Redis is checked asynchronously only via getOrFetch — this sync path
+  // serves the ~20 legacy callers that don't await cacheGet.
   const item = __cache.get(key);
   if (!item) return null;
   if (Date.now() <= item.expiresAt) return item.value;
@@ -286,12 +282,12 @@ function cacheGetStale(key) {
 }
 
 
-async function cacheSet(key, value, ttlMs) {
-  // Prefer Redis if available and connected
+function cacheSet(key, value, ttlMs) {
+  // Fire-and-forget Redis write when available
   if (redisClient && redisReady) {
-    await redisSet(key, value, ttlMs);
+    redisSet(key, value, ttlMs).catch(() => {});
   }
-  // Always set in-memory as fallback
+  // Always set in-memory
   const now = Date.now();
   __cache.set(key, {
     value,
