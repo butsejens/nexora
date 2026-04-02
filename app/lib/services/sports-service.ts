@@ -30,6 +30,7 @@ import { getMatchdayYmd } from "@/lib/date/matchday";
 import type {
   Match,
   MatchDetail,
+  MatchEvent,
   MatchStats,
   MatchAnalysisInput,
   TeamStanding,
@@ -353,10 +354,28 @@ export const getTeam = getTeamOverview;
 
 // ─── Player ───────────────────────────────────────────────────────────────────
 
-export async function getPlayerProfile(playerId: string): Promise<Player | null> {
-  const raw = await safeFetch<any>(`/api/sports/player/${encodeURIComponent(playerId)}`, null, true);
+export interface PlayerProfileParams {
+  playerId: string;
+  name?: string;
+  team?: string;
+  league?: string;
+  sport?: string;
+}
+
+export async function getPlayerProfile(playerIdOrParams: string | PlayerProfileParams): Promise<Player | null> {
+  const params: PlayerProfileParams =
+    typeof playerIdOrParams === "string" ? { playerId: playerIdOrParams } : playerIdOrParams;
+
+  const query = new URLSearchParams();
+  if (params.name)   query.set("name", params.name);
+  if (params.team)   query.set("team", params.team);
+  if (params.league) query.set("league", params.league);
+  if (params.sport)  query.set("sport", params.sport);
+  const route = `/api/sports/player/${encodeURIComponent(params.playerId)}${query.size ? `?${query.toString()}` : ""}`;
+
+  const raw = await safeFetch<any>(route, null, true);
   if (!raw) return null;
-  const enriched = enrichPlayerProfilePayload(raw);
+  const enriched = enrichPlayerProfilePayload(raw, params);
   return normalizePlayer(enriched);
 }
 
@@ -425,7 +444,7 @@ export async function getMatchDetail(matchId: string): Promise<MatchDetail | nul
 
 function buildAnalysisInput(
   match: Match,
-  events: ReturnType<typeof normalizeMatchEvents>,
+  events: MatchEvent[],
   stats: MatchStats | null,
 ): MatchAnalysisInput {
   return {

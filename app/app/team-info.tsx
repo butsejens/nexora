@@ -6,7 +6,7 @@ import { COLORS } from "@/constants/colors";
 import { TeamLogo } from "@/components/TeamLogo";
 import { NexoraSimpleHeader } from "@/components/NexoraSimpleHeader";
 import { resolveCompetitionBrand } from "@/lib/logo-manager";
-import { useTeam } from "@/hooks/useTeam";
+import { useSportTeam } from "@/hooks/useSportTeam";
 import {
   getBestCachedOrSeedPlayerImage,
   resolvePlayerImageUri,
@@ -279,7 +279,7 @@ export default function TeamInfoScreen() {
   const league = asParam(params.league, "eng.1");
   const sport = asParam(params.sport, "soccer");
 
-  const { data } = useTeam({
+  const { data } = useSportTeam({
     teamId,
     teamName,
     league,

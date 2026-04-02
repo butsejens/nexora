@@ -1,4 +1,6 @@
-import { fetchPlayer, type FetchPlayerParams } from "./playerApi";
+import { getPlayerProfile } from "@/lib/services/sports-service";
+import type { PlayerProfileParams } from "@/lib/services/sports-service";
+export type { PlayerProfileParams };
 import type { MarketValuePoint, MarketValueResponse, ProviderName } from "@/types/data-layer";
 
 function toEur(value: unknown): number | null {
@@ -36,8 +38,8 @@ function normalizeHistory(player: any): MarketValuePoint[] {
   return points;
 }
 
-export async function fetchMarketValue(params: FetchPlayerParams): Promise<MarketValueResponse> {
-  const player = await fetchPlayer(params);
+export async function fetchMarketValue(params: PlayerProfileParams): Promise<MarketValueResponse> {
+  const player = await getPlayerProfile(params) as any;
   const currentValueLabel = String(player?.marketValue || "").trim() || null;
   const currentValueEur = player?.marketValueEur || toEur(currentValueLabel);
   return {

@@ -1,9 +1,2 @@
-import { useTeam } from "@/hooks/useTeam";
-
-export function useTeamProfile(teamId: string) {
-  return useTeam({
-    teamId,
-    league: "eng.1",
-    sport: "soccer",
-  });
-}
+// Re-export canonical hook for backwards compatibility
+export { useSportTeam as useTeamProfile } from "@/hooks/useSportTeam";

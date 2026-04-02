@@ -16,7 +16,7 @@ import { TeamLogo } from "@/components/TeamLogo";
 import { SectionHeader, StateBlock, SurfaceCard } from "@/components/ui/PremiumPrimitives";
 import { resolveClubHistoryLogoUri, resolveTeamLogoUri } from "@/lib/logo-manager";
 import { useAIAnalysis } from "@/hooks/useAIAnalysis";
-import { fetchPlayer } from "@/api/playerApi";
+import { getPlayerProfile } from "@/lib/services/sports-service";
 import {
   getBestCachedOrSeedPlayerImage,
   getCachedPlayerImage,
@@ -196,7 +196,7 @@ export default function PlayerProfileScreen() {
       };
       if (seed.id) {
         try {
-          const liveProfile = await fetchPlayer({
+          const liveProfile = await getPlayerProfile({
             playerId: seed.id,
             name: seed.name,
             team: seed.team,
@@ -205,8 +205,8 @@ export default function PlayerProfileScreen() {
           });
           const mergedLiveProfile = enrichPlayerProfilePayload({
             ...liveProfile,
-            photo: liveProfile?.photo || params.photo || null,
-            theSportsDbPhoto: liveProfile?.theSportsDbPhoto || params.theSportsDbPhoto || null,
+            photo: (liveProfile as any)?.photo || params.photo || null,
+            theSportsDbPhoto: (liveProfile as any)?.theSportsDbPhoto || params.theSportsDbPhoto || null,
           }, seed);
           const normalizedLiveProfile = normalizePlayerDto(mergedLiveProfile, params);
           await AsyncStorage.setItem(cacheKey, JSON.stringify(normalizedLiveProfile));

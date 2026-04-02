@@ -109,6 +109,13 @@ const SALIMT_LEAGUE_FILTERS = {
 
 // ─── Payload Normalizers ──────────────────────────────────────────────────────
 
+// Parse ESPN displayClock (e.g. "45:00", "90+2'", "HT") to an integer minute.
+function clockToMinute(clock) {
+  if (!clock || typeof clock !== 'string') return null;
+  const m = clock.match(/^(\d+)/);
+  return m ? parseInt(m[1], 10) : null;
+}
+
 function normalizeStatus(comp) {
   const state = comp?.status?.type?.state;
   if (state === 'in') return 'live';
@@ -139,6 +146,8 @@ function normalizeEventToMatch(ev, leagueSlug) {
   const clock = comps?.status?.displayClock ?? null;
   const period = comps?.status?.period ?? null;
 
+  const minute = status === 'live' ? clockToMinute(clock) : null;
+
   return {
     id:           ev.id,
     uid:          ev.uid ?? ev.id,
@@ -149,6 +158,7 @@ function normalizeEventToMatch(ev, leagueSlug) {
     statusDetail,
     clock,
     period,
+      minute,
     homeTeam:     home,
     awayTeam:     away,
     venue:        comps?.venue?.fullName ?? null,

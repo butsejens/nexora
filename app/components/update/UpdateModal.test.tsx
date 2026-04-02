@@ -11,7 +11,7 @@
  */
 
 import React from "react";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react-native";
+import { render, screen, fireEvent } from "@testing-library/react-native";
 import {
   UpdateModal,
   UpdateTypeBadge,
@@ -243,7 +243,7 @@ describe("UpdateModal", () => {
   });
 
   it("should call onClose when close button is pressed", () => {
-    const { getByTestId } = render(
+    render(
       <UpdateModal
         visible={true}
         currentVersion="2.6.27"
@@ -267,7 +267,7 @@ describe("UpdateModal", () => {
   });
 
   it("should have a primary action button", () => {
-    const { getByText } = render(
+    render(
       <UpdateModal
         visible={true}
         currentVersion="2.6.27"
