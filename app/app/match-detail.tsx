@@ -457,19 +457,27 @@ export default function MatchDetailScreen() {
           </View>
 
           <View style={styles.scoreboard}>
-            <View style={styles.teamColumn}>
+            <TouchableOpacity
+              style={styles.teamColumn}
+              activeOpacity={0.75}
+              onPress={() => router.push({ pathname: "/team-detail", params: { teamId: match.homeTeamId, teamName: match.homeTeam, logo: match.homeTeamLogo, sport: safeText(params.sport, "soccer"), espnLeague } })}
+            >
               <TeamLogo uri={match.homeTeamLogo} teamName={match.homeTeam} size={68} />
               <Text style={styles.teamName}>{match.homeTeam}</Text>
-            </View>
+            </TouchableOpacity>
             <View style={styles.scoreColumn}>
               {loading ? <ActivityIndicator color={DS.accent} /> : <Text style={styles.scoreText}>{match.homeScore} - {match.awayScore}</Text>}
               <Text style={styles.scoreSub}>{match.statusDetail || (state === "upcoming" ? `${kickoff.date} • ${kickoff.time}` : kickoff.date)}</Text>
               <Text style={styles.scoreMicro}>{match.round || matchContext.venue || "Premium live intelligence"}</Text>
             </View>
-            <View style={styles.teamColumn}>
+            <TouchableOpacity
+              style={styles.teamColumn}
+              activeOpacity={0.75}
+              onPress={() => router.push({ pathname: "/team-detail", params: { teamId: match.awayTeamId, teamName: match.awayTeam, logo: match.awayTeamLogo, sport: safeText(params.sport, "soccer"), espnLeague } })}
+            >
               <TeamLogo uri={match.awayTeamLogo} teamName={match.awayTeam} size={68} />
               <Text style={styles.teamName}>{match.awayTeam}</Text>
-            </View>
+            </TouchableOpacity>
           </View>
 
           <View style={styles.heroStatsRow}>

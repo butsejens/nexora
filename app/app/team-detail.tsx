@@ -1,8 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   View, Text, StyleSheet, TouchableOpacity, ScrollView,
-  Image, Animated,
+  Animated,
 } from "react-native";
+import { Image as ExpoImage } from "expo-image";
 import { router, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useQuery } from "@tanstack/react-query";
@@ -477,13 +478,12 @@ const PlayerCard = React.memo(function PlayerCard({ player, teamName, league }: 
         </View>
 
         {photoUri ? (
-          <Image
+          <ExpoImage
             source={{ uri: photoUri }}
             style={[styles.playerPhoto, { backgroundColor: COLORS.card }]}
-            resizeMode="cover"
-            onError={() => {
-              setImageFailed(true);
-            }}
+            contentFit="cover"
+            cachePolicy="memory-disk"
+            onError={() => setImageFailed(true)}
           />
         ) : (
           <View style={[styles.playerPhoto, styles.photoPlaceholder]}>

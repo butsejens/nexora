@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { View, Text, StyleSheet, Image, ScrollView } from "react-native";
+import { View, Text, StyleSheet, ScrollView } from "react-native";
+import { Image as ExpoImage } from "expo-image";
 import { useLocalSearchParams } from "expo-router";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
@@ -417,10 +418,11 @@ export default function PlayerProfileScreen() {
           <View style={styles.heroCard}>
             <View style={styles.hero}>
               {photoUri && !photoFailed ? (
-                <Image
+                <ExpoImage
                   source={{ uri: photoUri }}
                   style={[styles.photo, { backgroundColor: COLORS.card }]}
-                  resizeMode="cover"
+                  contentFit="cover"
+                  cachePolicy="memory-disk"
                   onError={() => {
                     const fallback = getBestCachedOrSeedPlayerImage(playerImageSeed);
                     if (fallback && fallback !== photoUri) {

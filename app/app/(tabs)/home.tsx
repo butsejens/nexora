@@ -1,7 +1,5 @@
-import React, { useMemo, useState, useCallback, useRef, useEffect } from "react";
+import React, { useMemo, useState } from "react";
 import {
-  FlatList,
-  Image,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -9,230 +7,120 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { router } from "expo-router";
-import { LinearGradient } from "expo-linear-gradient";
-import { useQuery } from "@tanstack/react-query";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { Ionicons } from "@expo/vector-icons";
+import { useQuery } from "@tanstack/react-query";
+import { router } from "expo-router";
 
-import { useRenderTelemetry } from "@/hooks/useRenderTelemetry";
 import { NexoraHeader } from "@/components/NexoraHeader";
-import { RealContentCard } from "@/components/RealContentCard";
-import { MatchStatusCard, resolveMatchVisualState, type PremiumSportMatch } from "@/components/sports/SportCards";
-import { COLORS } from "@/constants/colors";
-import { ms, s, screenWidth, vs } from "@/lib/responsive";
-import { useNexora } from "@/context/NexoraContext";
-import { useFollowState, useWatchProgress } from "@/context/UserStateContext";
 import {
-  buildContinueWatchingRows,
-  buildHighlightsQuery,
-  buildVodHomeQuery,
-  deriveCuratedHomeMedia,
-} from "@/services/realtime-engine";
-import { useOnboardingStore } from "@/store/onboarding-store";
-import { resolveMatchCompetitionLabel, resolveMatchEspnLeagueCode } from "@/lib/sports-competition";
+  LiveMatchCard,
+  MatchCard,
+  normalizeSportMatch,
+  resolveMatchVisualState,
+  type PremiumSportMatch,
+} from "@/components/sports/SportCards";
+import { RealContentCard } from "@/components/RealContentCard";
 import { useSportHomeFeed } from "@/features/sports/hooks/useSportHomeFeed";
 import { getMatchdayYmd } from "@/lib/date/matchday";
-import {
-  selectHighlightsForFeed,
-} from "@/lib/ai";
+import { buildVodHomeQuery, deriveCuratedHomeMedia } from "@/services/realtime-engine";
+import { COLORS } from "@/constants/colors";
 
-function splitReplayAndHighlightItems(items: any[]): { replays: any[]; highlights: any[] } {
-  const replayTokens = /(replay|full\s*match|full\s*game|extended\s*highlights|highlights\s*\+\s*goals)/i;
-  const replays: any[] = [];
-  const highlights: any[] = [];
+type HomeRailCard = {
+  id: string;
+  title: string;
+  type: "movie" | "series";
+  poster?: string | null;
+  backdrop?: string | null;
+  imdb?: number;
+  year?: number;
+  quality?: string;
+};
+
+function toMatchParams(match: PremiumSportMatch) {
+  return {
+    matchId: String(match.id || ""),
+    homeTeam: String(match.homeTeam || "Home"),
+    awayTeam: String(match.awayTeam || "Away"),
+    homeTeamId: String(match.homeTeamId || ""),
+    awayTeamId: String(match.awayTeamId || ""),
+    homeTeamLogo: String(match.homeTeamLogo || ""),
+    awayTeamLogo: String(match.awayTeamLogo || ""),
+    homeScore: String(match.homeScore ?? 0),
+    awayScore: String(match.awayScore ?? 0),
+    league: String(match.league || "Competition"),
+    espnLeague: String(match.espnLeague || ""),
+    minute: String(match.minute ?? ""),
+    status: String(match.status || "upcoming"),
+    statusDetail: String(match.statusDetail || ""),
+    sport: String(match.sport || "soccer"),
+    startDate: String(match.startDate || ""),
+  };
+}
+
+function mapVodCards(items: any[]): HomeRailCard[] {
+  const seen = new Set<string>();
+  const out: HomeRailCard[] = [];
 
   for (const item of Array.isArray(items) ? items : []) {
-    const title = String(item?.title || "");
-    const competition = String(item?.competition || "");
-    const descriptor = `${title} ${competition}`;
-    if (replayTokens.test(descriptor)) {
-      replays.push(item);
-      continue;
-    }
-    highlights.push(item);
+    const id = String(item?.tmdbId || item?.id || "").trim();
+    const title = String(item?.title || "").trim();
+    const type = String(item?.type || "movie") === "series" ? "series" : "movie";
+    const key = `${type}:${id || title}`;
+    if (!title || seen.has(key)) continue;
+    seen.add(key);
+    out.push({
+      id: id || key,
+      title,
+      type,
+      poster: item?.poster || null,
+      backdrop: item?.backdrop || null,
+      imdb: Number(item?.rating || 0) || undefined,
+      year: Number(item?.year || 0) || undefined,
+      quality: String(item?.quality || "HD"),
+    });
+    if (out.length >= 14) break;
   }
 
-  return { replays, highlights };
+  return out;
 }
 
-function getTeamName(team: unknown, fallback: string): string {
-  if (typeof team === "string") return team || fallback;
-  if (team && typeof team === "object") {
-    const name = String((team as any)?.name || (team as any)?.displayName || "").trim();
-    return name || fallback;
-  }
-  return fallback;
-}
-
-function getTeamLogo(match: any, side: "home" | "away"): string {
-  const direct = side === "home" ? match?.homeTeamLogo : match?.awayTeamLogo;
-  if (typeof direct === "string" && direct.trim()) return direct;
-  const teamObj = side === "home" ? match?.homeTeam : match?.awayTeam;
-  if (teamObj && typeof teamObj === "object") {
-    const logo = String((teamObj as any)?.logo || "").trim();
-    if (logo) return logo;
-  }
-  return "";
-}
-
-function getScore(match: any, side: "home" | "away"): number {
-  const direct = side === "home" ? match?.homeScore : match?.awayScore;
-  if (Number.isFinite(Number(direct))) return Number(direct);
-  const scoreObj = match?.score;
-  if (scoreObj && typeof scoreObj === "object") {
-    const nested = side === "home" ? scoreObj?.home : scoreObj?.away;
-    if (Number.isFinite(Number(nested))) return Number(nested);
-  }
-  return 0;
-}
-
-function toMatchParams(match: any) {
-  const league = resolveMatchCompetitionLabel(match);
-  return {
-    matchId: String(match?.id || ""),
-    homeTeam: getTeamName(match?.homeTeam, "Home"),
-    awayTeam: getTeamName(match?.awayTeam, "Away"),
-    homeTeamLogo: getTeamLogo(match, "home"),
-    awayTeamLogo: getTeamLogo(match, "away"),
-    homeScore: String(getScore(match, "home")),
-    awayScore: String(getScore(match, "away")),
-    league,
-    espnLeague: resolveMatchEspnLeagueCode(match),
-    minute: String(match?.minute ?? ""),
-    status: String(match?.status || "upcoming"),
-    sport: String(match?.sport || "football"),
-  };
-}
-
-function isRenderableMatch(match: any): boolean {
-  if (!match) return false;
-  const home = getTeamName(match?.homeTeam, "").trim();
-  const away = getTeamName(match?.awayTeam, "").trim();
-  return Boolean(home && away);
-}
-
-export default function CuratedHomeScreen() {
-  useRenderTelemetry("CuratedHomeScreen");
-
+export default function HomeTabScreen() {
   const insets = useSafeAreaInsets();
-  const selectedTeams = useOnboardingStore((s) => s.selectedTeams);
-  const selectedCompetitions = useOnboardingStore((s) => s.selectedCompetitions);
-  const { watchHistory, isFavorite, toggleFavorite } = useNexora();
-  const { followedTeams } = useFollowState();
-  const { continueWatching: syncedContinueWatching } = useWatchProgress();
+  const [refreshing, setRefreshing] = useState(false);
 
-  const sportsQuery = useSportHomeFeed(true, getMatchdayYmd());
-  const mediaQuery = useQuery(buildVodHomeQuery(true));
-  const highlightsQuery = useQuery(buildHighlightsQuery(true));
+  const sportQuery = useSportHomeFeed(true, getMatchdayYmd());
+  const vodQuery = useQuery(buildVodHomeQuery(true));
 
-  const mediaData = deriveCuratedHomeMedia(mediaQuery.data);
-
-  const continueWatching = useMemo(() => {
-    return buildContinueWatchingRows(watchHistory as any, syncedContinueWatching as any, 8);
-  }, [syncedContinueWatching, watchHistory]);
-
-  const liveMatches = useMemo(() => (sportsQuery.data?.live || []), [sportsQuery.data?.live]);
-  const upcomingMatches = useMemo(() => (sportsQuery.data?.upcoming || []), [sportsQuery.data?.upcoming]);
-  const finishedMatches = useMemo(() => (sportsQuery.data?.finished || []), [sportsQuery.data?.finished]);
-  const curatedSportsPool = useMemo(
-    () => ([...liveMatches, ...upcomingMatches, ...finishedMatches].filter(isRenderableMatch) as unknown as PremiumSportMatch[]),
-    [finishedMatches, liveMatches, upcomingMatches],
+  const liveMatches = useMemo(
+    () => (sportQuery.live || []).map(normalizeSportMatch).filter((m) => resolveMatchVisualState(m) === "live"),
+    [sportQuery.live],
   );
-  const featuredMatch = useMemo(() => {
-    return curatedSportsPool.find((match) => resolveMatchVisualState(match) === "live") || curatedSportsPool[0] || null;
-  }, [curatedSportsPool]);
-  const liveNowMatches = useMemo(
-    () => curatedSportsPool.filter((match) => resolveMatchVisualState(match) === "live").slice(0, 4),
-    [curatedSportsPool],
+  const scheduleMatches = useMemo(
+    () => [...(sportQuery.upcoming || []), ...(sportQuery.finished || [])].map(normalizeSportMatch).slice(0, 8),
+    [sportQuery.finished, sportQuery.upcoming],
   );
-  const todayScheduleMatches = useMemo(
-    () => curatedSportsPool.filter((match) => {
-      const state = resolveMatchVisualState(match);
-      return state === "upcoming" || state === "finished";
-    }).slice(0, 6),
-    [curatedSportsPool],
-  );
-  const favoriteTeamNames = [
-    ...followedTeams.map((team) => String(team?.teamName || "")),
-    ...selectedTeams.map((team) => String(team?.name || "")),
-  ].filter(Boolean);
-  const preferredLeagues = selectedCompetitions.map((competition) => String(competition?.name || competition?.id || "")).filter(Boolean);
 
-  const movieRail = useMemo(
-    () => (mediaData?.movies || []).slice(0, 8),
-    [mediaData?.movies],
-  );
-  const seriesRail = useMemo(
-    () => (mediaData?.series || []).slice(0, 8),
-    [mediaData?.series],
-  );
-  const releasesRail = useMemo(
-    () => (mediaData?.newReleases || []).slice(0, 8),
-    [mediaData?.newReleases],
-  );
-  const replayAndHighlight = useMemo(
-    () => splitReplayAndHighlightItems(highlightsQuery.data || []),
-    [highlightsQuery.data],
-  );
-  const replayItems = replayAndHighlight.replays.slice(0, 8);
-  const highlightItems = useMemo(() => {
-    return selectHighlightsForFeed({
-      highlights: replayAndHighlight.highlights,
-      favoriteTeams: favoriteTeamNames,
-      preferredLeagues,
-    }).map((entry) => entry.item).slice(0, 8);
-  }, [favoriteTeamNames, preferredLeagues, replayAndHighlight.highlights]);
+  const mediaPool = useMemo(() => {
+    const media = deriveCuratedHomeMedia(vodQuery.data);
+    const merged = [...(media.movies || []), ...(media.series || []), ...(media.newReleases || [])];
+    return mapVodCards(merged);
+  }, [vodQuery.data]);
 
-  const railCardWidth = Math.round(Math.max(108, Math.min(156, screenWidth * 0.32)));
+  const hasNoData =
+    liveMatches.length === 0 &&
+    scheduleMatches.length === 0 &&
+    mediaPool.length === 0 &&
+    !sportQuery.isLoading &&
+    !vodQuery.isLoading;
 
-  // ── Hero carousel items (sports + media, cycle every 5s) ──────────────────
-  type HeroItem =
-    | { kind: "sport"; match: any }
-    | { kind: "media"; media: any };
-
-  const heroCandidates = useMemo<HeroItem[]>(() => {
-    const items: HeroItem[] = [];
-    [...liveMatches, ...upcomingMatches, ...finishedMatches].slice(0, 4).forEach((match) => {
-      items.push({ kind: "sport", match });
-    });
-    [...movieRail, ...seriesRail].slice(0, 4).forEach((media) => {
-      items.push({ kind: "media", media });
-    });
-    return items.slice(0, 6);
-  }, [liveMatches, upcomingMatches, finishedMatches, movieRail, seriesRail]);
-
-  const heroFlatListRef = useRef<FlatList<HeroItem>>(null);
-  const heroIndexRef = useRef(0);
-  const [heroPage, setHeroPage] = useState(0);
-
-  useEffect(() => {
-    if (heroCandidates.length <= 1) return;
-    const timer = setInterval(() => {
-      heroIndexRef.current = (heroIndexRef.current + 1) % heroCandidates.length;
-      heroFlatListRef.current?.scrollToIndex({ index: heroIndexRef.current, animated: true });
-      setHeroPage(heroIndexRef.current);
-    }, 5000);
-    return () => clearInterval(timer);
-  }, [heroCandidates.length]);
-
-  const openReplay = (item: any, fallbackId: string) => {
-    const rawUrl = String(item?.embedUrl || item?.matchUrl || item?.url || "").trim();
-    if (!rawUrl) return;
-    router.push({
-      pathname: "/player",
-      params: {
-        embedUrl: rawUrl,
-        title: String(item?.title || `${getTeamName(item?.homeTeam, "Home")} vs ${getTeamName(item?.awayTeam, "Away")}`),
-        type: "sport",
-        contentId: `sport_replay_${fallbackId}`,
-      },
-    });
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    try {
+      await Promise.all([sportQuery.refetch(), vodQuery.refetch()]);
+    } finally {
+      setRefreshing(false);
+    }
   };
-
-  const openMatchDetail = useCallback((match: any) => {
-    router.push({ pathname: "/match-detail", params: toMatchParams(match) });
-  }, []);
 
   return (
     <View style={styles.screen}>
@@ -249,575 +137,239 @@ export default function CuratedHomeScreen() {
       />
 
       <ScrollView
+        contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 88 }]}
         showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl
-            refreshing={Boolean(sportsQuery.isRefetching || mediaQuery.isRefetching)}
-            onRefresh={() => {
-              sportsQuery.refetch();
-              mediaQuery.refetch();
-              highlightsQuery.refetch();
-            }}
-            tintColor={COLORS.accent}
-          />
-        }
-        contentContainerStyle={{ paddingBottom: insets.bottom + 96 }}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={COLORS.accent} />}
       >
-        <View style={styles.heroWrap}>
-          {heroCandidates.length > 0 ? (
-            <>
-              <FlatList<HeroItem>
-                ref={heroFlatListRef}
-                data={heroCandidates}
-                horizontal
-                pagingEnabled
-                showsHorizontalScrollIndicator={false}
-                scrollEnabled={heroCandidates.length > 1}
-                getItemLayout={(_, index) => ({ length: screenWidth - s(32), offset: (screenWidth - s(32)) * index, index })}
-                onMomentumScrollEnd={(e) => {
-                  const page = Math.round(e.nativeEvent.contentOffset.x / (screenWidth - s(32)));
-                  heroIndexRef.current = page;
-                  setHeroPage(page);
-                }}
-                keyExtractor={(_, idx) => String(idx)}
-                renderItem={({ item }) => {
-                  const isSport = item.kind === "sport";
-                  const match = isSport ? item.match : null;
-                  const media = isSport ? null : (item as any).media;
-                  const title = isSport
-                    ? `${getTeamName(match?.homeTeam, "Home")} vs ${getTeamName(match?.awayTeam, "Away")}`
-                    : String(media?.title || "Featured selection");
-                  const meta = isSport
-                    ? `Matchday Pick · ${resolveMatchCompetitionLabel(match)}`
-                    : `${media?.type === "series" ? "Series" : "Film"}${media?.year ? ` · ${media.year}` : ""}`;
-                  const img = isSport ? null : (media?.backdrop || media?.poster || null);
-                  return (
-                    <TouchableOpacity
-                      style={{ width: screenWidth - s(32) }}
-                      activeOpacity={0.9}
-                      onPress={() => {
-                        if (isSport && match) { openMatchDetail(match); return; }
-                        if (media) {
-                          router.push({
-                            pathname: "/detail",
-                            params: {
-                              id: media.id,
-                              type: media.type,
-                              title: media.title,
-                              tmdbId: media.tmdbId ? String(media.tmdbId) : undefined,
-                            },
-                          });
-                        }
-                      }}
-                    >
-                      <View style={styles.heroCard}>
-                        {img ? <Image source={{ uri: img }} style={StyleSheet.absoluteFill} resizeMode="cover" /> : null}
-                        {isSport && match ? (
-                          <>
-                            {getTeamLogo(match, "home") ? (
-                              <Image source={{ uri: getTeamLogo(match, "home") }} style={styles.heroTeamLogoLeft} resizeMode="contain" />
-                            ) : null}
-                            {getTeamLogo(match, "away") ? (
-                              <Image source={{ uri: getTeamLogo(match, "away") }} style={styles.heroTeamLogoRight} resizeMode="contain" />
-                            ) : null}
-                            <LinearGradient colors={["rgba(9,24,18,0.55)", "rgba(9,9,13,0.92)"]} style={StyleSheet.absoluteFill} />
-                          </>
-                        ) : (
-                          <LinearGradient colors={["rgba(9,9,13,0.15)", "rgba(9,9,13,0.9)"]} style={StyleSheet.absoluteFill} />
-                        )}
-                        <View style={styles.heroContent}>
-                          <Text style={styles.heroEyebrow}>{isSport ? "MATCHDAY PICK" : "CURATED PICK"}</Text>
-                          <Text style={styles.heroTitle} numberOfLines={2}>{title}</Text>
-                          <Text style={styles.heroMeta}>{meta}</Text>
-                        </View>
-                      </View>
-                    </TouchableOpacity>
-                  );
-                }}
-              />
-              {heroCandidates.length > 1 ? (
-                <View style={styles.heroDots}>
-                  {heroCandidates.map((_, i) => (
-                    <View key={i} style={[styles.heroDot, i === heroPage && styles.heroDotActive]} />
-                  ))}
-                </View>
-              ) : null}
-            </>
-          ) : (
-            <View style={styles.sportPreviewEmptyState}>
-              <Text style={styles.emptyText}>Home feed wordt geladen. Trek naar beneden om te vernieuwen.</Text>
-            </View>
-          )}
+        <View style={styles.kpiRow}>
+          <StatCard label="Live now" value={String(liveMatches.length)} tone="live" />
+          <StatCard label="Today" value={String((sportQuery.live || []).length + (sportQuery.upcoming || []).length + (sportQuery.finished || []).length)} />
+          <StatCard label="Films/Series" value={String(mediaPool.length)} />
         </View>
 
-        {
-          <View style={styles.section}>
-            <View style={styles.sectionHead}>
-              <Text style={styles.sectionLabel}>SPORT</Text>
-              <TouchableOpacity onPress={() => router.push("/sport")}>
-                <Text style={styles.sectionActionLive}>Open match center</Text>
-              </TouchableOpacity>
-            </View>
-
-            {sportsQuery.isLoading ? (
-              <View style={styles.sportPreviewLoading}>
-                <Text style={styles.emptyText}>Loading match center preview...</Text>
-              </View>
-            ) : null}
-
-            {!sportsQuery.isLoading && sportsQuery.isError ? (
-              <View style={styles.sportPreviewEmptyState}>
-                <Text style={styles.emptyText}>Sport data kon niet geladen worden.</Text>
-                <View style={styles.sportPreviewActions}>
-                  <TouchableOpacity style={styles.sportActionBtn} onPress={() => sportsQuery.refetch()}>
-                    <Text style={styles.sportActionBtnText}>Retry</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity style={[styles.sportActionBtn, styles.sportActionBtnSecondary]} onPress={() => router.push("/sport")}>
-                    <Text style={[styles.sportActionBtnText, styles.sportActionBtnTextSecondary]}>Open Matchday</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-            ) : null}
-
-            {!sportsQuery.isLoading && !sportsQuery.isError && curatedSportsPool.length === 0 ? (
-              <View style={styles.sportPreviewEmptyState}>
-                <Text style={styles.emptyText}>Geen wedstrijden beschikbaar op dit moment.</Text>
-                <View style={styles.sportPreviewActions}>
-                  <TouchableOpacity style={styles.sportActionBtn} onPress={() => sportsQuery.refetch()}>
-                    <Text style={styles.sportActionBtnText}>Refresh</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity style={[styles.sportActionBtn, styles.sportActionBtnSecondary]} onPress={() => router.push("/sport")}>
-                    <Text style={[styles.sportActionBtnText, styles.sportActionBtnTextSecondary]}>Pick date</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-            ) : null}
-
-            {!sportsQuery.isLoading && !sportsQuery.isError && curatedSportsPool.length > 0 ? (
-              <View style={styles.sportPreviewWrap}>
-                {featuredMatch ? (
-                  <>
-                    <Text style={styles.sportSubSectionLabel}>Featured Match</Text>
-                    <MatchStatusCard
-                      match={featuredMatch}
-                      onPress={() => openMatchDetail(featuredMatch)}
-                    />
-                  </>
-                ) : null}
-
-                {liveNowMatches.length > 0 ? (
-                  <>
-                    <Text style={styles.sportSubSectionLabel}>Live Now</Text>
-                    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.sportMatchRow}>
-                      {liveNowMatches.map((match, idx) => (
-                        <View key={`home_live_${String(match?.id || idx)}`} style={styles.sportPreviewCardWrap}>
-                          <MatchStatusCard match={match} compact onPress={() => openMatchDetail(match)} />
-                        </View>
-                      ))}
-                    </ScrollView>
-                  </>
-                ) : null}
-
-                {todayScheduleMatches.length > 0 ? (
-                  <>
-                    <Text style={styles.sportSubSectionLabel}>Today Matches</Text>
-                    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.sportMatchRow}>
-                      {todayScheduleMatches.map((match, idx) => (
-                        <View key={`home_today_${String(match?.id || idx)}`} style={styles.sportPreviewCardWrap}>
-                          <MatchStatusCard match={match} compact onPress={() => openMatchDetail(match)} />
-                        </View>
-                      ))}
-                    </ScrollView>
-                  </>
-                ) : null}
-              </View>
-            ) : null}
-          </View>
-        }
-
-        {(replayItems.length > 0 || highlightItems.length > 0) && (
-          <View style={styles.section}>
-            <View style={styles.sectionHead}>
-              <Text style={styles.sectionLabel}>HIGHLIGHTS & REPLAYS</Text>
-              <TouchableOpacity onPress={() => router.push("/highlights")}>
-                <Text style={styles.sectionAction}>Open full feed</Text>
-              </TouchableOpacity>
-            </View>
-
-            {replayItems.length > 0 && (
-              <>
-                <Text style={styles.subSectionLabel}>Replays</Text>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.rail}>
-                  {replayItems.map((item: any, idx: number) => {
-                    const thumb = String(item?.thumbnail || "").trim();
-                    return (
-                      <TouchableOpacity key={`replay_${item?.id || idx}`} style={styles.highlightCard} activeOpacity={0.86} onPress={() => openReplay(item, String(item?.id || idx))}>
-                        {thumb ? <Image source={{ uri: thumb }} style={styles.highlightThumb} resizeMode="cover" /> : <View style={styles.highlightThumbFallback} />}
-                        <View style={styles.highlightOverlay}>
-                          <View style={styles.highlightBadge}>
-                            <Ionicons name="play-circle" size={12} color="#fff" />
-                            <Text style={styles.highlightBadgeText}>Replay</Text>
-                          </View>
-                          <Text style={styles.highlightTitle} numberOfLines={2}>{String(item?.title || "Replay")}</Text>
-                        </View>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </ScrollView>
-              </>
-            )}
-
-            {highlightItems.length > 0 && (
-              <>
-                <Text style={styles.subSectionLabel}>Highlights</Text>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.rail}>
-                  {highlightItems.map((item: any, idx: number) => {
-                    const thumb = String(item?.thumbnail || "").trim();
-                    return (
-                      <TouchableOpacity key={`highlight_${item?.id || idx}`} style={styles.highlightCard} activeOpacity={0.86} onPress={() => openReplay(item, String(item?.id || idx))}>
-                        {thumb ? <Image source={{ uri: thumb }} style={styles.highlightThumb} resizeMode="cover" /> : <View style={styles.highlightThumbFallback} />}
-                        <View style={styles.highlightOverlay}>
-                          <View style={styles.highlightBadge}>
-                            <Ionicons name="star" size={11} color="#F9D923" />
-                            <Text style={styles.highlightBadgeText}>Highlight</Text>
-                          </View>
-                          <Text style={styles.highlightTitle} numberOfLines={2}>{String(item?.title || "Highlight")}</Text>
-                        </View>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </ScrollView>
-              </>
-            )}
-          </View>
+        <SectionHeader title="SPORT" action="Open match center" onPress={() => router.push("/sport")} />
+        {liveMatches.length ? (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.rail}>
+            {liveMatches.slice(0, 8).map((match) => (
+              <LiveMatchCard
+                key={match.id}
+                match={match}
+                onPress={() => router.push({ pathname: "/match-detail", params: toMatchParams(match) })}
+              />
+            ))}
+          </ScrollView>
+        ) : (
+          <PanelMessage
+            title="Geen live wedstrijden nu"
+            subtitle="Live kaarten verschijnen automatisch zodra een wedstrijd start."
+            cta="Open sport"
+            onPress={() => router.push("/sport")}
+          />
         )}
 
-        {(movieRail.length > 0 || mediaQuery.isLoading) && (
-          <View style={styles.section}>
-            <View style={styles.sectionHead}>
-              <Text style={styles.sectionLabel}>FILMS</Text>
-              <TouchableOpacity onPress={() => router.push("/films-series")}>
-                <Text style={styles.sectionAction}>Open Films & Series</Text>
-              </TouchableOpacity>
-            </View>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.rail}>
-              {movieRail.map((item: any) => (
-                <RealContentCard
-                  key={`movie_${item.id}`}
-                  width={railCardWidth}
-                  item={{
-                    id: String(item.id),
-                    title: item.title,
-                    year: Number(item.year || 0),
-                    imdb: Number(item.imdb || item.rating || 0),
-                    quality: item.quality || "HD",
-                    poster: item.poster || null,
-                    backdrop: item.backdrop || null,
-                    isTrending: item.isTrending,
-                  }}
-                  isFavorite={isFavorite(String(item.id))}
-                  onFavorite={() => toggleFavorite(String(item.id))}
-                  onPress={() => router.push({ pathname: "/detail", params: { id: String(item.tmdbId || item.id), tmdbId: item.tmdbId ? String(item.tmdbId) : undefined, type: "movie", title: item.title } })}
-                />
-              ))}
-            </ScrollView>
-          </View>
+        <SectionHeader title="TODAY" />
+        {scheduleMatches.length ? (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.rail}>
+            {scheduleMatches.map((match) => (
+              <MatchCard
+                key={match.id}
+                match={match}
+                onPress={() => router.push({ pathname: "/match-detail", params: toMatchParams(match) })}
+              />
+            ))}
+          </ScrollView>
+        ) : (
+          <PanelMessage title="Nog geen schema-data" subtitle="Trek naar beneden om opnieuw te laden." />
         )}
 
-        {(seriesRail.length > 0 || mediaQuery.isLoading) && (
-          <View style={styles.section}>
-            <View style={styles.sectionHead}>
-              <Text style={styles.sectionLabel}>SERIES</Text>
-              <TouchableOpacity onPress={() => router.push("/films-series")}>
-                <Text style={styles.sectionAction}>Browse all</Text>
-              </TouchableOpacity>
-            </View>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.rail}>
-              {seriesRail.map((item: any) => (
-                <RealContentCard
-                  key={`series_${item.id}`}
-                  width={railCardWidth}
-                  item={{
-                    id: String(item.id),
-                    title: item.title,
-                    year: Number(item.year || 0),
-                    imdb: Number(item.imdb || item.rating || 0),
-                    quality: item.quality || "HD",
-                    poster: item.poster || null,
-                    backdrop: item.backdrop || null,
-                    isTrending: item.isTrending,
-                  }}
-                  isFavorite={isFavorite(String(item.id))}
-                  onFavorite={() => toggleFavorite(String(item.id))}
-                  onPress={() => router.push({ pathname: "/detail", params: { id: String(item.tmdbId || item.id), tmdbId: item.tmdbId ? String(item.tmdbId) : undefined, type: "series", title: item.title } })}
-                />
-              ))}
-            </ScrollView>
-          </View>
+        <SectionHeader title="FILMS & SERIES" action="Open hub" onPress={() => router.push("/films-series")} />
+        {vodQuery.isLoading ? (
+          <PanelMessage title="Media laden…" subtitle="Films en series worden geladen." />
+        ) : mediaPool.length > 0 ? (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.rail}>
+            {mediaPool.map((item) => (
+              <RealContentCard
+                key={item.id}
+                width={130}
+                item={{
+                  id: item.id,
+                  title: item.title,
+                  year: item.year || 0,
+                  imdb: item.imdb || 0,
+                  quality: item.quality || "HD",
+                  poster: item.poster,
+                  backdrop: item.backdrop,
+                }}
+                onPress={() =>
+                  router.push({
+                    pathname: "/detail",
+                    params: {
+                      id: String(item.id),
+                      type: item.type,
+                      title: item.title,
+                    },
+                  })
+                }
+              />
+            ))}
+          </ScrollView>
+        ) : (
+          <PanelMessage title="Geen media beschikbaar" subtitle="Open de Films & Series hub om te bladeren." cta="Open hub" onPress={() => router.push("/films-series")} />
         )}
 
-        {releasesRail.length > 0 && (
-          <View style={styles.section}>
-            <View style={styles.sectionHead}>
-              <Text style={styles.sectionLabel}>NEW RELEASES</Text>
-              <TouchableOpacity onPress={() => router.push("/films-series")}>
-                <Text style={styles.sectionActionLive}>Live updated</Text>
-              </TouchableOpacity>
-            </View>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.rail}>
-              {releasesRail.map((item: any) => (
-                <RealContentCard
-                  key={`release_${item.type}_${item.id}`}
-                  width={railCardWidth}
-                  item={{
-                    id: String(item.id),
-                    title: item.title,
-                    year: Number(item.year || 0),
-                    imdb: Number(item.imdb || item.rating || 0),
-                    quality: item.quality || "HD",
-                    poster: item.poster || null,
-                    backdrop: item.backdrop || null,
-                    isTrending: true,
-                  }}
-                  isFavorite={isFavorite(String(item.id))}
-                  onFavorite={() => toggleFavorite(String(item.id))}
-                  onPress={() => router.push({ pathname: "/detail", params: { id: String(item.tmdbId || item.id), tmdbId: item.tmdbId ? String(item.tmdbId) : undefined, type: item.type, title: item.title } })}
-                />
-              ))}
-            </ScrollView>
-          </View>
-        )}
-
-        {continueWatching.length > 0 && (
-          <View style={styles.section}>
-            <View style={styles.sectionHead}>
-              <Text style={styles.sectionLabel}>CONTINUE WATCHING</Text>
-            </View>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.rail}>
-              {continueWatching.slice(0, 8).map((item: any) => (
-                <RealContentCard
-                  key={`cw_${item.type}_${item.id}`}
-                  width={railCardWidth}
-                  item={{
-                    id: String(item.id),
-                    title: item.title,
-                    year: Number(item.year || 0),
-                    imdb: Number(item.imdb || item.rating || 0),
-                    quality: item.quality || "HD",
-                    poster: item.poster || null,
-                    backdrop: item.backdrop || null,
-                    progress: item.progress,
-                  }}
-                  showProgress
-                  isFavorite={isFavorite(String(item.id))}
-                  onFavorite={() => toggleFavorite(String(item.id))}
-                  onPress={() => router.push({ pathname: "/detail", params: { id: String(item.tmdbId || item.id), tmdbId: item.tmdbId ? String(item.tmdbId) : undefined, type: item.type, title: item.title } })}
-                />
-              ))}
-            </ScrollView>
-          </View>
-        )}
+        {hasNoData ? (
+          <PanelMessage
+            title="Data tijdelijk niet beschikbaar"
+            subtitle="De app blijft bruikbaar. Probeer opnieuw of open de modules direct."
+            cta="Herladen"
+            onPress={handleRefresh}
+          />
+        ) : null}
       </ScrollView>
     </View>
   );
 }
 
+function StatCard({ label, value, tone = "default" }: { label: string; value: string; tone?: "default" | "live" }) {
+  return (
+    <View style={[styles.statCard, tone === "live" && styles.liveStatCard]}>
+      <Text style={styles.statValue}>{value}</Text>
+      <Text style={[styles.statLabel, tone === "live" && styles.liveStatLabel]}>{label}</Text>
+    </View>
+  );
+}
+
+function SectionHeader({ title, action, onPress }: { title: string; action?: string; onPress?: () => void }) {
+  return (
+    <View style={styles.sectionHeader}>
+      <Text style={styles.sectionTitle}>{title}</Text>
+      {action && onPress ? (
+        <TouchableOpacity onPress={onPress} activeOpacity={0.8}>
+          <Text style={styles.sectionAction}>{action}</Text>
+        </TouchableOpacity>
+      ) : null}
+    </View>
+  );
+}
+
+function PanelMessage({
+  title,
+  subtitle,
+  cta,
+  onPress,
+}: {
+  title: string;
+  subtitle: string;
+  cta?: string;
+  onPress?: () => void;
+}) {
+  return (
+    <View style={styles.panel}>
+      <Text style={styles.panelTitle}>{title}</Text>
+      <Text style={styles.panelSubtitle}>{subtitle}</Text>
+      {cta && onPress ? (
+        <TouchableOpacity style={styles.panelButton} onPress={onPress} activeOpacity={0.85}>
+          <Text style={styles.panelButtonText}>{cta}</Text>
+        </TouchableOpacity>
+      ) : null}
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: COLORS.background },
-  heroWrap: { paddingHorizontal: s(16), paddingTop: vs(12), marginBottom: vs(18) },
-  heroCard: {
-    minHeight: vs(214),
-    borderRadius: ms(20),
-    overflow: "hidden",
+  screen: {
+    flex: 1,
+    backgroundColor: "#040508",
+  },
+  content: {
+    paddingHorizontal: 16,
+    gap: 18,
+  },
+  kpiRow: {
+    marginTop: 14,
+    flexDirection: "row",
+    gap: 10,
+  },
+  statCard: {
+    flex: 1,
+    minHeight: 90,
+    borderRadius: 16,
+    backgroundColor: "#0A1120",
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.08)",
-    backgroundColor: COLORS.card,
-    justifyContent: "flex-end",
+    padding: 14,
+    justifyContent: "space-between",
   },
-  heroTeamLogoLeft: {
-    position: "absolute",
-    left: -s(24),
-    top: "50%",
-    width: s(180),
-    height: s(180),
-    marginTop: -s(90),
-    opacity: 0.18,
+  liveStatCard: {
+    backgroundColor: "#052115",
+    borderColor: "rgba(34,197,94,0.25)",
   },
-  heroTeamLogoRight: {
-    position: "absolute",
-    right: -s(24),
-    top: "50%",
-    width: s(180),
-    height: s(180),
-    marginTop: -s(90),
-    opacity: 0.18,
-  },
-  heroContent: { padding: s(18), gap: ms(6) },
-  heroDots: {
-    flexDirection: "row",
-    justifyContent: "center",
-    alignItems: "center",
-    gap: 6,
-    marginTop: 10,
-  },
-  heroDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: "rgba(255,255,255,0.25)",
-  },
-  heroDotActive: {
-    backgroundColor: COLORS.accent,
-    width: 18,
-    borderRadius: 3,
-  },
-  heroEyebrow: {
-    color: COLORS.accent,
-    fontFamily: "Inter_700Bold",
-    fontSize: ms(11),
-    letterSpacing: 1.3,
-  },
-  heroTitle: {
-    color: "#fff",
+  statValue: {
+    color: "#F8FAFC",
+    fontSize: 32,
     fontFamily: "Inter_800ExtraBold",
-    fontSize: ms(24),
-    lineHeight: ms(28),
   },
-  heroMeta: {
-    color: "rgba(255,255,255,0.75)",
-    fontFamily: "Inter_500Medium",
-    fontSize: ms(12),
+  statLabel: {
+    color: "#94A3B8",
+    fontSize: 15,
+    fontFamily: "Inter_600SemiBold",
   },
-  section: { marginBottom: vs(10) },
-  sectionHead: {
-    paddingHorizontal: s(18),
-    marginBottom: vs(10),
+  liveStatLabel: {
+    color: "#4ADE80",
+  },
+  sectionHeader: {
+    marginTop: 4,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
   },
-  sectionLabel: {
-    color: "#FFFFFF",
+  sectionTitle: {
+    color: "#F8FAFC",
+    fontSize: 33,
+    letterSpacing: 0.3,
+    fontFamily: "Inter_800ExtraBold",
+  },
+  sectionAction: {
+    color: "#E50914",
+    fontSize: 15,
     fontFamily: "Inter_700Bold",
-    fontSize: ms(16),
-    letterSpacing: 0.6,
   },
-  sectionAction: { color: COLORS.accent, fontFamily: "Inter_600SemiBold", fontSize: ms(12) },
-  sectionActionLive: { color: COLORS.live, fontFamily: "Inter_700Bold", fontSize: ms(12) },
-  sportPreviewWrap: {
-    gap: vs(8),
+  rail: {
+    paddingRight: 12,
+    paddingBottom: 4,
   },
-  sportSubSectionLabel: {
-    color: "rgba(255,255,255,0.85)",
-    fontFamily: "Inter_700Bold",
-    fontSize: ms(12),
-    paddingHorizontal: s(18),
-    marginTop: vs(6),
-  },
-  sportMatchRow: {
-    paddingHorizontal: s(18),
-    paddingBottom: vs(6),
-  },
-  sportPreviewCardWrap: {
-    width: s(238),
-    marginRight: s(10),
-  },
-  sportPreviewLoading: {
-    paddingHorizontal: s(18),
-    paddingVertical: vs(10),
-  },
-  sportPreviewEmptyState: {
-    marginHorizontal: s(18),
-    backgroundColor: "rgba(255,255,255,0.03)",
-    borderRadius: ms(14),
+  panel: {
+    borderRadius: 18,
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.08)",
-    padding: s(14),
-    gap: vs(10),
+    backgroundColor: "#090D15",
+    padding: 16,
+    gap: 6,
   },
-  sportPreviewActions: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: ms(8),
-  },
-  sportActionBtn: {
-    borderRadius: ms(999),
-    borderWidth: 1,
-    borderColor: "rgba(229,9,20,0.35)",
-    backgroundColor: "rgba(229,9,20,0.12)",
-    paddingHorizontal: s(12),
-    paddingVertical: vs(7),
-  },
-  sportActionBtnSecondary: {
-    borderColor: "rgba(255,255,255,0.14)",
-    backgroundColor: "rgba(255,255,255,0.04)",
-  },
-  sportActionBtnText: {
-    color: COLORS.accent,
+  panelTitle: {
+    color: "#F8FAFC",
+    fontSize: 18,
     fontFamily: "Inter_700Bold",
-    fontSize: ms(12),
   },
-  sportActionBtnTextSecondary: {
-    color: "#FFFFFF",
-  },
-  emptyText: {
-    color: COLORS.textMuted,
+  panelSubtitle: {
+    color: "#94A3B8",
+    fontSize: 15,
+    lineHeight: 22,
     fontFamily: "Inter_500Medium",
-    fontSize: ms(12),
-    paddingHorizontal: s(18),
-    paddingVertical: vs(12),
   },
-  subSectionLabel: {
-    color: "rgba(255,255,255,0.78)",
-    fontFamily: "Inter_600SemiBold",
-    fontSize: ms(12),
-    paddingHorizontal: s(18),
-    marginBottom: vs(8),
-  },
-  highlightCard: {
-    width: s(220),
-    height: vs(126),
-    borderRadius: ms(14),
-    overflow: "hidden",
-    backgroundColor: "#11131B",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.08)",
-    marginRight: s(10),
-  },
-  highlightThumb: {
-    ...StyleSheet.absoluteFillObject,
-  },
-  highlightThumbFallback: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: "#161A24",
-  },
-  highlightOverlay: {
-    flex: 1,
-    justifyContent: "flex-end",
-    padding: s(10),
-    backgroundColor: "rgba(0,0,0,0.35)",
-  },
-  highlightBadge: {
+  panelButton: {
+    marginTop: 10,
     alignSelf: "flex-start",
-    flexDirection: "row",
-    alignItems: "center",
-    gap: ms(5),
-    backgroundColor: "rgba(0,0,0,0.45)",
-    borderRadius: ms(8),
-    paddingHorizontal: s(8),
-    paddingVertical: vs(4),
-    marginBottom: vs(8),
+    borderRadius: 999,
+    backgroundColor: "rgba(229,9,20,0.16)",
+    borderWidth: 1,
+    borderColor: "rgba(229,9,20,0.4)",
+    paddingHorizontal: 14,
+    paddingVertical: 8,
   },
-  highlightBadgeText: {
-    color: "#FFFFFF",
-    fontFamily: "Inter_600SemiBold",
-    fontSize: ms(11),
-  },
-  highlightTitle: {
-    color: "#FFFFFF",
+  panelButtonText: {
+    color: "#FCA5A5",
+    fontSize: 13,
     fontFamily: "Inter_700Bold",
-    fontSize: ms(12),
-    lineHeight: ms(16),
   },
-  rail: { paddingHorizontal: s(18), paddingBottom: vs(8) },
 });
