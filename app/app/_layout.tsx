@@ -14,7 +14,6 @@ import { AppState } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import Constants from "expo-constants";
 
-import { MatchAlertsBridge } from "@/components/MatchAlertsBridge";
 import { PersonalizationBridge } from "@/components/PersonalizationBridge";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { NexoraMenuOverlay } from "@/components/navigation/NexoraMenuOverlay";
@@ -197,7 +196,6 @@ export default function RootLayout() {
             <NexoraProvider>
               <UserStateProvider>
                 <PersonalizationBridge />
-                <MatchAlertsBridge />
                 <RootLayoutNav />
                 <NexoraMenuOverlay />
               </UserStateProvider>
