@@ -1,6 +1,5 @@
 import { Platform } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import * as Notifications from "expo-notifications";
 
 export type MatchSubscription = {
   id: string;
@@ -20,9 +19,22 @@ const SUBSCRIPTIONS_KEY = "nexora_match_alert_subscriptions_v1";
 const SNAPSHOTS_KEY = "nexora_match_alert_snapshots_v1";
 
 let notificationsInitialized = false;
+let notificationsModulePromise: Promise<any | null> | null = null;
+
+async function getNotificationsModule(): Promise<any | null> {
+  if (!notificationsModulePromise) {
+    notificationsModulePromise = import("expo-notifications")
+      .then((module) => module)
+      .catch(() => null);
+  }
+  return notificationsModulePromise;
+}
 
 export async function initializeMatchNotifications() {
   if (notificationsInitialized || Platform.OS === "web") return;
+  const Notifications = await getNotificationsModule();
+  if (!Notifications) return;
+
   Notifications.setNotificationHandler({
     handleNotification: async () => ({
       shouldShowAlert: true,
@@ -49,6 +61,9 @@ export async function ensureMatchNotificationPermission(): Promise<boolean> {
   if (Platform.OS === "web") return false;
   await initializeMatchNotifications();
 
+  const Notifications = await getNotificationsModule();
+  if (!Notifications) return false;
+
   const current = await Notifications.getPermissionsAsync();
   if (current.granted || current.ios?.status === Notifications.IosAuthorizationStatus.PROVISIONAL) {
     return true;
@@ -60,6 +75,10 @@ export async function ensureMatchNotificationPermission(): Promise<boolean> {
 
 export async function pushMatchNotification(title: string, body: string, data?: Record<string, string>) {
   if (Platform.OS === "web") return;
+
+  const Notifications = await getNotificationsModule();
+  if (!Notifications) return;
+
   const ok = await ensureMatchNotificationPermission();
   if (!ok) return;
 

@@ -3,7 +3,6 @@ import * as Application from "expo-application";
 import Constants from "expo-constants";
 import * as FileSystem from "expo-file-system/legacy";
 import * as IntentLauncher from "expo-intent-launcher";
-import * as Updates from "expo-updates";
 import { Alert, Linking, Platform } from "react-native";
 
 import { apiRequestJson } from "@/lib/query-client";
@@ -22,6 +21,14 @@ import {
 const LAST_SEEN_SERVER_VERSION_KEY = "nexora_last_seen_server_version_v2";
 const OTA_CHECK_TIMEOUT_MS = 8_000;
 const OTA_FETCH_TIMEOUT_MS = 30_000;
+
+function getUpdatesModule(): any | null {
+  try {
+    return require("expo-updates");
+  } catch {
+    return null;
+  }
+}
 
 export { getDownloadUrl, validateApkAvailability };
 export type { ApkValidationResult, LatestApkMetadata };
@@ -147,16 +154,17 @@ async function fetchUpdateManifest(): Promise<UpdateManifest> {
 }
 
 async function checkOtaAvailability(): Promise<OtaCheckState> {
-  if (__DEV__ || !Updates.isEnabled) {
+  const Updates = getUpdatesModule();
+  if (__DEV__ || !Updates?.isEnabled) {
     return {
       available: false,
-      enabled: Boolean(Updates.isEnabled),
+      enabled: Boolean(Updates?.isEnabled),
       errorMessage: null,
     };
   }
 
   try {
-    const response = await withTimeout(Updates.checkForUpdateAsync(), OTA_CHECK_TIMEOUT_MS);
+    const response: any = await withTimeout(Updates.checkForUpdateAsync(), OTA_CHECK_TIMEOUT_MS);
     return {
       available: Boolean(response?.isAvailable),
       enabled: true,
@@ -181,9 +189,10 @@ async function detectServerChange(serverVersion: string): Promise<boolean> {
 }
 
 export async function checkForAppUpdates(options?: CheckOptions): Promise<UpdateCheckResult> {
+  const Updates = getUpdatesModule();
   const currentVersion = safeString(options?.currentVersion, safeString(Constants.expoConfig?.version, "0.0.0"));
   const currentNativeVersion = safeString(Application.nativeApplicationVersion, currentVersion || "0.0.0");
-  const currentRuntimeVersion = safeString(Updates.runtimeVersion, "unknown");
+  const currentRuntimeVersion = safeString(Updates?.runtimeVersion, "unknown");
 
   const [manifestResult, otaState] = await Promise.allSettled([
     fetchUpdateManifest(),
@@ -296,18 +305,20 @@ export function fallbackIfMissing(reason?: string | null): never {
 }
 
 export async function prepareOtaUpdate(): Promise<void> {
-  if (__DEV__ || !Updates.isEnabled) {
+  const Updates = getUpdatesModule();
+  if (__DEV__ || !Updates?.isEnabled) {
     throw new Error("OTA is not enabled in this build.");
   }
 
-  const result = await withTimeout(Updates.fetchUpdateAsync(), OTA_FETCH_TIMEOUT_MS);
+  const result: any = await withTimeout(Updates.fetchUpdateAsync(), OTA_FETCH_TIMEOUT_MS);
   if (!result || !result.isNew) {
     throw new Error("No OTA update payload could be fetched.");
   }
 }
 
 export async function reloadToLatestUpdate(): Promise<void> {
-  if (__DEV__ || !Updates.isEnabled) {
+  const Updates = getUpdatesModule();
+  if (__DEV__ || !Updates?.isEnabled) {
     throw new Error("OTA reload is not available in this build.");
   }
 

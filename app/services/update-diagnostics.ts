@@ -8,11 +8,18 @@
  * All fields are safe to call from any JS context — no side effects.
  */
 
-import * as Updates from "expo-updates";
 import * as Application from "expo-application";
 import Constants from "expo-constants";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { getStartupLogSnapshot } from "./startup-orchestrator";
+
+function getUpdatesModule(): any | null {
+  try {
+    return require("expo-updates");
+  } catch {
+    return null;
+  }
+}
 
 export type UpdateSource = "embedded" | "ota" | "development";
 
@@ -70,19 +77,20 @@ const LAST_LAUNCH_SNAPSHOT_KEY = "nexora_last_launch_snapshot_v1";
 const LAST_ROLLBACK_EVENT_KEY = "nexora_last_rollback_event_v1";
 
 export function getUpdateDiagnostics(): UpdateDiagnostics {
+  const Updates = getUpdatesModule();
   const appVersion = String(Constants.expoConfig?.version || Application.nativeApplicationVersion || "unknown");
-  const runtimeVersion = String(Updates.runtimeVersion || "unknown");
-  const updateId = Updates.updateId || null;
-  const shortUpdateId = updateId ? updateId.slice(0, 8) : Updates.isEmbeddedLaunch ? "embedded" : "dev";
-  const channel = String(Updates.channel || "unknown");
-  const isEmbedded = Boolean(Updates.isEmbeddedLaunch);
+  const runtimeVersion = String(Updates?.runtimeVersion || "unknown");
+  const updateId = Updates?.updateId || null;
+  const shortUpdateId = updateId ? updateId.slice(0, 8) : Updates?.isEmbeddedLaunch ? "embedded" : "dev";
+  const channel = String(Updates?.channel || "unknown");
+  const isEmbedded = Boolean(Updates?.isEmbeddedLaunch);
   const isDevelopment = Boolean(__DEV__);
-  const isEnabled = Boolean(Updates.isEnabled);
+  const isEnabled = Boolean(Updates?.isEnabled);
   const nativeVersion = String(Application.nativeApplicationVersion || "unknown");
 
   let createdAt = "unknown";
   try {
-    createdAt = Updates.createdAt?.toISOString() || "unknown";
+    createdAt = Updates?.createdAt?.toISOString() || "unknown";
   } catch {}
 
   let source: UpdateSource = "embedded";

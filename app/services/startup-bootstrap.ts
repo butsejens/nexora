@@ -1,7 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import type { QueryClient } from "@tanstack/react-query";
 import Constants from "expo-constants";
-import * as Updates from "expo-updates";
 
 import { cacheWarmup } from "@/lib/services/cache-service";
 import { startPlayerImageWarmup } from "@/lib/player-image-system";
@@ -12,6 +11,15 @@ import { logStartupEvent, runStartupTask } from "@/services/startup-orchestrator
 
 const FEATURE_FLAGS_KEY = "nexora_feature_flags_v1";
 const MODULE_STATE_KEY = "nexora_module_state_v1";
+
+function getRuntimeVersionSafe(): string {
+  try {
+    const Updates = require("expo-updates");
+    return String(Updates?.runtimeVersion || "unknown");
+  } catch {
+    return "unknown";
+  }
+}
 
 export type BootstrapResult = {
   criticalDone: Promise<void>;
@@ -40,7 +48,7 @@ async function readBootstrapSnapshot() {
   return {
     featureFlagsPresent: Boolean(featureFlagsRaw?.[1]),
     moduleStatePresent: Boolean(moduleStateRaw?.[1]),
-    runtimeVersion: String(Updates.runtimeVersion || "unknown"),
+    runtimeVersion: getRuntimeVersionSafe(),
     appVersion: String(Constants.expoConfig?.version || "unknown"),
   };
 }
