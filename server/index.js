@@ -44,8 +44,15 @@ if (redisUrl) {
 initRedis(redisUrl);
 
 // Redis get/set helpers (async) — keep for legacy inline routes
+let redisReady = false;
+if (redisClient) {
+  redisClient.on("ready", () => { redisReady = true; });
+  redisClient.on("end", () => { redisReady = false; });
+  redisClient.on("error", () => { redisReady = false; });
+}
+
 async function redisGet(key) {
-  if (!redisClient) return null;
+  if (!redisClient || !redisReady) return null;
   try {
     const val = await redisClient.get(key);
     return val ? JSON.parse(val) : null;
@@ -55,7 +62,7 @@ async function redisGet(key) {
 }
 
 async function redisSet(key, value, ttlMs) {
-  if (!redisClient) return;
+  if (!redisClient || !redisReady) return;
   try {
     await redisClient.set(key, JSON.stringify(value), {
       PX: ttlMs || 60000,
@@ -80,6 +87,21 @@ app.use(cors(allowedOrigin ? {
   credentials: true,
 } : undefined));
 app.use(express.json({ limit: "10mb" }));
+
+// ─── Response timeout ─────────────────────────────────────────────────────────
+// Ensures no request hangs longer than 45s — returns a timeout error to the client.
+app.use((req, res, next) => {
+  const TIMEOUT_MS = 45_000;
+  const timer = setTimeout(() => {
+    if (!res.headersSent) {
+      serverLog.warn("Response timeout", { path: req.path, method: req.method, timeout: TIMEOUT_MS });
+      res.status(504).json({ error: "Server response timeout", path: req.path });
+    }
+  }, TIMEOUT_MS);
+  res.on("finish", () => clearTimeout(timer));
+  res.on("close", () => clearTimeout(timer));
+  next();
+});
 
 // ─── Observability middleware ─────────────────────────────────────────────────
 // Must be first (after body parsing) so all routes are traced.
@@ -207,6 +229,34 @@ app.get("/api/config-check", (_req, res) => {
   });
 });
 
+// Connectivity diagnostic — tests actual TMDB & ESPN API connectivity
+app.get("/api/diag/connectivity", async (_req, res) => {
+  const results = {};
+  const testFetch = async (label, url, timeoutMs = 8000) => {
+    const c = new AbortController();
+    const t = setTimeout(() => c.abort(), timeoutMs);
+    try {
+      const start = Date.now();
+      const r = await fetch(url, { signal: c.signal, headers: { Accept: "application/json" } });
+      clearTimeout(t);
+      const elapsed = Date.now() - start;
+      const body = await r.text().catch(() => "");
+      let count = 0;
+      try { count = JSON.parse(body)?.results?.length || JSON.parse(body)?.events?.length || 0; } catch {}
+      results[label] = { ok: r.ok, status: r.status, ms: elapsed, items: count };
+    } catch (e) {
+      clearTimeout(t);
+      results[label] = { ok: false, error: e.message };
+    }
+  };
+  const key = process.env.TMDB_API_KEY;
+  await Promise.all([
+    key ? testFetch("tmdb", `https://api.themoviedb.org/3/trending/movie/week?api_key=${encodeURIComponent(key)}&language=nl-NL`) : Promise.resolve(results.tmdb = { ok: false, error: "no key" }),
+    testFetch("espn", "https://site.api.espn.com/apis/site/v2/sports/soccer/eng.1/scoreboard"),
+  ]);
+  res.json({ ok: true, results });
+});
+
 // -----------------------------
 // Cache (in-memory)
 // -----------------------------
@@ -215,8 +265,8 @@ const __inflight = new Map();
 
 
 async function cacheGet(key) {
-  // Prefer Redis if available
-  if (redisClient) {
+  // Prefer Redis if available and connected
+  if (redisClient && redisReady) {
     const val = await redisGet(key);
     if (val !== null) return val;
   }
@@ -234,8 +284,8 @@ function cacheGetStale(key) {
 
 
 async function cacheSet(key, value, ttlMs) {
-  // Prefer Redis if available
-  if (redisClient) {
+  // Prefer Redis if available and connected
+  if (redisClient && redisReady) {
     await redisSet(key, value, ttlMs);
   }
   // Always set in-memory as fallback
