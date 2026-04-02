@@ -26,6 +26,8 @@ WebBrowser.maybeCompleteAuthSession();
 
 type AuthMode = "signin" | "signup";
 
+const GOOGLE_PLACEHOLDER_CLIENT_ID = "nexora-missing-client-id.apps.googleusercontent.com";
+
 export default function AuthScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
@@ -37,11 +39,14 @@ export default function AuthScreen() {
   const [loadingProvider, setLoadingProvider] = useState<"google" | "apple" | "email" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [appleAvailable, setAppleAvailable] = useState(Platform.OS === "ios");
+  const hasGoogleClientId = Boolean(
+    ENV.firebase.iosClientId || ENV.firebase.androidClientId || ENV.firebase.webClientId,
+  );
 
   const [googleRequest, googleResponse, promptGoogleSignIn] = Google.useIdTokenAuthRequest({
-    iosClientId: ENV.firebase.iosClientId || undefined,
-    androidClientId: ENV.firebase.androidClientId || undefined,
-    webClientId: ENV.firebase.webClientId || undefined,
+    iosClientId: ENV.firebase.iosClientId || GOOGLE_PLACEHOLDER_CLIENT_ID,
+    androidClientId: ENV.firebase.androidClientId || ENV.firebase.webClientId || GOOGLE_PLACEHOLDER_CLIENT_ID,
+    webClientId: ENV.firebase.webClientId || GOOGLE_PLACEHOLDER_CLIENT_ID,
   });
 
   useEffect(() => {
@@ -95,6 +100,10 @@ export default function AuthScreen() {
 
   const handleGoogleSignIn = async () => {
     setError(null);
+    if (!hasGoogleClientId) {
+      setError("Google sign-in is niet geconfigureerd voor deze build.");
+      return;
+    }
     setLoadingProvider("google");
     try {
       const result = await promptGoogleSignIn();
@@ -177,9 +186,9 @@ export default function AuthScreen() {
           </Text>
 
           <TouchableOpacity
-            style={[styles.primaryCta, (!googleRequest || loadingProvider === "google") && styles.disabledButton]}
+            style={[styles.primaryCta, (!googleRequest || !hasGoogleClientId || loadingProvider === "google") && styles.disabledButton]}
             onPress={handleGoogleSignIn}
-            disabled={!googleRequest || loadingProvider !== null}
+            disabled={!googleRequest || !hasGoogleClientId || loadingProvider !== null}
             activeOpacity={0.88}
           >
             {loadingProvider === "google" ? (
@@ -187,7 +196,11 @@ export default function AuthScreen() {
             ) : (
               <>
                 <Ionicons name="logo-google" size={18} color="#FFFFFF" />
-                <Text style={styles.primaryCtaText}>{mode === "signin" ? "Continue with Google" : "Sign up with Google"}</Text>
+                <Text style={styles.primaryCtaText}>
+                  {hasGoogleClientId
+                    ? (mode === "signin" ? "Continue with Google" : "Sign up with Google")
+                    : "Google tijdelijk niet beschikbaar"}
+                </Text>
               </>
             )}
           </TouchableOpacity>
