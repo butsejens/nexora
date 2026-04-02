@@ -5,17 +5,17 @@
     "versionCode": 20628,
     "buildId": "android-2.6.28",
     "required": false,
-    "releasedAt": "2026-04-02T00:00:00.000Z",
+    "releasedAt": "2026-04-02T01:24:11.000Z",
     "notes": [
       "Native builds are distributed separately from Render API deploys.",
       "Only publish an APK URL after the asset is actually hosted."
     ],
     "apk": {
-      "provider": "render-file-endpoint",
-      "url": null,
-      "fileName": null,
-      "fileSizeBytes": 0,
-      "checksumSha256": null,
+      "provider": "github-releases",
+      "url": "https://github.com/butsejens/nexora/releases/download/v2.6.28/nexora-v2.6.28.apk",
+      "fileName": "nexora-v2.6.28.apk",
+      "fileSizeBytes": 53272894,
+      "checksumSha256": "7f60fa7e1b101790ceb327d6b3b79715b987dd3f1f0d1e486eb3ee20866a3aef",
       "signature": null,
       "fallbackMessage": "Nieuwe native build gedetecteerd, maar de APK is nog niet gepubliceerd. Probeer later opnieuw of gebruik een OTA update als die beschikbaar is."
     }
