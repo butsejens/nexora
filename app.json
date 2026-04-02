@@ -6,7 +6,7 @@
   "expo": {
     "name": "Nexora",
     "slug": "nexora",
-    "version": "2.6.33",
+    "version": "2.6.34",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "userInterfaceStyle": "automatic",
