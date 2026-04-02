@@ -20,7 +20,6 @@ import { MatchAlertsBridge } from "@/components/MatchAlertsBridge";
 import { PersonalizationBridge } from "@/components/PersonalizationBridge";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { NexoraMenuOverlay } from "@/components/navigation/NexoraMenuOverlay";
-import { StartupCoordinator } from "@/components/startup/StartupCoordinator";
 import { useRenderTelemetry } from "@/hooks/useRenderTelemetry";
 import {
   queryClient,
@@ -185,7 +184,6 @@ export default function RootLayout() {
                 <MatchAlertsBridge />
                 <RootLayoutNav />
                 <NexoraMenuOverlay />
-                <StartupCoordinator />
               </UserStateProvider>
             </NexoraProvider>
           </GestureHandlerRootView>

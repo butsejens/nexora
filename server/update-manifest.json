@@ -1,34 +1,34 @@
 {
   "schemaVersion": 2,
   "native": {
-    "version": "2.6.31",
-    "versionCode": 20631,
-    "buildId": "android-2.6.31",
+    "version": "2.6.32",
+    "versionCode": 20632,
+    "buildId": "android-2.6.32",
     "required": false,
-    "releasedAt": "2026-04-02T02:32:25.330Z",
+    "releasedAt": "2026-04-02T02:39:43.412Z",
     "notes": [
       "Native builds are distributed separately from Render API deploys.",
       "Only publish an APK URL after the asset is actually hosted."
     ],
     "apk": {
       "provider": "github-releases",
-      "url": "https://github.com/butsejens/nexora/releases/download/v2.6.31/nexora-v2.6.31.apk",
-      "fileName": "nexora-v2.6.31.apk",
-      "fileSizeBytes": 53389302,
-      "checksumSha256": "378d36f87525f5f50d1ea476100e1c2563633537c97cf6855635aaeb80e193b3",
+      "url": "https://github.com/butsejens/nexora/releases/download/v2.6.32/nexora-v2.6.32.apk",
+      "fileName": "nexora-v2.6.32.apk",
+      "fileSizeBytes": 53332066,
+      "checksumSha256": "e31ed6c175626ef87b2964e671e23197d1afab7fc131a450a2feaebb43957ecb",
       "signature": null,
       "fallbackMessage": "Nieuwe native build gedetecteerd, maar de APK is nog niet gepubliceerd. Probeer later opnieuw of gebruik een OTA update als die beschikbaar is."
     }
   },
   "ota": {
     "channel": "production",
-    "runtimeVersion": "2.6.31",
+    "runtimeVersion": "2.6.32",
     "strategy": "expo-updates",
     "releasedAt": "2026-04-02T00:00:00.000Z"
   },
   "server": {
-    "version": "2.6.31",
-    "releasedAt": "2026-04-02T02:32:25.330Z",
+    "version": "2.6.32",
+    "releasedAt": "2026-04-02T02:39:43.412Z",
     "requiresAppUpdate": false,
     "message": "Server deploys are independent from OTA bundles and APK releases."
   }
