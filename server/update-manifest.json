@@ -1,9 +1,9 @@
 {
   "schemaVersion": 2,
   "native": {
-    "version": "2.6.32",
-    "versionCode": 20632,
-    "buildId": "android-2.6.32",
+    "version": "2.6.33",
+    "versionCode": 20633,
+    "buildId": "android-2.6.33",
     "required": false,
     "releasedAt": "2026-04-02T02:39:43.412Z",
     "notes": [
@@ -12,8 +12,8 @@
     ],
     "apk": {
       "provider": "github-releases",
-      "url": "https://github.com/butsejens/nexora/releases/download/v2.6.32/nexora-v2.6.32.apk",
-      "fileName": "nexora-v2.6.32.apk",
+      "url": "https://github.com/butsejens/nexora/releases/download/v2.6.33/nexora-v2.6.33.apk",
+      "fileName": "nexora-v2.6.33.apk",
       "fileSizeBytes": 53332066,
       "checksumSha256": "e31ed6c175626ef87b2964e671e23197d1afab7fc131a450a2feaebb43957ecb",
       "signature": null,
@@ -22,12 +22,12 @@
   },
   "ota": {
     "channel": "production",
-    "runtimeVersion": "2.6.32",
+    "runtimeVersion": "2.6.33",
     "strategy": "expo-updates",
     "releasedAt": "2026-04-02T00:00:00.000Z"
   },
   "server": {
-    "version": "2.6.32",
+    "version": "2.6.33",
     "releasedAt": "2026-04-02T02:39:43.412Z",
     "requiresAppUpdate": false,
     "message": "Server deploys are independent from OTA bundles and APK releases."
