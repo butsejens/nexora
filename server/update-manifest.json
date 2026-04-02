@@ -5,10 +5,10 @@
     "versionCode": 20633,
     "buildId": "android-2.6.33",
     "required": false,
-    "releasedAt": "2026-04-02T02:39:43.412Z",
+    "releasedAt": "2026-04-02T09:05:15.848Z",
     "notes": [
-      "Native builds are distributed separately from Render API deploys.",
-      "Only publish an APK URL after the asset is actually hosted."
+      "Native build published for 2.6.33",
+      "Commit: 29681b9"
     ],
     "apk": {
       "provider": "github-releases",
