@@ -12,8 +12,6 @@ import * as SplashScreen from "expo-splash-screen";
 import React, { useEffect, useRef } from "react";
 import { AppState } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
-import * as Notifications from "expo-notifications";
-import * as Updates from "expo-updates";
 import Constants from "expo-constants";
 
 import { MatchAlertsBridge } from "@/components/MatchAlertsBridge";
@@ -39,6 +37,7 @@ SplashScreen.preventAutoHideAsync().catch(() => {
 
 function logUpdateDiagnostics() {
   try {
+    const Updates = require("expo-updates");
     const info: Record<string, unknown> = {
       appVersion: Constants.expoConfig?.version || "unknown",
       runtimeVersion: String(Updates.runtimeVersion || "unknown"),
@@ -127,12 +126,29 @@ export default function RootLayout() {
   }, []);
 
   useEffect(() => {
-    const sub = Notifications.addNotificationResponseReceivedListener((response) => {
-      if (response.notification.request.content.data?.type === "app_update") {
-        router.push("/profile");
+    let isMounted = true;
+    let sub: { remove: () => void } | null = null;
+
+    const setupNotificationListener = async () => {
+      try {
+        const Notifications = await import("expo-notifications");
+        if (!isMounted) return;
+        sub = Notifications.addNotificationResponseReceivedListener((response) => {
+          if (response.notification.request.content.data?.type === "app_update") {
+            router.push("/profile");
+          }
+        });
+      } catch (error) {
+        console.warn("[nexora:start] notifications listener unavailable", error);
       }
-    });
-    return () => sub.remove();
+    };
+
+    void setupNotificationListener();
+
+    return () => {
+      isMounted = false;
+      sub?.remove();
+    };
   }, []);
 
   useEffect(() => {
