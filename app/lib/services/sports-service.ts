@@ -164,12 +164,15 @@ function normalizeSportsHomePayload(raw: any): SportsHomeData {
       .filter(Boolean) as Match[];
   };
 
+  // Unwrap canonical envelope { ok, data, meta } from modular routes
+  const payload = raw?.data && (raw?.ok !== undefined) ? raw.data : raw;
+
   // Trust server-side bucketing; avoids client-side status drift when upstream
   // providers use non-standard status/detail combinations.
   return {
-    live: mapList(raw?.live),
-    upcoming: mapList(raw?.upcoming),
-    finished: mapList(raw?.finished),
+    live: mapList(payload?.live),
+    upcoming: mapList(payload?.upcoming),
+    finished: mapList(payload?.finished),
   };
 }
 
