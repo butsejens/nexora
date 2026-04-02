@@ -1,14 +1,13 @@
 import React from "react";
-import { useFocusEffect, useRouter } from "expo-router";
+import { StyleSheet, View } from "react-native";
 
-export default function RootIndexRedirect() {
-  const router = useRouter();
-
-  useFocusEffect(
-    React.useCallback(() => {
-      router.replace("/(tabs)/home");
-    }, [router])
-  );
-
-  return null;
+export default function StartupEntryScreen() {
+  return <View style={styles.screen} />;
 }
+
+const styles = StyleSheet.create({
+  screen: {
+    flex: 1,
+    backgroundColor: "#040404",
+  },
+});

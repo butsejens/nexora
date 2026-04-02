@@ -189,13 +189,12 @@ export function SportModuleHub({ initialPane = "explore" }: SportModuleHubProps)
   const [selectedDate, setSelectedDate] = useState(getMatchdayYmd());
   const [refreshing, setRefreshing] = useState(false);
 
-  const sportsEnabled = useOnboardingStore((state) => state.sportsEnabled);
   const selectedTeams = useOnboardingStore((state) => state.selectedTeams);
   const { followedTeams } = useFollowState();
 
-  const liveQuery = useLiveMatches(sportsEnabled);
-  const matchdayQuery = useMatchdayMatches(selectedDate, sportsEnabled);
-  const exploreQuery = useExploreMatches(selectedDate, sportsEnabled);
+  const liveQuery = useLiveMatches(true);
+  const matchdayQuery = useMatchdayMatches(selectedDate, true);
+  const exploreQuery = useExploreMatches(selectedDate, true);
 
   const liveMatches = useMemo(() => uniqById((liveQuery.live || []).map(normalizeSportMatch)), [liveQuery.live]);
   const todayLive = useMemo(() => (matchdayQuery.live || []).map(normalizeSportMatch), [matchdayQuery.live]);
@@ -238,29 +237,6 @@ export function SportModuleHub({ initialPane = "explore" }: SportModuleHubProps)
   const openMatch = useCallback((match: PremiumSportMatch) => {
     router.push({ pathname: "/match-detail", params: makeMatchParams(match) });
   }, []);
-
-  if (!sportsEnabled) {
-    return (
-      <View style={styles.container}>
-        <NexoraHeader
-          variant="module"
-          title="SPORT"
-          titleColor={DS.accent}
-          showSearch
-          showNotification
-          showFavorites
-          onSearch={() => router.navigate("/(tabs)/search")}
-          onNotification={() => router.push("/follow-center")}
-          onFavorites={() => router.push("/favorites")}
-        />
-        <View style={styles.disabledWrap}>
-          <Ionicons name="football-outline" size={52} color={DS.accent} />
-          <Text style={styles.disabledTitle}>Sports module is disabled</Text>
-          <Text style={styles.disabledCopy}>Enable sports in settings to unlock live matches, competitions and match center.</Text>
-        </View>
-      </View>
-    );
-  }
 
   const isLoading = (liveQuery.isLoading || matchdayQuery.isLoading || exploreQuery.isLoading) && !featuredMatch;
 

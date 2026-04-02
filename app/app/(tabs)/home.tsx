@@ -116,17 +116,15 @@ export default function CuratedHomeScreen() {
   useRenderTelemetry("CuratedHomeScreen");
 
   const insets = useSafeAreaInsets();
-  const sportsEnabled = useOnboardingStore((s) => s.sportsEnabled);
-  const moviesEnabled = useOnboardingStore((s) => s.moviesEnabled);
   const selectedTeams = useOnboardingStore((s) => s.selectedTeams);
   const selectedCompetitions = useOnboardingStore((s) => s.selectedCompetitions);
   const { watchHistory, isFavorite, toggleFavorite } = useNexora();
   const { followedTeams } = useFollowState();
   const { continueWatching: syncedContinueWatching } = useWatchProgress();
 
-  const sportsQuery = useSportHomeFeed(sportsEnabled, getMatchdayYmd());
-  const mediaQuery = useQuery(buildVodHomeQuery(moviesEnabled));
-  const highlightsQuery = useQuery(buildHighlightsQuery(sportsEnabled));
+  const sportsQuery = useSportHomeFeed(true, getMatchdayYmd());
+  const mediaQuery = useQuery(buildVodHomeQuery(true));
+  const highlightsQuery = useQuery(buildHighlightsQuery(true));
 
   const mediaData = deriveCuratedHomeMedia(mediaQuery.data);
 
@@ -134,17 +132,16 @@ export default function CuratedHomeScreen() {
     return buildContinueWatchingRows(watchHistory as any, syncedContinueWatching as any, 8);
   }, [syncedContinueWatching, watchHistory]);
 
-  const liveMatches = useMemo(() => (sportsEnabled ? (sportsQuery.data?.live || []) : []), [sportsEnabled, sportsQuery.data?.live]);
-  const upcomingMatches = useMemo(() => (sportsEnabled ? (sportsQuery.data?.upcoming || []) : []), [sportsEnabled, sportsQuery.data?.upcoming]);
-  const finishedMatches = useMemo(() => (sportsEnabled ? (sportsQuery.data?.finished || []) : []), [sportsEnabled, sportsQuery.data?.finished]);
+  const liveMatches = useMemo(() => (sportsQuery.data?.live || []), [sportsQuery.data?.live]);
+  const upcomingMatches = useMemo(() => (sportsQuery.data?.upcoming || []), [sportsQuery.data?.upcoming]);
+  const finishedMatches = useMemo(() => (sportsQuery.data?.finished || []), [sportsQuery.data?.finished]);
   const curatedSportsPool = useMemo(
-    () => (sportsEnabled ? ([...liveMatches, ...upcomingMatches, ...finishedMatches].filter(isRenderableMatch) as unknown as PremiumSportMatch[]) : []),
-    [finishedMatches, liveMatches, sportsEnabled, upcomingMatches],
+    () => ([...liveMatches, ...upcomingMatches, ...finishedMatches].filter(isRenderableMatch) as unknown as PremiumSportMatch[]),
+    [finishedMatches, liveMatches, upcomingMatches],
   );
   const featuredMatch = useMemo(() => {
-    if (!sportsEnabled) return null;
     return curatedSportsPool.find((match) => resolveMatchVisualState(match) === "live") || curatedSportsPool[0] || null;
-  }, [curatedSportsPool, sportsEnabled]);
+  }, [curatedSportsPool]);
   const liveNowMatches = useMemo(
     () => curatedSportsPool.filter((match) => resolveMatchVisualState(match) === "live").slice(0, 4),
     [curatedSportsPool],
@@ -163,20 +160,20 @@ export default function CuratedHomeScreen() {
   const preferredLeagues = selectedCompetitions.map((competition) => String(competition?.name || competition?.id || "")).filter(Boolean);
 
   const movieRail = useMemo(
-    () => (moviesEnabled ? (mediaData?.movies || []).slice(0, 8) : []),
-    [moviesEnabled, mediaData?.movies],
+    () => (mediaData?.movies || []).slice(0, 8),
+    [mediaData?.movies],
   );
   const seriesRail = useMemo(
-    () => (moviesEnabled ? (mediaData?.series || []).slice(0, 8) : []),
-    [moviesEnabled, mediaData?.series],
+    () => (mediaData?.series || []).slice(0, 8),
+    [mediaData?.series],
   );
   const releasesRail = useMemo(
-    () => (moviesEnabled ? (mediaData?.newReleases || []).slice(0, 8) : []),
-    [moviesEnabled, mediaData?.newReleases],
+    () => (mediaData?.newReleases || []).slice(0, 8),
+    [mediaData?.newReleases],
   );
   const replayAndHighlight = useMemo(
-    () => splitReplayAndHighlightItems(sportsEnabled ? (highlightsQuery.data || []) : []),
-    [highlightsQuery.data, sportsEnabled],
+    () => splitReplayAndHighlightItems(highlightsQuery.data || []),
+    [highlightsQuery.data],
   );
   const replayItems = replayAndHighlight.replays.slice(0, 8);
   const highlightItems = useMemo(() => {
@@ -196,22 +193,14 @@ export default function CuratedHomeScreen() {
 
   const heroCandidates = useMemo<HeroItem[]>(() => {
     const items: HeroItem[] = [];
-    if (sportsEnabled) {
-      [...liveMatches, ...upcomingMatches, ...finishedMatches].slice(0, 4).forEach((match) => {
-        items.push({ kind: "sport", match });
-      });
-    }
-    if (moviesEnabled) {
-      [...movieRail, ...seriesRail].slice(0, 4).forEach((media) => {
-        items.push({ kind: "media", media });
-      });
-    }
-    if (items.length === 0) {
-      // Fallback placeholder
-      items.push({ kind: "media", media: null });
-    }
+    [...liveMatches, ...upcomingMatches, ...finishedMatches].slice(0, 4).forEach((match) => {
+      items.push({ kind: "sport", match });
+    });
+    [...movieRail, ...seriesRail].slice(0, 4).forEach((media) => {
+      items.push({ kind: "media", media });
+    });
     return items.slice(0, 6);
-  }, [liveMatches, upcomingMatches, finishedMatches, movieRail, seriesRail, sportsEnabled, moviesEnabled]);
+  }, [liveMatches, upcomingMatches, finishedMatches, movieRail, seriesRail]);
 
   const heroFlatListRef = useRef<FlatList<HeroItem>>(null);
   const heroIndexRef = useRef(0);
@@ -275,85 +264,93 @@ export default function CuratedHomeScreen() {
         contentContainerStyle={{ paddingBottom: insets.bottom + 96 }}
       >
         <View style={styles.heroWrap}>
-          <FlatList<HeroItem>
-            ref={heroFlatListRef}
-            data={heroCandidates}
-            horizontal
-            pagingEnabled
-            showsHorizontalScrollIndicator={false}
-            scrollEnabled={heroCandidates.length > 1}
-            getItemLayout={(_, index) => ({ length: screenWidth - s(32), offset: (screenWidth - s(32)) * index, index })}
-            onMomentumScrollEnd={(e) => {
-              const page = Math.round(e.nativeEvent.contentOffset.x / (screenWidth - s(32)));
-              heroIndexRef.current = page;
-              setHeroPage(page);
-            }}
-            keyExtractor={(_, idx) => String(idx)}
-            renderItem={({ item }) => {
-              const isSport = item.kind === "sport";
-              const match = isSport ? item.match : null;
-              const media = isSport ? null : (item as any).media;
-              const title = isSport
-                ? `${getTeamName(match?.homeTeam, "Home")} vs ${getTeamName(match?.awayTeam, "Away")}`
-                : String(media?.title || "Welcome to NEXORA");
-              const meta = isSport
-                ? `Matchday Pick · ${resolveMatchCompetitionLabel(match)}`
-                : `${media?.type === "series" ? "Series" : "Film"}${media?.year ? ` · ${media.year}` : ""}`;
-              const img = isSport ? null : (media?.backdrop || media?.poster || null);
-              return (
-                <TouchableOpacity
-                  style={{ width: screenWidth - s(32) }}
-                  activeOpacity={0.9}
-                  onPress={() => {
-                    if (isSport && match) { openMatchDetail(match); return; }
-                    if (media) {
-                      router.push({
-                        pathname: "/detail",
-                        params: {
-                          id: media.id,
-                          type: media.type,
-                          title: media.title,
-                          tmdbId: media.tmdbId ? String(media.tmdbId) : undefined,
-                        },
-                      });
-                    }
-                  }}
-                >
-                  <View style={styles.heroCard}>
-                    {img ? <Image source={{ uri: img }} style={StyleSheet.absoluteFill} resizeMode="cover" /> : null}
-                    {isSport && match ? (
-                      <>
-                        {getTeamLogo(match, "home") ? (
-                          <Image source={{ uri: getTeamLogo(match, "home") }} style={styles.heroTeamLogoLeft} resizeMode="contain" />
-                        ) : null}
-                        {getTeamLogo(match, "away") ? (
-                          <Image source={{ uri: getTeamLogo(match, "away") }} style={styles.heroTeamLogoRight} resizeMode="contain" />
-                        ) : null}
-                        <LinearGradient colors={["rgba(9,24,18,0.55)", "rgba(9,9,13,0.92)"]} style={StyleSheet.absoluteFill} />
-                      </>
-                    ) : (
-                      <LinearGradient colors={["rgba(9,9,13,0.15)", "rgba(9,9,13,0.9)"]} style={StyleSheet.absoluteFill} />
-                    )}
-                    <View style={styles.heroContent}>
-                      <Text style={styles.heroEyebrow}>{isSport ? "MATCHDAY PICK" : "CURATED PICK"}</Text>
-                      <Text style={styles.heroTitle} numberOfLines={2}>{title}</Text>
-                      <Text style={styles.heroMeta}>{meta}</Text>
-                    </View>
-                  </View>
-                </TouchableOpacity>
-              );
-            }}
-          />
-          {heroCandidates.length > 1 ? (
-            <View style={styles.heroDots}>
-              {heroCandidates.map((_, i) => (
-                <View key={i} style={[styles.heroDot, i === heroPage && styles.heroDotActive]} />
-              ))}
+          {heroCandidates.length > 0 ? (
+            <>
+              <FlatList<HeroItem>
+                ref={heroFlatListRef}
+                data={heroCandidates}
+                horizontal
+                pagingEnabled
+                showsHorizontalScrollIndicator={false}
+                scrollEnabled={heroCandidates.length > 1}
+                getItemLayout={(_, index) => ({ length: screenWidth - s(32), offset: (screenWidth - s(32)) * index, index })}
+                onMomentumScrollEnd={(e) => {
+                  const page = Math.round(e.nativeEvent.contentOffset.x / (screenWidth - s(32)));
+                  heroIndexRef.current = page;
+                  setHeroPage(page);
+                }}
+                keyExtractor={(_, idx) => String(idx)}
+                renderItem={({ item }) => {
+                  const isSport = item.kind === "sport";
+                  const match = isSport ? item.match : null;
+                  const media = isSport ? null : (item as any).media;
+                  const title = isSport
+                    ? `${getTeamName(match?.homeTeam, "Home")} vs ${getTeamName(match?.awayTeam, "Away")}`
+                    : String(media?.title || "Featured selection");
+                  const meta = isSport
+                    ? `Matchday Pick · ${resolveMatchCompetitionLabel(match)}`
+                    : `${media?.type === "series" ? "Series" : "Film"}${media?.year ? ` · ${media.year}` : ""}`;
+                  const img = isSport ? null : (media?.backdrop || media?.poster || null);
+                  return (
+                    <TouchableOpacity
+                      style={{ width: screenWidth - s(32) }}
+                      activeOpacity={0.9}
+                      onPress={() => {
+                        if (isSport && match) { openMatchDetail(match); return; }
+                        if (media) {
+                          router.push({
+                            pathname: "/detail",
+                            params: {
+                              id: media.id,
+                              type: media.type,
+                              title: media.title,
+                              tmdbId: media.tmdbId ? String(media.tmdbId) : undefined,
+                            },
+                          });
+                        }
+                      }}
+                    >
+                      <View style={styles.heroCard}>
+                        {img ? <Image source={{ uri: img }} style={StyleSheet.absoluteFill} resizeMode="cover" /> : null}
+                        {isSport && match ? (
+                          <>
+                            {getTeamLogo(match, "home") ? (
+                              <Image source={{ uri: getTeamLogo(match, "home") }} style={styles.heroTeamLogoLeft} resizeMode="contain" />
+                            ) : null}
+                            {getTeamLogo(match, "away") ? (
+                              <Image source={{ uri: getTeamLogo(match, "away") }} style={styles.heroTeamLogoRight} resizeMode="contain" />
+                            ) : null}
+                            <LinearGradient colors={["rgba(9,24,18,0.55)", "rgba(9,9,13,0.92)"]} style={StyleSheet.absoluteFill} />
+                          </>
+                        ) : (
+                          <LinearGradient colors={["rgba(9,9,13,0.15)", "rgba(9,9,13,0.9)"]} style={StyleSheet.absoluteFill} />
+                        )}
+                        <View style={styles.heroContent}>
+                          <Text style={styles.heroEyebrow}>{isSport ? "MATCHDAY PICK" : "CURATED PICK"}</Text>
+                          <Text style={styles.heroTitle} numberOfLines={2}>{title}</Text>
+                          <Text style={styles.heroMeta}>{meta}</Text>
+                        </View>
+                      </View>
+                    </TouchableOpacity>
+                  );
+                }}
+              />
+              {heroCandidates.length > 1 ? (
+                <View style={styles.heroDots}>
+                  {heroCandidates.map((_, i) => (
+                    <View key={i} style={[styles.heroDot, i === heroPage && styles.heroDotActive]} />
+                  ))}
+                </View>
+              ) : null}
+            </>
+          ) : (
+            <View style={styles.sportPreviewEmptyState}>
+              <Text style={styles.emptyText}>Home feed wordt geladen. Trek naar beneden om te vernieuwen.</Text>
             </View>
-          ) : null}
+          )}
         </View>
 
-        {sportsEnabled && (
+        {
           <View style={styles.section}>
             <View style={styles.sectionHead}>
               <Text style={styles.sectionLabel}>SPORT</Text>
@@ -436,9 +433,9 @@ export default function CuratedHomeScreen() {
               </View>
             ) : null}
           </View>
-        )}
+        }
 
-        {sportsEnabled && (replayItems.length > 0 || highlightItems.length > 0) && (
+        {(replayItems.length > 0 || highlightItems.length > 0) && (
           <View style={styles.section}>
             <View style={styles.sectionHead}>
               <Text style={styles.sectionLabel}>HIGHLIGHTS & REPLAYS</Text>
@@ -495,7 +492,7 @@ export default function CuratedHomeScreen() {
           </View>
         )}
 
-        {moviesEnabled && (movieRail.length > 0 || mediaQuery.isLoading) && (
+        {(movieRail.length > 0 || mediaQuery.isLoading) && (
           <View style={styles.section}>
             <View style={styles.sectionHead}>
               <Text style={styles.sectionLabel}>FILMS</Text>
@@ -527,7 +524,7 @@ export default function CuratedHomeScreen() {
           </View>
         )}
 
-        {moviesEnabled && (seriesRail.length > 0 || mediaQuery.isLoading) && (
+        {(seriesRail.length > 0 || mediaQuery.isLoading) && (
           <View style={styles.section}>
             <View style={styles.sectionHead}>
               <Text style={styles.sectionLabel}>SERIES</Text>
@@ -559,7 +556,7 @@ export default function CuratedHomeScreen() {
           </View>
         )}
 
-        {moviesEnabled && releasesRail.length > 0 && (
+        {releasesRail.length > 0 && (
           <View style={styles.section}>
             <View style={styles.sectionHead}>
               <Text style={styles.sectionLabel}>NEW RELEASES</Text>

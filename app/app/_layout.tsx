@@ -9,8 +9,8 @@ import {
 } from "@expo-google-fonts/inter";
 import { Stack, router } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
-import React, { useEffect, useRef, useState } from "react";
-import { AppState, Image, StyleSheet, Animated } from "react-native";
+import React, { useEffect, useRef } from "react";
+import { AppState } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import * as Notifications from "expo-notifications";
 import * as Updates from "expo-updates";
@@ -20,35 +20,23 @@ import { MatchAlertsBridge } from "@/components/MatchAlertsBridge";
 import { PersonalizationBridge } from "@/components/PersonalizationBridge";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { NexoraMenuOverlay } from "@/components/navigation/NexoraMenuOverlay";
+import { StartupCoordinator } from "@/components/startup/StartupCoordinator";
 import { useRenderTelemetry } from "@/hooks/useRenderTelemetry";
 import {
   queryClient,
   getApiBaseCandidates,
   DEFAULT_RENDER_API_BASE,
 } from "@/lib/query-client";
-import { startPlayerImageWarmup } from "@/lib/player-image-system";
 import { NexoraProvider } from "@/context/NexoraContext";
 import { UserStateProvider } from "@/context/UserStateContext";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { COLORS } from "@/constants/colors";
-import { cacheWarmup } from "@/lib/services/cache-service";
-import { initializeMatchNotifications } from "@/lib/match-notifications";
-import { primeBootstrapRealtimeData, realtimeCacheKeys } from "@/services/realtime-engine";
-import { logStartupEvent, runStartupTask } from "@/services/startup-orchestrator";
+import { logStartupEvent } from "@/services/startup-orchestrator";
 import { recordLaunchSnapshot } from "@/services/update-diagnostics";
 
-// Prevent the splash screen from auto-hiding.
-// We call SplashScreen.hideAsync() manually once fonts have loaded.
 SplashScreen.preventAutoHideAsync().catch(() => {
-  // Ignore — may have already been called or platform doesn't support it.
+  // Ignore unsupported or duplicate prevent call.
 });
-
-const BOOTSTRAP_CACHE_KEYS = (today: string) => [
-  `sports:live:${today}`,
-  `sports:today:${today}`,
-  realtimeCacheKeys.vodHome(),
-  realtimeCacheKeys.vodCollections(),
-];
 
 function logUpdateDiagnostics() {
   try {
@@ -78,6 +66,8 @@ function RootLayoutNav() {
         animation: "fade",
       }}
     >
+      <Stack.Screen name="index" options={{ headerShown: false }} />
+      <Stack.Screen name="auth" options={{ headerShown: false, gestureEnabled: false }} />
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
       <Stack.Screen name="player" options={{ headerShown: false, animation: "slide_from_bottom", gestureEnabled: true, gestureDirection: "vertical" }} />
       <Stack.Screen name="profile" options={{ headerShown: false }} />
@@ -110,60 +100,31 @@ export default function RootLayout() {
     Inter_800ExtraBold,
   });
 
-  const startupRanRef = useRef(false);
+  const startupLoggedRef = useRef(false);
 
   useEffect(() => {
-    if (startupRanRef.current) return;
-    startupRanRef.current = true;
+    if (startupLoggedRef.current) return;
+    startupLoggedRef.current = true;
 
-    const startedAt = Date.now();
-    logStartupEvent("boot", "info", "app-launch", { startedAt });
+    logStartupEvent("boot", "info", "app-launch", { startedAt: Date.now() });
     logUpdateDiagnostics();
 
-    // Fire-and-forget Render warmup: starts the Render cold-boot process immediately
-    // so the server is ready by the time the main data fetches begin (~2-5s later).
-    fetch(`${DEFAULT_RENDER_API_BASE}/api/ping`, { method: "GET" }).catch(() => {});
+    fetch(`${DEFAULT_RENDER_API_BASE}/api/ping`, { method: "GET" }).catch(() => undefined);
+  }, []);
 
-    void runStartupTask({
-      scope: "boot",
-      name: "seed-cache-from-disk",
-      timeoutMs: 2500,
-      run: async () => {
-        const today = new Date().toISOString().slice(0, 10);
-        await cacheWarmup(BOOTSTRAP_CACHE_KEYS(today));
-      },
-    });
+  useEffect(() => {
+    if (!fontsLoaded && !fontError) {
+      return;
+    }
+    SplashScreen.hideAsync().catch(() => undefined);
+  }, [fontError, fontsLoaded]);
 
-    void runStartupTask({
-      scope: "background",
-      name: "prime-realtime-bootstrap",
-      timeoutMs: 70000,
-      run: async () => {
-        const today = new Date().toISOString().slice(0, 10);
-        await primeBootstrapRealtimeData(queryClient, today);
-      },
-    });
+  useEffect(() => {
+    const timeout = setTimeout(() => {
+      SplashScreen.hideAsync().catch(() => undefined);
+    }, 1600);
 
-    void runStartupTask({
-      scope: "background",
-      name: "warm-player-images",
-      timeoutMs: 10000,
-      run: async () => {
-        await startPlayerImageWarmup(queryClient);
-      },
-    });
-
-    void runStartupTask({
-      scope: "background",
-      name: "init-notifications",
-      timeoutMs: 3000,
-      run: async () => {
-        await initializeMatchNotifications();
-      },
-    });
-
-    const doneAt = Date.now();
-    logStartupEvent("boot", "info", "ui-mounted", { durationMs: doneAt - startedAt });
+    return () => clearTimeout(timeout);
   }, []);
 
   useEffect(() => {
@@ -177,31 +138,15 @@ export default function RootLayout() {
 
   useEffect(() => {
     let keepAliveId: ReturnType<typeof setInterval> | null = null;
-    let lastRefreshAt = Date.now();
-    const RESUME_STALE_MS = 90000;
     const KEEP_ALIVE_MS = 4 * 60 * 1000;
 
     const pingRender = () => {
       const baseList = getApiBaseCandidates();
-      const renderBase = baseList.find((b) => /onrender\.com/i.test(b)) || DEFAULT_RENDER_API_BASE;
-      fetch(`${renderBase}/api/sports/health`, { method: "GET" }).catch(() => {});
+      const renderBase = baseList.find((base) => /onrender\.com/i.test(base)) || DEFAULT_RENDER_API_BASE;
+      fetch(`${renderBase}/api/sports/health`, { method: "GET" }).catch(() => undefined);
     };
 
     const onForeground = () => {
-      const now = Date.now();
-      if (now - lastRefreshAt >= RESUME_STALE_MS) {
-        lastRefreshAt = now;
-        void runStartupTask({
-          scope: "background",
-          name: "resume-realtime-refresh",
-          timeoutMs: 70000,
-          run: async () => {
-            const today = new Date().toISOString().slice(0, 10);
-            await primeBootstrapRealtimeData(queryClient, today);
-          },
-        });
-      }
-
       if (!keepAliveId) {
         keepAliveId = setInterval(pingRender, KEEP_ALIVE_MS);
       }
@@ -229,46 +174,6 @@ export default function RootLayout() {
     };
   }, []);
 
-  // In-app branded splash overlay: covers the navigation tree until fonts are ready,
-  // then fades out after a brief Nexora logo moment. Never returns null so Expo Router
-  // can always mount its navigation tree (returning null from the root layout in
-  // Expo Router 6 prevents navigation from initialising and leaves the app stuck).
-  const [inAppSplashDone, setInAppSplashDone] = useState(false);
-  const splashOpacity = useRef(new Animated.Value(1)).current;
-
-  useEffect(() => {
-    // Treat both "loaded" and "error" (system font fallback) as ready to proceed.
-    // Also apply an 8 s safety-timeout in case useFonts never settles.
-    if (!fontsLoaded && !fontError) return;
-
-    SplashScreen.hideAsync().catch(() => {});
-    // Fade out in-app Nexora splash after 1.4 s (long enough to see the logo).
-    const timer = setTimeout(() => {
-      Animated.timing(splashOpacity, {
-        toValue: 0,
-        duration: 350,
-        useNativeDriver: true,
-      }).start(() => setInAppSplashDone(true));
-    }, 1400);
-    return () => clearTimeout(timer);
-  }, [fontsLoaded, fontError, splashOpacity]);
-
-  // Safety valve: if fonts haven't loaded after 8 s, dismiss the overlay anyway.
-  useEffect(() => {
-    const timeout = setTimeout(() => {
-      if (!inAppSplashDone) {
-        SplashScreen.hideAsync().catch(() => {});
-        Animated.timing(splashOpacity, {
-          toValue: 0,
-          duration: 350,
-          useNativeDriver: true,
-        }).start(() => setInAppSplashDone(true));
-      }
-    }, 8000);
-    return () => clearTimeout(timeout);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
   return (
     <ErrorBoundary>
       <QueryClientProvider client={queryClient}>
@@ -280,37 +185,12 @@ export default function RootLayout() {
                 <MatchAlertsBridge />
                 <RootLayoutNav />
                 <NexoraMenuOverlay />
+                <StartupCoordinator />
               </UserStateProvider>
             </NexoraProvider>
-            {!inAppSplashDone && (
-              <Animated.View
-                style={[splashStyles.overlay, { opacity: splashOpacity }]}
-                pointerEvents="none"
-              >
-                <Image
-                  source={require("../assets/images/logo.png")}
-                  style={splashStyles.logo}
-                  resizeMode="contain"
-                />
-              </Animated.View>
-            )}
           </GestureHandlerRootView>
         </SafeAreaProvider>
       </QueryClientProvider>
     </ErrorBoundary>
   );
 }
-
-const splashStyles = StyleSheet.create({
-  overlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: "#050505",
-    alignItems: "center",
-    justifyContent: "center",
-    zIndex: 9999,
-  },
-  logo: {
-    width: 180,
-    height: 180,
-  },
-});

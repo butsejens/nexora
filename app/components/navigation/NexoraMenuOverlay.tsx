@@ -7,6 +7,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { COLORS } from "@/constants/colors";
 import { useUiStore } from "@/store/uiStore";
 import { ScalePress } from "@/components/ui/ScalePress";
+import { APP_MODULES_BY_ID, APP_SHELL_TABS } from "@/constants/module-registry";
 
 type MenuItem = {
   label: string;
@@ -15,12 +16,12 @@ type MenuItem = {
 };
 
 const MENU_ITEMS: MenuItem[] = [
-  { label: "Home", route: "/(tabs)/home", icon: "home-outline" },
-  { label: "Sport", route: "/sport", icon: "football-outline" },
-  { label: "Films & Series", route: "/films-series", icon: "film-outline" },
-  { label: "IPTV", route: "/iptv", icon: "tv-outline" },
-  { label: "Library", route: "/watchlist", icon: "library-outline" },
-  { label: "Settings", route: "/settings", icon: "settings-outline" },
+  { label: "Home", route: APP_SHELL_TABS.home, icon: "home-outline" },
+  { label: APP_MODULES_BY_ID.sport.label, route: APP_MODULES_BY_ID.sport.route, icon: APP_MODULES_BY_ID.sport.icon as keyof typeof Ionicons.glyphMap },
+  { label: APP_MODULES_BY_ID.filmsSeries.label, route: APP_MODULES_BY_ID.filmsSeries.route, icon: APP_MODULES_BY_ID.filmsSeries.icon as keyof typeof Ionicons.glyphMap },
+  { label: APP_MODULES_BY_ID.iptv.label, route: APP_MODULES_BY_ID.iptv.route, icon: APP_MODULES_BY_ID.iptv.icon as keyof typeof Ionicons.glyphMap },
+  { label: "Library", route: APP_MODULES_BY_ID.watchlist.route, icon: "library-outline" },
+  { label: APP_MODULES_BY_ID.settings.label, route: APP_MODULES_BY_ID.settings.route, icon: APP_MODULES_BY_ID.settings.icon as keyof typeof Ionicons.glyphMap },
 ];
 
 export function NexoraMenuOverlay() {

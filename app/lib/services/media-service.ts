@@ -19,6 +19,8 @@ import {
 import { dedupeVodItems } from "@/lib/vod-curation";
 import {
   enrichVodModuleItem,
+  buildCollectionGroups,
+  buildStudioGroups,
   pickFeaturedItem,
   type VodModuleItem,
 } from "@/lib/vod-module";
@@ -130,6 +132,86 @@ export interface VodStudioPayload {
   items: VodModuleItem[];
 }
 
+type HomepagePayload = {
+  rows?: Array<{
+    id?: string;
+    title?: string;
+    label?: string;
+    type?: "movie" | "series" | string;
+    items?: any[];
+  }>;
+  rails?: Array<{
+    id?: string;
+    title?: string;
+    label?: string;
+    type?: "movie" | "series" | string;
+    items?: any[];
+  }>;
+  hero?: any;
+};
+
+function hasServerError(payload: unknown): payload is { error: string } {
+  return Boolean(payload && typeof payload === "object" && (payload as any).error);
+}
+
+function normalizeHomepageRows(payload: HomepagePayload | null | undefined) {
+  const rows = Array.isArray(payload?.rows)
+    ? payload?.rows
+    : Array.isArray(payload?.rails)
+      ? payload?.rails
+      : [];
+  return rows.filter(Boolean);
+}
+
+async function fetchHomepagePayload(): Promise<HomepagePayload | null> {
+  const payload = await safeFetch<HomepagePayload | null>("/api/homepage", null, true);
+  if (!payload || hasServerError(payload)) return null;
+  return payload;
+}
+
+function buildItemsFromHomepage(payload: HomepagePayload | null | undefined): VodModuleItem[] {
+  const rows = normalizeHomepageRows(payload);
+  return dedupeModuleItems(
+    rows.flatMap((row) =>
+      buildVodItems(
+        row.items || [],
+        row.type === "movie" || row.type === "series" ? row.type : undefined,
+      ),
+    ),
+  );
+}
+
+function nonEmptyArray(value: unknown): any[] {
+  return Array.isArray(value) ? value : [];
+}
+
+function hasMediaRows(value: any): boolean {
+  return (
+    nonEmptyArray(value?.trending).length > 0 ||
+    nonEmptyArray(value?.popular).length > 0 ||
+    nonEmptyArray(value?.newReleases).length > 0 ||
+    nonEmptyArray(value?.topRated).length > 0
+  );
+}
+
+function buildTvMazeFallbackItems(schedule: any[]): VodModuleItem[] {
+  if (!Array.isArray(schedule) || schedule.length === 0) return [];
+  return dedupeModuleItems(
+    schedule.slice(0, 60).map((entry) =>
+      enrichVodModuleItem({
+        id: `tvmaze-${String(entry?.showId || entry?.id || "")}`,
+        type: "series",
+        title: String(entry?.showName || entry?.name || "").trim() || "TV Episode",
+        poster: entry?.image || null,
+        backdrop: entry?.image || null,
+        synopsis: [entry?.network, entry?.airtime].filter(Boolean).join(" • "),
+        genre: [],
+        isNew: true,
+      }),
+    ),
+  );
+}
+
 function dedupeModuleItems(items: VodModuleItem[]): VodModuleItem[] {
   return dedupeVodItems(items as any) as VodModuleItem[];
 }
@@ -147,11 +229,12 @@ function buildVodItems(items: any[], type?: "movie" | "series"): VodModuleItem[]
 }
 
 export async function getMediaHome(): Promise<MediaHomeRail[]> {
-  const raw = await safeFetch<any>("/api/homepage", {});
-  if (!raw?.rails) return [];
-  return (raw.rails as any[]).map(rail => ({
+  const raw = await fetchHomepagePayload();
+  const rows = normalizeHomepageRows(raw);
+  if (!rows.length) return [];
+  return rows.map(rail => ({
     id: String(rail.id ?? rail.label ?? ""),
-    label: String(rail.label ?? ""),
+    label: String(rail.title ?? rail.label ?? ""),
     items: (Array.isArray(rail.items) ? rail.items : []).map((item: any) => {
       const normalized = item.type === "series" || item.mediaType === "series"
         ? normalizeSeriesFromTmdb(item)
@@ -163,6 +246,24 @@ export async function getMediaHome(): Promise<MediaHomeRail[]> {
 
 export async function getTrendingMovies(page = 1): Promise<Movie[]> {
   const raw = await safeFetch<any>(`/api/movies/trending?page=${page}`, {}, true);
+  const homepageRows = !hasMediaRows(raw) && page === 1
+    ? buildItemsFromHomepage(await fetchHomepagePayload()).filter((item) => item.type === "movie")
+    : [];
+  if (!hasMediaRows(raw) && homepageRows.length) {
+    return homepageRows.map((item) =>
+      enforceMetadataOnly(
+        normalizeMovieFromTmdb({
+          id: item.tmdbId || Number(item.id) || undefined,
+          title: item.title,
+          poster: item.poster,
+          backdrop: item.backdrop,
+          rating: item.rating,
+          release_date: item.releaseDate,
+          genre_ids: item.genreIds,
+        }),
+      ),
+    );
+  }
   return mapTrendingRail(
     page > 1 ? raw?.popular : [...(raw?.trending || []), ...(raw?.popular || []), ...(raw?.newReleases || []), ...(raw?.topRated || [])],
     normalizeMovieFromTmdb,
@@ -171,6 +272,24 @@ export async function getTrendingMovies(page = 1): Promise<Movie[]> {
 
 export async function getTrendingSeries(page = 1): Promise<Series[]> {
   const raw = await safeFetch<any>(`/api/series/trending?page=${page}`, {}, true);
+  const homepageRows = !hasMediaRows(raw) && page === 1
+    ? buildItemsFromHomepage(await fetchHomepagePayload()).filter((item) => item.type === "series")
+    : [];
+  if (!hasMediaRows(raw) && homepageRows.length) {
+    return homepageRows.map((item) =>
+      enforceMetadataOnly(
+        normalizeSeriesFromTmdb({
+          id: item.tmdbId || Number(item.id) || undefined,
+          name: item.title,
+          poster: item.poster,
+          backdrop: item.backdrop,
+          rating: item.rating,
+          first_air_date: item.releaseDate,
+          genre_ids: item.genreIds,
+        }),
+      ),
+    );
+  }
   return mapTrendingRail(
     page > 1 ? raw?.popular : [...(raw?.trending || []), ...(raw?.popular || []), ...(raw?.newReleases || []), ...(raw?.topRated || [])],
     normalizeSeriesFromTmdb,
@@ -316,24 +435,39 @@ export async function searchMedia(query: string): Promise<SearchResult> {
 }
 
 export async function getVodHomePayload(): Promise<VodHomePayload> {
-  const [movieData, seriesData] = await Promise.all([
+  const [movieData, seriesData, homepagePayload] = await Promise.all([
     safeFetch<any>("/api/movies/trending", {}, true),
     safeFetch<any>("/api/series/trending", {}, true),
+    fetchHomepagePayload(),
   ]);
 
-  const enrichedMovies = buildVodItems([
+  const enrichedMoviesFromTrending = buildVodItems([
     ...(movieData?.trending || []).slice(0, 14).map((item: any) => ({ ...item, isTrending: true })),
     ...(movieData?.popular || []).slice(0, 14),
     ...(movieData?.newReleases || []).slice(0, 14).map((item: any) => ({ ...item, isNew: true })),
     ...(movieData?.topRated || []).slice(0, 14),
   ], "movie");
 
-  const enrichedSeries = buildVodItems([
+  const enrichedSeriesFromTrending = buildVodItems([
     ...(seriesData?.trending || []).slice(0, 14).map((item: any) => ({ ...item, isTrending: true })),
     ...(seriesData?.popular || []).slice(0, 14),
     ...(seriesData?.newReleases || []).slice(0, 14).map((item: any) => ({ ...item, isNew: true })),
     ...(seriesData?.topRated || []).slice(0, 14),
   ], "series");
+
+  const homepageItems = buildItemsFromHomepage(homepagePayload);
+  const homepageMovies = homepageItems.filter((item) => item.type === "movie");
+  const homepageSeries = homepageItems.filter((item) => item.type === "series");
+
+  const enrichedMovies = dedupeModuleItems([
+    ...enrichedMoviesFromTrending,
+    ...homepageMovies,
+  ]);
+
+  const enrichedSeries = dedupeModuleItems([
+    ...enrichedSeriesFromTrending,
+    ...homepageSeries,
+  ]);
 
   let allItems = dedupeModuleItems([...enrichedMovies, ...enrichedSeries]);
 
@@ -344,8 +478,21 @@ export async function getVodHomePayload(): Promise<VodHomePayload> {
     allItems = dedupeModuleItems(fallbackCatalog.items || []);
   }
 
+  // Final real-data fallback (no fake placeholders): TVMaze schedule items.
+  if (allItems.length === 0) {
+    const schedule = await safeFetch<any[]>("/api/tvmaze/schedule", [], true);
+    allItems = buildTvMazeFallbackItems(schedule);
+  }
+
+  const heroCandidate = homepagePayload?.hero
+    ? enrichVodModuleItem({
+        ...homepagePayload.hero,
+        type: homepagePayload.hero?.type || homepagePayload.hero?.mediaType || "movie",
+      })
+    : null;
+
   return {
-    featured: pickFeaturedItem(allItems),
+    featured: heroCandidate || pickFeaturedItem(allItems),
     trendingMovies: enrichedMovies.filter((item) => item.isTrending).slice(0, 16),
     trendingSeries: enrichedSeries.filter((item) => item.isTrending).slice(0, 16),
     recentMovies: enrichedMovies.filter((item) => item.isNew).slice(0, 16),
@@ -365,8 +512,17 @@ export async function getVodCatalogChunk(cursorYear?: number | null): Promise<Vo
   });
   if (cursorYear) params.set("cursorYear", String(cursorYear));
   const payload = await safeFetch<any>(`/api/vod/catalog?${params.toString()}`, {});
+  const catalogItems = buildVodItems(payload?.items || []);
+  if (catalogItems.length > 0) {
+    return {
+      items: catalogItems,
+      meta: payload?.meta,
+    };
+  }
+
+  const homepageItems = buildItemsFromHomepage(await fetchHomepagePayload());
   return {
-    items: buildVodItems(payload?.items || []),
+    items: homepageItems,
     meta: payload?.meta,
   };
 }
@@ -400,7 +556,21 @@ export async function getVodCollections(): Promise<VodCollectionPayload[]> {
     })
   );
 
-  return results.filter((item) => item.itemCount > 2);
+  const usable = results.filter((item) => item.itemCount > 2);
+  if (usable.length > 0) return usable;
+
+  const homePayload = await getVodHomePayload();
+  const grouped = buildCollectionGroups(homePayload.allItems || []).slice(0, 20);
+  return grouped
+    .filter((group) => (group.itemCount || 0) > 2)
+    .map((group) => ({
+      id: group.key,
+      name: group.name,
+      itemCount: group.itemCount,
+      items: group.items,
+      poster: group.posterUri || null,
+      backdrop: group.bannerUri || null,
+    }));
 }
 
 export async function getVodCollectionById(id: string) {
@@ -432,7 +602,20 @@ export async function getVodStudios(): Promise<VodStudioPayload[]> {
     })
   );
 
-  return results.filter((item) => item.itemCount > 3);
+  const usable = results.filter((item) => item.itemCount > 3);
+  if (usable.length > 0) return usable;
+
+  const homePayload = await getVodHomePayload();
+  return buildStudioGroups(homePayload.allItems || [])
+    .slice(0, 24)
+    .filter((group) => (group.itemCount || 0) > 2)
+    .map((group) => ({
+      id: String(group.id || group.name),
+      name: group.name,
+      logo: group.logoUri || null,
+      itemCount: group.itemCount,
+      items: group.items,
+    }));
 }
 
 export async function getVodStudioById(id: string) {

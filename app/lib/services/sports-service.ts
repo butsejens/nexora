@@ -117,18 +117,37 @@ export interface SportsHomeData {
  */
 export async function getSportsHome(): Promise<SportsHomeData> {
   const today = getMatchdayYmd(); // Brussels/device TZ, not UTC
-  const raw = await safeFetch<any>(`/api/sports/by-date?date=${encodeURIComponent(today)}`, {}, true);
-  return normalizeSportsHomePayload(raw);
+  const byDateRaw = await safeFetch<any>(`/api/sports/by-date?date=${encodeURIComponent(today)}`, {}, true);
+  const byDate = normalizeSportsHomePayload(byDateRaw);
+  if (hasSportsData(byDate)) return byDate;
+
+  const liveRaw = await safeFetch<any>("/api/sports/live", {}, true);
+  const live = normalizeSportsHomePayload(liveRaw);
+  return mergeSportsPayloads(byDate, live);
 }
 
 export async function getSportsByDate(dateYmd: string): Promise<SportsHomeData> {
   const raw = await safeFetch<any>(`/api/sports/by-date?date=${encodeURIComponent(dateYmd)}`, {}, true);
-  return normalizeSportsHomePayload(raw);
+  const byDate = normalizeSportsHomePayload(raw);
+  if (hasSportsData(byDate)) return byDate;
+
+  if (dateYmd === getMatchdayYmd()) {
+    const liveRaw = await safeFetch<any>("/api/sports/live", {}, true);
+    const live = normalizeSportsHomePayload(liveRaw);
+    return mergeSportsPayloads(byDate, live);
+  }
+
+  return byDate;
 }
 
 export async function getSportsLive(): Promise<SportsHomeData> {
   const raw = await safeFetch<any>("/api/sports/live", {}, true);
-  return normalizeSportsHomePayload(raw);
+  const live = normalizeSportsHomePayload(raw);
+  if (hasSportsData(live)) return live;
+
+  const todayRaw = await safeFetch<any>(`/api/sports/by-date?date=${encodeURIComponent(getMatchdayYmd())}`, {}, true);
+  const byDate = normalizeSportsHomePayload(todayRaw);
+  return mergeSportsPayloads(live, byDate);
 }
 
 function normalizeSportsHomePayload(raw: any): SportsHomeData {
@@ -151,6 +170,25 @@ function normalizeSportsHomePayload(raw: any): SportsHomeData {
     live: mapList(raw?.live),
     upcoming: mapList(raw?.upcoming),
     finished: mapList(raw?.finished),
+  };
+}
+
+function hasSportsData(payload: SportsHomeData): boolean {
+  return payload.live.length + payload.upcoming.length + payload.finished.length > 0;
+}
+
+function mergeSportsPayloads(primary: SportsHomeData, secondary: SportsHomeData): SportsHomeData {
+  const deduped = new Map<string, Match>();
+  for (const item of [...primary.live, ...primary.upcoming, ...primary.finished, ...secondary.live, ...secondary.upcoming, ...secondary.finished]) {
+    if (!item?.id) continue;
+    if (!deduped.has(item.id)) deduped.set(item.id, item);
+  }
+
+  const all = [...deduped.values()];
+  return {
+    live: all.filter((match) => match.status === "live" || match.status === "halftime"),
+    upcoming: all.filter((match) => match.status === "scheduled"),
+    finished: all.filter((match) => match.status === "finished"),
   };
 }
 

@@ -110,8 +110,6 @@ export function SearchTab({ onSelectResult }: SearchTabProps) {
   const [debouncedQuery, setDebouncedQuery] = useState('');
   const [results, setResults] = useState<SearchResult[]>([]);
   const [recentSearches, setRecentSearches] = useState<string[]>([]);
-  const sportsEnabled = useOnboardingStore((s) => s.sportsEnabled);
-  const moviesEnabled = useOnboardingStore((s) => s.moviesEnabled);
   const iptvEnabled = useOnboardingStore((s) => s.iptvEnabled);
   const insets = useSafeAreaInsets();
   const { iptvChannels } = useNexora();
@@ -233,7 +231,7 @@ export function SearchTab({ onSelectResult }: SearchTabProps) {
       }
     },
     staleTime: 5 * 60 * 1000,
-    enabled: sportsEnabled,
+    enabled: true,
   });
 
   // Fetch media data for search
@@ -263,7 +261,7 @@ export function SearchTab({ onSelectResult }: SearchTabProps) {
       }
     },
     staleTime: 10 * 60 * 1000, // 10 minutes
-    enabled: moviesEnabled,
+    enabled: true,
   });
 
   // Dynamic query-based media search for full catalog coverage.
@@ -273,7 +271,7 @@ export function SearchTab({ onSelectResult }: SearchTabProps) {
       if (debouncedQuery.length < 2) return { movies: [], series: [] };
       return apiRequestJson<any>(`/api/search/multi?query=${encodeURIComponent(debouncedQuery)}`);
     },
-    enabled: moviesEnabled && debouncedQuery.length >= 2,
+    enabled: debouncedQuery.length >= 2,
     staleTime: 30 * 1000,
   });
 
@@ -411,7 +409,7 @@ export function SearchTab({ onSelectResult }: SearchTabProps) {
   }, [debouncedQuery.length, mediaQuery.data, mediaSearchQuery.data]);
 
   const curatedSportsItems = useMemo(() => {
-    if (!sportsEnabled || debouncedQuery.length < 2) return [] as SearchResult[];
+    if (debouncedQuery.length < 2) return [] as SearchResult[];
     const localeSignals = detectLocaleSignals();
     const teams = searchTeams(debouncedQuery, ['football'], localeSignals, 60);
     const competitions = searchCompetitions(debouncedQuery, ['football'], localeSignals, 40);
@@ -451,7 +449,7 @@ export function SearchTab({ onSelectResult }: SearchTabProps) {
     }));
 
     return [...teamItems, ...competitionItems];
-  }, [debouncedQuery, sportsEnabled]);
+  }, [debouncedQuery]);
 
   // Build searchable IPTV items
   const iptvItems = useMemo(() => {
@@ -477,15 +475,11 @@ export function SearchTab({ onSelectResult }: SearchTabProps) {
     const allItems: SearchResult[] = [];
     
     // Add sports results
-    if (sportsEnabled) {
-      allItems.push(...sportsItems);
-      allItems.push(...curatedSportsItems);
-    }
+    allItems.push(...sportsItems);
+    allItems.push(...curatedSportsItems);
 
     // Add media results
-    if (moviesEnabled) {
-      allItems.push(...mediaItems);
-    }
+    allItems.push(...mediaItems);
 
     // Add IPTV results
     if (iptvEnabled) {
@@ -554,7 +548,7 @@ export function SearchTab({ onSelectResult }: SearchTabProps) {
     });
 
     setResults(deduped.slice(0, 80));
-  }, [sportsEnabled, moviesEnabled, iptvEnabled, sportsItems, curatedSportsItems, mediaItems, iptvItems]);
+  }, [iptvEnabled, sportsItems, curatedSportsItems, mediaItems, iptvItems]);
 
   useEffect(() => {
     performSearch(query);
@@ -579,9 +573,9 @@ export function SearchTab({ onSelectResult }: SearchTabProps) {
   };
 
   const baseLoading =
-    (sportsEnabled && sportsQuery.isLoading && !sportsQuery.data) ||
-    (moviesEnabled && mediaQuery.isLoading && !mediaQuery.data);
-  const liveSearchLoading = moviesEnabled && debouncedQuery.length >= 2 && mediaSearchQuery.isFetching;
+    (sportsQuery.isLoading && !sportsQuery.data) ||
+    (mediaQuery.isLoading && !mediaQuery.data);
+  const liveSearchLoading = debouncedQuery.length >= 2 && mediaSearchQuery.isFetching;
   const isLoading = Boolean(baseLoading || liveSearchLoading);
   const showResults = query.trim().length > 0;
 

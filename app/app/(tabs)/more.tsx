@@ -4,8 +4,8 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useFollowState } from "@/context/UserStateContext";
-import { useOnboardingStore } from "@/store/onboarding-store";
 import { NexoraHeader } from "@/components/NexoraHeader";
+import { APP_MODULES_BY_ID } from "@/constants/module-registry";
 
 type MenuItem = {
   id: string;
@@ -67,27 +67,24 @@ export default function MoreScreen() {
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const horizontalPadding = Math.max(12, Math.min(18, Math.round(width * 0.04)));
-  const sportsEnabled = useOnboardingStore((s) => s.sportsEnabled);
-  const moviesEnabled = useOnboardingStore((s) => s.moviesEnabled);
-  const iptvEnabled = useOnboardingStore((s) => s.iptvEnabled);
   const { followedTeams, followedMatches } = useFollowState();
   const followCount = followedTeams.length + followedMatches.length;
 
   const mediaItems = useMemo<MenuItem[]>(
     () => [
       {
-        id: "films-series",
-        title: "Films & Series",
-        subtitle: "Trending films, episodes and curated picks",
-        icon: "film-outline",
-        route: "/films-series",
+        id: APP_MODULES_BY_ID.filmsSeries.id,
+        title: APP_MODULES_BY_ID.filmsSeries.label,
+        subtitle: APP_MODULES_BY_ID.filmsSeries.subtitle,
+        icon: APP_MODULES_BY_ID.filmsSeries.icon as keyof typeof Ionicons.glyphMap,
+        route: APP_MODULES_BY_ID.filmsSeries.route,
       },
       {
-        id: "iptv",
-        title: "IPTV",
-        subtitle: "Open channels and playlist streams",
-        icon: "tv-outline",
-        route: "/iptv",
+        id: APP_MODULES_BY_ID.iptv.id,
+        title: APP_MODULES_BY_ID.iptv.label,
+        subtitle: APP_MODULES_BY_ID.iptv.subtitle,
+        icon: APP_MODULES_BY_ID.iptv.icon as keyof typeof Ionicons.glyphMap,
+        route: APP_MODULES_BY_ID.iptv.route,
       },
     ],
     [],
@@ -96,11 +93,11 @@ export default function MoreScreen() {
   const sportItems = useMemo<MenuItem[]>(
     () => [
       {
-        id: "sport",
-        title: "Sport",
-        subtitle: "Live center, fixtures and competition data",
-        icon: "football-outline",
-        route: "/sport",
+        id: APP_MODULES_BY_ID.sport.id,
+        title: APP_MODULES_BY_ID.sport.label,
+        subtitle: APP_MODULES_BY_ID.sport.subtitle,
+        icon: APP_MODULES_BY_ID.sport.icon as keyof typeof Ionicons.glyphMap,
+        route: APP_MODULES_BY_ID.sport.route,
       },
     ],
     [],
@@ -109,25 +106,25 @@ export default function MoreScreen() {
   const userItems = useMemo<MenuItem[]>(
     () => [
       {
-        id: "watchlist",
-        title: "Watchlist",
-        subtitle: "Saved titles and channels",
-        icon: "bookmark-outline",
-        route: "/watchlist",
+        id: APP_MODULES_BY_ID.watchlist.id,
+        title: APP_MODULES_BY_ID.watchlist.label,
+        subtitle: APP_MODULES_BY_ID.watchlist.subtitle,
+        icon: APP_MODULES_BY_ID.watchlist.icon as keyof typeof Ionicons.glyphMap,
+        route: APP_MODULES_BY_ID.watchlist.route,
       },
       {
-        id: "history",
-        title: "History",
-        subtitle: "Recently watched overview",
-        icon: "time-outline",
-        route: "/history",
+        id: APP_MODULES_BY_ID.history.id,
+        title: APP_MODULES_BY_ID.history.label,
+        subtitle: APP_MODULES_BY_ID.history.subtitle,
+        icon: APP_MODULES_BY_ID.history.icon as keyof typeof Ionicons.glyphMap,
+        route: APP_MODULES_BY_ID.history.route,
       },
       {
-        id: "notifications",
-        title: "Notifications",
-        subtitle: "Follow alerts and updates",
-        icon: "notifications-outline",
-        route: "/notifications",
+        id: APP_MODULES_BY_ID.notifications.id,
+        title: APP_MODULES_BY_ID.notifications.label,
+        subtitle: APP_MODULES_BY_ID.notifications.subtitle,
+        icon: APP_MODULES_BY_ID.notifications.icon as keyof typeof Ionicons.glyphMap,
+        route: APP_MODULES_BY_ID.notifications.route,
         badge: followCount > 0 ? String(followCount) : undefined,
       },
     ],
@@ -137,18 +134,18 @@ export default function MoreScreen() {
   const systemItems = useMemo<MenuItem[]>(
     () => [
       {
-        id: "settings",
-        title: "Settings",
-        subtitle: "Modules, onboarding and preferences",
-        icon: "settings-outline",
-        route: "/settings",
+        id: APP_MODULES_BY_ID.settings.id,
+        title: APP_MODULES_BY_ID.settings.label,
+        subtitle: APP_MODULES_BY_ID.settings.subtitle,
+        icon: APP_MODULES_BY_ID.settings.icon as keyof typeof Ionicons.glyphMap,
+        route: APP_MODULES_BY_ID.settings.route,
       },
       {
-        id: "premium",
-        title: "Premium",
-        subtitle: "AI analysis + full access from €2.99/week",
-        icon: "diamond-outline",
-        route: "/premium",
+        id: APP_MODULES_BY_ID.premium.id,
+        title: APP_MODULES_BY_ID.premium.label,
+        subtitle: APP_MODULES_BY_ID.premium.subtitle,
+        icon: APP_MODULES_BY_ID.premium.icon as keyof typeof Ionicons.glyphMap,
+        route: APP_MODULES_BY_ID.premium.route,
       },
       {
         id: "legal",
@@ -183,13 +180,9 @@ export default function MoreScreen() {
       >
         <Section
           title="MEDIA"
-          items={
-            moviesEnabled
-              ? (iptvEnabled ? mediaItems : mediaItems.filter((item) => item.id !== "iptv"))
-              : (iptvEnabled ? mediaItems.filter((item) => item.id === "iptv") : [])
-          }
+          items={mediaItems}
         />
-        <Section title="SPORT" items={sportsEnabled ? sportItems : []} />
+        <Section title="SPORT" items={sportItems} />
         <Section title="USER" items={userItems} />
         <Section title="SYSTEM" items={systemItems} />
       </ScrollView>
