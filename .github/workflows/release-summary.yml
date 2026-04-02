@@ -1,0 +1,65 @@
+name: Release Summary
+
+on:
+  workflow_call:
+    inputs:
+      route:
+        required: true
+        type: string
+      reason:
+        required: true
+        type: string
+      result_json:
+        required: true
+        type: string
+      ota_status:
+        required: true
+        type: string
+      apk_status:
+        required: true
+        type: string
+      server_status:
+        required: true
+        type: string
+
+jobs:
+  summary:
+    name: Publish Release Report
+    runs-on: ubuntu-latest
+    steps:
+      - name: Build run summary
+        run: |
+          {
+            echo "## Nexora Release Report"
+            echo ""
+            echo "- Selected route: **${{ inputs.route }}**"
+            echo "- Reason: ${{ inputs.reason }}"
+            echo "- OTA flow: **${{ inputs.ota_status }}**"
+            echo "- APK flow: **${{ inputs.apk_status }}**"
+            echo "- Server flow: **${{ inputs.server_status }}**"
+            echo ""
+            echo "### Decision Engine Payload"
+            echo '```json'
+            echo '${{ inputs.result_json }}'
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Write machine-readable summary artifact
+        run: |
+          cat > release-summary.json <<'EOF'
+          {
+            "route": "${{ inputs.route }}",
+            "reason": "${{ inputs.reason }}",
+            "otaStatus": "${{ inputs.ota_status }}",
+            "apkStatus": "${{ inputs.apk_status }}",
+            "serverStatus": "${{ inputs.server_status }}",
+            "decision": ${{ inputs.result_json }}
+          }
+          EOF
+
+      - name: Upload release summary
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-summary
+          path: release-summary.json
+          retention-days: 14

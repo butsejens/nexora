@@ -11,7 +11,6 @@ import {
   Modal,
   Platform,
   ActivityIndicator,
-  Linking,
   Image,
 } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
@@ -22,555 +21,24 @@ import * as ImagePicker from "expo-image-picker";
 import Constants from "expo-constants";
 import * as Application from "expo-application";
 import * as Updates from "expo-updates";
+
+import { NexoraHeader } from "@/components/NexoraHeader";
+import { UpdateModal } from "@/components/update";
+import { SectionHeader, SurfaceCard } from "@/components/ui";
 import { COLORS } from "@/constants/colors";
 import { TYPOGRAPHY } from "@/constants/design-system";
-import { NexoraHeader } from "@/components/NexoraHeader";
-import { PremiumOnboardingFlow } from "@/features/onboarding/PremiumOnboardingFlow";
-import { SectionHeader, SurfaceCard } from "@/components/ui";
 import { useNexora } from "@/context/NexoraContext";
-import { useTranslation } from "@/lib/useTranslation";
+import { PremiumOnboardingFlow } from "@/features/onboarding/PremiumOnboardingFlow";
+import { fetchM3UText } from "@/lib/fetchM3U";
 import { t as tFn } from "@/lib/i18n";
 import { apiRequest, queryClient } from "@/lib/query-client";
-import { fetchM3UText } from "@/lib/fetchM3U";
 import { parseM3UContentAsync } from "@/lib/parseM3U";
 import { SafeHaptics } from "@/lib/safeHaptics";
-import * as FileSystem from "expo-file-system/legacy";
-import * as IntentLauncher from "expo-intent-launcher";
+import { useTranslation } from "@/lib/useTranslation";
+import { getUpdateDiagnosticsAsync } from "@/services/update-diagnostics";
+import { compareVersions } from "@/services/update-service";
 import { useOnboardingStore } from "@/store/onboarding-store";
 import { useUiStore } from "@/store/uiStore";
-import { getUpdateDiagnosticsAsync } from "@/services/update-diagnostics";
-
-const CHANGELOG: { version: string; date: string; changes: string[] }[] = [
-  {
-    version: "2.6.14",
-    date: "2026-03-28",
-    changes: [
-      "Sport UI volledig vernieuwd: wedstrijdkaarten, timeline en smart match feed",
-      "Match-detail header toont wedstrijdinfo boven de tab-balk",
-      "Teams & Standen laadt correct (grijs scherm opgelost)",
-      "Featured sectie en horizontale Smart Match Feed toegevoegd",
-      "View Full Schedule navigatie hersteld",
-      "Insights pane en matchday datum-navigatie verbeterd",
-      "Update-check verbeterd: OTA wordt eerst gecontroleerd, onafhankelijk van server",
-      "App controleert nu automatisch op updates bij elke opstart",
-    ],
-  },
-  {
-    version: "2.6.0",
-    date: "2026-03-26",
-    changes: [
-      "Nieuwe premium Movies & Series module met HOME, SEARCH en MORE navigatie",
-      "Stap 1: automatische categorisatie op basis van genres, keywords, metadata en tags",
-      "Stap 2: collections/franchises toegevoegd (o.a. Star Wars, Harry Potter, Marvel) met chronologische volgorde oud -> nieuw",
-      "Stap 3: studio-sectie toegevoegd met klikbare studio's en gegroepeerde titels",
-      "Nieuwe collectie- en studiopagina's voor dieper browsen vanuit de module",
-    ],
-  },
-  {
-    version: "2.5.39",
-    date: "2026-03-20",
-    changes: [
-      "Teams-tab toegevoegd aan competitiepagina (alle teams met logo's)",
-      "Kwaliteitsselector vernieuwd als modaal (zoals audiotaal)",
-      "Spelerssterktes en zwaktes volledig zichtbaar (geen tekst meer afgeknipt)",
-      "Bronvermelding verborgen op spelersprofiel",
-      "Sportmenu verbergt soepel bij scrollen — enkel 'Nexora Sport' blijft zichtbaar",
-      "Meer wedstrijden geladen voor competities (±4 weken bereik)",
-    ],
-  },
-  {
-    version: "2.5.35",
-    date: "2026-03-19",
-    changes: [
-      "Trailer-knop nu zichtbaar bij bijna alle films en series (EN/NL/DE/FR talen)",
-      "Spelerfoto's en marktwaardes verbeterd voor alle competities (50+ clubnamen)",
-      "Teamlogo's gecorrigeerd: Lyon, AEK Athens, Mainz, Shakhtar, AZ Alkmaar, Sparta Prague, Lech Poznan",
-      "Wikipedia-fotolimiet verhoogd naar 40 spelers per team",
-    ],
-  },
-  {
-    version: "2.5.34",
-    date: "2026-03-19",
-    changes: [
-      "Team-detail pagina crasht niet meer bij openen",
-      "Trailer opent nu direct in YouTube-app in plaats van foutmelding",
-      "50+ teamlogo's toegevoegd voor Europa League en Conference League clubs",
-      "Wikipedia-fallback voor ontbrekende logo's in standen en topscorers",
-    ],
-  },
-  {
-    version: "2.5.33",
-    date: "2026-03-19",
-    changes: [
-      "Spelersfotos en marktwaardes nu beschikbaar voor alle competities",
-      "Clubwaarde zichtbaar op team-detail pagina",
-      "Transfermarkt API hersteld — echte marktdata in plaats van schattingen",
-      "Competitielogo's lokaal opgeslagen (UCL, UEL, UECL, Challenger Pro League)",
-      "Update-melding navigeert nu correct naar update-scherm",
-    ],
-  },
-  {
-    version: "2.5.23",
-    date: "2026-03-18",
-    changes: [
-      "Wedstrijddetail toont nu rijkere statistieken, echte timeline-events en automatische hoogtepunten",
-      "Sport-home is compacter en premiumer met snellere scanbare matchcards",
-      "Films en series openen sneller door detail-prefetch en directe cache-first rendering",
-    ],
-  },
-  {
-    version: "2.5.22",
-    date: "2026-03-18",
-    changes: [
-      "Standalone APK gebruikt nu standaard de productie-server in plaats van localhost",
-      "Release build kan daardoor weer correct verbinden met de backend",
-      "OTA kanaalconfiguratie blijft actief voor verdere snelle tests",
-    ],
-  },
-  {
-    version: "2.5.21",
-    date: "2026-03-18",
-    changes: [
-      "Visuele upgrade: actieve tab glow-effect en score-glow op live kaarten",
-      "Momentum Dominance Bar in wedstrijdstatistieken",
-      "Mijn Teams sectie: volg je favoriete teams en zie hun wedstrijden direct",
-      "Sport zoekfunctie: zoek wedstrijden en teams via de zoekbalk",
-      "Multi-sport kleuren en iconen per sport in wedstrijdkaarten",
-      "Prestatie-optimalisaties: React.memo, useCallback en useMemo doorheen de app",
-    ],
-  },
-  {
-    version: "2.0.39",
-    date: "2026-03-09",
-    changes: [
-      "Nieuwe NEXORA logo branding toegepast op app-icoon, splash en opstart-intro",
-      "Boot/intro screen toont nu het nieuwe logo op gsm",
-      "Versie- en updateflow gesynchroniseerd voor betrouwbare update melding",
-    ],
-  },
-  {
-    version: "2.0.38",
-    date: "2026-03-09",
-    changes: [
-      "Nieuw sport UI design: tab-navigatie met iconen, MATCH DAY hero banner, nieuwe wedstrijdkaarten",
-      "RemoveChild fout volledig opgelost in film/serie speler",
-      "Wedstrijdkaarten tonen nu league badge, divider en grotere teamlogo's",
-    ],
-  },
-  {
-    version: "2.0.37",
-    date: "2026-03-09",
-    changes: [
-      "Film/serie speler crash na 5 seconden opgelost (removeChild fout)",
-      "Ad-blocker minder agressief: debounce op DOM-observatie, stopt zodra video speelt",
-    ],
-  },
-  {
-    version: "2.0.36",
-    date: "2026-03-08",
-    changes: [
-      "Server URL gecorrigeerd naar Render cloudserver (verbindingsprobleem opgelost)",
-      "Update-check altijd via server + OTA gecombineerd (popup en manuele check)",
-      "Server versiebestand bijgewerkt naar correcte versie",
-    ],
-  },
-  {
-    version: "2.0.4",
-    date: "2026-03-08",
-    changes: [
-      "Sport menu tools nu backend-gedreven (Football Predictions, Daily Acca Picks, Ready to Play, Bet Builder)",
-      "Extra player hardening tegen advertentie-overlays en stabielere autoplay-start",
-      "Security hardening: encrypted secrets workflow + strengere env policy checks",
-      "Release scripts beperkt tot geautoriseerde MacBook host",
-    ],
-  },
-  {
-    version: "2.0.3",
-    date: "2026-03-08",
-    changes: [
-      "Premium Sport UI branding geüniformeerd naar NEXORA",
-      "AI Analyse uitgebreid met nieuwe signalenkaarten (Win Tilt, Volatiliteit, Goal Expectancy, AI Band)",
-      "Versieweergave in app gebruikt nu native app-versie als primaire bron",
-      "Android release versie bijgewerkt naar 2.0.3",
-    ],
-  },
-  {
-    version: "2.0.2",
-    date: "2026-03-08",
-    changes: [
-      "M3U parser verbeterd: series worden nu correct herkend (S01E01, Season, Seizoen, Episode patronen)",
-      "TMDB verrijking: films & series krijgen automatisch poster, backdrop, synopsis en rating",
-      "Server-side parser ook verbeterd met URL-pad, groepsnaam én naam-gebaseerde detectie",
-      "Meer IPTV-groepnamen herkend voor betere categorisatie",
-    ],
-  },
-  {
-    version: "1.9.1",
-    date: "2026-03-06",
-    changes: [
-      "Play-knop volledig verwijderd van alle poster-kaartjes",
-      "Nieuwe sectie 'Gratis Films (Archief)' — gratis publiek domein films via Internet Archive",
-      "Gratis films zijn direct afspeelbaar én te downloaden (echte MP4-bestanden)",
-      "Gratis films verschijnen ook in zoekresultaten",
-    ],
-  },
-  {
-    version: "1.9.0",
-    date: "2026-03-06",
-    changes: [
-      "Play-knop verwijderd van poster-kaartjes (enkel nog op hero banner)",
-      "Sport live-kaartje vergroot (285px) en tekst past nu volledig in het vak",
-      "15 filmgenres + 14 seriegenres (was 11 + 9) via TMDB Discover",
-      "Nieuwe 'Meer' knop per genrerij — laad onbeperkt meer content (tot 500 pagina's)",
-      "Decennia-rijen: Beste films/series van de 1990s, 2000s, 2010s, 2020s",
-      "Nieuwe API-endpoints: /api/movies/all, /api/series/all met paginering en jaar/decennium filter",
-      "Nieuwe eindpunten /api/movies/decades en /api/series/decades",
-    ],
-  },
-  {
-    version: "1.8.0",
-    date: "2026-03-06",
-    changes: [
-      "Echte offline downloads naar toestel via expo-file-system",
-      "Nieuw Downloads-tabblad om gedownloade content te beheren en afspelen",
-      "Play-knop direct op poster-kaartjes en hero banner",
-      "11 genre-rijen (Actie, Komedie, Drama, Horror, Sci-Fi…) per categorie",
-      "Film & serie catalogus uitgebreid met TMDB Discover-API (2000–nu)",
-      "Poster-afbeeldingen automatisch via TMDB",
-    ],
-  },
-  {
-    version: "1.7.1",
-    date: "2026-03-06",
-    changes: [
-      "Play/pauze knop werkt opnieuw: touch overlay herschreven",
-      "Download knop werkt correct op Android",
-      "18 film/serie servers (was 6): vidsrc.me, vidsrc.xyz, vidlink, multiembed, vidsrc.icu, videasy, nontongo, 111movies, smashystream, embedcc, rive, primewire",
-    ],
-  },
-  {
-    version: "1.7.0",
-    date: "2026-03-06",
-    changes: [
-      "Popups volledig geblokkeerd: volledig scherm interceptor + location.href override + meta refresh blokkering",
-      "Download/deel knop in speler voor alle content",
-      "Push melding bij nieuwe update (automatisch bij opstart)",
-      "Notificatie tikt door naar update scherm",
-    ],
-  },
-  {
-    version: "1.6.0",
-    date: "2026-03-06",
-    changes: [
-      "Server slaapstand opgelost: automatische keep-alive ping",
-      "App opstart niet meer vast op 85%",
-      "Film/serie popups volledig geblokkeerd (twee-laagse beveiliging)",
-      "In-app auto-update: detecteert en installeert nieuwe versie",
-    ],
-  },
-  {
-    version: "1.5.0",
-    date: "2026-03-06",
-    changes: [
-      "Sport UI volledig herwerkt: poster MatchCards, hero banner",
-      "Belgische competitie crash opgelost",
-      "Films & series afspeelknop hersteld",
-      "M3U URL parsering verbeterd (Xtream, .ts streams, genres)",
-      "Popup-blokkering versterkt zonder speler te breken",
-      "M3U8 samengevoegd onder één 'M3U URL' tab",
-      "Team- en competitielogo's: achtergrond verwijderd",
-      "Jupiler / RAAL logo's gecorrigeerd",
-    ],
-  },
-  {
-    version: "1.4.0",
-    date: "2026-03-05",
-    changes: [
-      "Logo prioriteit: TSDB > ESPN CDN > Wikipedia",
-      "Afbeeldingsproxy voor Transfermarkt CDN",
-      "Speler: absoluteFill layout-fix",
-      "Gratis VOD sectie verwijderd",
-    ],
-  },
-  {
-    version: "1.3.0",
-    date: "2026-03-04",
-    changes: [
-      "Sport UI herontwerp: poster MatchCard toegevoegd",
-      "Speler popup-fix + MatchCard verbeteringen",
-    ],
-  },
-  {
-    version: "1.0.0",
-    date: "2026-03-01",
-    changes: [
-      "Eerste release van NEXORA",
-      "Live TV, Films & Series via IPTV playlists",
-      "Xtream Codes ondersteuning",
-      "Sport-hub met wedstrijden, standen en topscorers",
-    ],
-  },
-];
-
-function compareVersions(a: string, b: string): number {
-  const pa = String(a || "")
-    .split(".")
-    .map((part) => {
-      const n = Number.parseInt(String(part).replace(/[^0-9]/g, ""), 10);
-      return Number.isFinite(n) ? n : 0;
-    });
-  const pb = String(b || "")
-    .split(".")
-    .map((part) => {
-      const n = Number.parseInt(String(part).replace(/[^0-9]/g, ""), 10);
-      return Number.isFinite(n) ? n : 0;
-    });
-  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
-    const diff = (pa[i] || 0) - (pb[i] || 0);
-    if (diff !== 0) return diff;
-  }
-  return 0;
-}
-
-function UpdateModal({
-  visible,
-  currentVersion,
-  onClose,
-}: {
-  visible: boolean;
-  currentVersion: string;
-  onClose: () => void;
-}) {
-  const [checking, setChecking] = useState(false);
-  const [status, setStatus] = useState<"idle" | "uptodate" | "update" | "downloading" | "ready">("idle");
-  const [apkUrl, setApkUrl] = useState("");
-  const [directApkUrl, setDirectApkUrl] = useState("");
-  const [downloadProgress, setDownloadProgress] = useState(0);
-
-  const handleCheck = async () => {
-    setChecking(true);
-    setStatus("idle");
-    try {
-      // 1. Check for OTA (JS bundle) updates first — independently from the server.
-      //    Running this first ensures a network failure on the APK-version endpoint
-      //    never silently skips the OTA check.
-      if (!__DEV__ && Updates.isEnabled) {
-        try {
-          const timeout = new Promise<null>((resolve) => setTimeout(() => resolve(null), 8000));
-          const update = await Promise.race([Updates.checkForUpdateAsync(), timeout]);
-          if (update?.isAvailable) {
-            setStatus("downloading");
-            const fetchTimeout = new Promise<null>((resolve) => setTimeout(() => resolve(null), 30000));
-            const result = await Promise.race([Updates.fetchUpdateAsync(), fetchTimeout]);
-            if (result) {
-              setStatus("ready");
-              return;
-            }
-          }
-        } catch {}
-      }
-
-      // 2. Check server for a newer native APK version
-      const res = await apiRequest("GET", "/api/app-version");
-      const data = await res.json() as { version: string; apkUrl: string; directApkUrl?: string };
-      // Compare against the installed native binary version (not the OTA/config version)
-      // to avoid false "up to date" results on dev/test clients.
-      const installedBinaryVersion = String(Application.nativeApplicationVersion || currentVersion || "0.0.0");
-      const hasNewerApk = compareVersions(data.version, installedBinaryVersion) > 0;
-
-      if (hasNewerApk) {
-        setApkUrl(data.apkUrl);
-        setDirectApkUrl(data.directApkUrl || "");
-        setStatus("update");
-      } else {
-        setStatus("uptodate");
-      }
-    } catch {
-      setStatus("uptodate");
-    } finally {
-      setChecking(false);
-    }
-  };
-
-  const handleReload = async () => {
-    if (!Updates.isEnabled) {
-      setStatus("idle");
-      return;
-    }
-    try {
-      await Updates.reloadAsync();
-    } catch {
-      setStatus("idle");
-      Alert.alert("Herstart mislukt", "Probeer opnieuw.");
-    }
-  };
-
-  const handleDownload = async () => {
-    // Prefer Render API URL so in-app updates are controlled by the backend.
-    const url = apkUrl || directApkUrl;
-    if (!url) return;
-    const normalized = url.replace(/^http:\/\//i, "https://");
-
-    // On Android: download APK to device and trigger install
-    if (Platform.OS === "android") {
-      try {
-        setStatus("downloading");
-        setDownloadProgress(0);
-        const dir = (FileSystem.cacheDirectory || FileSystem.documentDirectory || "") + "updates/";
-        await FileSystem.makeDirectoryAsync(dir, { intermediates: true }).catch(() => {});
-        const filename = `nexora-update-${Date.now()}.apk`;
-        const fileUri = dir + filename;
-
-        const dl = FileSystem.createDownloadResumable(
-          normalized,
-          fileUri,
-          { headers: { "Accept": "application/vnd.android.package-archive" } },
-          (p) => {
-            if (p.totalBytesExpectedToWrite > 0) {
-              setDownloadProgress(p.totalBytesWritten / p.totalBytesExpectedToWrite);
-            }
-          }
-        );
-        const result = await dl.downloadAsync();
-        if (!result?.uri) throw new Error("Download mislukt");
-        setDownloadProgress(1);
-
-        // Convert file:// to content:// URI and launch package installer
-        const contentUri = await FileSystem.getContentUriAsync(result.uri);
-        try {
-          await IntentLauncher.startActivityAsync("android.intent.action.INSTALL_PACKAGE", {
-            data: contentUri,
-            type: "application/vnd.android.package-archive",
-            flags: 268435457, // FLAG_ACTIVITY_NEW_TASK | FLAG_GRANT_READ_URI_PERMISSION
-          });
-        } catch {
-          await IntentLauncher.startActivityAsync("android.intent.action.VIEW", {
-            data: contentUri,
-            type: "application/vnd.android.package-archive",
-            flags: 268435457, // FLAG_ACTIVITY_NEW_TASK | FLAG_GRANT_READ_URI_PERMISSION
-          });
-        }
-
-        setStatus("idle");
-      } catch (e: any) {
-        setStatus("update");
-        const packageId = Application.applicationId || Constants.expoConfig?.android?.package;
-        try {
-          if (packageId) {
-            await IntentLauncher.startActivityAsync("android.settings.MANAGE_UNKNOWN_APP_SOURCES", {
-              data: `package:${packageId}`,
-            });
-            Alert.alert("Installatie geblokkeerd", "Sta 'installeren van onbekende apps' toe voor NEXORA en probeer opnieuw.");
-            return;
-          }
-        } catch {}
-
-        Alert.alert(
-          "Installatie mislukt",
-          e?.message || "Kon de installer niet openen. Probeer opnieuw via de updateknop."
-        );
-      }
-      return;
-    }
-
-    // iOS / other: open in browser
-    try {
-      await Linking.openURL(normalized);
-    } catch {
-      Alert.alert("Update openen mislukt", "Kon de downloadlink niet openen.");
-    }
-  };
-
-  return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <View style={updateStyles.overlay}>
-        <View style={updateStyles.modal}>
-          <View style={updateStyles.header}>
-            <Text style={updateStyles.title}>{tFn("update.whatsNew")}</Text>
-            <TouchableOpacity onPress={onClose} style={updateStyles.closeBtn}>
-              <Ionicons name="close" size={20} color={COLORS.textMuted} />
-            </TouchableOpacity>
-          </View>
-
-          <Text style={updateStyles.currentVersion}>{tFn("update.currentVersion", { version: currentVersion })}</Text>
-
-          <ScrollView style={updateStyles.logScroll} showsVerticalScrollIndicator={false}>
-            {CHANGELOG.map((entry) => (
-              <View key={entry.version} style={updateStyles.entry}>
-                <View style={updateStyles.entryHeader}>
-                  <Text style={updateStyles.entryVersion}>v{entry.version}</Text>
-                  <Text style={updateStyles.entryDate}>{entry.date}</Text>
-                  {entry.version === currentVersion && (
-                    <View style={updateStyles.currentBadge}>
-                      <Text style={updateStyles.currentBadgeText}>{tFn("update.current")}</Text>
-                    </View>
-                  )}
-                </View>
-                {entry.changes.map((c, i) => (
-                  <View key={i} style={updateStyles.changeRow}>
-                    <Text style={updateStyles.bullet}>•</Text>
-                    <Text style={updateStyles.changeText}>{c}</Text>
-                  </View>
-                ))}
-              </View>
-            ))}
-          </ScrollView>
-
-          <View style={updateStyles.footer}>
-            {status === "uptodate" && (
-              <Text style={updateStyles.statusText}>{tFn("update.latestVersion")}</Text>
-            )}
-            {status === "update" && (
-              <Text style={[updateStyles.statusText, { color: COLORS.accent }]}>
-                {tFn("update.newVersionAvailable")}
-              </Text>
-            )}
-            {status === "downloading" && (
-              <>
-                <Text style={updateStyles.statusText}>{tFn("update.downloading", { progress: String(Math.round(downloadProgress * 100)) })}</Text>
-                <View style={{ width: "100%", height: 6, borderRadius: 3, backgroundColor: "rgba(255,255,255,0.1)", marginTop: 8 }}>
-                  <View style={{ width: `${Math.round(downloadProgress * 100)}%`, height: 6, borderRadius: 3, backgroundColor: COLORS.accent }} />
-                </View>
-              </>
-            )}
-            {status === "ready" && (
-              <Text style={[updateStyles.statusText, { color: "#22c55e" }]}>
-                {tFn("update.updateReady")}
-              </Text>
-            )}
-
-            {status === "ready" ? (
-              <TouchableOpacity style={updateStyles.checkBtn} onPress={handleReload}>
-                <Ionicons name="refresh" size={16} color={COLORS.background} />
-                <Text style={updateStyles.checkBtnText}>{tFn("update.restartInstall")}</Text>
-              </TouchableOpacity>
-            ) : status === "update" ? (
-              <TouchableOpacity style={updateStyles.checkBtn} onPress={handleDownload}>
-                <Ionicons name="download-outline" size={16} color={COLORS.background} />
-                <Text style={updateStyles.checkBtnText}>{tFn("update.downloadInstall")}</Text>
-              </TouchableOpacity>
-            ) : (
-              <TouchableOpacity
-                style={[updateStyles.checkBtn, checking && { opacity: 0.6 }]}
-                onPress={handleCheck}
-                disabled={checking}
-              >
-                {checking ? (
-                  <ActivityIndicator size="small" color={COLORS.background} />
-                ) : (
-                  <Ionicons name="cloud-download-outline" size={16} color={COLORS.background} />
-                )}
-                <Text style={updateStyles.checkBtnText}>
-                  {checking ? tFn("update.checking") : tFn("update.checkForUpdates")}
-                </Text>
-              </TouchableOpacity>
-            )}
-          </View>
-        </View>
-      </View>
-    </Modal>
-  );
-}
 
 const LANGUAGES = [
   { code: "auto", label: "Auto (System)" },
@@ -585,143 +53,150 @@ const LANGUAGES = [
   { code: "tr", label: "Türkçe" },
 ];
 
-function PinModal({
-  visible, onClose, onConfirm, mode,
+const QUALITY_OPTIONS = [
+  { code: "Auto", label: "Automatisch" },
+  { code: "4K", label: "4K Ultra HD" },
+  { code: "FHD", label: "Full HD (1080p)" },
+  { code: "HD", label: "HD (720p)" },
+] as const;
+
+function QualityModal({
+  visible,
+  onClose,
+  selected,
+  onSelect,
 }: {
-  visible: boolean; onClose: () => void; onConfirm: (pin: string) => void; mode: "set" | "confirm";
+  visible: boolean;
+  onClose: () => void;
+  selected: string;
+  onSelect: (quality: (typeof QUALITY_OPTIONS)[number]["code"]) => void;
 }) {
-  const [pin, setPin] = useState("");
-  const [confirmPin, setConfirmPin] = useState("");
-  const [step, setStep] = useState<"enter" | "confirm">("enter");
-
-  const handleDigit = (d: string) => {
-    SafeHaptics.impactLight();
-    if (step === "enter" && pin.length < 4) {
-      const next = pin + d;
-      setPin(next);
-      if (next.length === 4 && mode === "set") {
-        setStep("confirm");
-      } else if (next.length === 4 && mode === "confirm") {
-        onConfirm(next);
-        setPin("");
-        setStep("enter");
-      }
-    } else if (step === "confirm" && confirmPin.length < 4) {
-      const next = confirmPin + d;
-      setConfirmPin(next);
-      if (next.length === 4) {
-        if (next === pin) {
-          onConfirm(next);
-          setPin("");
-          setConfirmPin("");
-          setStep("enter");
-        } else {
-          SafeHaptics.error();
-          Alert.alert("PINs do not match", "Please try again");
-          setConfirmPin("");
-        }
-      }
-    }
-  };
-
-  const handleDelete = () => {
-    SafeHaptics.impactLight();
-    if (step === "confirm") setConfirmPin(c => c.slice(0, -1));
-    else setPin(p => p.slice(0, -1));
-  };
-
-  const currentPin = step === "confirm" ? confirmPin : pin;
-  const label = mode === "confirm" ? "Enter PIN" : step === "enter" ? "Set PIN (4 digits)" : "Confirm PIN";
-
-  return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <View style={pinStyles.overlay}>
-        <View style={pinStyles.modal}>
-          <Text style={pinStyles.title}>Parental Control</Text>
-          <Text style={pinStyles.label}>{label}</Text>
-
-          <View style={pinStyles.dots}>
-            {[0, 1, 2, 3].map(i => (
-              <View key={i} style={[pinStyles.dot, currentPin.length > i && pinStyles.dotFilled]} />
-            ))}
-          </View>
-
-          <View style={pinStyles.numpad}>
-            {["1","2","3","4","5","6","7","8","9","","0","del"].map((d, i) => (
-              <TouchableOpacity
-                key={i}
-                style={[pinStyles.numKey, d === "" && { opacity: 0 }]}
-                onPress={d === "del" ? handleDelete : d !== "" ? () => handleDigit(d) : undefined}
-                disabled={d === ""}
-              >
-                {d === "del" ? (
-                  <Ionicons name="backspace-outline" size={22} color={COLORS.text} />
-                ) : (
-                  <Text style={pinStyles.numKeyText}>{d}</Text>
-                )}
-              </TouchableOpacity>
-            ))}
-          </View>
-
-          <TouchableOpacity style={pinStyles.cancelBtn} onPress={() => { onClose(); setPin(""); setConfirmPin(""); setStep("enter"); }}>
-            <Text style={pinStyles.cancelText}>Cancel</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-    </Modal>
-  );
-}
-
-function LanguageModal({ visible, selected, onClose, onSelect }: {
-  visible: boolean; selected: string; onClose: () => void; onSelect: (code: string) => void;
-}) {
-  return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <View style={langStyles.overlay}>
-        <View style={langStyles.sheet}>
-          <View style={langStyles.handle} />
-          <Text style={langStyles.title}>Audio Language</Text>
-          {LANGUAGES.map(lang => (
-            <TouchableOpacity
-              key={lang.code}
-              style={langStyles.option}
-              onPress={() => { SafeHaptics.impactLight(); onSelect(lang.code); onClose(); }}
-            >
-              <Text style={langStyles.optionText}>{lang.label}</Text>
-              {selected === lang.code && <Ionicons name="checkmark" size={18} color={COLORS.accent} />}
-            </TouchableOpacity>
-          ))}
-        </View>
-      </View>
-    </Modal>
-  );
-}
-
-function QualityModal({ visible, selected, onClose, onSelect }: {
-  visible: boolean; selected: string; onClose: () => void; onSelect: (q: "4K" | "FHD" | "HD" | "Auto") => void;
-}) {
-  const QUALITY_OPTIONS = [
-    { code: "Auto", label: "Auto" },
-    { code: "4K", label: "4K Ultra HD" },
-    { code: "FHD", label: "Full HD (1080p)" },
-    { code: "HD", label: "HD (720p)" },
-  ] as const;
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <View style={langStyles.overlay}>
         <View style={langStyles.sheet}>
           <View style={langStyles.handle} />
           <Text style={langStyles.title}>{tFn("settings.quality")}</Text>
-          {QUALITY_OPTIONS.map(q => (
+          {QUALITY_OPTIONS.map((quality) => (
             <TouchableOpacity
-              key={q.code}
+              key={quality.code}
               style={langStyles.option}
-              onPress={() => { SafeHaptics.impactLight(); onSelect(q.code); onClose(); }}
+              onPress={() => {
+                SafeHaptics.impactLight();
+                onSelect(quality.code);
+                onClose();
+              }}
             >
-              <Text style={langStyles.optionText}>{q.label}</Text>
-              {selected === q.code && <Ionicons name="checkmark" size={18} color={COLORS.accent} />}
+              <Text style={langStyles.optionText}>{quality.label}</Text>
+              {selected === quality.code ? <Ionicons name="checkmark" size={18} color={COLORS.accent} /> : null}
             </TouchableOpacity>
           ))}
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+function LanguageModal({
+  visible,
+  onClose,
+  selected,
+  onSelect,
+}: {
+  visible: boolean;
+  onClose: () => void;
+  selected: string;
+  onSelect: (language: string) => void;
+}) {
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <View style={langStyles.overlay}>
+        <View style={langStyles.sheet}>
+          <View style={langStyles.handle} />
+          <Text style={langStyles.title}>{tFn("settings.audioLanguage")}</Text>
+          {LANGUAGES.map((language) => (
+            <TouchableOpacity
+              key={language.code}
+              style={langStyles.option}
+              onPress={() => {
+                SafeHaptics.impactLight();
+                onSelect(language.code);
+                onClose();
+              }}
+            >
+              <Text style={langStyles.optionText}>{language.label}</Text>
+              {selected === language.code ? <Ionicons name="checkmark" size={18} color={COLORS.accent} /> : null}
+            </TouchableOpacity>
+          ))}
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+function PinModal({
+  visible,
+  mode,
+  onClose,
+  onConfirm,
+}: {
+  visible: boolean;
+  mode: "set" | "confirm";
+  onClose: () => void;
+  onConfirm: (pin: string) => void;
+}) {
+  const [pin, setPin] = useState("");
+
+  useEffect(() => {
+    if (!visible) {
+      setPin("");
+    }
+  }, [visible, mode]);
+
+  const appendDigit = (digit: string) => {
+    if (pin.length >= 4) return;
+    const next = `${pin}${digit}`;
+    setPin(next);
+    if (next.length === 4) {
+      onConfirm(next);
+      setPin("");
+    }
+  };
+
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <View style={pinStyles.overlay}>
+        <View style={pinStyles.modal}>
+          <Text style={pinStyles.title}>{mode === "set" ? "Stel pincode in" : "Bevestig pincode"}</Text>
+          <Text style={pinStyles.label}>Voer een pincode van 4 cijfers in.</Text>
+
+          <View style={pinStyles.dots}>
+            {[0, 1, 2, 3].map((index) => (
+              <View key={index} style={[pinStyles.dot, pin.length > index && pinStyles.dotFilled]} />
+            ))}
+          </View>
+
+          <View style={pinStyles.numpad}>
+            {["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"].map((digit) => (
+              <TouchableOpacity
+                key={digit}
+                style={pinStyles.numKey}
+                onPress={() => appendDigit(digit)}
+              >
+                <Text style={pinStyles.numKeyText}>{digit}</Text>
+              </TouchableOpacity>
+            ))}
+            <TouchableOpacity style={pinStyles.numKey} onPress={() => setPin((current) => current.slice(0, -1))}>
+              <Ionicons name="backspace-outline" size={20} color={COLORS.text} />
+            </TouchableOpacity>
+            <TouchableOpacity style={pinStyles.numKey} onPress={() => setPin("")}>
+              <Text style={pinStyles.numKeyText}>C</Text>
+            </TouchableOpacity>
+          </View>
+
+          <TouchableOpacity style={pinStyles.cancelBtn} onPress={onClose}>
+            <Text style={pinStyles.cancelText}>Sluiten</Text>
+          </TouchableOpacity>
         </View>
       </View>
     </Modal>
@@ -2158,50 +1633,6 @@ const styles = StyleSheet.create({
   langFlag: { fontSize: 22 },
   langLabel: { flex: 1, fontFamily: "Inter_500Medium", fontSize: 15, color: COLORS.textSecondary },
   langLabelActive: { color: COLORS.text, fontFamily: "Inter_600SemiBold" },
-});
-
-const updateStyles = StyleSheet.create({
-  overlay: {
-    flex: 1, backgroundColor: "rgba(0,0,0,0.8)",
-    alignItems: "center", justifyContent: "center", padding: 24,
-  },
-  modal: {
-    backgroundColor: COLORS.cardElevated, borderRadius: 20, width: "100%", maxWidth: 400,
-    borderWidth: 1, borderColor: COLORS.border, maxHeight: "80%",
-  },
-  header: {
-    flexDirection: "row", alignItems: "center", justifyContent: "space-between",
-    paddingHorizontal: 20, paddingTop: 20, paddingBottom: 12,
-    borderBottomWidth: 1, borderBottomColor: COLORS.border,
-  },
-  title: { fontFamily: "Inter_700Bold", fontSize: 18, color: COLORS.text },
-  closeBtn: { padding: 4 },
-  currentVersion: {
-    fontFamily: "Inter_400Regular", fontSize: 12, color: COLORS.textMuted,
-    paddingHorizontal: 20, paddingVertical: 8,
-  },
-  logScroll: { maxHeight: 340, paddingHorizontal: 20 },
-  entry: { marginBottom: 20 },
-  entryHeader: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 8 },
-  entryVersion: { fontFamily: "Inter_700Bold", fontSize: 15, color: COLORS.accent },
-  entryDate: { fontFamily: "Inter_400Regular", fontSize: 12, color: COLORS.textMuted },
-  currentBadge: {
-    backgroundColor: COLORS.accentGlow, borderRadius: 6, borderWidth: 1,
-    borderColor: COLORS.accent, paddingHorizontal: 6, paddingVertical: 2,
-  },
-  currentBadgeText: { fontFamily: "Inter_700Bold", fontSize: 9, color: COLORS.accent },
-  changeRow: { flexDirection: "row", gap: 8, marginBottom: 4 },
-  bullet: { fontFamily: "Inter_400Regular", fontSize: 13, color: COLORS.accent, marginTop: 1 },
-  changeText: { fontFamily: "Inter_400Regular", fontSize: 13, color: COLORS.textSecondary, flex: 1, lineHeight: 18 },
-  footer: {
-    padding: 20, gap: 10, borderTopWidth: 1, borderTopColor: COLORS.border,
-  },
-  statusText: { fontFamily: "Inter_500Medium", fontSize: 13, color: COLORS.textMuted, textAlign: "center" },
-  checkBtn: {
-    flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8,
-    backgroundColor: COLORS.accent, borderRadius: 12, paddingVertical: 14,
-  },
-  checkBtnText: { fontFamily: "Inter_700Bold", fontSize: 14, color: COLORS.background },
 });
 
 const progStyles = StyleSheet.create({

@@ -34,9 +34,14 @@ async function redisSet(key, value, ttlMs) {
 }
 import fetch from "node-fetch";
 import { fileURLToPath } from "url";
-import { dirname, join } from "path";
+import { basename, dirname, join } from "path";
 import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "fs";
 import crypto from "crypto";
+import {
+  buildNativeMetadataResponse,
+  buildOtaMetadataResponse,
+  buildUpdateManifestResponse,
+} from "./update-manifest.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -55,8 +60,32 @@ app.use(cors(allowedOrigin ? {
   credentials: true,
 } : undefined));
 app.use(express.json({ limit: "10mb" }));
-// Serve APK downloads (used for in-app update distribution)
-app.use("/downloads", express.static(join(__dirname, "public", "downloads")));
+const DOWNLOADS_DIR = join(__dirname, "public", "downloads");
+
+// Explicit APK file endpoint used by in-app native update flow.
+app.get("/downloads/apk/:fileName", (req, res) => {
+  const fileName = String(req.params.fileName || "").trim();
+  if (!/\.apk$/i.test(fileName)) {
+    return res.status(400).json({ error: "Invalid APK file name", code: "APK_INVALID_FILE" });
+  }
+
+  const resolvedName = basename(fileName);
+  const filePath = join(DOWNLOADS_DIR, resolvedName);
+  if (!existsSync(filePath)) {
+    return res.status(404).json({ error: "APK file not found", code: "APK_NOT_FOUND" });
+  }
+
+  const stats = statSync(filePath);
+  if (!Number.isFinite(Number(stats.size)) || Number(stats.size) <= 0) {
+    return res.status(404).json({ error: "APK file is invalid", code: "APK_INVALID_SIZE" });
+  }
+
+  res.setHeader("Content-Type", "application/vnd.android.package-archive");
+  res.setHeader("Content-Disposition", `attachment; filename="${resolvedName}"`);
+  res.setHeader("Content-Length", String(stats.size));
+  res.setHeader("Cache-Control", "public, max-age=300");
+  return res.sendFile(filePath);
+});
 
 // ── Simple in-memory rate limiter ────────────────────────────────────────────
 // Prevents abuse of heavy endpoints (playlist parsing, TMDB calls)
@@ -5146,72 +5175,21 @@ app.get("/health", (req, res) => {
   res.json({ ok: true, time: new Date().toISOString(), source: footballSource(), tz: TZ, aiReady, integrationsReady: { zilliz: _zillizReady } });
 });
 
-function getHostedApkInfo() {
-  const downloadsDir = join(__dirname, "public", "downloads");
-  if (!existsSync(downloadsDir)) return null;
-
-  const apks = readdirSync(downloadsDir)
-    .filter((name) => /\.apk$/i.test(name))
-    .map((name) => {
-      const fullPath = join(downloadsDir, name);
-      const stats = statSync(fullPath);
-      return {
-        name,
-        fullPath,
-        mtimeMs: Number(stats.mtimeMs || 0),
-      };
-    })
-    .sort((a, b) => b.mtimeMs - a.mtimeMs);
-
-  return apks[0] || null;
-}
-
-// ── App version / update check ────────────────────────────────────────────────
-// Update server/app-version.json when you publish a new native version.
-app.get("/api/app-version", (req, res) => {
-  let version = "1.5.0";
-  let storedApkUrl = null;
-  try {
-    const vf = join(__dirname, "app-version.json");
-    if (existsSync(vf)) {
-      const data = JSON.parse(readFileSync(vf, "utf8"));
-      version = data.version || version;
-      storedApkUrl = data.apkUrl || null;
-    }
-  } catch {}
-  const forwardedProto = String(req.headers["x-forwarded-proto"] || "").split(",")[0].trim();
-  const isCloudHost = String(req.headers["x-forwarded-host"] || req.get("host") || "").includes("onrender.com");
-  const proto = forwardedProto || (isCloudHost ? "https" : req.protocol);
-  const host  = req.headers["x-forwarded-host"]  || req.get("host");
-  const renderApiDownloadUrl = `${proto}://${host}/api/download/apk`;
-
-  // Always prefer Render-hosted update path to avoid GitHub 404/missing-asset issues.
-  const hostedApk = getHostedApkInfo();
-  const directHostedUrl = hostedApk ? `${proto}://${host}/downloads/${encodeURIComponent(hostedApk.name)}` : null;
-
-  res.json({
-    version,
-    apkUrl: renderApiDownloadUrl,
-    directApkUrl: directHostedUrl,
-    fallbackUrl: storedApkUrl || null,
-  });
+// ── App update manifest & distribution endpoints ─────────────────────────────
+// Backend API, OTA metadata and APK distribution are explicitly separated.
+app.get("/api/app-updates/manifest", (req, res) => {
+  res.set("Cache-Control", "no-store");
+  res.json(buildUpdateManifestResponse(req));
 });
 
-// ── APK download redirect ──────────────────────────────────────────────────────
-// Keeps download traffic anchored on Render and only falls back when explicitly configured.
-app.get("/api/download/apk", async (req, res) => {
-  try {
-    const hostedApk = getHostedApkInfo();
-    if (hostedApk) {
-      return res.redirect(302, `/downloads/${encodeURIComponent(hostedApk.name)}`);
-    }
-  } catch (err) {
-    console.error("[apk-proxy] error:", err?.message);
-  }
-  res.status(404).json({
-    error: "APK niet beschikbaar op Render",
-    hint: "Upload een .apk naar server/public/downloads en deploy de server opnieuw",
-  });
+app.get("/api/app-updates/ota", (req, res) => {
+  res.set("Cache-Control", "no-store");
+  res.json(buildOtaMetadataResponse(req));
+});
+
+app.get("/api/app-updates/native", (req, res) => {
+  res.set("Cache-Control", "no-store");
+  res.json(buildNativeMetadataResponse(req));
 });
 
 // Image proxy – forwards images that require specific Referer headers (e.g. Transfermarkt CDN)

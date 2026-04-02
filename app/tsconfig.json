@@ -33,6 +33,8 @@
     "node_modules",
     "android",
     "ios",
-    "dist"
+    "dist",
+    "**/*.test.ts",
+    "**/*.test.tsx"
   ]
 }

@@ -1,56 +1,51 @@
-name: CI
+name: CI Validation
 
 on:
+  workflow_call:
   push:
     branches: [main]
-    paths:
-      - 'app/**'
-      - 'package.json'
-      - 'package-lock.json'
-      - '.github/workflows/ci.yml'
   pull_request:
     branches: [main]
-    paths:
-      - 'app/**'
-      - 'package.json'
-      - 'package-lock.json'
-      - '.github/workflows/ci.yml'
 
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  lint-and-typecheck:
-    name: Lint & Type Check
+  validate:
+    name: Validate App + Server
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-      - name: Setup Node.js
+      - name: Setup Node.js 20
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: "20"
           cache: npm
 
-      # Root npm ci installs all workspaces (app + server) in one shot.
-      # A separate install in app/ is NOT needed with npm workspaces.
       - name: Install dependencies
         run: npm ci --ignore-scripts
 
-      - name: Lint (app)
-        run: npx expo lint --no-cache
-        working-directory: app
+      - name: Env sanity
+        run: npm run ci:env-sanity
 
-      - name: Type check (app)
-        run: npx tsc --noEmit
-        working-directory: app
+      - name: Config validation
+        run: npm run ci:config-validate
 
-      - name: Routing logic tests
-        run: npm run deploy:test-routing
+      - name: Lint
+        run: npm run ci:lint
 
-      - name: Server syntax sanity
-        run: node --check server/index.js
+      - name: Type check
+        run: npm run ci:typecheck
+
+      - name: Tests
+        run: npm run ci:test
+
+      - name: Build sanity
+        run: npm run ci:build-sanity

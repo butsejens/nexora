@@ -110,6 +110,13 @@ npm run app
 ## Updates zonder nieuwe APK (OTA)
 Je hoeft niet telkens een nieuwe APK te bouwen voor JS/UI wijzigingen.
 
+Update-architectuur:
+- Backend API blijft op Render.
+- OTA checks lopen via `expo-updates` in de app zelf.
+- Native release metadata komt uit `server/update-manifest.json` via `/api/app-updates/manifest`.
+- APK downloads lopen alleen via een expliciete file endpoint (`/downloads/apk/<bestand>.apk`) of een directe `.apk` asset URL.
+- Server-only deploys vereisen geen app-update.
+
 Eenmalig:
 - Installeer 1 release APK op je toestel, bijvoorbeeld [releases/nexora-release-2026-03-05.apk](releases/nexora-release-2026-03-05.apk).
 

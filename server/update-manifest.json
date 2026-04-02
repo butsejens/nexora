@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 2,
+  "native": {
+    "version": "2.6.28",
+    "versionCode": 20628,
+    "buildId": "android-2.6.28",
+    "required": false,
+    "releasedAt": "2026-04-02T00:00:00.000Z",
+    "notes": [
+      "Native builds are distributed separately from Render API deploys.",
+      "Only publish an APK URL after the asset is actually hosted."
+    ],
+    "apk": {
+      "provider": "render-file-endpoint",
+      "url": null,
+      "fileName": null,
+      "fileSizeBytes": 0,
+      "checksumSha256": null,
+      "signature": null,
+      "fallbackMessage": "Nieuwe native build gedetecteerd, maar de APK is nog niet gepubliceerd. Probeer later opnieuw of gebruik een OTA update als die beschikbaar is."
+    }
+  },
+  "ota": {
+    "channel": "production",
+    "runtimeVersion": "2.6.28",
+    "strategy": "expo-updates",
+    "releasedAt": "2026-04-02T00:00:00.000Z"
+  },
+  "server": {
+    "version": "2.6.28",
+    "releasedAt": "2026-04-02T00:00:00.000Z",
+    "requiresAppUpdate": false,
+    "message": "Server deploys are independent from OTA bundles and APK releases."
+  }
+}
