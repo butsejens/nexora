@@ -2,18 +2,48 @@ import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
 import { createClient } from "redis";
+import fetch from "node-fetch";
+import { fileURLToPath } from "url";
+import { basename, dirname, join } from "path";
+import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "fs";
+import crypto from "crypto";
+import {
+  buildNativeMetadataResponse,
+  buildOtaMetadataResponse,
+  buildUpdateManifestResponse,
+} from "./update-manifest.js";
 
-// --- Redis client setup ---
+// ─── Shared infrastructure ────────────────────────────────────────────────────
+import { log as serverLog, createLogger } from "./shared/logger.js";
+import { requestTracer, globalErrorHandler } from "./shared/tracer.js";
+import { initRedis } from "./shared/cache.js";
+
+// ─── New modular route handlers ───────────────────────────────────────────────
+// These clean routers mount at /api/sports, /api/media, /api/updates, and root.
+// They use canonical response envelopes and structured logging.
+// Legacy inline routes in this file remain as fallback until full migration.
+import sportsRouter   from "./modules/sports.js";
+import mediaRouter    from "./modules/media.js";
+import updatesRouter  from "./modules/updates.js";
+import diagnosticsRouter from "./modules/diagnostics.js";
+import { router as aiRouter, registerAiAliases } from "./modules/ai.js";
+import { router as usersRouter } from "./modules/users.js";
+
+// --- Redis client setup (legacy + shared module) ---
 dotenv.config();
 const redisUrl = process.env.REDIS_URL || "redis://localhost:6379";
 let redisClient;
 if (redisUrl) {
   redisClient = createClient({ url: redisUrl });
-  redisClient.on("error", (err) => console.error("[redis] error:", err));
-  redisClient.connect().then(() => console.log("[redis] connected"));
+  redisClient.on("error", (err) => serverLog.error("Redis error (legacy client)", { message: err.message }));
+  redisClient.connect()
+    .then(() => serverLog.info("Redis connected (legacy client)"))
+    .catch(e => serverLog.warn("Redis connect failed (legacy client)", { message: e.message }));
 }
+// Initialize the shared cache module with the same Redis URL
+initRedis(redisUrl);
 
-// Redis get/set helpers (async)
+// Redis get/set helpers (async) — keep for legacy inline routes
 async function redisGet(key) {
   if (!redisClient) return null;
   try {
@@ -32,16 +62,6 @@ async function redisSet(key, value, ttlMs) {
     });
   } catch {}
 }
-import fetch from "node-fetch";
-import { fileURLToPath } from "url";
-import { basename, dirname, join } from "path";
-import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "fs";
-import crypto from "crypto";
-import {
-  buildNativeMetadataResponse,
-  buildOtaMetadataResponse,
-  buildUpdateManifestResponse,
-} from "./update-manifest.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -60,6 +80,22 @@ app.use(cors(allowedOrigin ? {
   credentials: true,
 } : undefined));
 app.use(express.json({ limit: "10mb" }));
+
+// ─── Observability middleware ─────────────────────────────────────────────────
+// Must be first (after body parsing) so all routes are traced.
+app.use(requestTracer);
+
+// ─── New modular routes ───────────────────────────────────────────────────────
+// These mount BEFORE the legacy inline handlers so they take priority.
+// Migration path: once legacy inline routes are removed, these become the only handlers.
+app.use("/api/sports", sportsRouter);   // clean sports with canonical envelopes
+app.use("/api/media",  mediaRouter);    // clean media with canonical envelopes
+app.use("/api/updates", updatesRouter); // clean update metadata
+app.use(diagnosticsRouter);            // /health, /api/ping, /api/config-check
+app.use("/api/ai",  aiRouter);         // AI player analysis (new canonical path)
+app.use(usersRouter);                  // /api/user/* + /api/session/*
+registerAiAliases(app);               // 307 compat redirects from old /api/sports/player-analysis/*
+
 const DOWNLOADS_DIR = join(__dirname, "public", "downloads");
 
 // Explicit APK file endpoint used by in-app native update flow.
@@ -406,61 +442,12 @@ async function fetchEspnPublic(domain, path, query) {
   });
 }
 
-app.get("/api/espn/catalog", (_req, res) => {
-  res.json({
-    ok: true,
-    domains: ESPN_PUBLIC_DOMAIN_BASES,
-    sports: ESPN_PUBLIC_SPORTS,
-    examples: [
-      {
-        route: "/api/espn/public?domain=site&path=/apis/site/v2/sports/soccer/eng.1/scoreboard&dates=20260328",
-        description: "Site API v2 scoreboard",
-      },
-      {
-        route: "/api/espn/public?domain=sitev2&path=/apis/v2/sports/soccer/eng.1/standings",
-        description: "Standings endpoint that returns full tree",
-      },
-      {
-        route: "/api/espn/public?domain=corev2&path=/v2/sports/soccer/leagues/eng.1/events&limit=10",
-        description: "Core v2 detailed events",
-      },
-      {
-        route: "/api/espn/public?domain=webv3&path=/apis/common/v3/sports/football/nfl/statistics/byathlete&season=2025&seasontype=2",
-        description: "Web v3 athlete leaderboard",
-      },
-      {
-        route: "/api/espn/public?domain=now&path=/v1/sports/news&sport=soccer&limit=10",
-        description: "Now API realtime news",
-      },
-    ],
-  });
-});
-
-app.get("/api/espn/public", async (req, res) => {
-  try {
-    const domain = String(req.query.domain || "site").trim().toLowerCase();
-    const path = normalizeEspnPublicPath(req.query.path);
-    if (!ESPN_PUBLIC_DOMAIN_BASES[domain]) {
-      return res.status(400).json({
-        error: "Invalid domain",
-        allowed: Object.keys(ESPN_PUBLIC_DOMAIN_BASES),
-      });
-    }
-    if (!path) {
-      return res.status(400).json({ error: "Missing or invalid 'path' query parameter" });
-    }
-
-    const query = pickEspnPublicQuery(req.query);
-    const data = await fetchEspnPublic(domain, path, query);
-    res.json({ ok: true, domain, path, query, data });
-  } catch (err) {
-    const status = Number(err?.statusCode || 502);
-    res.status(status).json({
-      error: err?.message || "Failed to fetch ESPN data",
-      details: err?.details || null,
-    });
-  }
-});
+// ─── REMOVED: /api/espn/catalog and /api/espn/public ─────────────────────────
+// These endpoints were open server-side proxies that allowed any client to make
+// the server fetch arbitrary ESPN API paths. This created an SSRF vector.
+// Sports data is now served through the specific, purposeful endpoints in
+// /api/sports/* (modules/sports.js and the legacy routes below).
+// ──────────────────────────────────────────────────────────────────────────────
 
 // Per-league ESPN scoreboard URLs (more reliable than generic)
 const ESPN_LEAGUE_SCOREBOARDS = {
@@ -9383,8 +9370,9 @@ async function tmdb(pathAndQuery, options = {}) {
   const timeoutMs = Number(options?.timeoutMs || TMDB_TIMEOUT_MS);
   const cacheTtlMs = Number(options?.cacheTtlMs ?? TMDB_CACHE_TTL_MS);
 
+  // Append api_key + language as query params (v3 auth — Bearer only works with v4 read-access tokens)
   const sep = pathAndQuery.includes("?") ? "&" : "?";
-  const url = `${TMDB_BASE}${pathAndQuery}${sep}language=nl-NL`;
+  const url = `${TMDB_BASE}${pathAndQuery}${sep}api_key=${encodeURIComponent(key)}&language=nl-NL`;
 
   const cacheKey = `tmdb:${url}`;
   if (cacheTtlMs > 0) {
@@ -9392,19 +9380,25 @@ async function tmdb(pathAndQuery, options = {}) {
     if (cached) return cached;
   }
 
-  const r = await fetch(url, {
-    signal: AbortSignal.timeout(timeoutMs),
-    headers: { Authorization: `Bearer ${key}` },
-  });
-  const data = await r.json();
-  if (!r.ok) {
-    const e = new Error(`TMDB error (${r.status})`);
-    e.statusCode = r.status;
-    e.details = data;
-    throw e;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const r = await fetch(url, {
+      signal: controller.signal,
+      headers: { Accept: 'application/json' },
+    });
+    const data = await r.json();
+    if (!r.ok) {
+      const e = new Error(`TMDB error (${r.status})`);
+      e.statusCode = r.status;
+      e.details = data;
+      throw e;
+    }
+    if (cacheTtlMs > 0) cacheSet(cacheKey, data, cacheTtlMs);
+    return data;
+  } finally {
+    clearTimeout(timer);
   }
-  if (cacheTtlMs > 0) cacheSet(cacheKey, data, cacheTtlMs);
-  return data;
 }
 
 // Fetch TMDB videos with all languages included (trailers are often only in English)
@@ -11639,8 +11633,12 @@ function logStartupConfigCheck() {
   }
 }
 
+// ─── Global error handler ─────────────────────────────────────────────────────
+// Must be last middleware — catches any unhandled error thrown in route handlers.
+app.use(globalErrorHandler);
+
 app.listen(PORT, () => {
-  console.log(`Nexora server running on :${PORT} (sports source: ${footballSource()})`);
+  serverLog.info(`Nexora server running on :${PORT}`, { sportsSource: footballSource(), port: PORT });
   logStartupConfigCheck();
   // Initialiseer Zilliz vector cache (non-blocking)
   zillizInit().catch(() => {});
@@ -11650,7 +11648,7 @@ app.listen(PORT, () => {
     setInterval(async () => {
       try { await fetch(`${selfPingUrl}/health`, { signal: AbortSignal.timeout(10000) }); } catch {}
     }, 4 * 60 * 1000);
-    console.log(`Keep-alive ping enabled → ${selfPingUrl}/health`);
+    serverLog.info('Keep-alive ping enabled', { url: `${selfPingUrl}/health` });
   }
 
   // Background enrichment agent: warm logo/photo/value caches for active leagues
