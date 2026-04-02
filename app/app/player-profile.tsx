@@ -16,6 +16,7 @@ import { TeamLogo } from "@/components/TeamLogo";
 import { SectionHeader, StateBlock, SurfaceCard } from "@/components/ui/PremiumPrimitives";
 import { resolveClubHistoryLogoUri, resolveTeamLogoUri } from "@/lib/logo-manager";
 import { useAIAnalysis } from "@/hooks/useAIAnalysis";
+import { fetchPlayer } from "@/api/playerApi";
 import {
   getBestCachedOrSeedPlayerImage,
   getCachedPlayerImage,
@@ -193,6 +194,28 @@ export default function PlayerProfileScreen() {
         league: String(params.league || "eng.1"),
         sport: "soccer",
       };
+      if (seed.id) {
+        try {
+          const liveProfile = await fetchPlayer({
+            playerId: seed.id,
+            name: seed.name,
+            team: seed.team,
+            league: seed.league,
+            sport: seed.sport,
+          });
+          const mergedLiveProfile = enrichPlayerProfilePayload({
+            ...liveProfile,
+            photo: liveProfile?.photo || params.photo || null,
+            theSportsDbPhoto: liveProfile?.theSportsDbPhoto || params.theSportsDbPhoto || null,
+          }, seed);
+          const normalizedLiveProfile = normalizePlayerDto(mergedLiveProfile, params);
+          await AsyncStorage.setItem(cacheKey, JSON.stringify(normalizedLiveProfile));
+          return normalizedLiveProfile;
+        } catch {
+          // fall through to cached and instant fallback sources
+        }
+      }
+
       const cachedProfile = getCachedPlayerProfile(seed);
       const cachedImage = getCachedPlayerImage(seed);
       if (cachedProfile) {
@@ -438,6 +461,10 @@ export default function PlayerProfileScreen() {
                   <Text style={styles.photoInitials}>{initials}</Text>
                 </View>
               )}
+              <Text style={styles.name} numberOfLines={2}>{normalizeText(data?.name || params.name, tx("playerProfile.player", "Player"))}</Text>
+              {hasMeaningfulText(data?.currentClub || params.team) ? (
+                <Text style={styles.clubLine} numberOfLines={1}>{normalizeText(data?.currentClub || params.team)}</Text>
+              ) : null}
               <Text style={styles.meta}>{`${normalizeText(data?.position || params.position)} ${normalizeText(data?.nationality || params.nationality, "") ? `• ${normalizeText(data?.nationality || params.nationality)}` : ""}`.trim()}</Text>
               <Text style={[styles.value, data?.isRealValue ? styles.valueReal : null]}>
                 {normalizeText(data?.marketValue || params.marketValue, tx("playerProfile.valueUnknown", "Value unavailable"))}
@@ -663,6 +690,7 @@ const styles = StyleSheet.create({
   photoFallback: { backgroundColor: COLORS.card, alignItems: "center", justifyContent: "center", borderWidth: 1.5, borderColor: "rgba(255,255,255,0.08)" },
   photoInitials: { fontFamily: "Inter_700Bold", fontSize: 28, color: COLORS.text },
   name: { fontFamily: "Inter_800ExtraBold", fontSize: 23, color: COLORS.text, textAlign: "center", paddingHorizontal: 16, maxWidth: "100%", lineHeight: 28 },
+  clubLine: { fontFamily: "Inter_600SemiBold", fontSize: 14, color: COLORS.textSecondary, textAlign: "center", paddingHorizontal: 24, maxWidth: "100%" },
   meta: { fontFamily: "Inter_400Regular", fontSize: 13, color: COLORS.textMuted, textAlign: "center", paddingHorizontal: 24, maxWidth: "100%", lineHeight: 18 },
   value: { fontFamily: "Inter_700Bold", fontSize: 15, color: COLORS.textMuted, textAlign: "center", maxWidth: "85%" },
   valueReal: { color: "#00C896" },

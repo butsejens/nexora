@@ -518,8 +518,8 @@ function PaneTabs({ pane, onChange }: { pane: VodModulePane; onChange: (next: Vo
   const tabs: { key: VodModulePane; label: string; icon: string }[] = [
     { key: "home", label: "Home", icon: "home-outline" },
     { key: "search", label: "Search", icon: "search-outline" },
-    { key: "collections", label: "Collections", icon: "albums-outline" },
-    { key: "platforms", label: "Studios", icon: "business-outline" },
+    { key: "collections", label: "Collecties", icon: "albums-outline" },
+    { key: "platforms", label: "Studio's", icon: "business-outline" },
   ];
 
   return (
@@ -583,27 +583,27 @@ const styles = StyleSheet.create({
   },
   tabRow: {
     paddingHorizontal: 16,
-    paddingTop: 8,
-    paddingBottom: 6,
+    paddingTop: 4,
+    paddingBottom: 2,
     gap: 8,
   },
   tabPill: {
     flexDirection: "row",
     alignItems: "center",
-    height: 34,
+    height: 36,
     borderRadius: 999,
     borderWidth: 1,
-    borderColor: COLORS.glassBorder,
-    backgroundColor: COLORS.card,
+    borderColor: "rgba(255,255,255,0.10)",
+    backgroundColor: COLORS.glass,
     paddingHorizontal: 14,
   },
   tabPillActive: {
-    backgroundColor: COLORS.accentGlow,
-    borderColor: COLORS.accentGlowStrong,
+    backgroundColor: "rgba(229, 9, 20, 0.22)",
+    borderColor: "rgba(229, 9, 20, 0.34)",
   },
   tabText: {
     color: COLORS.textSecondary,
-    fontSize: 13,
+    fontSize: 12,
     fontFamily: "Inter_600SemiBold",
   },
   tabTextActive: {
@@ -612,11 +612,11 @@ const styles = StyleSheet.create({
   content: {
     paddingHorizontal: 16,
     gap: 20,
-    paddingTop: 12,
+    paddingTop: 8,
   },
   searchBoxWrap: {
     paddingHorizontal: 16,
-    paddingTop: 4,
+    paddingTop: 2,
     gap: 10,
   },
   searchRow: {

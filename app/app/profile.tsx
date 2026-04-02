@@ -339,12 +339,13 @@ const [showAddPlaylist, setShowAddPlaylist] = useState(false);
       ];
       const candidates = all
         .filter((row: any) => row?.id && row?.url)
-        .slice(0, 80)
+        .slice(0, 60)
         .map((row: any) => ({ id: String(row.id), url: String(row.url) }));
 
       if (!candidates.length) return data;
 
       const res = await apiRequest("POST", "/api/playlist/activate", { channels: candidates });
+      if (!res.ok) return data;
       const json = await res.json();
       const mapped = json?.urls && typeof json.urls === "object" ? json.urls : {};
 

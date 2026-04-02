@@ -41,7 +41,9 @@ export default function TabLayout() {
         tabBarShowLabel: true,
         tabBarActiveTintColor: COLORS.accent,
         tabBarInactiveTintColor: COLORS.textSecondary,
+        tabBarLabelPosition: "below-icon",
         tabBarLabelStyle: styles.label,
+        tabBarIconStyle: styles.iconStyle,
         tabBarItemStyle: styles.tabItem,
         tabBarHideOnKeyboard: true,
         tabBarStyle: {
@@ -49,7 +51,7 @@ export default function TabLayout() {
           borderTopWidth: StyleSheet.hairlineWidth,
           borderTopColor: COLORS.tabBarBorder,
           height: barHeight,
-          paddingTop: 6,
+          paddingTop: 8,
           paddingBottom: bottomPad,
           paddingHorizontal: 8,
           // Elevation/shadow for Android depth
@@ -75,7 +77,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="search"
         options={{
-          title: "Search",
+          title: "Zoek",
           tabBarIcon: ({ focused }: { focused: boolean }) => (
             <TabIcon focused={focused} icon={focused ? "search" : "search-outline"} />
           ),
@@ -123,14 +125,18 @@ const styles = StyleSheet.create({
   // Tab label
   label: {
     fontFamily: "Inter_600SemiBold",
-    fontSize: 11,
-    lineHeight: 14,
+    fontSize: 10,
+    lineHeight: 12,
+    marginBottom: 1,
+  },
+  iconStyle: {
+    marginTop: 2,
   },
   // Each tab item — flex:1 ensures equal width across all 3 tabs
   tabItem: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    paddingVertical: 0,
+    paddingVertical: 2,
   },
 });

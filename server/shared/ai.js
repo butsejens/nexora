@@ -121,7 +121,7 @@ async function xaiChat(messages, { temperature = 0.35, model } = {}) {
 
 /**
  * Build the ordered provider list based on available env keys.
- * Priority: Ollama (local, free) > DeepSeek > OpenRouter > Groq > Gemini > OpenAI > xAI
+ * Priority: configurable per call. Default stays local-first; callers can move xAI/Grok to the front.
  * opts.temperature and opts.model are forwarded to each provider.
  */
 function buildProviders(opts = {}) {
@@ -167,7 +167,12 @@ async function runLLM(messages, opts = {}) {
     xai: (m, o) => xaiChat(m, o),
   };
 
-  const order = ["ollama", "deepseek", "openrouter", "groq", "gemini", "openai", "xai"];
+  const defaultOrder = ["ollama", "deepseek", "openrouter", "groq", "gemini", "openai", "xai"];
+  const preferredRaw = String(opts.preferredProvider || process.env.AI_PROVIDER_PREFERENCE || "").trim().toLowerCase();
+  const preferredProvider = preferredRaw === "grok" ? "xai" : preferredRaw;
+  const order = preferredProvider && defaultOrder.includes(preferredProvider)
+    ? [preferredProvider, ...defaultOrder.filter((name) => name !== preferredProvider)]
+    : defaultOrder;
   const envKeys = {
     ollama: process.env.OLLAMA_MODEL,
     deepseek: process.env.DEEPSEEK_API_KEY,

@@ -56,6 +56,10 @@ export type PremiumSportMatch = {
   sport?: string | null;
   round?: string | null;
   venue?: string | null;
+  homeFeaturedPlayerName?: string | null;
+  awayFeaturedPlayerName?: string | null;
+  homeFeaturedPlayerPhoto?: string | null;
+  awayFeaturedPlayerPhoto?: string | null;
   hasStream?: boolean;
   raw?: any;
 };
@@ -109,10 +113,93 @@ function extractTeamLogo(team: any, direct: unknown): string | null {
   return nested || null;
 }
 
+function extractPlayerName(candidate: any): string | null {
+  if (!candidate) return null;
+  if (typeof candidate === "string") {
+    const normalized = candidate.trim();
+    return normalized || null;
+  }
+  const name = String(
+    candidate?.name
+    || candidate?.displayName
+    || candidate?.fullName
+    || candidate?.playerName
+    || candidate?.athlete?.displayName
+    || candidate?.athlete?.fullName
+    || "",
+  ).trim();
+  return name || null;
+}
+
+function extractPlayerPhoto(candidate: any): string | null {
+  if (!candidate) return null;
+  if (typeof candidate === "string") {
+    const normalized = candidate.trim();
+    return normalized || null;
+  }
+  const url = String(
+    candidate?.photo
+    || candidate?.image
+    || candidate?.avatar
+    || candidate?.headshot
+    || candidate?.headshotUrl
+    || candidate?.photoUrl
+    || candidate?.imageUrl
+    || candidate?.athlete?.headshot?.href
+    || candidate?.athlete?.headshot
+    || candidate?.athlete?.photo
+    || "",
+  ).trim();
+  return url || null;
+}
+
+function resolveFeaturedPlayer(bundle: any): { name: string | null; photo: string | null } {
+  const candidates = Array.isArray(bundle) ? bundle : [bundle];
+  for (const candidate of candidates) {
+    const name = extractPlayerName(candidate);
+    const photo = extractPlayerPhoto(candidate);
+    if (name || photo) {
+      return { name, photo };
+    }
+  }
+  return { name: null, photo: null };
+}
+
+function extractFeaturedPlayers(raw: any) {
+  const home = resolveFeaturedPlayer([
+    raw?.homeFeaturedPlayer,
+    raw?.homeTopPlayer,
+    raw?.homeKeyPlayer,
+    raw?.homeStarPlayer,
+    raw?.homePlayer,
+    raw?.homeTeam?.featuredPlayer,
+    raw?.homeTeam?.starPlayer,
+    raw?.topPlayers?.home?.[0],
+    raw?.players?.home?.[0],
+    raw?.highlights?.homePlayer,
+  ]);
+
+  const away = resolveFeaturedPlayer([
+    raw?.awayFeaturedPlayer,
+    raw?.awayTopPlayer,
+    raw?.awayKeyPlayer,
+    raw?.awayStarPlayer,
+    raw?.awayPlayer,
+    raw?.awayTeam?.featuredPlayer,
+    raw?.awayTeam?.starPlayer,
+    raw?.topPlayers?.away?.[0],
+    raw?.players?.away?.[0],
+    raw?.highlights?.awayPlayer,
+  ]);
+
+  return { home, away };
+}
+
 export function normalizeSportMatch(raw: any): PremiumSportMatch {
   const homeTeam = extractTeamName(raw?.homeTeam, String(raw?.homeTeamName || ""));
   const awayTeam = extractTeamName(raw?.awayTeam, String(raw?.awayTeamName || ""));
   const competition = raw?.competition || {};
+  const featuredPlayers = extractFeaturedPlayers(raw);
 
   return {
     id: String(raw?.id || raw?.matchId || `${homeTeam}-${awayTeam}-${raw?.startTime || raw?.startDate || ""}`),
@@ -134,6 +221,10 @@ export function normalizeSportMatch(raw: any): PremiumSportMatch {
     sport: String(raw?.sport || competition?.sport || "soccer").trim() || "soccer",
     round: String(raw?.round || "").trim() || null,
     venue: String(raw?.venue || "").trim() || null,
+    homeFeaturedPlayerName: featuredPlayers.home.name,
+    awayFeaturedPlayerName: featuredPlayers.away.name,
+    homeFeaturedPlayerPhoto: featuredPlayers.home.photo,
+    awayFeaturedPlayerPhoto: featuredPlayers.away.photo,
     hasStream: Boolean(raw?.hasStream),
     raw,
   };
@@ -322,6 +413,74 @@ export function HeroMatchCard({ match, onPress }: MatchCardProps) {
   );
 }
 
+export function MatchdayPosterCard({ match, onPress }: MatchCardProps) {
+  const state = resolveMatchVisualState(match);
+  const meta = statusMeta(state, match);
+  const score = scoreLabel(match, state);
+  const matchupTitle = `${match.homeTeam} vs ${match.awayTeam}`;
+
+  return (
+    <TouchableOpacity activeOpacity={0.9} onPress={onPress} style={styles.posterWrap}>
+      <LinearGradient colors={["#230C14", "#0C1422", "#070A10"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.posterCard}>
+        <View style={styles.posterGlowLeft} />
+        <View style={styles.posterGlowRight} />
+
+        <View style={styles.posterTopRow}>
+          <Text style={styles.posterLeague} numberOfLines={1}>{match.league}</Text>
+          <View style={[styles.posterBadge, { backgroundColor: meta.toneBg }]}> 
+            <Text style={[styles.posterBadgeText, { color: meta.toneFg }]}>{meta.label}</Text>
+          </View>
+        </View>
+
+        <View style={styles.posterMainRow}>
+          <View style={styles.posterSide}>
+            <TeamLogo uri={match.homeTeamLogo || ""} teamName={match.homeTeam} size={74} />
+            <Text style={styles.posterTeamName} numberOfLines={2}>{match.homeTeam}</Text>
+            {match.homeFeaturedPlayerName ? (
+              <View style={styles.posterPlayerRow}>
+                {match.homeFeaturedPlayerPhoto ? (
+                  <Image source={{ uri: match.homeFeaturedPlayerPhoto }} style={styles.posterPlayerAvatar} />
+                ) : (
+                  <View style={styles.posterPlayerAvatarFallback}>
+                    <Ionicons name="person" size={11} color={DS.text} />
+                  </View>
+                )}
+                <Text style={styles.posterPlayerName} numberOfLines={1}>{match.homeFeaturedPlayerName}</Text>
+              </View>
+            ) : null}
+          </View>
+
+          <View style={styles.posterCenter}>
+            <Text style={styles.posterVersus}>VS</Text>
+            <Text style={styles.posterScore}>{score.primary}</Text>
+            <Text style={styles.posterSub}>{score.secondary}</Text>
+          </View>
+
+          <View style={styles.posterSide}>
+            <TeamLogo uri={match.awayTeamLogo || ""} teamName={match.awayTeam} size={74} />
+            <Text style={styles.posterTeamName} numberOfLines={2}>{match.awayTeam}</Text>
+            {match.awayFeaturedPlayerName ? (
+              <View style={styles.posterPlayerRow}>
+                {match.awayFeaturedPlayerPhoto ? (
+                  <Image source={{ uri: match.awayFeaturedPlayerPhoto }} style={styles.posterPlayerAvatar} />
+                ) : (
+                  <View style={styles.posterPlayerAvatarFallback}>
+                    <Ionicons name="person" size={11} color={DS.text} />
+                  </View>
+                )}
+                <Text style={styles.posterPlayerName} numberOfLines={1}>{match.awayFeaturedPlayerName}</Text>
+              </View>
+            ) : null}
+          </View>
+        </View>
+
+        <Text style={styles.posterMatchupTitle} numberOfLines={1}>{matchupTitle}</Text>
+        <Text style={styles.posterFooter} numberOfLines={1}>{subtleExtra(match)}</Text>
+      </LinearGradient>
+    </TouchableOpacity>
+  );
+}
+
 export function MatchCard({ match, onPress, forceState, compact = false }: MatchCardProps) {
   const state = forceState || resolveMatchVisualState(match);
   const meta = statusMeta(state, match);
@@ -469,6 +628,85 @@ const styles = StyleSheet.create({
   heroFooterText: { color: DS.muted, fontSize: 12, fontFamily: "Inter_500Medium", flex: 1 },
   heroFooterPill: { flexDirection: "row", alignItems: "center", gap: 6, borderRadius: 999, backgroundColor: "rgba(255,255,255,0.05)", paddingHorizontal: 12, paddingVertical: 8 },
   heroFooterPillText: { color: DS.text, fontSize: 12, fontFamily: "Inter_700Bold" },
+  posterWrap: { marginBottom: 22 },
+  posterCard: {
+    borderRadius: 28,
+    overflow: "hidden",
+    borderWidth: 1,
+    borderColor: DS.border,
+    padding: 18,
+    gap: 14,
+    minHeight: 204,
+  },
+  posterGlowLeft: {
+    position: "absolute",
+    left: -56,
+    top: 18,
+    width: 168,
+    height: 168,
+    borderRadius: 84,
+    backgroundColor: "rgba(229,9,20,0.14)",
+  },
+  posterGlowRight: {
+    position: "absolute",
+    right: -58,
+    bottom: -18,
+    width: 172,
+    height: 172,
+    borderRadius: 86,
+    backgroundColor: "rgba(34,197,94,0.12)",
+  },
+  posterTopRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 },
+  posterLeague: { color: DS.muted, fontSize: 12, fontFamily: "Inter_700Bold", letterSpacing: 0.9, textTransform: "uppercase", flex: 1 },
+  posterBadge: { borderRadius: 999, paddingHorizontal: 12, paddingVertical: 6, borderWidth: 1, borderColor: "rgba(255,255,255,0.08)" },
+  posterBadgeText: { fontSize: 11, fontFamily: "Inter_800ExtraBold", letterSpacing: 0.8 },
+  posterMainRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 },
+  posterSide: { flex: 1, alignItems: "center", gap: 10, minWidth: 0 },
+  posterTeamName: { color: DS.text, fontSize: 15, fontFamily: "Inter_800ExtraBold", textAlign: "center", lineHeight: 19 },
+  posterPlayerRow: {
+    marginTop: 2,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: "rgba(255,255,255,0.08)",
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    maxWidth: "100%",
+  },
+  posterPlayerAvatar: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: "rgba(255,255,255,0.14)",
+  },
+  posterPlayerAvatarFallback: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(255,255,255,0.14)",
+  },
+  posterPlayerName: {
+    color: DS.text,
+    fontSize: 11,
+    fontFamily: "Inter_700Bold",
+    maxWidth: 86,
+  },
+  posterCenter: { minWidth: 92, alignItems: "center", gap: 4 },
+  posterVersus: { color: DS.accent, fontSize: 26, fontFamily: "Inter_900Black", letterSpacing: 1.2 },
+  posterScore: { color: DS.text, fontSize: 20, fontFamily: "Inter_800ExtraBold" },
+  posterSub: { color: DS.muted, fontSize: 11, fontFamily: "Inter_700Bold", textTransform: "uppercase", letterSpacing: 0.7, textAlign: "center" },
+  posterMatchupTitle: {
+    color: DS.text,
+    fontSize: 14,
+    fontFamily: "Inter_800ExtraBold",
+    textAlign: "center",
+    letterSpacing: 0.3,
+    paddingHorizontal: 8,
+  },
+  posterFooter: { color: DS.subtle, fontSize: 11, fontFamily: "Inter_500Medium" },
   cardWrap: { width: 286, marginRight: 14 },
   cardWrapCompact: { width: "100%", marginRight: 0 },
   card: { borderRadius: 24, overflow: "hidden", padding: 16, borderWidth: 1, borderColor: DS.border, minHeight: 188 },

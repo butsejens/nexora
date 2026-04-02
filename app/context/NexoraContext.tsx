@@ -172,8 +172,8 @@ const NexoraContext = createContext<NexoraContextValue | null>(null);
 // Constant outside component — never recreated
 const ALL_CATS: PremiumCategory[] = ["sport", "movies", "series", "livetv"];
 const profiles = ["Main"];
-const PREMIUM_BYPASS_ENABLED = ["1", "true", "yes", "on"].includes(
-  String(process.env.EXPO_PUBLIC_PREMIUM_BYPASS || "").trim().toLowerCase()
+const PREMIUM_BYPASS_ENABLED = !["0", "false", "no", "off"].includes(
+  String(process.env.EXPO_PUBLIC_PREMIUM_BYPASS || "true").trim().toLowerCase()
 );
 
 function todayStorageDate(): string {

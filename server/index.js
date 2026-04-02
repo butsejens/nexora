@@ -218,6 +218,7 @@ app.get("/api/config-check", (_req, res) => {
       openai: Boolean(process.env.OPENAI_API_KEY),
       deepseek: Boolean(process.env.DEEPSEEK_API_KEY),
       groq: Boolean(process.env.GROQ_API_KEY),
+      xai: Boolean(process.env.XAI_API_KEY),
       apify: Boolean(process.env.APIFY_TOKEN),
       redis: Boolean(process.env.REDIS_URL),
       zilliz: Boolean(process.env.ZILLIZ_URI && process.env.ZILLIZ_API_KEY),
@@ -226,7 +227,7 @@ app.get("/api/config-check", (_req, res) => {
     warnings: [
       ...(!process.env.TMDB_API_KEY ? ["TMDB_API_KEY not set — movies/series will be empty. Get a free key at https://www.themoviedb.org/settings/api"] : []),
       ...(!process.env.OMDB_API_KEY ? ["OMDB_API_KEY not set — real IMDb ratings, Rotten Tomatoes scores and awards will be unavailable"] : []),
-      ...(!process.env.GEMINI_API_KEY && !process.env.OPENROUTER_API_KEY && !process.env.OPENAI_API_KEY && !process.env.DEEPSEEK_API_KEY && !process.env.GROQ_API_KEY
+      ...(!process.env.GEMINI_API_KEY && !process.env.OPENROUTER_API_KEY && !process.env.OPENAI_API_KEY && !process.env.DEEPSEEK_API_KEY && !process.env.GROQ_API_KEY && !process.env.XAI_API_KEY
         ? ["No AI provider key set — match analysis / recommendations will be disabled"] : []),
     ],
   });
@@ -3926,7 +3927,8 @@ async function aiAnalyzePlayerProfile(player, context = {}) {
     process.env.OPENROUTER_API_KEY ||
     process.env.GROQ_API_KEY ||
     process.env.OPENAI_API_KEY ||
-    process.env.GEMINI_API_KEY
+    process.env.GEMINI_API_KEY ||
+    process.env.XAI_API_KEY
   );
 
   // Zilliz cache check – ook bruikbaar zonder AI provider
@@ -3954,6 +3956,7 @@ async function aiAnalyzePlayerProfile(player, context = {}) {
   };
 
   const providers = [];
+  if (process.env.XAI_API_KEY) providers.push(() => xaiChat([sys, user], { temperature: 0.25 }));
   if (process.env.OLLAMA_MODEL) providers.push(() => ollamaChat([sys, user], { temperature: 0.25 }));
   if (process.env.DEEPSEEK_API_KEY) providers.push(() => deepseekChat([sys, user], { temperature: 0.25 }));
   if (process.env.OPENROUTER_API_KEY) providers.push(() => openrouterChat([sys, user], { temperature: 0.25 }));
@@ -9140,8 +9143,15 @@ async function probePlaylistStreamUrl(rawUrl) {
       });
       clearTimeout(timer);
       const code = Number(resp.status || 0);
-      // Many IPTV providers answer 401/403 while stream still valid for player session.
-      if ((code >= 200 && code < 500) || code === 206) {
+      // Accept 2xx (success), 206 (partial), 3xx (redirect followed), 401/403 (auth done in player).
+      // Explicitly reject 404, 410 and other 4xx errors — those streams are gone.
+      if (
+        (code >= 200 && code < 300) ||
+        code === 206 ||
+        (code >= 300 && code < 400) ||
+        code === 401 ||
+        code === 403
+      ) {
         const finalUrl = String(resp.url || url);
         return { ok: true, url: finalUrl, code };
       }
@@ -9271,9 +9281,11 @@ app.post("/api/playlist/activate", playlistLimiter, async (req, res) => {
       return res.status(400).json({ error: "channels array is vereist" });
     }
 
+    // Cap at 60 candidates and probe concurrently in batches of 5.
+    // (Previously 80 sequential probes with 6.5s timeout each was impractically slow.)
     const unique = [];
     const seen = new Set();
-    for (const row of channels.slice(0, 80)) {
+    for (const row of channels.slice(0, 60)) {
       const id = String(row?.id || row?.url || "").trim();
       const url = String(row?.url || "").trim();
       if (!id || !url || seen.has(id)) continue;
@@ -9283,11 +9295,44 @@ app.post("/api/playlist/activate", playlistLimiter, async (req, res) => {
 
     const activated = {};
     let okCount = 0;
-    for (const row of unique) {
-      const probe = await probePlaylistStreamUrl(row.url);
-      if (probe.ok) {
-        activated[row.id] = probe.url;
-        okCount += 1;
+    const CONCURRENT = 5;
+    for (let i = 0; i < unique.length; i += CONCURRENT) {
+      const batch = unique.slice(i, i + CONCURRENT);
+      const results = await Promise.allSettled(
+        batch.map(async (row) => {
+          // Short 3s timeout for activation probes — player handles actual errors
+          const ctrl = new AbortController();
+          const t = setTimeout(() => ctrl.abort(), 3000);
+          try {
+            const resp = await fetch(row.url, {
+              method: "HEAD",
+              headers: IPTV_HEADERS,
+              redirect: "follow",
+              signal: ctrl.signal,
+            });
+            clearTimeout(t);
+            const code = Number(resp.status || 0);
+            // Accept 2xx, 206, 3xx, 401, 403 — reject 404/410 and other 4xx gone codes.
+            if (
+              (code >= 200 && code < 300) ||
+              code === 206 ||
+              (code >= 300 && code < 400) ||
+              code === 401 ||
+              code === 403
+            ) {
+              return { id: row.id, url: String(resp.url || row.url), ok: true };
+            }
+          } catch {
+            clearTimeout(t);
+          }
+          return { id: row.id, url: row.url, ok: false };
+        })
+      );
+      for (const r of results) {
+        if (r.status === "fulfilled" && r.value.ok) {
+          activated[r.value.id] = r.value.url;
+          okCount++;
+        }
       }
     }
 
@@ -9395,6 +9440,119 @@ app.post("/api/playlist/xtream", playlistLimiter, async (req, res) => {
         error: `Kan Xtream server niet bereiken: ${fetchErr.message}. Controleer of de host URL correct is.`,
       });
     }
+  } catch (e) {
+    res.status(500).json({ error: String(e?.message || e) });
+  }
+});
+
+// ─── iptv-org Free Channel Discovery ─────────────────────────────────────────
+// Fetches and caches public M3U playlists from iptv-org.github.io.
+// Supported params (mutually exclusive):
+//   country=nl  → https://iptv-org.github.io/iptv/countries/nl.m3u
+//   category=sports → https://iptv-org.github.io/iptv/categories/sports.m3u
+//
+// Known free categories: sports, news, kids, documentary, entertainment,
+//   comedy, movies, music, series, cooking, travel, education
+// Country: any ISO 3166-1 alpha-2 code (nl, be, de, fr, gb, es, us …)
+
+const iptvOrgCache = new Map(); // cacheKey -> { data, ts }
+const IPTV_ORG_CACHE_TTL = 60 * 60 * 1000; // 1 hour
+
+// Country metadata for display (label + flag emoji)
+const IPTV_ORG_COUNTRIES = {
+  nl: { label: "Netherlands", flag: "🇳🇱" },
+  be: { label: "Belgium", flag: "🇧🇪" },
+  de: { label: "Germany", flag: "🇩🇪" },
+  fr: { label: "France", flag: "🇫🇷" },
+  gb: { label: "United Kingdom", flag: "🇬🇧" },
+  es: { label: "Spain", flag: "🇪🇸" },
+  us: { label: "United States", flag: "🇺🇸" },
+  it: { label: "Italy", flag: "🇮🇹" },
+  tr: { label: "Turkey", flag: "🇹🇷" },
+  ar: { label: "Arabic", flag: "🌍" },
+};
+
+const IPTV_ORG_CATEGORIES = {
+  sports:        { label: "Sports",        icon: "🏆" },
+  news:          { label: "News",          icon: "📰" },
+  kids:          { label: "Kids",          icon: "🧒" },
+  documentary:   { label: "Documentary",   icon: "🎬" },
+  entertainment: { label: "Entertainment", icon: "🎭" },
+  music:         { label: "Music",         icon: "🎵" },
+  movies:        { label: "Movies",        icon: "🎥" },
+  cooking:       { label: "Cooking",       icon: "🍳" },
+  travel:        { label: "Travel",        icon: "✈️" },
+  education:     { label: "Education",     icon: "📚" },
+};
+
+// GET /api/iptv/discover?country=nl  OR  ?category=sports
+// GET /api/iptv/discover/sources — returns the catalogue without fetching M3U
+app.get("/api/iptv/discover/sources", (_req, res) => {
+  res.json({
+    countries: Object.entries(IPTV_ORG_COUNTRIES).map(([id, meta]) => ({ id, ...meta, type: "country" })),
+    categories: Object.entries(IPTV_ORG_CATEGORIES).map(([id, meta]) => ({ id, ...meta, type: "category" })),
+  });
+});
+
+app.get("/api/iptv/discover", playlistLimiter, async (req, res) => {
+  try {
+    const country  = String(req.query.country  || "").toLowerCase().trim();
+    const category = String(req.query.category || "").toLowerCase().trim();
+
+    if (!country && !category) {
+      return res.status(400).json({ error: "Geef een 'country' of 'category' parameter op." });
+    }
+
+    const param = country || category;
+    // Only allow safe alphanumeric identifiers — prevents path traversal
+    if (!/^[a-z]{2,32}$/.test(param)) {
+      return res.status(400).json({ error: "Ongeldige parameter." });
+    }
+
+    const pathSegment = country ? `countries/${param}` : `categories/${param}`;
+    const m3uUrl = `https://iptv-org.github.io/iptv/${pathSegment}.m3u`;
+    const cacheKey = `iptv-org:${pathSegment}`;
+
+    const cached = iptvOrgCache.get(cacheKey);
+    if (cached && Date.now() - cached.ts < IPTV_ORG_CACHE_TTL) {
+      return res.json(cached.data);
+    }
+
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 30_000);
+    let txt;
+    try {
+      const r = await fetch(m3uUrl, {
+        headers: { "User-Agent": "Nexora/2.4 Channel-Discovery" },
+        redirect: "follow",
+        signal: controller.signal,
+      });
+      clearTimeout(timer);
+      if (!r.ok) return res.status(502).json({ error: `iptv-org antwoordde met ${r.status}` });
+      txt = await r.text();
+    } catch (e) {
+      clearTimeout(timer);
+      return res.status(502).json({ error: `Kan iptv-org niet bereiken: ${e.message}` });
+    }
+
+    if (!txt.includes("#EXTM3U") && !txt.includes("#EXTINF")) {
+      return res.status(422).json({ error: "Geen geldig M3U ontvangen van iptv-org." });
+    }
+
+    const parsed = parseM3U(txt);
+    // Cap per category to keep payload manageable
+    const live    = (Array.isArray(parsed.live)   ? parsed.live   : []).slice(0, 1000);
+    const movies  = (Array.isArray(parsed.movies) ? parsed.movies : []).slice(0, 300);
+    const series  = (Array.isArray(parsed.series) ? parsed.series : []).slice(0, 300);
+
+    const meta = country
+      ? (IPTV_ORG_COUNTRIES[param] || { label: param.toUpperCase(), flag: "🌍" })
+      : (IPTV_ORG_CATEGORIES[param] || { label: param, icon: "📺" });
+
+    const data = { live, movies, series, source: "iptv-org", url: m3uUrl, meta };
+    iptvOrgCache.set(cacheKey, { data, ts: Date.now() });
+    console.log(`[iptv-org] ${pathSegment}: ${live.length} live, ${movies.length} movies, ${series.length} series`);
+    res.json(data);
   } catch (e) {
     res.status(500).json({ error: String(e?.message || e) });
   }
@@ -9689,8 +9847,12 @@ function mapFullDetail(detail, videos, credits, type) {
     status: detail.status || "",
     imdb: detail.vote_average ? String(Number(detail.vote_average).toFixed(1)) : null,
     rating: detail.vote_average ? String(Number(detail.vote_average).toFixed(1)) : null,
+    voteCount: Number(detail.vote_count || 0) || null,
+    popularity: Number(detail.popularity || 0) || null,
     duration: runtimeMinutes ? minutesToDuration(runtimeMinutes) : null,
     runtimeMinutes,
+    budget: type === "movie" ? Number(detail.budget || 0) || null : null,
+    revenue: type === "movie" ? Number(detail.revenue || 0) || null : null,
     originalLanguage: String(detail.original_language || "").toUpperCase() || null,
     spokenLanguages,
     countries,
@@ -11667,8 +11829,8 @@ function logStartupConfigCheck() {
     console.warn("    All /api/movies/* and /api/series/* endpoints will return empty arrays.");
     console.warn("    Get a free read-access token at: https://www.themoviedb.org/settings/api");
   }
-  if (!process.env.GEMINI_API_KEY && !process.env.OPENROUTER_API_KEY && !process.env.OPENAI_API_KEY && !process.env.DEEPSEEK_API_KEY && !process.env.GROQ_API_KEY) {
-    optional.push("AI keys (GEMINI_API_KEY / OPENROUTER_API_KEY / etc.)  → AI analysis disabled");
+  if (!process.env.GEMINI_API_KEY && !process.env.OPENROUTER_API_KEY && !process.env.OPENAI_API_KEY && !process.env.DEEPSEEK_API_KEY && !process.env.GROQ_API_KEY && !process.env.XAI_API_KEY) {
+    optional.push("AI keys (GEMINI_API_KEY / OPENROUTER_API_KEY / XAI_API_KEY / etc.)  → AI analysis disabled");
   }
   if (!process.env.APIFY_TOKEN) {
     optional.push("APIFY_TOKEN  → player/team enrichment via Sofascore disabled");

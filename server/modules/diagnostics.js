@@ -38,7 +38,14 @@ router.get('/api/config-check', (req, res) => {
   if (!process.env.OMDB_API_KEY) {
     warnings.push('OMDB_API_KEY not set — IMDb ratings and Rotten Tomatoes scores unavailable');
   }
-  const hasAiKey = !!(process.env.GEMINI_API_KEY || process.env.OPENROUTER_API_KEY || process.env.OPENAI_API_KEY || process.env.DEEPSEEK_API_KEY || process.env.GROQ_API_KEY);
+  const hasAiKey = !!(
+    process.env.GEMINI_API_KEY ||
+    process.env.OPENROUTER_API_KEY ||
+    process.env.OPENAI_API_KEY ||
+    process.env.DEEPSEEK_API_KEY ||
+    process.env.GROQ_API_KEY ||
+    process.env.XAI_API_KEY
+  );
   if (!hasAiKey) {
     warnings.push('No AI provider key set — match analysis / recommendations will be disabled');
   }
@@ -57,6 +64,7 @@ router.get('/api/config-check', (req, res) => {
       openai:      Boolean(process.env.OPENAI_API_KEY),
       deepseek:    Boolean(process.env.DEEPSEEK_API_KEY),
       groq:        Boolean(process.env.GROQ_API_KEY),
+      xai:         Boolean(process.env.XAI_API_KEY),
       redis:       Boolean(process.env.REDIS_URL),
       omdb:        Boolean(process.env.OMDB_API_KEY),
     },

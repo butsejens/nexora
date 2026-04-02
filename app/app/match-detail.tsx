@@ -38,6 +38,10 @@ import {
   type TimelineEventItem,
   type TimelineFilter,
 } from "@/features/match/hooks/useLineupTimelineIntegration";
+import { buildAiMatchStory } from "@/lib/ai/ai-summary-service";
+import { generateAiMatchStoryCard } from "@/lib/ai/aiMatchStoryGenerator";
+import { runAiPredictionModel } from "@/lib/ai/aiPredictionService";
+import type { MatchAnalysisInput } from "@/lib/match-analysis-engine";
 import { resolveCompetitionBrand } from "@/lib/logo-manager";
 import { getMatchDetailRaw, sportKeys } from "@/lib/services/sports-service";
 
@@ -141,51 +145,11 @@ function metricValue(value: number | null | undefined, suffix = "", decimals = 0
   return `${Number(value).toFixed(decimals)}${suffix}`;
 }
 
-function percentageClamp(value: number, min = 5, max = 90) {
-  return Math.max(min, Math.min(max, Math.round(value)));
-}
-
-function buildPrediction(input: {
-  homeRank?: number | null;
-  awayRank?: number | null;
-  homeForm?: number | null;
-  awayForm?: number | null;
-  homeWins?: number;
-  awayWins?: number;
-  homeScore?: number | null;
-  awayScore?: number | null;
-  minute?: number | null;
-  state: ScreenState;
-}) {
-  const rankEdge = (input.awayRank && input.homeRank) ? (input.awayRank - input.homeRank) * 2.2 : 0;
-  const formEdge = ((input.homeForm || 50) - (input.awayForm || 50)) * 0.32;
-  const h2hEdge = ((input.homeWins || 0) - (input.awayWins || 0)) * 3.5;
-  const liveEdge = input.state === "live"
-    ? (((input.homeScore || 0) - (input.awayScore || 0)) * 14) + ((input.minute || 0) > 70 ? ((input.homeScore || 0) - (input.awayScore || 0)) * 6 : 0)
-    : 0;
-
-  const rawHome = 50 + rankEdge + formEdge + h2hEdge + liveEdge;
-  const home = percentageClamp(rawHome);
-  const awayBase = percentageClamp(100 - rawHome, 5, 80);
-  const drawBase = input.state === "live" ? Math.max(6, 28 - Math.round((input.minute || 0) / 6)) : 24;
-  const swing = Math.abs(home - awayBase);
-  const draw = percentageClamp(drawBase - Math.round(swing / 10), 5, 30);
-  const remainder = 100 - draw;
-  const homeShare = Math.round((home / (home + awayBase)) * remainder);
-  const awayShare = remainder - homeShare;
-  const confidence = percentageClamp(58 + Math.abs(rankEdge) + Math.abs(formEdge) / 2 + Math.abs(liveEdge) / 3, 52, 92);
-
-  return {
-    home: homeShare,
-    draw,
-    away: awayShare,
-    confidence,
-  };
-}
-
-function inferVerdict(homeTeam: string, awayTeam: string, model: ReturnType<typeof buildPrediction>) {
-  if (model.home >= model.away + 12) return `${homeTeam} carry the stronger edge.`;
-  if (model.away >= model.home + 12) return `${awayTeam} look better placed.`;
+function inferVerdict(homeTeam: string, awayTeam: string, summary: string | null | undefined, favoredSide?: string | null) {
+  const cleanSummary = String(summary || "").trim();
+  if (cleanSummary) return cleanSummary;
+  if (favoredSide === "home") return `${homeTeam} carry the stronger edge.`;
+  if (favoredSide === "away") return `${awayTeam} look better placed.`;
   return "The matchup projects as balanced with a live swing factor.";
 }
 
@@ -377,21 +341,115 @@ export default function MatchDetailScreen() {
     events: timeline.events,
     activeFilter: timelineFilter,
   });
+  const normalizedAnalysisEvents = useMemo(() => {
+    return timeline.events.map((event) => ({
+      type: String(event.kind || event.raw?.type || ""),
+      team: event.teamName || undefined,
+      minute: Number(event.minuteValue ?? 0) || undefined,
+      detail: String(event.description || event.raw?.detail || ""),
+      player: String(event.raw?.playerName || event.raw?.player || "") || undefined,
+      text: String(event.title || event.raw?.text || ""),
+    }));
+  }, [timeline.events]);
 
   const liveRows = useMemo(() => liveStatRows(match.homeStats, match.awayStats), [match.awayStats, match.homeStats]);
   const keyMoments = useMemo(() => timeline.events.filter((event) => !event.isPhaseSeparator && event.isKeyMoment).slice(-5).reverse(), [timeline.events]);
-  const prediction = useMemo(() => buildPrediction({
-    homeRank: toNumber(standings.homeStanding?.rank),
-    awayRank: toNumber(standings.awayStanding?.rank),
-    homeForm: teamForm.homeForm.aiFormScore,
-    awayForm: teamForm.awayForm.aiFormScore,
-    homeWins: h2h.summary.homeWins,
-    awayWins: h2h.summary.awayWins,
+  const predictionInput = useMemo<MatchAnalysisInput>(() => ({
+    matchId: match.id,
+    competition: match.league,
+    homeTeam: match.homeTeam,
+    awayTeam: match.awayTeam,
+    isLive: state === "live",
+    minute: match.minute,
     homeScore: match.homeScore,
     awayScore: match.awayScore,
-    minute: match.minute,
+    status: match.statusDetail || match.status,
+    stats: {
+      home: match.homeStats,
+      away: match.awayStats,
+    },
+    events: normalizedAnalysisEvents,
+    home: {
+      rank: toNumber(standings.homeStanding?.rank),
+      points: toNumber(standings.homeStanding?.points),
+      goalDiff: toNumber((standings.homeStanding as any)?.goalDifference ?? (standings.homeStanding as any)?.goalDiff),
+      cleanSheets: toNumber(teamForm.homeTeamOverview?.cleanSheets),
+      goalsFor: toNumber(standings.homeStanding?.goalsFor ?? teamForm.homeTeamOverview?.goalsFor),
+      goalsAgainst: toNumber(standings.homeStanding?.goalsAgainst ?? teamForm.homeTeamOverview?.goalsAgainst),
+      recentResults5: teamForm.homeForm.sequence,
+      recentForm: teamForm.homeForm.sequence.join(""),
+      injuries: injuries.home.length,
+      lineupCertainty: integratedLineups.home.lineupState === "confirmed" ? 95 : integratedLineups.home.lineupState === "expected" ? 70 : 0,
+      formation: integratedLineups.home.formation || undefined,
+    },
+    away: {
+      rank: toNumber(standings.awayStanding?.rank),
+      points: toNumber(standings.awayStanding?.points),
+      goalDiff: toNumber((standings.awayStanding as any)?.goalDifference ?? (standings.awayStanding as any)?.goalDiff),
+      cleanSheets: toNumber(teamForm.awayTeamOverview?.cleanSheets),
+      goalsFor: toNumber(standings.awayStanding?.goalsFor ?? teamForm.awayTeamOverview?.goalsFor),
+      goalsAgainst: toNumber(standings.awayStanding?.goalsAgainst ?? teamForm.awayTeamOverview?.goalsAgainst),
+      recentResults5: teamForm.awayForm.sequence,
+      recentForm: teamForm.awayForm.sequence.join(""),
+      injuries: injuries.away.length,
+      lineupCertainty: integratedLineups.away.lineupState === "confirmed" ? 95 : integratedLineups.away.lineupState === "expected" ? 70 : 0,
+      formation: integratedLineups.away.formation || undefined,
+    },
+    headToHead: {
+      homeWins: h2h.summary.homeWins,
+      awayWins: h2h.summary.awayWins,
+      draws: h2h.summary.draws,
+    },
+  }), [
+    h2h.summary.awayWins,
+    h2h.summary.draws,
+    h2h.summary.homeWins,
+    injuries.away.length,
+    injuries.home.length,
+    integratedLineups.away.formation,
+    integratedLineups.away.lineupState,
+    integratedLineups.home.formation,
+    integratedLineups.home.lineupState,
+    match.awayScore,
+    match.awayStats,
+    match.awayTeam,
+    match.homeScore,
+    match.homeStats,
+    match.homeTeam,
+    match.id,
+    match.league,
+    match.minute,
+    match.status,
+    match.statusDetail,
+    standings.awayStanding,
+    standings.homeStanding,
     state,
-  }), [h2h.summary.awayWins, h2h.summary.homeWins, match.awayScore, match.homeScore, match.minute, standings.awayStanding?.rank, standings.homeStanding?.rank, state, teamForm.awayForm.aiFormScore, teamForm.homeForm.aiFormScore]);
+    teamForm.awayForm.sequence,
+    teamForm.awayTeamOverview,
+    teamForm.homeForm.sequence,
+    teamForm.homeTeamOverview,
+    normalizedAnalysisEvents,
+  ]);
+  const prediction = useMemo(
+    () => runAiPredictionModel(predictionInput, state === "live" ? "live" : "prematch"),
+    [predictionInput, state],
+  );
+  const liveStory = useMemo(
+    () => buildAiMatchStory({
+      homeTeam: match.homeTeam,
+      awayTeam: match.awayTeam,
+      homeScore: match.homeScore,
+      awayScore: match.awayScore,
+      timeline: timeline.events,
+      homeStats: match.homeStats,
+      awayStats: match.awayStats,
+    }),
+    [match.awayScore, match.awayStats, match.awayTeam, match.homeScore, match.homeStats, match.homeTeam, timeline.events],
+  );
+  const storyCard = useMemo(
+    () => generateAiMatchStoryCard({ prediction, liveStory, isLive: state === "live", homeTeam: match.homeTeam, awayTeam: match.awayTeam }),
+    [liveStory, match.awayTeam, match.homeTeam, prediction, state],
+  );
 
   const predictionDrivers = useMemo(() => {
     const drivers = [
@@ -401,9 +459,10 @@ export default function MatchDetailScreen() {
       `Form index: ${teamForm.homeForm.aiFormScore} vs ${teamForm.awayForm.aiFormScore}`,
       h2h.rows.length ? `Recent H2H: ${h2h.summary.homeWins}-${h2h.summary.draws}-${h2h.summary.awayWins}` : null,
       state === "live" ? `Live state: ${match.homeScore}-${match.awayScore}${match.minute ? ` at ${match.minute}'` : ""}` : null,
+      prediction.probabilityEngine.confidence.reason || null,
     ];
     return drivers.filter(Boolean) as string[];
-  }, [h2h.rows.length, h2h.summary.awayWins, h2h.summary.draws, h2h.summary.homeWins, match.awayScore, match.awayTeam, match.homeScore, match.homeTeam, match.minute, standings.awayStanding?.rank, standings.homeStanding?.rank, state, teamForm.awayForm.aiFormScore, teamForm.homeForm.aiFormScore]);
+  }, [h2h.rows.length, h2h.summary.awayWins, h2h.summary.draws, h2h.summary.homeWins, match.awayScore, match.awayTeam, match.homeScore, match.homeTeam, match.minute, prediction.probabilityEngine.confidence.reason, standings.awayStanding?.rank, standings.homeStanding?.rank, state, teamForm.awayForm.aiFormScore, teamForm.homeForm.aiFormScore]);
 
   const loading = detailQuery.isLoading && !detailQuery.data;
 
@@ -464,7 +523,7 @@ export default function MatchDetailScreen() {
               onPress={() => router.push({ pathname: "/team-detail", params: { teamId: match.homeTeamId, teamName: match.homeTeam, logo: match.homeTeamLogo, sport: safeText(params.sport, "soccer"), espnLeague } })}
             >
               <TeamLogo uri={match.homeTeamLogo} teamName={match.homeTeam} size={68} />
-              <Text style={styles.teamName}>{match.homeTeam}</Text>
+              <Text style={styles.teamName} numberOfLines={2} adjustsFontSizeToFit minimumFontScale={0.8}>{match.homeTeam}</Text>
             </TouchableOpacity>
             <View style={styles.scoreColumn}>
               {loading ? <ActivityIndicator color={DS.accent} /> : <Text style={styles.scoreText}>{match.homeScore} - {match.awayScore}</Text>}
@@ -477,7 +536,7 @@ export default function MatchDetailScreen() {
               onPress={() => router.push({ pathname: "/team-detail", params: { teamId: match.awayTeamId, teamName: match.awayTeam, logo: match.awayTeamLogo, sport: safeText(params.sport, "soccer"), espnLeague } })}
             >
               <TeamLogo uri={match.awayTeamLogo} teamName={match.awayTeam} size={68} />
-              <Text style={styles.teamName}>{match.awayTeam}</Text>
+              <Text style={styles.teamName} numberOfLines={2} adjustsFontSizeToFit minimumFontScale={0.8}>{match.awayTeam}</Text>
             </TouchableOpacity>
           </View>
 
@@ -507,15 +566,24 @@ export default function MatchDetailScreen() {
                 <QuickStat label="Confidence" value={`${prediction.confidence}%`} />
                 <QuickStat label="Timeline" value={`${timeline.events.length} events`} />
               </View>
-              <Text style={styles.bodyCopy}>{inferVerdict(match.homeTeam, match.awayTeam, prediction)}</Text>
+              <Text style={styles.bodyCopy}>{inferVerdict(match.homeTeam, match.awayTeam, storyCard?.summary || prediction.summary, prediction.favored_side)}</Text>
             </SectionCard>
 
             <SectionCard title="Prediction Split" subtitle="Built from table, form, H2H and live score state">
-              <ProbabilityBar homeLabel={match.homeTeam} awayLabel={match.awayTeam} homeValue={prediction.home} drawValue={prediction.draw} awayValue={prediction.away} />
+              <ProbabilityBar homeLabel={match.homeTeam} awayLabel={match.awayTeam} homeValue={prediction.homePct} drawValue={prediction.drawPct} awayValue={prediction.awayPct} />
               <View style={styles.driverList}>
                 {predictionDrivers.map((driver) => <BulletRow key={driver} label={driver} />)}
               </View>
             </SectionCard>
+
+            {storyCard ? (
+              <SectionCard title={storyCard.title} subtitle="Premium AI narrative from live signals, form and matchup context">
+                <Text style={styles.bodyCopy}>{storyCard.summary}</Text>
+                <View style={styles.driverList}>
+                  {storyCard.keyFactors.map((factor) => <BulletRow key={factor} label={factor} />)}
+                </View>
+              </SectionCard>
+            ) : null}
 
             <SectionCard title="Key Moments" subtitle="Latest turning points pulled from the event stream">
               {keyMoments.length ? keyMoments.map((event) => <TimelineEventRow key={event.id} event={event} />) : <EmptyBlock title="No major events yet" subtitle="Timeline moments will surface here as the match develops." />}
@@ -574,11 +642,11 @@ export default function MatchDetailScreen() {
         {activeTab === "predictions" ? (
           <View style={styles.sectionStack}>
             <SectionCard title="Outcome Model" subtitle="Structured probability split for win, draw and away win">
-              <ProbabilityBar homeLabel={match.homeTeam} awayLabel={match.awayTeam} homeValue={prediction.home} drawValue={prediction.draw} awayValue={prediction.away} />
+              <ProbabilityBar homeLabel={match.homeTeam} awayLabel={match.awayTeam} homeValue={prediction.homePct} drawValue={prediction.drawPct} awayValue={prediction.awayPct} />
               <View style={styles.predictionSummary}>
-                <PredictionTile label={match.homeTeam} value={`${prediction.home}%`} accent={DS.home} />
-                <PredictionTile label="Draw" value={`${prediction.draw}%`} accent={DS.muted} />
-                <PredictionTile label={match.awayTeam} value={`${prediction.away}%`} accent={DS.away} />
+                <PredictionTile label={match.homeTeam} value={`${prediction.homePct}%`} accent={DS.home} />
+                <PredictionTile label="Draw" value={`${prediction.drawPct}%`} accent={DS.muted} />
+                <PredictionTile label={match.awayTeam} value={`${prediction.awayPct}%`} accent={DS.away} />
               </View>
             </SectionCard>
 
@@ -589,8 +657,8 @@ export default function MatchDetailScreen() {
             </SectionCard>
 
             <SectionCard title="Model Verdict" subtitle="Short read for the premium sports layer">
-              <Text style={styles.verdictTitle}>{inferVerdict(match.homeTeam, match.awayTeam, prediction)}</Text>
-              <Text style={styles.bodyCopy}>Confidence sits at {prediction.confidence}%. This tab is fed by the same standings, form, H2H and live-state data already used by the rest of the sports stack.</Text>
+              <Text style={styles.verdictTitle}>{inferVerdict(match.homeTeam, match.awayTeam, storyCard?.summary || prediction.summary, prediction.favored_side)}</Text>
+              <Text style={styles.bodyCopy}>Confidence sits at {prediction.confidence}%. {prediction.tip || prediction.probabilityEngine.confidence.reason}</Text>
             </SectionCard>
           </View>
         ) : null}
@@ -893,10 +961,10 @@ const styles = StyleSheet.create({
   statePillMuted: { backgroundColor: "rgba(255,255,255,0.08)" },
   statePillText: { color: DS.text, fontSize: 12, fontFamily: "Inter_800ExtraBold" },
   statePillTextLive: { color: DS.live },
-  scoreboard: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 22 },
-  teamColumn: { flex: 1, alignItems: "center", gap: 10 },
-  teamName: { color: DS.text, fontSize: 15, fontFamily: "Inter_700Bold", textAlign: "center" },
-  scoreColumn: { alignItems: "center", gap: 6 },
+  scoreboard: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 22 },
+  teamColumn: { flex: 1.2, alignItems: "center", gap: 10 },
+  teamName: { color: DS.text, fontSize: 15, fontFamily: "Inter_700Bold", textAlign: "center", lineHeight: 19, width: "100%" },
+  scoreColumn: { alignItems: "center", gap: 6, flexShrink: 0, minWidth: 106 },
   scoreText: { color: DS.text, fontSize: 42, fontFamily: "Inter_900Black" },
   scoreSub: { color: DS.muted, fontSize: 13, fontFamily: "Inter_600SemiBold", textAlign: "center" },
   scoreMicro: { color: DS.subtle, fontSize: 12, fontFamily: "Inter_500Medium", textAlign: "center" },

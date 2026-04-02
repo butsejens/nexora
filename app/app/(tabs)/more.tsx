@@ -314,7 +314,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
-    backgroundColor: COLORS.card,
+    backgroundColor: COLORS.glass,
     borderRadius: 14,
     borderWidth: 1,
     borderColor: COLORS.glassBorder,
@@ -356,7 +356,7 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
   },
   menuSectionCard: {
-    backgroundColor: COLORS.card,
+    backgroundColor: COLORS.glass,
     borderRadius: 16,
     borderWidth: 1,
     borderColor: COLORS.glassBorder,

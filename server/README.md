@@ -12,6 +12,36 @@ npm run dev
 Health check:
 - http://localhost:8081/health
 
+## Open football datasets fallback (historical)
+Voor historische datums gebruikt `/api/sports/by-date?date=YYYY-MM-DD` nu een extra fallback op open data (football-data.co.uk, zoals ook gebruikt in `datasets/football-datasets`) voor:
+- Premier League
+- La Liga
+- Serie A
+- Bundesliga
+- Ligue 1
+
+Dit vult vooral oudere matchdays aan als ESPN geen events teruggeeft.
+Optionele timeout env:
+
+```bash
+FOOTBALL_DATA_TIMEOUT_MS=8000
+```
+
+## salimt dataset fallback (most usable slice)
+De endpoint `/api/sports/standings/:league` heeft nu een extra fallback op:
+- `salimt/football-datasets`
+- dataset: `team_competitions_seasons` + `team_details`
+
+Deze fallback levert vooral:
+- team ranks/points/wins/draws/losses/goals
+- teamlogo's (waar beschikbaar)
+
+Optionele timeout env:
+
+```bash
+SALIMT_DATA_TIMEOUT_MS=10000
+```
+
 ## Apify fallback (SofaScore + Transfermarkt)
 Voor ontbrekende spelerinfo kan de server automatisch Apify actors gebruiken als fallback in deze volgorde:
 1. `APIFY_SOFASCORE_ACTOR` (optioneel)
@@ -35,6 +65,10 @@ Nexora probeert providers in volgorde en pakt de eerste die werkt:
 4. `OPENROUTER_API_KEY`
 5. `GROQ_API_KEY`
 6. `OPENAI_API_KEY`
+7. `XAI_API_KEY` (Grok)
+
+Optioneel kan je een provider forceren in de gedeelde AI-router met:
+- `AI_PROVIDER_PREFERENCE=xai` (of `grok` alias)
 
 Voor gratis lokaal gebruik (aanrader):
 - Installeer Ollama
@@ -50,7 +84,7 @@ Voor OpenRouter free models:
 - Root Directory: `server`
 - Build command: `npm install`
 - Start command: `npm start`
-- Add env vars: AI provider keys of choice (`OLLAMA_MODEL` local, or `DEEPSEEK_API_KEY` / `GEMINI_API_KEY` / `OPENROUTER_API_KEY` / `GROQ_API_KEY` / `OPENAI_API_KEY`)
+- Add env vars: AI provider keys of choice (`OLLAMA_MODEL` local, or `DEEPSEEK_API_KEY` / `GEMINI_API_KEY` / `OPENROUTER_API_KEY` / `GROQ_API_KEY` / `OPENAI_API_KEY` / `XAI_API_KEY`)
 - Optional for sports source hardening: `ESPN_API_KEY`
 
 ## Deploy zonder lokale server (aanrader)
@@ -62,7 +96,7 @@ Gebruik Render free tier zodat je app altijd een backend heeft.
 4. Stel in Render Environment de variabelen in die je nodig hebt:
 	- Minimaal: `APP_TZ=Europe/Brussels`
 	- Voor films/series: `TMDB_API_KEY`
-	- Voor AI: minstens één van `OPENROUTER_API_KEY` / `GROQ_API_KEY` / `DEEPSEEK_API_KEY` / `GEMINI_API_KEY` / `OPENAI_API_KEY`
+	- Voor AI: minstens één van `OPENROUTER_API_KEY` / `GROQ_API_KEY` / `DEEPSEEK_API_KEY` / `GEMINI_API_KEY` / `OPENAI_API_KEY` / `XAI_API_KEY`
 	- Optioneel voor ESPN: `ESPN_API_KEY`
 	- Optioneel data fallback voor spelers: `APIFY_TOKEN`
 

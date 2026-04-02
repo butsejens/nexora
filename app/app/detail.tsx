@@ -61,6 +61,16 @@ function summarizeList(values: unknown, limit = 3): string {
     .join(", ");
 }
 
+function formatUsd(value: unknown): string | null {
+  const amount = Number(value);
+  if (!Number.isFinite(amount) || amount <= 0) return null;
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: 0,
+  }).format(amount);
+}
+
 const CastCard = React.memo(function CastCard({ person }: { person: any }) {
   return (
     <View style={styles.castCard}>
@@ -482,20 +492,62 @@ export default function DetailScreen() {
   const metadataItems = useMemo(() => {
     const originalTitle = String((data as any)?.originalTitle || "").trim();
     const title = String((data as any)?.title || "").trim();
+    const imdbRating = String((data as any)?.imdbRating || (data as any)?.imdb || "").trim();
+    const imdbVotes = String((data as any)?.imdbVotes || "").trim();
+    const rottenTomatoes = String((data as any)?.rottenTomatoes || "").trim();
+    const metacritic = String((data as any)?.metacritic || "").trim();
+    const rated = String((data as any)?.rated || "").trim();
+    const awards = String((data as any)?.awards || "").trim();
+    const budget = formatUsd((data as any)?.budget);
+    const revenue = formatUsd((data as any)?.revenue);
+    const voteCount = Number((data as any)?.voteCount || 0) || null;
+    const popularity = Number((data as any)?.popularity || 0) || null;
+    const boxOffice = String((data as any)?.boxOffice || "").trim();
     const items = [
+      imdbRating ? { label: "IMDb", value: imdbRating } : null,
+      rottenTomatoes ? { label: "Rotten Tomatoes", value: rottenTomatoes } : null,
+      metacritic ? { label: "Metacritic", value: metacritic } : null,
+      imdbVotes ? { label: "IMDb Votes", value: imdbVotes } : null,
+      voteCount ? { label: "TMDB Votes", value: String(voteCount) } : null,
+      popularity ? { label: "Popularity", value: popularity.toFixed(1) } : null,
+      rated ? { label: "Rated", value: rated } : null,
+      awards ? { label: "Awards", value: awards } : null,
+      budget ? { label: "Budget", value: budget } : null,
+      revenue ? { label: "Revenue", value: revenue } : null,
+      boxOffice ? { label: "Box Office", value: boxOffice } : null,
       originalTitle && originalTitle.toLowerCase() !== title.toLowerCase() ? { label: t("detail.originalTitle"), value: originalTitle } : null,
       (data as any)?.releaseDate ? { label: t("detail.releaseDate"), value: String((data as any).releaseDate) } : null,
       (data as any)?.status ? { label: t("detail.status"), value: String((data as any).status) } : null,
+      (data as any)?.duration ? { label: "Runtime", value: String((data as any).duration) } : null,
       summarizeList((data as any)?.spokenLanguages) ? { label: t("detail.audioLanguages"), value: summarizeList((data as any).spokenLanguages) } : null,
       (data as any)?.originalLanguage ? { label: t("detail.originalLanguage"), value: String((data as any).originalLanguage) } : null,
       summarizeList((data as any)?.countries) ? { label: t("detail.countries"), value: summarizeList((data as any).countries) } : null,
       summarizeList((data as any)?.directors) ? { label: t("detail.directors"), value: summarizeList((data as any).directors) } : null,
       summarizeList((data as any)?.writers) && isMovie ? { label: t("detail.writers"), value: summarizeList((data as any).writers) } : null,
+      summarizeList((data as any)?.creators) && !isMovie ? { label: t("detail.createdBy"), value: summarizeList((data as any).creators) } : null,
+      summarizeList((data as any)?.networks) && !isMovie ? { label: t("detail.network"), value: summarizeList((data as any).networks) } : null,
       summarizeList((data as any)?.studios) ? { label: t("detail.studios"), value: summarizeList((data as any).studios) } : null,
+      !isMovie && (data as any)?.totalSeasons ? { label: "Total seasons", value: String((data as any).totalSeasons) } : null,
       !isMovie && (data as any)?.totalEpisodes ? { label: t("detail.totalEpisodes"), value: String((data as any).totalEpisodes) } : null,
     ].filter(Boolean) as { label: string; value: string }[];
     return items;
   }, [data, isMovie, t]);
+  const awardsHighlight = useMemo(() => {
+    const awards = String((data as any)?.awards || "").trim();
+    return awards || null;
+  }, [data]);
+  const productionCompanies = useMemo(() => {
+    const companies = Array.isArray((data as any)?.productionCompanies)
+      ? (data as any).productionCompanies
+      : [];
+    return companies
+      .filter((company: any) => String(company?.name || "").trim())
+      .slice(0, 10);
+  }, [data]);
+  const collectionInfo = useMemo(() => {
+    const collection = (data as any)?.collection;
+    return collection?.id ? collection : null;
+  }, [data]);
   const relatedItems = useMemo(() => {
     const items = Array.isArray(relatedQuery.data?.items) ? relatedQuery.data.items : [];
     const seen = new Set<string>();
@@ -522,6 +574,30 @@ export default function DetailScreen() {
       link: countryData.link ?? null,
     };
   }, [providersQuery.data]);
+
+  const displayWatchProviders = useMemo(() => {
+    const nexoraTile = {
+      provider_id: "nexora-local",
+      provider_name: "Nexora",
+      isNexora: true,
+      logo_path: null,
+    };
+
+    if (!watchProviders) {
+      return {
+        streaming: [nexoraTile],
+        rent: [],
+      };
+    }
+
+    return {
+      streaming: [nexoraTile, ...watchProviders.flatrate],
+      rent: [
+        ...watchProviders.rent,
+        ...watchProviders.buy.filter((buy: any) => !watchProviders.rent.some((rent: any) => rent.provider_id === buy.provider_id)),
+      ],
+    };
+  }, [watchProviders]);
 
   const openTrailer = () => {
     SafeHaptics.impactLight();
@@ -747,6 +823,11 @@ export default function DetailScreen() {
                   <Text style={styles.heroRatingText}>{data.imdb}</Text>
                 </View>
               ) : null}
+              {(data as any)?.rottenTomatoes ? (
+                <View style={styles.heroSecondaryPill}>
+                  <Text style={styles.heroSecondaryPillText}>RT {(data as any).rottenTomatoes}</Text>
+                </View>
+              ) : null}
               {data.duration ? <Text style={styles.heroMetaText}>{data.duration}</Text> : null}
               {!isMovie && data.seasons?.length ? <Text style={styles.heroMetaText}>{data.seasons.length > 1 ? t("detail.seasonCountPlural", { count: data.seasons.length }) : t("detail.seasonCount", { count: data.seasons.length })}</Text> : null}
               <View style={styles.qualityBadge}>
@@ -832,32 +913,91 @@ export default function DetailScreen() {
                   ))}
                 </View>
               ) : null}
-              {!isMovie && data.networks?.length > 0 && (
-                <View style={styles.networkRow}>
-                  <Text style={styles.networkLabel}>{t("detail.network")}</Text>
-                  <Text style={styles.networkValue}>{data.networks.join(", ")}</Text>
+              {awardsHighlight ? (
+                <View style={styles.highlightCard}>
+                  <View style={styles.highlightIconWrap}>
+                    <Ionicons name="trophy-outline" size={18} color={COLORS.accent} />
+                  </View>
+                  <View style={styles.highlightBody}>
+                    <Text style={styles.highlightTitle}>Awards</Text>
+                    <Text style={styles.highlightText}>{awardsHighlight}</Text>
+                  </View>
                 </View>
-              )}
-              {!isMovie && data.creators?.length > 0 && (
-                <View style={styles.networkRow}>
-                  <Text style={styles.networkLabel}>{t("detail.createdBy")}</Text>
-                  <Text style={styles.networkValue}>{data.creators.join(", ")}</Text>
+              ) : null}
+              {productionCompanies.length > 0 ? (
+                <View style={styles.providersSection}>
+                  <Text style={styles.providersSectionTitle}>Studios</Text>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                    <View style={styles.studiosRow}>
+                      {productionCompanies.map((company: any) => (
+                        <View key={String(company.id || company.name)} style={styles.studioItem}>
+                          {company.logo ? (
+                            <Image source={{ uri: company.logo }} style={styles.studioLogo} resizeMode="contain" />
+                          ) : (
+                            <View style={[styles.studioLogo, styles.studioFallback]}>
+                              <Ionicons name="business-outline" size={16} color={COLORS.textMuted} />
+                            </View>
+                          )}
+                          <Text style={styles.providerName} numberOfLines={2}>{String(company.name)}</Text>
+                        </View>
+                      ))}
+                    </View>
+                  </ScrollView>
                 </View>
-              )}
-              {watchProviders && (watchProviders.flatrate.length > 0 || watchProviders.rent.length > 0) ? (
+              ) : null}
+              {collectionInfo ? (
+                <View style={styles.collectionCard}>
+                  {collectionInfo.backdrop || collectionInfo.poster ? (
+                    <Image
+                      source={{ uri: String(collectionInfo.backdrop || collectionInfo.poster) }}
+                      style={styles.collectionArt}
+                      resizeMode="cover"
+                    />
+                  ) : null}
+                  <LinearGradient
+                    colors={["rgba(0,0,0,0.1)", "rgba(0,0,0,0.82)"]}
+                    style={styles.collectionOverlay}
+                  />
+                  <View style={styles.collectionContent}>
+                    <Text style={styles.collectionEyebrow}>Franchise</Text>
+                    <Text style={styles.collectionTitle} numberOfLines={2}>{String(collectionInfo.name || "Collection")}</Text>
+                    <TouchableOpacity
+                      style={styles.collectionBtn}
+                      onPress={() =>
+                        router.push({
+                          pathname: "/vod-collection",
+                          params: {
+                            id: String(collectionInfo.id),
+                            name: String(collectionInfo.name || ""),
+                          },
+                        })
+                      }
+                    >
+                      <Text style={styles.collectionBtnText}>Bekijk collectie</Text>
+                      <Ionicons name="chevron-forward" size={14} color={COLORS.accent} />
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              ) : null}
+              {displayWatchProviders.streaming.length > 0 || displayWatchProviders.rent.length > 0 ? (
                 <View style={styles.providersSection}>
                   <Text style={styles.providersSectionTitle}>Where to Watch</Text>
-                  {watchProviders.flatrate.length > 0 ? (
+                  {displayWatchProviders.streaming.length > 0 ? (
                     <View style={styles.providersGroup}>
                       <Text style={styles.providersGroupLabel}>Streaming</Text>
                       <ScrollView horizontal showsHorizontalScrollIndicator={false}>
                         <View style={styles.providersRow}>
-                          {watchProviders.flatrate.map((p: any) => (
+                          {displayWatchProviders.streaming.map((p: any) => (
                             <View key={p.provider_id} style={styles.providerItem}>
-                              {p.logo_path ? (
+                              {p.isNexora ? (
+                                <View style={[styles.providerLogo, styles.providerLogoNexora]}>
+                                  <Text style={styles.providerLogoNexoraText}>NX</Text>
+                                </View>
+                              ) : p.logo_path ? (
                                 <Image
-                                  source={{ uri: `https://image.tmdb.org/t/p/w45${p.logo_path}` }}
+                                  source={{ uri: `https://image.tmdb.org/t/p/w185${p.logo_path}` }}
                                   style={styles.providerLogo}
+                                  resizeMode="contain"
                                 />
                               ) : null}
                               <Text style={styles.providerName} numberOfLines={2}>{p.provider_name}</Text>
@@ -867,17 +1007,18 @@ export default function DetailScreen() {
                       </ScrollView>
                     </View>
                   ) : null}
-                  {watchProviders.rent.length > 0 ? (
+                  {displayWatchProviders.rent.length > 0 ? (
                     <View style={styles.providersGroup}>
                       <Text style={styles.providersGroupLabel}>Rent / Buy</Text>
                       <ScrollView horizontal showsHorizontalScrollIndicator={false}>
                         <View style={styles.providersRow}>
-                          {[...watchProviders.rent, ...watchProviders.buy.filter((b: any) => !watchProviders.rent.some((r: any) => r.provider_id === b.provider_id))].map((p: any) => (
+                          {displayWatchProviders.rent.map((p: any) => (
                             <View key={p.provider_id} style={styles.providerItem}>
                               {p.logo_path ? (
                                 <Image
-                                  source={{ uri: `https://image.tmdb.org/t/p/w45${p.logo_path}` }}
+                                  source={{ uri: `https://image.tmdb.org/t/p/w185${p.logo_path}` }}
                                   style={styles.providerLogo}
+                                  resizeMode="contain"
                                 />
                               ) : null}
                               <Text style={styles.providerName} numberOfLines={2}>{p.provider_name}</Text>
@@ -1126,6 +1267,19 @@ const styles = StyleSheet.create({
   heroMetaText: { fontFamily: "Inter_500Medium", fontSize: 13, color: COLORS.textSecondary },
   heroRatingPill: { flexDirection: "row", alignItems: "center", gap: 3 },
   heroRatingText: { fontFamily: "Inter_700Bold", fontSize: 13, color: "#F5C518" },
+  heroSecondaryPill: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 999,
+    backgroundColor: "rgba(229,9,20,0.18)",
+    borderWidth: 1,
+    borderColor: "rgba(229,9,20,0.32)",
+  },
+  heroSecondaryPillText: {
+    color: COLORS.text,
+    fontFamily: "Inter_700Bold",
+    fontSize: 11,
+  },
   iptvBadge: { position: "absolute", bottom: 16, left: 16, flexDirection: "row", alignItems: "center", gap: 5, backgroundColor: "rgba(0,212,255,0.15)", borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4, borderWidth: 1, borderColor: COLORS.accent },
   iptvBadgeText: { fontFamily: "Inter_600SemiBold", fontSize: 11, color: COLORS.accent },
   infoSection: { paddingHorizontal: 16, paddingTop: 12 },
@@ -1151,7 +1305,7 @@ const styles = StyleSheet.create({
   tabContent: { paddingBottom: 8 },
   synopsis: { fontFamily: "Inter_400Regular", fontSize: 15, color: COLORS.textSecondary, lineHeight: 24, marginBottom: 16 },
   metadataGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10, marginBottom: 16, marginTop: 8 },
-  metadataCard: { width: "47%", flexGrow: 1, minHeight: 80, padding: 14, borderRadius: 14, backgroundColor: "rgba(255,255,255,0.06)", borderWidth: 1, borderColor: "rgba(255,255,255,0.10)", gap: 6, justifyContent: "flex-start" },
+  metadataCard: { width: "47%", flexGrow: 1, minHeight: 86, padding: 14, borderRadius: 14, backgroundColor: "rgba(255,255,255,0.06)", borderWidth: 1, borderColor: "rgba(255,255,255,0.10)", gap: 6, justifyContent: "flex-start" },
   relatedSection: { marginTop: 14, marginBottom: 8 },
   relatedTitle: { color: COLORS.text, fontFamily: "Inter_700Bold", fontSize: 18, marginBottom: 10 },
   relatedRow: { paddingRight: 12 },
@@ -1162,6 +1316,68 @@ const styles = StyleSheet.create({
   relatedCardMeta: { marginTop: 2, color: COLORS.textMuted, fontFamily: "Inter_500Medium", fontSize: 11 },
   metadataLabel: { fontFamily: "Inter_600SemiBold", fontSize: 10, color: COLORS.textMuted, textTransform: "uppercase", letterSpacing: 1.0 },
   metadataValue: { fontFamily: "Inter_600SemiBold", fontSize: 14, color: COLORS.text, lineHeight: 20 },
+  highlightCard: {
+    flexDirection: "row",
+    gap: 10,
+    backgroundColor: "rgba(229,9,20,0.10)",
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "rgba(229,9,20,0.28)",
+    padding: 12,
+    marginTop: 4,
+    marginBottom: 8,
+  },
+  highlightIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(229,9,20,0.22)",
+  },
+  highlightBody: { flex: 1, gap: 4 },
+  highlightTitle: { color: COLORS.text, fontFamily: "Inter_700Bold", fontSize: 13 },
+  highlightText: { color: COLORS.textSecondary, fontFamily: "Inter_400Regular", fontSize: 12, lineHeight: 18 },
+  studiosRow: { flexDirection: "row", gap: 12, paddingVertical: 2, paddingRight: 10 },
+  studioItem: { alignItems: "center", width: 90, gap: 7 },
+  studioLogo: {
+    width: 74,
+    height: 54,
+    borderRadius: 12,
+    backgroundColor: COLORS.card,
+    borderWidth: 1,
+    borderColor: COLORS.glassBorder,
+  },
+  studioFallback: { alignItems: "center", justifyContent: "center" },
+  collectionCard: {
+    marginTop: 6,
+    marginBottom: 10,
+    borderRadius: 16,
+    overflow: "hidden",
+    backgroundColor: COLORS.card,
+    minHeight: 150,
+    borderWidth: 1,
+    borderColor: COLORS.glassBorder,
+  },
+  collectionArt: { ...StyleSheet.absoluteFillObject },
+  collectionOverlay: { ...StyleSheet.absoluteFillObject },
+  collectionContent: { padding: 14, justifyContent: "flex-end", minHeight: 150, gap: 6 },
+  collectionEyebrow: { color: COLORS.accent, fontFamily: "Inter_700Bold", fontSize: 10, letterSpacing: 1.1, textTransform: "uppercase" },
+  collectionTitle: { color: COLORS.text, fontFamily: "Inter_800ExtraBold", fontSize: 18, lineHeight: 24 },
+  collectionBtn: {
+    marginTop: 2,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    alignSelf: "flex-start",
+    backgroundColor: "rgba(0,0,0,0.38)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.18)",
+    borderRadius: 20,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+  },
+  collectionBtnText: { color: COLORS.accent, fontFamily: "Inter_700Bold", fontSize: 12 },
   networkRow: { flexDirection: "row", marginBottom: 8 },
   networkLabel: { fontFamily: "Inter_600SemiBold", fontSize: 13, color: COLORS.textMuted },
   networkValue: { fontFamily: "Inter_400Regular", fontSize: 13, color: COLORS.textSecondary },
@@ -1169,10 +1385,29 @@ const styles = StyleSheet.create({
   providersSectionTitle: { fontFamily: "Inter_700Bold", fontSize: 16, color: COLORS.text, marginBottom: 10 },
   providersGroup: { marginBottom: 12 },
   providersGroupLabel: { fontFamily: "Inter_600SemiBold", fontSize: 11, color: COLORS.textMuted, textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 8 },
-  providersRow: { flexDirection: "row", gap: 10, paddingVertical: 2 },
-  providerItem: { alignItems: "center", width: 64, gap: 5 },
-  providerLogo: { width: 52, height: 52, borderRadius: 12, backgroundColor: COLORS.card },
-  providerName: { fontFamily: "Inter_500Medium", fontSize: 10, color: COLORS.textSecondary, textAlign: "center" },
+  providersRow: { flexDirection: "row", gap: 12, paddingVertical: 2, paddingRight: 10 },
+  providerItem: { alignItems: "center", width: 82, gap: 7 },
+  providerLogo: {
+    width: 68,
+    height: 68,
+    borderRadius: 16,
+    backgroundColor: COLORS.card,
+    borderWidth: 1,
+    borderColor: COLORS.glassBorder,
+  },
+  providerLogoNexora: {
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: COLORS.accentGlow,
+    borderColor: "rgba(229,9,20,0.34)",
+  },
+  providerLogoNexoraText: {
+    color: COLORS.text,
+    fontFamily: "Inter_800ExtraBold",
+    fontSize: 22,
+    letterSpacing: 1.2,
+  },
+  providerName: { fontFamily: "Inter_500Medium", fontSize: 11, color: COLORS.textSecondary, textAlign: "center", lineHeight: 15 },
   castRow: { flexDirection: "row", gap: 12, paddingVertical: 4 },
   castCard: { width: 80, alignItems: "center", gap: 6 },
   castPhoto: { width: 76, height: 76, borderRadius: 14, backgroundColor: COLORS.card },

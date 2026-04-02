@@ -519,6 +519,15 @@ export function enrichTeamDetailPayload(raw: any): any {
     };
   }).filter((player: any) => Boolean(player?.name));
 
+  const derivedSquadMarketValueNumeric = enrichedPlayers.reduce((total: number, player: any) => {
+    const value = Number(player?.marketValueNumeric || 0);
+    return Number.isFinite(value) ? total + value : total;
+  }, 0);
+
+  const derivedSquadMarketValue = derivedSquadMarketValueNumeric > 0
+    ? cleanMarketValueText(derivedSquadMarketValueNumeric)
+    : null;
+
   const topScorer = isGoodText(raw?.topScorer?.name)
     ? raw.topScorer
     : [...enrichedPlayers]
@@ -548,7 +557,9 @@ export function enrichTeamDetailPayload(raw: any): any {
     coach: isGoodText(raw?.coach) ? normalizeText(raw?.coach) : null,
     venue: isGoodText(raw?.venue || raw?.stadium) ? pickFirstText(raw?.venue, raw?.stadium) : null,
     country: isGoodText(raw?.country) ? normalizeText(raw?.country) : null,
-    squadMarketValue: isGoodText(raw?.squadMarketValue || raw?.clubValue) ? pickFirstText(raw?.squadMarketValue, raw?.clubValue) : null,
+    squadMarketValue: isGoodText(raw?.squadMarketValue || raw?.clubValue)
+      ? pickFirstText(raw?.squadMarketValue, raw?.clubValue)
+      : derivedSquadMarketValue,
     wins,
     draws,
     losses,

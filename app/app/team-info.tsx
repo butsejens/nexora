@@ -95,6 +95,26 @@ function guessCountryFromLeagueCode(leagueCode: string): string {
   return "";
 }
 
+function mapLeagueCodeToName(leagueCode: string): string {
+  const code = String(leagueCode || "").toLowerCase();
+  const names: Record<string, string> = {
+    "bel.1": "Jupiler Pro League",
+    "eng.1": "Premier League",
+    "eng.2": "Championship",
+    "esp.1": "La Liga",
+    "esp.2": "La Liga 2",
+    "ita.1": "Serie A",
+    "ger.1": "Bundesliga",
+    "fra.1": "Ligue 1",
+    "ned.1": "Eredivisie",
+    "uefa.champions": "UEFA Champions League",
+    "uefa.europa": "UEFA Europa League",
+    "uefa.europa.conf": "UEFA Conference League",
+    "fifa.world": "FIFA World Cup",
+  };
+  return names[code] || leagueCode;
+}
+
 function parseRecord(record: unknown): { wins: number; draws: number; losses: number } {
   const text = String(record || "").trim();
   if (!text) return { wins: 0, draws: 0, losses: 0 };
@@ -308,9 +328,10 @@ export default function TeamInfoScreen() {
   }, [players]);
 
   const leagueLabel = cleanLeagueLabel(data?.leagueName, league);
+  const displayLeagueName = leagueLabel && !isLeagueCode(leagueLabel) ? leagueLabel : mapLeagueCodeToName(String(league || ""));
   const competitionBrand = useMemo(
-    () => resolveCompetitionBrand({ name: String(data?.leagueName || leagueLabel || league), espnLeague: String(league || "") }),
-    [data?.leagueName, league, leagueLabel],
+    () => resolveCompetitionBrand({ name: String(data?.leagueName || displayLeagueName || league), espnLeague: String(league || "") }),
+    [data?.leagueName, displayLeagueName, league],
   );
   const seasonStats = useMemo(() => {
     const fromRecord = parseRecord(data?.record);
@@ -332,6 +353,15 @@ export default function TeamInfoScreen() {
     if (raw && raw.toLowerCase() !== team && !isLeagueCode(raw)) return raw;
     return guessCountryFromLeagueCode(league) || "Unknown";
   }, [data?.country, data?.name, league, teamName]);
+  const totalSquadValue = useMemo(() => {
+    if (String(data?.squadMarketValue || "").trim()) return String(data?.squadMarketValue);
+    const total = players.reduce((sum, player) => sum + parseMarketValue(player?.marketValue), 0);
+    if (total <= 0) return "";
+    if (total >= 1_000_000_000) return `€${(total / 1_000_000_000).toFixed(2)}B`;
+    if (total >= 1_000_000) return `€${(total / 1_000_000).toFixed(2)}M`;
+    if (total >= 1_000) return `€${Math.round(total / 1_000)}K`;
+    return `€${Math.round(total)}`;
+  }, [data?.squadMarketValue, players]);
   const topScorerLabel = String((data?.topScorer as any)?.name || "").trim()
     ? `${(data?.topScorer as any)?.name}${(data?.topScorer as any)?.goals ? ` · ${(data?.topScorer as any)?.goals}G` : ""}`
     : "";
@@ -352,7 +382,7 @@ export default function TeamInfoScreen() {
             <TeamLogo uri={data?.logo} teamName={data?.name || teamName} size={118} />
           </View>
           <Text style={styles.teamName}>{data?.name || teamName}</Text>
-          {competitionBrand?.name ? <Text style={styles.league} numberOfLines={1}>{competitionBrand.name}</Text> : null}
+          {(competitionBrand?.name || displayLeagueName) ? <Text style={styles.league} numberOfLines={1}>{competitionBrand?.name || displayLeagueName}</Text> : null}
           {data?.leagueRank && (
             <View style={[styles.rankBadge, { backgroundColor: `${heroColor}22`, borderColor: heroColor }]}>
               <Text style={[styles.rankText, { color: heroColor }]}>#{data.leagueRank}</Text>
@@ -365,7 +395,7 @@ export default function TeamInfoScreen() {
           <Line label="League Position" value={data?.leagueRank ? `#${data.leagueRank}` : ""} icon="trophy-outline" />
           <Line label="Points" value={seasonStats.points > 0 ? String(seasonStats.points) : ""} icon="star-outline" />
           <Line label="Matches" value={seasonStats.played > 0 ? String(seasonStats.played) : ""} icon="soccer" />
-          <Line label="Club Value" value={String(data?.squadMarketValue || "")} icon="currency-eur" />
+          <Line label="Club Value" value={totalSquadValue} icon="currency-eur" />
           <Line label="Top Scorer" value={topScorerLabel} icon="trophy" />
           <Line label="Top Assist" value={topAssistLabel} icon="target" />
         </View>
@@ -378,8 +408,8 @@ export default function TeamInfoScreen() {
               <Text style={styles.label}>League</Text>
             </View>
             <View style={styles.leagueValueRow}>
-              <TeamLogo uri={typeof competitionBrand?.logo === "string" ? competitionBrand.logo : null} resolvedLogo={typeof competitionBrand?.logo === "number" ? competitionBrand.logo : undefined} teamName={competitionBrand?.name || leagueLabel} size={18} />
-              <Text style={styles.value} numberOfLines={1}>{competitionBrand?.name || leagueLabel}</Text>
+              <TeamLogo uri={typeof competitionBrand?.logo === "string" ? competitionBrand.logo : null} resolvedLogo={typeof competitionBrand?.logo === "number" ? competitionBrand.logo : undefined} teamName={competitionBrand?.name || displayLeagueName} size={18} />
+              <Text style={styles.value} numberOfLines={1}>{competitionBrand?.name || displayLeagueName}</Text>
             </View>
           </View>
           <Line label="Country" value={resolvedCountry} icon="earth" />
@@ -431,7 +461,7 @@ export default function TeamInfoScreen() {
           <Line label="Top Scorer" value={topScorerLabel} icon="trophy-outline" />
           <Line label="Top Assist" value={topAssistLabel} icon="target" />
           <Line label="Discipline" value={data?.yellowCards != null || data?.redCards != null ? `${data?.yellowCards || 0}Y · ${data?.redCards || 0}R` : ""} icon="alert-outline" />
-          <Line label="Club Value" value={String(data?.squadMarketValue || "")} icon="currency-eur" />
+          <Line label="Club Value" value={totalSquadValue} icon="currency-eur" />
         </View>
 
         {(seasonStats.goalsFor != null || seasonStats.goalsAgainst != null || data?.cleanSheets != null) ? (

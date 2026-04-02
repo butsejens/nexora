@@ -217,6 +217,15 @@ export default function TeamDetailScreen() {
     if (leagueName && country) return `${leagueName} • ${country}`;
     return leagueName || country;
   }, [data?.country, data?.leagueName]);
+  const teamSummaryFacts = useMemo(() => {
+    const facts = [
+      data?.leagueRank ? `#${data.leagueRank} in ${String(data?.leagueName || "competition").trim()}` : "",
+      data?.leaguePoints ? `${data.leaguePoints} pts` : "",
+      data?.squadMarketValue ? String(data.squadMarketValue) : "",
+      data?.venue ? String(data.venue) : "",
+    ].filter(Boolean);
+    return facts.slice(0, 4);
+  }, [data?.leagueName, data?.leaguePoints, data?.leagueRank, data?.squadMarketValue, data?.venue]);
   const playersForDisplay = useMemo(
     () => players.filter((p) => Boolean(String(p?.name || "").trim())),
     [players]
@@ -369,8 +378,18 @@ export default function TeamDetailScreen() {
                         size={106}
                       />
                     </View>
+                    <Text style={styles.teamTitle} numberOfLines={2}>{teamName}</Text>
                     {data.shortName ? <Text style={styles.teamShort}>{data.shortName}</Text> : null}
                     {headerSubtitle ? <Text style={styles.teamMeta}>{headerSubtitle}</Text> : null}
+                    {teamSummaryFacts.length ? (
+                      <View style={styles.summaryChipRow}>
+                        {teamSummaryFacts.map((fact) => (
+                          <View key={fact} style={styles.summaryChip}>
+                            <Text style={styles.summaryChipText} numberOfLines={1}>{fact}</Text>
+                          </View>
+                        ))}
+                      </View>
+                    ) : null}
                   </View>
                 </View>
                 {positions.length > 1 ? (
@@ -600,6 +619,17 @@ const styles = StyleSheet.create({
   teamTitle: { fontFamily: "Inter_800ExtraBold", fontSize: 22, color: COLORS.text, textAlign: "center" },
   teamShort: { fontFamily: "Inter_400Regular", fontSize: 14, color: "rgba(255,255,255,0.5)" },
   teamMeta: { fontFamily: "Inter_500Medium", fontSize: 12, color: COLORS.textMuted, textAlign: "center" },
+  summaryChipRow: { flexDirection: "row", gap: 8, flexWrap: "wrap", justifyContent: "center", paddingHorizontal: 6 },
+  summaryChip: {
+    maxWidth: "100%",
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: "rgba(255,255,255,0.06)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.12)",
+  },
+  summaryChipText: { fontFamily: "Inter_600SemiBold", fontSize: 11, color: COLORS.textSecondary },
   rankBadge: {
     flexDirection: "row", alignItems: "center", gap: 5,
     backgroundColor: "rgba(255,215,0,0.12)", borderRadius: 14,
@@ -682,15 +712,15 @@ const styles = StyleSheet.create({
   photoPlaceholder: { backgroundColor: COLORS.card, alignItems: "center", justifyContent: "center" },
   playerInitials: { fontFamily: "Inter_700Bold", fontSize: 13, color: COLORS.text },
   playerMain: { flex: 1, gap: 5 },
-  playerNameRow: { flexDirection: "row", alignItems: "center", gap: 6 },
+  playerNameRow: { flexDirection: "row", alignItems: "flex-start", gap: 6 },
   playerName: { fontFamily: "Inter_600SemiBold", fontSize: 14, color: COLORS.text, flex: 1 },
-  playerNameValue: { fontFamily: "Inter_700Bold", fontSize: 11, color: COLORS.textMuted, flexShrink: 0 },
+  playerNameValue: { fontFamily: "Inter_700Bold", fontSize: 11, color: COLORS.textMuted, flexShrink: 1, textAlign: "right", maxWidth: "34%" },
   playerNameValueReal: { color: "#00C896" },
-  playerSubRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+  playerSubRow: { flexDirection: "row", alignItems: "center", gap: 8, flexWrap: "wrap" },
   posTag: { borderRadius: 6, borderWidth: 1, paddingHorizontal: 7, paddingVertical: 2 },
   posTagText: { fontFamily: "Inter_600SemiBold", fontSize: 10, maxWidth: 100 },
   playerNat: { fontFamily: "Inter_400Regular", fontSize: 12, color: COLORS.textMuted, flexShrink: 1 },
-  playerStats: { flexDirection: "row", gap: 8, flexWrap: "wrap", paddingLeft: 90 },
+  playerStats: { flexDirection: "row", gap: 8, flexWrap: "wrap", paddingLeft: 54 },
   statPill: {
     alignItems: "center",
     gap: 2,

@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useCallback, useRef, useEffect } from "react";
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity,
-  Image, Platform, TextInput, ScrollView, Animated,
+  Image, Platform, TextInput, ScrollView, Animated, ActivityIndicator, Alert,
 } from "react-native";
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -19,8 +19,25 @@ import { fetchEPG, getCurrentProgramme } from "@/lib/epg-manager";
 import type { EPGData } from "@/lib/epg-manager";
 import { searchIPTV } from "@/lib/search-engine";
 import { useOnboardingStore } from "@/store/onboarding-store";
+import { apiRequest } from "@/lib/query-client";
 
 type IPTVTab = "live" | "movies" | "series";
+
+// ── Free channel discovery sources (powered by iptv-org.github.io) ───────────
+
+const DISCOVER_SOURCES = [
+  { id: "nl",            type: "country"  as const, label: "Netherlands",    badge: "🇳🇱" },
+  { id: "be",            type: "country"  as const, label: "Belgium",         badge: "🇧🇪" },
+  { id: "de",            type: "country"  as const, label: "Germany",         badge: "🇩🇪" },
+  { id: "gb",            type: "country"  as const, label: "UK",              badge: "🇬🇧" },
+  { id: "fr",            type: "country"  as const, label: "France",          badge: "🇫🇷" },
+  { id: "sports",        type: "category" as const, label: "Sports",          badge: "🏆" },
+  { id: "news",          type: "category" as const, label: "News",            badge: "📰" },
+  { id: "kids",          type: "category" as const, label: "Kids",            badge: "🧒" },
+  { id: "documentary",   type: "category" as const, label: "Documentary",     badge: "🎬" },
+  { id: "entertainment", type: "category" as const, label: "Entertainment",   badge: "🎭" },
+  { id: "music",         type: "category" as const, label: "Music",           badge: "🎵" },
+];
 
 // ── Channel Card (for Live TV grid) ─────────────────────────────────────────
 
@@ -124,16 +141,48 @@ const VODCard = React.memo(function VODCard({ channel, onPress, type }: {
 
 // ── Empty State ──────────────────────────────────────────────────────────────
 
-function EmptyState() {
+function EmptyState({ onDiscover, discoverLoading }: {
+  onDiscover: (src: typeof DISCOVER_SOURCES[0]) => void;
+  discoverLoading: string | null; // id of the source being loaded, or null
+}) {
   return (
     <View style={styles.emptyContainer}>
       <StateBlock
         icon="list-outline"
         title="No IPTV content"
-        message="Add an M3U playlist in settings to load your IPTV channels, movies and series."
+        message="Add an M3U playlist in settings, or instantly browse free public channels below."
         actionLabel="Add Playlist"
         onAction={() => router.push("/profile")}
       />
+
+      {/* ── Free channel discovery ────────────────────────────────────── */}
+      <View style={styles.discoverSection}>
+        <Text style={styles.discoverHeading}>Free Channels  •  powered by iptv-org</Text>
+        <Text style={styles.discoverSub}>Public streams — no subscription needed</Text>
+        <View style={styles.discoverGrid}>
+          {DISCOVER_SOURCES.map((src) => {
+            const isLoading = discoverLoading === src.id;
+            return (
+              <TouchableOpacity
+                key={src.id}
+                style={[styles.discoverChip, isLoading && styles.discoverChipActive]}
+                onPress={() => onDiscover(src)}
+                activeOpacity={0.75}
+                disabled={discoverLoading !== null}
+              >
+                {isLoading ? (
+                  <ActivityIndicator size={14} color={COLORS.accent} />
+                ) : (
+                  <Text style={styles.discoverBadge}>{src.badge}</Text>
+                )}
+                <Text style={[styles.discoverLabel, isLoading && { color: COLORS.accent }]}>
+                  {src.label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      </View>
     </View>
   );
 }
@@ -142,7 +191,8 @@ function EmptyState() {
 
 export default function LiveTVScreen() {
   const insets = useSafeAreaInsets();
-  const { iptvChannels, isLoadingPlaylist, isChannelVisible, toggleHideChannel, hasPremium } = useNexora();
+  const { iptvChannels, isLoadingPlaylist, isChannelVisible, toggleHideChannel, hasPremium,
+          addPlaylist, setIptvChannelsForPlaylist, updatePlaylist } = useNexora();
   const iptvEnabled = useOnboardingStore((s) => s.iptvEnabled);
   const isPremium = hasPremium("livetv");
 
@@ -150,6 +200,51 @@ export default function LiveTVScreen() {
   const [selectedGroup, setSelectedGroup] = useState("All");
   const [search, setSearch] = useState("");
   const [showSearch, setShowSearch] = useState(false);
+
+  // ── Free channel discovery ────────────────────────────────────────────────
+  const [discoverLoading, setDiscoverLoading] = useState<string | null>(null);
+
+  const handleDiscover = useCallback(async (src: typeof DISCOVER_SOURCES[0]) => {
+    if (discoverLoading) return;
+    setDiscoverLoading(src.id);
+    try {
+      const param = src.type === "country" ? `country=${src.id}` : `category=${src.id}`;
+      const res = await apiRequest("GET", `/api/iptv/discover?${param}`);
+      if (!res.ok) throw new Error(`Server error ${res.status}`);
+      const data = await res.json();
+      if (data?.error) throw new Error(data.error);
+
+      const allChannels: IPTVChannel[] = [
+        ...(Array.isArray(data.live)   ? data.live   : []),
+        ...(Array.isArray(data.movies) ? data.movies : []),
+        ...(Array.isArray(data.series) ? data.series : []),
+      ];
+
+      if (!allChannels.length) {
+        Alert.alert("No channels", `No public channels found for ${src.label}.`);
+        return;
+      }
+
+      const pl = await addPlaylist({
+        name: `Free – ${src.label}`,
+        url: data.url ?? `https://iptv-org.github.io/iptv/${src.type === "country" ? "countries" : "categories"}/${src.id}.m3u`,
+        type: "m3u",
+        status: "loading",
+      });
+      await setIptvChannelsForPlaylist(pl.id, allChannels.map(ch => ({ ...ch, playlistId: pl.id })));
+      await updatePlaylist(pl.id, {
+        status: "ready",
+        channelCount: allChannels.length,
+        liveCount:   (data.live   ?? []).length,
+        movieCount:  (data.movies ?? []).length,
+        seriesCount: (data.series ?? []).length,
+      });
+    } catch (e: any) {
+      Alert.alert("Error", e?.message ?? "Could not load free channels. Try again later.");
+    } finally {
+      setDiscoverLoading(null);
+    }
+  }, [discoverLoading, addPlaylist, setIptvChannelsForPlaylist, updatePlaylist]);
 
   // ── EPG data ──────────────────────────────────────────────────────────────
   const [epgData, setEpgData] = useState<EPGData | null>(null);
@@ -355,7 +450,9 @@ export default function LiveTVScreen() {
           <View style={{ paddingHorizontal: 18, paddingTop: 48 }}>
             <StateBlock loading title="Loading channels..." message="We are indexing your playlist." />
           </View>
-        ) : <EmptyState />
+        ) : (
+          <EmptyState onDiscover={handleDiscover} discoverLoading={discoverLoading} />
+        )
       ) : activeTab === "live" ? (
         /* Live TV — row layout */
         <FlatList
@@ -401,13 +498,23 @@ export default function LiveTVScreen() {
       )}
 
       {totalCount > 0 && (
-        <TouchableOpacity
-          style={[styles.manageBtn, { bottom: bottomPad + 12 }]}
-          onPress={() => router.push("/playlist-manage")}
-        >
-          <Ionicons name="options-outline" size={18} color={COLORS.background} />
-          <Text style={styles.manageBtnText}>Manage</Text>
-        </TouchableOpacity>
+        <View style={[styles.floatingRow, { bottom: bottomPad + 12 }]}>
+          <TouchableOpacity
+            style={styles.manageBtn}
+            onPress={() => router.push("/playlist-manage")}
+          >
+            <Ionicons name="options-outline" size={18} color={COLORS.background} />
+            <Text style={styles.manageBtnText}>Manage</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.discoverBtn}
+            onPress={() => router.push("/profile")}
+            activeOpacity={0.85}
+          >
+            <Ionicons name="globe-outline" size={16} color={COLORS.accent} />
+            <Text style={styles.discoverBtnText}>Add more</Text>
+          </TouchableOpacity>
+        </View>
       )}
     </View>
   );
@@ -503,15 +610,48 @@ const styles = StyleSheet.create({
   vodGroup: { fontFamily: "Inter_400Regular", fontSize: 9, color: COLORS.textMuted, marginTop: 1 },
 
   // Empty / No results
-  emptyContainer: { flex: 1, alignItems: "center", justifyContent: "center", padding: 32 },
+  emptyContainer: { flex: 1, padding: 24 },
   noResults: { alignItems: "center", paddingTop: 24, paddingHorizontal: 16 },
   noResultsText: { ...TYPOGRAPHY.body, color: COLORS.textMuted },
 
-  // Manage FAB
+  // Free channel discovery (empty state)
+  discoverSection: { marginTop: 28, width: "100%" },
+  discoverHeading: {
+    fontFamily: "Inter_700Bold", fontSize: 13, color: COLORS.text, marginBottom: 3,
+  },
+  discoverSub: {
+    fontFamily: "Inter_400Regular", fontSize: 11, color: COLORS.textMuted, marginBottom: 14,
+  },
+  discoverGrid: {
+    flexDirection: "row", flexWrap: "wrap", gap: 8,
+  },
+  discoverChip: {
+    flexDirection: "row", alignItems: "center", gap: 6,
+    paddingHorizontal: 12, paddingVertical: 8, borderRadius: 20,
+    backgroundColor: COLORS.cardElevated, borderWidth: 1, borderColor: COLORS.border,
+  },
+  discoverChipActive: {
+    borderColor: COLORS.accent, backgroundColor: COLORS.accentGlow,
+  },
+  discoverBadge: { fontSize: 14 },
+  discoverLabel: {
+    fontFamily: "Inter_600SemiBold", fontSize: 12, color: COLORS.textSecondary,
+  },
+
+  // Floating action row (Manage + Add more)
+  floatingRow: {
+    position: "absolute", right: 16, flexDirection: "row", gap: 8, alignItems: "center", zIndex: 10,
+  },
   manageBtn: {
-    position: "absolute", right: 16, flexDirection: "row", alignItems: "center", gap: 6,
+    flexDirection: "row", alignItems: "center", gap: 6,
     backgroundColor: COLORS.accent, borderRadius: 22, paddingHorizontal: 16, paddingVertical: 10,
     shadowColor: COLORS.accent, shadowOpacity: 0.4, shadowRadius: 10, elevation: 6,
   },
   manageBtnText: { fontFamily: "Inter_700Bold", fontSize: 13, color: COLORS.background },
+  discoverBtn: {
+    flexDirection: "row", alignItems: "center", gap: 5,
+    backgroundColor: COLORS.accentGlow, borderRadius: 22, paddingHorizontal: 12, paddingVertical: 10,
+    borderWidth: 1, borderColor: COLORS.accent,
+  },
+  discoverBtnText: { fontFamily: "Inter_600SemiBold", fontSize: 13, color: COLORS.accent },
 });

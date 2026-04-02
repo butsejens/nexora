@@ -1,8 +1,8 @@
 /**
  * NEXORA Home — Premium Central Hub
- * Unified sport + media dashboard with cinematic identity
+ * Unified sport + media dashboard with rotating hero recommendations.
  */
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   RefreshControl,
   ScrollView,
@@ -26,13 +26,12 @@ import {
   resolveMatchVisualState,
   type PremiumSportMatch,
 } from "@/components/sports/SportCards";
-import { RealContentCard } from "@/components/RealContentCard";
+import { RealContentCard, RealHeroBanner } from "@/components/RealContentCard";
 import { useSportHomeFeed } from "@/features/sports/hooks/useSportHomeFeed";
 import { getMatchdayYmd } from "@/lib/date/matchday";
-import { buildVodHomeQuery, deriveCuratedHomeMedia } from "@/services/realtime-engine";
+import { buildVodHomeQuery } from "@/services/realtime-engine";
 import { COLORS } from "@/constants/colors";
 
-// ─── Types ──────────────────────────────────────────────────────────────────
 type HomeCard = {
   id: string;
   title: string;
@@ -40,9 +39,16 @@ type HomeCard = {
   poster?: string | null;
   backdrop?: string | null;
   imdb?: number;
+  rottenTomatoes?: string | null;
   year?: number;
   quality?: string;
+  synopsis?: string;
+  genre?: string[];
 };
+
+type HeroSlide =
+  | { id: string; kind: "match"; match: PremiumSportMatch }
+  | { id: string; kind: "media"; media: HomeCard };
 
 function toMatchParams(match: PremiumSportMatch) {
   return {
@@ -65,13 +71,13 @@ function toMatchParams(match: PremiumSportMatch) {
   };
 }
 
-function mapVodCards(items: any[]): HomeCard[] {
+function mapVodCards(items: any[], limit = 14): HomeCard[] {
   const seen = new Set<string>();
   const out: HomeCard[] = [];
 
   for (const item of Array.isArray(items) ? items : []) {
     const id = String(item?.tmdbId || item?.id || "").trim();
-    const title = String(item?.title || "").trim();
+    const title = String(item?.title || item?.name || "").trim();
     const type = String(item?.type || "movie") === "series" ? "series" : "movie";
     const key = `${type}:${id || title}`;
     if (!title || seen.has(key)) continue;
@@ -82,19 +88,48 @@ function mapVodCards(items: any[]): HomeCard[] {
       type,
       poster: item?.poster || null,
       backdrop: item?.backdrop || null,
-      imdb: Number(item?.rating || 0) || undefined,
+      imdb: Number(item?.imdb || item?.rating || 0) || undefined,
+      rottenTomatoes: item?.rottenTomatoes || null,
       year: Number(item?.year || 0) || undefined,
       quality: String(item?.quality || "HD"),
+      synopsis: String(item?.synopsis || item?.overview || "").trim() || undefined,
+      genre: Array.isArray(item?.genre) ? item.genre.filter(Boolean).slice(0, 3) : undefined,
     });
-    if (out.length >= 14) break;
+    if (out.length >= limit) break;
   }
 
   return out;
 }
 
+function dedupeHeroSlides(items: HeroSlide[]) {
+  const seen = new Set<string>();
+  const out: HeroSlide[] = [];
+  for (const item of items) {
+    if (seen.has(item.id)) continue;
+    seen.add(item.id);
+    out.push(item);
+  }
+  return out;
+}
+
+function toHeroCardItem(item: HomeCard) {
+  return {
+    id: item.id,
+    title: item.title,
+    year: item.year || 0,
+    imdb: item.imdb || 0,
+    quality: item.quality || "HD",
+    poster: item.poster,
+    backdrop: item.backdrop,
+    synopsis: item.synopsis,
+    genre: item.genre,
+  };
+}
+
 export default function HomeTabScreen() {
   const insets = useSafeAreaInsets();
   const [refreshing, setRefreshing] = useState(false);
+  const [heroIndex, setHeroIndex] = useState(0);
 
   const sportQuery = useSportHomeFeed(true, getMatchdayYmd());
   const vodQuery = useQuery(buildVodHomeQuery(true));
@@ -103,19 +138,84 @@ export default function HomeTabScreen() {
     () => (sportQuery.live || []).map(normalizeSportMatch).filter((m) => resolveMatchVisualState(m) === "live"),
     [sportQuery.live],
   );
-  const scheduleMatches = useMemo(
-    () => [...(sportQuery.upcoming || []), ...(sportQuery.finished || [])].map(normalizeSportMatch).slice(0, 10),
-    [sportQuery.finished, sportQuery.upcoming],
+  const upcomingMatches = useMemo(
+    () => (sportQuery.upcoming || []).map(normalizeSportMatch).slice(0, 8),
+    [sportQuery.upcoming],
+  );
+  const finishedMatches = useMemo(
+    () => (sportQuery.finished || []).map(normalizeSportMatch).slice(0, 8),
+    [sportQuery.finished],
+  );
+  const highlightMatches = useMemo(
+    () => [...liveMatches, ...upcomingMatches].slice(0, 12),
+    [liveMatches, upcomingMatches],
+  );
+  const replayMatches = useMemo(
+    () => finishedMatches.slice(0, 12),
+    [finishedMatches],
   );
 
-  const heroMatch = liveMatches[0] ?? null;
+  const featuredCard = useMemo(
+    () => mapVodCards(vodQuery.data?.featured ? [vodQuery.data.featured] : [], 1)[0] ?? null,
+    [vodQuery.data?.featured],
+  );
+  const topMovieCards = useMemo(
+    () => mapVodCards(vodQuery.data?.topRatedMovies || vodQuery.data?.trendingMovies || [], 10),
+    [vodQuery.data?.topRatedMovies, vodQuery.data?.trendingMovies],
+  );
+  const topSeriesCards = useMemo(
+    () => mapVodCards(vodQuery.data?.topRatedSeries || vodQuery.data?.trendingSeries || [], 10),
+    [vodQuery.data?.topRatedSeries, vodQuery.data?.trendingSeries],
+  );
+  const recommendedCards = useMemo(
+    () => mapVodCards(
+      [
+        ...(vodQuery.data?.recentMovies || []),
+        ...(vodQuery.data?.recentSeries || []),
+        ...(vodQuery.data?.trendingMovies || []),
+        ...(vodQuery.data?.trendingSeries || []),
+      ],
+      18,
+    ),
+    [vodQuery.data?.recentMovies, vodQuery.data?.recentSeries, vodQuery.data?.trendingMovies, vodQuery.data?.trendingSeries],
+  );
 
-  const mediaCards = useMemo(() => {
-    const media = deriveCuratedHomeMedia(vodQuery.data);
-    const merged = [...(media.movies || []), ...(media.series || []), ...(media.newReleases || [])];
-    return mapVodCards(merged);
-  }, [vodQuery.data]);
+  const heroSlides = useMemo(() => {
+    const slides: HeroSlide[] = [];
 
+    if (liveMatches[0]) {
+      slides.push({ id: `match:${liveMatches[0].id}`, kind: "match", match: liveMatches[0] });
+    } else if (upcomingMatches[0]) {
+      slides.push({ id: `match:${upcomingMatches[0].id}`, kind: "match", match: upcomingMatches[0] });
+    }
+
+    for (const mediaItem of [
+      featuredCard,
+      topMovieCards[0],
+      topSeriesCards[0],
+      recommendedCards[0],
+      recommendedCards[1],
+    ]) {
+      if (!mediaItem) continue;
+      slides.push({ id: `media:${mediaItem.type}:${mediaItem.id}`, kind: "media", media: mediaItem });
+    }
+
+    return dedupeHeroSlides(slides);
+  }, [featuredCard, liveMatches, recommendedCards, topMovieCards, topSeriesCards, upcomingMatches]);
+
+  useEffect(() => {
+    setHeroIndex(0);
+  }, [heroSlides.length]);
+
+  useEffect(() => {
+    if (heroSlides.length <= 1) return;
+    const timer = setInterval(() => {
+      setHeroIndex((current) => (current + 1) % heroSlides.length);
+    }, 9000);
+    return () => clearInterval(timer);
+  }, [heroSlides.length]);
+
+  const activeHero = heroSlides[heroIndex] || null;
   const totalMatches =
     (sportQuery.live?.length || 0) +
     (sportQuery.upcoming?.length || 0) +
@@ -159,52 +259,102 @@ export default function HomeTabScreen() {
           />
         }
       >
-        {/* Hero — featured live match, only if live data exists */}
-        {heroMatch ? (
-          <HeroMatchCard match={heroMatch} onPress={() => handleMatchPress(heroMatch)} />
+        {activeHero ? (
+          <View style={styles.heroSection}>
+            {activeHero.kind === "match" ? (
+              <HeroMatchCard match={activeHero.match} onPress={() => handleMatchPress(activeHero.match)} />
+            ) : (
+              <RealHeroBanner
+                item={toHeroCardItem(activeHero.media)}
+                onPlay={() =>
+                  router.push({
+                    pathname: "/detail",
+                    params: { id: activeHero.media.id, type: activeHero.media.type, title: activeHero.media.title },
+                  })
+                }
+                onInfo={() =>
+                  router.push({
+                    pathname: "/detail",
+                    params: { id: activeHero.media.id, type: activeHero.media.type, title: activeHero.media.title },
+                  })
+                }
+              />
+            )}
+
+            {heroSlides.length > 1 ? (
+              <View style={styles.heroPager}>
+                {heroSlides.map((slide, index) => (
+                  <View key={slide.id} style={[styles.heroDot, index === heroIndex && styles.heroDotActive]} />
+                ))}
+              </View>
+            ) : null}
+          </View>
         ) : null}
 
-        {/* Compact metrics strip */}
         <MetricStrip
-          live={liveMatches.length}
-          total={totalMatches}
-          media={mediaCards.length}
+          items={[
+            { label: "Highlights", value: totalMatches },
+            { label: "Replays", value: replayMatches.length },
+            { label: "Top 10", value: topMovieCards.length + topSeriesCards.length },
+          ]}
         />
 
-        {/* ── SPORT ─────────────────────────────────── */}
         <HomeSection
-          title="SPORT"
-          action="Alle wedstrijden"
-          onAction={() => router.push("/sport")}
+          title="SPORT HIGHLIGHTS"
+          action="Alle highlights"
+          onAction={() => router.push("/highlights")}
         >
           {sportQuery.isLoading ? (
             <HRail>
               {[1, 2, 3].map((k) => <SkeletonMatchCard key={k} />)}
             </HRail>
-          ) : liveMatches.length || scheduleMatches.length ? (
+          ) : highlightMatches.length ? (
             <HRail>
-              {/* Skip first live match if already used as hero */}
-              {liveMatches.slice(heroMatch ? 1 : 0, 8).map((m) => (
-                <LiveMatchCard key={m.id} match={m} onPress={() => handleMatchPress(m)} />
-              ))}
-              {scheduleMatches.map((m) => (
-                <MatchCard key={m.id} match={m} onPress={() => handleMatchPress(m)} />
-              ))}
+              {highlightMatches.map((match) => {
+                const visualState = resolveMatchVisualState(match);
+                if (visualState === "live") {
+                  return <LiveMatchCard key={match.id} match={match} onPress={() => handleMatchPress(match)} />;
+                }
+                return <MatchCard key={match.id} match={match} onPress={() => handleMatchPress(match)} />;
+              })}
             </HRail>
           ) : (
             <EmptyStrip
               icon="football-outline"
-              title="Geen wedstrijden vandaag"
-              subtitle="Trek omlaag om te herladen."
+              title="Geen sport-highlights beschikbaar"
+              subtitle="Nieuwe live en komende momenten verschijnen hier automatisch."
             />
           )}
         </HomeSection>
 
-        {/* ── FILMS & SERIES ────────────────────────── */}
         <HomeSection
-          title="FILMS & SERIES"
-          action="Ontdekken"
-          onAction={() => router.push("/films-series")}
+          title="SPORT REPLAYS"
+          action="Alle replays"
+          onAction={() => router.push("/highlights")}
+        >
+          {sportQuery.isLoading ? (
+            <HRail>
+              {[1, 2, 3].map((k) => <SkeletonMatchCard key={`replay-${k}`} />)}
+            </HRail>
+          ) : replayMatches.length ? (
+            <HRail>
+              {replayMatches.map((match) => (
+                <MatchCard key={`replay-${match.id}`} match={match} onPress={() => handleMatchPress(match)} />
+              ))}
+            </HRail>
+          ) : (
+            <EmptyStrip
+              icon="play-back-outline"
+              title="Geen replays beschikbaar"
+              subtitle="Afgelopen wedstrijden komen hier zodra highlights zijn verwerkt."
+            />
+          )}
+        </HomeSection>
+
+        <HomeSection
+          title="FILMS TOP 10"
+          action="Alle films"
+          onAction={() => router.push("/media/movies")}
         >
           {vodQuery.isLoading ? (
             <HRail>
@@ -212,21 +362,13 @@ export default function HomeTabScreen() {
                 <View key={k} style={styles.posterSkeleton} />
               ))}
             </HRail>
-          ) : mediaCards.length ? (
+          ) : topMovieCards.length ? (
             <HRail>
-              {mediaCards.map((item) => (
-                <RealContentCard
-                  key={item.id}
-                  width={130}
-                  item={{
-                    id: item.id,
-                    title: item.title,
-                    year: item.year || 0,
-                    imdb: item.imdb || 0,
-                    quality: item.quality || "HD",
-                    poster: item.poster,
-                    backdrop: item.backdrop,
-                  }}
+              {topMovieCards.map((item, index) => (
+                <RankedRailCard
+                  key={`movie:${item.id}`}
+                  rank={index + 1}
+                  item={item}
                   onPress={() =>
                     router.push({
                       pathname: "/detail",
@@ -239,10 +381,44 @@ export default function HomeTabScreen() {
           ) : (
             <EmptyStrip
               icon="film-outline"
-              title="Media tijdelijk niet beschikbaar"
-              subtitle="Open Films & Series om te bladeren."
-              cta="Open hub"
-              onPress={() => router.push("/films-series")}
+              title="Films laden nog"
+              subtitle="De top 10 verschijnt zodra de catalogus volledig is gesynchroniseerd."
+            />
+          )}
+        </HomeSection>
+
+        <HomeSection
+          title="SERIES TOP 10"
+          action="Alle series"
+          onAction={() => router.push("/media/series")}
+        >
+          {vodQuery.isLoading ? (
+            <HRail>
+              {[1, 2, 3, 4].map((k) => (
+                <View key={k} style={styles.posterSkeleton} />
+              ))}
+            </HRail>
+          ) : topSeriesCards.length ? (
+            <HRail>
+              {topSeriesCards.map((item, index) => (
+                <RankedRailCard
+                  key={`series:${item.id}`}
+                  rank={index + 1}
+                  item={item}
+                  onPress={() =>
+                    router.push({
+                      pathname: "/detail",
+                      params: { id: item.id, type: item.type, title: item.title },
+                    })
+                  }
+                />
+              ))}
+            </HRail>
+          ) : (
+            <EmptyStrip
+              icon="tv-outline"
+              title="Series laden nog"
+              subtitle="De top 10 van series verschijnt zodra metadata klaarstaat."
             />
           )}
         </HomeSection>
@@ -251,24 +427,19 @@ export default function HomeTabScreen() {
   );
 }
 
-// ─── Sub-components ─────────────────────────────────────────────────────────
-
 function MetricStrip({
-  live,
-  total,
-  media,
+  items,
 }: {
-  live: number;
-  total: number;
-  media: number;
+  items: { label: string; value: number }[];
 }) {
   return (
     <View style={styles.metricStrip}>
-      <MetricItem label="Live" value={live} tone="live" />
-      <View style={styles.metricDivider} />
-      <MetricItem label="Vandaag" value={total} />
-      <View style={styles.metricDivider} />
-      <MetricItem label="Films/Series" value={media} />
+      {items.map((item, index) => (
+        <React.Fragment key={item.label}>
+          <MetricItem label={item.label} value={item.value} />
+          {index < items.length - 1 ? <View style={styles.metricDivider} /> : null}
+        </React.Fragment>
+      ))}
     </View>
   );
 }
@@ -276,20 +447,45 @@ function MetricStrip({
 function MetricItem({
   label,
   value,
-  tone = "default",
 }: {
   label: string;
   value: number;
-  tone?: "default" | "live";
 }) {
   return (
     <View style={styles.metricItem}>
-      <Text style={[styles.metricValue, tone === "live" && styles.metricValueLive]}>
-        {value}
-      </Text>
-      <Text style={[styles.metricLabel, tone === "live" && styles.metricLabelLive]}>
-        {label}
-      </Text>
+      <Text style={styles.metricValue}>{value}</Text>
+      <Text style={styles.metricLabel}>{label}</Text>
+    </View>
+  );
+}
+
+function RankedRailCard({
+  rank,
+  item,
+  onPress,
+}: {
+  rank: number;
+  item: HomeCard;
+  onPress: () => void;
+}) {
+  return (
+    <View style={styles.rankCardWrap}>
+      <Text style={styles.rankNumber}>{rank}</Text>
+      <View style={styles.rankCardInner}>
+        <RealContentCard
+          width={124}
+          item={{
+            id: item.id,
+            title: item.title,
+            year: item.year || 0,
+            imdb: item.imdb || 0,
+            quality: item.quality || "HD",
+            poster: item.poster,
+            backdrop: item.backdrop,
+          }}
+          onPress={onPress}
+        />
+      </View>
     </View>
   );
 }
@@ -365,7 +561,6 @@ function EmptyStrip({
   );
 }
 
-// ─── Styles ──────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
@@ -376,8 +571,26 @@ const styles = StyleSheet.create({
     paddingTop: 8,
     gap: 22,
   },
-
-  // ─ Metric strip ─
+  heroSection: {
+    gap: 10,
+  },
+  heroPager: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    marginTop: -6,
+  },
+  heroDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 999,
+    backgroundColor: "rgba(255,255,255,0.18)",
+  },
+  heroDotActive: {
+    width: 24,
+    backgroundColor: COLORS.accent,
+  },
   metricStrip: {
     flexDirection: "row",
     alignItems: "center",
@@ -399,9 +612,6 @@ const styles = StyleSheet.create({
     fontFamily: "Inter_800ExtraBold",
     lineHeight: 30,
   },
-  metricValueLive: {
-    color: COLORS.live,
-  },
   metricLabel: {
     color: COLORS.textSecondary,
     fontSize: 11,
@@ -409,16 +619,11 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
     letterSpacing: 0.4,
   },
-  metricLabelLive: {
-    color: COLORS.live,
-  },
   metricDivider: {
     width: 1,
     height: 28,
     backgroundColor: COLORS.glassBorder,
   },
-
-  // ─ Sections ─
   section: {
     gap: 12,
   },
@@ -454,22 +659,37 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontFamily: "Inter_700Bold",
   },
-
-  // ─ Rail ─
   hRail: {
     paddingRight: 12,
     gap: 12,
   },
-
-  // ─ Poster skeleton ─
+  rankCardWrap: {
+    position: "relative",
+    paddingLeft: 26,
+  },
+  rankCardInner: {
+    minHeight: 220,
+    justifyContent: "flex-end",
+  },
+  rankNumber: {
+    position: "absolute",
+    left: 0,
+    bottom: 8,
+    color: COLORS.text,
+    fontSize: 62,
+    lineHeight: 62,
+    fontFamily: "Inter_800ExtraBold",
+    opacity: 0.9,
+    textShadowColor: "rgba(0,0,0,0.35)",
+    textShadowOffset: { width: 0, height: 4 },
+    textShadowRadius: 10,
+  },
   posterSkeleton: {
     width: 130,
     height: 195,
     borderRadius: 12,
     backgroundColor: COLORS.skeleton,
   },
-
-  // ─ Empty strip ─
   emptyStrip: {
     flexDirection: "row",
     alignItems: "center",

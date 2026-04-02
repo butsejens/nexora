@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   RefreshControl,
   ScrollView,
@@ -13,7 +13,9 @@ import { NexoraHeader } from "@/components/NexoraHeader";
 import {
   EmptySection,
   FinishedMatchCard,
+  HeroMatchCard,
   LiveMatchCard,
+  MatchdayPosterCard,
   MatchCard,
   normalizeSportMatch,
   resolveMatchVisualState,
@@ -85,6 +87,36 @@ export function SportModuleHub({ initialPane = "explore" }: SportModuleHubProps)
     () => matchday.filter((m) => resolveMatchVisualState(m) === "finished").slice(0, 10),
     [matchday],
   );
+  const featuredMatches = useMemo(
+    () => uniqueById([...live, ...matchday, ...explore]).slice(0, 8),
+    [explore, live, matchday],
+  );
+  const [featuredIndex, setFeaturedIndex] = useState(0);
+  const [matchdayPosterIndex, setMatchdayPosterIndex] = useState(0);
+
+  useEffect(() => {
+    setFeaturedIndex(0);
+    setMatchdayPosterIndex(0);
+  }, [featuredMatches.length, dateYmd]);
+
+  useEffect(() => {
+    if (featuredMatches.length <= 1) return;
+    const timer = setInterval(() => {
+      setFeaturedIndex((current) => (current + 1) % featuredMatches.length);
+    }, 10_000);
+    return () => clearInterval(timer);
+  }, [featuredMatches.length]);
+
+  useEffect(() => {
+    if (matchday.length <= 1) return;
+    const timer = setInterval(() => {
+      setMatchdayPosterIndex((current) => (current + 1) % matchday.length);
+    }, 10_000);
+    return () => clearInterval(timer);
+  }, [matchday.length]);
+
+  const featuredMatch = featuredMatches[featuredIndex] || null;
+  const matchdayPoster = matchday[matchdayPosterIndex] || null;
 
   const handleRefresh = async () => {
     setRefreshing(true);
@@ -116,11 +148,21 @@ export function SportModuleHub({ initialPane = "explore" }: SportModuleHubProps)
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={COLORS.accent} />}
       >
-        <View style={styles.kpiRow}>
-          <Metric label="Live now" value={String(live.length)} tone="live" />
-          <Metric label="Today" value={String(matchday.length)} />
-          <Metric label="Explore" value={String(explore.length)} />
-        </View>
+        {pane === "explore" && featuredMatch ? (
+          <View style={styles.heroSection}>
+            <HeroMatchCard
+              match={featuredMatch}
+              onPress={() => router.push({ pathname: "/match-detail", params: toMatchParams(featuredMatch) })}
+            />
+            {featuredMatches.length > 1 ? (
+              <View style={styles.heroPager}>
+                {featuredMatches.map((item, index) => (
+                  <View key={item.id} style={[styles.heroDot, index === featuredIndex && styles.heroDotActive]} />
+                ))}
+              </View>
+            ) : null}
+          </View>
+        ) : null}
 
         {pane !== "live" ? (
           <DateStrip selectedDate={dateYmd} onChange={setDateYmd} />
@@ -128,8 +170,8 @@ export function SportModuleHub({ initialPane = "explore" }: SportModuleHubProps)
 
         {pane === "explore" ? (
           <>
-            <Section title="Live matches" actionLabel="Open live" onAction={() => setPane("live")}>
-              {live.length ? (
+            {live.length ? (
+              <Section title="Live matches" actionLabel="Open live" onAction={() => setPane("live")}>
                 <HorizontalList>
                   {live.slice(0, 12).map((match) => (
                     <LiveMatchCard
@@ -139,10 +181,8 @@ export function SportModuleHub({ initialPane = "explore" }: SportModuleHubProps)
                     />
                   ))}
                 </HorizontalList>
-              ) : (
-                <EmptySection title="No live matches right now" subtitle="We keep scanning live feeds automatically." />
-              )}
-            </Section>
+              </Section>
+            ) : null}
 
             <Section title={`Matchday • ${formatDateLabel(dateYmd)}`}>
               {matchday.length ? (
@@ -199,6 +239,21 @@ export function SportModuleHub({ initialPane = "explore" }: SportModuleHubProps)
 
         {pane === "matchday" ? (
           <Section title={`All fixtures • ${formatDateLabel(dateYmd)}`}>
+            {matchdayPoster ? (
+              <View style={styles.matchdayPosterSection}>
+                <MatchdayPosterCard
+                  match={matchdayPoster}
+                  onPress={() => router.push({ pathname: "/match-detail", params: toMatchParams(matchdayPoster) })}
+                />
+                {matchday.length > 1 ? (
+                  <View style={styles.heroPager}>
+                    {matchday.map((item, index) => (
+                      <View key={`matchday_poster_${item.id}`} style={[styles.heroDot, index === matchdayPosterIndex && styles.heroDotActive]} />
+                    ))}
+                  </View>
+                ) : null}
+              </View>
+            ) : null}
             {matchday.length ? (
               <View style={styles.verticalList}>
                 {matchday.map((match) => {
@@ -268,15 +323,6 @@ function DateStrip({ selectedDate, onChange }: { selectedDate: string; onChange:
         );
       })}
     </ScrollView>
-  );
-}
-
-function Metric({ label, value, tone = "default" }: { label: string; value: string; tone?: "default" | "live" }) {
-  return (
-    <View style={[styles.metric, tone === "live" && styles.metricLive]}>
-      <Text style={styles.metricValue}>{value}</Text>
-      <Text style={[styles.metricLabel, tone === "live" && styles.metricLabelLive]}>{label}</Text>
-    </View>
   );
 }
 
@@ -350,6 +396,30 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingBottom: 110,
     gap: 16,
+  },
+  heroSection: {
+    gap: 10,
+  },
+  matchdayPosterSection: {
+    gap: 8,
+    marginBottom: 4,
+  },
+  heroPager: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 7,
+    marginTop: -4,
+  },
+  heroDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 999,
+    backgroundColor: "rgba(255,255,255,0.18)",
+  },
+  heroDotActive: {
+    width: 18,
+    backgroundColor: COLORS.accent,
   },
   kpiRow: {
     flexDirection: "row",
