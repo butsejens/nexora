@@ -667,6 +667,11 @@ function SearchResultItem({
   result: SearchResult;
   onPress: () => void;
 }) {
+  const numericRating = typeof result.rating === 'number'
+    ? result.rating
+    : Number.parseFloat(String(result.rating ?? '').replace(',', '.'));
+  const hasRating = Number.isFinite(numericRating) && numericRating > 0;
+
   const icon = {
     team: 'soccer',
     competition: 'trophy-outline',
@@ -712,10 +717,10 @@ function SearchResultItem({
             {result.subtitle}
           </Text>
         )}
-        {result.rating && (
+        {hasRating && (
           <View style={styles.ratingBadge}>
             <Ionicons name="star" size={12} color="#FFB300" />
-            <Text style={styles.ratingText}>{result.rating.toFixed(1)}</Text>
+            <Text style={styles.ratingText}>{numericRating.toFixed(1)}</Text>
           </View>
         )}
       </View>

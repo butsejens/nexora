@@ -5,6 +5,7 @@ import {
   StyleSheet,
   TouchableOpacity,
   Animated,
+  useWindowDimensions,
 } from "react-native";
 import { Image as ExpoImage } from "expo-image";
 import { router } from "expo-router";
@@ -201,9 +202,12 @@ export const RealHeroBanner = React.memo(function RealHeroBanner({ item, onPlay,
   const [imageError, setImageError] = useState(false);
   const [heroImageLoaded, setHeroImageLoaded] = useState(false);
   const [showTrailer, setShowTrailer] = useState(false);
+  const { width } = useWindowDimensions();
   const trailerTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const heroShimmerAnim = useRef(new Animated.Value(0.5)).current;
   const backdropUri = item.backdrop || item.poster;
+  const heroHeight = width < 380 ? 360 : width < 430 ? 400 : 460;
+  const heroBottomHeight = width < 380 ? 220 : width < 430 ? 250 : 280;
 
   // Auto-start trailer preview after 2 seconds (Netflix-style)
   useEffect(() => {
@@ -234,7 +238,7 @@ export const RealHeroBanner = React.memo(function RealHeroBanner({ item, onPlay,
         onPress={onPlay}
         activeOpacity={0.88}
       >
-        <View style={styles.heroBanner}>
+        <View style={[styles.heroBanner, { height: heroHeight }]}> 
           {backdropUri && !imageError ? (
             <>
               {!heroImageLoaded && (
@@ -305,7 +309,7 @@ export const RealHeroBanner = React.memo(function RealHeroBanner({ item, onPlay,
 
           <LinearGradient
             colors={["transparent", "rgba(0,0,0,0.68)", COLORS.background]}
-            style={styles.heroBottomGradient}
+            style={[styles.heroBottomGradient, { height: heroBottomHeight }]}
             start={{ x: 0, y: 0 }}
             end={{ x: 0, y: 1 }}
           />

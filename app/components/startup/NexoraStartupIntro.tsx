@@ -1,5 +1,3 @@
-import { Audio } from "expo-av";
-import * as FileSystem from "expo-file-system/legacy";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import Animated, {
@@ -53,6 +51,23 @@ type IntroTiming = {
   holdMs: number;
   exitMs: number;
 };
+
+// Lazy-loaded native modules — avoids requireNativeModule crash at module evaluation time
+function getAudio(): (typeof import("expo-av"))["Audio"] | null {
+  try {
+    return (require("expo-av") as typeof import("expo-av")).Audio;
+  } catch {
+    return null;
+  }
+}
+
+function getFS(): typeof import("expo-file-system/legacy") | null {
+  try {
+    return require("expo-file-system/legacy") as typeof import("expo-file-system/legacy");
+  } catch {
+    return null;
+  }
+}
 
 const RED = "#E10612";
 const WHITE = "#F8FAFC";
@@ -181,13 +196,15 @@ function renderToneWavBase64(freq: number, durationMs: number, gain: number): st
 
 async function ensureCueFile(name: string, freq: number, durationMs: number, gain: number): Promise<string | null> {
   try {
-    const root = FileSystem.cacheDirectory;
+    const fs = getFS();
+    if (!fs) return null;
+    const root = fs.cacheDirectory;
     if (!root) return null;
     const uri = `${root}${name}.wav`;
-    const info = await FileSystem.getInfoAsync(uri);
+    const info = await fs.getInfoAsync(uri);
     if (!info.exists) {
       const wavBase64 = renderToneWavBase64(freq, durationMs, gain);
-      await FileSystem.writeAsStringAsync(uri, wavBase64, { encoding: FileSystem.EncodingType.Base64 });
+      await fs.writeAsStringAsync(uri, wavBase64, { encoding: fs.EncodingType.Base64 });
     }
     return uri;
   } catch {
@@ -198,6 +215,8 @@ async function ensureCueFile(name: string, freq: number, durationMs: number, gai
 async function playCue(uri: string | null, volume: number): Promise<void> {
   if (!uri) return;
   try {
+    const Audio = getAudio();
+    if (!Audio) return;
     const { sound } = await Audio.Sound.createAsync(
       { uri },
       {
@@ -273,13 +292,16 @@ export function NexoraIntro({ variant, onFinish }: NexoraIntroProps) {
 
     const run = async () => {
       try {
-        await Audio.setAudioModeAsync({
-          allowsRecordingIOS: false,
-          staysActiveInBackground: false,
-          playsInSilentModeIOS: false,
-          shouldDuckAndroid: true,
-          playThroughEarpieceAndroid: false,
-        });
+        const Audio = getAudio();
+        if (Audio) {
+          await Audio.setAudioModeAsync({
+            allowsRecordingIOS: false,
+            staysActiveInBackground: false,
+            playsInSilentModeIOS: false,
+            shouldDuckAndroid: true,
+            playThroughEarpieceAndroid: false,
+          });
+        }
 
         const hit = await ensureCueFile("nexora-intro-hit", 82, 520, 0.34);
         const whoosh = await ensureCueFile("nexora-intro-whoosh", 186, 460, 0.2);

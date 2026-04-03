@@ -1,8 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import * as Application from "expo-application";
 import Constants from "expo-constants";
 import * as FileSystem from "expo-file-system/legacy";
-import * as IntentLauncher from "expo-intent-launcher";
 import { Alert, Linking, Platform } from "react-native";
 
 import { apiRequestJson } from "@/lib/query-client";
@@ -25,6 +23,22 @@ const OTA_FETCH_TIMEOUT_MS = 30_000;
 function getUpdatesModule(): any | null {
   try {
     return require("expo-updates");
+  } catch {
+    return null;
+  }
+}
+
+function getApplication(): typeof import("expo-application") | null {
+  try {
+    return require("expo-application") as typeof import("expo-application");
+  } catch {
+    return null;
+  }
+}
+
+function getIntentLauncher(): typeof import("expo-intent-launcher") | null {
+  try {
+    return require("expo-intent-launcher") as typeof import("expo-intent-launcher");
   } catch {
     return null;
   }
@@ -191,7 +205,7 @@ async function detectServerChange(serverVersion: string): Promise<boolean> {
 export async function checkForAppUpdates(options?: CheckOptions): Promise<UpdateCheckResult> {
   const Updates = getUpdatesModule();
   const currentVersion = safeString(options?.currentVersion, safeString(Constants.expoConfig?.version, "0.0.0"));
-  const currentNativeVersion = safeString(Application.nativeApplicationVersion, currentVersion || "0.0.0");
+  const currentNativeVersion = safeString(getApplication()?.nativeApplicationVersion, currentVersion || "0.0.0");
   const currentRuntimeVersion = safeString(Updates?.runtimeVersion, "unknown");
 
   const [manifestResult, otaState] = await Promise.allSettled([
@@ -359,6 +373,10 @@ export async function startNativeUpdate(
   if (!result?.uri) throw new Error("Download failed before an APK file was created.");
 
   const contentUri = await FileSystem.getContentUriAsync(result.uri);
+  const IntentLauncher = getIntentLauncher();
+  if (!IntentLauncher) {
+    throw new Error("IntentLauncher is not available in this build.");
+  }
   try {
     await IntentLauncher.startActivityAsync("android.intent.action.INSTALL_PACKAGE", {
       data: contentUri,
@@ -376,7 +394,7 @@ export async function startNativeUpdate(
     });
     return;
   } catch (error) {
-    const packageId = Application.applicationId || Constants.expoConfig?.android?.package;
+    const packageId = getApplication()?.applicationId || Constants.expoConfig?.android?.package;
     if (packageId) {
       try {
         await IntentLauncher.startActivityAsync("android.settings.MANAGE_UNKNOWN_APP_SOURCES", {

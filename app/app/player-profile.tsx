@@ -438,41 +438,44 @@ export default function PlayerProfileScreen() {
         </View>
       ) : (
         <>
-          <View style={styles.heroCard}>
-            <View style={styles.hero}>
-              {photoUri && !photoFailed ? (
-                <ExpoImage
-                  source={{ uri: photoUri }}
-                  style={[styles.photo, { backgroundColor: COLORS.card }]}
-                  contentFit="cover"
-                  cachePolicy="memory-disk"
-                  onError={() => {
-                    const fallback = getBestCachedOrSeedPlayerImage(playerImageSeed);
-                    if (fallback && fallback !== photoUri) {
-                      setPhotoUri(fallback);
-                      setPhotoFailed(false);
-                    } else {
-                      setPhotoFailed(true);
-                    }
-                  }}
-                />
-              ) : (
-                <View style={[styles.photo, styles.photoFallback, { borderColor: badgeColor }]}> 
-                  <Text style={styles.photoInitials}>{initials}</Text>
-                </View>
-              )}
-              <Text style={styles.name} numberOfLines={2}>{normalizeText(data?.name || params.name, tx("playerProfile.player", "Player"))}</Text>
-              {hasMeaningfulText(data?.currentClub || params.team) ? (
-                <Text style={styles.clubLine} numberOfLines={1}>{normalizeText(data?.currentClub || params.team)}</Text>
-              ) : null}
-              <Text style={styles.meta}>{`${normalizeText(data?.position || params.position)} ${normalizeText(data?.nationality || params.nationality, "") ? `• ${normalizeText(data?.nationality || params.nationality)}` : ""}`.trim()}</Text>
-              <Text style={[styles.value, data?.isRealValue ? styles.valueReal : null]}>
-                {normalizeText(data?.marketValue || params.marketValue, tx("playerProfile.valueUnknown", "Value unavailable"))}
-              </Text>
+          <View style={styles.heroStickyWrap}>
+            <View style={styles.heroCard}>
+              <View style={styles.hero}>
+                {photoUri && !photoFailed ? (
+                  <ExpoImage
+                    source={{ uri: photoUri }}
+                    style={[styles.photo, { backgroundColor: COLORS.card }]}
+                    contentFit="cover"
+                    cachePolicy="memory-disk"
+                    onError={() => {
+                      const fallback = getBestCachedOrSeedPlayerImage(playerImageSeed);
+                      if (fallback && fallback !== photoUri) {
+                        setPhotoUri(fallback);
+                        setPhotoFailed(false);
+                      } else {
+                        setPhotoFailed(true);
+                      }
+                    }}
+                  />
+                ) : (
+                  <View style={[styles.photo, styles.photoFallback, { borderColor: badgeColor }]}> 
+                    <Text style={styles.photoInitials}>{initials}</Text>
+                  </View>
+                )}
+                <Text style={styles.name} numberOfLines={2}>{normalizeText(data?.name || params.name, tx("playerProfile.player", "Player"))}</Text>
+                {hasMeaningfulText(data?.currentClub || params.team) ? (
+                  <Text style={styles.clubLine} numberOfLines={1}>{normalizeText(data?.currentClub || params.team)}</Text>
+                ) : null}
+                <Text style={styles.meta}>{`${normalizeText(data?.position || params.position)} ${normalizeText(data?.nationality || params.nationality, "") ? `• ${normalizeText(data?.nationality || params.nationality)}` : ""}`.trim()}</Text>
+                <Text style={[styles.value, data?.isRealValue ? styles.valueReal : null]}>
+                  {normalizeText(data?.marketValue || params.marketValue, tx("playerProfile.valueUnknown", "Value unavailable"))}
+                </Text>
+              </View>
             </View>
           </View>
 
           <ScrollView
+            style={styles.scrollArea}
             contentContainerStyle={styles.content}
             showsVerticalScrollIndicator={false}
           >
@@ -683,6 +686,10 @@ function QuickFact({ icon, label, value }: { icon: keyof typeof Ionicons.glyphMa
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
+  heroStickyWrap: {
+    zIndex: 2,
+    elevation: 2,
+  },
   header: { paddingHorizontal: 18, paddingBottom: 18 },
   backBtn: { width: 38, height: 38, alignItems: "center", justifyContent: "center", marginBottom: 6 },
   hero: { alignItems: "center", gap: 12, paddingTop: 4, paddingBottom: 4 },
@@ -707,6 +714,7 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.cardElevated,
     overflow: "hidden",
   },
+  scrollArea: { flex: 1 },
   content: { padding: 18, gap: 12, paddingBottom: 46, paddingTop: 12 },
   card: { backgroundColor: COLORS.overlayLight, gap: 9 },
   row: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", borderBottomWidth: 1, borderBottomColor: COLORS.border, paddingVertical: 9 },

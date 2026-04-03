@@ -234,6 +234,7 @@ export function VodModuleHub({ initialPane = "home", initialFilter = "all" }: Vo
         variant="module"
         title="FILMS & SERIES"
         titleColor={COLORS.accent}
+        showMenu
         showSearch
         showNotification
         showFavorites

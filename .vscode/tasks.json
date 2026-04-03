@@ -28,6 +28,7 @@
 				"-w",
 				"app",
 				"exec",
+				"--",
 				"expo",
 				"start",
 				"--lan",

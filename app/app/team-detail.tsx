@@ -338,6 +338,33 @@ export default function TeamDetailScreen() {
         </View>
       ) : (
         <>
+          <View style={styles.teamHeroStickyWrap}>
+            <View style={styles.teamHeroCard}>
+              <View style={styles.teamHeaderContent}>
+                <View style={styles.teamPosterWrap}>
+                  <View style={styles.teamPosterGlow} />
+                  <TeamLogo
+                    uri={data.logo || logoParam || null}
+                    teamName={teamName}
+                    size={106}
+                  />
+                </View>
+                <Text style={styles.teamTitle} numberOfLines={2}>{teamName}</Text>
+                {data.shortName ? <Text style={styles.teamShort}>{data.shortName}</Text> : null}
+                {headerSubtitle ? <Text style={styles.teamMeta}>{headerSubtitle}</Text> : null}
+                {teamSummaryFacts.length ? (
+                  <View style={styles.summaryChipRow}>
+                    {teamSummaryFacts.map((fact) => (
+                      <View key={fact} style={styles.summaryChip}>
+                        <Text style={styles.summaryChipText} numberOfLines={1}>{fact}</Text>
+                      </View>
+                    ))}
+                  </View>
+                ) : null}
+              </View>
+            </View>
+          </View>
+
           {/* Player list */}
           <Animated.FlatList
             data={filteredPlayers}
@@ -368,30 +395,6 @@ export default function TeamDetailScreen() {
             )}
             ListHeaderComponent={
               <View>
-                <View style={styles.teamHeroCard}>
-                  <View style={styles.teamHeaderContent}>
-                    <View style={styles.teamPosterWrap}>
-                      <View style={styles.teamPosterGlow} />
-                      <TeamLogo
-                        uri={data.logo || logoParam || null}
-                        teamName={teamName}
-                        size={106}
-                      />
-                    </View>
-                    <Text style={styles.teamTitle} numberOfLines={2}>{teamName}</Text>
-                    {data.shortName ? <Text style={styles.teamShort}>{data.shortName}</Text> : null}
-                    {headerSubtitle ? <Text style={styles.teamMeta}>{headerSubtitle}</Text> : null}
-                    {teamSummaryFacts.length ? (
-                      <View style={styles.summaryChipRow}>
-                        {teamSummaryFacts.map((fact) => (
-                          <View key={fact} style={styles.summaryChip}>
-                            <Text style={styles.summaryChipText} numberOfLines={1}>{fact}</Text>
-                          </View>
-                        ))}
-                      </View>
-                    ) : null}
-                  </View>
-                </View>
                 {positions.length > 1 ? (
                   <Animated.View style={[styles.filterHeaderWrap, { transform: [{ translateY: filterTranslateY }] }]}> 
                     <ScrollView horizontal showsHorizontalScrollIndicator={false}
@@ -562,10 +565,14 @@ function StatPill({ label, value, color, real }: { label: string; value: string;
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
+  teamHeroStickyWrap: {
+    zIndex: 2,
+    elevation: 2,
+  },
   teamHeroCard: {
     marginHorizontal: 18,
     marginTop: 14,
-    marginBottom: 10,
+    marginBottom: 6,
     borderRadius: 20,
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.12)",
