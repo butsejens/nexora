@@ -28,6 +28,7 @@ import updatesRouter  from "./modules/updates.js";
 import diagnosticsRouter from "./modules/diagnostics.js";
 import { router as aiRouter, registerAiAliases } from "./modules/ai.js";
 import { router as usersRouter } from "./modules/users.js";
+import { router as streamHealthRouter, startHealthCheckSchedule } from "./modules/stream-health.js";
 
 // --- Redis client setup (legacy + shared module) ---
 dotenv.config();
@@ -119,6 +120,7 @@ app.use("/api/updates", updatesRouter); // clean update metadata
 app.use(diagnosticsRouter);            // /health, /api/ping, /api/config-check
 app.use("/api/ai",  aiRouter);         // AI player analysis (new canonical path)
 app.use(usersRouter);                  // /api/user/* + /api/session/*
+app.use("/api/streams", streamHealthRouter); // stream provider health monitor
 registerAiAliases(app);               // 307 compat redirects from old /api/sports/player-analysis/*
 
 const DOWNLOADS_DIR = join(__dirname, "public", "downloads");
@@ -347,6 +349,9 @@ const APIFY_BASE = "https://api.apify.com/v2";
 const SOFASCORE_API_BASE = "https://www.sofascore.com/api/v1";
 const APIFY_TRANSFERMARKT_ACTOR = process.env.APIFY_TRANSFERMARKT_ACTOR || "data_xplorer/transfermarkt-api-scraper";
 const APIFY_SOFASCORE_ACTOR = process.env.APIFY_SOFASCORE_ACTOR || "azzouzana/sofascore-scraper-pro";
+const GITHUB_FIFA18_PERSONAL_CSV = "https://raw.githubusercontent.com/4m4n5/fifa18-all-player-statistics/master/Complete/PlayerPersonalData.csv";
+const GITHUB_FIFA18_OVERVIEW_CSV = "https://raw.githubusercontent.com/kevinheavey/fifa18-even-more-player-data/master/data/final/current/overview.csv";
+const GITHUB_PLAYER_DATA_TTL_MS = Number(process.env.GITHUB_PLAYER_DATA_TTL_MS || 12 * 60 * 60 * 1000);
 
 
 const ESPN_SCOREBOARD_BASE = "https://site.web.api.espn.com/apis/v2/sports/soccer/scoreboard";
@@ -1528,6 +1533,93 @@ function ensurePlayersHaveValidPhotos(players) {
   });
 }
 
+async function collectTeamLineupPhotoIndex(teamName, scheduleEvents) {
+  const byId = new Map();
+  const byName = new Map();
+  const events = Array.isArray(scheduleEvents) ? scheduleEvents : [];
+  if (!events.length) return { byId, byName };
+
+  const normalizedTeam = normalizeTeamKey(teamName);
+  const candidates = events
+    .map((event) => ({
+      id: String(event?.id || ""),
+      homeTeam: String(event?.homeTeam || "").trim(),
+      awayTeam: String(event?.awayTeam || "").trim(),
+      startDate: String(event?.date || event?.startDate || "").trim(),
+    }))
+    .filter((event) => event.homeTeam && event.awayTeam && event.startDate)
+    .slice(0, 6);
+
+  if (!candidates.length) return { byId, byName };
+
+  const withSofa = await Promise.race([
+    enrichMatchesWithSofaData(candidates, String(candidates[0]?.startDate || "").slice(0, 10)),
+    new Promise((resolve) => setTimeout(() => resolve(candidates), 7000)),
+  ]).catch(() => candidates);
+
+  const sofaIds = [];
+  for (const event of Array.isArray(withSofa) ? withSofa : []) {
+    const sofaId = String(event?.sofaData?.id || "").trim();
+    if (!sofaId || sofaIds.includes(sofaId)) continue;
+    sofaIds.push(sofaId);
+    if (sofaIds.length >= 4) break;
+  }
+
+  if (!sofaIds.length) return { byId, byName };
+
+  const lineupsByMatch = await Promise.allSettled(
+    sofaIds.map((sofaId) =>
+      Promise.race([
+        fetchSofaLineups(sofaId),
+        new Promise((resolve) => setTimeout(() => resolve(null), 6500)),
+      ])
+    )
+  );
+
+  for (const entry of lineupsByMatch) {
+    if (entry.status !== "fulfilled" || !Array.isArray(entry.value)) continue;
+    for (const side of entry.value) {
+      const sideTeam = normalizeTeamKey(side?.team);
+      const sameTeam = !normalizedTeam || !sideTeam
+        ? true
+        : sideTeam === normalizedTeam || sideTeam.includes(normalizedTeam) || normalizedTeam.includes(sideTeam);
+      if (!sameTeam) continue;
+
+      const rows = [...(Array.isArray(side?.players) ? side.players : []), ...(Array.isArray(side?.bench) ? side.bench : [])];
+      for (const player of rows) {
+        const photo = normalizePlayerPhoto(player?.id, player?.photo);
+        if (!photo) continue;
+        const id = String(player?.id || "").trim();
+        const key = normalizePersonName(player?.name || "");
+        if (id && !byId.has(id)) byId.set(id, photo);
+        if (key && !byName.has(key)) byName.set(key, photo);
+      }
+    }
+  }
+
+  return { byId, byName };
+}
+
+function mergePlayersWithLineupPhotos(players, lineupIndex) {
+  const list = Array.isArray(players) ? players : [];
+  const byId = lineupIndex?.byId instanceof Map ? lineupIndex.byId : new Map();
+  const byName = lineupIndex?.byName instanceof Map ? lineupIndex.byName : new Map();
+
+  return list.map((player) => {
+    if (!player || typeof player !== "object") return player;
+    const id = String(player?.id || "").trim();
+    const nameKey = normalizePersonName(player?.name || "");
+    const lineupPhoto = (id && byId.get(id)) || (nameKey && byName.get(nameKey)) || null;
+    if (!lineupPhoto) return player;
+    if (String(player?.photo || "") === String(lineupPhoto || "")) return player;
+    return {
+      ...player,
+      photo: lineupPhoto,
+      photoSource: "lineup",
+    };
+  });
+}
+
 // Validate ESPN CDN headshot — returns URL if real photo (>10KB), null if black placeholder
 async function validateEspnHeadshot(url) {
   if (!url) return null;
@@ -1844,6 +1936,181 @@ function similarityScore(a, b) {
   if (surnameClose && score < 0.7) score = Math.max(score, 0.65);
 
   return score;
+}
+
+function splitCsvLine(line) {
+  const out = [];
+  let current = "";
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i += 1) {
+    const ch = line[i];
+    if (ch === '"') {
+      if (inQuotes && line[i + 1] === '"') {
+        current += '"';
+        i += 1;
+      } else {
+        inQuotes = !inQuotes;
+      }
+    } else if (ch === "," && !inQuotes) {
+      out.push(current);
+      current = "";
+    } else {
+      current += ch;
+    }
+  }
+  out.push(current);
+  return out;
+}
+
+async function fetchGithubCsvText(url, key, timeoutMs = 9000) {
+  return getOrFetch(`github_csv_${key}`, GITHUB_PLAYER_DATA_TTL_MS, async () => {
+    const resp = await fetch(url, {
+      headers: { "user-agent": "Mozilla/5.0 (Nexora/1.0)", accept: "text/csv,*/*;q=0.8" },
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    if (!resp.ok) throw new Error(`github csv ${resp.status}`);
+    return resp.text();
+  });
+}
+
+let _githubPlayerFallbackCache = { ts: 0, entries: [] };
+let _githubPlayerFallbackInflight = null;
+
+async function loadGithubPlayerFallbackEntries() {
+  const now = Date.now();
+  if (_githubPlayerFallbackCache.entries.length && now - _githubPlayerFallbackCache.ts < GITHUB_PLAYER_DATA_TTL_MS) {
+    return _githubPlayerFallbackCache.entries;
+  }
+  if (_githubPlayerFallbackInflight) return _githubPlayerFallbackInflight;
+
+  _githubPlayerFallbackInflight = (async () => {
+    try {
+      const [personalCsv, overviewCsv] = await Promise.all([
+        fetchGithubCsvText(GITHUB_FIFA18_PERSONAL_CSV, "fifa18_personal"),
+        fetchGithubCsvText(GITHUB_FIFA18_OVERVIEW_CSV, "fifa18_overview"),
+      ]);
+
+      const entries = [];
+
+      // Dataset 1: 4m4n5 player personal data (Photo/Nationality/Club/Age/Value/Wage)
+      const personalLines = String(personalCsv || "").replace(/^\uFEFF/, "").split(/\r?\n/).filter(Boolean);
+      if (personalLines.length > 1) {
+        const header = splitCsvLine(personalLines[0]).map((h) => String(h || "").trim().toLowerCase());
+        const idx = {
+          id: header.indexOf("id"),
+          name: header.indexOf("name"),
+          age: header.indexOf("age"),
+          photo: header.indexOf("photo"),
+          nationality: header.indexOf("nationality"),
+          club: header.indexOf("club"),
+          value: header.indexOf("value"),
+        };
+        for (let i = 1; i < personalLines.length; i += 1) {
+          const cols = splitCsvLine(personalLines[i]);
+          const name = String(cols[idx.name] || "").trim();
+          const team = String(cols[idx.club] || "").trim();
+          if (!name) continue;
+          entries.push({
+            source: "github-fifa18-personal",
+            id: String(cols[idx.id] || "").trim(),
+            name,
+            team,
+            age: parseNumberish(cols[idx.age]),
+            nationality: String(cols[idx.nationality] || "").trim() || null,
+            photo: normalizeRemoteMediaUrl(cols[idx.photo]) || null,
+            marketValueEur: parseMarketValueEUR(cols[idx.value]),
+          });
+        }
+      }
+
+      // Dataset 2: kevinheavey overview.csv (cleaned soFIFA mirror with eur_value/photo)
+      const overviewLines = String(overviewCsv || "").replace(/^\uFEFF/, "").split(/\r?\n/).filter(Boolean);
+      if (overviewLines.length > 1) {
+        const header = splitCsvLine(overviewLines[0]).map((h) => String(h || "").trim().toLowerCase());
+        const idx = {
+          id: header.indexOf("id"),
+          name: header.indexOf("name"),
+          age: header.indexOf("age"),
+          photo: header.indexOf("photo"),
+          nationality: header.indexOf("nationality"),
+          club: header.indexOf("club"),
+          value: header.indexOf("eur_value"),
+        };
+        for (let i = 1; i < overviewLines.length; i += 1) {
+          const cols = splitCsvLine(overviewLines[i]);
+          const name = String(cols[idx.name] || "").trim();
+          const team = String(cols[idx.club] || "").trim();
+          if (!name) continue;
+          entries.push({
+            source: "github-fifa18-overview",
+            id: String(cols[idx.id] || "").trim(),
+            name,
+            team,
+            age: parseNumberish(cols[idx.age]),
+            nationality: String(cols[idx.nationality] || "").trim() || null,
+            photo: normalizeRemoteMediaUrl(cols[idx.photo]) || null,
+            marketValueEur: parseNumberish(cols[idx.value]),
+          });
+        }
+      }
+
+      _githubPlayerFallbackCache = { ts: Date.now(), entries };
+      return entries;
+    } catch {
+      return [];
+    } finally {
+      _githubPlayerFallbackInflight = null;
+    }
+  })();
+
+  return _githubPlayerFallbackInflight;
+}
+
+async function fetchGithubPlayerFallback(playerName, teamName) {
+  const targetName = normalizePersonName(playerName);
+  if (!targetName) return null;
+
+  const entries = await loadGithubPlayerFallbackEntries();
+  if (!entries.length) return null;
+
+  const targetTeam = normalizePersonName(teamName);
+  let best = null;
+  let bestScore = 0;
+
+  for (const row of entries) {
+    const candName = normalizePersonName(row?.name);
+    if (!candName) continue;
+    if (!isSafeFuzzyPlayerMatch(playerName, row?.name || "", targetTeam ? 0.72 : 0.82)) continue;
+    let score = similarityScore(targetName, candName);
+
+    if (targetTeam) {
+      const candTeam = normalizePersonName(row?.team);
+      if (candTeam && candTeam === targetTeam) score += 0.32;
+      else if (candTeam && (candTeam.includes(targetTeam) || targetTeam.includes(candTeam))) score += 0.18;
+      else if (candTeam) score -= 0.15;
+    }
+
+    if (score > bestScore) {
+      bestScore = score;
+      best = row;
+    }
+  }
+
+  if (!best) return null;
+  const minScore = targetTeam ? 0.70 : 0.78;
+  if (bestScore < minScore) return null;
+
+  return {
+    source: best.source,
+    id: best.id || "",
+    name: best.name || "",
+    team: best.team || "",
+    age: Number.isFinite(Number(best.age)) ? Number(best.age) : undefined,
+    nationality: best.nationality || undefined,
+    photo: normalizePlayerPhoto(best.id, best.photo),
+    marketValue: best.marketValueEur ? formatEURShort(best.marketValueEur) : null,
+    marketValueEur: best.marketValueEur || null,
+  };
 }
 
 function getNameParts(name) {
@@ -2224,6 +2491,124 @@ async function fetchApifyPlayerFallback(playerId, playerName, teamName) {
   }
 }
 
+function buildTheSportsDBTeamSearchCandidates(teamName) {
+  const out = [];
+  const seen = new Set();
+  const add = (value) => {
+    const raw = String(value || "").trim();
+    const normalized = normalizeTeamKey(raw);
+    if (!normalized || seen.has(normalized)) return;
+    seen.add(normalized);
+    out.push(raw);
+  };
+
+  const normalizedInput = normalizeTeamKey(teamName);
+  if (!normalizedInput) return out;
+
+  add(String(teamName || "").trim());
+  add(normalizedInput);
+
+  const leadingTokens = new Set(["royal", "r", "rsc", "rsca", "rfc", "rc", "sc", "fc", "kv", "kvk", "kvc", "kaa", "krc", "sk", "sv", "us", "as", "ssc", "ac"]);
+  const trailingTokens = new Set(["fc", "sc", "kv", "sk", "sv", "afc", "cf", "va", "eh"]);
+
+  const inputTokens = normalizedInput.split(" ").filter(Boolean);
+  let strippedLeading = [...inputTokens];
+  while (strippedLeading.length > 1 && leadingTokens.has(strippedLeading[0])) strippedLeading.shift();
+  let strippedTrailing = [...strippedLeading];
+  while (strippedTrailing.length > 1 && trailingTokens.has(strippedTrailing[strippedTrailing.length - 1])) strippedTrailing.pop();
+
+  add(strippedLeading.join(" "));
+  add(strippedTrailing.join(" "));
+  if (strippedTrailing.length >= 2) add(strippedTrailing.slice(0, 2).join(" "));
+  if (strippedTrailing.length >= 1) add(strippedTrailing[strippedTrailing.length - 1]);
+
+  for (const [alias, canonical] of Object.entries(TEAM_LOGO_ALIASES)) {
+    const aliasNorm = normalizeTeamKey(alias);
+    const canonicalNorm = normalizeTeamKey(canonical);
+    if (aliasNorm === normalizedInput || canonicalNorm === normalizedInput) {
+      add(alias);
+      add(canonical);
+    }
+  }
+
+  return out;
+}
+
+function scoreTheSportsDBTeamMatch(team, requestedName) {
+  const requestedNorm = normalizeTeamKey(requestedName);
+  if (!requestedNorm) return 0;
+
+  const candidates = [team?.strTeam, team?.strTeamAlternate, team?.strTeamShort]
+    .map((value) => normalizeTeamKey(value))
+    .filter(Boolean);
+
+  let best = 0;
+  for (const candidate of candidates) {
+    let score = similarityScore(requestedNorm, candidate);
+    if (candidate === requestedNorm) score += 0.25;
+    if (candidate.includes(requestedNorm) || requestedNorm.includes(candidate)) score += 0.12;
+    if (score > best) best = score;
+  }
+
+  const country = normalizeTeamKey(team?.strCountry || "");
+  const league = normalizeTeamKey(team?.strLeague || "");
+  const league2 = normalizeTeamKey(team?.strLeague2 || "");
+  if (country === "belgium" || league.includes("belgian") || league2.includes("belgian")) best += 0.03;
+  return best;
+}
+
+async function resolveTheSportsDBTeam(teamName) {
+  const normalizedInput = normalizeTeamKey(teamName);
+  if (!normalizedInput) return null;
+
+  const cacheKey = `thesportsdb_team_${normalizedInput}`;
+  const cacheItem = __cache.get(cacheKey);
+  if (cacheItem && Date.now() <= cacheItem.expiresAt) return cacheItem.value;
+
+  const candidates = buildTheSportsDBTeamSearchCandidates(teamName);
+  const teamMap = new Map();
+
+  try {
+    for (const candidate of candidates) {
+      const q = encodeURIComponent(String(candidate || "").trim());
+      if (!q) continue;
+      const teamResp = await fetch(`https://www.thesportsdb.com/api/v1/json/3/searchteams.php?t=${q}`, {
+        headers: { "user-agent": "Mozilla/5.0", accept: "application/json" },
+        signal: AbortSignal.timeout(4000),
+      });
+      if (!teamResp.ok) continue;
+      const teamData = await teamResp.json();
+      for (const team of Array.isArray(teamData?.teams) ? teamData.teams : []) {
+        const teamId = String(team?.idTeam || "").trim();
+        if (!teamId || teamMap.has(teamId)) continue;
+        teamMap.set(teamId, team);
+      }
+      const exact = (Array.from(teamMap.values())).find((team) => scoreTheSportsDBTeamMatch(team, teamName) >= 1.05);
+      if (exact) {
+        cacheSet(cacheKey, exact, 86_400_000);
+        return exact;
+      }
+    }
+
+    let best = null;
+    let bestScore = 0;
+    for (const team of teamMap.values()) {
+      const score = scoreTheSportsDBTeamMatch(team, teamName);
+      if (score > bestScore) {
+        bestScore = score;
+        best = team;
+      }
+    }
+
+    const resolved = bestScore >= 0.62 ? best : null;
+    cacheSet(cacheKey, resolved, resolved ? 86_400_000 : 300_000);
+    return resolved;
+  } catch {
+    cacheSet(cacheKey, null, 300_000);
+    return null;
+  }
+}
+
 // TheSportsDB free API – get all players (with photos) for a team (no API key required)
 async function fetchTheSportsDBTeamPlayers(teamName) {
   if (!teamName) return [];
@@ -2233,18 +2618,10 @@ async function fetchTheSportsDBTeamPlayers(teamName) {
   if (cacheItem && Date.now() <= cacheItem.expiresAt) return cacheItem.value;
 
   try {
-    // Step 1: find team ID
-    const q = encodeURIComponent(String(teamName).trim());
-    const teamResp = await fetch(`https://www.thesportsdb.com/api/v1/json/3/searchteams.php?t=${q}`, {
-      headers: { "user-agent": "Mozilla/5.0", accept: "application/json" },
-      signal: AbortSignal.timeout(4000),
-    });
-    if (!teamResp.ok) { cacheSet(cacheKey, [], 300_000); return []; }
-    const teamData = await teamResp.json();
-    const teamId = teamData?.teams?.[0]?.idTeam;
+    const team = await resolveTheSportsDBTeam(teamName);
+    const teamId = String(team?.idTeam || "").trim();
     if (!teamId) { cacheSet(cacheKey, [], 300_000); return []; }
 
-    // Step 2: get all players for that team
     const playersResp = await fetch(`https://www.thesportsdb.com/api/v1/json/3/lookup_all_players.php?id=${teamId}`, {
       headers: { "user-agent": "Mozilla/5.0", accept: "application/json" },
       signal: AbortSignal.timeout(6000),
@@ -2256,7 +2633,7 @@ async function fetchTheSportsDBTeamPlayers(teamName) {
       photo: p?.strCutout || p?.strThumb || p?.strRender || null,
     })).filter((p) => p.name && p.photo);
 
-    cacheSet(cacheKey, list, 86_400_000); // cache 24h
+    cacheSet(cacheKey, list, 86_400_000);
     return list;
   } catch {
     cacheSet(cacheKey, [], 300_000);
@@ -3070,7 +3447,11 @@ async function fetchSofaLineups(sofaEventId) {
           position: row?.position || "",
           positionName: row?.positionName || "",
           starter: !(row?.substitute),
-          photo: p?.id ? `https://api.sofascore.app/api/v1/player/${encodeURIComponent(p.id)}/image` : null,
+          // Sofascore player IDs come from a football lineup – always football-specific.
+          // Fall back to team logo (also football) when the player has no ID.
+          photo: p?.id
+            ? `https://api.sofascore.app/api/v1/player/${encodeURIComponent(p.id)}/image`
+            : (lineup?.team?.id ? `https://api.sofascore.app/api/v1/team/${encodeURIComponent(lineup.team.id)}/image` : null),
         };
       });
       result.push({
@@ -3079,6 +3460,7 @@ async function fetchSofaLineups(sofaEventId) {
         formation,
         lineupType: "official",
         players: players.filter((p) => p.starter),
+        bench: players.filter((p) => !p.starter),
       });
     }
     cacheSet(cacheKey, result.length > 0 ? result : null, 5 * 60_000);
@@ -6159,6 +6541,27 @@ function finalizeMatchPayload(match) {
   };
 }
 
+// ─── DEAD CODE – shadowed by modules/sports.js ───────────────────────────────
+// The routes below (/api/sports/live, /api/sports/by-date, /api/sports/today,
+// /api/sports/match/:matchId, /api/sports/standings/:league, /api/sports/health)
+// are never reached because app.use("/api/sports", sportsRouter) is mounted first
+// (line ~116). These legacy handlers can be deleted as a future cleanup step.
+//
+// Routes that are still LIVE (NOT in modules/sports.js and thus reachable):
+//   /api/sports/topscorers/:league
+//   /api/sports/topassists/:league
+//   /api/sports/competition-stats/:league
+//   /api/sports/competition-matches/:league
+//   /api/sports/competition-teams/:league
+//   /api/sports/team/:teamId
+//   /api/sports/player/:playerId
+//   /api/sports/player-analysis/:playerId
+//   /api/sports/highlights
+//   /api/sports/prefetch-home
+//   /api/sports/menu-tools
+// ─────────────────────────────────────────────────────────────────────────────
+
+// DEAD: shadowed by GET /live in modules/sports.js
 // Live (poll every 10s)
 app.get("/api/sports/live", async (req, res) => {
   const date = getDateParam(req);
@@ -6204,6 +6607,7 @@ app.get("/api/sports/live", async (req, res) => {
   }
 });
 
+// DEAD: shadowed by GET /live/by-date in modules/sports.js
 // Backward-compatible alias used by existing app builds.
 app.get("/api/sports/live/by-date", (req, res) => {
   const date = String(req.query?.date || "").trim();
@@ -6219,6 +6623,7 @@ app.get("/api/sports/live/by-date", (req, res) => {
  * Replaces both /api/sports/today and /api/sports/by-date with single implementation.
  * Since the code is identical, this eliminates double-fetching for same data.
  */
+// DEAD: shadowed by GET /by-date in modules/sports.js
 app.get("/api/sports/by-date", async (req, res) => {
   const date = getDateParam(req);
   const now = new Date(date + "T12:00:00Z");
@@ -6327,6 +6732,7 @@ app.get("/api/sports/by-date", async (req, res) => {
 });
 
 // Backwards compatibility alias: /api/sports/today → /api/sports/by-date
+// DEAD: shadowed by GET /today in modules/sports.js
 app.get("/api/sports/today", async (req, res) => {
   // Forward to unified endpoint by internally calling its logic
   req.url = "/api/sports/by-date";
@@ -6413,6 +6819,7 @@ app.get("/api/sports/prefetch-home", async (req, res) => {
 });
 
 // Match detail (used by match-detail.tsx)
+// DEAD: shadowed by GET /match/:matchId in modules/sports.js
 app.get("/api/sports/match/:matchId", async (req, res) => {
   const matchId = req.params.matchId;
   const espnLeague = String(req.query?.league || "eng.1");
@@ -7248,6 +7655,7 @@ async function espnTopScorersFromCore(leagueName) {
 }
 
 // Standings: app calls /api/sports/standings/:league (league is human string)
+// DEAD: shadowed by GET /standings/:league in modules/sports.js
 app.get("/api/sports/standings/:league", async (req, res) => {
   const leagueName = normalizeLeagueName(decodeURIComponent(req.params.league));
   const leagueId = LEAGUE_IDS[leagueName];
@@ -7804,7 +8212,7 @@ app.get("/api/sports/team/:teamId", async (req, res) => {
       ]);
 
       // If enrichment timed out, use basic player data and ESPN logo
-      const finalPlayers = ensurePlayersHaveValidPhotos(enrichResult?.enrichedPlayers ?? basePlayers);
+      const baseFinalPlayers = enrichResult?.enrichedPlayers ?? basePlayers;
       const squadValue = enrichResult?.squadMarketValue ?? null;
       const resolvedLogo = enrichResult?.resolvedLogo ?? (rawTeamLogo || espnLogo || footballLogosUrl || null);
 
@@ -7827,12 +8235,13 @@ app.get("/api/sports/team/:teamId", async (req, res) => {
 
       let recentResults = [];
       let upcomingMatches = [];
+      let scheduleEvents = [];
       if (team?.id || resolvedTeamId) {
         try {
           const scheduleUrl = withEspnApiKey(`https://site.api.espn.com/apis/site/v2/sports/soccer/leagues/${encodeURIComponent(espnLeague)}/teams/${encodeURIComponent(String(team?.id || resolvedTeamId))}/schedule`);
           const scheduleJson = await fetchJsonWithTimeout(scheduleUrl, 9000).catch(() => null);
           const events = Array.isArray(scheduleJson?.events) ? scheduleJson.events : [];
-          const mappedEvents = events.map((event) => {
+          scheduleEvents = events.map((event) => {
             const comp = event?.competitions?.[0] || {};
             const statusType = String(comp?.status?.type?.state || comp?.status?.type?.name || "").toLowerCase();
             const competitors = Array.isArray(comp?.competitors) ? comp.competitors : [];
@@ -7841,6 +8250,8 @@ app.get("/api/sports/team/:teamId", async (req, res) => {
             return {
               id: String(event?.id || ""),
               date: event?.date || null,
+              homeTeam: String(home?.team?.displayName || ""),
+              awayTeam: String(away?.team?.displayName || ""),
               opponent: String((home?.team?.id === team?.id || home?.team?.displayName === teamDisplayName) ? away?.team?.displayName || "" : home?.team?.displayName || ""),
               isHome: Boolean(home?.team?.id === team?.id || home?.team?.displayName === teamDisplayName),
               status: statusType,
@@ -7849,18 +8260,24 @@ app.get("/api/sports/team/:teamId", async (req, res) => {
             };
           }).filter((row) => row.opponent);
 
-          recentResults = mappedEvents
+          recentResults = scheduleEvents
             .filter((row) => row.status === "post" || row.status === "final")
             .slice(0, 5);
 
-          upcomingMatches = mappedEvents
+          upcomingMatches = scheduleEvents
             .filter((row) => !(row.status === "post" || row.status === "final"))
             .slice(0, 3);
         } catch {
           recentResults = [];
           upcomingMatches = [];
+          scheduleEvents = [];
         }
       }
+
+      const lineupPhotoIndex = await collectTeamLineupPhotoIndex(teamDisplayName, scheduleEvents);
+      const finalPlayers = ensurePlayersHaveValidPhotos(
+        mergePlayersWithLineupPhotos(baseFinalPlayers, lineupPhotoIndex)
+      );
 
       const founded = Number(team?.founded || team?.foundedYear || team?.foundedOn || 0) || null;
       const clubColors = [team?.color, team?.alternateColor].filter(Boolean).map((value) => {
@@ -7942,6 +8359,17 @@ app.get("/api/sports/player/:playerId", async (req, res) => {
         }
       }
 
+      // Guard against wrong ESPN athlete-id mappings: if caller passed a player name
+      // and ESPN resolves to a very different person, trust caller input and fallbacks.
+      if (playerName && espnAthlete) {
+        const requested = normalizePersonName(playerName);
+        const espnResolved = normalizePersonName(espnAthlete?.displayName || espnAthlete?.fullName || "");
+        if (requested && espnResolved && similarityScore(requested, espnResolved) < 0.55) {
+          espnAthlete = null;
+          espnTeam = null;
+        }
+      }
+
       const apiSports = null;
       const apifyFallback = await Promise.race([
         fetchApifyPlayerFallback(
@@ -7951,15 +8379,22 @@ app.get("/api/sports/player/:playerId", async (req, res) => {
         ),
         new Promise((resolve) => setTimeout(() => resolve(null), 3500)),
       ]);
+      const githubFallback = await Promise.race([
+        fetchGithubPlayerFallback(
+          playerName || espnAthlete?.displayName || espnAthlete?.fullName,
+          teamName || espnTeam?.displayName || espnTeam?.name,
+        ),
+        new Promise((resolve) => setTimeout(() => resolve(null), 2500)),
+      ]);
 
       const profile = apiSports?.profile?.player || {};
       const profileStats = apiSports?.profile?.statistics?.[0] || {};
 
       const name =
         profile?.name ||
+        playerName ||
         espnAthlete?.displayName ||
         espnAthlete?.fullName ||
-        playerName ||
         "Onbekend";
 
       const normalizedPlayer = {
@@ -8002,6 +8437,13 @@ app.get("/api/sports/player/:playerId", async (req, res) => {
           isRealValue: true,
           valueMethod: "apify-transfermarkt",
         };
+      } else if (githubFallback?.marketValue && !valued?.marketValue) {
+        valued = {
+          ...valued,
+          marketValue: githubFallback.marketValue,
+          isRealValue: false,
+          valueMethod: "github-fifa-fallback",
+        };
       }
 
       const fallbackInsights = inferStrengthsWeaknesses(valued?.position, valued?.age);
@@ -8028,7 +8470,7 @@ app.get("/api/sports/player/:playerId", async (req, res) => {
         new Promise((resolve) => setTimeout(() => resolve(null), 3500)),
       ]);
 
-      const sourceTag = apifyFallback?.source || apiSports?.source || "espn";
+      const sourceTag = apifyFallback?.source || githubFallback?.source || apiSports?.source || "espn";
 
       const toPositiveOrNull = (value) => {
         const parsed = Number(value);
@@ -8072,6 +8514,7 @@ app.get("/api/sports/player/:playerId", async (req, res) => {
         valued?.id,
         profile?.photo,
         apifyFallback?.photo,
+        githubFallback?.photo,
         espnAthlete?.headshot?.href,
       );
       // Transfermarkt direct photo as early fallback
@@ -9457,6 +9900,43 @@ app.post("/api/playlist/xtream", playlistLimiter, async (req, res) => {
 
 const iptvOrgCache = new Map(); // cacheKey -> { data, ts }
 const IPTV_ORG_CACHE_TTL = 60 * 60 * 1000; // 1 hour
+const IPTV_ORG_DISCOVER_LIMITS = {
+  live: 1000,
+  movies: 3000,
+  series: 3000,
+};
+const IPTV_ORG_DISCOVER_CACHE_VERSION = `v2-${IPTV_ORG_DISCOVER_LIMITS.live}-${IPTV_ORG_DISCOVER_LIMITS.movies}-${IPTV_ORG_DISCOVER_LIMITS.series}`;
+const IPTV_ORG_DISCOVER_AGGREGATES = {
+  movies: [
+    "categories/movies",
+    "categories/entertainment",
+    "categories/documentary",
+    "categories/kids",
+  ],
+  series: [
+    "categories/series",
+    "categories/entertainment",
+    "categories/kids",
+    "categories/documentary",
+  ],
+};
+
+function dedupeIptvOrgEntries(entries) {
+  const seen = new Set();
+  const out = [];
+  for (const entry of Array.isArray(entries) ? entries : []) {
+    if (!entry || typeof entry !== "object") continue;
+    const urlKey = String(entry.url || "").trim().toLowerCase();
+    const epgKey = String(entry.epgId || "").trim().toLowerCase();
+    const nameKey = String(entry.name || entry.title || "").trim().toLowerCase();
+    const groupKey = String(entry.group || "").trim().toLowerCase();
+    const key = urlKey || `${epgKey}::${nameKey}::${groupKey}`;
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    out.push(entry);
+  }
+  return out;
+}
 
 // Country metadata for display (label + flag emoji)
 const IPTV_ORG_COUNTRIES = {
@@ -9509,49 +9989,60 @@ app.get("/api/iptv/discover", playlistLimiter, async (req, res) => {
       return res.status(400).json({ error: "Ongeldige parameter." });
     }
 
-    const pathSegment = country ? `countries/${param}` : `categories/${param}`;
-    const m3uUrl = `https://iptv-org.github.io/iptv/${pathSegment}.m3u`;
-    const cacheKey = `iptv-org:${pathSegment}`;
+    const pathSegments = country
+      ? [`countries/${param}`]
+      : (IPTV_ORG_DISCOVER_AGGREGATES[param] || [`categories/${param}`]);
+    const m3uUrls = pathSegments.map((segment) => `https://iptv-org.github.io/iptv/${segment}.m3u`);
+    const primaryPathSegment = pathSegments[0];
+    const primaryUrl = m3uUrls[0];
+    const cacheKey = `iptv-org:${IPTV_ORG_DISCOVER_CACHE_VERSION}:${pathSegments.join("|")}`;
 
     const cached = iptvOrgCache.get(cacheKey);
     if (cached && Date.now() - cached.ts < IPTV_ORG_CACHE_TTL) {
       return res.json(cached.data);
     }
 
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 30_000);
-    let txt;
-    try {
-      const r = await fetch(m3uUrl, {
-        headers: { "User-Agent": "Nexora/2.4 Channel-Discovery" },
-        redirect: "follow",
-        signal: controller.signal,
-      });
-      clearTimeout(timer);
-      if (!r.ok) return res.status(502).json({ error: `iptv-org antwoordde met ${r.status}` });
-      txt = await r.text();
-    } catch (e) {
-      clearTimeout(timer);
-      return res.status(502).json({ error: `Kan iptv-org niet bereiken: ${e.message}` });
+    const fetchedPlaylists = [];
+    for (const m3uUrl of m3uUrls) {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 30_000);
+      try {
+        const r = await fetch(m3uUrl, {
+          headers: { "User-Agent": "Nexora/2.4 Channel-Discovery" },
+          redirect: "follow",
+          signal: controller.signal,
+        });
+        clearTimeout(timer);
+        if (!r.ok) continue;
+        const txt = await r.text();
+        if (!txt.includes("#EXTM3U") && !txt.includes("#EXTINF")) continue;
+        fetchedPlaylists.push({ url: m3uUrl, parsed: parseM3U(txt) });
+      } catch (_error) {
+        clearTimeout(timer);
+      }
     }
 
-    if (!txt.includes("#EXTM3U") && !txt.includes("#EXTINF")) {
-      return res.status(422).json({ error: "Geen geldig M3U ontvangen van iptv-org." });
+    if (!fetchedPlaylists.length) {
+      return res.status(502).json({ error: "Kan iptv-org niet bereiken of geen geldige M3U ophalen." });
     }
 
-    const parsed = parseM3U(txt);
-    // Cap per category to keep payload manageable
-    const live    = (Array.isArray(parsed.live)   ? parsed.live   : []).slice(0, 1000);
-    const movies  = (Array.isArray(parsed.movies) ? parsed.movies : []).slice(0, 300);
-    const series  = (Array.isArray(parsed.series) ? parsed.series : []).slice(0, 300);
+    const live = dedupeIptvOrgEntries(
+      fetchedPlaylists.flatMap((playlist) => Array.isArray(playlist.parsed?.live) ? playlist.parsed.live : [])
+    ).slice(0, IPTV_ORG_DISCOVER_LIMITS.live);
+    const movies = dedupeIptvOrgEntries(
+      fetchedPlaylists.flatMap((playlist) => Array.isArray(playlist.parsed?.movies) ? playlist.parsed.movies : [])
+    ).slice(0, IPTV_ORG_DISCOVER_LIMITS.movies);
+    const series = dedupeIptvOrgEntries(
+      fetchedPlaylists.flatMap((playlist) => Array.isArray(playlist.parsed?.series) ? playlist.parsed.series : [])
+    ).slice(0, IPTV_ORG_DISCOVER_LIMITS.series);
 
     const meta = country
       ? (IPTV_ORG_COUNTRIES[param] || { label: param.toUpperCase(), flag: "🌍" })
       : (IPTV_ORG_CATEGORIES[param] || { label: param, icon: "📺" });
 
-    const data = { live, movies, series, source: "iptv-org", url: m3uUrl, meta };
+    const data = { live, movies, series, source: "iptv-org", url: primaryUrl, urls: m3uUrls, meta };
     iptvOrgCache.set(cacheKey, { data, ts: Date.now() });
-    console.log(`[iptv-org] ${pathSegment}: ${live.length} live, ${movies.length} movies, ${series.length} series`);
+    console.log(`[iptv-org] ${primaryPathSegment}: ${live.length} live, ${movies.length} movies, ${series.length} series from ${fetchedPlaylists.length} playlist(s)`);
     res.json(data);
   } catch (e) {
     res.status(500).json({ error: String(e?.message || e) });
@@ -9615,11 +10106,12 @@ async function tmdbVideosAllLangs(mediaType, tmdbId) {
   const cacheKey = `tmdb-videos-all:${mediaType}:${tmdbId}`;
   const cached = cacheGet(cacheKey);
   if (cached) return cached;
-  const url = `${TMDB_BASE}/${mediaType}/${encodeURIComponent(tmdbId)}/videos?include_video_language=en,nl,de,fr,null`;
+  // Use api_key query param (v3 auth) — Bearer only works with v4 read-access tokens
+  const url = `${TMDB_BASE}/${mediaType}/${encodeURIComponent(tmdbId)}/videos?include_video_language=en,nl,de,fr,null&api_key=${encodeURIComponent(key)}`;
   try {
     const r = await fetch(url, {
       signal: AbortSignal.timeout(TMDB_TIMEOUT_MS),
-      headers: { Authorization: `Bearer ${key}` },
+      headers: { Accept: 'application/json' },
     });
     if (!r.ok) return null;
     const payload = await r.json();
@@ -9899,6 +10391,16 @@ function sortMediaChronologically(items) {
     if (leftDate !== rightDate) return leftDate - rightDate;
     return String(left?.title || left?.name || "").localeCompare(String(right?.title || right?.name || ""));
   });
+}
+
+function normalizeText(value) {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function dedupeMappedMedia(items) {
@@ -10191,15 +10693,13 @@ app.get("/api/movies/:id/full", tmdbLimiter, async (req, res) => {
       }
     }
 
-    let videos = detail?.videos || { results: [] };
     const credits = detail?.credits || { cast: [], crew: [] };
 
-    // If no trailer found in nl-NL, retry with all languages
-    let finalVideos = videos;
-    if (!pickTrailerKey(videos)) {
-      const allLangVideos = await tmdbVideosAllLangs("movie", id);
-      if (allLangVideos && pickTrailerKey(allLangVideos)) finalVideos = allLangVideos;
-    }
+    // Always fetch all-language videos — nl-NL filter returns 0 trailers for most movies
+    const allLangVideos = await tmdbVideosAllLangs("movie", id);
+    const finalVideos = (allLangVideos && pickTrailerKey(allLangVideos))
+      ? allLangVideos
+      : (detail?.videos || { results: [] });
 
     const omdbData = await omdbFetch(detail?.external_ids?.imdb_id);
     const payload = { ...mapFullDetail(detail, finalVideos, credits, "movie"), ...mergeOmdb(omdbData) };
@@ -10241,15 +10741,13 @@ app.get("/api/series/:id/full", tmdbLimiter, async (req, res) => {
       }
     }
 
-    let videos = detail?.videos || { results: [] };
     const credits = detail?.credits || { cast: [], crew: [] };
 
-    // If no trailer found in nl-NL, retry with all languages
-    let finalVideos = videos;
-    if (!pickTrailerKey(videos)) {
-      const allLangVideos = await tmdbVideosAllLangs("tv", id);
-      if (allLangVideos && pickTrailerKey(allLangVideos)) finalVideos = allLangVideos;
-    }
+    // Always fetch all-language videos — nl-NL filter returns 0 trailers for most series
+    const allLangVideosTv = await tmdbVideosAllLangs("tv", id);
+    const finalVideos = (allLangVideosTv && pickTrailerKey(allLangVideosTv))
+      ? allLangVideosTv
+      : (detail?.videos || { results: [] });
 
     const omdbData = await omdbFetch(detail?.external_ids?.imdb_id);
     const payload = { ...mapFullDetail(detail, finalVideos, credits, "series"), ...mergeOmdb(omdbData) };
@@ -10327,8 +10825,9 @@ app.get("/api/vod/collection", tmdbLimiter, async (req, res) => {
       releaseDate: item.release_date || null,
     }));
 
+    // Only run title-search fallback when we have no real TMDB collection parts
     let fallbackItems = [];
-    const fallbackQuery = requestedTitle || String(collectionPayload?.name || "").trim();
+    const fallbackQuery = (!tmdbCollectionItems.length) ? (requestedTitle || String(collectionPayload?.name || "").trim()) : "";
     if (fallbackQuery) {
       const pages = Array.from({ length: depth }, (_, index) => index + 1);
       const movieSearches = await Promise.all(
@@ -11067,15 +11566,18 @@ app.get("/api/trailer/:tmdbId", tmdbLimiter, async (req, res) => {
     const cached = cacheGet(cacheKey);
     if (cached !== null) return res.json(cached);
 
-    const videos = await tmdb(`/${type}/${encodeURIComponent(tmdbId)}/videos`);
-    let candidates = pickTrailerCandidates(videos);
-    // Fallback: fetch with all languages if nl-NL has no trailer
+    // Always fetch all-language videos (nl-NL filter returns 0 trailers for most titles)
+    const allLangVideos = await tmdbVideosAllLangs(type, tmdbId);
+    let candidates = allLangVideos ? pickTrailerCandidates(allLangVideos) : [];
+    // Fallback: try the nl-NL call as well in case allLangVideos failed
     if (!candidates.length) {
-      const allLangVideos = await tmdbVideosAllLangs(type, tmdbId);
-      if (allLangVideos) candidates = pickTrailerCandidates(allLangVideos);
+      const videos = await tmdb(`/${type}/${encodeURIComponent(tmdbId)}/videos`);
+      candidates = pickTrailerCandidates(videos);
     }
     const result = { key: candidates[0]?.key || null, type: candidates[0]?.site || null, candidates };
-    cacheSet(cacheKey, result, 24 * 60 * 60 * 1000); // 24h
+    // Only cache successful results for 24h; cache failures briefly so they retry sooner
+    const ttl = result.key ? 24 * 60 * 60 * 1000 : 5 * 60 * 1000;
+    cacheSet(cacheKey, result, ttl);
     res.json(result);
   } catch (e) {
     res.json({ key: null, type: null, candidates: [] });
@@ -11897,4 +12399,7 @@ app.listen(PORT, () => {
   // Initial run after 60s, then every 30 min
   setTimeout(runEnrichmentCycle, 60_000);
   setInterval(runEnrichmentCycle, ENRICHMENT_INTERVAL);
+
+  // Stream provider health monitor — tests all 24 servers daily, auto-swaps dead ones
+  startHealthCheckSchedule();
 });

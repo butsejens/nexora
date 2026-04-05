@@ -1,26 +1,115 @@
 import React from "react";
-import { ActivityIndicator, FlatList, Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { NexoraHeader } from "@/components/NexoraHeader";
 import { COLORS } from "@/constants/colors";
-import { apiRequest } from "@/lib/query-client";
+import { apiRequest, DEFAULT_RENDER_API_BASE } from "@/lib/query-client";
 import { withTimeout } from "@/lib/utils";
+import { useTranslation } from "@/lib/useTranslation";
+
+function sanitizeParam(value?: string): string {
+  const raw = String(value || "").trim();
+  if (!raw || raw === "undefined" || raw === "null") return "";
+  return raw;
+}
 
 async function fetchCollection(id?: string, title?: string) {
-  const query = id ? `id=${encodeURIComponent(id)}` : `title=${encodeURIComponent(title || "")}`;
-  const response = await withTimeout(apiRequest("GET", `/api/vod/collection?${query}&depth=4`), 15000);
-  return response.json();
+  const safeId = sanitizeParam(id);
+  const safeTitle = sanitizeParam(title);
+  const hasNumericId = /^\d+$/.test(safeId);
+
+  const queryParts: string[] = [];
+  if (hasNumericId) queryParts.push(`id=${encodeURIComponent(safeId)}`);
+  if (safeTitle) queryParts.push(`title=${encodeURIComponent(safeTitle)}`);
+  if (!queryParts.length) queryParts.push(`title=${encodeURIComponent(safeId)}`);
+  const primaryQuery = queryParts.join("&");
+
+  const hasItems = (payload: any) => Array.isArray(payload?.items) && payload.items.length > 0;
+  const isBrokenPayload = (payload: any) => {
+    const errorText = String(payload?.error || "").toLowerCase();
+    return errorText.includes("normalizetext is not defined");
+  };
+
+  const requestCandidates = [
+    `/api/vod/collection?${primaryQuery}&depth=4`,
+    ...(safeTitle ? [`/api/vod/collection?title=${encodeURIComponent(safeTitle)}&depth=4`] : []),
+  ];
+
+  const primaryResponse = await withTimeout(apiRequest("GET", requestCandidates[0]), 15000);
+  const primaryPayload = await primaryResponse.json();
+  if (hasItems(primaryPayload)) return primaryPayload;
+
+  if (!isBrokenPayload(primaryPayload) && !safeTitle) return primaryPayload;
+
+  for (const route of requestCandidates.slice(1)) {
+    try {
+      const res = await withTimeout(apiRequest("GET", route), 15000);
+      const payload = await res.json();
+      if (hasItems(payload)) return payload;
+      if (!isBrokenPayload(payload)) {
+        return payload;
+      }
+    } catch {
+      // Try absolute fallbacks below.
+    }
+  }
+
+  // Build local-first fallback bases: prefer the local API server (port 8080)
+  // before Render.com, because Render.com may be an older deploy without normalizeText.
+  const absoluteBases = (() => {
+    const out: string[] = [];
+    if (typeof window !== "undefined") {
+      try {
+        const u = new URL(window.location.origin);
+        const isLocal = u.hostname === "localhost" || u.hostname === "127.0.0.1";
+        if (isLocal) {
+          out.push(`${u.protocol}//${u.hostname}:8080`);
+          out.push(`${u.protocol}//${u.hostname}:18081`);
+        }
+      } catch {
+        // no-op
+      }
+    }
+    // Native: also try common simulator/emulator addresses
+    out.push("http://localhost:8080");
+    out.push("http://10.0.2.2:8080");
+    // Render.com as last resort (may be outdated)
+    out.push(DEFAULT_RENDER_API_BASE);
+    return [...new Set(out)];
+  })();
+
+  for (const base of absoluteBases) {
+    for (const route of requestCandidates) {
+      try {
+        const url = `${base}${route}`;
+        const res = await withTimeout(fetch(url), 15000);
+        const payload = await res.json();
+        if (hasItems(payload)) return payload;
+        if (!isBrokenPayload(payload) && base === absoluteBases[absoluteBases.length - 1]) {
+          return payload;
+        }
+      } catch {
+        // continue to next fallback
+      }
+    }
+  }
+
+  return primaryPayload;
 }
 
 export default function VodCollectionScreen() {
   const params = useLocalSearchParams<{ id?: string; name?: string }>();
   const queryClient = useQueryClient();
+  const { t } = useTranslation();
+  const safeId = String(params.id || "").trim() && params.id !== "undefined" && params.id !== "null" && params.id !== "0" ? String(params.id) : "";
+  const safeName = String(params.name || "").trim() && params.name !== "undefined" && params.name !== "null" ? String(params.name) : "";
 
-  const { data, isLoading } = useQuery({
-    queryKey: ["vod-collection", params.id || params.name],
-    queryFn: () => fetchCollection(params.id, params.name),
-    staleTime: 20 * 60 * 1000,
+  const { data, isLoading, refetch } = useQuery({
+    queryKey: ["vod-collection", safeId || safeName || "unknown"],
+    queryFn: () => fetchCollection(safeId, safeName),
+    staleTime: 0,
+    retry: 2,
   });
 
   const normalize = (value: unknown) => String(value || "").toLowerCase().trim();
@@ -28,8 +117,8 @@ export default function VodCollectionScreen() {
   const directItems = Array.isArray(data?.items) ? data.items : [];
   const fallbackFromCurated = (() => {
     const curated = (queryClient.getQueryData(["vod-module-curated-collections"]) as any[] | undefined) || [];
-    const needleId = normalize(params.id);
-    const needleName = normalize(params.name);
+    const needleId = normalize(safeId);
+    const needleName = normalize(safeName);
     const found = curated.find((entry: any) => {
       const idMatch = needleId && normalize(entry?.id) === needleId;
       const nameMatch = needleName && normalize(entry?.name).includes(needleName);
@@ -48,7 +137,7 @@ export default function VodCollectionScreen() {
 
   return (
     <View style={styles.container}>
-      <NexoraHeader variant="module" title="COLLECTION" titleColor={COLORS.accent} showSearch={false} showBack showProfile={false} />
+      <NexoraHeader variant="module" title={t("vodCollection.title")} titleColor={COLORS.accent} showSearch={false} showBack showProfile={false} />
       {isLoading ? (
         <View style={styles.loadingWrap}>
           <ActivityIndicator color={COLORS.accent} />
@@ -59,10 +148,10 @@ export default function VodCollectionScreen() {
             {heroBackdrop ? <Image source={{ uri: heroBackdrop }} style={styles.heroImage} /> : null}
             <View style={styles.heroOverlay} />
             <View style={styles.heroContent}>
-              <Text style={styles.label}>WATCH IN ORDER</Text>
-              <Text style={styles.title}>{collection?.name || params.name || "Collection"}</Text>
+              <Text style={styles.label}>{t("vodCollection.watchInOrder")}</Text>
+              <Text style={styles.title}>{collection?.name || safeName || "Collection"}</Text>
               <Text style={styles.subtitle}>
-                {items.length} titles · oldest to newest
+                {items.length} {t("vodCollection.titles")} · {t("vodCollection.oldestToNewest")}
                 {stats ? ` · ${stats.movies || 0} movies / ${stats.series || 0} series` : ""}
               </Text>
               {collection?.overview ? <Text style={styles.overview}>{collection.overview}</Text> : null}
@@ -71,42 +160,45 @@ export default function VodCollectionScreen() {
 
           <View style={styles.sectionHeader}>
             <View style={styles.sectionAccentBar} />
-            <Text style={styles.timelineTitle}>Chronological Order</Text>
+            <Text style={styles.timelineTitle}>{t("vodCollection.chronologicalOrder")}</Text>
             <View style={styles.sectionBadge}><Text style={styles.sectionBadgeText}>{items.length}</Text></View>
           </View>
-          <FlatList
-            data={items}
-            keyExtractor={(item) => `${item.type || "movie"}-${item.id}`}
-            scrollEnabled={false}
-            contentContainerStyle={styles.stack}
-            ItemSeparatorComponent={() => <View style={styles.rowDivider} />}
-            renderItem={({ item, index }) => {
+          <View style={styles.stack}>
+            {items.map((item, index) => {
               const poster = item?.poster || item?.backdrop || null;
               const year = String(item?.year || item?.releaseDate || "").slice(0, 4);
-              const rating = Number(item?.imdb || item?.rating || 0);
+              const rtRating = Number(item?.rottenTomatoesRating || 0);
+              const imdbRating = Number(item?.imdbRating || item?.imdb || item?.rating || 0);
               return (
-                <TouchableOpacity
-                  style={styles.itemRow}
-                  onPress={() => router.push({ pathname: "/detail", params: { id: item.id, type: item.type || "movie", title: item.title, tmdbId: item.tmdbId ? String(item.tmdbId) : undefined } })}
-                  activeOpacity={0.86}
-                >
-                  {poster ? (
-                    <Image source={{ uri: poster }} style={styles.itemPoster} />
-                  ) : (
-                    <View style={[styles.itemPoster, styles.itemPosterFallback]} />
-                  )}
-                  <View style={styles.itemMetaWrap}>
-                    <Text style={styles.itemStep}>#{index + 1}</Text>
-                    <Text style={styles.itemTitle} numberOfLines={2}>{String(item?.title || "Untitled")}</Text>
-                    <Text style={styles.itemMeta}>
-                      {year || "Unknown year"}
-                      {Number.isFinite(rating) && rating > 0 ? ` · ${rating.toFixed(1)}★` : ""}
-                    </Text>
-                  </View>
-                </TouchableOpacity>
+                <React.Fragment key={`${item.type || "movie"}-${item.id}`}>
+                  {index > 0 && <View style={styles.rowDivider} />}
+                  <TouchableOpacity
+                    style={styles.itemRow}
+                    onPress={() => router.push({ pathname: "/media/detail", params: { id: item.id, type: item.type || "movie", title: item.title, tmdbId: item.tmdbId ? String(item.tmdbId) : undefined } })}
+                    activeOpacity={0.86}
+                  >
+                    {poster ? (
+                      <Image source={{ uri: poster }} style={styles.itemPoster} />
+                    ) : (
+                      <View style={[styles.itemPoster, styles.itemPosterFallback]} />
+                    )}
+                    <View style={styles.itemMetaWrap}>
+                      <Text style={styles.itemStep}>#{index + 1}</Text>
+                      <Text style={styles.itemTitle} numberOfLines={2}>{String(item?.title || "Untitled")}</Text>
+                      <Text style={styles.itemMeta}>
+                        {year || "Unknown year"}
+                        {Number.isFinite(rtRating) && rtRating > 0
+                          ? ` · ${Math.round(rtRating)}%🍅`
+                          : Number.isFinite(imdbRating) && imdbRating > 0
+                            ? ` · ${imdbRating.toFixed(1)}🎬`
+                            : ""}
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+                </React.Fragment>
               );
-            }}
-          />
+            })}
+          </View>
         </ScrollView>
       )}
     </View>
