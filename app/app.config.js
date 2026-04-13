@@ -1,3 +1,4 @@
+const { withGradleProperties } = require("@expo/config-plugins");
 const baseConfig = require("./app.json");
 
 const expo = baseConfig.expo || {};
@@ -9,6 +10,20 @@ const pluginsWithoutAdmob = basePlugins.filter((plugin) => {
   if (Array.isArray(plugin)) return plugin[0] !== "react-native-google-mobile-ads";
   return true;
 });
+
+// Config plugin to set Gradle JVM args so builds don't OOM on Metaspace
+const withHighMemoryGradle = (config) =>
+  withGradleProperties(config, (mod) => {
+    mod.modResults = mod.modResults.filter(
+      (item) => !(item.type === "property" && item.key === "org.gradle.jvmargs")
+    );
+    mod.modResults.push({
+      type: "property",
+      key: "org.gradle.jvmargs",
+      value: "-Xmx6g -XX:MaxMetaspaceSize=1g -XX:+HeapDumpOnOutOfMemoryError",
+    });
+    return mod;
+  });
 
 module.exports = () => ({
   ...expo,
@@ -22,5 +37,6 @@ module.exports = () => ({
         iosAppId: process.env.EXPO_PUBLIC_ADMOB_IOS_APP_ID || DEFAULT_ADMOB_IOS_APP_ID,
       },
     ],
+    withHighMemoryGradle,
   ],
 });
