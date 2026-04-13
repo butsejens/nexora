@@ -1,0 +1,106 @@
+name: Release Router
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      force_route:
+        description: "Force release route (auto, ota, apk, server)"
+        required: false
+        default: "auto"
+
+concurrency:
+  group: release-router-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  validate:
+    if: github.event_name == 'workflow_dispatch' || (github.actor != 'github-actions[bot]' && !contains(github.event.head_commit.message, '[skip ci]'))
+    uses: ./.github/workflows/ci.yml
+
+  decide:
+    name: Build Decision Engine
+    needs: validate
+    runs-on: ubuntu-latest
+    outputs:
+      route: ${{ steps.decision.outputs.route }}
+      route_ota: ${{ steps.decision.outputs.route_ota }}
+      route_apk: ${{ steps.decision.outputs.route_apk }}
+      route_server: ${{ steps.decision.outputs.route_server }}
+      reason: ${{ steps.decision.outputs.reason }}
+      result_json: ${{ steps.decision.outputs.result_json }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Decide release route
+        id: decision
+        env:
+          FORCE_ROUTE: ${{ inputs.force_route || 'auto' }}
+        run: |
+          BEFORE="${{ github.event.before }}"
+          AFTER="${{ github.sha }}"
+          if [ -z "$BEFORE" ] || [ "$BEFORE" = "0000000000000000000000000000000000000000" ]; then
+            BEFORE="HEAD~1"
+            AFTER="HEAD"
+          fi
+
+          node scripts/release/decision-engine.mjs \
+            --from "$BEFORE" \
+            --to "$AFTER" \
+            --force "$FORCE_ROUTE"
+
+  ota_release:
+    if: needs.decide.outputs.route_ota == 'true'
+    needs: decide
+    uses: ./.github/workflows/release-ota.yml
+    secrets: inherit
+    with:
+      commit_sha: ${{ github.sha }}
+      route: ${{ needs.decide.outputs.route }}
+
+  apk_release:
+    if: needs.decide.outputs.route_apk == 'true'
+    needs: decide
+    uses: ./.github/workflows/release-apk.yml
+    secrets: inherit
+    with:
+      commit_sha: ${{ github.sha }}
+      route: ${{ needs.decide.outputs.route }}
+
+  server_release:
+    if: needs.decide.outputs.route_server == 'true'
+    needs: decide
+    uses: ./.github/workflows/release-server.yml
+    secrets: inherit
+    with:
+      commit_sha: ${{ github.sha }}
+      route: ${{ needs.decide.outputs.route }}
+
+  summary:
+    if: always()
+    needs: [decide, ota_release, apk_release, server_release]
+    uses: ./.github/workflows/release-summary.yml
+    with:
+      route: ${{ needs.decide.outputs.route }}
+      reason: ${{ needs.decide.outputs.reason }}
+      result_json: ${{ needs.decide.outputs.result_json }}
+      ota_status: ${{ needs.ota_release.result || 'skipped' }}
+      apk_status: ${{ needs.apk_release.result || 'skipped' }}
+      server_status: ${{ needs.server_release.result || 'skipped' }}

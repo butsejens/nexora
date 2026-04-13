@@ -1,0 +1,57 @@
+{
+  "name": "NEXORA",
+  "private": true,
+  "workspaces": [
+    "app",
+    "server"
+  ],
+  "scripts": {
+    "setup": "cp app/.env.example app/.env 2>/dev/null || true && cp server/.env.example server/.env 2>/dev/null || true",
+    "doctor": "node scripts/doctor.mjs",
+    "sports:standings:smoke": "node scripts/sports-standings-smoke.mjs",
+    "perf:loadtest:sports": "node scripts/loadtest-sports.mjs",
+    "security:host-check": "node scripts/require-macbook.mjs",
+    "security:env-check": "node scripts/enforce-env-policy.mjs dev",
+    "security:env-check:release": "node scripts/enforce-env-policy.mjs release",
+    "secrets:auto:init": "node scripts/secrets-auto.mjs init",
+    "secrets:auto:ensure": "node scripts/secrets-auto.mjs ensure",
+    "secrets:auto:lock": "node scripts/secrets-auto.mjs lock",
+    "hooks:install": "git config core.hooksPath .githooks && chmod +x .githooks/post-commit",
+    "ci:env-sanity": "node scripts/release/validate-release-env.mjs ci",
+    "ci:config-validate": "node scripts/release/validate-config.mjs",
+    "ci:lint": "npm -w app run lint",
+    "ci:typecheck": "npm -w app exec -- tsc --noEmit",
+    "ci:test": "node scripts/release/decision-engine.test.mjs && node scripts/release/pipeline-policy.test.mjs && node server/update-manifest.test.mjs && npm -w app exec tsx services/update-decision.test.ts && npm -w app exec tsx services/update-service.test.ts",
+    "ci:build-sanity": "cd app && npx expo config --type public > /tmp/nexora-expo-config.json && cd .. && node --check server/index.js && node --check server/update-manifest.js && node --check server/modules/stream-health.js",
+    "ci:validate": "npm run ci:env-sanity && npm run ci:config-validate && npm run ci:lint && npm run ci:typecheck && npm run ci:test && npm run ci:build-sanity",
+    "release:decide": "node scripts/release/decision-engine.mjs",
+    "release:test": "node scripts/release/decision-engine.test.mjs && node scripts/release/pipeline-policy.test.mjs && node scripts/release/update-release-metadata.test.mjs",
+    "release:apk": "npm -w app run release:apk",
+    "release:ci": "npm -w app run release:ci",
+    "secrets:encrypt": "node scripts/secrets-crypto.mjs encrypt app/.env app/.env.enc && node scripts/secrets-crypto.mjs encrypt server/.env server/.env.enc",
+    "secrets:decrypt": "node scripts/secrets-crypto.mjs decrypt app/.env.enc app/.env && node scripts/secrets-crypto.mjs decrypt server/.env.enc server/.env",
+    "ports:free": "node scripts/free-ports.mjs 18081",
+    "dev": "npm run doctor && npm run secrets:auto:ensure && npm run security:env-check && npm run ports:free && npm -w server run dev & npm -w app run start:lan & wait",
+    "server": "npm run secrets:auto:ensure && npm run security:env-check && npm -w server run dev",
+    "server:start": "npm run secrets:auto:ensure && npm run security:env-check && npm -w server start",
+    "app": "npm run secrets:auto:ensure && npm run security:env-check && node scripts/free-ports.mjs 18081 && npm -w app run start:tunnel",
+    "app:tunnel": "npm run secrets:auto:ensure && npm run security:env-check && node scripts/free-ports.mjs 18081 && npm -w app run start:tunnel",
+    "app:restart:18081": "npm run secrets:auto:ensure && npm run security:env-check && npm -w app run start:restart:18081",
+    "cloudflare:deploy": "npm --prefix cloudflare/sports-worker exec wrangler -- deploy --config cloudflare/sports-worker/wrangler.toml",
+    "cloudflare:deploy:dry-run": "npm --prefix cloudflare/sports-worker exec wrangler -- deploy --config cloudflare/sports-worker/wrangler.toml --dry-run",
+    "android": "expo run:android",
+    "ios": "expo run:ios",
+    "postinstall": "patch-package || true && node scripts/apply-nested-patches.mjs || true"
+  },
+  "devDependencies": {
+    "babel-preset-expo": "^55.0.13",
+    "concurrently": "^8.2.2",
+    "patch-package": "^8.0.0"
+  },
+  "main": "app/index.js",
+  "dependencies": {
+    "expo": "~54.0.27",
+    "expo-updates": "~29.0.16"
+  },
+  "version": "1.0.0"
+}

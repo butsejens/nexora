@@ -1,0 +1,42 @@
+name = "nexora"
+main = "cloudflare/sports-worker/src/index.js"
+compatibility_date = "2026-03-25"
+workers_dev = true
+
+[vars]
+RENDER_SPORTS_ORIGIN = "https://nexora-api-8xxb.onrender.com"
+CACHE_MODE = "hybrid"
+CACHE_STALE_UNTIL_REVALIDATE = "true"
+CORS_ALLOW_ORIGIN = "*"
+LOG_ANALYTICS = "false"
+MAX_CACHE_SIZE_MB = "100"
+UPSTREAM_TIMEOUT_MS = "15000"
+UPSTREAM_MAX_ATTEMPTS = "2"
+
+# Bindings template (fill with your real resource IDs before production deploy):
+# [[d1_databases]]
+# binding = "SPORTS_DB"
+# database_name = "nexora-sports"
+# database_id = "<D1_DATABASE_ID>"
+#
+# [[kv_namespaces]]
+# binding = "SPORTS_CACHE_KV"
+# id = "<KV_NAMESPACE_ID>"
+# preview_id = "<KV_PREVIEW_NAMESPACE_ID>"
+#
+# [[analytics_engine_datasets]]
+# binding = "SPORTS_ANALYTICS"
+# dataset = "nexora_sports_metrics"
+
+[env.production.vars]
+RENDER_SPORTS_ORIGIN = "https://nexora-api-8xxb.onrender.com"
+CACHE_MODE = "hybrid"
+CACHE_STALE_UNTIL_REVALIDATE = "true"
+CORS_ALLOW_ORIGIN = "*"
+LOG_ANALYTICS = "true"
+MAX_CACHE_SIZE_MB = "100"
+UPSTREAM_TIMEOUT_MS = "15000"
+UPSTREAM_MAX_ATTEMPTS = "2"
+
+[observability]
+enabled = true

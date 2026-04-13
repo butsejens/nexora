@@ -1,0 +1,50 @@
+services:
+  - type: web
+    name: nexora-api
+    runtime: node
+    rootDir: server
+    plan: free
+    autoDeploy: true
+    buildCommand: npm install --production=false
+    startCommand: node index.js
+
+    healthCheckPath: /health
+
+    envVars:
+      # ── Runtime ───────────────────────────────────────────────────────────
+      - key: NODE_VERSION
+        value: 20
+      - key: NODE_ENV
+        value: production
+      - key: TZ
+        value: Europe/Brussels
+      - key: PORT
+        value: 10000
+
+      # ── Media ─────────────────────────────────────────────────────────────
+      - key: TMDB_API_KEY
+        sync: false
+
+      # ── Sports ────────────────────────────────────────────────────────────
+      - key: SPORTSRC_API_KEY
+        sync: false
+      - key: APIFY_TOKEN
+        sync: false
+      - key: APIFY_SOFASCORE_ACTOR
+        value: azzouzana/sofascore-scraper-pro
+      - key: APIFY_TRANSFERMARKT_ACTOR
+        value: data_xplorer/transfermarkt-api-scraper
+
+      # ── AI / LLM ──────────────────────────────────────────────────────────
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: OPENROUTER_API_KEY
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+
+      # ── Vector DB ─────────────────────────────────────────────────────────
+      - key: ZILLIZ_URI
+        sync: false
+      - key: ZILLIZ_API_KEY
+        sync: false

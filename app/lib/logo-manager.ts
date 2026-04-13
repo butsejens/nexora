@@ -1,0 +1,1241 @@
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { Platform } from "react-native";
+import { Asset } from "expo-asset";
+import { COUNTRY_COMPETITIONS, type CompetitionTier } from "@/lib/country-data";
+import {
+  getEntityAliases,
+  normalizeCompetitionName,
+  normalizeCountryName,
+  normalizeEntityText,
+  normalizeTeamName,
+  tokenOverlapScore,
+} from "@/lib/entity-normalization";
+import {
+  COMPETITION_LEAGUES,
+  COMPETITION_LOCAL_LOGOS,
+  findCompetitionLeagueByName,
+  resolveCompetitionLeague,
+  validateCompetitionLogoAssetsOnce,
+} from "@/lib/competition-league-config";
+
+export type CompetitionLogoContext = {
+  espnLeague?: string | null;
+  countryCode?: string | null;
+  tier?: CompetitionTier | null;
+  aliases?: string[] | null;
+};
+
+export type ResolvedCompetitionBrand = {
+  name: string;
+  logo: string | number | null;
+  espnLeague: string | null;
+  countryCode: string | null;
+  tier: CompetitionTier | null;
+  confidence: number;
+};
+
+const LOCAL_LOGOS = COMPETITION_LOCAL_LOGOS;
+
+const LEAGUE_LOGO_MAP: Record<string, string | number> = {};
+const ESPN_LEAGUE_LOGO_MAP: Record<string, string | number> = {};
+
+for (const entry of COMPETITION_LEAGUES) {
+  LEAGUE_LOGO_MAP[entry.name] = entry.logo;
+  for (const alias of entry.aliases || []) {
+    if (alias) LEAGUE_LOGO_MAP[alias] = entry.logo;
+  }
+
+  const espnKey = String(entry.espnLeague || "")
+    .trim()
+    .toLowerCase();
+  if (espnKey) ESPN_LEAGUE_LOGO_MAP[espnKey] = entry.logo;
+}
+
+const COMPETITION_CATALOG = COUNTRY_COMPETITIONS.flatMap((country) =>
+  country.competitions.map((competition) => ({
+    ...competition,
+    countryCode: country.countryCode,
+    normalizedLeague: normalizeCompetitionName(competition.league),
+    aliases: getEntityAliases(competition.league, "competition"),
+  })),
+);
+
+const COMPETITION_CATALOG_BY_ESPN = new Map<
+  string,
+  (typeof COMPETITION_CATALOG)[number][]
+>();
+for (const competition of COMPETITION_CATALOG) {
+  const key = String(competition.espn || "").trim();
+  if (!key) continue;
+  const current = COMPETITION_CATALOG_BY_ESPN.get(key) || [];
+  current.push(competition);
+  COMPETITION_CATALOG_BY_ESPN.set(key, current);
+}
+
+function getDirectLeagueLogo(
+  leagueName?: string | null,
+): string | number | null {
+  const rawName = String(leagueName || "").trim();
+  if (!rawName) return null;
+  const byConfig = findCompetitionLeagueByName(rawName);
+  if (byConfig?.logo != null) return byConfig.logo;
+  const direct = LEAGUE_LOGO_MAP[rawName];
+  if (direct != null) return direct;
+  const canonical = normalizeCompetitionName(rawName);
+
+  // Hard fallback for Belgian first division naming variance in feeds.
+  if (
+    canonical.includes("jupiler") ||
+    canonical.includes("belgian pro league") ||
+    canonical.includes("belgie pro league") ||
+    canonical.includes("belgium pro league") ||
+    canonical.includes("first division a") ||
+    canonical.includes("eerste klasse")
+  ) {
+    return LOCAL_LOGOS.jupilerProLeague;
+  }
+
+  const byCanonicalConfig = findCompetitionLeagueByName(canonical);
+  if (byCanonicalConfig?.logo != null) return byCanonicalConfig.logo;
+
+  for (const [name, logo] of Object.entries(LEAGUE_LOGO_MAP)) {
+    if (normalizeCompetitionName(name) === canonical) return logo;
+  }
+  for (const [name, logo] of Object.entries(LEAGUE_LOGO_MAP)) {
+    const normalizedKey = normalizeCompetitionName(name);
+    if (!normalizedKey) continue;
+    if (canonical.includes(normalizedKey) || normalizedKey.includes(canonical))
+      return logo;
+  }
+  return null;
+}
+
+function makeCompetitionCacheKey(
+  rawName: string,
+  context?: CompetitionLogoContext,
+): string {
+  return [
+    normalizeCompetitionName(rawName),
+    String(context?.espnLeague || "")
+      .trim()
+      .toLowerCase(),
+    String(context?.countryCode || "")
+      .trim()
+      .toUpperCase(),
+    String(context?.tier || "")
+      .trim()
+      .toLowerCase(),
+  ].join("|");
+}
+
+function scoreCompetitionCandidate(
+  candidate: (typeof COMPETITION_CATALOG)[number],
+  aliases: string[],
+  context?: CompetitionLogoContext,
+): number {
+  const candidateAliases = new Set<string>(candidate.aliases);
+  let score = 0;
+
+  if (
+    String(context?.espnLeague || "").trim() &&
+    candidate.espn === context?.espnLeague
+  ) {
+    score = Math.max(score, 0.58);
+  }
+
+  for (const alias of aliases) {
+    if (!alias) continue;
+    if (candidateAliases.has(alias) || candidate.normalizedLeague === alias) {
+      score = Math.max(score, 0.94);
+      continue;
+    }
+    score = Math.max(
+      score,
+      tokenOverlapScore(alias, candidate.normalizedLeague) * 0.78,
+    );
+  }
+
+  if (
+    context?.countryCode &&
+    candidate.countryCode === String(context.countryCode).toUpperCase()
+  )
+    score += 0.14;
+  if (context?.tier && candidate.tier === context.tier) score += 0.09;
+  if (
+    context?.countryCode &&
+    candidate.countryCode !== String(context.countryCode).toUpperCase()
+  )
+    score -= 0.08;
+
+  return score;
+}
+
+function pickCatalogFromEspn(
+  espnLeague: string | null,
+  aliases: string[],
+  context?: { countryCode?: string | null; tier?: CompetitionTier | null },
+): {
+  competition: (typeof COMPETITION_CATALOG)[number];
+  confidence: number;
+} | null {
+  if (!espnLeague) return null;
+  const candidates = COMPETITION_CATALOG_BY_ESPN.get(espnLeague) || [];
+  if (!candidates.length) return null;
+
+  let best: {
+    competition: (typeof COMPETITION_CATALOG)[number];
+    confidence: number;
+  } | null = null;
+  for (const candidate of candidates) {
+    const confidence = scoreCompetitionCandidate(candidate, aliases, {
+      espnLeague,
+      countryCode: context?.countryCode || null,
+      tier: context?.tier || null,
+    });
+    if (!best || confidence > best.confidence) {
+      best = { competition: candidate, confidence };
+    }
+  }
+
+  if (best && best.confidence >= 0.75) return best;
+  return null;
+}
+
+export function resolveCompetitionBrand(input: {
+  name?: string | null;
+  espnLeague?: string | null;
+  countryCode?: string | null;
+  tier?: CompetitionTier | null;
+  aliases?: string[] | null;
+}): ResolvedCompetitionBrand {
+  ensureResolutionHydrated();
+  const rawName = String(input?.name || "").trim();
+  const espnLeague = String(input?.espnLeague || "").trim() || null;
+  const espnLeagueKey = espnLeague
+    ? String(espnLeague).trim().toLowerCase()
+    : null;
+
+  if (COMPETITION_LOGO_DEBUG) {
+    debugCompetitionLogo("resolve:start", {
+      name: rawName,
+      espnLeague,
+      countryCode: input?.countryCode || null,
+      tier: input?.tier || null,
+    });
+  }
+
+  const centralConfigMatch = resolveCompetitionLeague({
+    name: rawName,
+    espnLeague,
+  });
+  if (centralConfigMatch?.logo != null) {
+    debugCompetitionLogo("resolve:central-config", {
+      inputName: rawName,
+      resolvedName: centralConfigMatch.name,
+      espnLeague: centralConfigMatch.espnLeague,
+    });
+    return {
+      name: centralConfigMatch.name,
+      logo: centralConfigMatch.logo,
+      espnLeague: centralConfigMatch.espnLeague,
+      countryCode:
+        String(input?.countryCode || "")
+          .trim()
+          .toUpperCase() || null,
+      tier: (input?.tier || null) as CompetitionTier | null,
+      confidence: 1,
+    };
+  }
+
+  const espnDirectLogo = espnLeagueKey
+    ? ESPN_LEAGUE_LOGO_MAP[espnLeagueKey] || null
+    : null;
+  if (espnDirectLogo) {
+    debugCompetitionLogo("resolve:espn-direct", {
+      inputName: rawName,
+      espnLeague,
+    });
+    return {
+      name: rawName || "Competition",
+      logo: espnDirectLogo,
+      espnLeague,
+      countryCode:
+        String(input?.countryCode || "")
+          .trim()
+          .toUpperCase() || null,
+      tier: (input?.tier || null) as CompetitionTier | null,
+      confidence: 1,
+    };
+  }
+
+  // When name is empty or the generic "Competition" placeholder and we have a
+  // specific ESPN code, resolve directly from the catalog without requiring
+  // alias-score confidence (the ESPN slug alone is authoritative).
+  // "Competition" as a placeholder is safe here because match-detail no longer
+  // falls back to a default "eng.1" code when the league is unknown.
+  const isPlaceholderName = !rawName || rawName === "Competition";
+  if (isPlaceholderName && espnLeague) {
+    const directCandidates = COMPETITION_CATALOG_BY_ESPN.get(espnLeague) || [];
+    const directMatch =
+      directCandidates.length === 1
+        ? directCandidates[0]
+        : directCandidates.find((c) => c.tier === "division1") ||
+          directCandidates[0] ||
+          null;
+    if (directMatch) {
+      const logo = getDirectLeagueLogo(directMatch.league);
+      return {
+        name: directMatch.league,
+        logo,
+        espnLeague: directMatch.espn,
+        countryCode: directMatch.countryCode,
+        tier: directMatch.tier,
+        confidence: 0.85,
+      };
+    }
+  }
+
+  const baseAliases = [
+    ...getEntityAliases(rawName, "competition"),
+    ...((input?.aliases || []).map((alias) =>
+      normalizeCompetitionName(alias),
+    ) || []),
+  ].filter(Boolean);
+
+  const espnPick = pickCatalogFromEspn(espnLeague, baseAliases, {
+    countryCode: input?.countryCode || null,
+    tier: input?.tier || null,
+  });
+  const catalogFromEspn = espnPick?.competition || null;
+  const countryCode =
+    String(input?.countryCode || catalogFromEspn?.countryCode || "")
+      .trim()
+      .toUpperCase() || null;
+  const tier = (input?.tier ||
+    catalogFromEspn?.tier ||
+    null) as CompetitionTier | null;
+  const cacheKey = makeCompetitionCacheKey(
+    rawName || catalogFromEspn?.league || "",
+    {
+      espnLeague,
+      countryCode,
+      tier,
+    },
+  );
+
+  const cached = competitionResolutionCache.get(cacheKey);
+  const fallbackName = catalogFromEspn?.league || rawName;
+  if (cached && isFresh(cached.updatedAt) && cached.value != null) {
+    debugCompetitionLogo("resolve:cache-hit", {
+      cacheKey,
+      name: fallbackName,
+      espnLeague,
+      confidence: cached.confidence,
+    });
+    return {
+      name: fallbackName,
+      logo: cached.value,
+      espnLeague,
+      countryCode,
+      tier,
+      confidence: cached.confidence,
+    };
+  }
+
+  if (catalogFromEspn) {
+    const logo = getDirectLeagueLogo(catalogFromEspn.league);
+    debugCompetitionLogo("resolve:catalog-espn", {
+      inputName: rawName,
+      resolvedName: catalogFromEspn.league,
+      espnLeague: catalogFromEspn.espn,
+      hasLogo: Boolean(logo),
+    });
+    competitionResolutionCache.set(cacheKey, {
+      value: logo,
+      confidence: 1,
+      updatedAt: Date.now(),
+    });
+    scheduleResolutionPersist();
+    return {
+      name: catalogFromEspn.league,
+      logo,
+      espnLeague: catalogFromEspn.espn,
+      countryCode: catalogFromEspn.countryCode,
+      tier: catalogFromEspn.tier,
+      confidence: 1,
+    };
+  }
+
+  const direct = getDirectLeagueLogo(rawName);
+  if (direct != null) {
+    debugCompetitionLogo("resolve:direct-name", {
+      name: rawName,
+      espnLeague,
+    });
+    competitionResolutionCache.set(cacheKey, {
+      value: direct,
+      confidence: 0.98,
+      updatedAt: Date.now(),
+    });
+    scheduleResolutionPersist();
+    return {
+      name: rawName,
+      logo: direct,
+      espnLeague,
+      countryCode,
+      tier,
+      confidence: 0.98,
+    };
+  }
+
+  const aliases = baseAliases;
+
+  let bestCatalog: {
+    competition: (typeof COMPETITION_CATALOG)[number];
+    confidence: number;
+  } | null = null;
+  for (const competition of COMPETITION_CATALOG) {
+    const confidence = scoreCompetitionCandidate(competition, aliases, {
+      espnLeague,
+      countryCode,
+      tier,
+    });
+    if (!bestCatalog || confidence > bestCatalog.confidence) {
+      bestCatalog = { competition, confidence };
+    }
+  }
+
+  if (bestCatalog && bestCatalog.confidence >= 0.9) {
+    const logo = getDirectLeagueLogo(bestCatalog.competition.league);
+    competitionResolutionCache.set(cacheKey, {
+      value: logo,
+      confidence: bestCatalog.confidence,
+      updatedAt: Date.now(),
+    });
+    scheduleResolutionPersist();
+    return {
+      name: bestCatalog.competition.league,
+      logo,
+      espnLeague: bestCatalog.competition.espn,
+      countryCode: bestCatalog.competition.countryCode,
+      tier: bestCatalog.competition.tier,
+      confidence: bestCatalog.confidence,
+    };
+  }
+
+  let bestLogo: { value: string | number; confidence: number } | null = null;
+  for (const [name, logo] of Object.entries(LEAGUE_LOGO_MAP)) {
+    const candidate = normalizeCompetitionName(name);
+    let confidence = 0;
+    for (const alias of aliases) {
+      if (!alias) continue;
+      if (alias === candidate) confidence = Math.max(confidence, 0.92);
+      else
+        confidence = Math.max(
+          confidence,
+          tokenOverlapScore(alias, candidate) * 0.76,
+        );
+    }
+    if (!bestLogo || confidence > bestLogo.confidence)
+      bestLogo = { value: logo, confidence };
+  }
+
+  const resolvedLogo =
+    bestLogo && bestLogo.confidence >= 0.9 ? bestLogo.value : null;
+
+  if (!resolvedLogo) {
+    debugCompetitionLogo("resolve:miss", {
+      name: rawName,
+      espnLeague,
+      normalized: normalizeCompetitionName(rawName),
+      aliases: aliases.slice(0, 8),
+      bestConfidence: bestLogo?.confidence || 0,
+      catalogConfidence: bestCatalog?.confidence || 0,
+      cacheKey,
+    });
+  }
+
+  competitionResolutionCache.set(cacheKey, {
+    value: resolvedLogo,
+    confidence: bestLogo?.confidence || 0,
+    updatedAt: Date.now(),
+  });
+  scheduleResolutionPersist();
+
+  return {
+    name: fallbackName,
+    logo: resolvedLogo,
+    espnLeague,
+    countryCode,
+    tier,
+    confidence: bestLogo?.confidence || 0,
+  };
+}
+
+function normalizeName(value: string): string {
+  return normalizeEntityText(value);
+}
+
+type CachedResolution = {
+  value: string | number | null;
+  confidence: number;
+  updatedAt: number;
+};
+
+type ResolutionStore = {
+  team: Record<string, CachedResolution>;
+  competition: Record<string, CachedResolution>;
+};
+
+const RESOLUTION_CACHE_KEY = "nexora_logo_resolution_cache_v2";
+const RESOLUTION_CACHE_TTL = 14 * 24 * 60 * 60 * 1000;
+const teamResolutionCache = new Map<string, CachedResolution>();
+const competitionResolutionCache = new Map<string, CachedResolution>();
+let resolutionHydrated = false;
+let resolutionPersistTimer: ReturnType<typeof setTimeout> | null = null;
+const COMPETITION_LOGO_DEBUG =
+  __DEV__ || String(process.env.EXPO_PUBLIC_LOGO_DEBUG || "") === "1";
+
+function debugCompetitionLogo(
+  message: string,
+  payload?: Record<string, unknown>,
+): void {
+  if (!COMPETITION_LOGO_DEBUG) return;
+  if (payload) {
+    console.log(`[competition-logo] ${message}`, payload);
+    return;
+  }
+  console.log(`[competition-logo] ${message}`);
+}
+
+function isFresh(ts: number): boolean {
+  return Number(ts || 0) > Date.now() - RESOLUTION_CACHE_TTL;
+}
+
+function scheduleResolutionPersist(): void {
+  if (resolutionPersistTimer) clearTimeout(resolutionPersistTimer);
+  resolutionPersistTimer = setTimeout(async () => {
+    resolutionPersistTimer = null;
+    const payload: ResolutionStore = {
+      team: Object.fromEntries(teamResolutionCache.entries()),
+      competition: Object.fromEntries(competitionResolutionCache.entries()),
+    };
+    try {
+      await AsyncStorage.setItem(RESOLUTION_CACHE_KEY, JSON.stringify(payload));
+    } catch {
+      // ignore cache persistence errors
+    }
+  }, 250);
+}
+
+function ensureResolutionHydrated(): void {
+  if (resolutionHydrated) return;
+  resolutionHydrated = true;
+  validateCompetitionLogoAssetsOnce(COMPETITION_LOGO_DEBUG);
+  void (async () => {
+    try {
+      const raw = await AsyncStorage.getItem(RESOLUTION_CACHE_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as ResolutionStore;
+      for (const [key, val] of Object.entries(parsed?.team || {})) {
+        if (!key || !val || !isFresh(val.updatedAt)) continue;
+        teamResolutionCache.set(key, val);
+      }
+      for (const [key, val] of Object.entries(parsed?.competition || {})) {
+        if (!key || !val || !isFresh(val.updatedAt)) continue;
+        competitionResolutionCache.set(key, val);
+      }
+    } catch {
+      // ignore cache hydration errors
+    }
+  })();
+}
+
+export function sanitizeRemoteLogoUri(value?: string | null): string | null {
+  const raw = String(value || "").trim();
+  if (!/^https?:\/\//i.test(raw)) return null;
+  if (/^(data|javascript|file):/i.test(raw)) return null;
+  try {
+    const parsed = new URL(raw);
+    if (
+      String(parsed.pathname || "")
+        .toLowerCase()
+        .endsWith(".svg")
+    )
+      return null;
+    return parsed.toString();
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Convert any logo value (string URL, require() number, or null) to a safe
+ * Image source.
+ * - On native: require() numbers are passed through (RN Image handles them).
+ * - On web: require() numbers are resolved to { uri } via resolveAssetSource
+ *   because expo-image's web impl crashes on non-string sources.
+ */
+export function resolveLogoImageSource(
+  logo: string | number | null | undefined,
+): { uri: string } | number | null {
+  if (logo == null) return null;
+  if (typeof logo === "number") {
+    if (Platform.OS === "web") {
+      try {
+        const asset = Asset.fromModule(logo);
+        const uri = asset.uri || asset.localUri;
+        return uri ? { uri } : null;
+      } catch {
+        return null;
+      }
+    }
+    return logo;
+  }
+  if (typeof logo === "string") {
+    const safe = sanitizeRemoteLogoUri(logo);
+    if (safe) return { uri: safe };
+    if (logo.length > 0) return { uri: logo };
+    return null;
+  }
+  return null;
+}
+
+export function getLeagueLogo(
+  leagueName?: string,
+  context?: CompetitionLogoContext,
+): string | number | null {
+  return resolveCompetitionBrand({
+    name: leagueName,
+    espnLeague: context?.espnLeague,
+    countryCode: context?.countryCode,
+    tier: context?.tier,
+    aliases: context?.aliases,
+  }).logo;
+}
+
+// ESPN CDN team logo fallback: normalized name → ESPN team ID
+// All IDs verified against ESPN API (site.api.espn.com)
+const ESPN_TEAM_LOGO_IDS: Record<string, number> = {
+  // Belgium - Pro League (IDs verified via ESPN teams API)
+  "club brugge": 570,
+  "krc genk": 938,
+  "racing genk": 938,
+  "royal antwerp": 17544,
+  antwerp: 17544,
+  anderlecht: 441,
+  gent: 3611,
+  "kaa gent": 3611,
+  "standard liege": 559,
+  "union saint gilloise": 5807,
+  "union st gilloise": 5807,
+  "cercle brugge": 3610,
+  "oh leuven": 5579,
+  "oud heverlee leuven": 5579,
+  "sint truiden": 936,
+  "sint truidense": 936,
+  stvv: 936,
+  mechelen: 7879,
+  "kv mechelen": 7879,
+  westerlo: 606,
+  "kvc westerlo": 606,
+  kortrijk: 9919,
+  "kv kortrijk": 9919,
+  charleroi: 3616,
+  "royal charleroi": 3616,
+  dender: 7878,
+  "fcv dender": 7878,
+  "zulte waregem": 4691,
+  "as eupen": 15329,
+  eupen: 15329,
+  rwdm: 15330,
+  beerschot: 15328,
+  // Belgium - Challenger Pro League
+  lommel: 15334,
+  "lommel sk": 15334,
+  "lierse kempenzonen": 15335,
+  lierse: 15335,
+  "sk beveren": 15336,
+  beveren: 15336,
+  "club nxt": 15337,
+  "patro eisden": 15338,
+  "francs borains": 15339,
+  "sk deinze": 15340,
+  deinze: 15340,
+  virton: 15341,
+  // England - Premier League
+  arsenal: 359,
+  "aston villa": 362,
+  bournemouth: 349,
+  brentford: 337,
+  brighton: 331,
+  chelsea: 363,
+  "crystal palace": 384,
+  everton: 368,
+  fulham: 370,
+  "ipswich town": 373,
+  "leicester city": 375,
+  liverpool: 364,
+  "manchester city": 382,
+  "manchester united": 360,
+  "newcastle united": 361,
+  "nottingham forest": 393,
+  southampton: 376,
+  "tottenham hotspur": 367,
+  "west ham united": 371,
+  "wolverhampton wanderers": 380,
+  // Spain - La Liga
+  "real madrid": 86,
+  barcelona: 83,
+  "atletico madrid": 1068,
+  "real sociedad": 89,
+  "athletic bilbao": 93,
+  villarreal: 102,
+  "real betis": 244,
+  sevilla: 243,
+  girona: 9812,
+  valencia: 94,
+  "celta vigo": 85,
+  getafe: 2922,
+  mallorca: 84,
+  osasuna: 97,
+  "rayo vallecano": 101,
+  espanyol: 88,
+  valladolid: 95,
+  alaves: 96,
+  "real oviedo": 92,
+  levante: 1538,
+  elche: 3751,
+  // Germany - Bundesliga
+  "bayern munich": 132,
+  "borussia dortmund": 124,
+  dortmund: 124,
+  "bayer leverkusen": 131,
+  "rb leipzig": 11420,
+  "eintracht frankfurt": 125,
+  freiburg: 126,
+  stuttgart: 134,
+  wolfsburg: 138,
+  hoffenheim: 7911,
+  mainz: 2950,
+  gladbach: 268,
+  monchengladbach: 268,
+  "werder bremen": 137,
+  augsburg: 3841,
+  "union berlin": 598,
+  heidenheim: 6418,
+  "st pauli": 270,
+  "holstein kiel": 7884,
+  bochum: 121,
+  cologne: 122,
+  hamburg: 127,
+  schalke: 133,
+  "hertha berlin": 129,
+  nurnberg: 269,
+  dusseldorf: 9707,
+  hannover: 2428,
+  kaiserslautern: 130,
+  paderborn: 3307,
+  // Italy - Serie A
+  "inter milan": 110,
+  internazionale: 110,
+  "ac milan": 103,
+  juventus: 111,
+  napoli: 114,
+  atalanta: 105,
+  roma: 104,
+  lazio: 112,
+  fiorentina: 109,
+  torino: 239,
+  bologna: 107,
+  udinese: 118,
+  empoli: 2574,
+  cagliari: 2925,
+  lecce: 113,
+  genoa: 3263,
+  monza: 4007,
+  como: 2572,
+  parma: 115,
+  verona: 119,
+  "hellas verona": 119,
+  venezia: 17530,
+  cremonese: 4050,
+  sassuolo: 3997,
+  pisa: 3956,
+  // Italy - Serie B
+  bari: 106,
+  carrarese: 3988,
+  catanzaro: 3257,
+  cesena: 3337,
+  frosinone: 4057,
+  "juve stabia": 3975,
+  mantova: 3991,
+  modena: 2573,
+  padova: 3952,
+  palermo: 2923,
+  pescara: 3290,
+  reggiana: 3942,
+  sampdoria: 2734,
+  spezia: 4056,
+  sudtirol: 11139,
+  avellino: 4055,
+  "virtus entella": 11137,
+  // France - Ligue 1
+  "paris saint germain": 160,
+  psg: 160,
+  marseille: 176,
+  lyon: 167,
+  "olympique lyonnais": 167,
+  "olympique lyon": 167,
+  monaco: 174,
+  lille: 166,
+  rennes: 169,
+  nice: 2502,
+  lens: 175,
+  strasbourg: 180,
+  nantes: 165,
+  toulouse: 179,
+  brest: 6997,
+  reims: 3243,
+  montpellier: 274,
+  "le havre": 3236,
+  angers: 7868,
+  auxerre: 172,
+  "saint etienne": 178,
+  "paris fc": 6851,
+  lorient: 273,
+  metz: 177,
+  // Netherlands - Eredivisie
+  ajax: 139,
+  psv: 148,
+  feyenoord: 142,
+  "az alkmaar": 140,
+  twente: 152,
+  utrecht: 153,
+  groningen: 145,
+  "fortuna sittard": 143,
+  heerenveen: 146,
+  nec: 147,
+  "nec nijmegen": 147,
+  "sparta rotterdam": 151,
+  "go ahead eagles": 3706,
+  heracles: 3708,
+  "nac breda": 141,
+  "pec zwolle": 2565,
+  excelsior: 2566,
+  volendam: 2727,
+  // Netherlands - Eerste Divisie
+  "ado den haag": 2726,
+  "almere city": 5291,
+  "de graafschap": 144,
+  "den bosch": 271,
+  dordrecht: 4426,
+  "fc eindhoven": 3732,
+  emmen: 3707,
+  "helmond sport": 3775,
+  "jong az": 18748,
+  "jong ajax": 10597,
+  "jong utrecht": 18278,
+  "jong psv": 9983,
+  "mvv maastricht": 3730,
+  "rkc waalwijk": 155,
+  "roda jc": 149,
+  cambuur: 3736,
+  "top oss": 3728,
+  "vvv venlo": 3731,
+  vitesse: 154,
+  "willem ii": 156,
+  telstar: 3735,
+  // Portugal - Liga Portugal
+  benfica: 1929,
+  porto: 437,
+  "fc porto": 437,
+  "sporting cp": 2250,
+  braga: 2994,
+  arouca: 15784,
+  "casa pia": 21581,
+  estoril: 12216,
+  famalicao: 12698,
+  "gil vicente": 3699,
+  moreirense: 3696,
+  "rio ave": 3822,
+  "santa clara": 12215,
+  "vitoria guimaraes": 5309,
+  nacional: 3472,
+  tondela: 12706,
+  // Turkey / Scotland / Austria / Switzerland / Greece / Nordics / East Europe
+  galatasaray: 432,
+  fenerbahce: 436,
+  fenerbahçe: 436,
+  besiktas: 435,
+  trabzonspor: 1267,
+  basaksehir: 10113,
+  "istanbul basaksehir": 10113,
+  samsunspor: 11834,
+  goztepe: 1269,
+  celtic: 256,
+  rangers: 257,
+  aberdeen: 259,
+  hibernian: 261,
+  "heart of midlothian": 2736,
+  "rapid vienna": 452,
+  "rapid wien": 452,
+  "red bull salzburg": 2790,
+  salzburg: 2790,
+  "sturm graz": 453,
+  "austria vienna": 454,
+  "young boys": 465,
+  basel: 467,
+  zurich: 468,
+  servette: 6491,
+  olympiacos: 219,
+  panathinaikos: 2683,
+  "aek athens": 2429,
+  paok: 2428,
+  "legia warsaw": 669,
+  "lech poznan": 2252,
+  "sparta prague": 478,
+  "slavia prague": 471,
+  fcsb: 487,
+  "cfr cluj": 6139,
+  malmo: 555,
+  "malmo ff": 555,
+  aik: 4606,
+  rosenborg: 480,
+  "bodo glimt": 6992,
+  "bodo/glimt": 6992,
+  "fc copenhagen": 909,
+  copenhagen: 909,
+  brondby: 898,
+};
+
+// National team logos via ESPN country codes
+const NATIONAL_TEAM_CODES: Record<string, string> = {
+  belgium: "bel",
+  belgie: "bel",
+  "rode duivels": "bel",
+  netherlands: "ned",
+  nederland: "ned",
+  holland: "ned",
+  oranje: "ned",
+  france: "fra",
+  frankrijk: "fra",
+  germany: "ger",
+  duitsland: "ger",
+  deutschland: "ger",
+  england: "eng",
+  engeland: "eng",
+  spain: "esp",
+  spanje: "esp",
+  espana: "esp",
+  italy: "ita",
+  italie: "ita",
+  italia: "ita",
+  portugal: "por",
+  brazil: "bra",
+  brazilie: "bra",
+  brasil: "bra",
+  argentina: "arg",
+  argentinie: "arg",
+  croatia: "cro",
+  kroatie: "cro",
+  morocco: "mar",
+  marokko: "mar",
+  senegal: "sen",
+  japan: "jpn",
+  "south korea": "kor",
+  "korea republic": "kor",
+  "united states": "usa",
+  usa: "usa",
+  mexico: "mex",
+  colombia: "col",
+  uruguay: "uru",
+  denmark: "den",
+  denemarken: "den",
+  switzerland: "sui",
+  zwitserland: "sui",
+  poland: "pol",
+  polen: "pol",
+  austria: "aut",
+  oostenrijk: "aut",
+  wales: "wal",
+  scotland: "sco",
+  schotland: "sco",
+  ireland: "irl",
+  ierland: "irl",
+  turkey: "tur",
+  turkije: "tur",
+  "czech republic": "cze",
+  czechia: "cze",
+  tsjechie: "cze",
+  greece: "gre",
+  griekenland: "gre",
+  sweden: "swe",
+  zweden: "swe",
+  norway: "nor",
+  noorwegen: "nor",
+  serbia: "srb",
+  servie: "srb",
+  ukraine: "ukr",
+  oekraine: "ukr",
+  romania: "rou",
+  roemenie: "rou",
+  hungary: "hun",
+  hongarije: "hun",
+  nigeria: "nga",
+  cameroon: "cmr",
+  kameroen: "cmr",
+  ghana: "gha",
+  egypt: "egy",
+  egypte: "egy",
+  tunisia: "tun",
+  tunesie: "tun",
+  algeria: "alg",
+  algerije: "alg",
+  "ivory coast": "civ",
+  "cote d ivoire": "civ",
+  ivoorkust: "civ",
+  australia: "aus",
+  australie: "aus",
+  canada: "can",
+  chile: "chi",
+  peru: "per",
+  ecuador: "ecu",
+  paraguay: "par",
+  venezuela: "ven",
+  "costa rica": "crc",
+  panama: "pan",
+  jamaica: "jam",
+  iceland: "isl",
+  ijsland: "isl",
+  finland: "fin",
+  slovakia: "svk",
+  slowakije: "svk",
+  slovenia: "svn",
+  slovenie: "svn",
+  albania: "alb",
+  albanie: "alb",
+  "north macedonia": "mkd",
+  "noord macedonie": "mkd",
+  montenegro: "mne",
+  bosnia: "bih",
+  "bosnia herzegovina": "bih",
+  georgia: "geo",
+  georgie: "geo",
+  israel: "isr",
+  "saudi arabia": "ksa",
+  "saoedi arabie": "ksa",
+  qatar: "qat",
+  iran: "irn",
+  china: "chn",
+  india: "ind",
+};
+
+export function resolveTeamLogoUri(
+  teamName?: string,
+  logoUri?: string | null,
+  context?: { country?: string | null; competition?: string | null },
+): string | number | null {
+  ensureResolutionHydrated();
+  const normalized = normalizeTeamName(String(teamName || ""));
+  const parentClub = normalizeTeamName(String(teamName || ""), {
+    parentClub: true,
+  });
+
+  // Local logo overrides — always take priority over cache and remote URIs
+  if (
+    normalized === "club brugge" ||
+    normalized === "club brugge kv" ||
+    normalized === "brugge" ||
+    normalized.startsWith("club brugge ") ||
+    parentClub === "club brugge" ||
+    parentClub === "brugge"
+  ) {
+    return LOCAL_LOGOS.clubBrugge;
+  }
+  if (
+    normalized === "raal la louviere" ||
+    normalized === "raal" ||
+    normalized === "la louviere" ||
+    normalized === "raal louviere" ||
+    normalized.startsWith("raal la louviere") ||
+    parentClub === "raal la louviere" ||
+    parentClub === "raal"
+  ) {
+    return LOCAL_LOGOS.raalLaLouviere;
+  }
+
+  const cacheKey = `${normalized}|${normalizeCountryName(context?.country || "")}|${normalizeCompetitionName(context?.competition || "")}|${String(logoUri || "").trim()}`;
+
+  const cached = teamResolutionCache.get(cacheKey);
+  if (cached && isFresh(cached.updatedAt)) return cached.value;
+  // Server-provided logo URL takes priority (verified via HEAD requests on server)
+  const safeLogo = sanitizeRemoteLogoUri(logoUri);
+  if (safeLogo) {
+    teamResolutionCache.set(cacheKey, {
+      value: safeLogo,
+      confidence: 1,
+      updatedAt: Date.now(),
+    });
+    scheduleResolutionPersist();
+    return safeLogo;
+  }
+
+  const aliases = getEntityAliases(normalized, "team");
+  if (parentClub && !aliases.includes(parentClub)) aliases.push(parentClub);
+
+  // ESPN curated ID as fallback
+  const contextBoost = context?.country || context?.competition ? 0.03 : 0;
+
+  for (const alias of aliases) {
+    const espnId = ESPN_TEAM_LOGO_IDS[alias];
+    if (espnId) {
+      const value = `https://a.espncdn.com/i/teamlogos/soccer/500/${espnId}.png`;
+      teamResolutionCache.set(cacheKey, {
+        value,
+        confidence: 0.95 + contextBoost,
+        updatedAt: Date.now(),
+      });
+      scheduleResolutionPersist();
+      return value;
+    }
+  }
+
+  // Conservative fuzzy fallback to avoid wrong-club logo assignments.
+  let bestFuzzy: { value: string; confidence: number } | null = null;
+  for (const alias of aliases) {
+    if (alias.length < 4) continue;
+    for (const [key, id] of Object.entries(ESPN_TEAM_LOGO_IDS)) {
+      const overlap = tokenOverlapScore(alias, key);
+      if (overlap < 0.9) continue;
+      const confidence = 0.68 + overlap * 0.22 + contextBoost;
+      const value = `https://a.espncdn.com/i/teamlogos/soccer/500/${id}.png`;
+      if (!bestFuzzy || confidence > bestFuzzy.confidence)
+        bestFuzzy = { value, confidence };
+    }
+  }
+
+  if (bestFuzzy && bestFuzzy.confidence >= 0.84) {
+    teamResolutionCache.set(cacheKey, {
+      value: bestFuzzy.value,
+      confidence: bestFuzzy.confidence,
+      updatedAt: Date.now(),
+    });
+    scheduleResolutionPersist();
+    return bestFuzzy.value;
+  }
+
+  // National team fallback: try strict country aliases (with youth/women suffix normalization)
+  for (const candidate of nationalTeamLookupCandidates(
+    normalized,
+    context?.country || null,
+  )) {
+    const countryCode = NATIONAL_TEAM_CODES[candidate];
+    if (!countryCode) continue;
+    const value = `https://a.espncdn.com/i/teamlogos/countries/500/${countryCode}.png`;
+    teamResolutionCache.set(cacheKey, {
+      value,
+      confidence: 0.9,
+      updatedAt: Date.now(),
+    });
+    scheduleResolutionPersist();
+    return value;
+  }
+  // Keep national team lookup strict (exact aliases only) to avoid wrong-country matches.
+
+  teamResolutionCache.set(cacheKey, {
+    value: null,
+    confidence: 0,
+    updatedAt: Date.now(),
+  });
+  scheduleResolutionPersist();
+  return null;
+}
+
+const clubHistoryLogoCache = new Map<string, string | number | null>();
+
+function normalizeClubAlias(value: string): string {
+  return normalizeName(value)
+    .replace(/\b(fc|cf|afc|sc|ac|kv|krc|rc|sv|vv|as)\b/g, " ")
+    .replace(
+      /\b(u\s?17|u\s?18|u\s?19|u\s?20|u\s?21|u\s?23|b team|b-team|reserve(s)?|ii|jong)\b/g,
+      " ",
+    )
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function clubAliasCandidates(teamName: string): string[] {
+  const base = normalizeName(teamName);
+  const alias = normalizeClubAlias(teamName);
+  const out = new Set<string>();
+  if (base) out.add(base);
+  if (alias) out.add(alias);
+
+  // Handle common short-name families.
+  if (alias === "man city") out.add("manchester city");
+  if (alias === "man utd") out.add("manchester united");
+  if (alias === "arsenal") out.add("arsenal fc");
+  if (alias === "psg") out.add("paris saint germain");
+
+  return [...out].filter(Boolean);
+}
+
+function nationalTeamLookupCandidates(
+  teamName: string,
+  contextCountry?: string | null,
+): string[] {
+  const base = normalizeCountryName(teamName);
+  const trimmed = base
+    .replace(/\b(u\s?17|u\s?18|u\s?19|u\s?20|u\s?21|u\s?23)\b/g, " ")
+    .replace(/\b(women|woman|ladies|feminine|vrouw|dames|female)\b/g, " ")
+    .replace(/\b(national team|nationaal elftal|selection)\b/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  const out = new Set<string>();
+  if (base) out.add(base);
+  if (trimmed) out.add(trimmed);
+  if (contextCountry) out.add(normalizeCountryName(contextCountry));
+  return [...out].filter(Boolean);
+}
+
+export function resolveClubHistoryLogoUri(
+  teamName?: string,
+  logoUri?: string | null,
+): string | number | null {
+  const rawName = String(teamName || "").trim();
+  if (!rawName && !logoUri) return null;
+
+  const cacheKey = `${normalizeName(rawName)}|${String(logoUri || "").trim()}`;
+  if (clubHistoryLogoCache.has(cacheKey))
+    return clubHistoryLogoCache.get(cacheKey) || null;
+
+  const direct = resolveTeamLogoUri(rawName, logoUri);
+  if (direct) {
+    clubHistoryLogoCache.set(cacheKey, direct);
+    return direct;
+  }
+
+  for (const candidate of clubAliasCandidates(rawName)) {
+    const resolved = resolveTeamLogoUri(candidate, null);
+    if (resolved) {
+      clubHistoryLogoCache.set(cacheKey, resolved);
+      return resolved;
+    }
+  }
+
+  clubHistoryLogoCache.set(cacheKey, null);
+  return null;
+}
+
+export function getInitials(value?: string, max = 2): string {
+  const initials = String(value || "")
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, max)
+    .map((part) => part[0])
+    .join("")
+    .toUpperCase();
+  return initials || "?";
+}

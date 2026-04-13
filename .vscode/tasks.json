@@ -1,0 +1,84 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Start Nexora Server",
+      "type": "shell",
+      "command": "sh",
+      "args": [
+        "-c",
+        "lsof -ti:8080 >/dev/null 2>&1 || exec node server/index.js"
+      ],
+      "isBackground": true,
+      "group": "build"
+    },
+    {
+      "label": "Start Nexora App",
+      "type": "shell",
+      "command": "npm run app:tunnel",
+      "args": [],
+      "dependsOn": ["Start Nexora Server"],
+      "dependsOrder": "parallel",
+      "isBackground": true,
+      "group": "build"
+    },
+    {
+      "label": "Start Nexora Dev",
+      "type": "shell",
+      "command": "npm",
+      "args": ["run", "dev"],
+      "isBackground": true,
+      "group": "build"
+    },
+    {
+      "label": "Expo LAN 8080 Stable",
+      "type": "shell",
+      "command": "npm",
+      "args": [
+        "-w",
+        "app",
+        "exec",
+        "--",
+        "expo",
+        "start",
+        "--lan",
+        "--port",
+        "8080",
+        "--clear"
+      ],
+      "isBackground": true,
+      "group": "build"
+    },
+    {
+      "label": "Expo Web Localhost 18081",
+      "type": "shell",
+      "command": "npm",
+      "args": ["-w", "app", "run", "start"],
+      "dependsOn": ["Start Nexora Server"],
+      "dependsOrder": "parallel",
+      "isBackground": true,
+      "group": "build"
+    },
+    {
+      "label": "Expo Web Mode 18081",
+      "type": "shell",
+      "command": "npm",
+      "args": [
+        "-w",
+        "app",
+        "exec",
+        "--",
+        "expo",
+        "start",
+        "--web",
+        "--port",
+        "18081",
+        "--clear"
+      ],
+      "dependsOn": ["Start Nexora Server"],
+      "dependsOrder": "parallel",
+      "isBackground": true,
+      "group": "build"
+    }
+  ]
+}

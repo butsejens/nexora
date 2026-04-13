@@ -1,0 +1,110 @@
+name: Release APK
+
+on:
+  workflow_call:
+    inputs:
+      commit_sha:
+        required: true
+        type: string
+      route:
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  apk:
+    name: Build + Publish APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      ANDROID_HOME: /usr/local/lib/android/sdk
+      ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
+      EXPO_PUBLIC_API_BASE: ${{ secrets.EXPO_PUBLIC_API_BASE }}
+      EXPO_PUBLIC_API_BASES: ${{ secrets.EXPO_PUBLIC_API_BASES }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.commit_sha }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Cache Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ hashFiles('android/**/*.gradle*', 'android/gradle/wrapper/gradle-wrapper.properties') }}
+          restore-keys: ${{ runner.os }}-gradle-
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Validate release env
+        run: node scripts/release/validate-release-env.mjs release apk
+
+      - name: Build release APK
+        run: |
+          chmod +x android/gradlew
+          cd android
+          ./gradlew assembleRelease \
+            -PreactNativeArchitectures=arm64-v8a \
+            --no-daemon \
+            --build-cache \
+            --parallel
+
+      - name: Resolve version and APK path
+        id: meta
+        run: |
+          VERSION=$(node -e "console.log(require('./app/app.json').expo.version)")
+          APK=android/app/build/outputs/apk/release/app-release.apk
+          TARGET=android/app/build/outputs/apk/release/nexora-v${VERSION}.apk
+          cp "$APK" "$TARGET"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "apk=$TARGET" >> "$GITHUB_OUTPUT"
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: nexora-v${{ steps.meta.outputs.version }}
+          path: ${{ steps.meta.outputs.apk }}
+          retention-days: 14
+
+      - name: Publish GitHub release asset
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="${{ steps.meta.outputs.version }}"
+          TAG="v${VERSION}"
+          APK="${{ steps.meta.outputs.apk }}"
+          gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" --title "Nexora ${TAG}" --notes "Automated native release"
+          gh release upload "$TAG" "$APK" --clobber
+
+      - name: Update release metadata
+        run: |
+          VERSION="${{ steps.meta.outputs.version }}"
+          APK_URL="https://github.com/${{ github.repository }}/releases/download/v${VERSION}/nexora-v${VERSION}.apk"
+          node scripts/release/update-release-metadata.mjs apk "$VERSION" "${{ github.sha }}" "${{ inputs.route }}" "$APK_URL"
+
+      - name: Commit metadata update
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add server/update-manifest.json server/release-report.json server/app-version.json
+          if ! git diff --cached --quiet; then
+            git commit -m "chore(release): APK metadata refresh [skip ci]"
+            git push origin HEAD:main
+          fi
