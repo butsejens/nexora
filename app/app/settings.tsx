@@ -1,8 +1,11 @@
-import React, { useCallback, useEffect, useState } from "react";
-import {
-  ActivityIndicator,
-  View,
-  Text,
+// All settings UI is in app/(tabs)/more.tsx — this file keeps the /settings
+// route alive so old deep-links still resolve.
+import { Redirect } from "expo-router";
+
+export default function SettingsRedirect() {
+  return <Redirect href="/(tabs)/more" />;
+}
+*/
   StyleSheet,
   ScrollView,
   TouchableOpacity,

@@ -118,6 +118,67 @@ const ALL_PROVIDERS = [
     "https://www.2embed.org/embed/movie?id={id}",
     "https://www.2embed.org/embed/tv?id={id}&s={s}&e={e}",
   ),
+  // ── Reserve pool: tested alternate providers ──
+  defineProvider(
+    "vidsrcme",
+    "Reserve-1",
+    "https://vidsrc.me/embed/movie?tmdb={id}",
+    "https://vidsrc.me/embed/tv?tmdb={id}&season={s}&episode={e}",
+  ),
+  defineProvider(
+    "vidsrcxyz",
+    "Reserve-2",
+    "https://vidsrc.xyz/embed/movie/{id}",
+    "https://vidsrc.xyz/embed/tv/{id}/{s}/{e}",
+  ),
+  defineProvider(
+    "multiembed",
+    "Reserve-3",
+    "https://multiembed.mov/?video_id={id}&tmdb=1",
+    "https://multiembed.mov/?video_id={id}&tmdb=1&s={s}&e={e}",
+  ),
+  defineProvider(
+    "nontongo",
+    "Reserve-4",
+    "https://www.nontongo.win/embed/movie/{id}",
+    "https://www.nontongo.win/embed/tv/{id}/{s}/{e}",
+  ),
+  defineProvider(
+    "smashystream",
+    "Reserve-5",
+    "https://embed.smashystream.com/playere.php?tmdb={id}",
+    "https://embed.smashystream.com/playere.php?tmdb={id}&season={s}&episode={e}",
+  ),
+  defineProvider(
+    "premiumize",
+    "Reserve-6",
+    "https://www.premiumize.me/embed/movie/{id}",
+    "https://www.premiumize.me/embed/tv/{id}/{s}/{e}",
+  ),
+  defineProvider(
+    "embedcc",
+    "Reserve-7",
+    "https://www.2embed.cc/embed/{id}",
+    "https://www.2embed.cc/embedtv/{id}&s={s}&e={e}",
+  ),
+  defineProvider(
+    "moviesapi2",
+    "Reserve-8",
+    "https://moviesapi.club/movie/{id}",
+    "https://moviesapi.club/tv/{id}-{s}-{e}",
+  ),
+  defineProvider(
+    "rive",
+    "Reserve-9",
+    "https://rivestream.live/embed?type=movie&id={id}",
+    "https://rivestream.live/embed?type=tv&id={id}&season={s}&episode={e}",
+  ),
+  defineProvider(
+    "superembed",
+    "Reserve-10",
+    "https://superembed.stream/movie/{id}",
+    "https://superembed.stream/tv/{id}/{s}/{e}",
+  ),
 ];
 
 const ACTIVE_SLOTS = 13;
@@ -331,7 +392,7 @@ export function getProviderUrls(providerId) {
 
 // ─── Background Schedule ──────────────────────────────────────────────────────
 
-const CHECK_INTERVAL = 24 * 60 * 60 * 1000; // 24 hours
+const CHECK_INTERVAL = 6 * 60 * 60 * 1000; // 6 hours
 const INITIAL_DELAY = 2 * 60 * 1000; // 2 min after server start
 
 export function startHealthCheckSchedule() {
@@ -352,6 +413,7 @@ export function startHealthCheckSchedule() {
   log.info("Stream health monitor scheduled", {
     intervalHours: CHECK_INTERVAL / 3_600_000,
     initialDelayMin: INITIAL_DELAY / 60_000,
+    reserveCount: reserveProviders.length,
   });
 }
 

@@ -145,7 +145,7 @@ export function ProfileDropdown({ onClose }: ProfileDropdownProps) {
           <MenuRow
             icon="settings-outline"
             label="Instellingen"
-            onPress={() => navigate("/settings")}
+            onPress={() => navigate("/(tabs)/more")}
           />
           <View style={styles.divider} />
           <MenuRow

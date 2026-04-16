@@ -77,7 +77,7 @@ export const APP_MODULE_REGISTRY: AppModuleDefinition[] = [
     label: "Settings",
     subtitle: "Preferences and account settings",
     icon: "settings-outline",
-    route: "/settings",
+    route: "/(tabs)/more",
     section: "system",
   },
   {

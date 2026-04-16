@@ -6,7 +6,7 @@ export default function ProfileLegacyRedirect() {
 
   useEffect(() => {
     if (!navState?.key) return;
-    router.replace("/settings");
+    router.replace("/(tabs)/more");
   }, [navState?.key]);
 
   return null;

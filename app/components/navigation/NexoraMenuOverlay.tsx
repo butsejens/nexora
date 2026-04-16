@@ -23,7 +23,7 @@ const MENU_ITEMS: MenuItem[] = [
   { label: "Movies", route: "/(tabs)/movies", icon: "film-outline" },
   { label: "Series", route: "/(tabs)/series", icon: "play-circle-outline" },
   { label: "My List", route: "/(tabs)/my-list", icon: "bookmark-outline" },
-  { label: "Settings", route: "/settings", icon: "settings-outline" },
+  { label: "Settings", route: "/(tabs)/more", icon: "settings-outline" },
 ];
 
 const LANG_OPTIONS: { code: Language; flag: string; label: string }[] = [
