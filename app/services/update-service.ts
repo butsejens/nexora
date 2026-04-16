@@ -19,6 +19,7 @@ import {
 const LAST_SEEN_SERVER_VERSION_KEY = "nexora_last_seen_server_version_v2";
 const OTA_CHECK_TIMEOUT_MS = 8_000;
 const OTA_FETCH_TIMEOUT_MS = 30_000;
+const MANIFEST_CHECK_TIMEOUT_MS = 12_000;
 
 function getUpdatesModule(): any | null {
   try {
@@ -209,7 +210,7 @@ export async function checkForAppUpdates(options?: CheckOptions): Promise<Update
   const currentRuntimeVersion = safeString(Updates?.runtimeVersion, "unknown");
 
   const [manifestResult, otaState] = await Promise.allSettled([
-    fetchUpdateManifest(),
+    withTimeout(fetchUpdateManifest(), MANIFEST_CHECK_TIMEOUT_MS),
     checkOtaAvailability(),
   ]);
 

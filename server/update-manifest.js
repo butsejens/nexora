@@ -103,7 +103,7 @@ export function loadUpdateManifest() {
       notes: safeArray(data.native?.notes),
       apk: {
         provider: safeString(data.native?.apk?.provider, "unconfigured"),
-        url: safeString(data.native?.apk?.url) || null,
+        url: safeString(data.native?.apk?.downloadUrl || data.native?.apk?.url) || null,
         fileName: safeString(data.native?.apk?.fileName) || null,
         fileSizeBytes: safeNumber(data.native?.apk?.fileSizeBytes, 0),
         checksumSha256: safeString(data.native?.apk?.checksumSha256) || null,
