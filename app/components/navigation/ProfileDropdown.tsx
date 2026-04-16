@@ -16,6 +16,7 @@ import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 
 import { COLORS } from "@/constants/colors";
+import { useNexora } from "@/context/NexoraContext";
 import { useProfileStore } from "@/store/profileStore";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -27,6 +28,7 @@ export function ProfileDropdown({ onClose }: ProfileDropdownProps) {
   const insets = useSafeAreaInsets();
   const anim = useRef(new Animated.Value(0)).current;
 
+  const { signOut } = useNexora();
   const { profiles, activeProfileId, setActiveProfile } = useProfileStore();
   const activeProfile = profiles.find((p) => p.id === activeProfileId);
 
@@ -151,7 +153,11 @@ export function ProfileDropdown({ onClose }: ProfileDropdownProps) {
           <MenuRow
             icon="log-out-outline"
             label="Uitloggen"
-            onPress={() => navigate("/auth")}
+            onPress={async () => {
+              close();
+              await signOut();
+              setTimeout(() => router.replace("/auth" as any), 220);
+            }}
             danger
           />
         </Animated.View>

@@ -20,11 +20,11 @@ export function NexoraIntroVideo({ onDone }: NexoraIntroVideoProps) {
 
   return (
     <View style={styles.root}>
-      <LinearGradient colors={["#050507", "#0C0D12", "#07080D"]} style={StyleSheet.absoluteFill} />
+      <LinearGradient colors={["#06050A", "#0A0814", "#06050A"]} style={StyleSheet.absoluteFill} />
 
       <View style={styles.videoCard}>
         <Video
-          source={require("@/assets/videos/intro-616.mp4")}
+          source={require("@/assets/videos/intro.mp4")}
           style={styles.video}
           shouldPlay
           isLooping={false}
@@ -68,12 +68,12 @@ const styles = StyleSheet.create({
     borderRadius: 22,
     overflow: "hidden",
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.12)",
-    backgroundColor: "#000",
-    shadowColor: "#000",
+    borderColor: COLORS.borderGlow,
+    backgroundColor: COLORS.surface,
+    shadowColor: COLORS.accent,
     shadowOffset: { width: 0, height: 12 },
-    shadowOpacity: 0.42,
-    shadowRadius: 24,
+    shadowOpacity: 0.28,
+    shadowRadius: 32,
     elevation: 22,
   },
   video: {
@@ -94,8 +94,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 1,
-    borderColor: COLORS.glassBorder,
-    backgroundColor: "rgba(9,9,14,0.72)",
+    borderColor: COLORS.borderGlow,
+    backgroundColor: COLORS.accentGlow,
     paddingHorizontal: 20,
   },
   skipText: {

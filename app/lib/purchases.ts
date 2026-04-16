@@ -42,6 +42,11 @@ export function isPurchasesConfigured() {
   return Boolean(getRevenueCatApiKey());
 }
 
+/** Returns true only after the SDK has been successfully initialised. */
+export function isPurchasesReady() {
+  return purchasesConfigured;
+}
+
 export async function configurePurchases(appUserId?: string | null) {
   const Purchases = getPurchasesModule();
   const apiKey = getRevenueCatApiKey();
@@ -116,6 +121,8 @@ export async function getCurrentOffering(): Promise<PurchasesOffering | null> {
   const Purchases = getPurchasesModule();
   if (!isUsablePurchasesModule(Purchases)) return null;
   if (!isPurchasesConfigured()) return null;
+  await configurePurchases();
+  if (!purchasesConfigured) return null;
   try {
     const offerings = await Purchases.getOfferings();
     return offerings.current || null;
@@ -139,6 +146,10 @@ export async function purchasePremiumPlan(plan: "weekly" | "monthly" | "yearly")
   if (!isPurchasesConfigured()) {
     throw new Error("Purchases are not configured.");
   }
+  await configurePurchases();
+  if (!purchasesConfigured) {
+    throw new Error("Purchases SDK could not be initialised.");
+  }
 
   const offering = await getCurrentOffering();
   const selectedPackage: PurchasesPackage | null = pickPackageFromOffering(offering, plan);
@@ -158,6 +169,10 @@ export async function restorePremiumPurchases() {
   }
   if (!isPurchasesConfigured()) {
     throw new Error("Purchases are not configured.");
+  }
+  await configurePurchases();
+  if (!purchasesConfigured) {
+    throw new Error("Purchases SDK could not be initialised.");
   }
 
   const info = await Purchases.restorePurchases();

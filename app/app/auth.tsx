@@ -185,10 +185,7 @@ export default function AuthScreen() {
   const handleGoogleSignIn = async () => {
     setError(null);
     if (!firebaseConfigured) {
-      setShouldAdvanceAfterAuth(false);
-      router.replace(
-        hasCompletedOnboarding ? "/(tabs)/home" : "/onboarding/quick-start",
-      );
+      setError("Google sign-in is niet beschikbaar. Firebase is niet geconfigureerd.");
       return;
     }
     if (!hasGoogleClientId) {
@@ -213,10 +210,7 @@ export default function AuthScreen() {
   const handleAppleSignIn = async () => {
     setError(null);
     if (!firebaseConfigured) {
-      setShouldAdvanceAfterAuth(false);
-      router.replace(
-        hasCompletedOnboarding ? "/(tabs)/home" : "/onboarding/quick-start",
-      );
+      setError("Apple sign-in is niet beschikbaar. Firebase is niet geconfigureerd.");
       return;
     }
     setShouldAdvanceAfterAuth(true);
@@ -253,7 +247,7 @@ export default function AuthScreen() {
     setShouldAdvanceAfterAuth(true);
     setLoadingProvider("email");
     try {
-      await signInWithEmail(email.trim(), password);
+      await signInWithEmail(email.trim(), password, mode);
     } catch (authError: any) {
       setShouldAdvanceAfterAuth(false);
       setError(String(authError?.message || "Email authentication failed."));
@@ -263,6 +257,12 @@ export default function AuthScreen() {
   };
 
   const handleBiometricAuth = async () => {
+    // Biometric unlock only works when there is already an authenticated session.
+    // It is never a substitute for a real login.
+    if (!isAuthenticated) {
+      setError("Geen actieve sessie gevonden. Log eerst in met e-mail, Google of Apple.");
+      return;
+    }
     setError(null);
     setLoadingProvider("biometric");
     try {
@@ -343,8 +343,8 @@ export default function AuthScreen() {
           </TouchableOpacity>
         ) : null}
 
-        {/* Biometric unlock — primary CTA for returning users */}
-        {biometricType && mode === "signin" ? (
+        {/* Biometric unlock — only shown when an active session exists */}
+        {biometricType && mode === "signin" && isAuthenticated ? (
           <TouchableOpacity
             style={[
               styles.biometricBtn,

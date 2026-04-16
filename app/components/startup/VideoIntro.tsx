@@ -104,7 +104,7 @@ export function VideoIntro({ onFinish }: VideoIntroProps) {
 const styles = StyleSheet.create({
   container: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: "#040506",
+    backgroundColor: "#06050A",
     zIndex: 13000,
     justifyContent: "center",
     alignItems: "center",
@@ -118,9 +118,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 18,
     paddingVertical: 10,
     borderRadius: 22,
-    backgroundColor: "rgba(255,255,255,0.12)",
+    backgroundColor: "rgba(192,38,211,0.18)",
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.2)",
+    borderColor: "rgba(192,38,211,0.35)",
   },
   skipText: {
     color: "#F8FAFC",

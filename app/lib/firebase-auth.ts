@@ -70,26 +70,39 @@ export async function authenticateWithAppleToken(idToken: string, rawNonce: stri
   return await signInWithCredential(firebaseAuth, credential);
 }
 
-export async function authenticateWithEmail(email: string, password: string) {
-  if (!firebaseAuth) throw new Error("Firebase auth is not configured.");
+/**
+ * Sign in with email and password.
+ * Never creates a new account — throws on invalid credentials.
+ */
+export async function authenticateWithEmail(
+  email: string,
+  password: string,
+  mode: "signin" | "signup" = "signin",
+) {
+  if (!firebaseAuth) throw new Error("Firebase auth is niet geconfigureerd.");
   const normalizedEmail = String(email || "").trim().toLowerCase();
   const normalizedPassword = String(password || "");
   if (!normalizedEmail || !normalizedEmail.includes("@")) {
-    throw new Error("Please enter a valid email address.");
+    throw new Error("Voer een geldig e-mailadres in.");
   }
   if (normalizedPassword.length < 8) {
-    throw new Error("Password must be at least 8 characters.");
+    throw new Error("Wachtwoord moet minimaal 8 tekens lang zijn.");
   }
 
-  try {
-    return await signInWithEmailAndPassword(firebaseAuth, normalizedEmail, normalizedPassword);
-  } catch (error: any) {
-    const code = String(error?.code || "");
-    if (code === "auth/invalid-credential" || code === "auth/user-not-found") {
-      return await createUserWithEmailAndPassword(firebaseAuth, normalizedEmail, normalizedPassword);
-    }
-    throw error;
+  if (mode === "signup") {
+    return await createUserWithEmailAndPassword(
+      firebaseAuth,
+      normalizedEmail,
+      normalizedPassword,
+    );
   }
+
+  // Sign in only — never silently create accounts on auth failure.
+  return await signInWithEmailAndPassword(
+    firebaseAuth,
+    normalizedEmail,
+    normalizedPassword,
+  );
 }
 
 export async function signOutFirebaseUser() {

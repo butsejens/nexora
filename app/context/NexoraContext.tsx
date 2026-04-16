@@ -34,6 +34,7 @@ import {
 } from "@/lib/purchases";
 
 import { setLanguage as setI18nLanguage, type Language } from "@/lib/i18n";
+import { useProfileStore } from "@/store/profileStore";
 
 export type PremiumCategory = "movies" | "series" | "live" | "sport";
 export type AuthProvider = "google" | "apple" | "email";
@@ -112,7 +113,7 @@ interface NexoraContextValue {
   authReady: boolean;
   authProvider: AuthProvider | null;
   authEmail: string | null;
-  signInWithEmail: (email: string, password: string) => Promise<void>;
+  signInWithEmail: (email: string, password: string, mode?: "signin" | "signup") => Promise<void>;
   signOut: () => Promise<void>;
   purchasePremiumSubscription: (
     plan: "weekly" | "monthly" | "yearly",
@@ -145,16 +146,6 @@ const NexoraContext = createContext<NexoraContextValue | null>(null);
 // Constant outside component — never recreated
 const ALL_CATS: PremiumCategory[] = ["movies", "series", "live", "sport"];
 const profiles = ["Main"];
-const PREMIUM_BYPASS_ENABLED = (() => {
-  const override = String(process.env.EXPO_PUBLIC_PREMIUM_BYPASS || "").trim().toLowerCase();
-  if (["0", "false", "no", "off"].includes(override)) return false;
-  if (["1", "true", "yes", "on"].includes(override)) return true;
-  // Auto: bypass only when RevenueCat is not configured (dev builds without payment keys)
-  return (
-    !process.env.EXPO_PUBLIC_REVENUECAT_IOS_API_KEY &&
-    !process.env.EXPO_PUBLIC_REVENUECAT_ANDROID_API_KEY
-  );
-})();
 
 function todayStorageDate(): string {
   return new Date().toISOString().slice(0, 10);
@@ -222,11 +213,8 @@ export function NexoraProvider({ children }: { children: ReactNode }) {
     [],
   );
 
-  const isPremium =
-    PREMIUM_BYPASS_ENABLED ||
-    ALL_CATS.every((c) => premiumCategories.includes(c));
-  const hasPremium = (cat: PremiumCategory) =>
-    PREMIUM_BYPASS_ENABLED || premiumCategories.includes(cat);
+  const isPremium = ALL_CATS.every((c) => premiumCategories.includes(c));
+  const hasPremium = (cat: PremiumCategory) => premiumCategories.includes(cat);
 
   useEffect(() => {
     const load = async () => {
@@ -380,7 +368,9 @@ export function NexoraProvider({ children }: { children: ReactNode }) {
     void hydratePurchasesCache();
 
     if (!isFirebaseAuthConfigured()) {
-      setIsAuthenticated(true);
+      // Firebase not configured — do NOT auto-authenticate.
+      // User must log in through a correctly configured build.
+      setIsAuthenticated(false);
       setAuthProvider(null);
       setAuthEmail(null);
       setAuthReady(true);
@@ -434,7 +424,8 @@ export function NexoraProvider({ children }: { children: ReactNode }) {
       });
     } catch {
       if (!cancelled) {
-        setIsAuthenticated(true);
+        // Auth init error — treat as unauthenticated, not as bypass.
+        setIsAuthenticated(false);
         setAuthProvider(null);
         setAuthEmail(null);
         setPremiumCategoriesState([]);
@@ -672,8 +663,12 @@ export function NexoraProvider({ children }: { children: ReactNode }) {
     await AsyncStorage.removeItem("nexora_premium");
   };
 
-  const signInWithEmail = async (email: string, password: string) => {
-    await authenticateWithEmail(email, password);
+  const signInWithEmail = async (
+    email: string,
+    password: string,
+    mode: "signin" | "signup" = "signin",
+  ) => {
+    await authenticateWithEmail(email, password, mode);
   };
 
   const signOut = async () => {
@@ -683,15 +678,18 @@ export function NexoraProvider({ children }: { children: ReactNode }) {
     setAuthProvider(null);
     setAuthEmail(null);
     setPremiumCategoriesState([]);
+    // Reset profile so user must pick again after next login
+    useProfileStore.setState({ activeProfileId: null, hasPickedProfile: false });
   };
 
   const purchasePremiumSubscription = async (
     plan: "weekly" | "monthly" | "yearly",
   ) => {
-    // When no payment keys are configured, activate premium directly.
     if (!purchasesSdkConfigured()) {
-      await saveCats(ALL_CATS);
-      return { ok: true };
+      return {
+        ok: false,
+        reason: "Betalingen zijn niet geconfigureerd in deze build.",
+      };
     }
     try {
       const customerInfo = await purchasePremiumPlan(plan);

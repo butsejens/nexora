@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   ScrollView,
@@ -11,16 +11,18 @@ import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import type { PurchasesOffering } from "react-native-purchases";
 import { COLORS } from "@/constants/colors";
 import { useNexora } from "@/context/NexoraContext";
+import { getCurrentOffering } from "@/lib/purchases";
 import { useUiStore } from "@/store/uiStore";
 
 type PlanId = "weekly" | "monthly" | "yearly";
 
-const PLANS: {
+/** Static display config — prices are filled in at runtime from RevenueCat. */
+const PLAN_CONFIG: {
   id: PlanId;
   label: string;
-  price: string;
   sub: string;
   popular: boolean;
   savings: string | null;
@@ -29,7 +31,6 @@ const PLANS: {
   {
     id: "weekly",
     label: "Wekelijks",
-    price: "€2,99",
     sub: "/week",
     popular: false,
     savings: null,
@@ -38,7 +39,6 @@ const PLANS: {
   {
     id: "monthly",
     label: "Maandelijks",
-    price: "€7,99",
     sub: "/maand",
     popular: true,
     savings: null,
@@ -47,13 +47,24 @@ const PLANS: {
   {
     id: "yearly",
     label: "Jaarlijks",
-    price: "€59,99",
     sub: "/jaar",
     popular: false,
-    savings: "40% korting",
-    breakdown: "Slechts €5/maand",
+    savings: "Beste waarde",
+    breakdown: null,
   },
 ];
+
+/** Extract the localised price string for a plan from a RevenueCat offering. */
+function getPlanPrice(offering: PurchasesOffering | null, planId: PlanId): string | null {
+  if (!offering) return null;
+  const pkg =
+    planId === "yearly"
+      ? offering.annual
+      : planId === "monthly"
+        ? offering.monthly
+        : offering.weekly;
+  return pkg?.product?.priceString ?? null;
+}
 
 const PERKS: { icon: keyof typeof Ionicons.glyphMap; label: string }[] = [
   { icon: "ban-outline", label: "Reclamevrij streamen op alle content" },
@@ -75,11 +86,25 @@ export default function PremiumScreen() {
   const [plan, setPlan] = useState<PlanId>("yearly");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [purchased, setPurchased] = useState(false);
+  /** True right after a successful purchase — prevents brief flash back to paywall. */
+  const [purchaseComplete, setPurchaseComplete] = useState(false);
+
+  const [offering, setOffering] = useState<PurchasesOffering | null>(null);
+  const [offeringsLoading, setOfferingsLoading] = useState(true);
+  const fetchedOffering = useRef(false);
 
   useEffect(() => {
     closeMenu();
   }, [closeMenu]);
+
+  useEffect(() => {
+    if (fetchedOffering.current) return;
+    fetchedOffering.current = true;
+    getCurrentOffering()
+      .then(setOffering)
+      .catch(() => setOffering(null))
+      .finally(() => setOfferingsLoading(false));
+  }, []);
 
   const goBack = useCallback(() => {
     try {
@@ -100,7 +125,7 @@ export default function PremiumScreen() {
       setError(null);
       const result = await purchasePremiumSubscription(plan);
       if (result.ok) {
-        setPurchased(true);
+        setPurchaseComplete(true);
       } else if (!result.cancelled) {
         setError(result.reason ?? "Betaling mislukt. Probeer het opnieuw.");
       }
@@ -117,7 +142,7 @@ export default function PremiumScreen() {
       setError(null);
       const result = await restorePremiumAccess();
       if (result.ok) {
-        setPurchased(true);
+        setPurchaseComplete(true);
       } else {
         setError(result.reason ?? "Geen aankoop gevonden om te herstellen.");
       }
@@ -128,11 +153,14 @@ export default function PremiumScreen() {
     }
   }, [restorePremiumAccess]);
 
-  const selectedPlan = PLANS.find((p) => p.id === plan)!;
-  const priceLabel = `${selectedPlan.price}${selectedPlan.sub}`;
+  const selectedConfig = PLAN_CONFIG.find((p) => p.id === plan)!;
+  const livePrice = getPlanPrice(offering, plan);
+  const priceLabel = livePrice
+    ? `${livePrice}${selectedConfig.sub}`
+    : selectedConfig.sub;
 
   // ─── Already premium ───────────────────────────────────────────────────────
-  if (isPremium || purchased) {
+  if (isPremium || purchaseComplete) {
     return (
       <View style={[s.screen, { paddingTop: insets.top }]}>
         <TouchableOpacity
@@ -205,45 +233,59 @@ export default function PremiumScreen() {
         {/* Plan selector */}
         <Text style={s.sectionLabel}>Kies je abonnement</Text>
 
-        {PLANS.map((p) => {
-          const active = plan === p.id;
-          return (
-            <TouchableOpacity
-              key={p.id}
-              style={[s.planCard, active && s.planCardActive]}
-              onPress={() => setPlan(p.id)}
-              activeOpacity={0.84}
-            >
-              {p.popular && (
-                <View style={s.popularTag}>
-                  <Text style={s.popularTagText}>MEEST GEKOZEN</Text>
+        {offeringsLoading ? (
+          <View style={s.offeringsLoader}>
+            <ActivityIndicator color={COLORS.accent} size="small" />
+            <Text style={s.offeringsLoaderText}>Abonnementen laden…</Text>
+          </View>
+        ) : (
+          PLAN_CONFIG.map((p) => {
+            const active = plan === p.id;
+            const price = getPlanPrice(offering, p.id);
+            return (
+              <TouchableOpacity
+                key={p.id}
+                style={[s.planCard, active && s.planCardActive]}
+                onPress={() => setPlan(p.id)}
+                activeOpacity={0.84}
+              >
+                {p.popular && (
+                  <View style={s.popularTag}>
+                    <Text style={s.popularTagText}>MEEST GEKOZEN</Text>
+                  </View>
+                )}
+                <View style={s.planRow}>
+                  <View style={[s.radio, active && s.radioActive]}>
+                    {active && <View style={s.radioDot} />}
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={s.planName}>{p.label}</Text>
+                    {p.savings ? (
+                      <View style={s.savingsTag}>
+                        <Text style={s.savingsTagText}>{p.savings}</Text>
+                      </View>
+                    ) : null}
+                    {p.breakdown ? (
+                      <Text style={s.planBreakdown}>{p.breakdown}</Text>
+                    ) : null}
+                  </View>
+                  <View style={s.planPriceWrap}>
+                    {price ? (
+                      <>
+                        <Text style={[s.planPrice, active && s.planPriceActive]}>
+                          {price}
+                        </Text>
+                        <Text style={s.planPeriod}>{p.sub}</Text>
+                      </>
+                    ) : (
+                      <Text style={[s.planPrice, active && s.planPriceActive]}>—</Text>
+                    )}
+                  </View>
                 </View>
-              )}
-              <View style={s.planRow}>
-                <View style={[s.radio, active && s.radioActive]}>
-                  {active && <View style={s.radioDot} />}
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={s.planName}>{p.label}</Text>
-                  {p.savings ? (
-                    <View style={s.savingsTag}>
-                      <Text style={s.savingsTagText}>{p.savings}</Text>
-                    </View>
-                  ) : null}
-                  {p.breakdown ? (
-                    <Text style={s.planBreakdown}>{p.breakdown}</Text>
-                  ) : null}
-                </View>
-                <View style={s.planPriceWrap}>
-                  <Text style={[s.planPrice, active && s.planPriceActive]}>
-                    {p.price}
-                  </Text>
-                  <Text style={s.planPeriod}>{p.sub}</Text>
-                </View>
-              </View>
-            </TouchableOpacity>
-          );
-        })}
+              </TouchableOpacity>
+            );
+          })
+        )}
 
         {/* Perks */}
         <Text style={[s.sectionLabel, { marginTop: 28 }]}>
@@ -401,9 +443,22 @@ const s = StyleSheet.create({
     marginLeft: 2,
   },
 
+  // Offerings loading skeleton
+  offeringsLoader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingVertical: 24,
+    justifyContent: "center",
+  },
+  offeringsLoaderText: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 13,
+    color: COLORS.textMuted,
+  },
+
   // Plan cards
-  planCard: {
-    position: "relative",
+  planCard: {    position: "relative",
     padding: 16,
     borderRadius: 14,
     borderWidth: 1.5,
