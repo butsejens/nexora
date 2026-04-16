@@ -145,11 +145,16 @@ const NexoraContext = createContext<NexoraContextValue | null>(null);
 // Constant outside component — never recreated
 const ALL_CATS: PremiumCategory[] = ["movies", "series", "live", "sport"];
 const profiles = ["Main"];
-const PREMIUM_BYPASS_ENABLED = !["0", "false", "no", "off"].includes(
-  String(process.env.EXPO_PUBLIC_PREMIUM_BYPASS || "true")
-    .trim()
-    .toLowerCase(),
-);
+const PREMIUM_BYPASS_ENABLED = (() => {
+  const override = String(process.env.EXPO_PUBLIC_PREMIUM_BYPASS || "").trim().toLowerCase();
+  if (["0", "false", "no", "off"].includes(override)) return false;
+  if (["1", "true", "yes", "on"].includes(override)) return true;
+  // Auto: bypass only when RevenueCat is not configured (dev builds without payment keys)
+  return (
+    !process.env.EXPO_PUBLIC_REVENUECAT_IOS_API_KEY &&
+    !process.env.EXPO_PUBLIC_REVENUECAT_ANDROID_API_KEY
+  );
+})();
 
 function todayStorageDate(): string {
   return new Date().toISOString().slice(0, 10);
@@ -683,6 +688,11 @@ export function NexoraProvider({ children }: { children: ReactNode }) {
   const purchasePremiumSubscription = async (
     plan: "weekly" | "monthly" | "yearly",
   ) => {
+    // When no payment keys are configured, activate premium directly.
+    if (!purchasesSdkConfigured()) {
+      await saveCats(ALL_CATS);
+      return { ok: true };
+    }
     try {
       const customerInfo = await purchasePremiumPlan(plan);
       const hasPremiumAccess = hasPremiumEntitlement(customerInfo);
@@ -706,6 +716,10 @@ export function NexoraProvider({ children }: { children: ReactNode }) {
   };
 
   const restorePremiumAccess = async () => {
+    if (!purchasesSdkConfigured()) {
+      const already = premiumCategories.length > 0;
+      return { ok: already, restored: already, reason: already ? undefined : "Geen actieve aankoop gevonden." };
+    }
     try {
       const customerInfo = await restorePremiumPurchases();
       const restored = hasPremiumEntitlement(customerInfo);

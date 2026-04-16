@@ -13,11 +13,12 @@ import {
 import { LinearGradient } from "expo-linear-gradient";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router } from "expo-router";
-import { Ionicons } from "@expo/vector-icons";
+import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { NexoraHeader } from "@/components/NexoraHeader";
 import { APP_MODULES_BY_ID } from "@/constants/module-registry";
 import { COLORS } from "@/constants/colors";
 import { useTranslation } from "@/lib/useTranslation";
+import { useNexora } from "@/context/NexoraContext";
 
 type MenuItem = {
   id: string;
@@ -129,6 +130,7 @@ function MenuSection({ title, items }: { title: string; items: MenuItem[] }) {
 export default function MoreScreen() {
   const insets = useSafeAreaInsets();
   const { t } = useTranslation();
+  const { isPremium } = useNexora();
 
   const userItems = useMemo<MenuItem[]>(
     () => [
@@ -224,6 +226,66 @@ export default function MoreScreen() {
             route={APP_MODULES_BY_ID.liveTV.route}
           />
         </View>
+
+        {/* ── Nexora+ banner ── */}
+        {!isPremium && (
+          <TouchableOpacity
+            style={styles.premiumBanner}
+            onPress={() => router.push("/premium" as any)}
+            activeOpacity={0.88}
+          >
+            <LinearGradient
+              colors={["rgba(192,38,211,0.22)", "rgba(124,58,237,0.14)"]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.premiumBannerGradient}
+            >
+              <View style={styles.premiumBannerTop}>
+                <View style={styles.premiumBannerIcon}>
+                  <MaterialCommunityIcons name="crown" size={20} color={COLORS.accent} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.premiumBannerTitle}>Nexora+</Text>
+                  <Text style={styles.premiumBannerSub}>Reclamevrij · 4K · Offline</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={16} color={COLORS.accent} />
+              </View>
+              <View style={styles.premiumPriceRow}>
+                <View style={styles.premiumPriceChip}>
+                  <Text style={styles.premiumPriceAmount}>€2,99</Text>
+                  <Text style={styles.premiumPricePeriod}>/week</Text>
+                </View>
+                <View style={[styles.premiumPriceChip, styles.premiumPriceChipPopular]}>
+                  <Text style={[styles.premiumPriceAmount, { color: COLORS.accent }]}>€7,99</Text>
+                  <Text style={[styles.premiumPricePeriod, { color: COLORS.accent }]}>/maand</Text>
+                  <View style={styles.popularDot} />
+                </View>
+                <View style={styles.premiumPriceChip}>
+                  <Text style={styles.premiumPriceAmount}>€59,99</Text>
+                  <Text style={styles.premiumPricePeriod}>/jaar</Text>
+                </View>
+              </View>
+              <Text style={styles.premiumTrialNote}>7 dagen gratis proberen</Text>
+            </LinearGradient>
+          </TouchableOpacity>
+        )}
+
+        {isPremium && (
+          <TouchableOpacity
+            style={styles.premiumActiveBanner}
+            onPress={() => router.push("/premium" as any)}
+            activeOpacity={0.88}
+          >
+            <View style={styles.premiumActiveBannerIcon}>
+              <MaterialCommunityIcons name="crown" size={18} color={COLORS.accent} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.premiumActiveBannerTitle}>Nexora+ Actief</Text>
+              <Text style={styles.premiumActiveBannerSub}>Je hebt toegang tot alle premium content</Text>
+            </View>
+            <Ionicons name="checkmark-circle" size={20} color={COLORS.accent} />
+          </TouchableOpacity>
+        )}
 
         {/* ── Personal + System sections */}
         <MenuSection title={t("menu.personal")} items={userItems} />
@@ -329,6 +391,119 @@ const styles = StyleSheet.create({
     color: COLORS.textSecondary,
     fontSize: 12,
     fontFamily: "Inter_500Medium",
+  },
+
+  // ─ Nexora+ banner ─
+  premiumBanner: {
+    borderRadius: 18,
+    overflow: "hidden",
+    borderWidth: 1,
+    borderColor: COLORS.borderGlow,
+  },
+  premiumBannerGradient: {
+    padding: 16,
+    gap: 12,
+  },
+  premiumBannerTop: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  premiumBannerIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: COLORS.accentGlow,
+    borderWidth: 1,
+    borderColor: COLORS.borderGlow,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  premiumBannerTitle: {
+    fontFamily: "Inter_800ExtraBold",
+    fontSize: 17,
+    color: COLORS.text,
+  },
+  premiumBannerSub: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 12,
+    color: COLORS.textSecondary,
+    marginTop: 1,
+  },
+  premiumPriceRow: {
+    flexDirection: "row",
+    gap: 8,
+  },
+  premiumPriceChip: {
+    flex: 1,
+    borderRadius: 10,
+    backgroundColor: COLORS.glass,
+    borderWidth: 1,
+    borderColor: COLORS.glassBorder,
+    paddingVertical: 10,
+    alignItems: "center",
+    gap: 1,
+  },
+  premiumPriceChipPopular: {
+    backgroundColor: COLORS.accentGlow,
+    borderColor: COLORS.borderGlow,
+  },
+  popularDot: {
+    position: "absolute",
+    top: 6,
+    right: 6,
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: COLORS.accent,
+  },
+  premiumPriceAmount: {
+    fontFamily: "Inter_700Bold",
+    fontSize: 15,
+    color: COLORS.text,
+  },
+  premiumPricePeriod: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 10,
+    color: COLORS.textMuted,
+  },
+  premiumTrialNote: {
+    fontFamily: "Inter_500Medium",
+    fontSize: 11,
+    color: COLORS.accent,
+    textAlign: "center",
+  },
+
+  // ─ Already premium banner ─
+  premiumActiveBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    backgroundColor: COLORS.accentGlow,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: COLORS.borderGlow,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+  },
+  premiumActiveBannerIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: "rgba(192,38,211,0.18)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  premiumActiveBannerTitle: {
+    fontFamily: "Inter_700Bold",
+    fontSize: 14,
+    color: COLORS.text,
+  },
+  premiumActiveBannerSub: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 12,
+    color: COLORS.textSecondary,
+    marginTop: 1,
   },
 
   // ─ Menu section ─

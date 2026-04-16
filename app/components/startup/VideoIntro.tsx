@@ -39,7 +39,6 @@ export function VideoIntro({ onFinish }: VideoIntroProps) {
     doneRef.current = true;
     opacity.value = withTiming(0, { duration: 320 });
     setTimeout(() => onFinishRef.current(), 340);
-     
   }, [opacity]); // stable — does not change when parent re-renders
 
   const handlePlaybackStatus = useCallback(
@@ -62,14 +61,14 @@ export function VideoIntro({ onFinish }: VideoIntroProps) {
       () => {
         setShowSkip(true);
       },
-      isWeb ? 300 : 2200,
+      isWeb ? 300 : 800,
     );
 
     const finishTimer = setTimeout(
       () => {
         finish();
       },
-      isWeb ? 1400 : 9000,
+      isWeb ? 800 : 3500,
     );
 
     return () => {

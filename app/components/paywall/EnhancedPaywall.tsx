@@ -18,39 +18,39 @@ type PlanType = "weekly" | "monthly" | "yearly";
 const PLANS = [
   {
     id: "weekly" as PlanType,
-    name: "Weekly",
-    price: "€2.99",
+    name: "Wekelijks",
+    price: "€2,99",
     period: "/week",
     savings: null,
     popular: false,
   },
   {
     id: "monthly" as PlanType,
-    name: "Monthly",
-    price: "€7.99",
-    period: "/month",
+    name: "Maandelijks",
+    price: "€7,99",
+    period: "/maand",
     savings: null,
     popular: true,
   },
   {
     id: "yearly" as PlanType,
-    name: "Annual",
-    price: "€59.99",
-    period: "/year",
-    savings: "Save 40%",
+    name: "Jaarlijks",
+    price: "€59,99",
+    period: "/jaar",
+    savings: "40% korting",
     popular: false,
   },
 ];
 
 const BENEFITS = [
-  { icon: "sparkles", text: "Ad-free streaming on all content" },
-  { icon: "target", text: "AI-powered sports predictions" },
-  { icon: "download", text: "Download episodes to watch offline" },
-  { icon: "play-speed", text: "Playback speed control (0.5x - 2x)" },
-  { icon: "subtitles", text: "30+ languages for audio & subtitles" },
-  { icon: "hd", text: "Watch in up to 4K quality" },
-  { icon: "share", text: "Family sharing (up to 6 profiles)" },
-  { icon: "clock-outline", text: "Watch history synced across devices" },
+  { icon: "ban", text: "Reclamevrij streamen op alle content" },
+  { icon: "film", text: "Onbeperkt films en series kijken" },
+  { icon: "desktop-outline", text: "Tot 4K beeldkwaliteit" },
+  { icon: "text", text: "Ondertitels in 30+ talen" },
+  { icon: "phone-portrait-outline", text: "Streamen op 3 apparaten tegelijk" },
+  { icon: "rocket-outline", text: "Vroege toegang tot nieuwe releases" },
+  { icon: "speedometer-outline", text: "Afspeelsnelheid instellen (0,5x – 2x)" },
+  { icon: "time-outline", text: "Kijkgeschiedenis gesynchroniseerd" },
 ];
 
 type EnhancedPaywallProps = {
@@ -114,7 +114,7 @@ export const EnhancedPaywall = React.memo(function EnhancedPaywall({ visible, on
         <TouchableOpacity onPress={onDismiss} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
           <Ionicons name="close" size={24} color={COLORS.text} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Upgrade to Premium</Text>
+        <Text style={styles.headerTitle}>Nexora+ activeren</Text>
         <View style={{ width: 24 }} />
       </View>
 
@@ -124,13 +124,13 @@ export const EnhancedPaywall = React.memo(function EnhancedPaywall({ visible, on
           <LinearGradient colors={[COLORS.accent, "rgba(229,9,20,0.6)"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.heroBadge}>
             <MaterialCommunityIcons name="crown" size={32} color="#fff" />
           </LinearGradient>
-          <Text style={styles.heroTitle}>Unlock Full Premium</Text>
-          <Text style={styles.heroSubtitle}>Ad-free streaming, predictions & offline downloads</Text>
+          <Text style={styles.heroTitle}>Alles ontgrendelen</Text>
+          <Text style={styles.heroSubtitle}>Reclamevrij, 4K, offline — onbeperkt genieten</Text>
         </View>
 
         {/* Pricing Plans */}
         <View style={styles.plansSection}>
-          <Text style={styles.sectionTitle}>Choose Your Plan</Text>
+          <Text style={styles.sectionTitle}>Kies je abonnement</Text>
 
           {PLANS.map((plan) => (
             <TouchableOpacity
@@ -140,7 +140,7 @@ export const EnhancedPaywall = React.memo(function EnhancedPaywall({ visible, on
             >
               {plan.popular && (
                 <View style={styles.popularBadge}>
-                  <Text style={styles.popularBadgeText}>MOST POPULAR</Text>
+                  <Text style={styles.popularBadgeText}>POPULAIRST</Text>
                 </View>
               )}
 
@@ -166,7 +166,7 @@ export const EnhancedPaywall = React.memo(function EnhancedPaywall({ visible, on
               {plan.id === "yearly" && (
                 <View style={styles.costBreakdown}>
                   <Ionicons name="information-circle-outline" size={14} color={COLORS.accent} />
-                  <Text style={styles.costBreakdownText}>Just €5/month, cancel anytime</Text>
+                  <Text style={styles.costBreakdownText}>Slechts €5/maand, altijd opzegbaar</Text>
                 </View>
               )}
             </TouchableOpacity>
@@ -175,7 +175,7 @@ export const EnhancedPaywall = React.memo(function EnhancedPaywall({ visible, on
 
         {/* Features */}
         <View style={styles.featuresSection}>
-          <Text style={styles.sectionTitle}>What You Get</Text>
+          <Text style={styles.sectionTitle}>Dit krijg je</Text>
 
           <View style={styles.benefitsGrid}>
             {BENEFITS.map((benefit, idx) => (
@@ -209,29 +209,29 @@ export const EnhancedPaywall = React.memo(function EnhancedPaywall({ visible, on
             ) : (
               <>
                 <Ionicons name="card" size={20} color="#fff" />
-                <Text style={[styles.primaryButtonText, { color: "#fff" }]}>Start Free Trial</Text>
+                <Text style={[styles.primaryButtonText, { color: "#fff" }]}>7 dagen gratis proberen</Text>
               </>
             )}
           </TouchableOpacity>
 
           <TouchableOpacity style={styles.secondaryButton} onPress={handleRestore} disabled={loading}>
             <MaterialCommunityIcons name="refresh" size={18} color={COLORS.accent} />
-            <Text style={styles.secondaryButtonText}>Restore Purchases</Text>
+            <Text style={styles.secondaryButtonText}>Aankoop herstellen</Text>
           </TouchableOpacity>
 
           <Text style={styles.disclaimer}>
-            First 7 days free, then {selectedPlan === "weekly" ? "€2.99/week" : selectedPlan === "monthly" ? "€7.99/month" : "€59.99/year"}. Cancel anytime.
+            Eerste 7 dagen gratis, daarna {selectedPlan === "weekly" ? "€2,99/week" : selectedPlan === "monthly" ? "€7,99/maand" : "€59,99/jaar"}. Altijd opzegbaar.
           </Text>
         </View>
 
         {/* Legal */}
         <View style={styles.legalSection}>
           <TouchableOpacity>
-            <Text style={styles.legalLink}>Privacy Policy</Text>
+            <Text style={styles.legalLink}>Privacybeleid</Text>
           </TouchableOpacity>
           <View style={styles.legalDot} />
           <TouchableOpacity>
-            <Text style={styles.legalLink}>Terms of Service</Text>
+            <Text style={styles.legalLink}>Gebruiksvoorwaarden</Text>
           </TouchableOpacity>
         </View>
       </ScrollView>

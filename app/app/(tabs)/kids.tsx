@@ -121,17 +121,87 @@ type KidsTile = {
 
 const NETWORK_TILES: KidsTile[] = [
   // ─── TV Networks ───
-  { label: "Nickelodeon",    color1: "#FF6600", color2: "#E53E00", id: 13,   source: "network", type: "tv" },
-  { label: "Disney Channel", color1: "#1565C0", color2: "#0A3D8F", id: 54,   source: "network", type: "tv" },
-  { label: "Cartoon Network",color1: "#004AAD", color2: "#002E80", id: 56,   source: "network", type: "tv" },
-  { label: "Disney Junior",  color1: "#F57F17", color2: "#D84315", id: 281,  source: "network", type: "tv" },
-  { label: "Boomerang",      color1: "#388E3C", color2: "#1B5E20", id: 523,  source: "network", type: "tv" },
+  {
+    label: "Nickelodeon",
+    color1: "#FF6600",
+    color2: "#E53E00",
+    id: 13,
+    source: "network",
+    type: "tv",
+  },
+  {
+    label: "Disney Channel",
+    color1: "#1565C0",
+    color2: "#0A3D8F",
+    id: 54,
+    source: "network",
+    type: "tv",
+  },
+  {
+    label: "Cartoon Network",
+    color1: "#004AAD",
+    color2: "#002E80",
+    id: 56,
+    source: "network",
+    type: "tv",
+  },
+  {
+    label: "Disney Junior",
+    color1: "#F57F17",
+    color2: "#D84315",
+    id: 281,
+    source: "network",
+    type: "tv",
+  },
+  {
+    label: "Boomerang",
+    color1: "#388E3C",
+    color2: "#1B5E20",
+    id: 523,
+    source: "network",
+    type: "tv",
+  },
   // ─── Studios (movies) ───
-  { label: "Disney",         color1: "#1A237E", color2: "#0D1547", id: 2,    source: "company", type: "movie" },
-  { label: "Pixar",          color1: "#0077B6", color2: "#023E8A", id: 3,    source: "company", type: "movie" },
-  { label: "DreamWorks",     color1: "#6A1B9A", color2: "#38006B", id: 521,  source: "company", type: "movie" },
-  { label: "Illumination",   color1: "#E64A19", color2: "#BF360C", id: 6704, source: "company", type: "movie" },
-  { label: "Studio Ghibli",  color1: "#2E7D32", color2: "#1B5E20", id: 10342,source: "company", type: "movie" },
+  {
+    label: "Disney",
+    color1: "#1A237E",
+    color2: "#0D1547",
+    id: 2,
+    source: "company",
+    type: "movie",
+  },
+  {
+    label: "Pixar",
+    color1: "#0077B6",
+    color2: "#023E8A",
+    id: 3,
+    source: "company",
+    type: "movie",
+  },
+  {
+    label: "DreamWorks",
+    color1: "#6A1B9A",
+    color2: "#38006B",
+    id: 521,
+    source: "company",
+    type: "movie",
+  },
+  {
+    label: "Illumination",
+    color1: "#E64A19",
+    color2: "#BF360C",
+    id: 6704,
+    source: "company",
+    type: "movie",
+  },
+  {
+    label: "Studio Ghibli",
+    color1: "#2E7D32",
+    color2: "#1B5E20",
+    id: 10342,
+    source: "company",
+    type: "movie",
+  },
 ];
 
 function KidsNetworkTiles() {
@@ -497,19 +567,19 @@ export default function KidsScreen() {
             />
           )}
 
-          {weeklyCollections[1] != null && (
-            <FeaturedCollectionRail
-              collectionId={weeklyCollections[1]}
-              onPress={openDetail}
-            />
-          )}
-
           {pixarRail.length > 0 && (
             <PosterRail
               title="Pixar"
               data={pixarRail}
               onPress={openDetail}
               onSeeAll={() => {}}
+            />
+          )}
+
+          {weeklyCollections[1] != null && (
+            <FeaturedCollectionRail
+              collectionId={weeklyCollections[1]}
+              onPress={openDetail}
             />
           )}
 
@@ -531,13 +601,6 @@ export default function KidsScreen() {
                 }
               />
             </>
-          )}
-
-          {weeklyCollections[2] != null && (
-            <FeaturedCollectionRail
-              collectionId={weeklyCollections[2]}
-              onPress={openDetail}
-            />
           )}
 
           {dreamworksRail.length > 0 && (
@@ -564,6 +627,13 @@ export default function KidsScreen() {
               data={ghibliRail}
               onPress={openDetail}
               onSeeAll={() => {}}
+            />
+          )}
+
+          {weeklyCollections[2] != null && (
+            <FeaturedCollectionRail
+              collectionId={weeklyCollections[2]}
+              onPress={openDetail}
             />
           )}
 

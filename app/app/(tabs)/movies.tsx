@@ -241,15 +241,15 @@ export default function MoviesScreen() {
   const { data: nowPlaying = [] } = useNowPlayingMovies();
   const { data: popular = [] } = usePopularMovies();
   const { data: topRated = [] } = useTopRatedMovies();
-  const { data: documentaries = [] } = useMoviesByGenreAll([99], true);
-  const { data: genreActie = [] } = useMoviesByGenreAll([28], true);
-  const { data: genreMisdaad = [] } = useMoviesByGenreAll([80], true);
-  const { data: genreDrama = [] } = useMoviesByGenreAll([18], true);
-  const { data: genreHorror = [] } = useMoviesByGenreAll([27], true);
-  const { data: genreKomedie = [] } = useMoviesByGenreAll([35], true);
-  const { data: genreThriller = [] } = useMoviesByGenreAll([53], true);
-  const { data: genreFamilie = [] } = useMoviesByGenreAll([10751], true);
-  const { data: genreFantasy = [] } = useMoviesByGenreAll([14], true);
+  const { data: documentaries = [] } = useMoviesByGenreAll([99], true, 3);
+  const { data: genreActie = [] } = useMoviesByGenreAll([28], true, 3);
+  const { data: genreMisdaad = [] } = useMoviesByGenreAll([80], true, 3);
+  const { data: genreDrama = [] } = useMoviesByGenreAll([18], true, 3);
+  const { data: genreHorror = [] } = useMoviesByGenreAll([27], true, 3);
+  const { data: genreKomedie = [] } = useMoviesByGenreAll([35], true, 3);
+  const { data: genreThriller = [] } = useMoviesByGenreAll([53], true, 3);
+  const { data: genreFamilie = [] } = useMoviesByGenreAll([10751], true, 3);
+  const { data: genreFantasy = [] } = useMoviesByGenreAll([14], true, 3);
 
   // Year-range rails: films from 1950 to today + upcoming
   const { data: klassiekers = [] } = useMoviesFromYearRange(1950, 1989);
@@ -425,7 +425,19 @@ export default function MoviesScreen() {
       ListHeaderComponent={
         <>
           {heroMovie ? <TabHero item={heroMovie} badge="Nexora Films" /> : null}
-          <GenreButtonRow genres={GENRE_ROWS} />
+          <GenreButtonRow
+            genres={GENRE_ROWS}
+            onPress={(genre) =>
+              router.push({
+                pathname: "/media/genre",
+                params: {
+                  genreId: String(genre.id),
+                  genreTitle: genre.title,
+                  type: "movie",
+                },
+              })
+            }
+          />
           <TopTenRail
             title="Top 10 films op Nexora"
             data={rails.topTenFilms}

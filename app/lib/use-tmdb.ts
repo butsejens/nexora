@@ -151,10 +151,10 @@ export function useTvByGenre(genreIds: number[], enabled = true) {
 /**
  * All movies for a genre across multiple pages — used on the genre browse page.
  */
-export function useMoviesByGenreAll(genreIds: number[], enabled = true) {
+export function useMoviesByGenreAll(genreIds: number[], enabled = true, maxPages = 8) {
   return useQuery<Movie[]>({
-    queryKey: ["tmdb", "movies-by-genre-all", genreIds.join(",")],
-    queryFn: () => getMoviesByGenreAll(genreIds),
+    queryKey: ["tmdb", "movies-by-genre-all", genreIds.join(","), maxPages],
+    queryFn: () => getMoviesByGenreAll(genreIds, maxPages),
     staleTime: STALE_1H,
     enabled: enabled && genreIds.length > 0,
     placeholderData: [],
@@ -164,10 +164,10 @@ export function useMoviesByGenreAll(genreIds: number[], enabled = true) {
 /**
  * All TV series for a genre across multiple pages — used on the genre browse page.
  */
-export function useTvByGenreAll(genreIds: number[], enabled = true) {
+export function useTvByGenreAll(genreIds: number[], enabled = true, maxPages = 8) {
   return useQuery<Series[]>({
-    queryKey: ["tmdb", "tv-by-genre-all", genreIds.join(",")],
-    queryFn: () => getTvByGenreAll(genreIds),
+    queryKey: ["tmdb", "tv-by-genre-all", genreIds.join(","), maxPages],
+    queryFn: () => getTvByGenreAll(genreIds, maxPages),
     staleTime: STALE_1H,
     enabled: enabled && genreIds.length > 0,
     placeholderData: [],

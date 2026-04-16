@@ -11,6 +11,7 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery } from "@tanstack/react-query";
+import { COLORS } from "@/constants/colors";
 import { useFollowState } from "@/context/UserStateContext";
 import { useOnboardingStore } from "@/store/onboarding-store";
 import {
@@ -26,14 +27,11 @@ type NotificationCenterProps = {
 
 type TabKey = "followed" | "alerts" | "recent";
 
-const P = {
-  bg: "#09090D",
-  card: "#14141D",
-  text: "#FFFFFF",
-  muted: "#A2A2AF",
-  accent: "#E50914",
-  border: "rgba(255,255,255,0.09)",
-};
+const TABS: { key: TabKey; label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
+  { key: "followed", label: "Gevolgd", icon: "heart-outline" },
+  { key: "alerts", label: "Meldingen", icon: "notifications-outline" },
+  { key: "recent", label: "Recent", icon: "time-outline" },
+];
 
 export function NotificationCenter({
   onClose,
@@ -129,31 +127,33 @@ export function NotificationCenter({
     followedTeams.length === 0 && followedMatches.length === 0;
 
   return (
-    <View style={styles.screen}>
-      <View style={[styles.header, { paddingTop: topPad + 12 }]}>
-        <View style={styles.headerTop}>
-          <Text style={styles.title}>Notifications</Text>
-          <TouchableOpacity style={styles.iconBtn} onPress={onClose}>
-            <Ionicons name="close" size={20} color={P.text} />
+    <View style={s.screen}>
+      {/* ── Header ── */}
+      <View style={[s.header, { paddingTop: topPad + 8 }]}>
+        <View style={s.headerRow}>
+          <Text style={s.headerTitle}>Meldingen</Text>
+          <TouchableOpacity style={s.closeBtn} onPress={onClose} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+            <Ionicons name="close" size={19} color={COLORS.text} />
           </TouchableOpacity>
         </View>
 
-        <View style={styles.tabs}>
-          {[
-            { key: "followed", label: "Followed" },
-            { key: "alerts", label: "Alerts" },
-            { key: "recent", label: "Recent" },
-          ].map((tab) => {
-            const isActive = activeTab === (tab.key as TabKey);
+        {/* Tab bar */}
+        <View style={s.tabBar}>
+          {TABS.map((tab) => {
+            const active = activeTab === tab.key;
             return (
               <TouchableOpacity
                 key={tab.key}
-                onPress={() => setActiveTab(tab.key as TabKey)}
-                style={[styles.tab, isActive && styles.tabActive]}
+                style={[s.tab, active && s.tabActive]}
+                onPress={() => setActiveTab(tab.key)}
+                activeOpacity={0.8}
               >
-                <Text
-                  style={[styles.tabText, isActive && styles.tabTextActive]}
-                >
+                <Ionicons
+                  name={tab.icon}
+                  size={13}
+                  color={active ? COLORS.accent : COLORS.textMuted}
+                />
+                <Text style={[s.tabLabel, active && s.tabLabelActive]}>
                   {tab.label}
                 </Text>
               </TouchableOpacity>
@@ -162,77 +162,84 @@ export function NotificationCenter({
         </View>
       </View>
 
+      {/* ── Gevolgd ── */}
       {activeTab === "followed" && (
-        <ScrollView
-          contentContainerStyle={styles.content}
-          showsVerticalScrollIndicator={false}
-        >
+        <ScrollView contentContainerStyle={s.scroll} showsVerticalScrollIndicator={false}>
           {followEmpty ? (
-            <View style={styles.emptyCard}>
-              <Ionicons
-                name="notifications-off-outline"
-                size={26}
-                color={P.muted}
-              />
-              <Text style={styles.emptyTitle}>No follows yet</Text>
-              <Text style={styles.emptyBody}>
-                Follow teams or matches to receive updates in your bell center.
+            <View style={s.emptyCard}>
+              <View style={s.emptyIcon}>
+                <Ionicons name="heart-dislike-outline" size={24} color={COLORS.textMuted} />
+              </View>
+              <Text style={s.emptyTitle}>Nog niets gevolgd</Text>
+              <Text style={s.emptyBody}>
+                Volg teams of wedstrijden om hier updates te ontvangen.
               </Text>
             </View>
           ) : (
             <>
               {followedTeams.length > 0 && (
-                <View style={styles.card}>
-                  <Text style={styles.cardTitle}>Followed Teams</Text>
-                  {followedTeams.map((team) => (
-                    <View key={String(team.teamId)} style={styles.row}>
-                      <View style={styles.rowTextWrap}>
-                        <Text style={styles.rowTitle}>{team.teamName}</Text>
-                        <Text style={styles.rowSub}>
-                          {team.competition || "Team updates"}
-                        </Text>
-                      </View>
-                      <TouchableOpacity
-                        style={styles.unfollowBtn}
-                        onPress={() => void unfollowTeamAction(team.teamId)}
-                      >
-                        <Text style={styles.unfollowText}>Unfollow</Text>
-                      </TouchableOpacity>
-                    </View>
-                  ))}
+                <View style={s.section}>
+                  <Text style={s.sectionTitle}>GEVOLGDE TEAMS</Text>
+                  <View style={s.card}>
+                    {followedTeams.map((team, i) => (
+                      <React.Fragment key={String(team.teamId)}>
+                        {i > 0 && <View style={s.divider} />}
+                        <View style={s.row}>
+                          <View style={s.rowIcon}>
+                            <Ionicons name="shield-outline" size={16} color={COLORS.accent} />
+                          </View>
+                          <View style={s.rowText}>
+                            <Text style={s.rowTitle}>{team.teamName}</Text>
+                            <Text style={s.rowSub}>{team.competition || "Team updates"}</Text>
+                          </View>
+                          <TouchableOpacity
+                            style={s.unfollowBtn}
+                            onPress={() => void unfollowTeamAction(team.teamId)}
+                          >
+                            <Text style={s.unfollowText}>Ontvolgen</Text>
+                          </TouchableOpacity>
+                        </View>
+                      </React.Fragment>
+                    ))}
+                  </View>
                 </View>
               )}
 
               {followedMatches.length > 0 && (
-                <View style={styles.card}>
-                  <Text style={styles.cardTitle}>Followed Matches</Text>
-                  {followedMatches.map((match) => (
-                    <TouchableOpacity
-                      key={String(match.matchId)}
-                      style={styles.row}
-                      onPress={() =>
-                        onNavigate("match-detail", {
-                          matchId: String(match.matchId),
-                          espnLeague: match.espnLeague || undefined,
-                        })
-                      }
-                    >
-                      <View style={styles.rowTextWrap}>
-                        <Text style={styles.rowTitle}>
-                          {match.homeTeam} vs {match.awayTeam}
-                        </Text>
-                        <Text style={styles.rowSub}>
-                          {match.competition || "Match"}
-                        </Text>
-                      </View>
-                      <TouchableOpacity
-                        style={styles.unfollowBtn}
-                        onPress={() => void unfollowMatchAction(match.matchId)}
-                      >
-                        <Text style={styles.unfollowText}>Unfollow</Text>
-                      </TouchableOpacity>
-                    </TouchableOpacity>
-                  ))}
+                <View style={s.section}>
+                  <Text style={s.sectionTitle}>GEVOLGDE WEDSTRIJDEN</Text>
+                  <View style={s.card}>
+                    {followedMatches.map((match, i) => (
+                      <React.Fragment key={String(match.matchId)}>
+                        {i > 0 && <View style={s.divider} />}
+                        <TouchableOpacity
+                          style={s.row}
+                          onPress={() =>
+                            onNavigate("match-detail", {
+                              matchId: String(match.matchId),
+                              espnLeague: match.espnLeague || undefined,
+                            })
+                          }
+                        >
+                          <View style={s.rowIcon}>
+                            <Ionicons name="football-outline" size={16} color={COLORS.accent} />
+                          </View>
+                          <View style={s.rowText}>
+                            <Text style={s.rowTitle}>
+                              {match.homeTeam} vs {match.awayTeam}
+                            </Text>
+                            <Text style={s.rowSub}>{match.competition || "Wedstrijd"}</Text>
+                          </View>
+                          <TouchableOpacity
+                            style={s.unfollowBtn}
+                            onPress={() => void unfollowMatchAction(match.matchId)}
+                          >
+                            <Text style={s.unfollowText}>Ontvolgen</Text>
+                          </TouchableOpacity>
+                        </TouchableOpacity>
+                      </React.Fragment>
+                    ))}
+                  </View>
                 </View>
               )}
             </>
@@ -240,134 +247,147 @@ export function NotificationCenter({
         </ScrollView>
       )}
 
+      {/* ── Meldingen ── */}
       {activeTab === "alerts" && (
-        <ScrollView
-          contentContainerStyle={styles.content}
-          showsVerticalScrollIndicator={false}
-        >
-          <View style={styles.card}>
-            <Text style={styles.cardTitle}>Alert Channels</Text>
-            <Text style={styles.body}>
-              Enabled channels: {alertsEnabledCount}/4
-            </Text>
-            <Text style={styles.body}>
-              Match start: {notificationPrefs.matches ? "On" : "Off"}
-            </Text>
-            <Text style={styles.body}>
-              Goals: {notificationPrefs.goals ? "On" : "Off"}
-            </Text>
-            <Text style={styles.body}>
-              Lineups: {notificationPrefs.lineups ? "On" : "Off"}
-            </Text>
-            <Text style={styles.body}>
-              News: {notificationPrefs.news ? "On" : "Off"}
-            </Text>
-            <TouchableOpacity
-              style={styles.primaryBtn}
-              onPress={() => {
-                if (Platform.OS === "ios") {
-                  void Linking.openURL("app-settings:");
-                } else {
-                  void Linking.openSettings();
-                }
-              }}
-            >
-              <Text style={styles.primaryBtnText}>
-                Open Device Notification Settings
-              </Text>
-            </TouchableOpacity>
-          </View>
-
-          <View style={styles.card}>
-            <Text style={styles.cardTitle}>Smart Alerts Engine</Text>
-            {smartAlerts.length === 0 ? (
-              <Text style={styles.body}>
-                Nog geen AI alerts opgebouwd. Zodra er live-events of releases
-                zijn, verschijnt hier je gefilterde feed.
-              </Text>
-            ) : (
-              smartAlerts.slice(0, 6).map((alert) => (
-                <TouchableOpacity
-                  key={String(alert.id)}
-                  style={styles.row}
-                  onPress={() =>
-                    alert.route
-                      ? onNavigate(
-                          String(alert.route),
-                          alert.params || undefined,
-                        )
-                      : undefined
-                  }
-                >
-                  <View style={styles.rowTextWrap}>
-                    <Text style={styles.rowTitle}>
-                      {String(alert.title || "Alert")}
-                    </Text>
-                    <Text style={styles.rowSub}>
-                      {String(alert.body || "")}
+        <ScrollView contentContainerStyle={s.scroll} showsVerticalScrollIndicator={false}>
+          {/* Alert kanalen */}
+          <View style={s.section}>
+            <Text style={s.sectionTitle}>MELDINGS­KANALEN</Text>
+            <View style={s.card}>
+              {[
+                { label: "Wedstrijd start", enabled: notificationPrefs.matches, icon: "flag-outline" as const },
+                { label: "Doelpunten", enabled: notificationPrefs.goals, icon: "football-outline" as const },
+                { label: "Opstellingen", enabled: notificationPrefs.lineups, icon: "list-outline" as const },
+                { label: "Nieuws", enabled: notificationPrefs.news, icon: "newspaper-outline" as const },
+              ].map((item, i) => (
+                <React.Fragment key={item.label}>
+                  {i > 0 && <View style={s.divider} />}
+                  <View style={s.row}>
+                    <View style={s.rowIcon}>
+                      <Ionicons name={item.icon} size={16} color={COLORS.accent} />
+                    </View>
+                    <Text style={[s.rowText, { flex: 1 }]}>{item.label}</Text>
+                    <View style={[s.statusDot, { backgroundColor: item.enabled ? COLORS.green : COLORS.textFaint }]} />
+                    <Text style={[s.statusLabel, { color: item.enabled ? COLORS.green : COLORS.textMuted }]}>
+                      {item.enabled ? "Aan" : "Uit"}
                     </Text>
                   </View>
-                  <Text
-                    style={[
-                      styles.priorityBadge,
-                      alert.priority === "priority"
-                        ? styles.priorityBadgeHigh
-                        : null,
-                    ]}
-                  >
-                    {alert.priority === "priority" ? "Priority" : "Silent"}
+                </React.Fragment>
+              ))}
+            </View>
+            <Text style={s.hint}>{alertsEnabledCount} van 4 kanalen actief</Text>
+          </View>
+
+          <TouchableOpacity
+            style={s.deviceBtn}
+            onPress={() => {
+              if (Platform.OS === "ios") {
+                void Linking.openURL("app-settings:");
+              } else {
+                void Linking.openSettings();
+              }
+            }}
+            activeOpacity={0.84}
+          >
+            <Ionicons name="settings-outline" size={17} color={COLORS.accent} />
+            <Text style={s.deviceBtnText}>Apparaatinstellingen openen</Text>
+            <Ionicons name="chevron-forward" size={15} color={COLORS.textMuted} />
+          </TouchableOpacity>
+
+          {/* Smart alerts */}
+          <View style={s.section}>
+            <Text style={s.sectionTitle}>SLIMME ALERTS</Text>
+            <View style={s.card}>
+              {smartAlerts.length === 0 ? (
+                <View style={s.inlineEmpty}>
+                  <Ionicons name="sparkles-outline" size={20} color={COLORS.textMuted} />
+                  <Text style={s.inlineEmptyText}>
+                    Nog geen slimme alerts. Zodra er live-events zijn verschijnen ze hier.
                   </Text>
-                </TouchableOpacity>
-              ))
-            )}
+                </View>
+              ) : (
+                smartAlerts.slice(0, 6).map((alert, i) => (
+                  <React.Fragment key={String(alert.id)}>
+                    {i > 0 && <View style={s.divider} />}
+                    <TouchableOpacity
+                      style={s.row}
+                      onPress={() =>
+                        alert.route
+                          ? onNavigate(String(alert.route), alert.params || undefined)
+                          : undefined
+                      }
+                    >
+                      <View style={s.rowIcon}>
+                        <Ionicons name="flash-outline" size={16} color={COLORS.accent} />
+                      </View>
+                      <View style={s.rowText}>
+                        <Text style={s.rowTitle}>{String(alert.title || "Alert")}</Text>
+                        <Text style={s.rowSub}>{String(alert.body || "")}</Text>
+                      </View>
+                      {alert.priority === "priority" ? (
+                        <View style={s.priorityBadge}>
+                          <Text style={s.priorityBadgeText}>Prioriteit</Text>
+                        </View>
+                      ) : (
+                        <View style={s.silentBadge}>
+                          <Text style={s.silentBadgeText}>Stil</Text>
+                        </View>
+                      )}
+                    </TouchableOpacity>
+                  </React.Fragment>
+                ))
+              )}
+            </View>
           </View>
         </ScrollView>
       )}
 
+      {/* ── Recent ── */}
       {activeTab === "recent" && (
-        <ScrollView
-          contentContainerStyle={styles.content}
-          showsVerticalScrollIndicator={false}
-        >
+        <ScrollView contentContainerStyle={s.scroll} showsVerticalScrollIndicator={false}>
           {recentItems.length === 0 ? (
-            <View style={styles.emptyCard}>
-              <Ionicons name="time-outline" size={26} color={P.muted} />
-              <Text style={styles.emptyTitle}>No recent alerts</Text>
-              <Text style={styles.emptyBody}>
-                Recent match-follow activity will appear here.
+            <View style={s.emptyCard}>
+              <View style={s.emptyIcon}>
+                <Ionicons name="time-outline" size={24} color={COLORS.textMuted} />
+              </View>
+              <Text style={s.emptyTitle}>Geen recente activiteit</Text>
+              <Text style={s.emptyBody}>
+                Recente wedstrijd­activiteit verschijnt hier.
               </Text>
             </View>
           ) : (
-            <View style={styles.card}>
-              <Text style={styles.cardTitle}>Recent Items</Text>
-              {recentItems.map((item) => (
-                <TouchableOpacity
-                  key={item.id}
-                  style={styles.row}
-                  onPress={() =>
-                    (item as any).route
-                      ? onNavigate(
-                          String((item as any).route),
-                          (item as any).params || undefined,
-                        )
-                      : undefined
-                  }
-                >
-                  <View style={styles.rowTextWrap}>
-                    <Text style={styles.rowTitle}>{item.title}</Text>
-                    <Text style={styles.rowSub}>{item.subtitle}</Text>
-                  </View>
-                  {(item as any).priority === "priority" ? (
-                    <Text
-                      style={[styles.priorityBadge, styles.priorityBadgeHigh]}
+            <View style={s.section}>
+              <Text style={s.sectionTitle}>RECENTE ITEMS</Text>
+              <View style={s.card}>
+                {recentItems.map((item, i) => (
+                  <React.Fragment key={item.id}>
+                    {i > 0 && <View style={s.divider} />}
+                    <TouchableOpacity
+                      style={s.row}
+                      onPress={() =>
+                        (item as any).route
+                          ? onNavigate(String((item as any).route), (item as any).params || undefined)
+                          : undefined
+                      }
                     >
-                      Priority
-                    </Text>
-                  ) : (
-                    <Ionicons name="ellipse" size={10} color={P.accent} />
-                  )}
-                </TouchableOpacity>
-              ))}
+                      <View style={s.rowIcon}>
+                        <Ionicons name="notifications-outline" size={16} color={COLORS.accent} />
+                      </View>
+                      <View style={s.rowText}>
+                        <Text style={s.rowTitle}>{item.title}</Text>
+                        <Text style={s.rowSub}>{item.subtitle}</Text>
+                      </View>
+                      {(item as any).priority === "priority" ? (
+                        <View style={s.priorityBadge}>
+                          <Text style={s.priorityBadgeText}>Prioriteit</Text>
+                        </View>
+                      ) : (
+                        <Ionicons name="ellipse" size={8} color={COLORS.accent} />
+                      )}
+                    </TouchableOpacity>
+                  </React.Fragment>
+                ))}
+              </View>
             </View>
           )}
         </ScrollView>
@@ -376,171 +396,266 @@ export function NotificationCenter({
   );
 }
 
-const styles = StyleSheet.create({
+const s = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: P.bg,
+    backgroundColor: COLORS.background,
   },
+
+  // Header
   header: {
     paddingHorizontal: 16,
-    paddingBottom: 12,
+    paddingBottom: 14,
     borderBottomWidth: 1,
-    borderBottomColor: P.border,
+    borderBottomColor: COLORS.glassBorder,
   },
-  headerTop: {
+  headerRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    marginBottom: 10,
+    marginBottom: 14,
   },
-  title: {
-    color: P.text,
-    fontSize: 22,
+  headerTitle: {
     fontFamily: "Inter_800ExtraBold",
+    fontSize: 22,
+    color: COLORS.text,
   },
-  iconBtn: {
+  closeBtn: {
     width: 34,
     height: 34,
     borderRadius: 17,
+    backgroundColor: COLORS.glass,
     borderWidth: 1,
-    borderColor: P.border,
+    borderColor: COLORS.glassBorder,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(255,255,255,0.03)",
   },
-  tabs: {
+
+  // Tab bar
+  tabBar: {
     flexDirection: "row",
     gap: 8,
   },
   tab: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
     borderRadius: 999,
     paddingHorizontal: 12,
     paddingVertical: 7,
     borderWidth: 1,
-    borderColor: P.border,
-    backgroundColor: "rgba(255,255,255,0.03)",
+    borderColor: COLORS.glassBorder,
+    backgroundColor: COLORS.glass,
   },
   tabActive: {
-    borderColor: "rgba(229,9,20,0.42)",
-    backgroundColor: "rgba(229,9,20,0.16)",
+    borderColor: COLORS.borderGlow,
+    backgroundColor: COLORS.accentGlow,
   },
-  tabText: {
-    color: P.muted,
-    fontSize: 12,
+  tabLabel: {
     fontFamily: "Inter_600SemiBold",
+    fontSize: 12,
+    color: COLORS.textMuted,
   },
-  tabTextActive: {
-    color: P.text,
+  tabLabelActive: {
+    color: COLORS.text,
   },
-  content: {
+
+  // Scroll + sections
+  scroll: {
     padding: 16,
-    gap: 10,
+    paddingBottom: 40,
+    gap: 8,
   },
+  section: {
+    gap: 8,
+    marginBottom: 4,
+  },
+  sectionTitle: {
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 10,
+    letterSpacing: 1.8,
+    color: COLORS.textMuted,
+    marginLeft: 4,
+  },
+
+  // Cards
   card: {
-    borderRadius: 14,
+    backgroundColor: COLORS.glass,
+    borderRadius: 16,
     borderWidth: 1,
-    borderColor: P.border,
-    backgroundColor: P.card,
-    padding: 12,
-    gap: 6,
+    borderColor: COLORS.glassBorder,
+    overflow: "hidden",
   },
-  cardTitle: {
-    color: P.text,
-    fontSize: 13,
-    fontFamily: "Inter_700Bold",
-    marginBottom: 6,
+  divider: {
+    height: 1,
+    backgroundColor: COLORS.glassBorder,
+    marginLeft: 58,
   },
+
+  // Rows
   row: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
-    justifyContent: "space-between",
-    borderTopWidth: 1,
-    borderTopColor: "rgba(255,255,255,0.05)",
-    paddingTop: 10,
-    paddingBottom: 4,
+    paddingHorizontal: 14,
+    paddingVertical: 13,
+    gap: 12,
   },
-  rowTextWrap: {
+  rowIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 9,
+    backgroundColor: COLORS.accentGlow,
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+  },
+  rowText: {
     flex: 1,
     minWidth: 0,
   },
   rowTitle: {
-    color: P.text,
-    fontSize: 13,
     fontFamily: "Inter_600SemiBold",
+    fontSize: 14,
+    color: COLORS.text,
   },
   rowSub: {
-    color: P.muted,
-    fontSize: 11,
-    fontFamily: "Inter_500Medium",
+    fontFamily: "Inter_400Regular",
+    fontSize: 12,
+    color: COLORS.textMuted,
     marginTop: 2,
   },
-  unfollowBtn: {
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: "rgba(229,9,20,0.42)",
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    backgroundColor: "rgba(229,9,20,0.12)",
+
+  // Status indicator
+  statusDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+    flexShrink: 0,
   },
-  unfollowText: {
-    color: P.accent,
+  statusLabel: {
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 12,
+    minWidth: 22,
+    textAlign: "right",
+  },
+
+  // Hint
+  hint: {
+    fontFamily: "Inter_400Regular",
     fontSize: 11,
-    fontFamily: "Inter_700Bold",
+    color: COLORS.textMuted,
+    marginLeft: 4,
   },
-  priorityBadge: {
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.2)",
-    color: "#D2D6E3",
-    fontSize: 10,
-    fontFamily: "Inter_700Bold",
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    overflow: "hidden",
-  },
-  priorityBadgeHigh: {
-    borderColor: "rgba(229,9,20,0.45)",
-    color: P.accent,
-    backgroundColor: "rgba(229,9,20,0.14)",
-  },
-  body: {
-    color: P.muted,
-    fontSize: 12,
-    lineHeight: 18,
-    fontFamily: "Inter_500Medium",
-  },
-  primaryBtn: {
-    marginTop: 10,
-    borderRadius: 10,
-    paddingVertical: 11,
-    backgroundColor: P.accent,
+
+  // Device button
+  deviceBtn: {
+    flexDirection: "row",
     alignItems: "center",
-  },
-  primaryBtnText: {
-    color: "#09090D",
-    fontSize: 12,
-    fontFamily: "Inter_700Bold",
-  },
-  emptyCard: {
+    gap: 10,
+    backgroundColor: COLORS.glass,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: P.border,
-    backgroundColor: P.card,
-    padding: 18,
+    borderColor: COLORS.glassBorder,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    marginBottom: 4,
+  },
+  deviceBtnText: {
+    flex: 1,
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 14,
+    color: COLORS.text,
+  },
+
+  // Inline empty
+  inlineEmpty: {
+    flexDirection: "row",
     alignItems: "center",
-    gap: 8,
+    gap: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 16,
+  },
+  inlineEmptyText: {
+    flex: 1,
+    fontFamily: "Inter_400Regular",
+    fontSize: 13,
+    color: COLORS.textMuted,
+    lineHeight: 18,
+  },
+
+  // Badges
+  priorityBadge: {
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    backgroundColor: COLORS.accentGlow,
+    borderWidth: 1,
+    borderColor: COLORS.borderGlow,
+  },
+  priorityBadgeText: {
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 10,
+    color: COLORS.accent,
+  },
+  silentBadge: {
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    backgroundColor: COLORS.glass,
+    borderWidth: 1,
+    borderColor: COLORS.glassBorder,
+  },
+  silentBadgeText: {
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 10,
+    color: COLORS.textMuted,
+  },
+
+  // Unfollow
+  unfollowBtn: {
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    backgroundColor: COLORS.glass,
+    borderWidth: 1,
+    borderColor: COLORS.glassBorder,
+  },
+  unfollowText: {
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 11,
+    color: COLORS.textSecondary,
+  },
+
+  // Empty state
+  emptyCard: {
+    backgroundColor: COLORS.glass,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: COLORS.glassBorder,
+    padding: 24,
+    alignItems: "center",
+    gap: 10,
+  },
+  emptyIcon: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: COLORS.accentGlow,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 4,
   },
   emptyTitle: {
-    color: P.text,
-    fontSize: 14,
     fontFamily: "Inter_700Bold",
+    fontSize: 15,
+    color: COLORS.text,
   },
   emptyBody: {
-    color: P.muted,
-    fontSize: 12,
+    fontFamily: "Inter_400Regular",
+    fontSize: 13,
+    color: COLORS.textMuted,
     textAlign: "center",
     lineHeight: 18,
-    fontFamily: "Inter_500Medium",
   },
 });
+

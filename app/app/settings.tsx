@@ -1,10 +1,12 @@
 import React, { useCallback, useEffect, useState } from "react";
 import {
+  ActivityIndicator,
   View,
   Text,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
+  Pressable,
   Switch,
   Alert,
   Modal,
@@ -23,17 +25,19 @@ import * as Updates from "expo-updates";
 import { UpdateModal } from "@/components/update";
 import { COLORS } from "@/constants/colors";
 import { useNexora } from "@/context/NexoraContext";
-import { PremiumOnboardingFlow } from "@/features/onboarding/PremiumOnboardingFlow";
 import { t as tFn } from "@/lib/i18n";
-import { PREFERRED_SERVER_LABELS } from "@/lib/playback-engine";
+import { getActiveProviderLabels } from "@/lib/playback-engine";
+import { apiRequest } from "@/lib/query-client";
 import { queryClient } from "@/lib/query-client";
 import { SafeHaptics } from "@/lib/safeHaptics";
 import { useTranslation } from "@/lib/useTranslation";
-import { getUpdateDiagnosticsAsync } from "@/services/update-diagnostics";
 import { compareVersions } from "@/services/update-service";
 import { useOnboardingStore } from "@/store/onboarding-store";
 import { useUiStore } from "@/store/uiStore";
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Data
+// ─────────────────────────────────────────────────────────────────────────────
 const LANGUAGES = [
   { code: "auto", label: "Auto (System)" },
   { code: "nl", label: "Nederlands" },
@@ -63,9 +67,99 @@ const QUALITY_OPTIONS = [
   { code: "HD", labelKey: "settings.qualityHD" },
 ] as const;
 
-const SERVER_OPTIONS = PREFERRED_SERVER_LABELS;
+const SERVER_DOMAIN_MAP: Record<string, string> = {
+  "Server 1": "https://vidlink.pro",
+  "Server 2": "https://vidfast.pro",
+  "Server 3": "https://player.videasy.net",
+  "Server 4": "https://player.vidsrc.nl",
+  "Server 5": "https://warezcdn.com",
+  "Server 6": "https://flicky.host",
+  "Server 7": "https://moviesapi.club",
+  "Server 8": "https://flickystream.ru",
+  "Server 9": "https://autoembed.cc",
+  "Server 10": "https://embed.su",
+  "Server 11": "https://111movies.net",
+  "Server 12": "https://vidsrc.stream",
+  "Server 13": "https://www.2embed.org",
+};
 
-function QualityModal({
+const SERVER_ID_MAP: Record<string, string> = {
+  "Server 1": "vidlinkpro",
+  "Server 2": "vidfast",
+  "Server 3": "videasy",
+  "Server 4": "vidsrcnl",
+  "Server 5": "warezcdn",
+  "Server 6": "flicky",
+  "Server 7": "moviesapi",
+  "Server 8": "flickystream",
+  "Server 9": "autoembed",
+  "Server 10": "embedsu",
+  "Server 11": "111movies",
+  "Server 12": "vidsrcstream",
+  "Server 13": "2embedorg",
+};
+
+type ServerHealth = "checking" | "online" | "slow" | "offline";
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Sheet bottom-modal wrapper
+// ─────────────────────────────────────────────────────────────────────────────
+function BottomSheet({
+  visible,
+  onClose,
+  title,
+  children,
+}: {
+  visible: boolean;
+  onClose: () => void;
+  title: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <Pressable style={sheet.overlay} onPress={onClose}>
+        <Pressable style={sheet.container} onPress={(e) => e.stopPropagation()}>
+          <LinearGradient
+            colors={["rgba(192,38,211,0.08)", "transparent"]}
+            style={StyleSheet.absoluteFill}
+          />
+          <View style={sheet.handle} />
+          <Text style={sheet.title}>{title}</Text>
+          {children}
+        </Pressable>
+      </Pressable>
+    </Modal>
+  );
+}
+
+function SheetOption({
+  label,
+  active,
+  onPress,
+  left,
+}: {
+  label: string;
+  active: boolean;
+  onPress: () => void;
+  left?: React.ReactNode;
+}) {
+  return (
+    <TouchableOpacity
+      style={[sheet.option, active && sheet.optionActive]}
+      onPress={onPress}
+      activeOpacity={0.7}
+    >
+      {left ?? null}
+      <Text style={[sheet.optionText, active && sheet.optionTextActive]}>{label}</Text>
+      {active && <Ionicons name="checkmark-circle" size={20} color={COLORS.accent} />}
+    </TouchableOpacity>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Quality sheet
+// ─────────────────────────────────────────────────────────────────────────────
+function QualitySheet({
   visible,
   onClose,
   selected,
@@ -77,39 +171,23 @@ function QualityModal({
   onSelect: (quality: (typeof QUALITY_OPTIONS)[number]["code"]) => void;
 }) {
   return (
-    <Modal
-      visible={visible}
-      transparent
-      animationType="slide"
-      onRequestClose={onClose}
-    >
-      <View style={langStyles.overlay}>
-        <View style={langStyles.sheet}>
-          <View style={langStyles.handle} />
-          <Text style={langStyles.title}>{tFn("settings.quality")}</Text>
-          {QUALITY_OPTIONS.map((quality) => (
-            <TouchableOpacity
-              key={quality.code}
-              style={langStyles.option}
-              onPress={() => {
-                SafeHaptics.impactLight();
-                onSelect(quality.code);
-                onClose();
-              }}
-            >
-              <Text style={langStyles.optionText}>{tFn(quality.labelKey)}</Text>
-              {selected === quality.code ? (
-                <Ionicons name="checkmark" size={18} color={COLORS.accent} />
-              ) : null}
-            </TouchableOpacity>
-          ))}
-        </View>
-      </View>
-    </Modal>
+    <BottomSheet visible={visible} onClose={onClose} title={tFn("settings.quality")}>
+      {QUALITY_OPTIONS.map((q) => (
+        <SheetOption
+          key={q.code}
+          label={tFn(q.labelKey)}
+          active={selected === q.code}
+          onPress={() => { SafeHaptics.impactLight(); onSelect(q.code); onClose(); }}
+        />
+      ))}
+    </BottomSheet>
   );
 }
 
-function LanguageModal({
+// ─────────────────────────────────────────────────────────────────────────────
+// Audio language sheet
+// ─────────────────────────────────────────────────────────────────────────────
+function AudioLanguageSheet({
   visible,
   onClose,
   selected,
@@ -118,42 +196,28 @@ function LanguageModal({
   visible: boolean;
   onClose: () => void;
   selected: string;
-  onSelect: (language: string) => void;
+  onSelect: (lang: string) => void;
 }) {
   return (
-    <Modal
-      visible={visible}
-      transparent
-      animationType="slide"
-      onRequestClose={onClose}
-    >
-      <View style={langStyles.overlay}>
-        <View style={langStyles.sheet}>
-          <View style={langStyles.handle} />
-          <Text style={langStyles.title}>{tFn("settings.audioLanguage")}</Text>
-          {LANGUAGES.map((language) => (
-            <TouchableOpacity
-              key={language.code}
-              style={langStyles.option}
-              onPress={() => {
-                SafeHaptics.impactLight();
-                onSelect(language.code);
-                onClose();
-              }}
-            >
-              <Text style={langStyles.optionText}>{language.label}</Text>
-              {selected === language.code ? (
-                <Ionicons name="checkmark" size={18} color={COLORS.accent} />
-              ) : null}
-            </TouchableOpacity>
-          ))}
-        </View>
-      </View>
-    </Modal>
+    <BottomSheet visible={visible} onClose={onClose} title={tFn("settings.audioLanguage")}>
+      <ScrollView style={{ maxHeight: 380 }} showsVerticalScrollIndicator={false}>
+        {LANGUAGES.map((lang) => (
+          <SheetOption
+            key={lang.code}
+            label={lang.label}
+            active={selected === lang.code}
+            onPress={() => { SafeHaptics.impactLight(); onSelect(lang.code); onClose(); }}
+          />
+        ))}
+      </ScrollView>
+    </BottomSheet>
   );
 }
 
-function UiLanguageModal({
+// ─────────────────────────────────────────────────────────────────────────────
+// UI language sheet
+// ─────────────────────────────────────────────────────────────────────────────
+function UiLanguageSheet({
   visible,
   onClose,
   selected,
@@ -162,44 +226,39 @@ function UiLanguageModal({
   visible: boolean;
   onClose: () => void;
   selected: string;
-  onSelect: (language: "en" | "nl" | "fr" | "de" | "es" | "pt") => void;
+  onSelect: (lang: "en" | "nl" | "fr" | "de" | "es" | "pt") => void;
 }) {
   return (
-    <Modal
-      visible={visible}
-      transparent
-      animationType="slide"
-      onRequestClose={onClose}
-    >
-      <View style={langStyles.overlay}>
-        <View style={langStyles.sheet}>
-          <View style={langStyles.handle} />
-          <Text style={langStyles.title}>{tFn("settings.language")}</Text>
-          {UI_LANGUAGE_OPTIONS.map((language) => (
-            <TouchableOpacity
-              key={language.code}
-              style={langStyles.option}
-              onPress={() => {
-                SafeHaptics.impactLight();
-                onSelect(language.code);
-                onClose();
-              }}
-            >
-              <Text style={langStyles.optionText}>
-                {tFn(language.labelKey)}
-              </Text>
-              {selected === language.code ? (
-                <Ionicons name="checkmark" size={18} color={COLORS.accent} />
-              ) : null}
-            </TouchableOpacity>
-          ))}
-        </View>
-      </View>
-    </Modal>
+    <BottomSheet visible={visible} onClose={onClose} title={tFn("settings.language")}>
+      {UI_LANGUAGE_OPTIONS.map((lang) => (
+        <SheetOption
+          key={lang.code}
+          label={tFn(lang.labelKey)}
+          active={selected === lang.code}
+          onPress={() => { SafeHaptics.impactLight(); onSelect(lang.code); onClose(); }}
+        />
+      ))}
+    </BottomSheet>
   );
 }
 
-function ServerModal({
+// ─────────────────────────────────────────────────────────────────────────────
+// Server health dot
+// ─────────────────────────────────────────────────────────────────────────────
+function HealthDot({ status }: { status: ServerHealth }) {
+  if (status === "checking") {
+    return <ActivityIndicator size={10} color={COLORS.textMuted} style={{ marginRight: 8 }} />;
+  }
+  const color = status === "online" ? "#22c55e" : status === "slow" ? "#f59e0b" : "#ef4444";
+  return (
+    <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: color, marginRight: 8 }} />
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Server picker sheet
+// ─────────────────────────────────────────────────────────────────────────────
+function ServerSheet({
   visible,
   onClose,
   selected,
@@ -210,41 +269,68 @@ function ServerModal({
   selected: string;
   onSelect: (server: string) => void;
 }) {
+  const [health, setHealth] = React.useState<Record<string, ServerHealth>>({});
+  const [list, setList] = React.useState<string[]>(() => getActiveProviderLabels());
+
+  React.useEffect(() => {
+    if (!visible) return;
+    const live = getActiveProviderLabels();
+    setList(live);
+    const init: Record<string, ServerHealth> = {};
+    live.forEach((s) => { init[s] = "checking"; });
+    setHealth(init);
+    (async () => {
+      try {
+        const res = await apiRequest("GET", "/api/streams/health");
+        const json = await res.json() as {
+          ok: boolean;
+          data?: { active?: { details?: { id: string; healthy: boolean }[] } };
+        };
+        const details = json?.data?.active?.details ?? [];
+        const healthById: Record<string, boolean> = {};
+        details.forEach((d) => { healthById[d.id] = d.healthy; });
+        setHealth((prev) => {
+          const next = { ...prev };
+          live.forEach((lbl) => {
+            const id = SERVER_ID_MAP[lbl];
+            if (id !== undefined) {
+              next[lbl] = healthById[id] === false ? "offline" : "online";
+            } else {
+              next[lbl] = "online";
+            }
+          });
+          return next;
+        });
+      } catch {
+        setHealth((prev) => {
+          const next = { ...prev };
+          live.forEach((lbl) => { next[lbl] = "online"; });
+          return next;
+        });
+      }
+    })();
+  }, [visible]);
+
   return (
-    <Modal
-      visible={visible}
-      transparent
-      animationType="slide"
-      onRequestClose={onClose}
-    >
-      <View style={langStyles.overlay}>
-        <View style={langStyles.sheet}>
-          <View style={langStyles.handle} />
-          <Text style={langStyles.title}>Primaire film/serieserver</Text>
-          <ScrollView style={{ maxHeight: 420 }}>
-            {SERVER_OPTIONS.map((server) => (
-              <TouchableOpacity
-                key={server}
-                style={langStyles.option}
-                onPress={() => {
-                  SafeHaptics.impactLight();
-                  onSelect(server);
-                  onClose();
-                }}
-              >
-                <Text style={langStyles.optionText}>{server}</Text>
-                {selected === server ? (
-                  <Ionicons name="checkmark" size={18} color={COLORS.accent} />
-                ) : null}
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-        </View>
-      </View>
-    </Modal>
+    <BottomSheet visible={visible} onClose={onClose} title="Streaming server">
+      <ScrollView style={{ maxHeight: 420 }} showsVerticalScrollIndicator={false}>
+        {list.map((server) => (
+          <SheetOption
+            key={server}
+            label={server}
+            active={selected === server}
+            left={<HealthDot status={health[server] ?? "checking"} />}
+            onPress={() => { SafeHaptics.impactLight(); onSelect(server); onClose(); }}
+          />
+        ))}
+      </ScrollView>
+    </BottomSheet>
   );
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// PIN modal
+// ─────────────────────────────────────────────────────────────────────────────
 function PinModal({
   visible,
   mode,
@@ -259,9 +345,7 @@ function PinModal({
   const [pin, setPin] = useState("");
 
   useEffect(() => {
-    if (!visible) {
-      setPin("");
-    }
+    if (!visible) setPin("");
   }, [visible, mode]);
 
   const appendDigit = (digit: string) => {
@@ -275,63 +359,40 @@ function PinModal({
   };
 
   return (
-    <Modal
-      visible={visible}
-      transparent
-      animationType="fade"
-      onRequestClose={onClose}
-    >
-      <View style={pinStyles.overlay}>
-        <View style={pinStyles.modal}>
-          <Text style={pinStyles.title}>
-            {mode === "set" ? "Stel pincode in" : "Bevestig pincode"}
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <View style={pin$.overlay}>
+        <View style={pin$.modal}>
+          <LinearGradient
+            colors={["rgba(192,38,211,0.12)", "transparent"]}
+            style={StyleSheet.absoluteFill}
+          />
+          <View style={pin$.iconWrap}>
+            <Ionicons name="lock-closed" size={26} color={COLORS.accent} />
+          </View>
+          <Text style={pin$.title}>
+            {mode === "set" ? "PIN instellen" : "PIN bevestigen"}
           </Text>
-          <Text style={pinStyles.label}>
-            Voer een pincode van 4 cijfers in.
-          </Text>
-
-          <View style={pinStyles.dots}>
-            {[0, 1, 2, 3].map((index) => (
-              <View
-                key={index}
-                style={[
-                  pinStyles.dot,
-                  pin.length > index && pinStyles.dotFilled,
-                ]}
-              />
+          <Text style={pin$.label}>Voer een 4-cijferige pincode in</Text>
+          <View style={pin$.dots}>
+            {[0, 1, 2, 3].map((i) => (
+              <View key={i} style={[pin$.dot, pin.length > i && pin$.dotFilled]} />
             ))}
           </View>
-
-          <View style={pinStyles.numpad}>
-            {["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"].map((digit) => (
-              <TouchableOpacity
-                key={digit}
-                style={pinStyles.numKey}
-                onPress={() => appendDigit(digit)}
-              >
-                <Text style={pinStyles.numKeyText}>{digit}</Text>
+          <View style={pin$.numpad}>
+            {["1","2","3","4","5","6","7","8","9","0"].map((d) => (
+              <TouchableOpacity key={d} style={pin$.key} onPress={() => appendDigit(d)}>
+                <Text style={pin$.keyText}>{d}</Text>
               </TouchableOpacity>
             ))}
-            <TouchableOpacity
-              style={pinStyles.numKey}
-              onPress={() => setPin((current) => current.slice(0, -1))}
-            >
-              <Ionicons
-                name="backspace-outline"
-                size={20}
-                color={COLORS.text}
-              />
+            <TouchableOpacity style={pin$.key} onPress={() => setPin((p) => p.slice(0, -1))}>
+              <Ionicons name="backspace-outline" size={20} color={COLORS.text} />
             </TouchableOpacity>
-            <TouchableOpacity
-              style={pinStyles.numKey}
-              onPress={() => setPin("")}
-            >
-              <Text style={pinStyles.numKeyText}>C</Text>
+            <TouchableOpacity style={pin$.key} onPress={() => setPin("")}>
+              <Text style={pin$.keyText}>C</Text>
             </TouchableOpacity>
           </View>
-
-          <TouchableOpacity style={pinStyles.cancelBtn} onPress={onClose}>
-            <Text style={pinStyles.cancelText}>Sluiten</Text>
+          <TouchableOpacity style={pin$.cancelBtn} onPress={onClose}>
+            <Text style={pin$.cancelText}>Annuleren</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -339,7 +400,10 @@ function PinModal({
   );
 }
 
-function Row({
+// ─────────────────────────────────────────────────────────────────────────────
+// Reusable row + section building blocks
+// ─────────────────────────────────────────────────────────────────────────────
+function SettingsRow({
   icon,
   label,
   sub,
@@ -347,6 +411,7 @@ function Row({
   onPress,
   right,
   danger = false,
+  badge,
 }: {
   icon: string;
   label: string;
@@ -355,6 +420,7 @@ function Row({
   onPress?: () => void;
   right?: React.ReactNode;
   danger?: boolean;
+  badge?: string;
 }) {
   return (
     <TouchableOpacity
@@ -364,255 +430,140 @@ function Row({
       onPress={onPress}
     >
       <View style={[s.rowIcon, danger && s.rowIconDanger]}>
-        <Ionicons
-          name={icon as any}
-          size={18}
-          color={danger ? COLORS.live : COLORS.accent}
-        />
+        <Ionicons name={icon as any} size={17} color={danger ? COLORS.live : COLORS.accent} />
       </View>
       <View style={s.rowBody}>
-        <Text
-          style={[s.rowLabel, danger && s.rowLabelDanger]}
-          numberOfLines={1}
-        >
-          {label}
-        </Text>
-        {sub ? (
-          <Text style={s.rowSub} numberOfLines={2}>
-            {sub}
-          </Text>
-        ) : null}
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+          <Text style={[s.rowLabel, danger && s.rowLabelDanger]} numberOfLines={1}>{label}</Text>
+          {badge ? <View style={s.badge}><Text style={s.badgeText}>{badge}</Text></View> : null}
+        </View>
+        {sub ? <Text style={s.rowSub} numberOfLines={2}>{sub}</Text> : null}
       </View>
-      {value ? (
-        <Text style={s.rowValue} numberOfLines={1}>
-          {value}
-        </Text>
-      ) : null}
+      {value ? <Text style={s.rowValue} numberOfLines={1}>{value}</Text> : null}
       {right ?? null}
-      {onPress && !right ? (
-        <Ionicons name="chevron-forward" size={15} color={COLORS.textFaint} />
-      ) : null}
+      {onPress && !right ? <Ionicons name="chevron-forward" size={14} color={COLORS.textMuted} /> : null}
     </TouchableOpacity>
   );
 }
 
-function Sep() {
-  return <View style={s.sep} />;
+function Divider() {
+  return <View style={s.divider} />;
 }
 
-function Group({
-  title,
-  icon,
-  children,
-}: {
-  title: string;
-  icon?: string;
-  children: React.ReactNode;
-}) {
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <View style={s.group}>
-      <View style={s.groupHeader}>
-        {icon ? (
-          <Ionicons
-            name={icon as any}
-            size={12}
-            color={COLORS.accent}
-            style={{ marginRight: 5 }}
-          />
-        ) : null}
-        <Text style={s.groupTitle}>{title.toUpperCase()}</Text>
-      </View>
-      <View style={s.groupCard}>{children}</View>
+    <View style={s.section}>
+      <Text style={s.sectionTitle}>{title}</Text>
+      <View style={s.sectionCard}>{children}</View>
     </View>
   );
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Main screen
+// ─────────────────────────────────────────────────────────────────────────────
 export default function SettingsScreen() {
   const insets = useSafeAreaInsets();
   const closeNexoraMenu = useUiStore((state) => state.closeNexoraMenu);
   const { openUpdate } = useLocalSearchParams<{ openUpdate?: string }>();
   const {
-    selectedQuality,
-    setSelectedQuality,
-    subtitlesEnabled,
-    setSubtitlesEnabled,
-    audioLanguage,
-    setAudioLanguage,
-    preferredServerLabel,
-    setPreferredServerLabel,
-    autoplayEnabled,
-    setAutoplayEnabled,
-    downloadOverWifi,
-    setDownloadOverWifi,
-    notificationsEnabled,
-    setNotificationsEnabled,
-    parentalPin,
-    setParentalPin,
-    favorites,
-    watchHistory,
-    clearHistory,
-    isPremium,
-    resetAll,
-    avatarUri,
-    setAvatarUri,
-    uiLanguage,
-    setUiLanguage,
+    selectedQuality, setSelectedQuality,
+    subtitlesEnabled, setSubtitlesEnabled,
+    audioLanguage, setAudioLanguage,
+    preferredServerLabel, setPreferredServerLabel,
+    autoplayEnabled, setAutoplayEnabled,
+    downloadOverWifi, setDownloadOverWifi,
+    notificationsEnabled, setNotificationsEnabled,
+    parentalPin, setParentalPin,
+    favorites, watchHistory, clearHistory,
+    isPremium, resetAll,
+    avatarUri, setAvatarUri,
+    uiLanguage, setUiLanguage,
   } = useNexora();
   const { t } = useTranslation();
 
   const [showPinModal, setShowPinModal] = useState(false);
   const [pinModalMode, setPinModalMode] = useState<"set" | "confirm">("set");
-  const [showLangModal, setShowLangModal] = useState(false);
-  const [showUiLangModal, setShowUiLangModal] = useState(false);
-  const [showQualityModal, setShowQualityModal] = useState(false);
-  const [showServerModal, setShowServerModal] = useState(false);
+  const [showLangSheet, setShowLangSheet] = useState(false);
+  const [showUiLangSheet, setShowUiLangSheet] = useState(false);
+  const [showQualitySheet, setShowQualitySheet] = useState(false);
+  const [showServerSheet, setShowServerSheet] = useState(false);
   const [showUpdateModal, setShowUpdateModal] = useState(openUpdate === "1");
-  const [showOnboardingEditor, setShowOnboardingEditor] = useState(false);
-  const [lastRollbackLabel, setLastRollbackLabel] = useState(
-    "Geen rollback gedetecteerd",
-  );
-  const {
-    moviesEnabled: onboardingMoviesEnabled,
-    notifications: onboardingNotifications,
-    resetOnboarding,
-  } = useOnboardingStore();
-
-  const bottomPad = Platform.OS === "web" ? 34 : insets.bottom + 90;
-  const selectedLangLabel =
-    LANGUAGES.find((l) => l.code === audioLanguage)?.label || "Auto";
-  const selectedUiLanguage = UI_LANGUAGE_OPTIONS.find(
-    (l) => l.code === uiLanguage,
-  );
-  const selectedUiLanguageLabel = selectedUiLanguage
-    ? t(selectedUiLanguage.labelKey)
-    : t("settings.languageEnglish");
-
-  const nativeVersion = String(Application.nativeApplicationVersion || "0.0.0");
-  const configVersion = String(Constants.expoConfig?.version || "0.0.0");
-  const runtimeVersion = String(Updates.runtimeVersion || "0.0.0");
-  const appVersion =
-    [nativeVersion, configVersion, runtimeVersion]
-      .sort(compareVersions)
-      .at(-1) || nativeVersion;
-  const softwareVersion = Updates.updateId
-    ? `${configVersion}-${Updates.updateId.slice(0, 8)}`
-    : configVersion;
-  const notificationSummary = Object.values(onboardingNotifications).filter(
-    Boolean,
-  ).length;
-
-  React.useEffect(() => {
-    let mounted = true;
-    void getUpdateDiagnosticsAsync().then((diagnostics) => {
-      if (!mounted) return;
-      const rollback = diagnostics.lastRollback;
-      if (!rollback) {
-        setLastRollbackLabel("Geen rollback gedetecteerd");
-        return;
-      }
-      const current = rollback.currentUpdateId
-        ? rollback.currentUpdateId.slice(0, 8)
-        : "embedded";
-      setLastRollbackLabel(
-        `${rollback.detectedAt.slice(0, 19)} | ${rollback.previousUpdateId.slice(0, 8)} -> ${current}`,
-      );
-    });
-    return () => {
-      mounted = false;
-    };
-  }, []);
+  const {} = useOnboardingStore();
 
   useEffect(() => {
     closeNexoraMenu();
   }, [closeNexoraMenu]);
 
-  const handleManualUpdateCheck = useCallback(() => {
-    setShowUpdateModal(true);
-  }, []);
+  const bottomPad = Platform.OS === "web" ? 34 : insets.bottom + 90;
+  const selectedLangLabel = LANGUAGES.find((l) => l.code === audioLanguage)?.label ?? "Auto";
+  const selectedUiLang = UI_LANGUAGE_OPTIONS.find((l) => l.code === uiLanguage);
+  const selectedUiLangLabel = selectedUiLang ? t(selectedUiLang.labelKey) : t("settings.languageEnglish");
+
+  const nativeVersion = String(Application.nativeApplicationVersion || "0.0.0");
+  const configVersion = String(Constants.expoConfig?.version || "0.0.0");
+  const runtimeVersion = String(Updates.runtimeVersion || "0.0.0");
+  const appVersion = [nativeVersion, configVersion, runtimeVersion].sort(compareVersions).at(-1) ?? nativeVersion;
+  const handleManualUpdateCheck = useCallback(() => setShowUpdateModal(true), []);
 
   const handleSetPin = () => {
-    if (parentalPin) {
-      setPinModalMode("confirm");
-      setShowPinModal(true);
-    } else {
-      setPinModalMode("set");
-      setShowPinModal(true);
-    }
+    setPinModalMode(parentalPin ? "confirm" : "set");
+    setShowPinModal(true);
   };
 
-  const handlePinConfirm = (pin: string) => {
+  const handlePinConfirm = (entered: string) => {
     setShowPinModal(false);
     if (pinModalMode === "set") {
-      setParentalPin(pin);
+      setParentalPin(entered);
       SafeHaptics.success();
-      Alert.alert("PIN Set", "Parental control PIN has been activated.");
+      Alert.alert("PIN ingesteld", "Ouderlijk toezicht is geactiveerd.");
     } else {
-      if (pin === parentalPin) {
+      if (entered === parentalPin) {
         setParentalPin(null);
         SafeHaptics.success();
-        Alert.alert("PIN Removed", "Parental control has been deactivated.");
+        Alert.alert("PIN verwijderd", "Ouderlijk toezicht is uitgeschakeld.");
       } else {
         SafeHaptics.error();
-        Alert.alert("Wrong PIN", "The PIN you entered is incorrect.");
+        Alert.alert("Verkeerde PIN", "De ingevoerde PIN is onjuist.");
       }
     }
   };
 
   const handleClearHistory = () => {
     Alert.alert(
-      "Clear Watch History",
-      "This will remove all your watched content history.",
+      "Kijkgeschiedenis wissen",
+      "Weet je zeker dat je je kijkgeschiedenis wilt wissen? Dit kan niet ongedaan worden gemaakt.",
       [
-        { text: "Cancel", style: "cancel" },
+        { text: "Annuleren", style: "cancel" },
         {
-          text: "Clear",
+          text: "Wissen",
           style: "destructive",
           onPress: async () => {
             await clearHistory();
             SafeHaptics.success();
-            Alert.alert("Cleared", "Watch history has been cleared.");
           },
         },
       ],
     );
   };
 
-  const handleResetAppData = () => {
+  const handleResetApp = () => {
     Alert.alert(
-      "Reset App Data",
-      "This will clear favorites, history and cache.",
+      "App data resetten",
+      "Dit verwijdert favorieten, kijkgeschiedenis en cache. Weet je het zeker?",
       [
-        { text: "Cancel", style: "cancel" },
+        { text: "Annuleren", style: "cancel" },
         {
-          text: "Reset",
+          text: "Resetten",
           style: "destructive",
           onPress: async () => {
             try {
               await resetAll();
               queryClient.clear();
               SafeHaptics.success();
-              Alert.alert("Klaar", "App data is gereset.");
             } catch (e: any) {
-              Alert.alert("Error", e?.message || "Could not reset app data");
+              Alert.alert("Fout", e?.message ?? "Kon app data niet resetten");
             }
-          },
-        },
-      ],
-    );
-  };
-
-  const handleResetOnboarding = () => {
-    Alert.alert(
-      "Reset onboarding",
-      "This will reopen the first-launch setup and clear your current onboarding selections.",
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Reset",
-          style: "destructive",
-          onPress: () => {
-            resetOnboarding();
-            setShowOnboardingEditor(false);
           },
         },
       ],
@@ -639,420 +590,282 @@ export default function SettingsScreen() {
 
   return (
     <View style={s.screen}>
-      <View style={s.glowTop} />
-      <View style={s.glowBottom} />
-      {/* Custom header */}
-      <View style={[s.customHeader, { paddingTop: insets.top + 8 }]}>
+      {/* Header */}
+      <View style={[s.header, { paddingTop: insets.top + 6 }]}>
         <TouchableOpacity
-          onPress={() => router.back()}
           style={s.headerBack}
-          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          onPress={() => {
+            try {
+              if (
+                typeof (router as any).canGoBack === "function" &&
+                (router as any).canGoBack()
+              ) {
+                router.back();
+                return;
+              }
+            } catch {}
+            router.replace("/(tabs)/more" as any);
+          }}
+          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
         >
-          <Ionicons name="chevron-back" size={24} color={COLORS.text} />
+          <Ionicons name="chevron-back" size={22} color={COLORS.text} />
         </TouchableOpacity>
-        <Text style={s.headerTitle}>{t("settings.settingsTitle")}</Text>
-        <View style={{ width: 40 }} />
+        <Text style={s.headerTitle}>Instellingen</Text>
+        <View style={{ width: 36 }} />
       </View>
 
       <ScrollView
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingBottom: bottomPad }}
+        contentContainerStyle={{ paddingBottom: bottomPad, paddingTop: 14 }}
       >
         {/* ── Profile card ── */}
         <TouchableOpacity
           style={s.profileCard}
           onPress={() => router.push("/profile")}
-          activeOpacity={0.85}
+          activeOpacity={0.88}
         >
           <LinearGradient
-            colors={["rgba(229,9,20,0.18)", "rgba(229,9,20,0.04)"]}
+            colors={["rgba(192,38,211,0.10)", COLORS.card]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
             style={StyleSheet.absoluteFill}
           />
-          <TouchableOpacity
-            style={s.avatarBox}
-            onPress={handlePickAvatar}
-            activeOpacity={0.8}
-          >
+          <TouchableOpacity style={s.avatarWrap} onPress={handlePickAvatar} activeOpacity={0.8}>
             <View style={s.avatar}>
               {avatarUri ? (
                 <Image source={{ uri: avatarUri }} style={s.avatarImg} />
               ) : (
-                <Ionicons name="person" size={32} color={COLORS.accent} />
+                <Ionicons name="person" size={22} color={COLORS.accent} />
               )}
             </View>
-            <View style={s.cameraBadge}>
-              <Ionicons name="camera" size={11} color="#fff" />
+            <View style={s.cameraChip}>
+              <Ionicons name="camera" size={9} color="#fff" />
             </View>
           </TouchableOpacity>
-          <View style={s.profileMid}>
+          <View style={s.profileInfo}>
             <Text style={s.profileName}>{t("settings.mainProfile")}</Text>
             <TouchableOpacity
-              style={[s.premiumPill, isPremium && s.premiumPillActive]}
+              style={[s.premiumBadge, isPremium && s.premiumBadgeActive]}
               onPress={() => router.push("/premium")}
               activeOpacity={0.8}
             >
               <MaterialCommunityIcons
                 name="crown"
-                size={12}
+                size={10}
                 color={isPremium ? COLORS.gold : COLORS.textMuted}
               />
-              <Text
-                style={[
-                  s.premiumPillText,
-                  isPremium && s.premiumPillTextActive,
-                ]}
-              >
-                {isPremium
-                  ? t("settings.premium")
-                  : t("settings.upgradePremium")}
+              <Text style={[s.premiumBadgeText, isPremium && s.premiumBadgeTextActive]}>
+                {isPremium ? "Nexora+" : "Upgrade naar Nexora+"}
               </Text>
-              {!isPremium && (
-                <Ionicons
-                  name="chevron-forward"
-                  size={11}
-                  color={COLORS.accent}
-                />
-              )}
             </TouchableOpacity>
           </View>
-          <Ionicons name="chevron-forward" size={16} color={COLORS.textFaint} />
+          <View style={{ alignItems: "flex-end", gap: 1 }}>
+            <Text style={{ fontFamily: "Inter_700Bold", fontSize: 13, color: COLORS.text }}>{favorites.length}</Text>
+            <Text style={{ fontFamily: "Inter_400Regular", fontSize: 10, color: COLORS.textMuted }}>{t("settings.favorites")}</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={14} color={COLORS.textMuted} />
         </TouchableOpacity>
 
-        {/* ── Stats row ── */}
-        <View style={s.statsRow}>
-          {[
-            { label: t("settings.favorites"), val: favorites.length },
-            { label: t("settings.watched"), val: watchHistory.length },
-          ].map((item, i, arr) => (
-            <React.Fragment key={item.label}>
-              <View style={s.statItem}>
-                <Text style={s.statVal}>{item.val}</Text>
-                <Text style={s.statLbl}>{item.label}</Text>
-              </View>
-              {i < arr.length - 1 && <View style={s.statDiv} />}
-            </React.Fragment>
-          ))}
-        </View>
-
-        {/* ── Modules ── */}
-        <Group title={t("settings.modules")} icon="grid-outline">
-          <Row
-            icon="film-outline"
-            label={t("settings.moviesAndSeries")}
-            sub={
-              onboardingMoviesEnabled
-                ? t("settings.enabled")
-                : t("settings.hidden")
-            }
-            right={
-              <Switch
-                value={onboardingMoviesEnabled}
-                onValueChange={(v) =>
-                  useOnboardingStore.getState().setMoviesEnabled(v)
-                }
-                trackColor={{ false: COLORS.border, true: COLORS.accentGlow }}
-                thumbColor={
-                  onboardingMoviesEnabled ? COLORS.accent : COLORS.textMuted
-                }
-              />
-            }
-          />
-          <Sep />
-          <Row
-            icon="film-outline"
-            label={t("home.allFilms")}
-            sub={t("settings.moviesAndSeries")}
-            onPress={() => router.push("/media/movies")}
-          />
-        </Group>
-
-        {/* ── Personalisatie ── */}
-        <Group title={t("settings.personalization")} icon="color-wand-outline">
-          <Row
-            icon="notifications-outline"
-            label={t("settings.notificationPreferences")}
-            sub={`${notificationSummary} actief`}
-            onPress={() => router.push("/notifications")}
-          />
-          <Sep />
-          <Row
-            icon="settings-outline"
-            label={t("settings.editOnboarding")}
-            onPress={() => setShowOnboardingEditor(true)}
-          />
-        </Group>
-
         {/* ── Afspeelbeheer ── */}
-        <Group title={t("settings.playback")} icon="play-circle-outline">
-          <Row
+        <Section title={t("settings.playback")}>
+          <SettingsRow
             icon="server-outline"
-            label="Primaire film/serieserver"
+            label="Streaming server"
             value={preferredServerLabel}
-            onPress={() => setShowServerModal(true)}
+            onPress={() => setShowServerSheet(true)}
           />
-          <Sep />
-          <Row
-            icon="videocam-outline"
+          <Divider />
+          <SettingsRow
+            icon="film-outline"
             label={t("settings.quality")}
             value={selectedQuality}
-            onPress={() => setShowQualityModal(true)}
+            onPress={() => setShowQualitySheet(true)}
           />
-          <Sep />
-          <Row
+          <Divider />
+          <SettingsRow
+            icon="language-outline"
+            label={t("settings.audioLanguage")}
+            value={selectedLangLabel}
+            onPress={() => setShowLangSheet(true)}
+          />
+          <Divider />
+          <SettingsRow
             icon="text-outline"
             label={t("settings.subtitles")}
             right={
               <Switch
                 value={subtitlesEnabled}
-                onValueChange={(v) => {
-                  SafeHaptics.impactLight();
-                  setSubtitlesEnabled(v);
-                }}
-                trackColor={{ false: COLORS.border, true: COLORS.accentGlow }}
+                onValueChange={(v) => { SafeHaptics.impactLight(); setSubtitlesEnabled(v); }}
+                trackColor={{ false: COLORS.border, true: "rgba(192,38,211,0.45)" }}
                 thumbColor={subtitlesEnabled ? COLORS.accent : COLORS.textMuted}
+                ios_backgroundColor={COLORS.border}
               />
             }
           />
-          <Sep />
-          <Row
-            icon="language-outline"
-            label={t("settings.audioLanguage")}
-            value={selectedLangLabel}
-            onPress={() => setShowLangModal(true)}
-          />
-          <Sep />
-          <Row
+          <Divider />
+          <SettingsRow
             icon="play-skip-forward-outline"
             label={t("settings.autoplayNext")}
             right={
               <Switch
                 value={autoplayEnabled}
-                onValueChange={(v) => {
-                  SafeHaptics.impactLight();
-                  setAutoplayEnabled(v);
-                }}
-                trackColor={{ false: COLORS.border, true: COLORS.accentGlow }}
+                onValueChange={(v) => { SafeHaptics.impactLight(); setAutoplayEnabled(v); }}
+                trackColor={{ false: COLORS.border, true: "rgba(192,38,211,0.45)" }}
                 thumbColor={autoplayEnabled ? COLORS.accent : COLORS.textMuted}
+                ios_backgroundColor={COLORS.border}
               />
             }
           />
-        </Group>
+        </Section>
+
+        {/* ── Personalisatie ── */}
+        <Section title={t("settings.personalization")}>
+          <SettingsRow
+            icon="globe-outline"
+            label={t("settings.language")}
+            value={selectedUiLangLabel}
+            onPress={() => setShowUiLangSheet(true)}
+          />
+        </Section>
 
         {/* ── Downloads ── */}
-        <Group title={t("settings.downloadsSection")} icon="download-outline">
-          <Row
+        <Section title={t("settings.downloadsSection")}>
+          <SettingsRow
             icon="wifi-outline"
             label={t("settings.wifiOnly")}
             right={
               <Switch
                 value={downloadOverWifi}
-                onValueChange={(v) => {
-                  SafeHaptics.impactLight();
-                  setDownloadOverWifi(v);
-                }}
-                trackColor={{ false: COLORS.border, true: COLORS.accentGlow }}
+                onValueChange={(v) => { SafeHaptics.impactLight(); setDownloadOverWifi(v); }}
+                trackColor={{ false: COLORS.border, true: "rgba(192,38,211,0.45)" }}
                 thumbColor={downloadOverWifi ? COLORS.accent : COLORS.textMuted}
+                ios_backgroundColor={COLORS.border}
               />
             }
           />
-          <Sep />
-          <Row
-            icon="folder-outline"
+          <Divider />
+          <SettingsRow
+            icon="cloud-download-outline"
             label={t("settings.offlineDownloads")}
             sub={t("settings.notAvailable")}
-            onPress={() =>
-              Alert.alert(
-                t("settings.downloadsSection"),
-                t("settings.offlineNotAvailable"),
-              )
-            }
+            onPress={() => Alert.alert(t("settings.downloadsSection"), t("settings.offlineNotAvailable"))}
           />
-        </Group>
+        </Section>
 
         {/* ── Meldingen ── */}
-        <Group title={t("settings.notifications")} icon="notifications-outline">
-          <Row
+        <Section title={t("settings.notifications")}>
+          <SettingsRow
             icon="notifications-outline"
             label={t("settings.pushNotifications")}
             right={
               <Switch
                 value={notificationsEnabled}
-                onValueChange={(v) => {
-                  SafeHaptics.impactLight();
-                  setNotificationsEnabled(v);
-                }}
-                trackColor={{ false: COLORS.border, true: COLORS.accentGlow }}
-                thumbColor={
-                  notificationsEnabled ? COLORS.accent : COLORS.textMuted
-                }
+                onValueChange={(v) => { SafeHaptics.impactLight(); setNotificationsEnabled(v); }}
+                trackColor={{ false: COLORS.border, true: "rgba(192,38,211,0.45)" }}
+                thumbColor={notificationsEnabled ? COLORS.accent : COLORS.textMuted}
+                ios_backgroundColor={COLORS.border}
               />
             }
           />
-          <Sep />
-          <Row
+          <Divider />
+          <SettingsRow
             icon="calendar-outline"
             label={t("settings.newReleases")}
             sub={t("settings.comingSoon")}
-            onPress={() =>
-              Alert.alert(t("settings.newReleases"), t("settings.notifHint"))
-            }
+            onPress={() => Alert.alert(t("settings.newReleases"), t("settings.notifHint"))}
           />
-        </Group>
+        </Section>
 
         {/* ── Beveiliging ── */}
-        <Group title={t("settings.security")} icon="shield-checkmark-outline">
-          <Row
+        <Section title={t("settings.security")}>
+          <SettingsRow
             icon="lock-closed-outline"
             label={t("settings.parentalControl")}
             value={parentalPin ? t("settings.pinActive") : t("settings.pinOff")}
             onPress={handleSetPin}
           />
-          <Sep />
-          <Row
+          <Divider />
+          <SettingsRow
             icon="time-outline"
             label={t("settings.clearHistory")}
-            value={
-              watchHistory.length > 0
-                ? `${watchHistory.length} ${t("settings.items")}`
-                : t("common.empty")
-            }
+            value={watchHistory.length > 0 ? `${watchHistory.length} ${t("settings.items")}` : t("common.empty")}
             onPress={handleClearHistory}
           />
-        </Group>
-
-        {/* ── Taal ── */}
-        <Group title={t("settings.language")} icon="globe-outline">
-          <Row
-            icon="globe-outline"
-            label={t("settings.language")}
-            sub="Wijzig de app interface taal"
-            value={selectedUiLanguageLabel}
-            onPress={() => setShowUiLangModal(true)}
-          />
-        </Group>
+        </Section>
 
         {/* ── Over Nexora ── */}
-        <Group title={t("settings.about")} icon="information-circle-outline">
-          <Row
+        <Section title={t("settings.about")}>
+          <SettingsRow
             icon="phone-portrait-outline"
             label={t("settings.appVersion")}
             value={appVersion}
           />
-          <Sep />
-          <Row
-            icon="code-slash-outline"
-            label={t("settings.softwareVersion")}
-            value={softwareVersion}
-          />
-          <Sep />
-          <Row
-            icon="git-branch-outline"
-            label="Update kanaal"
-            value={String(Updates.channel || "unknown")}
-          />
-          <Sep />
-          <Row
-            icon="server-outline"
-            label="Bundle bron"
-            value={
-              Updates.isEmbeddedLaunch
-                ? "Embedded"
-                : Updates.updateId
-                  ? `OTA: ${Updates.updateId.slice(0, 8)}`
-                  : "Onbekend"
-            }
-          />
-          <Sep />
-          <Row
-            icon="alert-circle-outline"
-            label="Laatste rollback"
-            sub={lastRollbackLabel}
-          />
-          <Sep />
-          <Row
+          <Divider />
+          <SettingsRow
             icon="cloud-download-outline"
             label={t("settings.checkUpdates")}
             onPress={handleManualUpdateCheck}
           />
-          <Sep />
-          <Row
+          <Divider />
+          <SettingsRow
             icon="star-outline"
             label={t("settings.rateApp")}
-            onPress={() =>
-              Alert.alert(t("settings.rateTitle"), t("settings.rateMessage"))
-            }
+            onPress={() => Alert.alert(t("settings.rateTitle"), t("settings.rateMessage"))}
           />
-          <Sep />
-          <Row
+          <Divider />
+          <SettingsRow
             icon="help-circle-outline"
             label={t("settings.support")}
-            onPress={() =>
-              Alert.alert(
-                t("settings.support"),
-                `${t("settings.supportEmail")}\n\n${t("settings.supportResponse")}`,
-              )
-            }
+            onPress={() => Alert.alert(t("settings.support"), `${t("settings.supportEmail")}\n\n${t("settings.supportResponse")}`)}
           />
-          <Sep />
-          <Row
+          <Divider />
+          <SettingsRow
             icon="shield-checkmark-outline"
             label={t("settings.privacyPolicy")}
-            onPress={() =>
-              Alert.alert(
-                t("settings.privacyPolicy"),
-                t("settings.privacyMessage"),
-              )
-            }
+            onPress={() => Alert.alert(t("settings.privacyPolicy"), t("settings.privacyMessage"))}
           />
-        </Group>
+        </Section>
 
         {/* ── Gevaarzone ── */}
-        <Group title="Gevaarzone" icon="warning-outline">
-          <Row
-            icon="refresh-outline"
-            label={t("settings.resetOnboardingLabel")}
-            danger
-            onPress={handleResetOnboarding}
-          />
-          <Sep />
-          <Row
-            icon="nuclear-outline"
+        <Section title="Gevaarzone">
+          <SettingsRow
+            icon="trash-outline"
             label={t("settings.resetApp")}
             danger
-            onPress={handleResetAppData}
+            onPress={handleResetApp}
           />
-        </Group>
+        </Section>
       </ScrollView>
 
-      {/* ── Modals ── */}
+      {/* ── Modals & Sheets ── */}
       <PinModal
         visible={showPinModal}
         mode={pinModalMode}
         onClose={() => setShowPinModal(false)}
         onConfirm={handlePinConfirm}
       />
-      <LanguageModal
-        visible={showLangModal}
+      <AudioLanguageSheet
+        visible={showLangSheet}
         selected={audioLanguage}
-        onClose={() => setShowLangModal(false)}
+        onClose={() => setShowLangSheet(false)}
         onSelect={setAudioLanguage}
       />
-      <UiLanguageModal
-        visible={showUiLangModal}
+      <UiLanguageSheet
+        visible={showUiLangSheet}
         selected={uiLanguage}
-        onClose={() => setShowUiLangModal(false)}
+        onClose={() => setShowUiLangSheet(false)}
         onSelect={setUiLanguage}
       />
-      <QualityModal
-        visible={showQualityModal}
+      <QualitySheet
+        visible={showQualitySheet}
         selected={selectedQuality}
-        onClose={() => setShowQualityModal(false)}
+        onClose={() => setShowQualitySheet(false)}
         onSelect={setSelectedQuality}
       />
-      <ServerModal
-        visible={showServerModal}
+      <ServerSheet
+        visible={showServerSheet}
         selected={preferredServerLabel}
-        onClose={() => setShowServerModal(false)}
+        onClose={() => setShowServerSheet(false)}
         onSelect={setPreferredServerLabel}
       />
       <UpdateModal
@@ -1060,370 +873,271 @@ export default function SettingsScreen() {
         currentVersion={appVersion}
         onClose={() => setShowUpdateModal(false)}
       />
-      <Modal
-        visible={showOnboardingEditor}
-        animationType="slide"
-        onRequestClose={() => setShowOnboardingEditor(false)}
-      >
-        <PremiumOnboardingFlow
-          mode="editor"
-          onFinished={() => setShowOnboardingEditor(false)}
-        />
-      </Modal>
     </View>
   );
 }
-const pinStyles = StyleSheet.create({
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Styles
+// ─────────────────────────────────────────────────────────────────────────────
+const pin$ = StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: "rgba(0,0,0,0.8)",
+    backgroundColor: "rgba(0,0,0,0.78)",
     alignItems: "center",
     justifyContent: "center",
   },
   modal: {
-    backgroundColor: COLORS.cardElevated,
+    backgroundColor: COLORS.card,
     borderRadius: 24,
     padding: 24,
     width: 300,
     alignItems: "center",
-    gap: 16,
+    gap: 14,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: COLORS.glassBorder,
+    overflow: "hidden",
   },
-  title: { fontFamily: "Inter_700Bold", fontSize: 18, color: COLORS.text },
-  label: {
-    fontFamily: "Inter_500Medium",
-    fontSize: 14,
-    color: COLORS.textMuted,
+  iconWrap: {
+    width: 48,
+    height: 48,
+    borderRadius: 14,
+    backgroundColor: "rgba(192,38,211,0.10)",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "rgba(192,38,211,0.20)",
   },
-  dots: { flexDirection: "row", gap: 16 },
+  title: { fontFamily: "Inter_700Bold", fontSize: 16, color: COLORS.text },
+  label: { fontFamily: "Inter_400Regular", fontSize: 12, color: COLORS.textMuted },
+  dots: { flexDirection: "row", gap: 14 },
   dot: {
-    width: 14,
-    height: 14,
-    borderRadius: 7,
-    borderWidth: 2,
-    borderColor: COLORS.accent,
+    width: 12, height: 12, borderRadius: 6,
+    borderWidth: 2, borderColor: COLORS.accent,
   },
   dotFilled: { backgroundColor: COLORS.accent },
-  numpad: { flexDirection: "row", flexWrap: "wrap", width: 216, gap: 8 },
-  numKey: {
-    width: 64,
-    height: 64,
+  numpad: { flexDirection: "row", flexWrap: "wrap", width: 204, gap: 6 },
+  key: {
+    width: 62, height: 52,
     borderRadius: 12,
-    backgroundColor: COLORS.card,
+    backgroundColor: COLORS.glass,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: COLORS.glassBorder,
     alignItems: "center",
     justifyContent: "center",
   },
-  numKeyText: { fontFamily: "Inter_700Bold", fontSize: 22, color: COLORS.text },
+  keyText: { fontFamily: "Inter_700Bold", fontSize: 18, color: COLORS.text },
   cancelBtn: {
-    marginTop: 4,
-    paddingVertical: 12,
+    marginTop: 2,
+    paddingVertical: 10,
     paddingHorizontal: 24,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: COLORS.glassBorder,
   },
-  cancelText: {
-    fontFamily: "Inter_500Medium",
-    fontSize: 15,
-    color: COLORS.textMuted,
-  },
+  cancelText: { fontFamily: "Inter_500Medium", fontSize: 13, color: COLORS.textMuted },
 });
 
-const langStyles = StyleSheet.create({
+const sheet = StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: "rgba(0,0,0,0.6)",
+    backgroundColor: "rgba(0,0,0,0.60)",
     justifyContent: "flex-end",
   },
-  sheet: {
-    backgroundColor: COLORS.cardElevated,
+  container: {
+    backgroundColor: COLORS.card,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     borderWidth: 1,
-    borderColor: COLORS.border,
-    paddingBottom: 32,
+    borderColor: COLORS.glassBorder,
+    paddingBottom: 36,
     overflow: "hidden",
   },
   handle: {
-    width: 40,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: COLORS.border,
+    width: 36, height: 4, borderRadius: 2,
+    backgroundColor: COLORS.glassBorder,
     alignSelf: "center",
-    marginVertical: 12,
+    marginTop: 10,
+    marginBottom: 2,
   },
   title: {
     fontFamily: "Inter_700Bold",
-    fontSize: 18,
+    fontSize: 15,
     color: COLORS.text,
     textAlign: "center",
-    marginBottom: 12,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.glassBorder,
   },
   option: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 20,
-    paddingVertical: 14,
-    gap: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 13,
+    gap: 10,
   },
+  optionActive: { backgroundColor: "rgba(192,38,211,0.07)" },
   optionText: {
+    flex: 1,
     fontFamily: "Inter_500Medium",
-    fontSize: 16,
-    color: COLORS.text,
+    fontSize: 14,
+    color: COLORS.textSecondary,
   },
+  optionTextActive: { color: COLORS.text, fontFamily: "Inter_600SemiBold" },
 });
+
 const s = StyleSheet.create({
-  // Screen
   screen: { flex: 1, backgroundColor: COLORS.background },
-  customHeader: {
+
+  // Header
+  header: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: 12,
+    paddingHorizontal: 16,
     paddingBottom: 12,
     borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
+    borderBottomColor: COLORS.glassBorder,
   },
   headerBack: {
-    width: 40,
-    height: 40,
+    width: 36, height: 36,
     alignItems: "center",
     justifyContent: "center",
   },
   headerTitle: {
-    color: COLORS.text,
-    fontSize: 17,
     fontFamily: "Inter_700Bold",
-  },
-  glowTop: {
-    position: "absolute",
-    top: -120,
-    left: -80,
-    width: 260,
-    height: 260,
-    borderRadius: 260,
-    backgroundColor: "rgba(229,9,20,0.10)",
-  },
-  glowBottom: {
-    position: "absolute",
-    right: -90,
-    bottom: 140,
-    width: 230,
-    height: 230,
-    borderRadius: 230,
-    backgroundColor: "rgba(229,9,20,0.07)",
+    fontSize: 16,
+    color: COLORS.text,
   },
 
   // Profile card
   profileCard: {
     marginHorizontal: 16,
-    marginTop: 14,
-    marginBottom: 12,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    backgroundColor: COLORS.card,
+    marginBottom: 14,
+    borderRadius: 16,
     overflow: "hidden",
+    borderWidth: 1,
+    borderColor: COLORS.glassBorder,
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    gap: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 13,
+    gap: 12,
   },
-  avatarBox: { position: "relative" },
+  avatarWrap: { position: "relative" },
   avatar: {
-    width: 58,
-    height: 58,
-    borderRadius: 14,
-    backgroundColor: COLORS.cardElevated,
-    borderWidth: 1.5,
-    borderColor: COLORS.accent,
+    width: 44, height: 44,
+    borderRadius: 12,
+    backgroundColor: COLORS.glass,
+    borderWidth: 1,
+    borderColor: "rgba(192,38,211,0.30)",
     alignItems: "center",
     justifyContent: "center",
     overflow: "hidden",
   },
-  avatarImg: { width: 58, height: 58, borderRadius: 14 },
-  cameraBadge: {
-    position: "absolute",
-    bottom: -3,
-    right: -3,
-    width: 20,
-    height: 20,
+  avatarImg: { width: 44, height: 44, borderRadius: 12 },
+  cameraChip: {
+    position: "absolute", bottom: -2, right: -2,
+    width: 18, height: 18,
     borderRadius: 6,
     backgroundColor: COLORS.accent,
     alignItems: "center",
     justifyContent: "center",
-    borderWidth: 2,
+    borderWidth: 1.5,
     borderColor: COLORS.background,
   },
-  profileMid: { flex: 1, gap: 5 },
-  profileName: {
-    fontFamily: "Inter_700Bold",
-    fontSize: 17,
-    color: COLORS.text,
-  },
-  premiumPill: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-    alignSelf: "flex-start",
-    backgroundColor: COLORS.glass,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-  },
-  premiumPillActive: {
-    backgroundColor: "rgba(255,215,0,0.08)",
-    borderColor: "rgba(255,215,0,0.35)",
-  },
-  premiumPillText: {
-    fontFamily: "Inter_600SemiBold",
-    fontSize: 11,
-    color: COLORS.textMuted,
-  },
-  premiumPillTextActive: { color: COLORS.gold },
-
-  // Stats row
-  statsRow: {
-    flexDirection: "row",
-    marginHorizontal: 16,
-    marginBottom: 10,
-    backgroundColor: COLORS.cardElevated,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    paddingVertical: 14,
-    paddingHorizontal: 8,
-    justifyContent: "space-around",
-  },
-  statItem: { alignItems: "center", gap: 3, flex: 1 },
-  statVal: { fontFamily: "Inter_700Bold", fontSize: 22, color: COLORS.accent },
-  statLbl: {
-    fontFamily: "Inter_400Regular",
-    fontSize: 11,
-    color: COLORS.textMuted,
-  },
-  statDiv: { width: 1, backgroundColor: COLORS.border, alignSelf: "stretch" },
-
-  // Channel bar
-  channelBar: {
-    flexDirection: "row",
-    marginHorizontal: 16,
-    marginBottom: 16,
-    backgroundColor: COLORS.card,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    padding: 12,
-    alignItems: "center",
-  },
-  channelStat: { flex: 1, alignItems: "center", gap: 2 },
-  channelStatNum: {
-    fontFamily: "Inter_700Bold",
-    fontSize: 16,
-    color: COLORS.accent,
-  },
-  channelStatLbl: {
-    fontFamily: "Inter_400Regular",
-    fontSize: 10,
-    color: COLORS.textMuted,
-  },
-  channelDiv: { width: 1, height: 24, backgroundColor: COLORS.border },
-  manageBtn: {
+  profileInfo: { flex: 1, gap: 3 },
+  profileName: { fontFamily: "Inter_600SemiBold", fontSize: 14, color: COLORS.text },
+  premiumBadge: {
     flexDirection: "row",
     alignItems: "center",
     gap: 4,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 10,
-    backgroundColor: COLORS.accentGlow,
+    alignSelf: "flex-start",
+    backgroundColor: COLORS.glass,
+    borderRadius: 99,
     borderWidth: 1,
-    borderColor: COLORS.accent,
+    borderColor: COLORS.glassBorder,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
   },
-  manageBtnText: {
-    fontFamily: "Inter_600SemiBold",
-    fontSize: 11,
-    color: COLORS.accent,
+  premiumBadgeActive: {
+    backgroundColor: "rgba(255,215,0,0.06)",
+    borderColor: "rgba(255,215,0,0.25)",
   },
+  premiumBadgeText: { fontFamily: "Inter_600SemiBold", fontSize: 10, color: COLORS.textMuted },
+  premiumBadgeTextActive: { color: COLORS.gold },
 
-  // Settings groups
-  group: { marginHorizontal: 16, marginBottom: 22 },
-  groupHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 8,
-    paddingHorizontal: 4,
-  },
-  groupTitle: {
-    fontFamily: "Inter_700Bold",
-    fontSize: 11,
-    letterSpacing: 0.9,
+  // Section — identical to more.tsx menuSection
+  section: { marginBottom: 14 },
+  sectionTitle: {
     color: COLORS.textMuted,
+    fontSize: 10,
+    letterSpacing: 1.8,
+    fontFamily: "Inter_700Bold",
+    marginLeft: 18,
+    marginBottom: 8,
+    textTransform: "uppercase",
   },
-  groupCard: {
-    backgroundColor: COLORS.cardElevated,
-    borderRadius: 18,
+  sectionCard: {
+    backgroundColor: COLORS.glass,
+    borderRadius: 16,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: COLORS.glassBorder,
     overflow: "hidden",
+    marginHorizontal: 16,
   },
 
-  // Row
+  // Row — identical to more.tsx menuRow
   row: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 16,
-    paddingVertical: 13,
     gap: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 13,
   },
   rowIcon: {
-    width: 34,
-    height: 34,
-    borderRadius: 10,
-    backgroundColor: COLORS.accentGlow,
+    width: 36, height: 36,
+    borderRadius: 9,
+    backgroundColor: "rgba(192,38,211,0.10)",
+    borderWidth: 1,
+    borderColor: "rgba(192,38,211,0.20)",
     alignItems: "center",
     justifyContent: "center",
   },
-  rowIconDanger: { backgroundColor: COLORS.liveGlow },
-  rowBody: { flex: 1, gap: 2 },
-  rowLabel: { fontFamily: "Inter_500Medium", fontSize: 15, color: COLORS.text },
+  rowIconDanger: {
+    backgroundColor: "rgba(239,68,68,0.10)",
+    borderColor: "rgba(239,68,68,0.20)",
+  },
+  rowBody: { flex: 1 },
+  rowLabel: { fontFamily: "Inter_600SemiBold", fontSize: 14, color: COLORS.text },
   rowLabelDanger: { color: COLORS.live },
   rowSub: {
-    fontFamily: "Inter_400Regular",
-    fontSize: 12,
-    color: COLORS.textMuted,
-    lineHeight: 17,
+    fontFamily: "Inter_500Medium",
+    fontSize: 11,
+    color: COLORS.textSecondary,
+    lineHeight: 16,
+    marginTop: 1,
   },
   rowValue: {
     fontFamily: "Inter_500Medium",
-    fontSize: 13,
-    color: COLORS.textMuted,
+    fontSize: 12,
+    color: COLORS.textSecondary,
     flexShrink: 1,
     textAlign: "right",
-    marginRight: 4,
+    maxWidth: 120,
   },
-  sep: { height: 1, backgroundColor: COLORS.border, marginLeft: 62 },
+  divider: { height: 1, backgroundColor: COLORS.glassBorder, marginLeft: 62 },
 
-  // Language rows
-  langRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 16,
-    paddingVertical: 13,
-    gap: 12,
+  // Badge
+  badge: {
+    backgroundColor: "rgba(192,38,211,0.16)",
+    borderColor: "rgba(192,38,211,0.28)",
+    borderWidth: 1,
+    borderRadius: 99,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
   },
-  langRowActive: { backgroundColor: "rgba(229,9,20,0.07)" },
-  langFlag: { fontSize: 22 },
-  langLabel: {
-    flex: 1,
-    fontFamily: "Inter_500Medium",
-    fontSize: 15,
-    color: COLORS.textSecondary,
-  },
-  langLabelActive: { color: COLORS.text, fontFamily: "Inter_600SemiBold" },
+  badgeText: { fontFamily: "Inter_700Bold", fontSize: 10, color: COLORS.accent },
 });
+

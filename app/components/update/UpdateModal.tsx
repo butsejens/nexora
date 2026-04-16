@@ -26,27 +26,18 @@ import type { UpdateCheckResult } from "@/services/update-decision";
 import { ChangelogEntry, type ChangelogEntryData } from "./ChangelogEntry";
 import { DownloadProgressBar } from "./DownloadProgressBar";
 import { UpdateStateCard, type UpdateStateType } from "./UpdateStateCard";
-import { UpdateTypeBadge, type UpdateType } from "./UpdateTypeBadge";
 import { VersionInfoBlock } from "./VersionInfoBlock";
 
 const CHANGELOG: ChangelogEntryData[] = [
   {
-    version: "2.6.27",
-    date: "2026-04-02",
+    version: "1.0.0",
+    date: "2026-04-16",
     changes: [
-      "Volledige herschrijving van de update-UI met premium design en duidelijke flows.",
-      "Aparte visuele onderscheiding van OTA, APK en geen-update scenario's.",
-      "Verbeterde error handling en fallback behavior.",
+      "Bugfixes en verbeteringen.",
+      "Prestaties geoptimaliseerd.",
+      "Stabiliteit verbeterd.",
     ],
     isCurrent: true,
-  },
-  {
-    version: "2.6.26",
-    date: "2026-04-01",
-    changes: [
-      "Sport-home en match center volledig vernieuwd.",
-      "Oude sport-layout verwijderd en vervangen door premium cards.",
-    ],
   },
 ];
 
@@ -77,14 +68,6 @@ export function UpdateModal({ visible, currentVersion, onClose }: UpdateModalPro
 
     return "checking";
   }, [checking, downloadingApk, result, otaReady]);
-
-  // Determine update type for badge display
-  const updateType = useMemo((): UpdateType => {
-    if (!result || result.kind === "none") return "none";
-    if (result.kind === "ota") return "ota";
-    if (result.kind === "apk") return "apk";
-    return "none";
-  }, [result]);
 
   const handleCheck = useCallback(async () => {
     setChecking(true);
@@ -322,13 +305,6 @@ export function UpdateModal({ visible, currentVersion, onClose }: UpdateModalPro
               />
             </View>
 
-            {/* Update Type Badge */}
-            {updateType !== "none" ? (
-              <View style={styles.section}>
-                <UpdateTypeBadge type={updateType} size="medium" />
-              </View>
-            ) : null}
-
             {/* Download Progress (if downloading) */}
             {downloadingApk ? (
               <View style={styles.section}>
@@ -336,33 +312,6 @@ export function UpdateModal({ visible, currentVersion, onClose }: UpdateModalPro
                   progress={downloadProgress}
                   status="downloading"
                 />
-              </View>
-            ) : null}
-
-            {/* Manifest Details (if available) */}
-            {result?.manifest ? (
-              <View style={styles.section}>
-                <Text style={styles.label}>Versie Details</Text>
-                <View style={styles.detailsGrid}>
-                  <View style={styles.detailChip}>
-                    <Text style={styles.detailLabel}>Native</Text>
-                    <Text style={styles.detailValue}>
-                      {result.manifest.native.version}
-                    </Text>
-                  </View>
-                  <View style={styles.detailChip}>
-                    <Text style={styles.detailLabel}>Runtime</Text>
-                    <Text style={styles.detailValue}>
-                      {result.manifest.ota.runtimeVersion}
-                    </Text>
-                  </View>
-                  <View style={styles.detailChip}>
-                    <Text style={styles.detailLabel}>Server</Text>
-                    <Text style={styles.detailValue}>
-                      {result.manifest.server.version}
-                    </Text>
-                  </View>
-                </View>
               </View>
             ) : null}
 

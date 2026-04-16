@@ -44,10 +44,11 @@ export default function GenrePage() {
   const src = source ?? "genre";
 
   const { data: movieData = [], isFetching: loadingMovies } =
-    useMoviesByGenreAll([numericId], src === "genre" && isMovie && numericId > 0);
+    useMoviesByGenreAll([numericId], src === "genre" && isMovie && numericId > 0, 15);
   const { data: tvData = [], isFetching: loadingSeries } = useTvByGenreAll(
     [numericId],
     src === "genre" && !isMovie && numericId > 0,
+    15,
   );
   // Disney Junior (281) and Boomerang (523) need a relaxed vote-count filter
   const isKidsNetwork = numericId === 281 || numericId === 523;

@@ -40,7 +40,10 @@ function parseMajor(version: string): number {
   return Number.isFinite(major) ? major : 0;
 }
 
-export function resolveIntroVariant(currentVersion: string, previousVersion: string | null): StartupLaunchContext {
+export function resolveIntroVariant(
+  currentVersion: string,
+  previousVersion: string | null,
+): StartupLaunchContext {
   const current = normalizeVersion(currentVersion);
   const previous = previousVersion ? normalizeVersion(previousVersion) : null;
 
@@ -74,15 +77,15 @@ export function resolveIntroVariant(currentVersion: string, previousVersion: str
 export function getIntroTimings(variant: IntroVariant): StartupTimings {
   if (variant === "extended") {
     return {
-      minDurationMs: 3800,
-      maxDurationMs: 9000,
-      skipAfterMs: 2000,
+      minDurationMs: 1800,
+      maxDurationMs: 4500,
+      skipAfterMs: 1000,
     };
   }
 
   return {
-    minDurationMs: 2200,
-    maxDurationMs: 5000,
+    minDurationMs: 600,
+    maxDurationMs: 2500,
     skipAfterMs: 0,
   };
 }
@@ -112,15 +115,21 @@ export function canFinishStartupGate(input: StartupGateInput): boolean {
   return input.introCompleted && elapsedMs >= timings.minDurationMs;
 }
 
-export function resolveEntryRoute(isAuthenticated: boolean): "/(tabs)/home" | "/auth" {
+export function resolveEntryRoute(
+  isAuthenticated: boolean,
+): "/(tabs)/home" | "/auth" {
   return isAuthenticated ? "/(tabs)/home" : "/auth";
 }
 
-export async function loadStartupLaunchContext(currentVersion: string): Promise<StartupLaunchContext> {
+export async function loadStartupLaunchContext(
+  currentVersion: string,
+): Promise<StartupLaunchContext> {
   const previous = await AsyncStorage.getItem(STARTUP_VERSION_KEY);
   return resolveIntroVariant(currentVersion, previous);
 }
 
-export async function persistStartupLaunchContext(context: StartupLaunchContext): Promise<void> {
+export async function persistStartupLaunchContext(
+  context: StartupLaunchContext,
+): Promise<void> {
   await AsyncStorage.setItem(STARTUP_VERSION_KEY, context.currentVersion);
 }

@@ -88,9 +88,11 @@ const EP_CARD_W = W > 820 ? 320 : 270;
 function TmdbEpisodeCard({
   ep,
   onPress,
+  isFree = false,
 }: {
   ep: TmdbEpisode;
   onPress: (episode: TmdbEpisode) => void;
+  isFree?: boolean;
 }) {
   return (
     <Pressable
@@ -135,8 +137,14 @@ function TmdbEpisodeCard({
         </Text>
         <View style={styles.epCardMetaRow}>
           <View style={styles.epCardBadge}>
-            <Ionicons name="sparkles" size={11} color={COLORS.accent} />
-            <Text style={styles.epCardBadgeText}>Inbegrepen in Nexora+</Text>
+            <Ionicons
+              name={isFree ? "lock-open-outline" : "sparkles"}
+              size={11}
+              color={isFree ? "#00C864" : COLORS.accent}
+            />
+            <Text style={[styles.epCardBadgeText, isFree && { color: "#00C864" }]}>
+              {isFree ? "Gratis" : "Nexora+"}
+            </Text>
           </View>
           <Text style={styles.epCardRuntimeText}>
             {getEpisodeRuntimeLabel(ep)}
@@ -299,6 +307,7 @@ function TmdbSeasonsPanel({
           renderItem={({ item }) => (
             <TmdbEpisodeCard
               ep={item}
+              isFree={activeSeasonNumber === 1 && item.episode_number === 1}
               onPress={(episode) => {
                 if (!activeSeasonNumber) return;
                 streamLog("info", "series", "Episode selected", {
@@ -333,7 +342,7 @@ function TmdbSeasonsPanel({
 export default function DetailScreen() {
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{ id: string; type: string }>();
-  const { isFavorite, toggleFavorite } = useNexora();
+  const { isFavorite, toggleFavorite, hasPremium } = useNexora();
 
   // Parse TMDB id like "tmdb_m_550" or "tmdb_s_1668"
   const tmdbParsed = useMemo(() => parseTmdbId(params.id), [params.id]);
@@ -424,6 +433,12 @@ export default function DetailScreen() {
         }));
 
   const handlePlay = () => {
+    // Movies always require Nexora+
+    if (isMovie && !hasPremium("movies")) {
+      router.push("/premium");
+      return;
+    }
+    // Series: handlePlay always launches S1E1 which is free — no gate needed
     const numericTmdbId = parseNumericTmdbId(content.id);
     const firstSeason = series?.seasons?.[0] as any;
     const firstEpisode = firstSeason?.episodes?.[0] as any;
@@ -472,8 +487,14 @@ export default function DetailScreen() {
     seasonNumber: number;
     episode: TmdbEpisode;
   }) => {
-    const numericTmdbId = parseNumericTmdbId(content.id);
     const episodeNumber = Number(episode?.episode_number || 0) || 1;
+    // First episode of season 1 is always free; all others require Nexora+
+    const isFreeEpisode = seasonNumber === 1 && episodeNumber === 1;
+    if (!isFreeEpisode && !hasPremium("series")) {
+      router.push("/premium");
+      return;
+    }
+    const numericTmdbId = parseNumericTmdbId(content.id);
     streamLog("info", "series", "Episode play clicked", {
       contentId: content.id,
       tmdbId: numericTmdbId,
@@ -662,9 +683,17 @@ export default function DetailScreen() {
               ]}
               onPress={handlePlay}
             >
-              <Ionicons name="play" size={18} color="#000" />
+              <Ionicons
+                name={isMovie && !hasPremium("movies") ? "lock-closed" : "play"}
+                size={18}
+                color="#000"
+              />
               <Text style={styles.playBtnText}>
-                {isMovie ? "Bekijk film" : "Bekijk S1E1"}
+                {isMovie
+                  ? hasPremium("movies")
+                    ? "Bekijk film"
+                    : "Nexora+"
+                  : "Gratis · S1E1"}
               </Text>
             </Pressable>
             <Pressable

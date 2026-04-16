@@ -66,7 +66,7 @@ export function runStartupBootstrap(queryClient: QueryClient): BootstrapResult {
     runStartupTask({
       scope: "boot",
       name: "cache-seed",
-      timeoutMs: 2500,
+      timeoutMs: 1200,
       run: async () => {
         await cacheWarmup(bootstrapCacheKeys(today));
       },
@@ -83,7 +83,7 @@ export function runStartupBootstrap(queryClient: QueryClient): BootstrapResult {
     runStartupTask({
       scope: "boot",
       name: "update-check",
-      timeoutMs: 4500,
+      timeoutMs: 2000,
       run: async () => {
         const result = await checkForAppUpdates();
         logStartupEvent("boot", "info", "update-check-result", {

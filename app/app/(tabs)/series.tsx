@@ -180,7 +180,6 @@ const GENRE_ROWS = [
   { title: "Fantasy", id: 10765 },
 ] as const;
 
-
 function mergeUnique(items: Series[]): Series[] {
   const seen = new Set<string>();
   return items.filter((item) => {
@@ -201,18 +200,18 @@ export default function SeriesScreen() {
   const { data: onAir = [] } = useOnAirSeries();
   const { data: popular = [] } = usePopularSeries();
   const { data: topRated = [] } = useTopRatedSeries();
-  const { data: documentaries = [] } = useTvByGenreAll([99], true);
-  const { data: genreActie = [] } = useTvByGenreAll([10759], true);
-  const { data: genreMisdaad = [] } = useTvByGenreAll([80], true);
-  const { data: genreDrama = [] } = useTvByGenreAll([18], true);
-  const { data: genreHorror = [] } = useTvByGenreAll([27], true);
-  const { data: genreKomedie = [] } = useTvByGenreAll([35], true);
-  const { data: genreThriller = [] } = useTvByGenreAll([53], true);
-  const { data: genreFamilie = [] } = useTvByGenreAll([10751], true);
-  const { data: genreFantasy = [] } = useTvByGenreAll([10765], true);
-  const { data: genreMysterie = [] } = useTvByGenreAll([9648], true);
-  const { data: genreRealiteit = [] } = useTvByGenreAll([10764], true);
-  const { data: genreTrueCrime = [] } = useTvByGenreAll([80, 99], true);
+  const { data: documentaries = [] } = useTvByGenreAll([99], true, 3);
+  const { data: genreActie = [] } = useTvByGenreAll([10759], true, 3);
+  const { data: genreMisdaad = [] } = useTvByGenreAll([80], true, 3);
+  const { data: genreDrama = [] } = useTvByGenreAll([18], true, 3);
+  const { data: genreHorror = [] } = useTvByGenreAll([27], true, 3);
+  const { data: genreKomedie = [] } = useTvByGenreAll([35], true, 3);
+  const { data: genreThriller = [] } = useTvByGenreAll([53], true, 3);
+  const { data: genreFamilie = [] } = useTvByGenreAll([10751], true, 3);
+  const { data: genreFantasy = [] } = useTvByGenreAll([10765], true, 3);
+  const { data: genreMysterie = [] } = useTvByGenreAll([9648], true, 3);
+  const { data: genreRealiteit = [] } = useTvByGenreAll([10764], true, 3);
+  const { data: genreTrueCrime = [] } = useTvByGenreAll([80, 99], true, 3);
 
   const heroSeries = useMemo(
     () =>
@@ -290,17 +289,17 @@ export default function SeriesScreen() {
       return out;
     };
 
-    const actie       = pickGenre(mergeUnique(genreActie),     40);
-    const misdaad     = pickGenre(mergeUnique(genreMisdaad),   40);
-    const drama       = pickGenre(mergeUnique(genreDrama),     40);
-    const horror      = pickGenre(mergeUnique(genreHorror),    40);
-    const komedie     = pickGenre(mergeUnique(genreKomedie),   40);
-    const thriller    = pickGenre(mergeUnique(genreThriller),  40);
-    const familie     = pickGenre(mergeUnique(genreFamilie),   40);
-    const fantasy     = pickGenre(mergeUnique(genreFantasy),   40);
-    const mysterie    = pickGenre(mergeUnique(genreMysterie),  40);
-    const realiteit   = pickGenre(mergeUnique(genreRealiteit), 40);
-    const trueCrime   = pickGenre(mergeUnique(genreTrueCrime), 40);
+    const actie = pickGenre(mergeUnique(genreActie), 40);
+    const misdaad = pickGenre(mergeUnique(genreMisdaad), 40);
+    const drama = pickGenre(mergeUnique(genreDrama), 40);
+    const horror = pickGenre(mergeUnique(genreHorror), 40);
+    const komedie = pickGenre(mergeUnique(genreKomedie), 40);
+    const thriller = pickGenre(mergeUnique(genreThriller), 40);
+    const familie = pickGenre(mergeUnique(genreFamilie), 40);
+    const fantasy = pickGenre(mergeUnique(genreFantasy), 40);
+    const mysterie = pickGenre(mergeUnique(genreMysterie), 40);
+    const realiteit = pickGenre(mergeUnique(genreRealiteit), 40);
+    const trueCrime = pickGenre(mergeUnique(genreTrueCrime), 40);
 
     return {
       topTenSeries,
@@ -308,8 +307,17 @@ export default function SeriesScreen() {
       onAirRail,
       topTenDocu,
       bestRated,
-      actie, misdaad, drama, horror, komedie,
-      thriller, familie, fantasy, mysterie, realiteit, trueCrime,
+      actie,
+      misdaad,
+      drama,
+      horror,
+      komedie,
+      thriller,
+      familie,
+      fantasy,
+      mysterie,
+      realiteit,
+      trueCrime,
     };
   }, [
     popular,
@@ -345,7 +353,19 @@ export default function SeriesScreen() {
           {heroSeries ? (
             <TabHero item={heroSeries} badge="Nexora Series" />
           ) : null}
-          <GenreButtonRow genres={GENRE_ROWS} />
+          <GenreButtonRow
+            genres={GENRE_ROWS}
+            onPress={(genre) =>
+              router.push({
+                pathname: "/media/genre",
+                params: {
+                  genreId: String(genre.id),
+                  genreTitle: genre.title,
+                  type: "series",
+                },
+              })
+            }
+          />
 
           {/* Big numbered Top 10 */}
           <TopTenRail
@@ -399,7 +419,11 @@ export default function SeriesScreen() {
             onSeeAll={() =>
               router.push({
                 pathname: "/media/genre",
-                params: { genreId: "9648", genreTitle: "Mystery", type: "series" },
+                params: {
+                  genreId: "9648",
+                  genreTitle: "Mystery",
+                  type: "series",
+                },
               })
             }
           />
@@ -435,7 +459,11 @@ export default function SeriesScreen() {
             onSeeAll={() =>
               router.push({
                 pathname: "/media/genre",
-                params: { genreId: "35", genreTitle: "Komedie", type: "series" },
+                params: {
+                  genreId: "35",
+                  genreTitle: "Komedie",
+                  type: "series",
+                },
               })
             }
           />
@@ -466,7 +494,11 @@ export default function SeriesScreen() {
             onSeeAll={() =>
               router.push({
                 pathname: "/media/genre",
-                params: { genreId: "10751", genreTitle: "Familie", type: "series" },
+                params: {
+                  genreId: "10751",
+                  genreTitle: "Familie",
+                  type: "series",
+                },
               })
             }
           />

@@ -7,6 +7,7 @@ import React, {
 } from "react";
 import {
   ActivityIndicator,
+  Dimensions,
   Modal,
   PanResponder,
   Platform,
@@ -112,13 +113,22 @@ export default function PlayerScreen() {
     };
   }, []);
 
-  // Swipe right → go back (native fullscreen gesture)
+  // Swipe right from TOP-RIGHT corner only → go back
+  // Checks gs.x0 and gs.y0 to restrict to top-right of screen.
   const swipeBack = useRef(
     PanResponder.create({
-      onMoveShouldSetPanResponder: (_, gs) =>
-        gs.dx > 15 && Math.abs(gs.dy) < 60,
+      onMoveShouldSetPanResponder: (_, gs) => {
+        const { width } = Dimensions.get("window");
+        // Only activate when touch started in top-right corner (right 40%, top 140px)
+        return (
+          gs.x0 > width * 0.6 &&
+          gs.y0 < 140 &&
+          gs.dx > 15 &&
+          Math.abs(gs.dy) < 60
+        );
+      },
       onPanResponderRelease: (_, gs) => {
-        if (gs.dx > 80 && Math.abs(gs.dy) < 60) goBackSafe();
+        if (gs.dx > 60 && Math.abs(gs.dy) < 80) goBackSafe();
       },
     }),
   ).current;
@@ -698,6 +708,8 @@ function EmbedWebView({
           allow="autoplay; fullscreen; encrypted-media; picture-in-picture"
           allowFullScreen
           referrerPolicy="no-referrer"
+          // @ts-ignore sandbox is a valid web iframe attribute
+          sandbox="allow-scripts allow-same-origin allow-forms allow-presentation allow-pointer-lock"
           style={{
             width: "100%",
             height: "100%",

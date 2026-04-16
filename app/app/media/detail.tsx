@@ -1048,6 +1048,9 @@ export default function MediaDetailScreen() {
               mediaPlaybackRequiresUserAction={false}
               javaScriptEnabled
               domStorageEnabled
+              javaScriptCanOpenWindowsAutomatically={false}
+              setSupportMultipleWindows={false}
+              allowsBackForwardNavigationGestures={false}
             />
           ) : (
             <View style={styles.trailerFallback}>

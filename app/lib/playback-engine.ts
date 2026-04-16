@@ -96,10 +96,10 @@ const FALLBACK_PROVIDERS = [
   { id: "2embedorg", label: "Server 13" },
 ];
 
-// Dynamic provider cache — refreshed from server on each app cold start
+// Dynamic provider cache — refreshed from server every 6 hours
 let dynamicProviders: DynamicProvider[] | null = null;
 let dynamicFetchedAt = 0;
-const DYNAMIC_TTL = 60 * 60 * 1000; // 1 hour
+const DYNAMIC_TTL = 6 * 60 * 60 * 1000; // 6 hours — matches server check interval
 
 export const PREFERRED_SERVER_LABELS = FALLBACK_PROVIDERS.map(
   (provider) => provider.label,
@@ -135,6 +135,11 @@ function getStreamProviders(): { id: string; label: string }[] {
 /** Refresh dynamic providers in background (non-blocking) */
 export function refreshStreamProviders(): void {
   fetchDynamicProviders().catch(() => {});
+}
+
+/** Returns  labels of the currently active providers (dynamic or fallback) */
+export function getActiveProviderLabels(): string[] {
+  return getStreamProviders().map((p) => p.label);
 }
 
 /** Build embed URL from dynamic data or hardcoded switch */
