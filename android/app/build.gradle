@@ -118,6 +118,10 @@ android {
         // AdMob Application ID injected from CI secret or falls back to Google's test ID.
         def admobId = System.getenv("EXPO_PUBLIC_ADMOB_ANDROID_APP_ID") ?: "ca-app-pub-3940256099942544~3347511713"
         manifestPlaceholders = [admobAppId: admobId]
+
+        ndk {
+            abiFilters "arm64-v8a", "x86_64"
+        }
     }
     signingConfigs {
         debug {
