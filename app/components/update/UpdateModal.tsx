@@ -70,6 +70,7 @@ export function UpdateModal({ visible, currentVersion, onClose }: UpdateModalPro
   }, [checking, downloadingApk, result, otaReady]);
 
   const handleCheck = useCallback(async () => {
+    setResult(null);
     setChecking(true);
     setOtaReady(false);
     setDownloadingApk(false);
@@ -211,12 +212,12 @@ export function UpdateModal({ visible, currentVersion, onClose }: UpdateModalPro
     }
   }, [result, otaReady, handleCheck]);
 
-  // Auto-check on open
+  // Auto-check on open (always recheck when modal becomes visible)
   useEffect(() => {
-    if (visible && !result) {
+    if (visible) {
       void handleCheck();
     }
-  }, [visible, result, handleCheck]);
+  }, [visible, handleCheck]);
 
   // Determine button label and action
   const getButtonConfig = () => {

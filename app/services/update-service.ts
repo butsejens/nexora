@@ -133,7 +133,7 @@ function normalizeManifest(raw: unknown): UpdateManifest {
         buildId: safeString(value.native?.apk?.buildId) || null,
         checksumSha256: safeString(value.native?.apk?.checksumSha256) || null,
         signature: safeString(value.native?.apk?.signature) || null,
-        downloadUrl: safeString(value.native?.apk?.downloadUrl) || null,
+        downloadUrl: safeString(value.native?.apk?.downloadUrl || value.native?.apk?.url) || null,
         validatedAt: safeString(value.native?.apk?.validatedAt) || null,
         unavailableReason: safeString(value.native?.apk?.unavailableReason) || null,
         fallbackMessage: safeString(

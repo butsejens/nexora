@@ -1,12 +1,12 @@
 {
   "runs": [
     {
-      "at": "2026-04-02T09:05:15.848Z",
+      "at": "2026-04-16T19:57:00.000Z",
       "mode": "apk",
       "route": "apk",
-      "version": "2.6.33",
-      "commitSha": "29681b9",
-      "apkUrl": "https://github.com/butsejens/nexora/releases/download/v2.6.33/nexora-v2.6.33.apk"
+      "version": "1.0.0",
+      "commitSha": "98b7e08",
+      "apkUrl": "https://github.com/butsejens/nexora/releases/download/v1.0.0/nexora-v1.0.0.apk"
     }
   ]
 }
