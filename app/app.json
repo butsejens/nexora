@@ -2,8 +2,8 @@
   "expo": {
     "name": "CINELOG",
     "slug": "nexora-sports-stream",
-    "version": "1.0.6",
-    "runtimeVersion": "1.0.6",
+    "version": "1.0.7",
+    "runtimeVersion": "1.0.7",
     "updates": {
       "enabled": true,
       "checkAutomatically": "ON_LOAD",
@@ -48,9 +48,9 @@
       "icon": "./assets/images/logo.png",
       "adaptiveIcon": {
         "backgroundColor": "#0B0F17",
-        "foregroundImage": "./assets/images/logo.png",
+        "foregroundImage": "./assets/images/android-icon-foreground.png",
         "backgroundImage": "./assets/images/android-icon-background.png",
-        "monochromeImage": "./assets/images/logo.png"
+        "monochromeImage": "./assets/images/android-icon-monochrome.png"
       }
     },
     "web": {

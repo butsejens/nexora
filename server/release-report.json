@@ -1,38 +1,11 @@
 {
-  "runs": [
-    {
-      "at": "2026-08-04T16:56:42.055Z",
-      "mode": "apk",
-      "route": "manual-release",
-      "version": "1.0.6",
-      "commitSha": "8f2eecfee9fd146134d0998a90aabc06d9236187",
-      "apkUrl": "https://github.com/butsejens/nexora/releases/download/v1.0.6/nexora-v1.0.6.apk",
-      "checksumSha256": "205e0c3ef3cef0b0c0a6f326b684ae39ac7c177efd088adffc5f027b062d88e3"
-    },
-    {
-      "at": "2026-08-04T16:51:05.851Z",
-      "mode": "apk",
-      "route": "manual-release",
-      "version": "1.0.6",
-      "commitSha": "dc548d621a267d2f1c12ca83b2fd0f90c618c349",
-      "apkUrl": "https://github.com/butsejens/nexora/releases/download/v1.0.6/nexora-v1.0.6.apk",
-      "checksumSha256": "1b65caeabc5994791dfdc9873b3229e12a9daca9dc95ed7ae2edbf065a1d6e39"
-    },
-    {
-      "at": "2026-04-16T19:57:00.000Z",
-      "mode": "apk",
-      "route": "apk",
-      "version": "1.0.0",
-      "commitSha": "98b7e08",
-      "apkUrl": "https://github.com/butsejens/nexora/releases/download/v1.0.0/nexora-v1.0.0.apk"
-    },
-    {
-      "at": "2026-04-16T22:47:30.000Z",
-      "mode": "apk",
-      "route": "apk",
-      "version": "1.0.1",
-      "commitSha": "638ae98",
-      "apkUrl": "https://github.com/butsejens/nexora/releases/download/v1.0.1/nexora-v1.0.1.apk"
-    }
-  ]
+  "generatedAt": "2026-08-04T18:47:02.442Z",
+  "latest": {
+    "version": "1.0.7",
+    "apkUrl": "https://github.com/butsejens/nexora/releases/download/v1.0.7/nexora-v1.0.7.apk"
+  },
+  "previous": {
+    "version": "1.0.6",
+    "apkUrl": "https://github.com/butsejens/nexora/releases/download/v1.0.6/nexora-v1.0.6.apk"
+  }
 }
