@@ -1,7 +1,7 @@
 {
   "name": "expo-app",
   "main": "expo-router/entry",
-  "version": "1.0.7",
+  "version": "1.0.9",
   "scripts": {
     "postinstall": "patch-package || true",
     "poster:icons": "node scripts/build-poster-brand-icons.mjs",
@@ -17,7 +17,7 @@
     "lint:fix": "npx expo lint --fix",
     "ota:production": "NODE_ENV=production node ../scripts/require-macbook.mjs && NODE_ENV=production node ../scripts/enforce-env-policy.mjs release && NODE_ENV=production npx eas-cli update --branch production --message \"nexora-ota-production\"",
     "ota:preview": "NODE_ENV=production node ../scripts/require-macbook.mjs && NODE_ENV=production node ../scripts/enforce-env-policy.mjs release && NODE_ENV=production npx eas-cli update --branch preview --message \"nexora-ota-preview\"",
-    "release:apk": "NODE_ENV=production node ../scripts/require-macbook.mjs && NODE_ENV=production node ../scripts/enforce-env-policy.mjs release && cd android && NODE_ENV=production ./gradlew assembleRelease -x externalNativeBuildDebug && cd .. && NODE_ENV=production node ../scripts/cleanup-old-apks.mjs",
+    "release:apk": "NODE_ENV=production node ../scripts/require-macbook.mjs && NODE_ENV=production node ../scripts/enforce-env-policy.mjs release && cd ../android && NODE_ENV=production ./gradlew assembleRelease -x externalNativeBuildDebug && cd .. && NODE_ENV=production node scripts/cleanup-old-apks.mjs",
     "release:ci": "cd ../android && NODE_ENV=production ./gradlew clean assembleRelease -PreactNativeArchitectures=arm64-v8a,armeabi-v7a --no-daemon --stacktrace",
     "android": "expo run:android",
     "ios": "expo run:ios"

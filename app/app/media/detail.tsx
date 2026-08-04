@@ -22,6 +22,7 @@ import WebView from "react-native-webview";
 
 import { COLORS } from "@/constants/colors";
 import { apiRequest } from "@/lib/query-client";
+import { tmdbImg } from "@/lib/tmdb";
 import { useNexora } from "@/context/NexoraContext";
 import { streamLog } from "@/lib/stream-logger";
 import { buildTrailerCandidates } from "@/features/media/services/trailerService";
@@ -47,16 +48,34 @@ function parseNumericTmdbId(id: string): string {
   return /^\d+$/.test(value) ? value : "";
 }
 
+function normalizeTmdbImage(value: unknown, size: "w780" | "w1280" | "original" = "w1280"): string | null {
+  const uri = String(value || "").trim();
+  if (!uri) return null;
+  if (/^https?:\/\//i.test(uri)) {
+    const tmdbMatch = uri.match(/\/t\/p\/(?:original|w\d+)(\/.*)$/i);
+    if (!tmdbMatch?.[1]) return uri;
+    return tmdbImg(tmdbMatch[1], size);
+  }
+  if (uri.startsWith("/")) return tmdbImg(uri, size);
+  return uri;
+}
+
 function toPoster(raw: any) {
-  return raw?.poster || raw?.posterUri || raw?.poster_path || null;
+  return (
+    normalizeTmdbImage(raw?.posterUri, "original") ||
+    normalizeTmdbImage(raw?.poster, "original") ||
+    normalizeTmdbImage(raw?.poster_path, "original") ||
+    null
+  );
 }
 
 function toBackdrop(raw: any) {
   return (
-    raw?.backdrop ||
-    raw?.backdropUri ||
-    raw?.backdrop_path ||
-    raw?.poster ||
+    normalizeTmdbImage(raw?.backdropUri, "original") ||
+    normalizeTmdbImage(raw?.backdrop, "original") ||
+    normalizeTmdbImage(raw?.backdrop_path, "original") ||
+    normalizeTmdbImage(raw?.posterUri, "w1280") ||
+    normalizeTmdbImage(raw?.poster, "w1280") ||
     null
   );
 }
@@ -214,14 +233,31 @@ async function fetchSeasonEpisodes(id: string, season: number) {
 async function fetchTrailerKey(
   tmdbId: string,
   type: "movie" | "series",
-): Promise<string> {
+): Promise<{ key: string; candidates: string[] }> {
   try {
     const route = `/api/trailer/${encodeURIComponent(tmdbId)}?type=${type}`;
     const res = await apiRequest("GET", route);
     const data = await res.json();
-    return String(data?.key || "").trim();
+    const out = new Set<string>();
+    const primary = String(data?.key || "").trim();
+    if (/^[A-Za-z0-9_-]{6,}$/.test(primary)) out.add(primary);
+
+    const candidates = Array.isArray(data?.candidates) ? data.candidates : [];
+    for (const candidate of candidates) {
+      const direct = String(candidate?.key || "").trim();
+      if (/^[A-Za-z0-9_-]{6,}$/.test(direct)) out.add(direct);
+      const fromUrl = buildTrailerCandidates(
+        candidate?.url || candidate?.trailerUrl || "",
+      );
+      for (const key of fromUrl) out.add(key);
+    }
+
+    return {
+      key: primary,
+      candidates: Array.from(out),
+    };
   } catch {
-    return "";
+    return { key: "", candidates: [] };
   }
 }
 
@@ -278,6 +314,7 @@ export default function MediaDetailScreen() {
   const [seasonSheetOpen, setSeasonSheetOpen] = useState(false);
   const [episodeQuery, setEpisodeQuery] = useState("");
   const [episodesModalOpen, setEpisodesModalOpen] = useState(false);
+  const [trailerFailedAll, setTrailerFailedAll] = useState(false);
   const faved = isFavorite(id, type);
 
   const detailQuery = useQuery({
@@ -392,8 +429,12 @@ export default function MediaDetailScreen() {
   const overview = String(
     detail?.overview || detail?.synopsis || params.overview || "",
   );
-  const poster = toPoster(detail) || params.poster || null;
-  const backdrop = toBackdrop(detail) || params.backdrop || poster;
+  const poster =
+    toPoster(detail) || normalizeTmdbImage(params.poster, "original") || null;
+  const backdrop =
+    toBackdrop(detail) ||
+    normalizeTmdbImage(params.backdrop, "original") ||
+    poster;
   const year = toYear(
     detail?.releaseDate || detail?.firstAirDate || detail?.year || params.year,
   );
@@ -430,23 +471,86 @@ export default function MediaDetailScreen() {
   }, [detail?.crew]);
 
   const trailerKeyFromDetail = useMemo(() => toTrailerKey(detail), [detail]);
+  const trailerKeysFromDetail = useMemo(() => {
+    const keys = new Set<string>();
+    if (trailerKeyFromDetail) keys.add(trailerKeyFromDetail);
+
+    if (Array.isArray(detail?.trailerCandidates)) {
+      for (const candidate of detail.trailerCandidates) {
+        const direct = String(candidate?.key || "").trim();
+        if (/^[A-Za-z0-9_-]{6,}$/.test(direct)) keys.add(direct);
+        const extracted = buildTrailerCandidates(
+          candidate?.key || candidate?.url || candidate?.trailerUrl || "",
+        );
+        for (const key of extracted) keys.add(key);
+      }
+    }
+
+    const fallbackExtracted = buildTrailerCandidates(
+      detail?.trailerUrl || detail?.embedUrl || "",
+    );
+    for (const key of fallbackExtracted) keys.add(key);
+
+    if (Array.isArray(detail?.videos)) {
+      for (const video of detail.videos) {
+        if (String(video?.site || "").toLowerCase() !== "youtube") continue;
+        if (!/trailer|teaser/i.test(String(video?.type || ""))) continue;
+        const direct = String(video?.key || "").trim();
+        if (/^[A-Za-z0-9_-]{6,}$/.test(direct)) keys.add(direct);
+      }
+    }
+
+    return Array.from(keys);
+  }, [detail, trailerKeyFromDetail]);
 
   // Fallback: fetch trailer separately if detail didn't include one
   const trailerFallbackQuery = useQuery({
     queryKey: ["media-detail-v2", "trailer", type, id],
     queryFn: () => fetchTrailerKey(resolvedTmdbId || id, type),
-    enabled: Boolean(id) && Boolean(detail) && !trailerKeyFromDetail,
+    enabled: Boolean(id) && Boolean(detail),
     staleTime: 60 * 60_000,
   });
 
-  const trailerKey =
-    trailerKeyFromDetail || String(trailerFallbackQuery.data || "").trim();
-  const trailerUrl = trailerKey
-    ? `https://www.youtube.com/embed/${encodeURIComponent(trailerKey)}?autoplay=1&playsinline=1&rel=0&modestbranding=1&controls=1`
+  const trailerKeys = useMemo(() => {
+    const keys = new Set<string>();
+    for (const key of trailerKeysFromDetail) keys.add(key);
+    const fallbackPrimary = String(trailerFallbackQuery.data?.key || "").trim();
+    if (/^[A-Za-z0-9_-]{6,}$/.test(fallbackPrimary)) keys.add(fallbackPrimary);
+    const fallbackCandidates = Array.isArray(trailerFallbackQuery.data?.candidates)
+      ? trailerFallbackQuery.data.candidates
+      : [];
+    for (const key of fallbackCandidates) {
+      if (/^[A-Za-z0-9_-]{6,}$/.test(String(key || "").trim())) {
+        keys.add(String(key || "").trim());
+      }
+    }
+    return Array.from(keys);
+  }, [trailerKeysFromDetail, trailerFallbackQuery.data]);
+
+  const [trailerCandidateIndex, setTrailerCandidateIndex] = useState(0);
+
+  useEffect(() => {
+    setTrailerCandidateIndex(0);
+    setTrailerFailedAll(false);
+  }, [id, type]);
+
+  const activeTrailerKey = trailerKeys[trailerCandidateIndex] || "";
+  const trailerUrl = activeTrailerKey && !trailerFailedAll
+    ? `https://www.youtube-nocookie.com/embed/${encodeURIComponent(activeTrailerKey)}?autoplay=1&playsinline=1&rel=0&modestbranding=1&controls=1&enablejsapi=1`
     : "";
-  const hasTrailer = Boolean(trailerKey);
+  const hasTrailer = trailerKeys.length > 0;
   const trailerLoading =
-    !trailerKeyFromDetail && trailerFallbackQuery.isLoading;
+    trailerKeys.length === 0 && trailerFallbackQuery.isLoading;
+
+  const handleTrailerWebError = useCallback(() => {
+    setTrailerCandidateIndex((current) => {
+      if (current >= trailerKeys.length - 1) {
+        setTrailerFailedAll(true);
+        return current;
+      }
+      return current + 1;
+    });
+  }, [trailerKeys.length]);
 
   const handlePlayEpisode = useCallback(
     (seasonNum: number, episodeNum: number) => {
@@ -730,6 +834,8 @@ export default function MediaDetailScreen() {
                 ]}
                 onPress={() => {
                   if (!hasTrailer) return;
+                  setTrailerFailedAll(false);
+                  setTrailerCandidateIndex(0);
                   setTrailerOpen(true);
                 }}
                 disabled={!hasTrailer && !trailerLoading}
@@ -1284,6 +1390,7 @@ export default function MediaDetailScreen() {
           </View>
           {trailerUrl ? (
             <WebView
+              key={activeTrailerKey}
               source={{ uri: trailerUrl }}
               style={styles.trailerWebView}
               allowsInlineMediaPlayback
@@ -1293,6 +1400,8 @@ export default function MediaDetailScreen() {
               javaScriptCanOpenWindowsAutomatically={false}
               setSupportMultipleWindows={false}
               allowsBackForwardNavigationGestures={false}
+              onError={handleTrailerWebError}
+              onHttpError={handleTrailerWebError}
             />
           ) : (
             <View style={styles.trailerFallback}>

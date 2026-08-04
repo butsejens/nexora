@@ -9,6 +9,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { COLORS } from "@/constants/colors";
 import {
@@ -27,6 +28,31 @@ import { ChangelogEntry, type ChangelogEntryData } from "./ChangelogEntry";
 import { DownloadProgressBar } from "./DownloadProgressBar";
 import { UpdateStateCard, type UpdateStateType } from "./UpdateStateCard";
 import { VersionInfoBlock } from "./VersionInfoBlock";
+
+const OTA_READY_KEY = "nexora_ota_ready_v1";
+
+type OtaReadyRecord = {
+  ready: boolean;
+  nativeVersion: string;
+  runtimeVersion: string;
+  updatedAt?: string;
+};
+
+function parseOtaReadyRecord(value: string | null): OtaReadyRecord | null {
+  if (!value) return null;
+  try {
+    const parsed = JSON.parse(value) as Partial<OtaReadyRecord>;
+    if (!parsed || parsed.ready !== true) return null;
+    return {
+      ready: true,
+      nativeVersion: String(parsed.nativeVersion || ""),
+      runtimeVersion: String(parsed.runtimeVersion || ""),
+      updatedAt: typeof parsed.updatedAt === "string" ? parsed.updatedAt : undefined,
+    };
+  } catch {
+    return null;
+  }
+}
 
 const CHANGELOG: ChangelogEntryData[] = [
   {
@@ -78,6 +104,23 @@ export function UpdateModal({ visible, currentVersion, onClose }: UpdateModalPro
     try {
       const next = await checkForAppUpdates({ currentVersion });
       setResult(next);
+      if (next.kind === "ota") {
+        const ready = parseOtaReadyRecord(await AsyncStorage.getItem(OTA_READY_KEY));
+        const isMatching =
+          ready != null &&
+          ready.nativeVersion === next.currentNativeVersion &&
+          ready.runtimeVersion === next.currentRuntimeVersion;
+
+        if (isMatching) {
+          setOtaReady(true);
+        } else {
+          await AsyncStorage.removeItem(OTA_READY_KEY).catch(() => undefined);
+          setOtaReady(false);
+        }
+      } else {
+        await AsyncStorage.removeItem(OTA_READY_KEY).catch(() => undefined);
+        setOtaReady(false);
+      }
     } catch (error) {
       console.error("[UpdateModal] Check failed:", error);
       setResult({
@@ -109,6 +152,7 @@ export function UpdateModal({ visible, currentVersion, onClose }: UpdateModalPro
     if (result.kind === "ota") {
       if (otaReady) {
         try {
+          await AsyncStorage.removeItem(OTA_READY_KEY);
           await reloadToLatestUpdate();
         } catch (error) {
           Alert.alert(
@@ -126,6 +170,15 @@ export function UpdateModal({ visible, currentVersion, onClose }: UpdateModalPro
       try {
         await prepareOtaUpdate();
         setOtaReady(true);
+        await AsyncStorage.setItem(
+          OTA_READY_KEY,
+          JSON.stringify({
+            ready: true,
+            nativeVersion: result.manifest?.native?.version || result.currentNativeVersion,
+            runtimeVersion: result.currentRuntimeVersion,
+            updatedAt: new Date().toISOString(),
+          }),
+        );
         setResult((prev) =>
           prev
             ? {
@@ -137,6 +190,8 @@ export function UpdateModal({ visible, currentVersion, onClose }: UpdateModalPro
         );
       } catch (error) {
         console.error("[UpdateModal] OTA download failed:", error);
+        setOtaReady(false);
+        await AsyncStorage.removeItem(OTA_READY_KEY).catch(() => undefined);
         Alert.alert(
           "OTA download mislukt",
           error instanceof Error ? error.message : "Kon OTA niet downloaden.",
@@ -230,7 +285,7 @@ export function UpdateModal({ visible, currentVersion, onClose }: UpdateModalPro
     }
 
     if (!result || result.kind === "none" || result.kind === "server" || result.kind === "error" || result.kind === "apk-unavailable") {
-      return { label: "Controleer op updates", disabled: false, icon: "refresh-outline" };
+      return { label: "Controleer op updates", disabled: false, icon: "refresh" };
     }
 
     if (result.kind === "ota") {
@@ -244,7 +299,7 @@ export function UpdateModal({ visible, currentVersion, onClose }: UpdateModalPro
       return { label: "Download APK update", disabled: false, icon: "package-down" };
     }
 
-    return { label: "Controleer opnieuw", disabled: false, icon: "refresh-outline" };
+    return { label: "Controleer opnieuw", disabled: false, icon: "refresh" };
   };
 
   const buttonConfig = getButtonConfig();
