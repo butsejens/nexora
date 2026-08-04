@@ -1,8 +1,18 @@
 {
   "expo": {
+    "name": "CINELOG",
+    "slug": "nexora-sports-stream",
+    "version": "1.0.6",
+    "runtimeVersion": "1.0.6",
     "extra": {
       "eas": {
-        "projectId": "6a0210f6-7996-425a-8bc9-e41e5a41b5a6"
+        "projectId": "d41d5b43-95e5-427b-b25f-780826d001e8"
+      }
+    },
+    "updates": {
+      "url": "https://u.expo.dev/d41d5b43-95e5-427b-b25f-780826d001e8",
+      "requestHeaders": {
+        "expo-channel-name": "production"
       }
     }
   }
