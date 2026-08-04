@@ -19,7 +19,6 @@ type MenuItem = {
 
 const MENU_ITEMS: MenuItem[] = [
   { label: "Home", route: APP_SHELL_TABS.home, icon: "home-outline" },
-  { label: "Live TV", route: "/(tabs)/live-tv", icon: "tv-outline" },
   { label: "Movies", route: "/(tabs)/movies", icon: "film-outline" },
   { label: "Series", route: "/(tabs)/series", icon: "play-circle-outline" },
   { label: "My List", route: "/(tabs)/my-list", icon: "bookmark-outline" },
@@ -95,7 +94,7 @@ export function NexoraMenuOverlay() {
           ]}
         >
           <View style={styles.headerRow}>
-            <Text style={styles.brand}>NEXORA</Text>
+            <Text style={styles.brand}>CINELOG</Text>
             <ScalePress onPress={closeMenu} style={styles.closeWrap}>
               <View style={styles.closeBtn}>
                 <Ionicons name="close" size={20} color={COLORS.text} />

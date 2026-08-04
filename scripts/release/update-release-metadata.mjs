@@ -43,20 +43,49 @@ function main() {
   const timestamp = nowIso();
 
   if (mode === "ota") {
+    manifest.ota.channel = "production";
+    manifest.ota.runtimeVersion = version;
+    manifest.ota.strategy = "expo-updates";
     manifest.ota.releasedAt = timestamp;
-    manifest.server.message = "Server deploys are independent from OTA bundles and APK releases.";
+    manifest.server.message =
+      "Server deploys are independent from OTA bundles and APK releases.";
   } else if (mode === "apk") {
+    const fileName = apkUrl ? String(apkUrl).split("/").pop() : `nexora-v${version}.apk`;
+    const versionCode = buildVersionCode(version);
     manifest.native.version = version;
-    manifest.native.versionCode = buildVersionCode(version);
+    manifest.native.versionCode = versionCode;
     manifest.native.buildId = `android-${version}`;
+    manifest.native.required = false;
     manifest.native.releasedAt = timestamp;
-    manifest.native.apk.url = apkUrl;
-    manifest.native.apk.fileName = apkUrl ? String(apkUrl).split("/").pop() : null;
-    manifest.native.apk.provider = "github-releases";
     manifest.native.notes = [
       `Native build published for ${version}`,
       `Commit: ${commitSha}`,
+      `Runtime/OTA channel aligned for automatic Expo Updates`,
     ];
+    if (!manifest.native.apk || typeof manifest.native.apk !== "object") {
+      manifest.native.apk = {};
+    }
+    Object.assign(manifest.native.apk, {
+      available: Boolean(apkUrl),
+      provider: "github-releases",
+      source: "github",
+      downloadUrl: apkUrl,
+      // keep legacy key for older consumers
+      url: apkUrl,
+      fileName,
+      contentType: "application/vnd.android.package-archive",
+      versionName: version,
+      versionCode,
+      buildId: `android-${version}`,
+      validatedAt: timestamp,
+      unavailableReason: apkUrl ? null : "APK URL ontbreekt",
+      fallbackMessage:
+        "Download de nieuwste APK via de GitHub releases pagina als de download niet werkt.",
+    });
+    if (!manifest.endpoints || typeof manifest.endpoints !== "object") {
+      manifest.endpoints = {};
+    }
+    manifest.endpoints.apkDownloadUrl = apkUrl;
     appVersion.version = version;
     appVersion.apkUrl = apkUrl;
   } else if (mode === "server") {

@@ -67,7 +67,7 @@
     "legalSub": "Privacy, rechten en takedown-beleid",
     "home": "Home",
     "library": "Bibliotheek",
-    "nexoraMenu": "NEXORA MENU"
+    "nexoraMenu": "CINELOG MENU"
   },
   "sportHub": {
     "title": "SPORT",
@@ -141,7 +141,7 @@
   },
   "searchScreen": {
     "placeholder": "Zoek spelers, teams, competities, films, series...",
-    "title": "Zoek NEXORA",
+    "title": "Zoek CINELOG",
     "subtitle": "Vind sportteams, competities of je favoriete films en series",
     "recentSearches": "Recente zoekopdrachten",
     "noResults": "Geen resultaten gevonden",
@@ -206,7 +206,7 @@
   "settings": {
     "subtitle": "Jouw profiel, playlists en streaming instellingen",
     "mainProfile": "Hoofdprofiel",
-    "premium": "NEXORA Premium",
+    "premium": "CINELOG Premium",
     "upgradePremium": "Upgrade naar Premium",
     "favorites": "Favorieten",
     "watched": "Bekeken",
@@ -257,7 +257,7 @@
     "appVersion": "App Versie",
     "softwareVersion": "Software Versie",
     "checkUpdates": "Controleer op updates",
-    "rateApp": "Beoordeel NEXORA",
+    "rateApp": "Beoordeel CINELOG",
     "rateTitle": "Bedankt!",
     "rateMessage": "Je beoordeling helpt ons verbeteren...",
     "support": "Support",
@@ -273,7 +273,7 @@
     "languageSpanish": "Spaans (Español)",
     "languagePortuguese": "Portugees (Português)",
     "settingsTitle": "INSTELLINGEN",
-    "nexoraSettings": "NEXORA INSTELLINGEN",
+    "nexoraSettings": "CINELOG INSTELLINGEN",
     "modules": "Modules",
     "sportsModule": "Sportmodule",
     "moviesAndSeries": "Films en series",
@@ -459,7 +459,7 @@
     "highlightsUnavailable": "Hoogtepunten nog niet beschikbaar",
     "matchRating": "Wedstrijdrating",
     "premiumAIAnalysis": "Premium AI Analyse",
-    "premiumAIDesc": "Krijg toegang tot geavanceerde AI match analyse, voorspellingen, tactische inzichten en live analyse met Nexora Premium.",
+    "premiumAIDesc": "Krijg toegang tot geavanceerde AI match analyse, voorspellingen, tactische inzichten en live analyse met Cinelog Premium.",
     "preMatchLoading": "Pre-match AI analyse wordt voorbereid...",
     "preMatchBasis": "Vaste analyse op basis van vorm en context",
     "preMatchLabel": "PRE-MATCH ANALYSE (VAST)",
@@ -703,7 +703,7 @@
     "playoffRound": "Play-off Ronde"
   },
   "premium": {
-    "title": "NEXORA Premium",
+    "title": "CINELOG Premium",
     "subtitle": "Kies precies wat jij wil unlocken",
     "choosePackage": "Kies jouw pakket",
     "deselectAll": "Deselecteer alles",
@@ -762,8 +762,8 @@
       "unlimitedZapping": "Onbeperkt zappen"
     },
     "premiumActive": "Premium is actief",
-    "allFeaturesUnlocked": "Alle premiumfuncties van Nexora zijn momenteel ontgrendeld op dit toestel.",
-    "backToNexora": "Terug naar Nexora"
+    "allFeaturesUnlocked": "Alle premiumfuncties van Cinelog zijn momenteel ontgrendeld op dit toestel.",
+    "backToNexora": "Terug naar Cinelog"
   },
   "playlist": {
     "title": "Playlist",
@@ -837,9 +837,9 @@
     "signIn": "Inloggen",
     "createAccount": "Account aanmaken",
     "welcomeBack": "Welkom terug",
-    "joinNexora": "Word lid van Nexora",
+    "joinNexora": "Word lid van Cinelog",
     "signInDesc": "Log in om je gepersonaliseerde streams, sportrails en premiumcontrolecentrum te ontgrendelen.",
-    "signUpDesc": "Maak je account aan in één stap en begin met je premium dark Nexora-ervaring.",
+    "signUpDesc": "Maak je account aan in één stap en begin met je premium dark Cinelog-ervaring.",
     "continueGoogle": "Doorgaan met Google",
     "signUpGoogle": "Registreren met Google",
     "googleUnavailable": "Google tijdelijk niet beschikbaar",
@@ -857,7 +857,7 @@
     "biometricFailed": "Biometrische verificatie mislukt",
     "biometricUnavailable": "Biometrie niet beschikbaar",
     "orContinueWith": "of ga verder met",
-    "newToNexora": "Nieuw bij Nexora?",
+    "newToNexora": "Nieuw bij Cinelog?",
     "createAccountBelow": "Maak je account aan om te beginnen."
   },
   "mediaHome": {

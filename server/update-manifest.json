@@ -1,44 +1,45 @@
 {
   "schemaVersion": 2,
   "native": {
-    "version": "1.0.1",
-    "versionCode": 10001,
-    "buildId": "android-1.0.1",
-    "required": true,
-    "releasedAt": "2026-04-16T22:47:30.000Z",
+    "version": "1.0.6",
+    "versionCode": 10006,
+    "buildId": "android-1.0.6",
+    "required": false,
+    "releasedAt": "2026-08-04T15:35:00.000Z",
     "notes": [
-      "Fix: OTA updates werken nu correct",
-      "Fix: update check toont juiste status",
-      "Fix: manifest timeout verlaagd naar 12s"
+      "CINELOG branding",
+      "Live TV verwijderd",
+      "Navigatie-fix topbalk",
+      "OTA runtime 1.0.6"
     ],
     "apk": {
       "available": true,
       "provider": "github-releases",
       "source": "github",
-      "downloadUrl": "https://github.com/butsejens/nexora/releases/download/v1.0.1/nexora-v1.0.1.apk",
-      "fileName": "nexora-v1.0.1.apk",
+      "downloadUrl": "https://github.com/butsejens/nexora/releases/download/v1.0.6/nexora-v1.0.6.apk",
+      "fileName": "nexora-v1.0.6.apk",
       "contentType": "application/vnd.android.package-archive",
       "fileSizeBytes": 156527855,
       "fileSizeLabel": "149 MB",
-      "versionName": "1.0.1",
-      "versionCode": 10001,
-      "buildId": "android-1.0.1",
-      "checksumSha256": "9373b3d503bcad76b7679bea3ab677b0058b37d38ca0dc46ac0b2cec1bbe60fd",
+      "versionName": "1.0.6",
+      "versionCode": 10006,
+      "buildId": "android-1.0.6",
+      "checksumSha256": null,
       "signature": null,
-      "validatedAt": "2026-04-16T22:47:30.000Z",
+      "validatedAt": "2026-08-04T15:35:00.000Z",
       "unavailableReason": null,
       "fallbackMessage": "Download de nieuwste APK via de GitHub releases pagina als de download niet werkt."
     }
   },
   "ota": {
     "channel": "production",
-    "runtimeVersion": "1.0.0",
+    "runtimeVersion": "1.0.6",
     "strategy": "expo-updates",
-    "releasedAt": "2026-04-16T00:00:00.000Z"
+    "releasedAt": "2026-08-04T15:35:00.000Z"
   },
   "server": {
-    "version": "1.0.0",
-    "releasedAt": "2026-04-16T19:57:00.000Z",
+    "version": "1.0.6",
+    "releasedAt": "2026-08-04T15:35:00.000Z",
     "requiresAppUpdate": false,
     "message": "Server deploys zijn onafhankelijk van OTA bundles en APK releases."
   },
@@ -46,6 +47,6 @@
     "manifestUrl": null,
     "otaUrl": null,
     "nativeUrl": null,
-    "apkDownloadUrl": "https://github.com/butsejens/nexora/releases/download/v1.0.1/nexora-v1.0.1.apk"
+    "apkDownloadUrl": "https://github.com/butsejens/nexora/releases/download/v1.0.6/nexora-v1.0.6.apk"
   }
 }

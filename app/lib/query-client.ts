@@ -8,6 +8,8 @@ import {
 import Constants from "expo-constants";
 import { logRealtimeEvent } from "@/services/realtime-telemetry";
 import { recordPageRequest } from "@/services/page-only-debug";
+import { hasEmptyContent, logSelfHealing, withApiRecovery } from "@/core/self-healing";
+import { withRecovery } from "@/src/core/autonomous/recoveryManager";
 
 // ── React Native: wire React Query's focusManager to AppState ────────────────
 // This keeps React Query's internal "focused" state accurate so that any query
@@ -346,7 +348,7 @@ function timeoutForUrl(url: string, isSports: boolean = false): number {
     return 25000;
   }
   if (isRenderUrl(url)) return 65000;
-  return url.startsWith("https://") ? 20000 : 20000;
+  return url.startsWith("https://") ? 20000 : 12000;
 }
 
 function requestBudgetForRoute(route: string, isSports: boolean): number {
@@ -538,7 +540,11 @@ export async function apiRequest(
   if (lastError instanceof RangeError) {
     throw new Error("Netwerkfout: server niet bereikbaar");
   }
-  if (lastError) throw lastError as Error;
+  if (lastError) {
+    throw lastError instanceof Error
+      ? lastError
+      : new Error(String((lastError as any)?.message || lastError));
+  }
   throw new Error("Netwerkfout: server niet bereikbaar");
 }
 
@@ -572,8 +578,21 @@ export async function apiRequestJson<T>(
     options?.dedupeKey || buildJsonDedupeKey(method, route, options?.data);
 
   const run = async (): Promise<T> => {
-    const res = await apiRequest(method, route, options?.data);
-    return (await res.json()) as T;
+    return await withRecovery(
+      async () =>
+        await withApiRecovery<T>(`json:${requestKey}`, async () => {
+          const res = await apiRequest(method, route, options?.data);
+          const parsed = (await res.json()) as T;
+          if (hasEmptyContent(parsed)) {
+            void logSelfHealing("warn", "DATA", "empty-json-response-detected", {
+              route,
+              method,
+            });
+          }
+          return parsed;
+        }),
+      { op: `api-json:${requestKey}`, maxAttempts: 2 },
+    );
   };
 
   if (!shouldDedupe) return await run();
@@ -611,7 +630,10 @@ export const getQueryFn: <T>(options: {
 
     let lastError: unknown;
 
-    for (const baseUrl of baseUrls) {
+    return await withRecovery(
+      async () =>
+        await withApiRecovery(`query:${path}`, async () => {
+      for (const baseUrl of baseUrls) {
       if (Date.now() - startedAt >= totalBudgetMs) {
         lastError = new Error(
           `[nexora] query budget exceeded (${totalBudgetMs}ms) for ${path}`,
@@ -623,7 +645,7 @@ export const getQueryFn: <T>(options: {
         const res = await fetchWithTimeout(url, undefined, undefined, isSports);
 
         if (unauthorizedBehavior === "returnNull" && res.status === 401) {
-          return null;
+          return null as any;
         }
 
         if (shouldTryNextBaseForResponse(path, res)) {
@@ -633,7 +655,14 @@ export const getQueryFn: <T>(options: {
 
         await throwIfResNotOk(res);
         markWorkingBaseForRoute(path, baseUrl);
-        return await res.json();
+        const payload = (await res.json()) as any;
+        if (hasEmptyContent(payload)) {
+          void logSelfHealing("warn", "DATA", "empty-query-response-detected", {
+            path,
+            baseUrl,
+          });
+        }
+        return payload;
       } catch (e: any) {
         lastError = e;
         if (e instanceof RangeError) continue;
@@ -652,8 +681,15 @@ export const getQueryFn: <T>(options: {
 
     if (lastError instanceof RangeError)
       throw new Error("Netwerkfout: server niet bereikbaar");
-    if (lastError) throw lastError as Error;
+    if (lastError) {
+      throw lastError instanceof Error
+        ? lastError
+        : new Error(String((lastError as any)?.message || lastError));
+    }
     throw new Error("Netwerkfout: server niet bereikbaar");
+        }),
+      { op: `query:${path}`, maxAttempts: 2 },
+    );
   };
 
 export const queryClient = new QueryClient({

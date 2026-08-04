@@ -13146,13 +13146,26 @@ function parseM3U(content) {
   const items = [];
   let current = null;
 
+  /** Channel name is after the last comma outside of quotes (UA strings contain commas). */
+  function extractExtinfName(line) {
+    let inQuotes = false;
+    let lastComma = -1;
+    for (let i = 0; i < line.length; i++) {
+      const ch = line[i];
+      if (ch === '"') inQuotes = !inQuotes;
+      else if (ch === "," && !inQuotes) lastComma = i;
+    }
+    if (lastComma < 0) return "";
+    return line.slice(lastComma + 1).trim();
+  }
+
   for (const line of lines) {
     const l = line.trim();
     if (!l) continue;
 
     if (l.startsWith("#EXTINF")) {
       // Example: #EXTINF:-1 tvg-id="..." tvg-name="..." tvg-logo="..." group-title="...",Channel Name
-      const name = (l.split(",").slice(1).join(",") || "").trim();
+      const name = extractExtinfName(l);
       const attr = {};
       const re = /(\w+(?:-\w+)*)="([^"]*)"/g;
       let m;
@@ -13179,7 +13192,12 @@ function parseM3U(content) {
         year: null,
         rating: null,
         tmdbId: null,
+        httpUserAgent: attr["http-user-agent"] || null,
+        httpReferrer: attr["http-referrer"] || null,
       };
+    } else if (l.startsWith("#EXTVLCOPT:")) {
+      // Keep going — next non-# line is still the stream URL for `current`
+      continue;
     } else if (!l.startsWith("#") && current) {
       current.url = l;
       current.category = classifyCategory(
@@ -13759,7 +13777,7 @@ const IPTV_ORG_DISCOVER_LIMITS = {
   movies: 3000,
   series: 3000,
 };
-const IPTV_ORG_DISCOVER_CACHE_VERSION = `v2-${IPTV_ORG_DISCOVER_LIMITS.live}-${IPTV_ORG_DISCOVER_LIMITS.movies}-${IPTV_ORG_DISCOVER_LIMITS.series}`;
+const IPTV_ORG_DISCOVER_CACHE_VERSION = `v3-${IPTV_ORG_DISCOVER_LIMITS.live}-${IPTV_ORG_DISCOVER_LIMITS.movies}-${IPTV_ORG_DISCOVER_LIMITS.series}`;
 const IPTV_ORG_DISCOVER_AGGREGATES = {
   movies: [
     "categories/movies",
@@ -13802,15 +13820,25 @@ function dedupeIptvOrgEntries(entries) {
 
 // Country metadata for display (label + flag emoji)
 const IPTV_ORG_COUNTRIES = {
-  nl: { label: "Netherlands", flag: "🇳🇱" },
   be: { label: "Belgium", flag: "🇧🇪" },
+  nl: { label: "Netherlands", flag: "🇳🇱" },
   de: { label: "Germany", flag: "🇩🇪" },
   fr: { label: "France", flag: "🇫🇷" },
   gb: { label: "United Kingdom", flag: "🇬🇧" },
   es: { label: "Spain", flag: "🇪🇸" },
-  us: { label: "United States", flag: "🇺🇸" },
+  pt: { label: "Portugal", flag: "🇵🇹" },
   it: { label: "Italy", flag: "🇮🇹" },
+  us: { label: "United States", flag: "🇺🇸" },
+  ca: { label: "Canada", flag: "🇨🇦" },
   tr: { label: "Turkey", flag: "🇹🇷" },
+  pl: { label: "Poland", flag: "🇵🇱" },
+  ro: { label: "Romania", flag: "🇷🇴" },
+  ch: { label: "Switzerland", flag: "🇨🇭" },
+  at: { label: "Austria", flag: "🇦🇹" },
+  se: { label: "Sweden", flag: "🇸🇪" },
+  no: { label: "Norway", flag: "🇳🇴" },
+  dk: { label: "Denmark", flag: "🇩🇰" },
+  ie: { label: "Ireland", flag: "🇮🇪" },
   ar: { label: "Arabic", flag: "🌍" },
 };
 
@@ -13865,6 +13893,73 @@ app.get("/api/iptv/discover", playlistLimiter, async (req, res) => {
       return res.status(400).json({ error: "Ongeldige parameter." });
     }
 
+    // country=all → merge every configured country playlist
+    if (country === "all") {
+      const cacheKey = `iptv-org:${IPTV_ORG_DISCOVER_CACHE_VERSION}:all-countries`;
+      const cached = iptvOrgCache.get(cacheKey);
+      if (cached && Date.now() - cached.ts < IPTV_ORG_CACHE_TTL) {
+        return res.json(cached.data);
+      }
+
+      const countryIds = Object.keys(IPTV_ORG_COUNTRIES);
+      const results = await Promise.allSettled(
+        countryIds.map(async (id) => {
+          const m3uUrl = `https://iptv-org.github.io/iptv/countries/${id}.m3u`;
+          const controller = new AbortController();
+          const timer = setTimeout(() => controller.abort(), 30_000);
+          try {
+            const r = await fetch(m3uUrl, {
+              headers: { "User-Agent": "Nexora/2.4 Channel-Discovery" },
+              redirect: "follow",
+              signal: controller.signal,
+            });
+            clearTimeout(timer);
+            if (!r.ok) return { id, live: [] };
+            const txt = await r.text();
+            if (!txt.includes("#EXTM3U") && !txt.includes("#EXTINF")) {
+              return { id, live: [] };
+            }
+            const parsed = parseM3U(txt);
+            const live = (Array.isArray(parsed?.live) ? parsed.live : []).map(
+              (entry) => ({
+                ...entry,
+                country: id,
+                countryLabel: IPTV_ORG_COUNTRIES[id]?.label || id.toUpperCase(),
+                countryFlag: IPTV_ORG_COUNTRIES[id]?.flag || "🌍",
+              }),
+            );
+            return { id, live };
+          } catch {
+            clearTimeout(timer);
+            return { id, live: [] };
+          }
+        }),
+      );
+
+      const live = dedupeIptvOrgEntries(
+        results.flatMap((r) =>
+          r.status === "fulfilled" && Array.isArray(r.value.live)
+            ? r.value.live
+            : [],
+        ),
+      ).slice(0, Math.max(IPTV_ORG_DISCOVER_LIMITS.live, 5000));
+
+      const data = {
+        live,
+        movies: [],
+        series: [],
+        source: "iptv-org",
+        url: "https://iptv-org.github.io/iptv/",
+        urls: countryIds.map(
+          (id) => `https://iptv-org.github.io/iptv/countries/${id}.m3u`,
+        ),
+        meta: { label: "All countries", flag: "🌍" },
+      };
+      iptvOrgCache.set(cacheKey, { data, ts: Date.now() });
+      console.log(`[iptv-org] all-countries: ${live.length} live channels`);
+      return res.json(data);
+    }
+
     const pathSegments = country
       ? [`countries/${param}`]
       : IPTV_ORG_DISCOVER_AGGREGATES[param] || [`categories/${param}`];
@@ -13906,11 +14001,23 @@ app.get("/api/iptv/discover", playlistLimiter, async (req, res) => {
       });
     }
 
+    const countryMeta = country ? IPTV_ORG_COUNTRIES[param] : null;
     const live = dedupeIptvOrgEntries(
       fetchedPlaylists.flatMap((playlist) =>
         Array.isArray(playlist.parsed?.live) ? playlist.parsed.live : [],
       ),
-    ).slice(0, IPTV_ORG_DISCOVER_LIMITS.live);
+    )
+      .map((entry) =>
+        country
+          ? {
+              ...entry,
+              country: param,
+              countryLabel: countryMeta?.label || param.toUpperCase(),
+              countryFlag: countryMeta?.flag || "🌍",
+            }
+          : entry,
+      )
+      .slice(0, IPTV_ORG_DISCOVER_LIMITS.live);
     const movies = dedupeIptvOrgEntries(
       fetchedPlaylists.flatMap((playlist) =>
         Array.isArray(playlist.parsed?.movies) ? playlist.parsed.movies : [],
@@ -13923,7 +14030,7 @@ app.get("/api/iptv/discover", playlistLimiter, async (req, res) => {
     ).slice(0, IPTV_ORG_DISCOVER_LIMITS.series);
 
     const meta = country
-      ? IPTV_ORG_COUNTRIES[param] || { label: param.toUpperCase(), flag: "🌍" }
+      ? countryMeta || { label: param.toUpperCase(), flag: "🌍" }
       : IPTV_ORG_CATEGORIES[param] || { label: param, icon: "📺" };
 
     const data = {

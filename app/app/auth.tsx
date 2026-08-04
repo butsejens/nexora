@@ -100,6 +100,14 @@ export default function AuthScreen() {
   ]);
 
   useEffect(() => {
+    if (
+      Platform.OS !== "ios" ||
+      typeof AppleAuthentication.isAvailableAsync !== "function"
+    ) {
+      setAppleAvailable(false);
+      return;
+    }
+
     let mounted = true;
     AppleAuthentication.isAvailableAsync()
       .then((available) => {
@@ -315,8 +323,8 @@ export default function AuthScreen() {
       >
         {/* Logo */}
         <View style={styles.hero}>
-          <Text style={styles.logoN}>N</Text>
-          <Text style={styles.logoWord}>EXORA</Text>
+          <Text style={styles.logoN}>C</Text>
+          <Text style={styles.logoWord}>INELOG</Text>
         </View>
 
         {authReady && isAuthenticated ? (

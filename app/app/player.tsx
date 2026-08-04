@@ -8,21 +8,17 @@ import React, {
 import {
   ActivityIndicator,
   Dimensions,
-  Modal,
   PanResponder,
   Platform,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
-  TouchableOpacity,
   View,
 } from "react-native";
 import { StatusBar } from "expo-status-bar";
 import * as ScreenOrientation from "expo-screen-orientation";
 import { Video, ResizeMode } from "expo-av";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useNexora } from "@/context/NexoraContext";
 
 import {
   buildPlaybackPlan,
@@ -39,6 +35,14 @@ import {
 } from "../lib/ad-blocker";
 import { validateSources } from "../lib/stream-validator";
 import { streamLog } from "../lib/stream-logger";
+import { runPrePlayAdGuard } from "@/src/features/ads/prePlayAdGuard";
+import {
+  recoverFromAdFailure,
+  recoverNavigation,
+  useRenderWatch,
+  validateBeforePlay,
+  logSelfHealing,
+} from "@/core/self-healing";
 
 function supportsNativeVideo(url: string): boolean {
   const value = String(url || "").toLowerCase();
@@ -61,8 +65,8 @@ function makeDeviceId(): string {
 export default function PlayerScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
-  const { preferredServerLabel } = useNexora();
   const forceServerLabel = String(params.forceServerLabel || "").trim();
+  useRenderWatch("player-screen", 50);
   const autoFullscreen =
     String(params.autoFullscreen || "").trim() === "1" ||
     String(params.autoFullscreen || "")
@@ -81,7 +85,7 @@ export default function PlayerScreen() {
     } catch {
       // Fallback below.
     }
-    router.replace("/(tabs)/movies");
+    recoverNavigation("player-go-back-fallback", { from: "/player" });
   };
 
   const [loading, setLoading] = useState(true);
@@ -91,13 +95,13 @@ export default function PlayerScreen() {
   const [error, setError] = useState<string | null>(null);
   const [sources, setSources] = useState<PlaybackSource[]>([]);
   const [selectedId, setSelectedId] = useState<string>("");
-  const [failedIds, setFailedIds] = useState<Set<string>>(new Set());
-  const [showSourcePicker, setShowSourcePicker] = useState(false);
   const [nativeFullscreenDone, setNativeFullscreenDone] = useState(false);
 
   const videoRef = useRef<Video | null>(null);
   const nativeHealthyRef = useRef(false);
   const nativeWatchdogRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const adGuardSourceIdRef = useRef<string>("");
+  const failedIdsRef = useRef<Set<string>>(new Set());
   const deviceId = useMemo(() => makeDeviceId(), []);
 
   // Lock landscape orientation on native when player opens; restore on leave
@@ -150,26 +154,24 @@ export default function PlayerScreen() {
           currentIdx,
         });
 
-        setFailedIds((ids) => {
-          const next = new Set(ids);
-          next.add(selectedId);
-          // Find next unfailed source
-          for (let i = currentIdx + 1; i < prev.length; i++) {
-            if (!next.has(prev[i].id)) {
-              streamLog("info", "player", `Auto-fallback to source ${i}`, {
-                sourceId: prev[i].id,
-                label: prev[i].label,
-              });
-              setSelectedId(prev[i].id);
-              setError(null);
-              return next;
-            }
+        const next = new Set(failedIdsRef.current);
+        next.add(selectedId);
+        failedIdsRef.current = next;
+        // Find next unfailed source
+        for (let i = currentIdx + 1; i < prev.length; i++) {
+          if (!next.has(prev[i].id)) {
+            streamLog("info", "player", `Auto-fallback to source ${i}`, {
+              sourceId: prev[i].id,
+              label: prev[i].label,
+            });
+            setSelectedId(prev[i].id);
+            setError(null);
+            return prev;
           }
-          setError(
-            "Alle servers zijn geprobeerd. Geen werkende bron gevonden.",
-          );
-          return next;
-        });
+        }
+        setError(
+          "Alle servers zijn geprobeerd. Geen werkende bron gevonden.",
+        );
         return prev;
       });
     },
@@ -180,10 +182,24 @@ export default function PlayerScreen() {
     let alive = true;
 
     const init = async () => {
+      const guard = validateBeforePlay({
+        id: String(params.tmdbId || params.id || params.contentId || ""),
+        type: String(params.type || ""),
+        sourceUrl: String(params.streamUrl || params.url || ""),
+      });
+      if (!guard.ok) {
+        setError(guard.message);
+        setLoading(false);
+        void logSelfHealing("warn", "PLAYER", "player-guard-blocked-play", {
+          message: guard.message,
+          suggestion: guard.suggestion,
+        });
+        return;
+      }
       setLoading(true);
       setLoadingMessage("Bronnen ophalen...");
       setError(null);
-      setFailedIds(new Set());
+      failedIdsRef.current = new Set();
       streamLog("info", "player", "Building playback plan", {
         params: { tmdbId: params.tmdbId, type: params.type },
       });
@@ -218,15 +234,12 @@ export default function PlayerScreen() {
         return;
       }
 
-      // Validate direct stream URLs (HLS/MP4) before presenting
+      // Auto clean mode: prefer ad-free direct sources only.
       const directSources = initialSources.filter((s) =>
         supportsNativeVideo(s.url),
       );
-      const embedSources = initialSources.filter(
-        (s) => !supportsNativeVideo(s.url),
-      );
 
-      let validatedSources = initialSources;
+      let validatedSources = directSources;
       if (directSources.length > 0 && Platform.OS !== "web") {
         setLoadingMessage("Servers testen...");
         streamLog(
@@ -247,36 +260,30 @@ export default function PlayerScreen() {
             status: r.probe.statusCode,
           });
         });
-        // Put valid direct sources first, then embeds, then invalid direct (as last resort)
+        // Keep only validated direct sources to avoid ad-heavy embed providers.
         const validDirect = directSources.filter((s) => validUrls.has(s.url));
-        const invalidDirect = directSources.filter(
-          (s) => !validUrls.has(s.url),
-        );
-        validatedSources = [...validDirect, ...embedSources, ...invalidDirect];
+        validatedSources = validDirect;
       }
 
       if (!alive) return;
+
+      if (!validatedSources.length) {
+        setSources([]);
+        setSelectedId("");
+        setError("Geen advertentievrije afspeelbron gevonden. Probeer later opnieuw.");
+        setLoading(false);
+        return;
+      }
 
       setSources(validatedSources);
       const forcedSource = forceServerLabel
         ? validatedSources.find((source) => source.label === forceServerLabel)
         : null;
-      const preferredSource = validatedSources.find(
-        (source) => source.label === preferredServerLabel,
-      );
-      const serverOneSource = validatedSources.find(
-        (source) => source.label === "Server 1",
-      );
-      const startSource =
-        forcedSource ||
-        preferredSource ||
-        serverOneSource ||
-        validatedSources[0];
+      const startSource = forcedSource || validatedSources[0];
       setSelectedId(startSource.id);
       streamLog("info", "player", `Playing: ${startSource.label}`, {
         url: startSource.url,
         forced: forceServerLabel,
-        preferred: preferredServerLabel,
       });
 
       if (alive) {
@@ -297,16 +304,21 @@ export default function PlayerScreen() {
     params.streamUrl,
     params.url,
     params.tmdbId,
+    params.id,
+    params.contentId,
     params.trailerKey,
     params.type,
     params.season,
     params.episode,
     forceServerLabel,
-    preferredServerLabel,
   ]);
 
   useEffect(() => {
     if (!selectedSource?.url || loading) return;
+    if (adGuardSourceIdRef.current !== selectedSource.id) {
+      adGuardSourceIdRef.current = selectedSource.id;
+      void runPrePlayAdGuard();
+    }
     streamLog("info", "player", "Player init with source", {
       sourceId: selectedSource.id,
       label: selectedSource.label,
@@ -380,22 +392,6 @@ export default function PlayerScreen() {
     selectedSource,
     showNativeVideo,
   ]);
-
-  const switchToSource = useCallback((source: PlaybackSource) => {
-    setError(null);
-    setSelectedId(source.id);
-    setFailedIds((prev) => {
-      const next = new Set(prev);
-      next.delete(source.id);
-      return next;
-    });
-    setShowSourcePicker(false);
-    streamLog("info", "player", "Manual source switch", {
-      sourceId: source.id,
-      label: source.label,
-      url: source.url,
-    });
-  }, []);
 
   return (
     <View
@@ -501,6 +497,7 @@ export default function PlayerScreen() {
                   "Ad/content-not-found detected in WebView",
                   { url: selectedSource.url },
                 );
+                recoverFromAdFailure("player-embed", "ad-detected");
                 advanceToNextSource("Ad detected");
               }}
             />
@@ -508,87 +505,6 @@ export default function PlayerScreen() {
         </View>
       )}
 
-      {/* Web: server picker bar. Native: hidden (auto-fallback handles it) */}
-      {Platform.OS === "web" && !loading && sources.length > 0 ? (
-        <View style={styles.pickerBar}>
-          <Text style={styles.currentServer} numberOfLines={1}>
-            {selectedSource
-              ? `Actieve server: ${selectedSource.label}`
-              : "Geen server"}
-          </Text>
-          {sources.length > 1 ? (
-            <TouchableOpacity
-              style={styles.switchButton}
-              onPress={() => setShowSourcePicker(true)}
-              activeOpacity={0.85}
-            >
-              <Text style={styles.switchButtonText}>Wissel server</Text>
-            </TouchableOpacity>
-          ) : null}
-        </View>
-      ) : null}
-
-      {/* Native: small server-switch button accessible in bottom-right corner */}
-      {Platform.OS !== "web" && !loading && sources.length > 1 ? (
-        <TouchableOpacity
-          style={styles.nativeServerBtn}
-          onPress={() => setShowSourcePicker(true)}
-          activeOpacity={0.75}
-        >
-          <Text style={styles.nativeServerBtnText}>⚙</Text>
-        </TouchableOpacity>
-      ) : null}
-
-      <Modal
-        visible={showSourcePicker}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setShowSourcePicker(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalSheet}>
-            <View style={styles.modalHandle} />
-            <Text style={styles.modalTitle}>Beschikbare servers</Text>
-            <ScrollView style={styles.modalList}>
-              {sources.map((source) => {
-                const active = source.id === selectedId;
-                const failed = failedIds.has(source.id);
-                return (
-                  <TouchableOpacity
-                    key={source.id}
-                    style={[styles.modalRow, active && styles.modalRowActive]}
-                    onPress={() => switchToSource(source)}
-                    activeOpacity={0.8}
-                  >
-                    <View
-                      style={[styles.radioDot, active && styles.radioDotActive]}
-                    />
-                    <Text
-                      style={[
-                        styles.modalRowLabel,
-                        active && styles.modalRowLabelActive,
-                        failed && { color: "#fca5a5" },
-                      ]}
-                      numberOfLines={1}
-                    >
-                      {source.label}
-                      {source.quality ? ` • ${source.quality}` : ""}
-                      {failed ? " • eerder gefaald" : ""}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </ScrollView>
-            <TouchableOpacity
-              style={styles.modalClose}
-              onPress={() => setShowSourcePicker(false)}
-              activeOpacity={0.85}
-            >
-              <Text style={styles.modalCloseText}>Sluiten</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
     </View>
   );
 }
@@ -785,36 +701,6 @@ const styles = StyleSheet.create({
     borderBottomColor: "#1a2232",
     gap: 10,
   },
-  overlayBackButton: {
-    // kept for reference — no longer used in render
-    position: "absolute",
-    top: Platform.OS === "web" ? 12 : 46,
-    left: 12,
-    zIndex: 20,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderColor: "#2f3d56",
-    backgroundColor: "rgba(4,7,12,0.65)",
-    borderRadius: 8,
-  },
-  nativeServerBtn: {
-    position: "absolute",
-    bottom: 16,
-    right: 16,
-    zIndex: 30,
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    backgroundColor: "rgba(4,7,12,0.55)",
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.12)",
-  },
-  nativeServerBtnText: {
-    color: "rgba(255,255,255,0.65)",
-    fontSize: 16,
-  },
   backButton: {
     paddingHorizontal: 10,
     paddingVertical: 6,
@@ -865,110 +751,5 @@ const styles = StyleSheet.create({
   player: {
     flex: 1,
     backgroundColor: "#000",
-  },
-  pickerBar: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    backgroundColor: "#080f1a",
-    borderTopWidth: 1,
-    borderTopColor: "#1a2232",
-  },
-  currentServer: {
-    color: "#8df7af",
-    fontSize: 13,
-    fontWeight: "700",
-    flex: 1,
-  },
-  switchButton: {
-    backgroundColor: "#162030",
-    borderRadius: 18,
-    paddingHorizontal: 14,
-    paddingVertical: 7,
-    borderWidth: 1,
-    borderColor: "#22c55e",
-  },
-  switchButtonText: {
-    color: "#22c55e",
-    fontSize: 12,
-    fontWeight: "700",
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.65)",
-    justifyContent: "flex-end",
-  },
-  modalSheet: {
-    backgroundColor: "#0c1320",
-    borderTopLeftRadius: 18,
-    borderTopRightRadius: 18,
-    paddingTop: 10,
-    paddingBottom: 24,
-    maxHeight: "70%",
-  },
-  modalHandle: {
-    width: 36,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: "#2f3d56",
-    alignSelf: "center",
-    marginBottom: 12,
-  },
-  modalTitle: {
-    color: "#f6f8fb",
-    fontSize: 16,
-    fontWeight: "700",
-    paddingHorizontal: 18,
-    marginBottom: 10,
-  },
-  modalList: {
-    paddingHorizontal: 12,
-  },
-  modalRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    borderRadius: 10,
-    marginBottom: 2,
-    gap: 12,
-  },
-  modalRowActive: {
-    backgroundColor: "#102218",
-  },
-  radioDot: {
-    width: 18,
-    height: 18,
-    borderRadius: 9,
-    borderWidth: 2,
-    borderColor: "#2f3d56",
-  },
-  radioDotActive: {
-    borderColor: "#22c55e",
-    backgroundColor: "#22c55e",
-  },
-  modalRowLabel: {
-    color: "#c3cee2",
-    fontSize: 14,
-    flex: 1,
-  },
-  modalRowLabelActive: {
-    color: "#8df7af",
-    fontWeight: "700",
-  },
-  modalClose: {
-    marginTop: 10,
-    marginHorizontal: 18,
-    paddingVertical: 12,
-    borderRadius: 10,
-    backgroundColor: "#162030",
-    alignItems: "center",
-  },
-  modalCloseText: {
-    color: "#d8e1f2",
-    fontSize: 14,
-    fontWeight: "600",
   },
 });

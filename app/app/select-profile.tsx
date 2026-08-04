@@ -49,7 +49,7 @@ export default function SelectProfileScreen() {
         {/* Logo */}
         <Animated.View entering={FadeIn.delay(60)} style={styles.logoRow}>
           <Text style={styles.logoText}>
-            <Text style={styles.logoAccent}>N</Text>EXORA
+            <Text style={styles.logoAccent}>C</Text>INELOG
           </Text>
         </Animated.View>
 

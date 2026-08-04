@@ -1,4 +1,4 @@
-import React, { useMemo } from "react";
+import React, { useEffect, useMemo } from "react";
 import {
   Dimensions,
   FlatList,
@@ -8,6 +8,7 @@ import {
   View,
 } from "react-native";
 import { router } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
 import { Image as ExpoImage } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -60,6 +61,33 @@ function TabHero({
         contentFit="cover"
         priority="high"
         cachePolicy="memory-disk"
+        onLoad={(event) => {
+          // #region agent log
+          if (__DEV__) {
+            fetch("http://127.0.0.1:7379/ingest/4d747d85-0c03-4a11-8a60-a6d4fd09190a", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "X-Debug-Session-Id": "165c99",
+              },
+              body: JSON.stringify({
+                sessionId: "165c99",
+                runId: "baseline-4",
+                hypothesisId: "H9",
+                location: "tabs/movies:hero-image-onLoad",
+                message: "hero-image-loaded",
+                data: {
+                  id: item.id,
+                  src: item.backdrop ?? item.poster ?? null,
+                  width: event?.source?.width ?? null,
+                  height: event?.source?.height ?? null,
+                },
+                timestamp: Date.now(),
+              }),
+            }).catch(() => {});
+          }
+          // #endregion
+        }}
       />
       <LinearGradient
         colors={["transparent", "rgba(6,5,10,0.32)", COLORS.background]}
@@ -81,26 +109,28 @@ function TabHero({
         </Text>
         <View style={heroStyles.heroActions}>
           <Pressable
-            style={heroStyles.playBtn}
+            style={({ pressed }) => [heroStyles.playBtn, pressed && { opacity: 0.82 }]}
             onPress={() =>
               router.push({
-                pathname: "/detail",
+                pathname: "/media/detail",
                 params: { id: item.id, type: item.type ?? "movie" },
               })
             }
           >
-            <Text style={heroStyles.playBtnText}>▶ Afspelen</Text>
+            <Ionicons name="play" size={16} color="#000" />
+            <Text style={heroStyles.playBtnText}>Kijk nu</Text>
           </Pressable>
           <Pressable
-            style={heroStyles.listBtn}
+            style={({ pressed }) => [heroStyles.listBtn, pressed && { opacity: 0.82 }]}
             onPress={() =>
               router.push({
-                pathname: "/detail",
+                pathname: "/media/detail",
                 params: { id: item.id, type: item.type ?? "movie" },
               })
             }
           >
-            <Text style={heroStyles.listBtnText}>Meer info</Text>
+            <Ionicons name="add" size={17} color={COLORS.text} />
+            <Text style={heroStyles.listBtnText}>Mijn lijst</Text>
           </Pressable>
         </View>
       </View>
@@ -125,9 +155,9 @@ const heroStyles = StyleSheet.create({
   heroBadge: {
     alignSelf: "flex-start",
     borderRadius: 999,
-    backgroundColor: "rgba(255,0,200,0.18)",
+    backgroundColor: "rgba(255,255,255,0.14)",
     borderWidth: 1,
-    borderColor: "rgba(255,0,200,0.42)",
+    borderColor: "rgba(255,255,255,0.26)",
     paddingHorizontal: 10,
     paddingVertical: 5,
   },
@@ -146,26 +176,32 @@ const heroStyles = StyleSheet.create({
   },
   heroActions: { flexDirection: "row", gap: 10 },
   playBtn: {
-    backgroundColor: "#fff",
-    borderRadius: 999,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: "#FFFFFF",
     paddingHorizontal: 18,
-    paddingVertical: 10,
+    paddingVertical: 11,
+    borderRadius: 999,
   },
   playBtnText: {
     color: "#000",
-    fontSize: 14,
+    fontSize: 16,
     fontFamily: "Inter_700Bold",
   },
   listBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 7,
     backgroundColor: "rgba(255,255,255,0.14)",
-    borderRadius: 999,
-    paddingHorizontal: 18,
-    paddingVertical: 10,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.22)",
+    borderColor: "rgba(255,255,255,0.24)",
+    paddingHorizontal: 16,
+    paddingVertical: 11,
+    borderRadius: 999,
   },
   listBtnText: {
-    color: "#fff",
+    color: COLORS.text,
     fontSize: 14,
     fontFamily: "Inter_600SemiBold",
   },
@@ -181,6 +217,20 @@ const GENRE_ROWS = [
   { title: "Familie", id: 10751 },
   { title: "Fantasy", id: 14 },
 ] as const;
+
+const COUNTRY_ROWS = [
+  { title: "Vlaams", id: 0, code: "nl-BE" },
+  { title: "Nederlands", id: 1, code: "nl" },
+  { title: "Frans", id: 2, code: "fr" },
+  { title: "Engels", id: 3, code: "en" },
+  { title: "Spaans", id: 4, code: "es" },
+  { title: "Duits", id: 5, code: "de" },
+  { title: "Koreaans", id: 6, code: "ko" },
+  { title: "Japans", id: 7, code: "ja" },
+] as const;
+const COUNTRY_CODE_BY_ID: Record<number, string> = Object.fromEntries(
+  COUNTRY_ROWS.map((country) => [country.id, country.code]),
+) as Record<number, string>;
 
 // All franchise/themed collections — rotated weekly (5 shown at a time)
 // Titles come from the TMDB API directly so they always match the actual films
@@ -232,7 +282,7 @@ function mergeUnique(items: Movie[]): Movie[] {
 }
 
 function openDetail(item: RailItem) {
-  router.push({ pathname: "/detail", params: { id: item.id, type: "movie" } });
+  router.push({ pathname: "/media/detail", params: { id: item.id, type: "movie" } });
 }
 
 export default function MoviesScreen() {
@@ -241,15 +291,15 @@ export default function MoviesScreen() {
   const { data: nowPlaying = [] } = useNowPlayingMovies();
   const { data: popular = [] } = usePopularMovies();
   const { data: topRated = [] } = useTopRatedMovies();
-  const { data: documentaries = [] } = useMoviesByGenreAll([99], true, 3);
-  const { data: genreActie = [] } = useMoviesByGenreAll([28], true, 3);
-  const { data: genreMisdaad = [] } = useMoviesByGenreAll([80], true, 3);
-  const { data: genreDrama = [] } = useMoviesByGenreAll([18], true, 3);
-  const { data: genreHorror = [] } = useMoviesByGenreAll([27], true, 3);
-  const { data: genreKomedie = [] } = useMoviesByGenreAll([35], true, 3);
-  const { data: genreThriller = [] } = useMoviesByGenreAll([53], true, 3);
-  const { data: genreFamilie = [] } = useMoviesByGenreAll([10751], true, 3);
-  const { data: genreFantasy = [] } = useMoviesByGenreAll([14], true, 3);
+  const { data: documentaries = [] } = useMoviesByGenreAll([99], true, 2);
+  const { data: genreActie = [] } = useMoviesByGenreAll([28], true, 2);
+  const { data: genreMisdaad = [] } = useMoviesByGenreAll([80], true, 2);
+  const { data: genreDrama = [] } = useMoviesByGenreAll([18], true, 2);
+  const { data: genreHorror = [] } = useMoviesByGenreAll([27], true, 2);
+  const { data: genreKomedie = [] } = useMoviesByGenreAll([35], true, 2);
+  const { data: genreThriller = [] } = useMoviesByGenreAll([53], true, 2);
+  const { data: genreFamilie = [] } = useMoviesByGenreAll([10751], true, 2);
+  const { data: genreFantasy = [] } = useMoviesByGenreAll([14], true, 2);
 
   // Year-range rails: films from 1950 to today + upcoming
   const { data: klassiekers = [] } = useMoviesFromYearRange(1950, 1989);
@@ -263,6 +313,32 @@ export default function MoviesScreen() {
       null,
     [popular, topRated, nowPlaying],
   );
+
+  useEffect(() => {
+    if (!__DEV__) return;
+    // #region agent log
+    fetch("http://127.0.0.1:7379/ingest/4d747d85-0c03-4a11-8a60-a6d4fd09190a", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Debug-Session-Id": "165c99",
+      },
+      body: JSON.stringify({
+        sessionId: "165c99",
+        runId: "baseline",
+        hypothesisId: "H4",
+        location: "tabs/movies:hero",
+        message: "hero-source-selected",
+        data: {
+          heroId: heroMovie?.id || null,
+          hasBackdrop: Boolean(heroMovie?.backdrop),
+          backdropUrl: heroMovie?.backdrop || null,
+        },
+        timestamp: Date.now(),
+      }),
+    }).catch(() => {});
+    // #endregion
+  }, [heroMovie?.id, heroMovie?.backdrop]);
 
   const weeklyCollections = useMemo(
     () => getWeeklyPicks(ALL_FRANCHISE_COLLECTIONS, 5),
@@ -424,7 +500,7 @@ export default function MoviesScreen() {
       }}
       ListHeaderComponent={
         <>
-          {heroMovie ? <TabHero item={heroMovie} badge="Nexora Films" /> : null}
+          {heroMovie ? <TabHero item={heroMovie} badge="Cinelog Films" /> : null}
           <GenreButtonRow
             genres={GENRE_ROWS}
             onPress={(genre) =>
@@ -438,8 +514,22 @@ export default function MoviesScreen() {
               })
             }
           />
+          <GenreButtonRow
+            genres={COUNTRY_ROWS}
+            compact
+            onPress={(country) =>
+              router.push({
+                pathname: "/media/country",
+                params: {
+                  languageCode: COUNTRY_CODE_BY_ID[country.id] || "nl",
+                  languageName: country.title,
+                  type: "movie",
+                },
+              })
+            }
+          />
           <TopTenRail
-            title="Top 10 films op Nexora"
+            title="Top 10 films op Cinelog"
             data={rails.topTenFilms}
             onPress={openDetail}
             onSeeAll={() => {}}
@@ -463,7 +553,7 @@ export default function MoviesScreen() {
             />
           )}
           <TopTenRail
-            title="Top 10 docu's op Nexora"
+            title="Top 10 docu's op Cinelog"
             data={rails.topTenDocu}
             onPress={openDetail}
             onSeeAll={() => {}}

@@ -1,241 +1,294 @@
 /**
- * Nexora — Live TV Channel Catalogue (Belgian + International)
+ * Live TV — channel discovery via server /api/iptv/discover (iptv-org)
+ * and optional custom M3U via /api/playlist/parse.
  *
- * Provides real Belgian broadcast channel metadata and live program data
- * fetched from the EPG.pw open guide API (https://epg.pw).
- *
- * Each channel carries:
- *  - Static metadata (id, name, logo URL, category)
- *  - Dynamic currentProgram / nextProgram fetched from EPG.pw
- *
- * Usage:
- *   import { getLiveChannels } from "@/lib/live-channels";
- *   const channels = await getLiveChannels();   // fetches + returns LiveChannel[]
- *
- * React Query hook:
- *   import { useLiveChannels } from "@/lib/live-channels";
+ * Only live entries with a direct stream URL are returned.
+ * Playback goes through /player with native HLS (no embed ads).
  */
 
 import { useQuery } from "@tanstack/react-query";
-import type { LiveChannel, LiveProgram, LiveCategory } from "@/types/streaming";
 
-// ── Channel metadata ──────────────────────────────────────────────────────────
+import { apiRequestJson } from "@/lib/query-client";
+import type { LiveCategory, LiveChannel } from "@/types/streaming";
 
-interface ChannelMeta {
+export type LiveCountry = {
   id: string;
-  name: string;
-  /** EPG.pw channel id used to fetch program data */
-  epgId: string;
-  /** Absolute logo URL — hosted by the broadcasters' own CDN */
-  logo: string | null;
-  category: LiveCategory;
-  isHD: boolean;
-  isPremium?: boolean;
-  sortOrder: number;
-}
+  label: string;
+  flag: string;
+};
 
-/**
- * Belgian broadcast and streaming channels.
- * Logo URLs use publicly available channel assets.
- * EPG channel IDs follow the EPG.pw naming convention.
- */
-const CHANNEL_META: ChannelMeta[] = [
-  {
-    id: "vtm",
-    name: "VTM",
-    epgId: "VTM.be",
-    logo: "https://upload.wikimedia.org/wikipedia/commons/thumb/9/97/VTM_logo_2019.svg/240px-VTM_logo_2019.svg.png",
-    category: "entertainment",
-    isHD: true,
-    sortOrder: 1,
-  },
-  {
-    id: "vtm2",
-    name: "VTM 2",
-    epgId: "VTM2.be",
-    logo: "https://upload.wikimedia.org/wikipedia/commons/thumb/3/38/VTM2_logo.svg/240px-VTM2_logo.svg.png",
-    category: "entertainment",
-    isHD: true,
-    sortOrder: 2,
-  },
-  {
-    id: "vtm4",
-    name: "VTM 4",
-    epgId: "VTM4.be",
-    logo: null,
-    category: "entertainment",
-    isHD: true,
-    sortOrder: 3,
-  },
-  {
-    id: "play4",
-    name: "Play4",
-    epgId: "Play4.be",
-    logo: "https://upload.wikimedia.org/wikipedia/commons/thumb/5/58/Play4_logo.svg/240px-Play4_logo.svg.png",
-    category: "entertainment",
-    isHD: true,
-    sortOrder: 4,
-  },
-  {
-    id: "play5",
-    name: "Play5",
-    epgId: "Play5.be",
-    logo: null,
-    category: "lifestyle",
-    isHD: true,
-    sortOrder: 5,
-  },
-  {
-    id: "een",
-    name: "Eén",
-    epgId: "Een.be",
-    logo: "https://upload.wikimedia.org/wikipedia/commons/thumb/a/a5/EenTV.svg/240px-EenTV.svg.png",
-    category: "entertainment",
-    isHD: true,
-    sortOrder: 6,
-  },
-  {
-    id: "canvas",
-    name: "Canvas",
-    epgId: "Canvas.be",
-    logo: "https://upload.wikimedia.org/wikipedia/commons/thumb/3/38/Canvas_logo.svg/240px-Canvas_logo.svg.png",
-    category: "documentary",
-    isHD: true,
-    sortOrder: 7,
-  },
-  {
-    id: "ketnet",
-    name: "Ketnet",
-    epgId: "Ketnet.be",
-    logo: "https://upload.wikimedia.org/wikipedia/commons/thumb/7/77/Ketnet_logo.svg/240px-Ketnet_logo.svg.png",
-    category: "kids",
-    isHD: true,
-    sortOrder: 8,
-  },
-  {
-    id: "sporza",
-    name: "Sporza",
-    epgId: "Sporza.be",
-    logo: null,
-    category: "entertainment",
-    isHD: true,
-    sortOrder: 9,
-  },
-  {
-    id: "bvn",
-    name: "BVN",
-    epgId: "BVN.nl",
-    logo: null,
-    category: "entertainment",
-    isHD: false,
-    sortOrder: 10,
-  },
+export type LiveSourceMeta = {
+  id: string;
+  label: string;
+  flag?: string;
+  icon?: string;
+  type: "country" | "category";
+};
+
+export type LiveChannelRow = LiveChannel & {
+  country?: string;
+  countryLabel?: string;
+  countryFlag?: string;
+};
+
+type DiscoverEntry = {
+  id?: string;
+  name?: string;
+  title?: string;
+  url?: string;
+  logo?: string | null;
+  poster?: string | null;
+  group?: string;
+  tvgId?: string | null;
+  epgId?: string | null;
+  category?: string;
+  country?: string;
+  countryLabel?: string;
+  countryFlag?: string;
+};
+
+type DiscoverResponse = {
+  live?: DiscoverEntry[];
+  source?: string;
+  meta?: { label?: string; flag?: string; icon?: string };
+};
+
+type SourcesResponse = {
+  countries?: LiveSourceMeta[];
+  categories?: LiveSourceMeta[];
+};
+
+const DEFAULT_COUNTRIES: LiveCountry[] = [
+  { id: "all", label: "Alle landen", flag: "🌍" },
+  { id: "be", label: "België", flag: "🇧🇪" },
+  { id: "nl", label: "Nederland", flag: "🇳🇱" },
+  { id: "de", label: "Duitsland", flag: "🇩🇪" },
+  { id: "fr", label: "Frankrijk", flag: "🇫🇷" },
+  { id: "gb", label: "UK", flag: "🇬🇧" },
+  { id: "es", label: "Spanje", flag: "🇪🇸" },
+  { id: "pt", label: "Portugal", flag: "🇵🇹" },
+  { id: "it", label: "Italië", flag: "🇮🇹" },
+  { id: "us", label: "USA", flag: "🇺🇸" },
+  { id: "ca", label: "Canada", flag: "🇨🇦" },
+  { id: "tr", label: "Turkije", flag: "🇹🇷" },
+  { id: "pl", label: "Polen", flag: "🇵🇱" },
+  { id: "ro", label: "Roemenië", flag: "🇷🇴" },
+  { id: "ch", label: "Zwitserland", flag: "🇨🇭" },
+  { id: "at", label: "Oostenrijk", flag: "🇦🇹" },
+  { id: "se", label: "Zweden", flag: "🇸🇪" },
+  { id: "no", label: "Noorwegen", flag: "🇳🇴" },
+  { id: "dk", label: "Denemarken", flag: "🇩🇰" },
+  { id: "ie", label: "Ierland", flag: "🇮🇪" },
+  { id: "ar", label: "Arabisch", flag: "🌍" },
 ];
 
-// ── EPG.pw API ────────────────────────────────────────────────────────────────
+const CATEGORY_CHIPS: LiveSourceMeta[] = [
+  { id: "news", label: "Nieuws", icon: "📰", type: "category" },
+  { id: "sports", label: "Sport", icon: "🏆", type: "category" },
+  { id: "kids", label: "Kids", icon: "🧒", type: "category" },
+  { id: "documentary", label: "Docu", icon: "🎬", type: "category" },
+  { id: "entertainment", label: "Entertainment", icon: "🎭", type: "category" },
+  { id: "music", label: "Muziek", icon: "🎵", type: "category" },
+];
 
-interface EpgEntry {
-  title: string;
-  description?: string;
-  start: string; // ISO datetime
-  stop: string; // ISO datetime
-  channel: string;
+function mapCategory(raw: string | undefined): LiveCategory {
+  const v = String(raw || "").toLowerCase();
+  if (v.includes("news") || v.includes("nieuws")) return "news";
+  if (v.includes("sport")) return "sports";
+  if (v.includes("kid") || v.includes("child") || v.includes("cartoon"))
+    return "kids";
+  if (v.includes("docu")) return "documentary";
+  if (v.includes("music") || v.includes("muziek")) return "music";
+  if (v.includes("lifestyle") || v.includes("cook") || v.includes("travel"))
+    return "lifestyle";
+  return "entertainment";
 }
 
-async function fetchEpgForChannel(epgId: string): Promise<EpgEntry[]> {
-  const date = new Date().toISOString().slice(0, 10).replace(/-/g, "");
-  const url = `https://epg.pw/api/epg.json?channel_id=${encodeURIComponent(epgId)}&date=${date}`;
-  const res = await fetch(url, { signal: AbortSignal.timeout(6000) });
-  if (!res.ok) return [];
-  const data = await res.json();
-  return Array.isArray(data) ? data : [];
+function isPlayableStreamUrl(url: string): boolean {
+  const u = url.trim().toLowerCase();
+  if (!u.startsWith("http://") && !u.startsWith("https://")) return false;
+  // Prefer native player formats; skip known embed/ad shells
+  if (/\.(m3u8|mp4)(\?|$)/i.test(u)) return true;
+  if (u.includes(".m3u8") || u.includes("/live/") || u.includes("playlist"))
+    return true;
+  // Many iptv-org entries are raw TS/HLS without extension — still try HTTPS
+  if (u.startsWith("https://")) return true;
+  return false;
 }
 
-function findCurrent(entries: EpgEntry[]): EpgEntry | null {
-  const now = Date.now();
-  return (
-    entries.find((e) => {
-      const start = new Date(e.start).getTime();
-      const stop = new Date(e.stop).getTime();
-      return start <= now && now < stop;
-    }) ?? null
-  );
-}
+function toLiveChannel(entry: DiscoverEntry, index: number): LiveChannelRow | null {
+  const streamUrl = String(entry.url || "").trim();
+  if (!isPlayableStreamUrl(streamUrl)) return null;
 
-function findNext(
-  entries: EpgEntry[],
-  current: EpgEntry | null,
-): EpgEntry | null {
-  if (!current) return entries[0] ?? null;
-  const idx = entries.indexOf(current);
-  return idx >= 0 ? (entries[idx + 1] ?? null) : null;
-}
+  const name = String(entry.name || entry.title || "").trim();
+  if (!name) return null;
 
-function epgEntryToProgram(entry: EpgEntry, idSuffix: string): LiveProgram {
+  const idBase =
+    String(entry.tvgId || entry.epgId || entry.id || name)
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-|-$/g, "") || `ch-${index}`;
+
   return {
-    id: `epg_${idSuffix}_${entry.start}`,
-    title: entry.title,
-    description: entry.description,
-    startTime: entry.start,
-    endTime: entry.stop,
+    id: `live-${idBase}-${index}`,
+    name,
+    logo: entry.logo || entry.poster || null,
+    category: mapCategory(entry.group || entry.category),
+    streamUrl,
+    isHD: /hd|fhd|4k|uhd/i.test(name),
+    sortOrder: index,
+    currentProgram: null,
+    nextProgram: null,
+    country: entry.country || undefined,
+    countryLabel: entry.countryLabel || undefined,
+    countryFlag: entry.countryFlag || undefined,
   };
 }
 
-// ── Main data fetch ───────────────────────────────────────────────────────────
+function dedupeChannels(channels: LiveChannelRow[]): LiveChannelRow[] {
+  const seen = new Set<string>();
+  const out: LiveChannelRow[] = [];
+  for (const ch of channels) {
+    const key = `${ch.name.toLowerCase()}::${String(ch.streamUrl || "").toLowerCase()}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(ch);
+  }
+  return out;
+}
 
-async function fetchSingleChannel(meta: ChannelMeta): Promise<LiveChannel> {
+/** Country chips for the Live TV screen */
+export function getDefaultLiveCountries(): LiveCountry[] {
+  return DEFAULT_COUNTRIES;
+}
+
+/** Category chips */
+export function getLiveCategoryChips(): LiveSourceMeta[] {
+  return CATEGORY_CHIPS;
+}
+
+export async function fetchLiveDiscoverSources(): Promise<{
+  countries: LiveSourceMeta[];
+  categories: LiveSourceMeta[];
+}> {
   try {
-    const entries = await fetchEpgForChannel(meta.epgId);
-    const current = findCurrent(entries);
-    const next = findNext(entries, current);
+    const data = await apiRequestJson<SourcesResponse>(
+      "/api/iptv/discover/sources",
+    );
     return {
-      id: meta.id,
-      name: meta.name,
-      logo: meta.logo,
-      category: meta.category,
-      isHD: meta.isHD,
-      isPremium: meta.isPremium,
-      sortOrder: meta.sortOrder,
-      currentProgram: current ? epgEntryToProgram(current, meta.id) : null,
-      nextProgram: next ? epgEntryToProgram(next, `${meta.id}_next`) : null,
+      countries:
+        Array.isArray(data.countries) && data.countries.length
+          ? data.countries
+          : DEFAULT_COUNTRIES.map((c) => ({ ...c, type: "country" as const })),
+      categories:
+        Array.isArray(data.categories) && data.categories.length
+          ? data.categories
+          : CATEGORY_CHIPS,
     };
   } catch {
-    // EPG fetch failed — return channel without program info
     return {
-      id: meta.id,
-      name: meta.name,
-      logo: meta.logo,
-      category: meta.category,
-      isHD: meta.isHD,
-      isPremium: meta.isPremium,
-      sortOrder: meta.sortOrder,
-      currentProgram: null,
-      nextProgram: null,
+      countries: DEFAULT_COUNTRIES.map((c) => ({
+        ...c,
+        type: "country" as const,
+      })),
+      categories: CATEGORY_CHIPS,
     };
   }
 }
 
-/** Fetch all channels with live EPG data. Fetches concurrently; individual failures are silenced. */
-export async function getLiveChannels(): Promise<LiveChannel[]> {
-  const results = await Promise.allSettled(
-    CHANNEL_META.map(fetchSingleChannel),
+/**
+ * Discover live channels by country (ISO) or category.
+ * Uses server-side iptv-org M3U fetch — only `live` bucket is kept.
+ */
+export async function discoverLiveChannels(params: {
+  country?: string;
+  category?: string;
+}): Promise<LiveChannelRow[]> {
+  const country = String(params.country || "")
+    .toLowerCase()
+    .trim();
+  const category = String(params.category || "")
+    .toLowerCase()
+    .trim();
+
+  if (!country && !category) {
+    throw new Error("country of category is verplicht");
+  }
+
+  const qs = country
+    ? `country=${encodeURIComponent(country)}`
+    : `category=${encodeURIComponent(category)}`;
+
+  const data = await apiRequestJson<DiscoverResponse>(
+    `/api/iptv/discover?${qs}`,
   );
-  return results
-    .map((r) => (r.status === "fulfilled" ? r.value : null))
-    .filter((ch): ch is LiveChannel => ch !== null)
-    .sort((a, b) => (a.sortOrder ?? 99) - (b.sortOrder ?? 99));
+
+  const live = Array.isArray(data.live) ? data.live : [];
+  const mapped = live
+    .map((entry, i) => toLiveChannel(entry, i))
+    .filter((ch): ch is LiveChannelRow => ch !== null);
+
+  return dedupeChannels(mapped).sort((a, b) =>
+    a.name.localeCompare(b.name, "nl", { sensitivity: "base" }),
+  );
 }
 
-// ── React Query hook ──────────────────────────────────────────────────────────
+/**
+ * Optional: load live-only channels from a custom M3U URL
+ * (user-supplied playlist). Server parses and classifies.
+ */
+export async function parseLivePlaylist(url: string): Promise<LiveChannelRow[]> {
+  const playlistUrl = String(url || "").trim();
+  if (!/^https?:\/\//i.test(playlistUrl)) {
+    throw new Error("Ongeldige playlist URL");
+  }
 
-const STALE_3MIN = 3 * 60 * 1000;
+  const data = await apiRequestJson<{ live?: DiscoverEntry[] }>(
+    "/api/playlist/parse",
+    { method: "POST", data: { url: playlistUrl } },
+  );
 
-/** Live channels with real-time EPG program data. Refreshes every 3 minutes. */
-export function useLiveChannels() {
-  return useQuery<LiveChannel[]>({
-    queryKey: ["live-channels"],
-    queryFn: getLiveChannels,
-    staleTime: STALE_3MIN,
-    refetchInterval: STALE_3MIN,
+  const live = Array.isArray(data.live) ? data.live : [];
+  const mapped = live
+    .map((entry, i) => toLiveChannel(entry, i))
+    .filter((ch): ch is LiveChannelRow => ch !== null);
+
+  return dedupeChannels(mapped);
+}
+
+const STALE_10MIN = 10 * 60 * 1000;
+
+export function useLiveDiscoverSources() {
+  return useQuery({
+    queryKey: ["live-discover-sources"],
+    queryFn: fetchLiveDiscoverSources,
+    staleTime: 60 * 60 * 1000,
   });
+}
+
+export function useDiscoverLiveChannels(params: {
+  country?: string;
+  category?: string;
+  enabled?: boolean;
+}) {
+  const country = params.country || "";
+  const category = params.category || "";
+  const enabled = params.enabled !== false && Boolean(country || category);
+
+  return useQuery<LiveChannelRow[]>({
+    queryKey: ["live-discover", country || null, category || null],
+    queryFn: () => discoverLiveChannels({ country, category }),
+    enabled,
+    staleTime: STALE_10MIN,
+  });
+}
+
+/** @deprecated Prefer useDiscoverLiveChannels — kept for callers expecting EPG-only meta */
+export async function getLiveChannels(): Promise<LiveChannelRow[]> {
+  return discoverLiveChannels({ country: "be" });
+}
+
+export function useLiveChannels() {
+  return useDiscoverLiveChannels({ country: "be" });
 }

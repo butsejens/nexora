@@ -1,4 +1,4 @@
-import React, { useMemo } from "react";
+import React, { useEffect, useMemo } from "react";
 import {
   Dimensions,
   FlatList,
@@ -107,7 +107,7 @@ function toRail(items: KidsItem[], limit = 40): RailItem[] {
 
 function openDetail(item: RailItem) {
   const type = String(item.id).startsWith("tmdb_s_") ? "series" : "movie";
-  router.push({ pathname: "/detail", params: { id: item.id, type } });
+  router.push({ pathname: "/media/detail", params: { id: item.id, type } });
 }
 
 type KidsTile = {
@@ -264,6 +264,33 @@ function KidsHero({ item }: { item: RailItem }) {
         style={StyleSheet.absoluteFillObject}
         contentFit="cover"
         priority="high"
+        onLoad={(event) => {
+          // #region agent log
+          if (__DEV__) {
+            fetch("http://127.0.0.1:7379/ingest/4d747d85-0c03-4a11-8a60-a6d4fd09190a", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "X-Debug-Session-Id": "165c99",
+              },
+              body: JSON.stringify({
+                sessionId: "165c99",
+                runId: "baseline-4",
+                hypothesisId: "H9",
+                location: "tabs/kids:hero-image-onLoad",
+                message: "hero-image-loaded",
+                data: {
+                  id: item.id,
+                  src: item.backdrop ?? item.poster ?? null,
+                  width: event?.source?.width ?? null,
+                  height: event?.source?.height ?? null,
+                },
+                timestamp: Date.now(),
+              }),
+            }).catch(() => {});
+          }
+          // #endregion
+        }}
       />
       <LinearGradient
         colors={["rgba(8,7,18,0.08)", "rgba(8,7,18,0.66)", COLORS.background]}
@@ -272,7 +299,7 @@ function KidsHero({ item }: { item: RailItem }) {
       />
       <View style={styles.heroBody}>
         <View style={styles.heroBadge}>
-          <Text style={styles.heroBadgeText}>Nexora Kids</Text>
+          <Text style={styles.heroBadgeText}>Cinelog Kids</Text>
         </View>
         <Text style={styles.heroTitle} numberOfLines={2}>
           {item.title}
@@ -449,6 +476,32 @@ export default function KidsScreen() {
     famMovies,
   ]);
 
+  useEffect(() => {
+    if (!__DEV__) return;
+    // #region agent log
+    fetch("http://127.0.0.1:7379/ingest/4d747d85-0c03-4a11-8a60-a6d4fd09190a", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Debug-Session-Id": "165c99",
+      },
+      body: JSON.stringify({
+        sessionId: "165c99",
+        runId: "baseline",
+        hypothesisId: "H4",
+        location: "tabs/kids:hero",
+        message: "hero-source-selected",
+        data: {
+          heroId: hero?.id || null,
+          hasBackdrop: Boolean(hero?.backdrop),
+          backdropUrl: hero?.backdrop || null,
+        },
+        timestamp: Date.now(),
+      }),
+    }).catch(() => {});
+    // #endregion
+  }, [hero?.id, hero?.backdrop]);
+
   return (
     <FlatList
       style={{ flex: 1, backgroundColor: COLORS.background }}
@@ -467,7 +520,7 @@ export default function KidsScreen() {
           <GenreButtonRow genres={KIDS_GENRE_ROWS} />
 
           <TopTenRail
-            title="Top 10 Kids op Nexora"
+            title="Top 10 Kids op Cinelog"
             data={topTen}
             onPress={openDetail}
             onSeeAll={() => {}}

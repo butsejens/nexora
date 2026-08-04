@@ -29,10 +29,11 @@ type NavItem = {
 
 const NAV_ITEMS: NavItem[] = [
   { label: "Home", route: "/(tabs)/home", matchKeys: ["home", "index"] },
-  { label: "Live", route: "/(tabs)/live-tv", matchKeys: ["live-tv", "live"] },
   { label: "Series", route: "/(tabs)/series", matchKeys: ["series"] },
   { label: "Films", route: "/(tabs)/movies", matchKeys: ["movies", "films"] },
   { label: "Kids", route: "/(tabs)/kids", matchKeys: ["kids"] },
+  { label: "Collectie", route: "/(tabs)/collection", matchKeys: ["collection"] },
+  { label: "Studios", route: "/(tabs)/studios", matchKeys: ["studios"] },
   { label: "Mijn lijst", route: "/(tabs)/my-list", matchKeys: ["my-list"] },
 ];
 
@@ -80,7 +81,7 @@ export function TopNavBar() {
             ]}
           >
             <Text style={styles.logoText}>
-              <Text style={styles.logoAccent}>N</Text>EXORA
+              <Text style={styles.logoAccent}>C</Text>INELOG
             </Text>
           </Pressable>
 

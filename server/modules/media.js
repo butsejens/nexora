@@ -183,6 +183,24 @@ function normalizeTrailer(v) {
   return null;
 }
 
+function normalizePersonKnownForItem(item) {
+  if (!item) return null;
+  const mediaType =
+    item.media_type === "tv" || item.first_air_date ? "series" : "movie";
+  return {
+    id: item.id,
+    type: mediaType,
+    title: item.title ?? item.name ?? null,
+    overview: item.overview ? item.overview.slice(0, 200) : null,
+    poster: imgUrl(item.poster_path, "w780"),
+    backdrop: imgUrl(item.backdrop_path, "w1280"),
+    year: (item.release_date ?? item.first_air_date ?? "").slice(0, 4) || null,
+    rating: item.vote_average ?? null,
+    popularity: item.popularity ?? null,
+    source: "tmdb",
+  };
+}
+
 // ─── List Normalizer ──────────────────────────────────────────────────────────
 function normalizeListItem(item) {
   // Exclude people — they have no streamable content and their TMDB numeric
@@ -655,6 +673,96 @@ router.get("/trending", async (req, res) => {
       err("TRENDING_UNAVAILABLE", "Trending data unavailable", {
         source: "tmdb",
       }),
+      503,
+    );
+  }
+});
+
+/**
+ * GET /api/media/person/:id
+ * Person profile detail + known-for credits.
+ */
+router.get("/person/:id", async (req, res) => {
+  const gate = checkTmdb(res);
+  if (gate) return gate;
+
+  const id = parseInt(req.params.id, 10);
+  if (!id || id < 1) {
+    return send(
+      res,
+      err("INVALID_ID", "Invalid person ID", { source: "tmdb" }),
+      400,
+    );
+  }
+
+  const key = `media_v2_person_${id}`;
+  try {
+    const { value, isCached } = await cache.getOrFetch(
+      key,
+      TTL.MEDIA_DETAIL,
+      async () => {
+        const data = await tmdb(
+          `/person/${id}`,
+          { append_to_response: "movie_credits,tv_credits" },
+          "tmdb:person-detail",
+        );
+
+        const combinedCredits = [
+          ...(data.movie_credits?.cast ?? []).map((item) => ({
+            ...item,
+            media_type: "movie",
+          })),
+          ...(data.tv_credits?.cast ?? []).map((item) => ({
+            ...item,
+            media_type: "tv",
+          })),
+        ];
+
+        const seen = new Set();
+        const knownFor = combinedCredits
+          .sort((left, right) => (right.popularity ?? 0) - (left.popularity ?? 0))
+          .filter((item) => {
+            const mediaId = Number(item?.id || 0);
+            if (!mediaId) return false;
+            const mediaType =
+              item.media_type === "tv" || item.first_air_date ? "tv" : "movie";
+            const dedupeKey = `${mediaType}:${mediaId}`;
+            if (seen.has(dedupeKey)) return false;
+            seen.add(dedupeKey);
+            return true;
+          })
+          .slice(0, 18)
+          .map(normalizePersonKnownForItem)
+          .filter(Boolean);
+
+        return {
+          id: data.id,
+          name: data.name ?? null,
+          biography: data.biography ?? null,
+          birthday: data.birthday ?? null,
+          deathday: data.deathday ?? null,
+          placeOfBirth: data.place_of_birth ?? null,
+          knownForDepartment: data.known_for_department ?? null,
+          profile: imgUrl(data.profile_path, "w780"),
+          knownFor,
+          source: "tmdb",
+        };
+      },
+    );
+
+    return send(res, ok(value, { source: "tmdb", isCached }));
+  } catch (e) {
+    if (e.status === 404 || e.message?.includes("404")) {
+      return send(
+        res,
+        err("PERSON_NOT_FOUND", `Person ${id} not found`, { source: "tmdb" }),
+        404,
+      );
+    }
+    log.error("person detail error", { id, message: e.message });
+    return send(
+      res,
+      err("PERSON_UNAVAILABLE", "Person detail unavailable", { source: "tmdb" }),
       503,
     );
   }

@@ -178,13 +178,13 @@ export default function PremiumScreen() {
           >
             <MaterialCommunityIcons name="crown" size={44} color={COLORS.accent} />
           </LinearGradient>
-          <Text style={s.activeTitle}>Nexora+ Actief</Text>
+          <Text style={s.activeTitle}>Cinelog+ Actief</Text>
           <Text style={s.activeSub}>
             Je hebt toegang tot alle premium content
             {authEmail ? `\n${authEmail}` : ""}.
           </Text>
           <TouchableOpacity style={s.activeBtn} onPress={goBack} activeOpacity={0.86}>
-            <Text style={s.activeBtnText}>Terug naar Nexora</Text>
+            <Text style={s.activeBtnText}>Terug naar Cinelog</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -203,7 +203,7 @@ export default function PremiumScreen() {
         >
           <Ionicons name="close" size={22} color={COLORS.text} />
         </TouchableOpacity>
-        <Text style={s.headerTitle}>Nexora+</Text>
+        <Text style={s.headerTitle}>Cinelog+</Text>
         <View style={{ width: 34 }} />
       </View>
 
@@ -289,7 +289,7 @@ export default function PremiumScreen() {
 
         {/* Perks */}
         <Text style={[s.sectionLabel, { marginTop: 28 }]}>
-          Inbegrepen bij Nexora+
+          Inbegrepen bij Cinelog+
         </Text>
         <View style={s.perksCard}>
           {PERKS.map((perk, i) => (

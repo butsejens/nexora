@@ -686,7 +686,7 @@ export const PremiumSettingsHub = React.memo(function PremiumSettingsHub({
               <SectionSubTitle title="About" />
               <SettingCard>
                 <TouchableOpacity style={styles.linkRow}>
-                  <Text style={styles.linkText}>About Nexora Premium</Text>
+                  <Text style={styles.linkText}>About Cinelog Premium</Text>
                   <Ionicons
                     name="chevron-forward"
                     size={18}

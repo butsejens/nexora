@@ -21,7 +21,7 @@ export default function SearchScreen() {
               ? rawId
               : `${prefix}${rawId}`;
             router.push({
-              pathname: "/detail",
+              pathname: "/media/detail",
               params: { id: detailId, type: result.type, title: result.title },
             });
             break;

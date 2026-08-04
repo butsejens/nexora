@@ -7,7 +7,7 @@ import {
   Inter_700Bold,
   Inter_800ExtraBold,
 } from "@expo-google-fonts/inter";
-import { Stack, router, useRootNavigationState } from "expo-router";
+import { Stack, router, usePathname, useRootNavigationState } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import * as Updates from "expo-updates";
 import React, { useEffect, useRef } from "react";
@@ -18,13 +18,7 @@ import Constants from "expo-constants";
 import { PersonalizationBridge } from "@/components/PersonalizationBridge";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { NexoraMenuOverlay } from "@/components/navigation/NexoraMenuOverlay";
-
-import { useRenderTelemetry } from "@/hooks/useRenderTelemetry";
-import {
-  queryClient,
-  getApiBaseCandidates,
-  DEFAULT_RENDER_API_BASE,
-} from "@/lib/query-client";
+import { queryClient } from "@/lib/query-client";
 import { NexoraProvider } from "@/context/NexoraContext";
 import { UserStateProvider } from "@/context/UserStateContext";
 import { SafeAreaProvider } from "react-native-safe-area-context";
@@ -32,6 +26,14 @@ import { COLORS } from "@/constants/colors";
 import { logStartupEvent } from "@/services/startup-orchestrator";
 import { recordLaunchSnapshot } from "@/services/update-diagnostics";
 import { refreshStreamProviders } from "@/lib/playback-engine";
+import {
+  hydrateSelfHealingLogs,
+  installGlobalErrorHandler,
+  logSelfHealing,
+} from "@/core/self-healing";
+import { runHealthCheck } from "@/src/core/autonomous/healthMonitor";
+import { refreshMaintenanceSnapshot } from "@/src/core/autonomous/maintenanceMode";
+import { AUTONOMOUS_CONFIG } from "@/src/core/autonomous/autonomousConfig";
 
 SplashScreen.preventAutoHideAsync().catch(() => {
   // Ignore unsupported or duplicate prevent call.
@@ -103,8 +105,8 @@ function RootLayoutNav() {
 }
 
 export default function RootLayout() {
-  useRenderTelemetry("RootLayout");
   const navState = useRootNavigationState();
+  const pathname = usePathname();
 
   const [fontsLoaded, fontError] = useFonts({
     Inter_400Regular,
@@ -117,18 +119,39 @@ export default function RootLayout() {
   const startupLoggedRef = useRef(false);
 
   useEffect(() => {
+    installGlobalErrorHandler();
+    void hydrateSelfHealingLogs();
+    void logSelfHealing("info", "UI", "self-healing-initialized");
+  }, []);
+
+  useEffect(() => {
+    const bootstrapDelay = setTimeout(() => {
+      refreshStreamProviders();
+    }, 1500);
+    return () => clearTimeout(bootstrapDelay);
+  }, []);
+
+  useEffect(() => {
+    let mounted = true;
+    const run = async () => {
+      if (!mounted) return;
+      await Promise.allSettled([runHealthCheck(), refreshMaintenanceSnapshot()]);
+    };
+    void run();
+    const timer = setInterval(() => {
+      void run();
+    }, AUTONOMOUS_CONFIG.health.monitorIntervalMs);
+    return () => {
+      mounted = false;
+      clearInterval(timer);
+    };
+  }, []);
+
+  useEffect(() => {
     if (startupLoggedRef.current) return;
     startupLoggedRef.current = true;
-
     logStartupEvent("boot", "info", "app-launch", { startedAt: Date.now() });
     logUpdateDiagnostics();
-
-    fetch(`${DEFAULT_RENDER_API_BASE}/api/ping`, { method: "GET" }).catch(
-      () => undefined,
-    );
-
-    // Load latest healthy stream providers from server
-    refreshStreamProviders();
   }, []);
 
   useEffect(() => {
@@ -182,45 +205,43 @@ export default function RootLayout() {
   }, [navState?.key]);
 
   useEffect(() => {
-    let keepAliveId: ReturnType<typeof setInterval> | null = null;
-    const KEEP_ALIVE_MS = 4 * 60 * 1000;
-
-    const pingRender = () => {
-      const baseList = getApiBaseCandidates();
-      const renderBase =
-        baseList.find((base) => /onrender\.com/i.test(base)) ||
-        DEFAULT_RENDER_API_BASE;
-      fetch(`${renderBase}/api/ping`, { method: "GET" }).catch(() => undefined);
-    };
-
-    const onForeground = () => {
-      if (!keepAliveId) {
-        keepAliveId = setInterval(pingRender, KEEP_ALIVE_MS);
-      }
-    };
-
     const sub = AppState.addEventListener("change", (state) => {
       if (state === "active") {
-        onForeground();
         refreshStreamProviders();
-        return;
-      }
-
-      if (keepAliveId) {
-        clearInterval(keepAliveId);
-        keepAliveId = null;
       }
     });
 
-    onForeground();
-
     return () => {
       sub.remove();
-      if (keepAliveId) {
-        clearInterval(keepAliveId);
-      }
     };
   }, []);
+
+  useEffect(() => {
+    if (!__DEV__) return;
+    // #region agent log
+    fetch("http://127.0.0.1:7379/ingest/4d747d85-0c03-4a11-8a60-a6d4fd09190a", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Debug-Session-Id": "165c99",
+      },
+      body: JSON.stringify({
+        sessionId: "165c99",
+        runId: "baseline-6",
+        hypothesisId: "H11",
+        location: "app/_layout:pathname",
+        message: "root-route-visited",
+        data: {
+          pathname,
+          navReady: Boolean(navState?.key),
+          origin:
+            typeof window !== "undefined" ? window.location.origin : "native",
+        },
+        timestamp: Date.now(),
+      }),
+    }).catch(() => {});
+    // #endregion
+  }, [pathname, navState?.key]);
 
   return (
     <ErrorBoundary>

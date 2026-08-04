@@ -114,7 +114,7 @@ export const EnhancedPaywall = React.memo(function EnhancedPaywall({ visible, on
         <TouchableOpacity onPress={onDismiss} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
           <Ionicons name="close" size={24} color={COLORS.text} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Nexora+ activeren</Text>
+        <Text style={styles.headerTitle}>Cinelog+ activeren</Text>
         <View style={{ width: 24 }} />
       </View>
 

@@ -1,5 +1,4 @@
 export type AppModuleId =
-  | "liveTV"
   | "movies"
   | "series"
   | "myList"
@@ -24,14 +23,6 @@ export const APP_SHELL_TABS = {
 } as const;
 
 export const APP_MODULE_REGISTRY: AppModuleDefinition[] = [
-  {
-    id: "liveTV",
-    label: "Live TV",
-    subtitle: "Live channels, news, entertainment and more",
-    icon: "tv-outline",
-    route: "/(tabs)/live-tv",
-    section: "core",
-  },
   {
     id: "movies",
     label: "Movies",

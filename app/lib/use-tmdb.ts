@@ -39,6 +39,8 @@ import {
   getWatchProviders,
   getMoviesByProvider,
   getTvByProvider,
+  getMoviesByCountry,
+  getTvByCountry,
   getTvByNetwork,
   getTvByNetworkKids,
   getMoviesByCompany,
@@ -51,72 +53,107 @@ import {
   type StreamingProvider,
 } from "./tmdb";
 import type { Movie, Series } from "@/types/streaming";
+import { cachePeekStale, cacheSet, CacheTTL } from "@/lib/services/cache-service";
+import { logAutonomousEvent } from "@/src/core/autonomous/autonomousLogger";
 
 const STALE_5MIN = 5 * 60 * 1000;
 const STALE_1H = 60 * 60 * 1000;
+
+async function withAutonomousCache<T>(
+  key: string,
+  fetcher: () => Promise<T>,
+  ttlMs = CacheTTL.HOME_RAILS,
+): Promise<T> {
+  try {
+    const value = await fetcher();
+    await cacheSet(key, value, ttlMs);
+    return value;
+  } catch (error) {
+    const stale = cachePeekStale<T>(key);
+    if (stale != null) {
+      logAutonomousEvent("warn", "cache", "using-stale-query-cache", { key });
+      return stale;
+    }
+    throw error;
+  }
+}
 
 // ── Individual hooks ──────────────────────────────────────────────────────────
 
 /** Weekly trending: mix of movies + series, all with backdrops. Used for Hero + Trending rail. */
 export function useTrending() {
+  const cacheKey = "autonomous:tmdb:trending";
   return useQuery<(Movie | Series)[]>({
     queryKey: ["tmdb", "trending"],
-    queryFn: getTrendingAll,
+    queryFn: () => withAutonomousCache(cacheKey, getTrendingAll),
     staleTime: STALE_5MIN,
+    placeholderData: () => cachePeekStale<(Movie | Series)[]>(cacheKey) ?? [],
   });
 }
 
 /** Popular movies — for "Popular Movies" rail. */
 export function usePopularMovies() {
+  const cacheKey = "autonomous:tmdb:popular-movies";
   return useQuery<Movie[]>({
     queryKey: ["tmdb", "popular-movies"],
-    queryFn: getPopularMovies,
+    queryFn: () => withAutonomousCache(cacheKey, getPopularMovies),
     staleTime: STALE_1H,
+    placeholderData: () => cachePeekStale<Movie[]>(cacheKey) ?? [],
   });
 }
 
 /** Popular TV series — for "Top Series" and general discovery. */
 export function usePopularSeries() {
+  const cacheKey = "autonomous:tmdb:popular-series";
   return useQuery<Series[]>({
     queryKey: ["tmdb", "popular-tv"],
-    queryFn: getPopularTv,
+    queryFn: () => withAutonomousCache(cacheKey, getPopularTv),
     staleTime: STALE_1H,
+    placeholderData: () => cachePeekStale<Series[]>(cacheKey) ?? [],
   });
 }
 
 /** Top-rated movies — for "Critically Acclaimed" rail. */
 export function useTopRatedMovies() {
+  const cacheKey = "autonomous:tmdb:top-rated-movies";
   return useQuery<Movie[]>({
     queryKey: ["tmdb", "top-rated-movies"],
-    queryFn: getTopRatedMovies,
+    queryFn: () => withAutonomousCache(cacheKey, getTopRatedMovies),
     staleTime: STALE_1H,
+    placeholderData: () => cachePeekStale<Movie[]>(cacheKey) ?? [],
   });
 }
 
 /** Top-rated TV series — for "Critically Acclaimed" rail. */
 export function useTopRatedSeries() {
+  const cacheKey = "autonomous:tmdb:top-rated-series";
   return useQuery<Series[]>({
     queryKey: ["tmdb", "top-rated-tv"],
-    queryFn: getTopRatedTv,
+    queryFn: () => withAutonomousCache(cacheKey, getTopRatedTv),
     staleTime: STALE_1H,
+    placeholderData: () => cachePeekStale<Series[]>(cacheKey) ?? [],
   });
 }
 
 /** Movies currently in theatres — for "Recently Added" rail. */
 export function useNowPlayingMovies() {
+  const cacheKey = "autonomous:tmdb:now-playing";
   return useQuery<Movie[]>({
     queryKey: ["tmdb", "now-playing"],
-    queryFn: getNowPlayingMovies,
+    queryFn: () => withAutonomousCache(cacheKey, getNowPlayingMovies),
     staleTime: STALE_5MIN,
+    placeholderData: () => cachePeekStale<Movie[]>(cacheKey) ?? [],
   });
 }
 
 /** TV shows currently airing — for "On Air" rail. */
 export function useOnAirSeries() {
+  const cacheKey = "autonomous:tmdb:on-air";
   return useQuery<Series[]>({
     queryKey: ["tmdb", "on-air"],
-    queryFn: getOnAirTv,
+    queryFn: () => withAutonomousCache(cacheKey, getOnAirTv),
     staleTime: STALE_5MIN,
+    placeholderData: () => cachePeekStale<Series[]>(cacheKey) ?? [],
   });
 }
 
@@ -409,6 +446,30 @@ export function useProviderSeries(providerId: number | null, region = "NL") {
     queryKey: ["tmdb", "provider-series", providerId, region],
     queryFn: () => getTvByProvider(providerId!, region),
     enabled: providerId !== null,
+    staleTime: STALE_1H,
+    placeholderData: [],
+  });
+}
+
+/** Movies from a country of origin (ISO code), e.g. BE/NL/FR. */
+export function useCountryMovies(countryCode: string | null) {
+  const country = String(countryCode || "").trim().toUpperCase();
+  return useQuery<Movie[]>({
+    queryKey: ["tmdb", "country-movies", country],
+    queryFn: () => getMoviesByCountry(country, 12),
+    enabled: country.length >= 2,
+    staleTime: STALE_1H,
+    placeholderData: [],
+  });
+}
+
+/** TV series from a country of origin (ISO code), e.g. BE/NL/FR. */
+export function useCountrySeries(countryCode: string | null) {
+  const country = String(countryCode || "").trim().toUpperCase();
+  return useQuery<Series[]>({
+    queryKey: ["tmdb", "country-series", country],
+    queryFn: () => getTvByCountry(country, 12),
+    enabled: country.length >= 2,
     staleTime: STALE_1H,
     placeholderData: [],
   });

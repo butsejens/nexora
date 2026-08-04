@@ -378,13 +378,17 @@ export function FeaturedCollectionRail({
 
 const GENRE_BTN_W = Math.min(Math.max(Math.round(W * 0.38), 150), 260);
 const GENRE_BTN_H = 72;
+const GENRE_BTN_W_COMPACT = Math.min(Math.max(Math.round(W * 0.3), 118), 180);
+const GENRE_BTN_H_COMPACT = 52;
 
 export function GenreButtonRow({
   genres,
   onPress,
+  compact = false,
 }: {
   genres: readonly { title: string; id: number }[];
   onPress?: (genre: { title: string; id: number }) => void;
+  compact?: boolean;
 }) {
   if (!genres.length) return null;
   return (
@@ -397,12 +401,17 @@ export function GenreButtonRow({
         contentContainerStyle={genreRowStyles.list}
         ItemSeparatorComponent={() => <View style={{ width: 10 }} />}
         renderItem={({ item }) => (
-          <Pressable style={genreRowStyles.btn} onPress={() => onPress?.(item)}>
+          <Pressable
+            style={[genreRowStyles.btn, compact && genreRowStyles.btnCompact]}
+            onPress={() => onPress?.(item)}
+          >
             <LinearGradient
               colors={["rgba(255,255,255,0.07)", "rgba(255,255,255,0.02)"]}
               style={genreRowStyles.gradient}
             />
-            <Text style={genreRowStyles.btnText}>{item.title}</Text>
+            <Text style={[genreRowStyles.btnText, compact && genreRowStyles.btnTextCompact]}>
+              {item.title}
+            </Text>
           </Pressable>
         )}
       />
@@ -424,12 +433,22 @@ const genreRowStyles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+  btnCompact: {
+    width: GENRE_BTN_W_COMPACT,
+    height: GENRE_BTN_H_COMPACT,
+    borderRadius: 9,
+  },
   gradient: { ...StyleSheet.absoluteFillObject },
   btnText: {
     color: COLORS.text,
     fontSize: 17,
     fontFamily: "Inter_700Bold",
     letterSpacing: -0.3,
+  },
+  btnTextCompact: {
+    fontSize: 14,
+    fontFamily: "Inter_600SemiBold",
+    letterSpacing: -0.2,
   },
 });
 

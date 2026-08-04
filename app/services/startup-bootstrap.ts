@@ -14,6 +14,7 @@ import {
   logStartupEvent,
   runStartupTask,
 } from "@/services/startup-orchestrator";
+import { runAutonomousStartup } from "@/src/core/autonomous/startupManager";
 
 const FEATURE_FLAGS_KEY = "nexora_feature_flags_v1";
 const MODULE_STATE_KEY = "nexora_module_state_v1";
@@ -95,6 +96,14 @@ export function runStartupBootstrap(queryClient: QueryClient): BootstrapResult {
   ]).then(() => undefined);
 
   const backgroundTasks = Promise.all([
+    runStartupTask({
+      scope: "background",
+      name: "autonomous-startup-manager",
+      timeoutMs: 12000,
+      run: async () => {
+        await runAutonomousStartup(queryClient);
+      },
+    }),
     runStartupTask({
       scope: "background",
       name: "prime-realtime-bootstrap",

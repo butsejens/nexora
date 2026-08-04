@@ -67,7 +67,7 @@
     "legalSub": "Privacidad, derechos y política de eliminación",
     "home": "Inicio",
     "library": "Biblioteca",
-    "nexoraMenu": "MENÚ NEXORA"
+    "nexoraMenu": "MENÚ CINELOG"
   },
   "sportHub": {
     "title": "DEPORTE",
@@ -140,7 +140,7 @@
   },
   "searchScreen": {
     "placeholder": "Buscar jugadores, equipos, ligas, películas, series...",
-    "title": "Buscar NEXORA",
+    "title": "Buscar CINELOG",
     "subtitle": "Encuentra equipos deportivos, competiciones o tus películas y series favoritas",
     "recentSearches": "Búsquedas recientes",
     "noResults": "No se encontraron resultados",
@@ -204,7 +204,7 @@
   "settings": {
     "subtitle": "Tu perfil, playlists y ajustes de streaming",
     "mainProfile": "Perfil principal",
-    "premium": "NEXORA Premium",
+    "premium": "CINELOG Premium",
     "upgradePremium": "Actualizar a Premium",
     "favorites": "Favoritos",
     "watched": "Vistos",
@@ -255,7 +255,7 @@
     "appVersion": "Versión de la app",
     "softwareVersion": "Versión del software",
     "checkUpdates": "Buscar actualizaciones",
-    "rateApp": "Valora NEXORA",
+    "rateApp": "Valora CINELOG",
     "rateTitle": "¡Gracias!",
     "rateMessage": "Tu valoración nos ayuda a mejorar...",
     "support": "Soporte",
@@ -271,7 +271,7 @@
     "languageSpanish": "Español",
     "languagePortuguese": "Portugués (Português)",
     "settingsTitle": "AJUSTES",
-    "nexoraSettings": "AJUSTES NEXORA",
+    "nexoraSettings": "AJUSTES CINELOG",
     "modules": "Módulos",
     "sportsModule": "Módulo deportivo",
     "moviesAndSeries": "Películas y series",
@@ -457,7 +457,7 @@
     "highlightsUnavailable": "Resúmenes aún no disponibles",
     "matchRating": "Valoración del partido",
     "premiumAIAnalysis": "Análisis IA Premium",
-    "premiumAIDesc": "Accede al análisis IA avanzado, pronósticos, táctica y análisis en directo con Nexora Premium.",
+    "premiumAIDesc": "Accede al análisis IA avanzado, pronósticos, táctica y análisis en directo con Cinelog Premium.",
     "preMatchLoading": "El análisis IA previo al partido se está preparando...",
     "preMatchBasis": "Análisis fijo basado en forma y contexto",
     "preMatchLabel": "ANÁLISIS PREVIO (FIJO)",
@@ -701,7 +701,7 @@
     "playoffRound": "Ronda de playoff"
   },
   "premium": {
-    "title": "NEXORA Premium",
+    "title": "CINELOG Premium",
     "subtitle": "Elige exactamente lo que quieres desbloquear",
     "choosePackage": "Elige tu paquete",
     "deselectAll": "Deseleccionar todo",
@@ -760,8 +760,8 @@
       "unlimitedZapping": "Zapping ilimitado"
     },
     "premiumActive": "Premium está activo",
-    "allFeaturesUnlocked": "Todas las funciones premium de Nexora están actualmente desbloqueadas en este dispositivo.",
-    "backToNexora": "Volver a Nexora"
+    "allFeaturesUnlocked": "Todas las funciones premium de Cinelog están actualmente desbloqueadas en este dispositivo.",
+    "backToNexora": "Volver a Cinelog"
   },
   "playlist": {
     "title": "Playlist",
@@ -835,9 +835,9 @@
     "signIn": "Iniciar sesión",
     "createAccount": "Crear cuenta",
     "welcomeBack": "Bienvenido de nuevo",
-    "joinNexora": "Únete a Nexora",
+    "joinNexora": "Únete a Cinelog",
     "signInDesc": "Inicia sesión para desbloquear tus transmisiones personalizadas, rieles deportivos y centro de control premium.",
-    "signUpDesc": "Crea tu cuenta en un paso y comienza con tu experiencia premium oscura de Nexora.",
+    "signUpDesc": "Crea tu cuenta en un paso y comienza con tu experiencia premium oscura de Cinelog.",
     "continueGoogle": "Continuar con Google",
     "signUpGoogle": "Registrarse con Google",
     "googleUnavailable": "Google temporalmente no disponible",
@@ -855,7 +855,7 @@
     "biometricFailed": "Autenticación biométrica fallida",
     "biometricUnavailable": "Biometría no disponible",
     "orContinueWith": "o continúa con",
-    "newToNexora": "¿Nuevo en Nexora?",
+    "newToNexora": "¿Nuevo en Cinelog?",
     "createAccountBelow": "Crea tu cuenta para empezar."
   },
   "mediaHome": {

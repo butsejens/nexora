@@ -1,4 +1,4 @@
-import React, { useMemo } from "react";
+import React, { useEffect, useMemo } from "react";
 import {
   Dimensions,
   FlatList,
@@ -8,6 +8,7 @@ import {
   View,
 } from "react-native";
 import { router } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
 import { Image as ExpoImage } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -58,6 +59,33 @@ function TabHero({
         contentFit="cover"
         priority="high"
         cachePolicy="memory-disk"
+        onLoad={(event) => {
+          // #region agent log
+          if (__DEV__) {
+            fetch("http://127.0.0.1:7379/ingest/4d747d85-0c03-4a11-8a60-a6d4fd09190a", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "X-Debug-Session-Id": "165c99",
+              },
+              body: JSON.stringify({
+                sessionId: "165c99",
+                runId: "baseline-4",
+                hypothesisId: "H9",
+                location: "tabs/series:hero-image-onLoad",
+                message: "hero-image-loaded",
+                data: {
+                  id: item.id,
+                  src: item.backdrop ?? item.poster ?? null,
+                  width: event?.source?.width ?? null,
+                  height: event?.source?.height ?? null,
+                },
+                timestamp: Date.now(),
+              }),
+            }).catch(() => {});
+          }
+          // #endregion
+        }}
       />
       <LinearGradient
         colors={["transparent", "rgba(6,5,10,0.32)", COLORS.background]}
@@ -79,26 +107,28 @@ function TabHero({
         </Text>
         <View style={heroStyles.heroActions}>
           <Pressable
-            style={heroStyles.playBtn}
+            style={({ pressed }) => [heroStyles.playBtn, pressed && { opacity: 0.82 }]}
             onPress={() =>
               router.push({
-                pathname: "/detail",
+                pathname: "/media/detail",
                 params: { id: item.id, type: item.type ?? "series" },
               })
             }
           >
-            <Text style={heroStyles.playBtnText}>▶ Afspelen</Text>
+            <Ionicons name="play" size={16} color="#000" />
+            <Text style={heroStyles.playBtnText}>Kijk nu</Text>
           </Pressable>
           <Pressable
-            style={heroStyles.listBtn}
+            style={({ pressed }) => [heroStyles.listBtn, pressed && { opacity: 0.82 }]}
             onPress={() =>
               router.push({
-                pathname: "/detail",
+                pathname: "/media/detail",
                 params: { id: item.id, type: item.type ?? "series" },
               })
             }
           >
-            <Text style={heroStyles.listBtnText}>Meer info</Text>
+            <Ionicons name="add" size={17} color={COLORS.text} />
+            <Text style={heroStyles.listBtnText}>Mijn lijst</Text>
           </Pressable>
         </View>
       </View>
@@ -123,9 +153,9 @@ const heroStyles = StyleSheet.create({
   heroBadge: {
     alignSelf: "flex-start",
     borderRadius: 999,
-    backgroundColor: "rgba(255,0,200,0.18)",
+    backgroundColor: "rgba(255,255,255,0.14)",
     borderWidth: 1,
-    borderColor: "rgba(255,0,200,0.42)",
+    borderColor: "rgba(255,255,255,0.26)",
     paddingHorizontal: 10,
     paddingVertical: 5,
   },
@@ -144,26 +174,32 @@ const heroStyles = StyleSheet.create({
   },
   heroActions: { flexDirection: "row", gap: 10 },
   playBtn: {
-    backgroundColor: "#fff",
-    borderRadius: 999,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: "#FFFFFF",
     paddingHorizontal: 18,
-    paddingVertical: 10,
+    paddingVertical: 11,
+    borderRadius: 999,
   },
   playBtnText: {
     color: "#000",
-    fontSize: 14,
+    fontSize: 16,
     fontFamily: "Inter_700Bold",
   },
   listBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 7,
     backgroundColor: "rgba(255,255,255,0.14)",
-    borderRadius: 999,
-    paddingHorizontal: 18,
-    paddingVertical: 10,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.22)",
+    borderColor: "rgba(255,255,255,0.24)",
+    paddingHorizontal: 16,
+    paddingVertical: 11,
+    borderRadius: 999,
   },
   listBtnText: {
-    color: "#fff",
+    color: COLORS.text,
     fontSize: 14,
     fontFamily: "Inter_600SemiBold",
   },
@@ -180,6 +216,20 @@ const GENRE_ROWS = [
   { title: "Fantasy", id: 10765 },
 ] as const;
 
+const COUNTRY_ROWS = [
+  { title: "Vlaams", id: 0, code: "nl-BE" },
+  { title: "Nederlands", id: 1, code: "nl" },
+  { title: "Frans", id: 2, code: "fr" },
+  { title: "Engels", id: 3, code: "en" },
+  { title: "Spaans", id: 4, code: "es" },
+  { title: "Duits", id: 5, code: "de" },
+  { title: "Koreaans", id: 6, code: "ko" },
+  { title: "Japans", id: 7, code: "ja" },
+] as const;
+const COUNTRY_CODE_BY_ID: Record<number, string> = Object.fromEntries(
+  COUNTRY_ROWS.map((country) => [country.id, country.code]),
+) as Record<number, string>;
+
 function mergeUnique(items: Series[]): Series[] {
   const seen = new Set<string>();
   return items.filter((item) => {
@@ -191,7 +241,7 @@ function mergeUnique(items: Series[]): Series[] {
 }
 
 function openDetail(item: RailItem) {
-  router.push({ pathname: "/detail", params: { id: item.id, type: "series" } });
+  router.push({ pathname: "/media/detail", params: { id: item.id, type: "series" } });
 }
 
 export default function SeriesScreen() {
@@ -200,24 +250,50 @@ export default function SeriesScreen() {
   const { data: onAir = [] } = useOnAirSeries();
   const { data: popular = [] } = usePopularSeries();
   const { data: topRated = [] } = useTopRatedSeries();
-  const { data: documentaries = [] } = useTvByGenreAll([99], true, 3);
-  const { data: genreActie = [] } = useTvByGenreAll([10759], true, 3);
-  const { data: genreMisdaad = [] } = useTvByGenreAll([80], true, 3);
-  const { data: genreDrama = [] } = useTvByGenreAll([18], true, 3);
-  const { data: genreHorror = [] } = useTvByGenreAll([27], true, 3);
-  const { data: genreKomedie = [] } = useTvByGenreAll([35], true, 3);
-  const { data: genreThriller = [] } = useTvByGenreAll([53], true, 3);
-  const { data: genreFamilie = [] } = useTvByGenreAll([10751], true, 3);
-  const { data: genreFantasy = [] } = useTvByGenreAll([10765], true, 3);
-  const { data: genreMysterie = [] } = useTvByGenreAll([9648], true, 3);
-  const { data: genreRealiteit = [] } = useTvByGenreAll([10764], true, 3);
-  const { data: genreTrueCrime = [] } = useTvByGenreAll([80, 99], true, 3);
+  const { data: documentaries = [] } = useTvByGenreAll([99], true, 2);
+  const { data: genreActie = [] } = useTvByGenreAll([10759], true, 2);
+  const { data: genreMisdaad = [] } = useTvByGenreAll([80], true, 2);
+  const { data: genreDrama = [] } = useTvByGenreAll([18], true, 2);
+  const { data: genreHorror = [] } = useTvByGenreAll([27], true, 2);
+  const { data: genreKomedie = [] } = useTvByGenreAll([35], true, 2);
+  const { data: genreThriller = [] } = useTvByGenreAll([53], true, 2);
+  const { data: genreFamilie = [] } = useTvByGenreAll([10751], true, 2);
+  const { data: genreFantasy = [] } = useTvByGenreAll([10765], true, 2);
+  const { data: genreMysterie = [] } = useTvByGenreAll([9648], true, 2);
+  const { data: genreRealiteit = [] } = useTvByGenreAll([10764], true, 2);
+  const { data: genreTrueCrime = [] } = useTvByGenreAll([80, 99], true, 2);
 
   const heroSeries = useMemo(
     () =>
       withBackdrop(mergeUnique([...popular, ...topRated, ...onAir]))[0] ?? null,
     [popular, topRated, onAir],
   );
+
+  useEffect(() => {
+    if (!__DEV__) return;
+    // #region agent log
+    fetch("http://127.0.0.1:7379/ingest/4d747d85-0c03-4a11-8a60-a6d4fd09190a", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Debug-Session-Id": "165c99",
+      },
+      body: JSON.stringify({
+        sessionId: "165c99",
+        runId: "baseline",
+        hypothesisId: "H4",
+        location: "tabs/series:hero",
+        message: "hero-source-selected",
+        data: {
+          heroId: heroSeries?.id || null,
+          hasBackdrop: Boolean(heroSeries?.backdrop),
+          backdropUrl: heroSeries?.backdrop || null,
+        },
+        timestamp: Date.now(),
+      }),
+    }).catch(() => {});
+    // #endregion
+  }, [heroSeries?.id, heroSeries?.backdrop]);
 
   const rails = useMemo(() => {
     const used = new Set<string>();
@@ -351,7 +427,7 @@ export default function SeriesScreen() {
       ListHeaderComponent={
         <>
           {heroSeries ? (
-            <TabHero item={heroSeries} badge="Nexora Series" />
+            <TabHero item={heroSeries} badge="Cinelog Series" />
           ) : null}
           <GenreButtonRow
             genres={GENRE_ROWS}
@@ -366,10 +442,24 @@ export default function SeriesScreen() {
               })
             }
           />
+          <GenreButtonRow
+            genres={COUNTRY_ROWS}
+            compact
+            onPress={(country) =>
+              router.push({
+                pathname: "/media/country",
+                params: {
+                  languageCode: COUNTRY_CODE_BY_ID[country.id] || "nl",
+                  languageName: country.title,
+                  type: "series",
+                },
+              })
+            }
+          />
 
           {/* Big numbered Top 10 */}
           <TopTenRail
-            title="Top 10 series op Nexora"
+            title="Top 10 series op Cinelog"
             data={rails.topTenSeries}
             onPress={openDetail}
             onSeeAll={() => {}}
@@ -392,7 +482,7 @@ export default function SeriesScreen() {
 
           {/* Top 10 documentaires — 2nd separator before Actie */}
           <TopTenRail
-            title="Top 10 docu's op Nexora"
+            title="Top 10 docu's op Cinelog"
             data={rails.topTenDocu}
             onPress={openDetail}
             onSeeAll={() => {}}

@@ -20,6 +20,7 @@ Thumbs.db
 .expo/
 app/.expo/
 app/dist/
+app/dist-web/
 app/web-build/
 app/dist-android/
 **/.expo-shared/

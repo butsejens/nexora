@@ -460,6 +460,25 @@ export async function buildPlaybackPlan(input: {
       }
     : null;
 
+  // Live / direct HLS: skip VOD provider lookups entirely (faster, no ads/embeds).
+  const isLive = rawType === "live" || rawType === "tv-live";
+  if (directStream && (isLive || !normalizedTmdbId)) {
+    streamLog("info", "resolver", "Playback resolver chose direct stream", {
+      url: directStream.url,
+      isLive,
+    });
+    return {
+      primary: directStream,
+      fallbacks: [],
+      diagnostics: {
+        hasDirectStream: true,
+        hasTrailer: false,
+        providerCount: 0,
+        source: "direct",
+      },
+    };
+  }
+
   const providerResults = await fetchProviderResults(normalizedTmdbId, mediaType);
   const providerSources = normalizeProviderSources(providerResults);
   const streamSources = resolveStreamProviderSources(

@@ -34,19 +34,25 @@ const FILTER_LABELS: { key: Filter; label: string }[] = [
 
 export default function ProviderPage() {
   const insets = useSafeAreaInsets();
-  const { providerId, name } = useLocalSearchParams<{
+  const { providerId, name, region: regionParam } = useLocalSearchParams<{
     providerId: string;
     name: string;
+    region?: string;
   }>();
 
   const [filter, setFilter] = useState<Filter>("all");
   const numericId = Number(providerId ?? 0);
+  const region = String(regionParam || "NL")
+    .trim()
+    .toUpperCase();
 
   const { data: movies = [], isFetching: loadingMovies } = useProviderMovies(
     numericId > 0 ? numericId : null,
+    region,
   );
   const { data: series = [], isFetching: loadingSeries } = useProviderSeries(
     numericId > 0 ? numericId : null,
+    region,
   );
 
   const isLoading = loadingMovies || loadingSeries;
@@ -72,7 +78,7 @@ export default function ProviderPage() {
 
   const openDetail = useCallback((item: Movie | Series) => {
     router.push({
-      pathname: "/detail",
+      pathname: "/media/detail",
       params: { id: item.id, type: item.type },
     });
   }, []);

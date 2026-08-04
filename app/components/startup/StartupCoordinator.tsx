@@ -202,9 +202,35 @@ export function StartupCoordinator() {
       void persistStartupLaunchContext(context).catch(() => undefined);
     }
 
-    // Always go to auth after intro — the auth screen handles biometric
-    // quick-unlock for returning users and shows registration for new ones.
-    const target = "/auth" as const;
+    // Temporary bypass: skip auth screen and enter the app directly.
+    const target = "/(tabs)/home" as const;
+    // #region agent log
+    if (__DEV__) {
+      fetch("http://127.0.0.1:7379/ingest/4d747d85-0c03-4a11-8a60-a6d4fd09190a", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Debug-Session-Id": "165c99",
+        },
+        body: JSON.stringify({
+          sessionId: "165c99",
+          runId: "baseline",
+          hypothesisId: "H1",
+          location: "StartupCoordinator:route-transition",
+          message: "startup-route-selected",
+          data: {
+            target,
+            navReady: Boolean(navState?.key),
+            authReady,
+            isAuthenticated,
+            introCompleted,
+            bootReadyForExit,
+          },
+          timestamp: Date.now(),
+        }),
+      }).catch(() => {});
+    }
+    // #endregion
     router.replace(target);
 
     logStartupEvent("boot", "info", "startup-transition-finished", {

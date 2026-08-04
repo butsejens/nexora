@@ -95,7 +95,7 @@ export default function GenrePage() {
 
   const openDetail = useCallback((item: { id: string; title: string }) => {
     router.push({
-      pathname: "/detail",
+      pathname: "/media/detail",
       params: { id: item.id, title: item.title },
     });
   }, []);

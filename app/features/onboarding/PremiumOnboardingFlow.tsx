@@ -27,7 +27,6 @@ const GENRE_OPTIONS = [
   { key: "animation", label: "Animation",    icon: "🎨" },
   { key: "docs",      label: "Documentary",  icon: "📽" },
   { key: "kids",      label: "Kids",         icon: "🧒" },
-  { key: "live",      label: "Live TV",      icon: "📺" },
   { key: "news",      label: "News",         icon: "📰" },
 ] as const;
 
@@ -114,7 +113,7 @@ export function PremiumOnboardingFlow({
       >
         {/* Header */}
         <View style={styles.header}>
-          <Text style={styles.logo}>NEXORA</Text>
+          <Text style={styles.logo}>CINELOG</Text>
           <StepDots step={step} total={STEP_TOTAL} />
         </View>
 

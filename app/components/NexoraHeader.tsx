@@ -2,11 +2,11 @@
  * NexoraHeader — premium app header (ESPN / Netflix / DAZN quality)
  *
  * Layout:
- *   [← back?]  [menu?]       NEXORA         [search] [notif] [fav]
+ *   [← back?]  [menu?]       CINELOG         [search] [notif] [fav]
  *                              HOME
  *
  * - Glass/blur effect (Apple-style)
- * - Centered NEXORA wordmark with red "N"
+ * - Centered CINELOG wordmark with accent "C"
  * - Menu + back buttons on left, action buttons on right
  */
 import React from "react";
@@ -27,7 +27,7 @@ import { ScalePress } from "@/components/ui/ScalePress";
 import { useUiStore } from "@/store/uiStore";
 
 export interface NexoraHeaderProps {
-  /** Page/module title shown below NEXORA wordmark (HOME, SPORT, MENU …) */
+  /** Page/module title shown below CINELOG wordmark (HOME, SPORT, MENU …) */
   title?: string;
   /** Label colour — defaults to accent red */
   titleColor?: string;
@@ -150,7 +150,7 @@ export function NexoraHeader({
         <View style={styles.brand}>
           <View style={styles.brandTopRow}>
             <Text style={styles.wordmark} numberOfLines={1}>
-              <Text style={styles.wordmarkN}>N</Text>EXORA
+              <Text style={styles.wordmarkC}>C</Text>INELOG
             </Text>
           </View>
           {hasTitle ? (
@@ -323,7 +323,7 @@ const styles = StyleSheet.create({
     color: COLORS.text,
     flexShrink: 1,
   },
-  wordmarkN: {
+  wordmarkC: {
     color: COLORS.accent,
   },
   moduleLabel: {

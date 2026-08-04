@@ -8,6 +8,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
@@ -16,6 +17,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery } from "@tanstack/react-query";
 import { Ionicons } from "@expo/vector-icons";
 import { Image as ExpoImage } from "expo-image";
+import { LinearGradient } from "expo-linear-gradient";
 import WebView from "react-native-webview";
 
 import { COLORS } from "@/constants/colors";
@@ -25,6 +27,7 @@ import { streamLog } from "@/lib/stream-logger";
 import { buildTrailerCandidates } from "@/features/media/services/trailerService";
 import { RealContentCard } from "@/components/RealContentCard";
 import { useTranslation } from "@/lib/useTranslation";
+import { logSelfHealing, validateBeforePlay } from "@/core/self-healing";
 
 function toMediaType(value: string | undefined): "movie" | "series" {
   return value === "series" ? "series" : "movie";
@@ -56,69 +59,6 @@ function toBackdrop(raw: any) {
     raw?.poster ||
     null
   );
-}
-
-function computeRatings(detail: any) {
-  const imdb = Number(detail?.imdbRating || 0);
-  const rt = Number(
-    detail?.rottenTomatoesRating ||
-      String(detail?.rottenTomatoes || "").replace(/[^0-9.]/g, "") ||
-      0,
-  );
-  const mc = Number(detail?.metacriticScore || detail?.metacritic || 0);
-  const tmdb = Number(
-    detail?.tmdbRating || detail?.rating || detail?.imdb || 0,
-  );
-
-  const entries = [
-    {
-      key: "imdb",
-      score: imdb > 0 ? imdb * 10 : 0,
-      badge: "IMDb",
-      badgeBg: "#f5c518",
-      badgeText: "#121212",
-    },
-    {
-      key: "rt",
-      score: rt > 0 ? rt : 0,
-      badge: "RT",
-      badgeBg: "#f93208",
-      badgeText: "#ffffff",
-    },
-    {
-      key: "mc",
-      score: mc > 0 ? mc : 0,
-      badge: "MC",
-      badgeBg: "#00ce7a",
-      badgeText: "#0f172a",
-    },
-    {
-      key: "tmdb",
-      score: tmdb > 0 ? tmdb * 10 : 0,
-      badge: "TMDB",
-      badgeBg: "#01d277",
-      badgeText: "#0b1f2a",
-    },
-  ].filter((entry) => entry.score > 0);
-
-  if (!entries.length) {
-    return {
-      entries,
-      weighted: null,
-      consensus: "Not enough ratings yet",
-    };
-  }
-
-  const weighted =
-    entries.reduce((sum, entry) => sum + entry.score, 0) / entries.length;
-  const rounded = Math.round(weighted);
-  let consensus = "Mixed reception";
-  if (rounded >= 85) consensus = "Universal acclaim";
-  else if (rounded >= 75) consensus = "Very positive";
-  else if (rounded >= 65) consensus = "Mostly positive";
-  else if (rounded < 50) consensus = "Needs improvement";
-
-  return { entries, weighted: rounded, consensus };
 }
 
 function toTrailerKey(raw: any): string {
@@ -172,8 +112,90 @@ async function fetchMediaDetail(
     type === "movie"
       ? `/api/movies/${safeId}/full${safeTitle}`
       : `/api/series/${safeId}/full${safeTitle}`;
-  const res = await apiRequest("GET", route);
-  return res.json();
+  // #region agent log
+  if (__DEV__) {
+    fetch("http://127.0.0.1:7379/ingest/4d747d85-0c03-4a11-8a60-a6d4fd09190a", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Debug-Session-Id": "165c99",
+      },
+      body: JSON.stringify({
+        sessionId: "165c99",
+        runId: "baseline",
+        hypothesisId: "H3",
+        location: "media/detail:fetchMediaDetail",
+        message: "detail-request-start",
+        data: {
+          id,
+          type,
+          route,
+        },
+        timestamp: Date.now(),
+      }),
+    }).catch(() => {});
+  }
+  // #endregion
+  try {
+    const res = await apiRequest("GET", route);
+    const payload = await res.json();
+    // #region agent log
+    if (__DEV__) {
+      fetch("http://127.0.0.1:7379/ingest/4d747d85-0c03-4a11-8a60-a6d4fd09190a", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Debug-Session-Id": "165c99",
+        },
+        body: JSON.stringify({
+          sessionId: "165c99",
+          runId: "baseline-2",
+          hypothesisId: "H5",
+          location: "media/detail:fetchMediaDetail",
+          message: "detail-request-success",
+          data: {
+            id,
+            type,
+            route,
+            status: res.status,
+            payloadType: typeof payload,
+            hasTitle: Boolean(payload?.title || payload?.name),
+            hasBackdrop: Boolean(payload?.backdrop || payload?.backdrop_path),
+          },
+          timestamp: Date.now(),
+        }),
+      }).catch(() => {});
+    }
+    // #endregion
+    return payload;
+  } catch (error) {
+    // #region agent log
+    if (__DEV__) {
+      fetch("http://127.0.0.1:7379/ingest/4d747d85-0c03-4a11-8a60-a6d4fd09190a", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Debug-Session-Id": "165c99",
+        },
+        body: JSON.stringify({
+          sessionId: "165c99",
+          runId: "baseline-2",
+          hypothesisId: "H5",
+          location: "media/detail:fetchMediaDetail",
+          message: "detail-request-failed",
+          data: {
+            id,
+            type,
+            route,
+            error: String((error as any)?.message || error || "unknown"),
+          },
+          timestamp: Date.now(),
+        }),
+      }).catch(() => {});
+    }
+    // #endregion
+    throw error;
+  }
 }
 
 async function fetchRecommendations(id: string, type: "movie" | "series") {
@@ -220,10 +242,42 @@ export default function MediaDetailScreen() {
   const numericRouteTmdbId = parseNumericTmdbId(id);
   const type = toMediaType(params.type);
 
+  useEffect(() => {
+    if (!__DEV__) return;
+    // #region agent log
+    fetch("http://127.0.0.1:7379/ingest/4d747d85-0c03-4a11-8a60-a6d4fd09190a", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Debug-Session-Id": "165c99",
+      },
+      body: JSON.stringify({
+        sessionId: "165c99",
+        runId: "baseline",
+        hypothesisId: "H3",
+        location: "media/detail:params",
+        message: "detail-screen-mounted",
+        data: {
+          rawId: id,
+          parsedTmdbId: numericRouteTmdbId || null,
+          type,
+          hasTitleParam: Boolean(params.title),
+          href:
+            typeof window !== "undefined" ? window.location.href : "native",
+        },
+        timestamp: Date.now(),
+      }),
+    }).catch(() => {});
+    // #endregion
+  }, [id, numericRouteTmdbId, params.title, type]);
+
   const { toggleFavorite, isFavorite } = useNexora();
   const [trailerOpen, setTrailerOpen] = useState(false);
   const [infoOpen, setInfoOpen] = useState(false);
   const [selectedSeason, setSelectedSeason] = useState<number>(1);
+  const [seasonSheetOpen, setSeasonSheetOpen] = useState(false);
+  const [episodeQuery, setEpisodeQuery] = useState("");
+  const [episodesModalOpen, setEpisodesModalOpen] = useState(false);
   const faved = isFavorite(id, type);
 
   const detailQuery = useQuery({
@@ -233,6 +287,44 @@ export default function MediaDetailScreen() {
     enabled: Boolean(id),
     staleTime: 10 * 60_000,
   });
+
+  useEffect(() => {
+    if (!__DEV__) return;
+    // #region agent log
+    fetch("http://127.0.0.1:7379/ingest/4d747d85-0c03-4a11-8a60-a6d4fd09190a", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Debug-Session-Id": "165c99",
+      },
+      body: JSON.stringify({
+        sessionId: "165c99",
+        runId: "baseline-2",
+        hypothesisId: "H6",
+        location: "media/detail:query-state",
+        message: "detail-query-state",
+        data: {
+          id,
+          type,
+          isLoading: detailQuery.isLoading,
+          isError: detailQuery.isError,
+          hasData: Boolean(detailQuery.data),
+          error: detailQuery.error
+            ? String((detailQuery.error as any)?.message || detailQuery.error)
+            : null,
+        },
+        timestamp: Date.now(),
+      }),
+    }).catch(() => {});
+    // #endregion
+  }, [
+    id,
+    type,
+    detailQuery.isLoading,
+    detailQuery.isError,
+    detailQuery.data,
+    detailQuery.error,
+  ]);
 
   const recommendationsQuery = useQuery({
     queryKey: ["media-detail-v2", "rec", type, id],
@@ -287,6 +379,11 @@ export default function MediaDetailScreen() {
       setSelectedSeason(normalized[0]);
     }
   }, [seasons, selectedSeason]);
+
+  useEffect(() => {
+    setEpisodeQuery("");
+    setSeasonSheetOpen(false);
+  }, [selectedSeason]);
 
   const detail = detailQuery.data || null;
   const title = String(
@@ -354,6 +451,19 @@ export default function MediaDetailScreen() {
   const handlePlayEpisode = useCallback(
     (seasonNum: number, episodeNum: number) => {
       const finalTmdbId = resolvedTmdbId || parseNumericTmdbId(String(params.id || ""));
+      const guard = validateBeforePlay({
+        id: finalTmdbId || id,
+        type: "series",
+      });
+      if (!guard.ok) {
+        void logSelfHealing("warn", "PLAYER", "block-episode-play-invalid-data", {
+          id,
+          seasonNum,
+          episodeNum,
+          reason: guard.message,
+        });
+        return;
+      }
       streamLog("info", "series", "Episode play clicked", {
         source: "media-detail",
         contentId: id,
@@ -383,9 +493,30 @@ export default function MediaDetailScreen() {
   const studios = Array.isArray(detail?.productionCompanies)
     ? detail.productionCompanies
     : [];
-  const recommendations = Array.isArray(recommendationsQuery.data?.items)
-    ? recommendationsQuery.data.items
-    : [];
+  const recommendations = useMemo(() => {
+    const items = Array.isArray(recommendationsQuery.data?.items)
+      ? recommendationsQuery.data.items
+      : [];
+    const seen = new Set<string>();
+    return items.filter((item: any) => {
+      const typeKey = String(
+        item?.type || item?.mediaType || item?.media_type || "movie",
+      ).toLowerCase();
+      const idKey = String(item?.tmdbId || item?.id || "").trim();
+      const titleKey = String(item?.title || item?.name || "")
+        .trim()
+        .toLowerCase();
+      const yearKey = String(
+        item?.year || item?.releaseDate || item?.release_date || "",
+      ).slice(0, 4);
+      const key = idKey
+        ? `${typeKey}:${idKey}`
+        : `${typeKey}:${titleKey}:${yearKey}`;
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }, [recommendationsQuery.data?.items]);
   const sortedEpisodes = useMemo(
     () => {
       const episodes = Array.isArray(seasonEpisodesQuery.data?.episodes)
@@ -401,10 +532,79 @@ export default function MediaDetailScreen() {
     },
     [seasonEpisodesQuery.data],
   );
-  const ratings = useMemo(() => computeRatings(detail), [detail]);
+  const episodeRows = useMemo(() => {
+    const rawNumbers = sortedEpisodes.map((episode: any) =>
+      Number(
+        episode?.episodeNumber || episode?.episode_number || episode?.number || 0,
+      ) || 0,
+    );
+    const maxRaw = rawNumbers.length ? Math.max(...rawNumbers) : 0;
+    // Some APIs return global/absolute episode numbers (e.g. S2 starts at 111).
+    // When that happens, use ordinal per-season numbering for cleaner UX and playback params.
+    const useOrdinal =
+      maxRaw > sortedEpisodes.length + 5 || rawNumbers.some((num) => num <= 0);
+
+    return sortedEpisodes.map((episode: any, index: number) => {
+      const rawEpisodeNumber =
+        Number(
+          episode?.episodeNumber || episode?.episode_number || episode?.number || 0,
+        ) || 0;
+      const displayEpisodeNumber = useOrdinal ? index + 1 : rawEpisodeNumber;
+      const playEpisodeNumber = displayEpisodeNumber;
+      const durationLabel =
+        episode?.duration ||
+        (Number(episode?.durationMinutes || episode?.runtime || 0) > 0
+          ? `${Number(episode?.durationMinutes || episode?.runtime)} min`
+          : "Duur onbekend");
+      return {
+        key: String(
+          episode?.id ||
+            `${selectedSeason}-${rawEpisodeNumber || displayEpisodeNumber}-${index}`,
+        ),
+        title: String(episode?.title || episode?.name || "Episode"),
+        displayEpisodeNumber,
+        playEpisodeNumber,
+        durationLabel,
+        searchableBlob: `${displayEpisodeNumber} ${rawEpisodeNumber} ${String(
+          episode?.title || episode?.name || "",
+        )} ${String(episode?.overview || "")}`.toLowerCase(),
+      };
+    });
+  }, [sortedEpisodes, selectedSeason]);
+  const filteredEpisodes = useMemo(() => {
+    const query = episodeQuery.trim().toLowerCase();
+    if (!query) return episodeRows;
+    return episodeRows.filter((episode) => episode.searchableBlob.includes(query));
+  }, [episodeRows, episodeQuery]);
+  const episodePreview = useMemo(
+    () => filteredEpisodes.slice(0, 12),
+    [filteredEpisodes],
+  );
+  const primaryRating = useMemo(() => {
+    const value = Number(
+      detail?.tmdbRating ||
+        detail?.rating ||
+        detail?.imdbRating ||
+        detail?.imdb ||
+        0,
+    );
+    return Number.isFinite(value) && value > 0 ? value : null;
+  }, [detail]);
 
   const handlePlay = () => {
     const finalTmdbId = resolvedTmdbId || parseNumericTmdbId(String(params.id || ""));
+    const guard = validateBeforePlay({
+      id: finalTmdbId || id,
+      type,
+    });
+    if (!guard.ok) {
+      void logSelfHealing("warn", "PLAYER", "block-play-invalid-data", {
+        id,
+        type,
+        reason: guard.message,
+      });
+      return;
+    }
     const firstEpisode = sortedEpisodes[0];
     const startSeason = type === "series" ? selectedSeason || 1 : 1;
     const startEpisode =
@@ -451,7 +651,7 @@ export default function MediaDetailScreen() {
           <RefreshControl
             refreshing={detailQuery.isRefetching}
             onRefresh={() => detailQuery.refetch()}
-            tintColor={COLORS.accent}
+            tintColor={COLORS.textSecondary}
           />
         }
         contentContainerStyle={{ paddingBottom: insets.bottom + 68 }}
@@ -466,7 +666,17 @@ export default function MediaDetailScreen() {
               cachePolicy="memory-disk"
             />
           ) : null}
-          <View style={styles.heroOverlay} />
+          <LinearGradient
+            colors={["transparent", "rgba(6,5,10,0.30)", COLORS.background]}
+            locations={[0.42, 0.74, 1]}
+            style={styles.heroOverlay}
+          />
+          <LinearGradient
+            colors={["rgba(6,5,10,0.38)", "transparent"]}
+            start={{ x: 0, y: 1 }}
+            end={{ x: 0.55, y: 1 }}
+            style={styles.heroSideOverlay}
+          />
 
           <TouchableOpacity
             style={[styles.backBtn, { top: insets.top + 8 }]}
@@ -475,57 +685,43 @@ export default function MediaDetailScreen() {
             <Ionicons name="chevron-back" size={18} color="#fff" />
           </TouchableOpacity>
           <TouchableOpacity
-            style={[styles.backBtn, { top: insets.top + 8, left: 58 }]}
-            onPress={() => router.replace("/(tabs)/home")}
+            style={[styles.topRightBtn, { top: insets.top + 8, right: 14, position: "absolute" }]}
+            onPress={() => setInfoOpen(true)}
           >
-            <Ionicons name="home-outline" size={16} color="#fff" />
+            <Ionicons name="information-circle-outline" size={20} color="#fff" />
           </TouchableOpacity>
-
-          <View style={[styles.topRightActions, { top: insets.top + 8 }]}>
-            <TouchableOpacity
-              style={styles.topRightBtn}
-              onPress={() => toggleFavorite(id, type)}
-            >
-              <Ionicons
-                name={faved ? "heart" : "heart-outline"}
-                size={18}
-                color={faved ? COLORS.accent : "#fff"}
-              />
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.topRightBtn}
-              onPress={() => setInfoOpen(true)}
-            >
-              <Ionicons
-                name="information-circle-outline"
-                size={20}
-                color="#fff"
-              />
-            </TouchableOpacity>
-          </View>
-
           <View style={styles.heroMeta}>
             <Text style={styles.title}>{title}</Text>
-            <Text style={styles.metaLine}>
-              {year || t("detail.unknownYear")}
-              {detail?.rottenTomatoesRating || detail?.rottenTomatoes
-                ? ` · ${Math.round(Number(detail?.rottenTomatoesRating || String(detail?.rottenTomatoes || "").replace(/[^0-9.]/g, "") || 0))}%🍅`
-                : ""}
-              {detail?.imdbRating
-                ? ` · ${Number(detail.imdbRating).toFixed(1)} IMDb`
-                : ""}
-              {detail?.tmdbRating || detail?.rating || detail?.imdb
-                ? ` · ${Number(detail?.tmdbRating || detail?.rating || detail?.imdb).toFixed(1)} TMDB`
-                : ""}
-              {detail?.metacriticScore || detail?.metacritic
-                ? ` · ${Math.round(Number(detail?.metacriticScore || detail?.metacritic))} MC`
-                : ""}
-              {genres.length ? ` · ${genres.slice(0, 3).join(" • ")}` : ""}
-            </Text>
+            <View style={styles.metaRow}>
+              <Text style={styles.metaLine}>{year || t("detail.unknownYear")}</Text>
+              {primaryRating ? (
+                <>
+                  <Text style={styles.metaLine}> · </Text>
+                  <Ionicons name="star" size={12} color={COLORS.gold} />
+                  <Text style={styles.metaLine}> {primaryRating.toFixed(1)}</Text>
+                </>
+              ) : null}
+              {genres.length ? (
+                <Text style={styles.metaLine}>
+                  {` · ${genres.slice(0, 3).join(" • ")}`}
+                </Text>
+              ) : null}
+            </View>
             <View style={styles.heroActions}>
               <TouchableOpacity style={styles.playBtn} onPress={handlePlay}>
-                <Ionicons name="play" size={16} color={COLORS.background} />
+                <Ionicons name="play" size={16} color="#000" />
                 <Text style={styles.playBtnText}>{t("detail.play")}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.myListBtn}
+                onPress={() => toggleFavorite(id, type)}
+              >
+                <Ionicons
+                  name={faved ? "checkmark" : "add"}
+                  size={16}
+                  color={COLORS.text}
+                />
+                <Text style={styles.myListBtnText}>Mijn lijst</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[
@@ -539,12 +735,12 @@ export default function MediaDetailScreen() {
                 disabled={!hasTrailer && !trailerLoading}
               >
                 {trailerLoading ? (
-                  <ActivityIndicator size={14} color={COLORS.background} />
+                  <ActivityIndicator size={14} color="#fff" />
                 ) : (
                   <Ionicons
                     name="film-outline"
                     size={16}
-                    color={hasTrailer ? COLORS.background : COLORS.textMuted}
+                    color={hasTrailer ? "#fff" : COLORS.textMuted}
                   />
                 )}
                 <Text
@@ -567,86 +763,9 @@ export default function MediaDetailScreen() {
         </View>
 
         <View style={styles.content}>
-          {ratings.entries.length > 0 && (
-            <Section title="Ratings breakdown">
-              <View style={styles.ratingPanel}>
-                <View style={styles.ratingPanelHeader}>
-                  <Text style={styles.ratingConsensus}>
-                    {ratings.consensus}
-                  </Text>
-                  {ratings.weighted != null ? (
-                    <Text style={styles.ratingScore}>
-                      {ratings.weighted}/100
-                    </Text>
-                  ) : null}
-                </View>
-                <View style={styles.ratingTrack}>
-                  <View
-                    style={[
-                      styles.ratingTrackFill,
-                      {
-                        width:
-                          `${Math.max(0, Math.min(100, ratings.weighted || 0))}%` as any,
-                      },
-                    ]}
-                  />
-                </View>
-                <View style={styles.ratingChipsRow}>
-                  {ratings.entries.map((entry) => (
-                    <View key={entry.key} style={styles.ratingChip}>
-                      <View
-                        style={[
-                          styles.ratingBadge,
-                          { backgroundColor: entry.badgeBg },
-                        ]}
-                      >
-                        <Text
-                          style={[
-                            styles.ratingBadgeText,
-                            { color: entry.badgeText },
-                          ]}
-                        >
-                          {entry.badge}
-                        </Text>
-                      </View>
-                      <Text style={styles.ratingChipValue}>
-                        {Math.round(entry.score)}
-                      </Text>
-                    </View>
-                  ))}
-                </View>
-              </View>
-            </Section>
-          )}
-
           {!!overview && (
             <Section title={t("detail.overview")}>
               <Text style={styles.body}>{overview}</Text>
-            </Section>
-          )}
-
-          {hasTrailer && (
-            <Section title="Trailer">
-              <TouchableOpacity
-                style={styles.trailerCard}
-                onPress={() => setTrailerOpen(true)}
-                activeOpacity={0.85}
-              >
-                <ExpoImage
-                  source={{
-                    uri: `https://img.youtube.com/vi/${trailerKey}/hqdefault.jpg`,
-                  }}
-                  style={styles.trailerThumb}
-                  contentFit="cover"
-                  cachePolicy="memory-disk"
-                />
-                <View style={styles.trailerThumbOverlay}>
-                  <View style={styles.trailerPlayCircle}>
-                    <Ionicons name="play" size={30} color="#fff" />
-                  </View>
-                  <Text style={styles.trailerThumbLabel}>{title}</Text>
-                </View>
-              </TouchableOpacity>
             </Section>
           )}
 
@@ -664,7 +783,21 @@ export default function MediaDetailScreen() {
                     role: string;
                     photo: string | null;
                   }) => (
-                    <View key={person.id} style={styles.castCard}>
+                    <TouchableOpacity
+                      key={person.id}
+                      style={styles.castCard}
+                      activeOpacity={0.82}
+                      onPress={() =>
+                        router.push({
+                          pathname: "/media/cast/[id]",
+                          params: {
+                            id: String(person.id),
+                            name: person.name,
+                            role: person.role || "",
+                          },
+                        })
+                      }
+                    >
                       {person.photo ? (
                         <ExpoImage
                           source={{ uri: person.photo }}
@@ -689,7 +822,7 @@ export default function MediaDetailScreen() {
                       <Text style={styles.castRole} numberOfLines={1}>
                         {person.role || "Cast"}
                       </Text>
-                    </View>
+                    </TouchableOpacity>
                   ),
                 )}
               </ScrollView>
@@ -814,121 +947,90 @@ export default function MediaDetailScreen() {
 
           {type === "series" && seasons.length > 0 && (
             <Section title={t("detail.seasonsAndEpisodes")}>
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.filterRow}
+              <TouchableOpacity
+                style={styles.seasonSelector}
+                onPress={() => setSeasonSheetOpen(true)}
+                activeOpacity={0.8}
               >
-                {seasons.map((season: any) => {
-                  const seasonNumber =
-                    Number(
-                      season?.seasonNumber ||
-                        season?.season_number ||
-                        season?.season ||
-                        0,
-                    ) || 1;
-                  const active = selectedSeason === seasonNumber;
-                  return (
-                    <TouchableOpacity
-                      key={String(seasonNumber)}
-                      style={[
-                        styles.seasonChip,
-                        active && styles.seasonChipActive,
-                      ]}
-                      onPress={() => {
-                        streamLog("info", "series", "Season selected", {
-                          source: "media-detail",
-                          contentId: id,
-                          season: seasonNumber,
-                        });
-                        setSelectedSeason(seasonNumber);
-                      }}
-                    >
-                      <Text
-                        style={[
-                          styles.seasonChipText,
-                          active && styles.seasonChipTextActive,
-                        ]}
-                      >
-                        Season {seasonNumber}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </ScrollView>
+                <View style={styles.seasonSelectorLeft}>
+                  <Text style={styles.seasonSelectorLabel}>Geselecteerd seizoen</Text>
+                  <Text style={styles.seasonSelectorText}>Seizoen {selectedSeason}</Text>
+                </View>
+                <View style={styles.seasonSelectorIconWrap}>
+                  <Ionicons
+                    name="chevron-down"
+                    size={15}
+                    color={COLORS.text}
+                  />
+                </View>
+              </TouchableOpacity>
+              <TextInput
+                value={episodeQuery}
+                onChangeText={setEpisodeQuery}
+                placeholder="Zoek aflevering in dit seizoen"
+                placeholderTextColor={COLORS.textMuted}
+                style={styles.episodeSearchInput}
+                autoCapitalize="none"
+                autoCorrect={false}
+                returnKeyType="search"
+              />
 
               {seasonEpisodesQuery.isLoading ? (
-                <ActivityIndicator color={COLORS.accent} />
+                <ActivityIndicator color={COLORS.textSecondary} />
               ) : (
-                <View style={styles.episodesList}>
-                  {sortedEpisodes.slice(0, 40).map((episode: any) => {
-                    const episodeNumber =
-                      Number(
-                        episode?.episodeNumber ||
-                          episode?.episode_number ||
-                          episode?.number ||
-                          0,
-                      ) || 0;
-                    const episodeImage =
-                      String(episode?.image || episode?.still || episode?.still_path || "").trim() || null;
-                    const episodeDuration =
-                      episode?.duration ||
-                      (Number(episode?.durationMinutes || episode?.runtime || 0) > 0
-                        ? `${Number(episode?.durationMinutes || episode?.runtime)} min`
-                        : "Duur onbekend");
-                    return (
+                <>
+                  <FlatList
+                    data={episodePreview}
+                    keyExtractor={(episode) => episode.key}
+                    numColumns={2}
+                    scrollEnabled={false}
+                    columnWrapperStyle={styles.episodesGridRow}
+                    contentContainerStyle={styles.episodesGrid}
+                    renderItem={({ item: episode }) => {
+                      return (
+                        <TouchableOpacity
+                          style={styles.episodeGridCard}
+                          onPress={() =>
+                            handlePlayEpisode(
+                              selectedSeason,
+                              episode.playEpisodeNumber || 1,
+                            )
+                          }
+                          activeOpacity={0.7}
+                        >
+                          <Text style={styles.episodeGridNumber}>
+                            Aflevering {episode.displayEpisodeNumber || "?"}
+                          </Text>
+                          <Text style={styles.episodeGridTitle} numberOfLines={2}>
+                            {episode.title}
+                          </Text>
+                          <Text style={styles.episodeGridMeta} numberOfLines={1}>
+                            {episode.durationLabel}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    }}
+                  />
+                  {filteredEpisodes.length > episodePreview.length ? (
                     <TouchableOpacity
-                      key={String(
-                        episode?.id ||
-                          `${selectedSeason}-${episode?.episodeNumber || episode?.episode_number || Math.random()}`,
-                      )}
-                      style={styles.episodeCard}
-                      onPress={() =>
-                        handlePlayEpisode(
-                          selectedSeason,
-                          episodeNumber || 1,
-                        )
-                      }
-                      activeOpacity={0.7}
+                      style={styles.showAllEpisodesBtn}
+                      onPress={() => setEpisodesModalOpen(true)}
+                      activeOpacity={0.82}
                     >
-                      <View style={styles.episodeRow}>
-                        {episodeImage ? (
-                          <ExpoImage
-                            source={{ uri: episodeImage }}
-                            style={styles.episodeThumb}
-                            contentFit="cover"
-                            cachePolicy="memory-disk"
-                          />
-                        ) : (
-                          <View style={styles.episodeThumbFallback}>
-                            <Ionicons name="image-outline" size={16} color={COLORS.textMuted} />
-                          </View>
-                        )}
-                        <View style={styles.episodeInfo}>
-                          <Text style={styles.episodeTitle} numberOfLines={1}>
-                            E{episodeNumber || "?"} ·{" "}
-                            {String(
-                              episode?.title || episode?.name || "Episode",
-                            )}
-                          </Text>
-                          <Text style={styles.episodeDuration} numberOfLines={1}>
-                            {episodeDuration}
-                          </Text>
-                          <Text style={styles.episodeMeta} numberOfLines={2}>
-                            {String(episode?.overview || "") ||
-                              t("detail.noSynopsis")}
-                          </Text>
-                        </View>
-                        <Ionicons
-                          name="play-circle"
-                          size={28}
-                          color={COLORS.accent}
-                        />
-                      </View>
+                      <Text style={styles.showAllEpisodesBtnText}>
+                        Bekijk alle afleveringen ({filteredEpisodes.length})
+                      </Text>
+                      <Ionicons
+                        name="chevron-forward"
+                        size={14}
+                        color={COLORS.text}
+                      />
                     </TouchableOpacity>
-                    );
-                  })}
-                </View>
+                  ) : null}
+                  {!filteredEpisodes.length ? (
+                    <Text style={styles.emptyText}>Geen afleveringen gevonden voor je zoekterm.</Text>
+                  ) : null}
+                </>
               )}
             </Section>
           )}
@@ -1001,7 +1103,7 @@ export default function MediaDetailScreen() {
           )}
 
           {!detail && detailQuery.isLoading && (
-            <ActivityIndicator color={COLORS.accent} size="large" />
+            <ActivityIndicator color={COLORS.textSecondary} size="large" />
           )}
           {!detail && !detailQuery.isLoading && (
             <Text style={styles.emptyText}>
@@ -1024,6 +1126,146 @@ export default function MediaDetailScreen() {
         type={type}
         insets={insets}
       />
+
+      <Modal
+        visible={seasonSheetOpen}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setSeasonSheetOpen(false)}
+      >
+        <View style={styles.episodesModalOverlay}>
+          <View
+            style={[
+              styles.episodesModalSheet,
+              { paddingBottom: insets.bottom + 14, paddingTop: insets.top + 8 },
+            ]}
+          >
+            <View style={styles.episodesModalHeader}>
+              <Text style={styles.episodesModalTitle}>Kies seizoen</Text>
+              <TouchableOpacity
+                style={styles.episodesModalCloseBtn}
+                onPress={() => setSeasonSheetOpen(false)}
+              >
+                <Ionicons name="close" size={16} color={COLORS.text} />
+              </TouchableOpacity>
+            </View>
+            <FlatList
+              data={seasons}
+              keyExtractor={(season: any, index) =>
+                String(
+                  season?.seasonNumber ||
+                    season?.season_number ||
+                    season?.season ||
+                    index,
+                )
+              }
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={styles.seasonMenuList}
+              renderItem={({ item: season }) => {
+                const seasonNumber =
+                  Number(
+                    season?.seasonNumber ||
+                      season?.season_number ||
+                      season?.season ||
+                      0,
+                  ) || 1;
+                const active = selectedSeason === seasonNumber;
+                return (
+                  <TouchableOpacity
+                    style={[
+                      styles.seasonMenuItem,
+                      active && styles.seasonMenuItemActive,
+                    ]}
+                    onPress={() => {
+                      streamLog("info", "series", "Season selected", {
+                        source: "media-detail",
+                        contentId: id,
+                        season: seasonNumber,
+                      });
+                      setSelectedSeason(seasonNumber);
+                      setSeasonSheetOpen(false);
+                    }}
+                  >
+                    <View style={styles.seasonMenuItemRow}>
+                      <Text
+                        style={[
+                          styles.seasonMenuItemText,
+                          active && styles.seasonMenuItemTextActive,
+                        ]}
+                      >
+                        Seizoen {seasonNumber}
+                      </Text>
+                      {active ? (
+                        <Ionicons
+                          name="checkmark-circle"
+                          size={16}
+                          color={COLORS.text}
+                        />
+                      ) : null}
+                    </View>
+                  </TouchableOpacity>
+                );
+              }}
+            />
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={episodesModalOpen}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setEpisodesModalOpen(false)}
+      >
+        <View style={styles.episodesModalOverlay}>
+          <View
+            style={[
+              styles.episodesModalSheet,
+              { paddingBottom: insets.bottom + 14, paddingTop: insets.top + 8 },
+            ]}
+          >
+            <View style={styles.episodesModalHeader}>
+              <Text style={styles.episodesModalTitle}>
+                Seizoen {selectedSeason} · {filteredEpisodes.length} afleveringen
+              </Text>
+              <TouchableOpacity
+                style={styles.episodesModalCloseBtn}
+                onPress={() => setEpisodesModalOpen(false)}
+              >
+                <Ionicons name="close" size={16} color={COLORS.text} />
+              </TouchableOpacity>
+            </View>
+            <FlatList
+              data={filteredEpisodes}
+              keyExtractor={(episode) => `modal-${episode.key}`}
+              numColumns={2}
+              columnWrapperStyle={styles.episodesGridRow}
+              contentContainerStyle={styles.episodesGrid}
+              showsVerticalScrollIndicator={false}
+              renderItem={({ item: episode }) => (
+                <TouchableOpacity
+                  style={styles.episodeGridCard}
+                  onPress={() => {
+                    setEpisodesModalOpen(false);
+                    handlePlayEpisode(selectedSeason, episode.playEpisodeNumber || 1);
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.episodeGridNumber}>
+                    Aflevering {episode.displayEpisodeNumber || "?"}
+                  </Text>
+                  <Text style={styles.episodeGridTitle} numberOfLines={2}>
+                    {episode.title}
+                  </Text>
+                  <Text style={styles.episodeGridMeta} numberOfLines={1}>
+                    {episode.durationLabel}
+                  </Text>
+                </TouchableOpacity>
+              )}
+            />
+          </View>
+        </View>
+      </Modal>
 
       <Modal
         visible={trailerOpen}
@@ -1277,7 +1519,7 @@ const infoStyles = StyleSheet.create({
   },
   row: { paddingVertical: 8 },
   label: {
-    color: COLORS.accent,
+    color: COLORS.textSecondary,
     fontFamily: "Inter_600SemiBold",
     fontSize: 12,
     marginBottom: 2,
@@ -1312,7 +1554,9 @@ const styles = StyleSheet.create({
   heroImage: { ...StyleSheet.absoluteFillObject },
   heroOverlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(0,0,0,0.44)",
+  },
+  heroSideOverlay: {
+    ...StyleSheet.absoluteFillObject,
   },
   backBtn: {
     position: "absolute",
@@ -1354,6 +1598,11 @@ const styles = StyleSheet.create({
     fontFamily: "Inter_500Medium",
     fontSize: 13,
   },
+  metaRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    flexWrap: "wrap",
+  },
   heroActions: {
     flexDirection: "row",
     alignItems: "center",
@@ -1364,26 +1613,28 @@ const styles = StyleSheet.create({
     alignSelf: "flex-start",
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
-    backgroundColor: COLORS.accent,
+    gap: 8,
+    backgroundColor: "#FFFFFF",
     borderRadius: 999,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
+    paddingHorizontal: 18,
+    paddingVertical: 11,
   },
   playBtnText: {
-    color: COLORS.background,
+    color: "#000",
     fontFamily: "Inter_700Bold",
-    fontSize: 12,
+    fontSize: 16,
   },
   trailerBtn: {
     alignSelf: "flex-start",
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
-    backgroundColor: COLORS.accent,
+    gap: 7,
+    backgroundColor: "rgba(255,255,255,0.15)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.24)",
     borderRadius: 999,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 11,
   },
   trailerBtnDisabled: {
     backgroundColor: "rgba(255,255,255,0.12)",
@@ -1391,9 +1642,26 @@ const styles = StyleSheet.create({
     borderColor: "rgba(255,255,255,0.18)",
   },
   trailerBtnText: {
-    color: COLORS.background,
-    fontFamily: "Inter_700Bold",
-    fontSize: 12,
+    color: COLORS.text,
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 14,
+  },
+  myListBtn: {
+    alignSelf: "flex-start",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 7,
+    backgroundColor: "rgba(255,255,255,0.15)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.24)",
+    borderRadius: 999,
+    paddingHorizontal: 16,
+    paddingVertical: 11,
+  },
+  myListBtnText: {
+    color: COLORS.text,
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 14,
   },
   trailerBtnTextDisabled: { color: COLORS.textMuted },
 
@@ -1519,147 +1787,164 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
 
-  filterRow: { gap: 8 },
-  seasonChip: {
-    height: 32,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: COLORS.glassBorder,
-    backgroundColor: COLORS.card,
-    justifyContent: "center",
-    paddingHorizontal: 12,
-  },
-  seasonChipActive: {
-    backgroundColor: COLORS.accentGlow,
-    borderColor: COLORS.accentGlowStrong,
-  },
-  seasonChipText: {
-    color: COLORS.textSecondary,
-    fontFamily: "Inter_600SemiBold",
-    fontSize: 12,
-  },
-  seasonChipTextActive: { color: COLORS.text },
-
-  episodesList: { gap: 8 },
-  episodeCard: {
+  seasonSelector: {
+    minHeight: 48,
     borderRadius: 12,
     borderWidth: 1,
     borderColor: COLORS.glassBorder,
     backgroundColor: COLORS.card,
-    padding: 10,
-    gap: 4,
-  },
-  episodeRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-  },
-  episodeThumb: {
-    width: 84,
-    height: 54,
-    borderRadius: 8,
-    backgroundColor: COLORS.cardElevated,
-  },
-  episodeThumbFallback: {
-    width: 84,
-    height: 54,
-    borderRadius: 8,
-    backgroundColor: COLORS.cardElevated,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  episodeInfo: {
-    flex: 1,
-    gap: 4,
-  },
-  episodeTitle: {
-    color: COLORS.text,
-    fontFamily: "Inter_600SemiBold",
-    fontSize: 13,
-  },
-  episodeDuration: {
-    color: COLORS.textMuted,
-    fontFamily: "Inter_500Medium",
-    fontSize: 11,
-  },
-  episodeMeta: {
-    color: COLORS.textSecondary,
-    fontFamily: "Inter_500Medium",
-    fontSize: 12,
-    lineHeight: 18,
-  },
-
-  recRow: { gap: 10, paddingRight: 12 },
-
-  ratingPanel: {
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: COLORS.glassBorder,
-    backgroundColor: COLORS.card,
-    padding: 12,
-    gap: 10,
-  },
-  ratingPanelHeader: {
+    paddingHorizontal: 12,
+    paddingVertical: 7,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
   },
-  ratingConsensus: {
+  seasonSelectorLeft: { gap: 1 },
+  seasonSelectorLabel: {
+    color: COLORS.textMuted,
+    fontFamily: "Inter_500Medium",
+    fontSize: 10,
+  },
+  seasonSelectorText: {
     color: COLORS.text,
-    fontFamily: "Inter_700Bold",
-    fontSize: 14,
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 13,
   },
-  ratingScore: {
-    color: COLORS.accent,
-    fontFamily: "Inter_800ExtraBold",
-    fontSize: 14,
-  },
-  ratingTrack: {
-    height: 7,
-    borderRadius: 999,
+  seasonSelectorIconWrap: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
     backgroundColor: "rgba(255,255,255,0.1)",
-    overflow: "hidden",
-  },
-  ratingTrackFill: {
-    height: "100%",
-    backgroundColor: COLORS.accent,
-    borderRadius: 999,
-  },
-  ratingChipsRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
-  },
-  ratingChip: {
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: COLORS.glassBorder,
-    backgroundColor: "rgba(255,255,255,0.03)",
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-  },
-  ratingBadge: {
-    borderRadius: 999,
-    paddingHorizontal: 7,
-    paddingVertical: 2,
-    minWidth: 34,
     alignItems: "center",
     justifyContent: "center",
   },
-  ratingBadgeText: {
-    fontFamily: "Inter_700Bold",
-    fontSize: 10,
+  seasonMenuList: {
+    marginTop: 8,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: COLORS.glassBorder,
+    overflow: "hidden",
+    backgroundColor: COLORS.card,
   },
-  ratingChipValue: {
-    color: COLORS.text,
-    fontFamily: "Inter_700Bold",
+  seasonMenuItem: {
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    borderBottomWidth: 1,
+    borderBottomColor: "rgba(255,255,255,0.05)",
+  },
+  seasonMenuItemActive: {
+    backgroundColor: "rgba(255,255,255,0.15)",
+  },
+  seasonMenuItemRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  seasonMenuItemText: {
+    color: COLORS.textSecondary,
+    fontFamily: "Inter_600SemiBold",
     fontSize: 12,
   },
+  seasonMenuItemTextActive: { color: COLORS.text },
+  episodeSearchInput: {
+    marginTop: 6,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: COLORS.glassBorder,
+    backgroundColor: COLORS.card,
+    color: COLORS.text,
+    fontFamily: "Inter_500Medium",
+    fontSize: 13,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+  },
+
+  episodesGrid: {
+    gap: 8,
+    marginTop: 8,
+  },
+  episodesGridRow: {
+    gap: 8,
+  },
+  episodeGridCard: {
+    flex: 1,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: COLORS.glassBorder,
+    backgroundColor: COLORS.card,
+    paddingHorizontal: 9,
+    paddingVertical: 8,
+    minHeight: 76,
+    gap: 3,
+  },
+  episodeGridNumber: {
+    color: COLORS.textSecondary,
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 10,
+  },
+  episodeGridTitle: {
+    color: COLORS.text,
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 11,
+    lineHeight: 14,
+  },
+  episodeGridMeta: {
+    color: COLORS.textMuted,
+    fontFamily: "Inter_500Medium",
+    fontSize: 9,
+  },
+  showAllEpisodesBtn: {
+    marginTop: 8,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: COLORS.glassBorder,
+    backgroundColor: COLORS.card,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  showAllEpisodesBtnText: {
+    color: COLORS.text,
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 12,
+  },
+  episodesModalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.58)",
+    justifyContent: "flex-end",
+  },
+  episodesModalSheet: {
+    maxHeight: Dimensions.get("window").height * 0.86,
+    backgroundColor: COLORS.background,
+    borderTopLeftRadius: 18,
+    borderTopRightRadius: 18,
+    paddingHorizontal: 16,
+  },
+  episodesModalHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 8,
+  },
+  episodesModalTitle: {
+    color: COLORS.text,
+    fontFamily: "Inter_700Bold",
+    fontSize: 14,
+  },
+  episodesModalCloseBtn: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: COLORS.card,
+    borderWidth: 1,
+    borderColor: COLORS.glassBorder,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  recRow: { gap: 10, paddingRight: 12 },
 
   trailerModal: { flex: 1, backgroundColor: "#000" },
   trailerHeader: {
@@ -1706,7 +1991,7 @@ const styles = StyleSheet.create({
     borderRadius: 32,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(229,9,20,0.88)",
+    backgroundColor: "rgba(255,255,255,0.92)",
     paddingLeft: 4,
   },
   trailerThumbLabel: {

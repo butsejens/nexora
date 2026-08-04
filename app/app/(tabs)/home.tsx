@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   Dimensions,
   FlatList,
@@ -20,14 +20,12 @@ import {
   useTrending,
   usePopularMovies,
   usePopularSeries,
-  useTopRatedMovies,
-  useTopRatedSeries,
   useNowPlayingMovies,
   useOnAirSeries,
 } from "@/lib/use-tmdb";
-import { useLiveChannels } from "@/lib/live-channels";
 import { useProfileStore } from "@/store/profileStore";
 import type { Movie, Series } from "@/types/streaming";
+import { recoverEmptyList } from "@/core/self-healing";
 
 const { width: W, height: H } = Dimensions.get("window");
 const HERO_H = Math.min(H * 0.72, 620);
@@ -74,7 +72,7 @@ function heroEligible(items: Content[]): Content[] {
 
 function toDetail(item: Content) {
   router.push({
-    pathname: "/detail",
+    pathname: "/media/detail",
     params: { id: item.id, type: item.type },
   });
 }
@@ -88,6 +86,31 @@ function Hero({ item }: { item: Content }) {
         contentFit="cover"
         priority="high"
         cachePolicy="memory-disk"
+        onLoad={(event) => {
+          // #region agent log
+          fetch("http://127.0.0.1:7379/ingest/4d747d85-0c03-4a11-8a60-a6d4fd09190a", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "X-Debug-Session-Id": "165c99",
+            },
+            body: JSON.stringify({
+              sessionId: "165c99",
+              runId: "baseline-4",
+              hypothesisId: "H9",
+              location: "tabs/home:hero-image-onLoad",
+              message: "hero-image-loaded",
+              data: {
+                id: item.id,
+                src: item.backdrop ?? item.poster ?? null,
+                width: event?.source?.width ?? null,
+                height: event?.source?.height ?? null,
+              },
+              timestamp: Date.now(),
+            }),
+          }).catch(() => {});
+          // #endregion
+        }}
       />
       {/* Bottom fade — keeps top of image fully visible */}
       <LinearGradient
@@ -170,7 +193,7 @@ function Top10Rail({ data }: { data: Content[] }) {
   return (
     <View style={styles.section}>
       <View style={styles.sectionHead}>
-        <Text style={styles.sectionTitle}>Top 10 op Nexora</Text>
+        <Text style={styles.sectionTitle}>Top 10 op Cinelog</Text>
       </View>
       <FlatList
         horizontal
@@ -300,45 +323,51 @@ export default function HomeScreen() {
   const trendingQuery = useTrending();
   const popularMoviesQuery = usePopularMovies();
   const popularSeriesQuery = usePopularSeries();
-  const topMoviesQuery = useTopRatedMovies();
-  const topSeriesQuery = useTopRatedSeries();
   const nowPlayingQuery = useNowPlayingMovies();
   const onAirQuery = useOnAirSeries();
-  const liveQuery = useLiveChannels();
 
   const trending = trendingQuery.data ?? EMPTY_CONTENT;
   const popularMovies = popularMoviesQuery.data ?? EMPTY_CONTENT;
   const popularSeries = popularSeriesQuery.data ?? EMPTY_CONTENT;
-  const topMovies = topMoviesQuery.data ?? EMPTY_CONTENT;
-  const topSeries = topSeriesQuery.data ?? EMPTY_CONTENT;
   const nowPlaying = nowPlayingQuery.data ?? EMPTY_CONTENT;
   const onAir = onAirQuery.data ?? EMPTY_CONTENT;
+  const refetchTrending = trendingQuery.refetch;
+  const trendingSafe = useMemo(
+    () =>
+      recoverEmptyList({
+        source: trending as Content[],
+        fallback: dedupe([...popularMovies, ...popularSeries, ...nowPlaying, ...onAir]),
+        scope: "home-trending",
+        onRefetch: () => {
+          void refetchTrending();
+        },
+      }),
+    [trending, popularMovies, popularSeries, nowPlaying, onAir, refetchTrending],
+  );
 
   const fallbackPool = useMemo(
     () =>
       dedupe([
         ...popularMovies,
         ...popularSeries,
-        ...topMovies,
-        ...topSeries,
         ...nowPlaying,
         ...onAir,
       ]),
-    [popularMovies, popularSeries, topMovies, topSeries, nowPlaying, onAir],
+    [popularMovies, popularSeries, nowPlaying, onAir],
   );
 
   const top10Data = useMemo(
     () =>
       withPoster(
         dedupe([
-          ...(trending as Content[]),
-          ...topMovies,
-          ...topSeries,
+          ...trendingSafe,
           ...popularMovies,
           ...popularSeries,
+          ...nowPlaying,
+          ...onAir,
         ]),
       ).slice(0, 10),
-    [trending, topMovies, topSeries, popularMovies, popularSeries],
+    [trendingSafe, popularMovies, popularSeries, nowPlaying, onAir],
   );
 
   const top10Ids = useMemo(
@@ -364,19 +393,19 @@ export default function HomeScreen() {
     };
 
     const mustWatch = pick(
-      [...popularMovies, ...nowPlaying, ...topMovies] as Content[],
+      [...popularMovies, ...nowPlaying] as Content[],
       16,
     );
     const seriesPicks = pick(
-      [...popularSeries, ...topSeries, ...onAir] as Content[],
+      [...popularSeries, ...onAir] as Content[],
       16,
     );
     const moviePicks = pick(
-      [...topMovies, ...popularMovies, ...nowPlaying] as Content[],
+      [...popularMovies, ...nowPlaying] as Content[],
       16,
     );
     const trendingRail = pick(
-      [...(trending as Content[]), ...fallbackPool],
+      [...trendingSafe, ...fallbackPool],
       16,
     );
 
@@ -385,19 +414,43 @@ export default function HomeScreen() {
     top10Ids,
     popularMovies,
     nowPlaying,
-    topMovies,
     popularSeries,
-    topSeries,
     onAir,
-    trending,
+    trendingSafe,
     fallbackPool,
   ]);
 
   // Pick the best hero: must have a real backdrop + rating ≥ 6.8
-  const heroItem = (heroEligible(trending as Content[])[0] ??
+  const heroItem = (heroEligible(trendingSafe)[0] ??
     heroEligible(fallbackPool)[0] ??
-    withPoster(trending as Content[])[0] ??
+    withPoster(trendingSafe)[0] ??
     withPoster(fallbackPool)[0]) as Content | undefined;
+
+  useEffect(() => {
+    if (!__DEV__) return;
+    // #region agent log
+    fetch("http://127.0.0.1:7379/ingest/4d747d85-0c03-4a11-8a60-a6d4fd09190a", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Debug-Session-Id": "165c99",
+      },
+      body: JSON.stringify({
+        sessionId: "165c99",
+        runId: "baseline",
+        hypothesisId: "H4",
+        location: "tabs/home:hero",
+        message: "hero-source-selected",
+        data: {
+          heroId: heroItem?.id || null,
+          hasBackdrop: Boolean(heroItem?.backdrop),
+          backdropUrl: heroItem?.backdrop || null,
+        },
+        timestamp: Date.now(),
+      }),
+    }).catch(() => {});
+    // #endregion
+  }, [heroItem?.id, heroItem?.backdrop]);
 
   const isLoading =
     trendingQuery.isLoading ||
@@ -417,11 +470,8 @@ export default function HomeScreen() {
       trendingQuery.refetch(),
       popularMoviesQuery.refetch(),
       popularSeriesQuery.refetch(),
-      topMoviesQuery.refetch(),
-      topSeriesQuery.refetch(),
       nowPlayingQuery.refetch(),
       onAirQuery.refetch(),
-      liveQuery.refetch(),
     ]);
     setRefreshing(false);
   };
@@ -445,7 +495,7 @@ export default function HomeScreen() {
 
         <View style={styles.welcomeRow}>
           <Text style={styles.welcomeTitle}>
-            Welkom {activeProfile?.name ?? "bij Nexora"}
+            Welkom {activeProfile?.name ?? "bij Cinelog"}
           </Text>
         </View>
 

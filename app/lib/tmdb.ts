@@ -364,7 +364,7 @@ export async function getTrendingAll(): Promise<(Movie | Series)[]> {
   try {
     const data =
       await tmdbFetch<TmdbListResult<TmdbMultiResult>>("/trending/all/week");
-    return data.results
+    const mapped = data.results
       .filter(
         (r) =>
           (r.media_type === "movie" || r.media_type === "tv") &&
@@ -378,6 +378,32 @@ export async function getTrendingAll(): Promise<(Movie | Series)[]> {
       )
       .slice(0, 20)
       .map(multiResultToNexora);
+    // #region agent log
+    if (__DEV__) {
+      fetch("http://127.0.0.1:7379/ingest/4d747d85-0c03-4a11-8a60-a6d4fd09190a", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Debug-Session-Id": "165c99",
+        },
+        body: JSON.stringify({
+          sessionId: "165c99",
+          runId: "baseline-3",
+          hypothesisId: "H7",
+          location: "lib/tmdb:getTrendingAll",
+          message: "trending-mapped-image-sizes",
+          data: {
+            count: mapped.length,
+            firstId: mapped[0]?.id || null,
+            firstBackdrop: mapped[0]?.backdrop || null,
+            firstPoster: mapped[0]?.poster || null,
+          },
+          timestamp: Date.now(),
+        }),
+      }).catch(() => {});
+    }
+    // #endregion
+    return mapped;
   } catch {
     const home = await fetchMediaEnvelope<{
       trending: MediaListItem[];
@@ -385,7 +411,7 @@ export async function getTrendingAll(): Promise<(Movie | Series)[]> {
       series: MediaListItem[];
     }>("/api/media/home");
     if (!home) return [];
-    return [
+    const mapped = [
       ...(home.trending ?? []),
       ...(home.movies ?? []),
       ...(home.series ?? []),
@@ -401,6 +427,32 @@ export async function getTrendingAll(): Promise<(Movie | Series)[]> {
       )
       .slice(0, 20)
       .map(mediaListItemToNexora);
+    // #region agent log
+    if (__DEV__) {
+      fetch("http://127.0.0.1:7379/ingest/4d747d85-0c03-4a11-8a60-a6d4fd09190a", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Debug-Session-Id": "165c99",
+        },
+        body: JSON.stringify({
+          sessionId: "165c99",
+          runId: "baseline-3",
+          hypothesisId: "H7",
+          location: "lib/tmdb:getTrendingAll-fallback",
+          message: "trending-fallback-image-sizes",
+          data: {
+            count: mapped.length,
+            firstId: mapped[0]?.id || null,
+            firstBackdrop: mapped[0]?.backdrop || null,
+            firstPoster: mapped[0]?.poster || null,
+          },
+          timestamp: Date.now(),
+        }),
+      }).catch(() => {});
+    }
+    // #endregion
+    return mapped;
   }
 }
 
@@ -790,7 +842,7 @@ export async function getMoviesByGenre(genreIds: number[]): Promise<Movie[]> {
  */
 export async function getMoviesByGenreAll(
   genreIds: number[],
-  maxPages = 8,
+  maxPages = 4,
 ): Promise<Movie[]> {
   if (!genreIds.length) return [];
   try {
@@ -869,7 +921,7 @@ export async function getTvByGenre(genreIds: number[]): Promise<Series[]> {
  */
 export async function getTvByGenreAll(
   genreIds: number[],
-  maxPages = 8,
+  maxPages = 4,
 ): Promise<Series[]> {
   if (!genreIds.length) return [];
   try {
@@ -1183,6 +1235,50 @@ export interface StreamingProvider {
   display_priority?: number;
 }
 
+type WatchProviderRegionEntry = {
+  flatrate?: Array<{ provider_id?: number }>;
+  ads?: Array<{ provider_id?: number }>;
+  free?: Array<{ provider_id?: number }>;
+  rent?: Array<{ provider_id?: number }>;
+  buy?: Array<{ provider_id?: number }>;
+};
+
+function extractProviderIds(entry: WatchProviderRegionEntry | undefined): Set<number> {
+  const ids = new Set<number>();
+  for (const bucket of [
+    entry?.flatrate,
+    entry?.ads,
+    entry?.free,
+    entry?.rent,
+    entry?.buy,
+  ]) {
+    for (const item of bucket ?? []) {
+      const id = Number(item?.provider_id ?? 0);
+      if (id > 0) ids.add(id);
+    }
+  }
+  return ids;
+}
+
+async function hasProviderInRegion(
+  mediaType: "movie" | "tv",
+  mediaId: number,
+  providerId: number,
+  region: string,
+): Promise<boolean> {
+  try {
+    const data = await tmdbFetch<{ results?: Record<string, WatchProviderRegionEntry> }>(
+      `/${mediaType}/${mediaId}/watch/providers`,
+    );
+    const regionKey = String(region || "NL").toUpperCase();
+    const regionEntry = data.results?.[regionKey];
+    const providerIds = extractProviderIds(regionEntry);
+    return providerIds.has(providerId);
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Fetch the list of available streaming providers for a region.
  * Used to display service logos (Netflix, Disney+, Prime, …) on the home screen.
@@ -1217,7 +1313,7 @@ export async function getMoviesByProvider(
       watch_region: region,
       sort_by: "popularity.desc",
     });
-    return (data.results ?? [])
+    const candidates = (data.results ?? [])
       .filter((m) =>
         isReliableItem({
           title: m.title,
@@ -1227,7 +1323,16 @@ export async function getMoviesByProvider(
           year: m.release_date,
         }),
       )
-      .slice(0, 40)
+      .slice(0, 40);
+
+    const checks = await Promise.all(
+      candidates.map((movie) =>
+        hasProviderInRegion("movie", movie.id, providerId, region),
+      ),
+    );
+
+    return candidates
+      .filter((_, index) => checks[index])
       .map(tmdbMovieToNexora);
   } catch {
     return [];
@@ -1248,7 +1353,7 @@ export async function getTvByProvider(
       watch_region: region,
       sort_by: "popularity.desc",
     });
-    return (data.results ?? [])
+    const candidates = (data.results ?? [])
       .filter((s) =>
         isReliableItem({
           title: s.name,
@@ -1258,7 +1363,179 @@ export async function getTvByProvider(
           year: s.first_air_date,
         }),
       )
-      .slice(0, 40)
+      .slice(0, 40);
+
+    const checks = await Promise.all(
+      candidates.map((series) =>
+        hasProviderInRegion("tv", series.id, providerId, region),
+      ),
+    );
+
+    return candidates
+      .filter((_, index) => checks[index])
+      .map(tmdbTvToNexora);
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Discover movies by original language (ISO 639-1), e.g. nl, fr, en.
+ */
+export async function getMoviesByCountry(
+  countryCode: string,
+  maxPages = 12,
+): Promise<Movie[]> {
+  const rawCode = String(countryCode || "").trim();
+  const [languagePart, countryPart] = rawCode.split("-");
+  const language = String(languagePart || "").trim().toLowerCase();
+  const country = String(countryPart || "").trim().toUpperCase();
+  if (!language) return [];
+  try {
+    const first = await tmdbFetch<TmdbListResult<TmdbMovie>>(
+      "/discover/movie",
+      {
+        with_original_language: language,
+        ...(country ? { with_origin_country: country } : {}),
+        sort_by: "popularity.desc",
+        page: "1",
+      },
+    );
+    const totalPages = Math.min(first.total_pages ?? 1, maxPages);
+    const extraPages =
+      totalPages > 1
+        ? await Promise.all(
+            Array.from({ length: totalPages - 1 }, (_, i) =>
+              tmdbFetch<TmdbListResult<TmdbMovie>>("/discover/movie", {
+                with_original_language: language,
+                ...(country ? { with_origin_country: country } : {}),
+                sort_by: "popularity.desc",
+                page: String(i + 2),
+              }).catch(() => ({ results: [] as TmdbMovie[], total_pages: 0 })),
+            ),
+          )
+        : [];
+    const all = [first, ...extraPages].flatMap((d) => d.results ?? []);
+    const seen = new Set<number>();
+    const candidates = all
+      .filter((m) => {
+        if (seen.has(m.id)) return false;
+        seen.add(m.id);
+        // Country discovery should be less strict so local/niche titles survive.
+        const titleOk = String(m.title ?? "").trim().length >= 2;
+        const hasVisual = Boolean(m.poster_path || m.backdrop_path);
+        const ratingOk = Number(m.vote_average ?? 0) > 0;
+        const votes = Number(m.vote_count ?? 0);
+        const votesOk = !Number.isFinite(votes) || votes >= 5;
+        return titleOk && hasVisual && ratingOk && votesOk;
+      });
+
+    // Strict language check: keep only movies whose original language matches.
+    const keepMask = await Promise.all(
+      candidates.map(async (movie) => {
+        try {
+          const detail = await tmdbFetch<{
+            original_language?: string;
+            production_countries?: { iso_3166_1?: string }[];
+          }>(
+            `/movie/${movie.id}`,
+          );
+          const languageOk =
+            String(detail.original_language || "").toLowerCase() === language;
+          if (!languageOk) return false;
+          if (!country) return true;
+          const countries = (detail.production_countries ?? [])
+            .map((item) => String(item?.iso_3166_1 || "").toUpperCase())
+            .filter(Boolean);
+          return countries.includes(country);
+        } catch {
+          return false;
+        }
+      }),
+    );
+
+    return candidates
+      .filter((_, index) => keepMask[index])
+      .map(tmdbMovieToNexora);
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Discover TV series by original language (ISO 639-1), e.g. nl, fr, en.
+ */
+export async function getTvByCountry(
+  countryCode: string,
+  maxPages = 12,
+): Promise<Series[]> {
+  const rawCode = String(countryCode || "").trim();
+  const [languagePart, countryPart] = rawCode.split("-");
+  const language = String(languagePart || "").trim().toLowerCase();
+  const country = String(countryPart || "").trim().toUpperCase();
+  if (!language) return [];
+  try {
+    const first = await tmdbFetch<TmdbListResult<TmdbTv>>("/discover/tv", {
+      with_original_language: language,
+      ...(country ? { with_origin_country: country } : {}),
+      sort_by: "popularity.desc",
+      page: "1",
+    });
+    const totalPages = Math.min(first.total_pages ?? 1, maxPages);
+    const extraPages =
+      totalPages > 1
+        ? await Promise.all(
+            Array.from({ length: totalPages - 1 }, (_, i) =>
+              tmdbFetch<TmdbListResult<TmdbTv>>("/discover/tv", {
+                with_original_language: language,
+                ...(country ? { with_origin_country: country } : {}),
+                sort_by: "popularity.desc",
+                page: String(i + 2),
+              }).catch(() => ({ results: [] as TmdbTv[], total_pages: 0 })),
+            ),
+          )
+        : [];
+    const all = [first, ...extraPages].flatMap((d) => d.results ?? []);
+    const seen = new Set<number>();
+    const candidates = all
+      .filter((s) => {
+        if (seen.has(s.id)) return false;
+        seen.add(s.id);
+        // Country discovery should be less strict so local/niche titles survive.
+        const titleOk = String(s.name ?? "").trim().length >= 2;
+        const hasVisual = Boolean(s.poster_path || s.backdrop_path);
+        const ratingOk = Number(s.vote_average ?? 0) > 0;
+        const votes = Number(s.vote_count ?? 0);
+        const votesOk = !Number.isFinite(votes) || votes >= 5;
+        return titleOk && hasVisual && ratingOk && votesOk;
+      });
+
+    // Strict language check: keep only series whose original language matches.
+    const keepMask = await Promise.all(
+      candidates.map(async (series) => {
+        try {
+          const detail = await tmdbFetch<{
+            original_language?: string;
+            origin_country?: string[];
+          }>(
+            `/tv/${series.id}`,
+          );
+          const languageOk =
+            String(detail.original_language || "").toLowerCase() === language;
+          if (!languageOk) return false;
+          if (!country) return true;
+          const countries = (detail.origin_country ?? [])
+            .map((value) => String(value || "").toUpperCase())
+            .filter(Boolean);
+          return countries.includes(country);
+        } catch {
+          return false;
+        }
+      }),
+    );
+
+    return candidates
+      .filter((_, index) => keepMask[index])
       .map(tmdbTvToNexora);
   } catch {
     return [];

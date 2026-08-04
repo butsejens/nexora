@@ -1,6 +1,5 @@
 /**
- * NEXORA Settings — Menu + Instellingen in één pagina
- * Feature cards bovenaan, premium banner, persoonlijk menu, daarna alle instellingen inline.
+ * CINELOG Settings — compacte instellingenpagina
  */
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
@@ -28,7 +27,6 @@ import * as Updates from "expo-updates";
 
 import { UpdateModal } from "@/components/update";
 import { NexoraHeader } from "@/components/NexoraHeader";
-import { APP_MODULES_BY_ID } from "@/constants/module-registry";
 import { COLORS } from "@/constants/colors";
 import { useNexora } from "@/context/NexoraContext";
 import { t as tFn } from "@/lib/i18n";
@@ -106,81 +104,6 @@ const SERVER_ID_MAP: Record<string, string> = {
 
 type ServerHealth = "checking" | "online" | "slow" | "offline";
 
-type MenuItem = {
-  id: string;
-  title: string;
-  subtitle: string;
-  icon: keyof typeof Ionicons.glyphMap;
-  route: string;
-  badge?: string;
-};
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Feature card (grote kaart bovenaan)
-// ─────────────────────────────────────────────────────────────────────────────
-function FeatureCard({
-  icon, title, subtitle, route, accent = false,
-}: {
-  icon: keyof typeof Ionicons.glyphMap;
-  title: string;
-  subtitle: string;
-  route: string;
-  accent?: boolean;
-}) {
-  return (
-    <TouchableOpacity style={styles.featureCard} onPress={() => router.push(route as any)} activeOpacity={0.88}>
-      <LinearGradient
-        colors={accent ? ["rgba(229,9,20,0.20)", COLORS.card] : ["rgba(255,255,255,0.05)", COLORS.card]}
-        start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
-        style={styles.featureGradient}
-      >
-        <View style={[styles.featureIconWrap, accent && styles.featureIconAccent]}>
-          <Ionicons name={icon} size={22} color={accent ? COLORS.accent : COLORS.textSecondary} />
-        </View>
-        <Text style={styles.featureTitle} numberOfLines={1}>{title}</Text>
-        <Text style={styles.featureSubtitle} numberOfLines={2}>{subtitle}</Text>
-      </LinearGradient>
-    </TouchableOpacity>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Menu rij
-// ─────────────────────────────────────────────────────────────────────────────
-function MenuRow({ item }: { item: MenuItem }) {
-  return (
-    <TouchableOpacity style={styles.menuRow} onPress={() => router.push(item.route as any)} activeOpacity={0.82}>
-      <View style={styles.menuIconWrap}>
-        <Ionicons name={item.icon} size={17} color={COLORS.accent} />
-      </View>
-      <View style={styles.menuRowText}>
-        <Text style={styles.menuRowTitle}>{item.title}</Text>
-        <Text style={styles.menuRowSub} numberOfLines={1}>{item.subtitle}</Text>
-      </View>
-      {item.badge ? (
-        <View style={styles.badge}><Text style={styles.badgeText}>{item.badge}</Text></View>
-      ) : null}
-      <Ionicons name="chevron-forward" size={14} color={COLORS.textMuted} />
-    </TouchableOpacity>
-  );
-}
-
-function MenuSection({ title, items }: { title: string; items: MenuItem[] }) {
-  if (!items.length) return null;
-  return (
-    <View style={styles.menuSection}>
-      <Text style={styles.menuSectionTitle}>{title}</Text>
-      <View style={styles.menuSectionCard}>
-        {items.map((item, i) => (
-          <React.Fragment key={item.id}>
-            <MenuRow item={item} />
-            {i < items.length - 1 ? <View style={styles.menuDivider} /> : null}
-          </React.Fragment>
-        ))}
-      </View>
-    </View>
-  );
-}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Bottom sheet wrapper
@@ -459,30 +382,6 @@ export default function MoreScreen() {
   const selectedUiLang = UI_LANGUAGE_OPTIONS.find((l) => l.code === uiLanguage);
   const selectedUiLangLabel = selectedUiLang ? t(selectedUiLang.labelKey) : t("settings.languageEnglish");
 
-  const userItems = useMemo<MenuItem[]>(() => [
-    {
-      id: APP_MODULES_BY_ID.myList.id,
-      title: APP_MODULES_BY_ID.myList.label,
-      subtitle: APP_MODULES_BY_ID.myList.subtitle,
-      icon: APP_MODULES_BY_ID.myList.icon as keyof typeof Ionicons.glyphMap,
-      route: APP_MODULES_BY_ID.myList.route,
-    },
-    {
-      id: APP_MODULES_BY_ID.history.id,
-      title: APP_MODULES_BY_ID.history.label,
-      subtitle: APP_MODULES_BY_ID.history.subtitle,
-      icon: APP_MODULES_BY_ID.history.icon as keyof typeof Ionicons.glyphMap,
-      route: APP_MODULES_BY_ID.history.route,
-    },
-    {
-      id: APP_MODULES_BY_ID.notifications.id,
-      title: APP_MODULES_BY_ID.notifications.label,
-      subtitle: APP_MODULES_BY_ID.notifications.subtitle,
-      icon: APP_MODULES_BY_ID.notifications.icon as keyof typeof Ionicons.glyphMap,
-      route: APP_MODULES_BY_ID.notifications.route,
-    },
-  ], []);
-
   const handleSetPin = () => {
     setPinModalMode(parentalPin ? "confirm" : "set");
     setShowPinModal(true);
@@ -598,7 +497,7 @@ export default function MoreScreen() {
             >
               <MaterialCommunityIcons name="crown" size={10} color={isPremium ? COLORS.gold : COLORS.textMuted} />
               <Text style={[styles.premiumBadgeText, isPremium && styles.premiumBadgeTextActive]}>
-                {isPremium ? "Nexora+" : "Upgrade naar Nexora+"}
+                {isPremium ? "Premium" : "Upgrade naar Premium"}
               </Text>
             </TouchableOpacity>
           </View>
@@ -609,88 +508,7 @@ export default function MoreScreen() {
           <Ionicons name="chevron-forward" size={14} color={COLORS.textMuted} />
         </TouchableOpacity>
 
-        {/* ── Feature kaarten ── */}
-        <View style={styles.featureGrid}>
-          <FeatureCard
-            icon={APP_MODULES_BY_ID.movies.icon as keyof typeof Ionicons.glyphMap}
-            title={APP_MODULES_BY_ID.movies.label}
-            subtitle={APP_MODULES_BY_ID.movies.subtitle}
-            route={APP_MODULES_BY_ID.movies.route}
-            accent
-          />
-          <FeatureCard
-            icon={APP_MODULES_BY_ID.liveTV.icon as keyof typeof Ionicons.glyphMap}
-            title={APP_MODULES_BY_ID.liveTV.label}
-            subtitle={APP_MODULES_BY_ID.liveTV.subtitle}
-            route={APP_MODULES_BY_ID.liveTV.route}
-          />
-        </View>
-
-        {/* ── Nexora+ banner ── */}
-        {!isPremium && (
-          <TouchableOpacity style={styles.premiumBanner} onPress={() => router.push("/premium" as any)} activeOpacity={0.88}>
-            <LinearGradient
-              colors={["rgba(192,38,211,0.22)", "rgba(124,58,237,0.14)"]}
-              start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
-              style={styles.premiumBannerGradient}
-            >
-              <View style={styles.premiumBannerTop}>
-                <View style={styles.premiumBannerIcon}>
-                  <MaterialCommunityIcons name="crown" size={20} color={COLORS.accent} />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.premiumBannerTitle}>Nexora+</Text>
-                  <Text style={styles.premiumBannerSub}>Reclamevrij · 4K · Offline</Text>
-                </View>
-                <Ionicons name="chevron-forward" size={16} color={COLORS.accent} />
-              </View>
-              <View style={styles.premiumPriceRow}>
-                <View style={styles.premiumPriceChip}>
-                  <Text style={styles.premiumPriceAmount}>€2,99</Text>
-                  <Text style={styles.premiumPricePeriod}>/week</Text>
-                </View>
-                <View style={[styles.premiumPriceChip, styles.premiumPriceChipPopular]}>
-                  <Text style={[styles.premiumPriceAmount, { color: COLORS.accent }]}>€7,99</Text>
-                  <Text style={[styles.premiumPricePeriod, { color: COLORS.accent }]}>/maand</Text>
-                  <View style={styles.popularDot} />
-                </View>
-                <View style={styles.premiumPriceChip}>
-                  <Text style={styles.premiumPriceAmount}>€59,99</Text>
-                  <Text style={styles.premiumPricePeriod}>/jaar</Text>
-                </View>
-              </View>
-              <Text style={styles.premiumTrialNote}>7 dagen gratis proberen</Text>
-            </LinearGradient>
-          </TouchableOpacity>
-        )}
-
-        {isPremium && (
-          <TouchableOpacity style={styles.premiumActiveBanner} onPress={() => router.push("/premium" as any)} activeOpacity={0.88}>
-            <View style={styles.premiumActiveBannerIcon}>
-              <MaterialCommunityIcons name="crown" size={18} color={COLORS.accent} />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.premiumActiveBannerTitle}>Nexora+ Actief</Text>
-              <Text style={styles.premiumActiveBannerSub}>Je hebt toegang tot alle premium content</Text>
-            </View>
-            <Ionicons name="checkmark-circle" size={20} color={COLORS.accent} />
-          </TouchableOpacity>
-        )}
-
-        {/* ── Persoonlijk navigatie ── */}
-        <MenuSection title={t("menu.personal")} items={userItems} />
-
-        {/* ── Juridisch ── */}
-        <MenuSection
-          title={t("menu.system")}
-          items={[{
-            id: "legal",
-            title: t("menu.legalDmca"),
-            subtitle: t("menu.legalSub"),
-            icon: "shield-checkmark-outline" as keyof typeof Ionicons.glyphMap,
-            route: "/legal",
-          }]}
-        />
+        <View style={styles.compactSpacer} />
 
         {/* ══════════════════════════════════════════════════════════
             INSTELLINGEN — inline hieronder
@@ -775,7 +593,7 @@ export default function MoreScreen() {
             onPress={handleClearHistory} />
         </SettingsSection>
 
-        {/* ── Over Nexora ── */}
+        {/* ── Over Cinelog ── */}
         <SettingsSection title={t("settings.about")}>
           <SettingsRow icon="phone-portrait-outline" label={t("settings.appVersion")} value={appVersion} />
           <RowDivider />
@@ -872,7 +690,8 @@ const styles = StyleSheet.create({
     position: "absolute", top: -60, left: -80, width: 300, height: 300,
     borderRadius: 300, backgroundColor: "rgba(229,9,20,0.08)",
   },
-  content: { paddingHorizontal: 16, paddingTop: 14, gap: 14 },
+  content: { paddingHorizontal: 16, paddingTop: 10, gap: 12 },
+  compactSpacer: { height: 2 },
 
   // Feature grid
   featureGrid: { flexDirection: "row", gap: 10 },
@@ -889,8 +708,8 @@ const styles = StyleSheet.create({
 
   // Profiel
   profileCard: {
-    borderRadius: 16, overflow: "hidden", borderWidth: 1, borderColor: COLORS.glassBorder,
-    flexDirection: "row", alignItems: "center", paddingHorizontal: 14, paddingVertical: 13, gap: 12,
+    borderRadius: 14, overflow: "hidden", borderWidth: 1, borderColor: COLORS.glassBorder,
+    flexDirection: "row", alignItems: "center", paddingHorizontal: 12, paddingVertical: 10, gap: 10,
   },
   avatarWrap: { position: "relative" },
   avatar: {
@@ -915,7 +734,7 @@ const styles = StyleSheet.create({
   premiumBadgeText: { fontFamily: "Inter_600SemiBold", fontSize: 10, color: COLORS.textMuted },
   premiumBadgeTextActive: { color: COLORS.gold },
 
-  // Nexora+ banner
+  // Cinelog+ banner
   premiumBanner: { borderRadius: 18, overflow: "hidden", borderWidth: 1, borderColor: COLORS.borderGlow },
   premiumBannerGradient: { padding: 16, gap: 12 },
   premiumBannerTop: { flexDirection: "row", alignItems: "center", gap: 12 },
@@ -975,28 +794,57 @@ const styles = StyleSheet.create({
   badgeText: { color: COLORS.accent, fontSize: 10, fontFamily: "Inter_700Bold" },
 
   // Settings secties
-  section: { gap: 0 },
+  section: { gap: 6 },
   sectionTitle: {
-    color: COLORS.textMuted, fontSize: 10, letterSpacing: 1.8,
-    fontFamily: "Inter_700Bold", marginLeft: 2, marginBottom: 8, textTransform: "uppercase",
+    color: COLORS.text,
+    fontSize: 18,
+    letterSpacing: -0.2,
+    fontFamily: "Inter_700Bold",
+    marginBottom: 4,
   },
   sectionCard: {
-    backgroundColor: COLORS.glass, borderRadius: 16,
-    borderWidth: 1, borderColor: COLORS.glassBorder, overflow: "hidden",
+    backgroundColor: COLORS.card,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    overflow: "hidden",
   },
-  row: { flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 14, paddingVertical: 13 },
+  row: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
   rowIcon: {
-    width: 36, height: 36, borderRadius: 9,
-    backgroundColor: "rgba(192,38,211,0.10)", borderWidth: 1, borderColor: "rgba(192,38,211,0.20)",
+    width: 34,
+    height: 34,
+    borderRadius: 10,
+    backgroundColor: COLORS.accentGlow,
+    borderWidth: 1,
+    borderColor: COLORS.borderGlow,
     alignItems: "center", justifyContent: "center",
   },
   rowIconDanger: { backgroundColor: "rgba(239,68,68,0.10)", borderColor: "rgba(239,68,68,0.20)" },
   rowBody: { flex: 1 },
-  rowLabel: { fontFamily: "Inter_600SemiBold", fontSize: 14, color: COLORS.text },
+  rowLabel: { fontFamily: "Inter_600SemiBold", fontSize: 15, color: COLORS.text },
   rowLabelDanger: { color: COLORS.live },
-  rowSub: { fontFamily: "Inter_500Medium", fontSize: 11, color: COLORS.textSecondary, lineHeight: 16, marginTop: 1 },
-  rowValue: { fontFamily: "Inter_500Medium", fontSize: 12, color: COLORS.textSecondary, flexShrink: 1, textAlign: "right", maxWidth: 120 },
-  rowDivider: { height: 1, backgroundColor: COLORS.glassBorder, marginLeft: 62 },
+  rowSub: {
+    fontFamily: "Inter_500Medium",
+    fontSize: 12,
+    color: COLORS.textSecondary,
+    lineHeight: 17,
+    marginTop: 1,
+  },
+  rowValue: {
+    fontFamily: "Inter_500Medium",
+    fontSize: 12,
+    color: COLORS.textSecondary,
+    flexShrink: 1,
+    textAlign: "right",
+    maxWidth: 120,
+  },
+  rowDivider: { height: 1, backgroundColor: COLORS.border, marginLeft: 58 },
   settingsBadge: {
     backgroundColor: "rgba(192,38,211,0.16)", borderColor: "rgba(192,38,211,0.28)",
     borderWidth: 1, borderRadius: 99, paddingHorizontal: 7, paddingVertical: 2,

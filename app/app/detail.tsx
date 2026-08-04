@@ -1,5 +1,5 @@
 /**
- * Nexora — Detail Screen
+ * Cinelog — Detail Screen
  * Premium movie & series detail page with episodes, cast, and add-to-list.
  */
 import React, {
@@ -41,7 +41,7 @@ import {
 import type { Movie, Series } from "@/types/streaming";
 import type { TmdbCastMember, TmdbEpisode } from "@/lib/tmdb";
 
-/** Parse a Nexora-formatted TMDB id like "tmdb_m_550" or "tmdb_s_1668" */
+/** Parse a Cinelog-formatted TMDB id like "tmdb_m_550" or "tmdb_s_1668" */
 function parseTmdbId(
   id: string,
 ): { kind: "movie" | "tv"; numericId: number } | null {
@@ -143,7 +143,7 @@ function TmdbEpisodeCard({
               color={isFree ? "#00C864" : COLORS.accent}
             />
             <Text style={[styles.epCardBadgeText, isFree && { color: "#00C864" }]}>
-              {isFree ? "Gratis" : "Nexora+"}
+              {isFree ? "Gratis" : "Cinelog+"}
             </Text>
           </View>
           <Text style={styles.epCardRuntimeText}>
@@ -433,7 +433,7 @@ export default function DetailScreen() {
         }));
 
   const handlePlay = () => {
-    // Movies always require Nexora+
+    // Movies always require Cinelog+
     if (isMovie && !hasPremium("movies")) {
       router.push("/premium");
       return;
@@ -488,7 +488,7 @@ export default function DetailScreen() {
     episode: TmdbEpisode;
   }) => {
     const episodeNumber = Number(episode?.episode_number || 0) || 1;
-    // First episode of season 1 is always free; all others require Nexora+
+    // First episode of season 1 is always free; all others require Cinelog+
     const isFreeEpisode = seasonNumber === 1 && episodeNumber === 1;
     if (!isFreeEpisode && !hasPremium("series")) {
       router.push("/premium");
@@ -692,7 +692,7 @@ export default function DetailScreen() {
                 {isMovie
                   ? hasPremium("movies")
                     ? "Bekijk film"
-                    : "Nexora+"
+                    : "Cinelog+"
                   : "Gratis · S1E1"}
               </Text>
             </Pressable>

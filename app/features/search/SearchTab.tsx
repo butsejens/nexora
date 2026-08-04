@@ -123,64 +123,7 @@ export function SearchTab({ onSelectResult }: SearchTabProps) {
     return () => clearTimeout(timer);
   }, [query]);
 
-  // Fetch media catalog for search
-  const mediaQuery = useQuery({
-    queryKey: ["media", "search-data"],
-    queryFn: async () => {
-      try {
-        const moviePages = [1, 2, 3];
-        const seriesPages = [1, 2, 3];
-        const [movieCatalog, seriesCatalog, moviesTrending, seriesTrending] =
-          await Promise.all([
-            Promise.all(
-              moviePages.map((page) =>
-                apiRequestJson<any>(
-                  `/api/media/movies?page=${page}&sort=popularity.desc`,
-                ).catch(() => null),
-              ),
-            ),
-            Promise.all(
-              seriesPages.map((page) =>
-                apiRequestJson<any>(
-                  `/api/media/series?page=${page}&sort=popularity.desc`,
-                ).catch(() => null),
-              ),
-            ),
-            apiRequestJson<any>("/api/movies/trending").catch(() => null),
-            apiRequestJson<any>("/api/series/trending").catch(() => null),
-          ]);
-
-        const moviesFromCatalog = movieCatalog.flatMap(
-          (payload) => splitMediaCollections(payload).movies,
-        );
-        const seriesFromCatalog = seriesCatalog.flatMap(
-          (payload) => splitMediaCollections(payload).series,
-        );
-        const moviesFromTrending = splitMediaCollections(moviesTrending).movies;
-        const seriesFromTrending = splitMediaCollections(seriesTrending).series;
-
-        const allMovies = dedupeMedia(
-          [...moviesFromCatalog, ...moviesFromTrending],
-          "movie",
-        );
-        const allSeries = dedupeMedia(
-          [...seriesFromCatalog, ...seriesFromTrending],
-          "series",
-        );
-
-        return {
-          movies: allMovies,
-          series: allSeries,
-        };
-      } catch {
-        return { movies: [], series: [] };
-      }
-    },
-    staleTime: 10 * 60 * 1000, // 10 minutes
-    enabled: true,
-  });
-
-  // Dynamic query-based media search for full catalog coverage.
+  // Dynamic query-based media search.
   const mediaSearchQuery = useQuery({
     queryKey: ["media", "search-live", debouncedQuery],
     queryFn: async () => {
@@ -217,15 +160,13 @@ export function SearchTab({ onSelectResult }: SearchTabProps) {
       }
     },
     enabled: debouncedQuery.length >= 2,
-    staleTime: 30 * 1000,
+    staleTime: 60 * 1000,
   });
 
   // Build searchable media items
   const mediaItems = useMemo(() => {
     const items: SearchResult[] = [];
-    const data = (debouncedQuery.length >= 2
-      ? mediaSearchQuery.data
-      : mediaQuery.data) || { movies: [], series: [] };
+    const data = mediaSearchQuery.data || { movies: [], series: [] };
 
     // Movies — server mapTrendingItem already builds full `poster` URLs; fall back to
     // constructing from poster_path for any items from other sources.
@@ -276,7 +217,7 @@ export function SearchTab({ onSelectResult }: SearchTabProps) {
     });
 
     return items.filter((item) => !!item.poster);
-  }, [debouncedQuery.length, mediaQuery.data, mediaSearchQuery.data]);
+  }, [mediaSearchQuery.data]);
 
   const performSearch = useCallback(
     (searchQuery: string) => {
@@ -344,10 +285,8 @@ export function SearchTab({ onSelectResult }: SearchTabProps) {
     setResults([]);
   };
 
-  const isLoading =
-    (mediaQuery.isLoading && !mediaQuery.data) ||
-    (debouncedQuery.length >= 2 && mediaSearchQuery.isFetching);
-  const showResults = query.trim().length > 0;
+  const isLoading = debouncedQuery.length >= 2 && mediaSearchQuery.isFetching;
+  const showResults = query.trim().length >= 2;
 
   return (
     <View style={styles.container}>
@@ -392,7 +331,7 @@ export function SearchTab({ onSelectResult }: SearchTabProps) {
               color={P.muted}
               style={styles.emptyIcon}
             />
-            <Text style={styles.emptyTitle}>Zoek op Nexora</Text>
+            <Text style={styles.emptyTitle}>Zoek op Cinelog</Text>
             <Text style={styles.emptySubtitle}>
               Vind jouw favoriete films, series en documentaires
             </Text>

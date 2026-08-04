@@ -67,7 +67,7 @@
     "legalSub": "Confidentialité, droits et politique de retrait",
     "home": "Accueil",
     "library": "Bibliothèque",
-    "nexoraMenu": "MENU NEXORA"
+    "nexoraMenu": "MENU CINELOG"
   },
   "sportHub": {
     "title": "SPORT",
@@ -140,7 +140,7 @@
   },
   "searchScreen": {
     "placeholder": "Rechercher joueurs, équipes, ligues, films, séries...",
-    "title": "Rechercher NEXORA",
+    "title": "Rechercher CINELOG",
     "subtitle": "Trouvez des équipes sportives, compétitions ou vos films et séries préférés",
     "recentSearches": "Recherches récentes",
     "noResults": "Aucun résultat trouvé",
@@ -204,7 +204,7 @@
   "settings": {
     "subtitle": "Votre profil, playlists et paramètres de streaming",
     "mainProfile": "Profil principal",
-    "premium": "NEXORA Premium",
+    "premium": "CINELOG Premium",
     "upgradePremium": "Passer à Premium",
     "favorites": "Favoris",
     "watched": "Vus",
@@ -255,7 +255,7 @@
     "appVersion": "Version de l'app",
     "softwareVersion": "Version logicielle",
     "checkUpdates": "Vérifier les mises à jour",
-    "rateApp": "Évaluez NEXORA",
+    "rateApp": "Évaluez CINELOG",
     "rateTitle": "Merci !",
     "rateMessage": "Votre note nous aide à nous améliorer...",
     "support": "Support",
@@ -271,7 +271,7 @@
     "languageSpanish": "Espagnol (Español)",
     "languagePortuguese": "Portugais (Português)",
     "settingsTitle": "PARAMÈTRES",
-    "nexoraSettings": "PARAMÈTRES NEXORA",
+    "nexoraSettings": "PARAMÈTRES CINELOG",
     "modules": "Modules",
     "sportsModule": "Module sport",
     "moviesAndSeries": "Films et séries",
@@ -457,7 +457,7 @@
     "highlightsUnavailable": "Résumés pas encore disponibles",
     "matchRating": "Note du match",
     "premiumAIAnalysis": "Analyse IA Premium",
-    "premiumAIDesc": "Accédez à l'analyse IA avancée, pronostics, tactique et analyse en direct avec Nexora Premium.",
+    "premiumAIDesc": "Accédez à l'analyse IA avancée, pronostics, tactique et analyse en direct avec Cinelog Premium.",
     "preMatchLoading": "L'analyse IA d'avant-match est en préparation...",
     "preMatchBasis": "Analyse fixe basée sur la forme et le contexte",
     "preMatchLabel": "ANALYSE D'AVANT-MATCH (FIXE)",
@@ -701,7 +701,7 @@
     "playoffRound": "Phase de playoff"
   },
   "premium": {
-    "title": "NEXORA Premium",
+    "title": "CINELOG Premium",
     "subtitle": "Choisissez exactement ce que vous voulez débloquer",
     "choosePackage": "Choisissez votre forfait",
     "deselectAll": "Tout désélectionner",
@@ -760,8 +760,8 @@
       "unlimitedZapping": "Zapping illimité"
     },
     "premiumActive": "Premium est actif",
-    "allFeaturesUnlocked": "Toutes les fonctionnalités premium de Nexora sont actuellement déverrouillées sur cet appareil.",
-    "backToNexora": "Retour à Nexora"
+    "allFeaturesUnlocked": "Toutes les fonctionnalités premium de Cinelog sont actuellement déverrouillées sur cet appareil.",
+    "backToNexora": "Retour à Cinelog"
   },
   "playlist": {
     "title": "Playlist",
@@ -835,9 +835,9 @@
     "signIn": "Se connecter",
     "createAccount": "Créer un compte",
     "welcomeBack": "Bon retour",
-    "joinNexora": "Rejoindre Nexora",
+    "joinNexora": "Rejoindre Cinelog",
     "signInDesc": "Connectez-vous pour débloquer vos flux personnalisés, vos rails sportifs et votre centre de contrôle premium.",
-    "signUpDesc": "Créez votre compte en une étape et commencez avec votre expérience Nexora premium.",
+    "signUpDesc": "Créez votre compte en une étape et commencez avec votre expérience Cinelog premium.",
     "continueGoogle": "Continuer avec Google",
     "signUpGoogle": "S'inscrire avec Google",
     "googleUnavailable": "Google temporairement indisponible",
@@ -855,7 +855,7 @@
     "biometricFailed": "Authentification biométrique échouée",
     "biometricUnavailable": "Biométrie non disponible",
     "orContinueWith": "ou continuer avec",
-    "newToNexora": "Nouveau sur Nexora ?",
+    "newToNexora": "Nouveau sur Cinelog ?",
     "createAccountBelow": "Créez votre compte pour commencer."
   },
   "mediaHome": {

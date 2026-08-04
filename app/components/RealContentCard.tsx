@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect, useRef } from "react";
+import React, { useState, useCallback, useEffect, useRef, useMemo } from "react";
 import {
   View,
   Text,
@@ -14,6 +14,10 @@ import { Ionicons } from "@expo/vector-icons";
 import { COLORS } from "@/constants/colors";
 import { SafeHaptics } from "@/lib/safeHaptics";
 import { isTV } from "@/lib/platform";
+import {
+  logImageFallback,
+} from "@/core/self-healing/imageFallback";
+import { getAutonomousImageChain } from "@/src/core/autonomous/imageRecovery";
 
 const QUALITY_COLORS: Record<string, string> = {
   "4K": "#FFD700",
@@ -65,6 +69,7 @@ export const RealContentCard = React.memo(function RealContentCard({
 }: Props) {
   const [imageError, setImageError] = useState(false);
   const [imageLoaded, setImageLoaded] = useState(false);
+  const [imageIndex, setImageIndex] = useState(0);
   const [focused, setFocused] = useState(false);
   const scaleAnim = useRef(new Animated.Value(1)).current;
   const shimmerAnim = useRef(new Animated.Value(0.5)).current;
@@ -78,6 +83,10 @@ export const RealContentCard = React.memo(function RealContentCard({
   const hasTmdb = Number.isFinite(tmdbScore) && tmdbScore > 0;
   const rtScore = Number(item.rottenTomatoesRating || 0);
   const hasRt = Number.isFinite(rtScore) && rtScore > 0;
+  const imageChain = useMemo(
+    () => getAutonomousImageChain(item.poster),
+    [item.poster],
+  );
 
   const handleFocus = useCallback(() => {
     setFocused(true);
@@ -162,13 +171,25 @@ export const RealContentCard = React.memo(function RealContentCard({
                 </Animated.View>
               )}
               <ExpoImage
-                source={{ uri: item.poster }}
+                source={{ uri: imageChain[Math.min(imageIndex, imageChain.length - 1)] }}
                 style={StyleSheet.absoluteFill}
                 contentFit="cover"
                 cachePolicy="memory-disk"
                 transition={120}
                 onLoad={() => setImageLoaded(true)}
-                onError={() => setImageError(true)}
+                onError={() => {
+                  const next = imageIndex + 1;
+                  if (next < imageChain.length) {
+                    logImageFallback(
+                      "real-content-card",
+                      imageChain[imageIndex],
+                      imageChain[next],
+                    );
+                    setImageIndex(next);
+                    return;
+                  }
+                  setImageError(true);
+                }}
               />
             </>
           ) : (
@@ -318,11 +339,16 @@ export const RealHeroBanner = React.memo(function RealHeroBanner({
 }) {
   const [imageError, setImageError] = useState(false);
   const [heroImageLoaded, setHeroImageLoaded] = useState(false);
+  const [heroImageIndex, setHeroImageIndex] = useState(0);
   const [showTrailer, setShowTrailer] = useState(false);
   const { width } = useWindowDimensions();
   const trailerTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const heroShimmerAnim = useRef(new Animated.Value(0.5)).current;
   const backdropUri = item.backdrop || item.poster;
+  const heroImageChain = useMemo(
+    () => getAutonomousImageChain(backdropUri),
+    [backdropUri],
+  );
   const heroHeight = width < 380 ? 360 : width < 430 ? 400 : 460;
   const heroBottomHeight = width < 380 ? 220 : width < 430 ? 250 : 280;
 
@@ -383,13 +409,27 @@ export const RealHeroBanner = React.memo(function RealHeroBanner({
                 </Animated.View>
               )}
               <ExpoImage
-                source={{ uri: backdropUri }}
+                source={{
+                  uri: heroImageChain[Math.min(heroImageIndex, heroImageChain.length - 1)],
+                }}
                 style={StyleSheet.absoluteFill}
                 contentFit="cover"
                 cachePolicy="memory-disk"
                 transition={140}
                 onLoad={() => setHeroImageLoaded(true)}
-                onError={() => setImageError(true)}
+                onError={() => {
+                  const next = heroImageIndex + 1;
+                  if (next < heroImageChain.length) {
+                    logImageFallback(
+                      "real-hero-banner",
+                      heroImageChain[heroImageIndex],
+                      heroImageChain[next],
+                    );
+                    setHeroImageIndex(next);
+                    return;
+                  }
+                  setImageError(true);
+                }}
               />
             </>
           ) : (

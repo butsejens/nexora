@@ -67,7 +67,7 @@
     "legalSub": "Datenschutz, Rechte und Löschrichtlinien",
     "home": "Startseite",
     "library": "Bibliothek",
-    "nexoraMenu": "NEXORA MENÜ"
+    "nexoraMenu": "CINELOG MENÜ"
   },
   "sportHub": {
     "title": "SPORT",
@@ -140,7 +140,7 @@
   },
   "searchScreen": {
     "placeholder": "Suche Spieler, Teams, Ligen, Filme, Serien...",
-    "title": "NEXORA durchsuchen",
+    "title": "CINELOG durchsuchen",
     "subtitle": "Finde Sportteams, Wettbewerbe oder deine Lieblingsfilme und -serien",
     "recentSearches": "Letzte Suchen",
     "noResults": "Keine Ergebnisse gefunden",
@@ -204,7 +204,7 @@
   "settings": {
     "subtitle": "Ihr Profil, Playlists und Streaming-Einstellungen",
     "mainProfile": "Hauptprofil",
-    "premium": "NEXORA Premium",
+    "premium": "CINELOG Premium",
     "upgradePremium": "Auf Premium upgraden",
     "favorites": "Favoriten",
     "watched": "Gesehen",
@@ -255,7 +255,7 @@
     "appVersion": "App-Version",
     "softwareVersion": "Software-Version",
     "checkUpdates": "Nach Updates suchen",
-    "rateApp": "NEXORA bewerten",
+    "rateApp": "CINELOG bewerten",
     "rateTitle": "Danke!",
     "rateMessage": "Ihre Bewertung hilft uns, besser zu werden...",
     "support": "Support",
@@ -271,7 +271,7 @@
     "languageSpanish": "Spanisch (Español)",
     "languagePortuguese": "Portugiesisch (Português)",
     "settingsTitle": "EINSTELLUNGEN",
-    "nexoraSettings": "NEXORA EINSTELLUNGEN",
+    "nexoraSettings": "CINELOG EINSTELLUNGEN",
     "modules": "Module",
     "sportsModule": "Sportmodul",
     "moviesAndSeries": "Filme und Serien",
@@ -457,7 +457,7 @@
     "highlightsUnavailable": "Highlights noch nicht verfügbar",
     "matchRating": "Spielbewertung",
     "premiumAIAnalysis": "Premium KI-Analyse",
-    "premiumAIDesc": "Zugang zu fortschrittlicher KI-Analyse, Vorhersagen, taktischen Einblicken und Live-Analyse mit Nexora Premium.",
+    "premiumAIDesc": "Zugang zu fortschrittlicher KI-Analyse, Vorhersagen, taktischen Einblicken und Live-Analyse mit Cinelog Premium.",
     "preMatchLoading": "Vorspiel-KI-Analyse wird vorbereitet...",
     "preMatchBasis": "Feste Analyse basierend auf Form und Kontext",
     "preMatchLabel": "VORSPIEL-ANALYSE (FEST)",
@@ -701,7 +701,7 @@
     "playoffRound": "Playoff-Runde"
   },
   "premium": {
-    "title": "NEXORA Premium",
+    "title": "CINELOG Premium",
     "subtitle": "Wählen Sie genau, was Sie freischalten möchten",
     "choosePackage": "Wählen Sie Ihr Paket",
     "deselectAll": "Alle abwählen",
@@ -760,8 +760,8 @@
       "unlimitedZapping": "Unbegrenztes Zappen"
     },
     "premiumActive": "Premium ist aktiv",
-    "allFeaturesUnlocked": "Alle Premium-Funktionen von Nexora sind derzeit auf diesem Gerät freigeschaltet.",
-    "backToNexora": "Zurück zu Nexora"
+    "allFeaturesUnlocked": "Alle Premium-Funktionen von Cinelog sind derzeit auf diesem Gerät freigeschaltet.",
+    "backToNexora": "Zurück zu Cinelog"
   },
   "playlist": {
     "title": "Playlist",
@@ -835,9 +835,9 @@
     "signIn": "Anmelden",
     "createAccount": "Konto erstellen",
     "welcomeBack": "Willkommen zurück",
-    "joinNexora": "Nexora beitreten",
+    "joinNexora": "Cinelog beitreten",
     "signInDesc": "Anmelden, um deine personalisierten Streams, Sport-Rails und das Premium-Kontrollzentrum freizuschalten.",
-    "signUpDesc": "Erstelle dein Konto in einem Schritt und starte mit deinem Premium-Dark-Nexora-Erlebnis.",
+    "signUpDesc": "Erstelle dein Konto in einem Schritt und starte mit deinem Premium-Dark-Cinelog-Erlebnis.",
     "continueGoogle": "Weiter mit Google",
     "signUpGoogle": "Registrieren mit Google",
     "googleUnavailable": "Google vorübergehend nicht verfügbar",
@@ -855,7 +855,7 @@
     "biometricFailed": "Biometrische Authentifizierung fehlgeschlagen",
     "biometricUnavailable": "Biometrie nicht verfügbar",
     "orContinueWith": "oder weiter mit",
-    "newToNexora": "Neu bei Nexora?",
+    "newToNexora": "Neu bei Cinelog?",
     "createAccountBelow": "Erstelle dein Konto um loszulegen."
   },
   "mediaHome": {

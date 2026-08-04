@@ -62,7 +62,7 @@ function MyListCard({
 }) {
   const handlePress = () => {
     router.push({
-      pathname: "/detail",
+      pathname: "/media/detail",
       params: {
         id: item.id,
         type: item.type,
