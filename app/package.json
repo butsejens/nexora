@@ -1,7 +1,7 @@
 {
   "name": "expo-app",
   "main": "expo-router/entry",
-  "version": "1.0.12",
+  "version": "1.0.13",
   "scripts": {
     "postinstall": "patch-package || true",
     "poster:icons": "node scripts/build-poster-brand-icons.mjs",

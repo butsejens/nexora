@@ -1,32 +1,32 @@
 {
   "schemaVersion": 2,
   "native": {
-    "version": "1.0.12",
-    "versionCode": 10012,
-    "buildId": "android-1.0.12",
+    "version": "1.0.13",
+    "versionCode": 10013,
+    "buildId": "android-1.0.13",
     "required": false,
-    "releasedAt": "2026-08-05T21:39:00Z",
+    "releasedAt": "2026-08-05T20:23:09Z",
     "notes": [
-      "Native build published for 1.0.12",
-      "Fix: correct app icon (Android adaptive icon + iOS AppIcon)",
-      "Fix: STALE_1H ReferenceError crash loop"
+      "Fix: app icon no longer appears oversized/zoomed (adaptive icon safe-zone padding corrected)",
+      "Fix: Mijn lijst (My List) favorites now resolve correctly",
+      "Fix: YouTube trailer playback error 153"
     ],
     "apk": {
       "available": true,
       "provider": "github-releases",
       "source": "github",
-      "downloadUrl": "https://github.com/butsejens/nexora/releases/download/v1.0.12/nexora-v1.0.12.apk",
-      "url": "https://github.com/butsejens/nexora/releases/download/v1.0.12/nexora-v1.0.12.apk",
-      "fileName": "nexora-v1.0.12.apk",
+      "downloadUrl": "https://github.com/butsejens/nexora/releases/download/v1.0.13/nexora-v1.0.13.apk",
+      "url": "https://github.com/butsejens/nexora/releases/download/v1.0.13/nexora-v1.0.13.apk",
+      "fileName": "nexora-v1.0.13.apk",
       "contentType": "application/vnd.android.package-archive",
-      "fileSizeBytes": 156830908,
+      "fileSizeBytes": 156812880,
       "fileSizeLabel": "150 MB",
-      "versionName": "1.0.12",
-      "versionCode": 10012,
-      "buildId": "android-1.0.12",
-      "checksumSha256": "b728779518f5da652039f3f0e56a3678b2b73f3a24bb75d60c4491442385eb69",
+      "versionName": "1.0.13",
+      "versionCode": 10013,
+      "buildId": "android-1.0.13",
+      "checksumSha256": "dd96c4e0aa30ac2ab2abd6ee3fb61b7280946698902c3972f7161405c57145e7",
       "signature": null,
-      "validatedAt": "2026-08-05T21:39:00Z",
+      "validatedAt": "2026-08-05T20:23:09Z",
       "unavailableReason": null,
       "fallbackMessage": "Download de nieuwste APK via de GitHub releases pagina als de download niet werkt."
     }
@@ -38,8 +38,8 @@
     "releasedAt": "2026-08-05T18:52:27Z"
   },
   "server": {
-    "version": "1.0.12",
-    "releasedAt": "2026-08-05T21:39:00Z",
+    "version": "1.0.13",
+    "releasedAt": "2026-08-05T20:23:09Z",
     "requiresAppUpdate": false,
     "message": "Server deploys zijn onafhankelijk van OTA bundles en APK releases."
   },
@@ -47,6 +47,6 @@
     "manifestUrl": null,
     "otaUrl": null,
     "nativeUrl": null,
-    "apkDownloadUrl": "https://github.com/butsejens/nexora/releases/download/v1.0.12/nexora-v1.0.12.apk"
+    "apkDownloadUrl": "https://github.com/butsejens/nexora/releases/download/v1.0.13/nexora-v1.0.13.apk"
   }
 }

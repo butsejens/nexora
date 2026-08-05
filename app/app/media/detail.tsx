@@ -4,6 +4,7 @@ import {
   Dimensions,
   FlatList,
   Modal,
+  Platform,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -276,6 +277,9 @@ export default function MediaDetailScreen() {
 
   const id = String(params.id || "").trim();
   const numericRouteTmdbId = parseNumericTmdbId(id);
+  // Favorites must always be stored/checked using the plain numeric TMDB id,
+  // never the "tmdb_m_"/"tmdb_s_" prefixed route id, or My List can't resolve them.
+  const favoriteId = numericRouteTmdbId || id;
   const type = toMediaType(params.type);
 
   useEffect(() => {
@@ -315,7 +319,7 @@ export default function MediaDetailScreen() {
   const [episodeQuery, setEpisodeQuery] = useState("");
   const [episodesModalOpen, setEpisodesModalOpen] = useState(false);
   const [trailerFailedAll, setTrailerFailedAll] = useState(false);
-  const faved = isFavorite(id, type);
+  const faved = isFavorite(favoriteId, type);
 
   const detailQuery = useQuery({
     queryKey: ["media-detail-v2", type, id],
@@ -528,6 +532,7 @@ export default function MediaDetailScreen() {
   }, [trailerKeysFromDetail, trailerFallbackQuery.data]);
 
   const [trailerCandidateIndex, setTrailerCandidateIndex] = useState(0);
+  const [webTrailerReady, setWebTrailerReady] = useState(false);
 
   useEffect(() => {
     setTrailerCandidateIndex(0);
@@ -536,8 +541,15 @@ export default function MediaDetailScreen() {
 
   const activeTrailerKey = trailerKeys[trailerCandidateIndex] || "";
   const trailerUrl = activeTrailerKey && !trailerFailedAll
-    ? `https://www.youtube-nocookie.com/embed/${encodeURIComponent(activeTrailerKey)}?autoplay=1&playsinline=1&rel=0&modestbranding=1&controls=1&enablejsapi=1`
+    ? `https://www.youtube-nocookie.com/embed/${encodeURIComponent(activeTrailerKey)}?autoplay=1&playsinline=1&rel=0&modestbranding=1&controls=1`
     : "";
+  // Loading the embed URL directly as a top-level WebView navigation sends no
+  // referrer/origin, which YouTube's player rejects with error 153. Wrapping it
+  // in an iframe on a youtube.com baseUrl satisfies the origin check instead.
+  const trailerHtml = useMemo(() => {
+    if (!trailerUrl) return "";
+    return `<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"><style>html,body{margin:0;padding:0;background:#000;height:100%;overflow:hidden;}iframe{position:absolute;top:0;left:0;width:100%;height:100%;border:0;}</style></head><body><iframe src="${trailerUrl}" allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen></iframe></body></html>`;
+  }, [trailerUrl]);
   const hasTrailer = trailerKeys.length > 0;
   const trailerLoading =
     trailerKeys.length === 0 && trailerFallbackQuery.isLoading;
@@ -551,6 +563,22 @@ export default function MediaDetailScreen() {
       return current + 1;
     });
   }, [trailerKeys.length]);
+
+  useEffect(() => {
+    setWebTrailerReady(false);
+  }, [activeTrailerKey, trailerOpen]);
+
+  useEffect(() => {
+    if (!trailerOpen || Platform.OS !== "web" || !trailerUrl) return;
+
+    const watchdog = setTimeout(() => {
+      if (!webTrailerReady) {
+        handleTrailerWebError();
+      }
+    }, 12_000);
+
+    return () => clearTimeout(watchdog);
+  }, [handleTrailerWebError, trailerOpen, trailerUrl, webTrailerReady]);
 
   const handlePlayEpisode = useCallback(
     (seasonNum: number, episodeNum: number) => {
@@ -818,7 +846,7 @@ export default function MediaDetailScreen() {
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.myListBtn}
-                onPress={() => toggleFavorite(id, type)}
+                onPress={() => toggleFavorite(favoriteId, type)}
               >
                 <Ionicons
                   name={faved ? "checkmark" : "add"}
@@ -1389,20 +1417,36 @@ export default function MediaDetailScreen() {
             </TouchableOpacity>
           </View>
           {trailerUrl ? (
-            <WebView
-              key={activeTrailerKey}
-              source={{ uri: trailerUrl }}
-              style={styles.trailerWebView}
-              allowsInlineMediaPlayback
-              mediaPlaybackRequiresUserAction={false}
-              javaScriptEnabled
-              domStorageEnabled
-              javaScriptCanOpenWindowsAutomatically={false}
-              setSupportMultipleWindows={false}
-              allowsBackForwardNavigationGestures={false}
-              onError={handleTrailerWebError}
-              onHttpError={handleTrailerWebError}
-            />
+            Platform.OS === "web" ? (
+              <View style={styles.trailerWebView}>
+                <iframe
+                  key={activeTrailerKey}
+                  title="Trailer player"
+                  src={trailerUrl}
+                  style={{ width: "100%", height: "100%", border: 0 }}
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                  allowFullScreen
+                  onLoad={() => setWebTrailerReady(true)}
+                  onError={handleTrailerWebError}
+                />
+              </View>
+            ) : (
+              <WebView
+                key={activeTrailerKey}
+                source={{ html: trailerHtml, baseUrl: "https://www.youtube.com" }}
+                style={styles.trailerWebView}
+                originWhitelist={["*"]}
+                allowsInlineMediaPlayback
+                mediaPlaybackRequiresUserAction={false}
+                javaScriptEnabled
+                domStorageEnabled
+                javaScriptCanOpenWindowsAutomatically={false}
+                setSupportMultipleWindows={false}
+                allowsBackForwardNavigationGestures={false}
+                onError={handleTrailerWebError}
+                onHttpError={handleTrailerWebError}
+              />
+            )
           ) : (
             <View style={styles.trailerFallback}>
               <Text style={styles.emptyText}>Trailer unavailable.</Text>

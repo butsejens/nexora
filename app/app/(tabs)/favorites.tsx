@@ -20,6 +20,7 @@ import { TYPOGRAPHY } from "@/constants/design-system";
 import { NexoraHeader } from "@/components/NexoraHeader";
 import { SectionHeader, StateBlock, SurfaceCard } from "@/components/ui";
 import { useNexora } from "@/context/NexoraContext";
+import { getRawId } from "@/lib/id-namespace";
 import { apiRequest } from "@/lib/query-client";
 import { useTranslation } from "@/lib/useTranslation";
 
@@ -40,6 +41,14 @@ function nextPriority(current?: WatchPriority): WatchPriority {
   if (!current) return "must";
   const idx = PRIORITY_ORDER.indexOf(current);
   return PRIORITY_ORDER[(idx + 1) % PRIORITY_ORDER.length];
+}
+
+// Older favorites were stored with the Cinelog-prefixed route id (e.g. "tmdb_m_550")
+// instead of the plain numeric TMDB id; normalize before hitting /full.
+function toPlainTmdbId(id: string): string {
+  const match = /^tmdb_[ms]_(\d+)$/i.exec(String(id || "").trim());
+  if (match) return match[1];
+  return String(id || "").trim();
 }
 
 async function fetchMovieFull(id: string) {
@@ -123,12 +132,13 @@ export default function FavoritesScreen() {
     queryFn: async () => {
       const results = await Promise.allSettled(
         favIds.slice(0, 80).map(async (id) => {
+          const rawId = toPlainTmdbId(getRawId(id));
           try {
-            const m = await fetchMovieFull(id);
+            const m = await fetchMovieFull(rawId);
             return { ...m, _type: "movie" as const };
           } catch {}
           try {
-            const s = await fetchSeriesFull(id);
+            const s = await fetchSeriesFull(rawId);
             return { ...s, _type: "series" as const };
           } catch {}
           return null;

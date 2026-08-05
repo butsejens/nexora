@@ -15,9 +15,11 @@ import { useQuery } from "@tanstack/react-query";
 import { COLORS } from "@/constants/colors";
 import { TOP_NAV_H } from "@/constants/layout";
 import { useNexora } from "@/context/NexoraContext";
+import { getRawId } from "@/lib/id-namespace";
 import { apiRequest } from "@/lib/query-client";
 
 type ListItem = {
+  favoriteId: string;
   id: string;
   type: "movie" | "series";
   title: string;
@@ -30,6 +32,15 @@ type ListItem = {
   totalSeasons?: number;
   totalEpisodes?: number;
 };
+
+// Older favorites were stored with the Cinelog-prefixed route id (e.g. "tmdb_m_550")
+// instead of the plain numeric TMDB id; normalize before hitting /full so those
+// still resolve instead of permanently showing "could not load".
+function toPlainTmdbId(id: string): string {
+  const match = /^tmdb_[ms]_(\d+)$/i.exec(String(id || "").trim());
+  if (match) return match[1];
+  return String(id || "").trim();
+}
 
 async function fetchTmdbItem(id: string): Promise<ListItem | null> {
   try {
@@ -80,11 +91,20 @@ function MyListCard({
       >
         <View style={styles.poster}>
           <ExpoImage
-            source={item.poster ?? undefined}
+            source={item.poster ?? item.backdrop ?? undefined}
             style={StyleSheet.absoluteFillObject}
             contentFit="cover"
             transition={300}
           />
+          {!item.poster && !item.backdrop ? (
+            <View style={styles.posterFallback}>
+              <Ionicons
+                name="bookmark-outline"
+                size={24}
+                color={COLORS.textMuted}
+              />
+            </View>
+          ) : null}
           <LinearGradient
             colors={["transparent", "rgba(6,5,10,0.6)"]}
             style={StyleSheet.absoluteFillObject}
@@ -118,7 +138,7 @@ function MyListCard({
         </View>
 
         <Pressable
-          onPress={() => onRemove(item.id)}
+          onPress={() => onRemove(item.favoriteId)}
           style={styles.removeBtn}
           accessibilityLabel={`Remove ${item.title} from list`}
           hitSlop={8}
@@ -159,7 +179,11 @@ export default function MyListScreen() {
     queryKey: ["my-list", favIds.join(",")],
     queryFn: async () => {
       const results = await Promise.allSettled(
-        favIds.slice(0, 80).map(fetchTmdbItem),
+        favIds.slice(0, 80).map(async (favoriteId) => {
+          const rawId = toPlainTmdbId(getRawId(favoriteId));
+          const item = await fetchTmdbItem(rawId);
+          return item ? { ...item, favoriteId, id: rawId } : null;
+        }),
       );
       return results
         .filter(
@@ -167,13 +191,14 @@ export default function MyListScreen() {
             r.status === "fulfilled" && r.value != null,
         )
         .map((r) => r.value)
-        .filter((item) => !!(item.poster || item.backdrop));
+        .filter((item) => !!item.title);
     },
     enabled: favIds.length > 0,
     staleTime: 60_000,
   });
 
   const allContent = resolvedItems;
+  const hasFavoriteIds = favIds.length > 0;
 
   const handleRemove = useCallback(
     (id: string) => {
@@ -193,11 +218,25 @@ export default function MyListScreen() {
     <View style={styles.container}>
       <View style={{ height: TOP_NAV_H + insets.top }} />
 
-      {isLoading && favIds.length > 0 ? (
+      {isLoading && hasFavoriteIds ? (
         <View
           style={{ flex: 1, alignItems: "center", justifyContent: "center" }}
         >
           <Text style={{ color: COLORS.textMuted, fontSize: 14 }}>Laden…</Text>
+        </View>
+      ) : hasFavoriteIds && allContent.length === 0 ? (
+        <View style={styles.empty}>
+          <Ionicons name="cloud-offline-outline" size={52} color={COLORS.textFaint} />
+          <Text style={styles.emptyTitle}>Saved items could not load</Text>
+          <Text style={styles.emptySubtitle}>
+            Your favorites are stored, but the details endpoint returned no usable data.
+          </Text>
+          <Pressable
+            style={styles.browseBtn}
+            onPress={() => router.push("/(tabs)/home")}
+          >
+            <Text style={styles.browseBtnText}>Go to Home</Text>
+          </Pressable>
         </View>
       ) : allContent.length === 0 ? (
         <EmptyList />
@@ -241,6 +280,15 @@ const styles = StyleSheet.create({
     height: 115,
     backgroundColor: COLORS.cardElevated,
     position: "relative",
+    overflow: "hidden",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  posterFallback: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: COLORS.cardElevated,
   },
   typeBadge: {
     position: "absolute",
