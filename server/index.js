@@ -239,6 +239,59 @@ app.get("/downloads/apk/:fileName", (req, res) => {
   return res.sendFile(filePath);
 });
 
+// Public install landing page shared with testers — points to the latest APK
+// and explains the Android "unknown sources" install steps in Dutch, since a
+// bare file link left people stuck at "100% downloaded, nothing happens".
+function escapeHtml(value) {
+  return String(value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+app.get(["/install", "/download"], (req, res) => {
+  const manifest = buildUpdateManifestResponse(req);
+  const apk = manifest.native.apk;
+  const userAgent = String(req.headers["user-agent"] || "");
+  const isInAppBrowser = /FBAN|FBAV|Instagram|Line\/|WhatsApp|Messenger/i.test(userAgent);
+  const downloadUrl = apk.available ? escapeHtml(apk.downloadUrl) : null;
+  const version = escapeHtml(manifest.native.version);
+  const sizeLabel = escapeHtml(apk.fileSizeLabel || "");
+
+  const inAppWarning = isInAppBrowser
+    ? `<p><strong>⚠️ Open deze pagina in Chrome:</strong> tik rechtsboven op de drie puntjes (⋮) en kies "Open in browser" of "Openen in Chrome". In-app browsers van WhatsApp/Instagram/Messenger kunnen de installatie niet afronden.</p>`
+    : "";
+
+  const downloadSection = downloadUrl
+    ? `<p><a href="${downloadUrl}">⬇️ Download CINELOG v${version} (${sizeLabel})</a></p>`
+    : `<p>De APK is momenteel niet beschikbaar. Probeer het later opnieuw.</p>`;
+
+  res.setHeader("Content-Type", "text/html; charset=utf-8");
+  res.send(`<!doctype html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CINELOG downloaden</title>
+</head>
+<body>
+<h1>CINELOG installeren op Android</h1>
+<p>Deze app is veilig en bevat geen virussen. Android toont een waarschuwing omdat de app niet uit de Play Store komt — dat is normaal voor test-versies.</p>
+${inAppWarning}
+${downloadSection}
+<h2>Na het downloaden (blijft het staan op 100%?)</h2>
+<ol>
+<li>Trek de meldingenbalk naar beneden en tik op het bestand <code>nexora-v${version}.apk</code>, of open je "Bestanden"/"Downloads" app en tik op het bestand.</li>
+<li>Android vraagt mogelijk om "installeren van onbekende bronnen" toe te staan. Tik op "Instellingen", zet de schakelaar aan voor je browser/bestanden-app, en ga terug.</li>
+<li>Tik opnieuw op het bestand en kies "Installeren".</li>
+<li>Zie je "Play Protect heeft een onbekende app geblokkeerd"? Tik op "Meer info" of "Details" en daarna op "Toch installeren".</li>
+</ol>
+<p>Werkt het nog steeds niet? Probeer een andere browser (Chrome) of een andere internetverbinding (wifi in plaats van mobiele data, of omgekeerd).</p>
+</body>
+</html>`);
+});
+
 // ── Simple in-memory rate limiter ────────────────────────────────────────────
 // Prevents abuse of heavy endpoints (playlist parsing, TMDB calls)
 function makeRateLimiter(maxPerWindow, windowMs) {
