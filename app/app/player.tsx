@@ -540,6 +540,7 @@ function EmbedWebView({
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const [webLoading, setWebLoading] = useState(Platform.OS === "web");
   const webTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const nativeLoadTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     setWebLoading(true);
@@ -558,6 +559,29 @@ function EmbedWebView({
       if (webTimeoutRef.current) {
         clearTimeout(webTimeoutRef.current);
         webTimeoutRef.current = null;
+      }
+    };
+  }, [onError, uri]);
+
+  // Native WebView had no equivalent of the web/video watchdogs above, so a
+  // server that never finishes loading the embed page just spun forever.
+  // Fall back to the next server if load-end never fires within a fair window.
+  useEffect(() => {
+    if (Platform.OS === "web") return;
+    if (nativeLoadTimeoutRef.current) {
+      clearTimeout(nativeLoadTimeoutRef.current);
+      nativeLoadTimeoutRef.current = null;
+    }
+
+    nativeLoadTimeoutRef.current = setTimeout(() => {
+      streamLog("error", "player", "Native WebView load timeout", { uri });
+      onError();
+    }, 15000);
+
+    return () => {
+      if (nativeLoadTimeoutRef.current) {
+        clearTimeout(nativeLoadTimeoutRef.current);
+        nativeLoadTimeoutRef.current = null;
       }
     };
   }, [onError, uri]);
@@ -719,6 +743,10 @@ function EmbedWebView({
       onMessage={handleMessage}
       onLoadEnd={() => {
         streamLog("info", "player", "WebView load end", { uri });
+        if (nativeLoadTimeoutRef.current) {
+          clearTimeout(nativeLoadTimeoutRef.current);
+          nativeLoadTimeoutRef.current = null;
+        }
       }}
       renderLoading={() => (
         <View style={styles.centered}>
