@@ -184,7 +184,16 @@ export default function MyListScreen() {
           const rawId = getRawId(favoriteId);
           const knownKind = getMediaKind(favoriteId);
           const item = await fetchTmdbItem(rawId, knownKind);
-          return item ? { ...item, favoriteId, id: rawId } : null;
+          if (!item) return null;
+          return {
+            ...item,
+            favoriteId,
+            id: rawId,
+            description:
+              item.description ||
+              (item as { synopsis?: string }).synopsis ||
+              "",
+          };
         }),
       );
       return results
@@ -245,7 +254,7 @@ export default function MyListScreen() {
       ) : (
         <FlatList
           data={allContent}
-          keyExtractor={(item) => item.id}
+          keyExtractor={(item) => item.favoriteId}
           renderItem={renderItem}
           contentContainerStyle={[
             styles.listContent,

@@ -311,7 +311,7 @@ export default function MediaDetailScreen() {
     // #endregion
   }, [id, numericRouteTmdbId, params.title, type]);
 
-  const { toggleFavorite, isFavorite } = useNexora();
+  const { toggleFavorite, isFavorite, addToHistory } = useNexora();
   const [trailerOpen, setTrailerOpen] = useState(false);
   const [infoOpen, setInfoOpen] = useState(false);
   const [selectedSeason, setSelectedSeason] = useState<number>(1);
@@ -611,6 +611,22 @@ export default function MediaDetailScreen() {
         season: seasonNum,
         episode: episodeNum,
       });
+      addToHistory({
+        id: finalTmdbId || id,
+        contentId: finalTmdbId || id,
+        type: "series",
+        title,
+        poster: poster ?? null,
+        backdrop: backdrop ?? null,
+        lastWatched: new Date().toISOString(),
+        progress: 0.08,
+        currentTime: 8,
+        duration: 100,
+        season: seasonNum,
+        episode: episodeNum,
+        tmdbId: finalTmdbId ? Number(finalTmdbId) : undefined,
+        year: year ? Number(year) || null : null,
+      });
       router.push({
         pathname: "/player",
         params: {
@@ -626,7 +642,7 @@ export default function MediaDetailScreen() {
         },
       });
     },
-    [resolvedTmdbId, id, title, poster, params.id],
+    [resolvedTmdbId, id, title, poster, backdrop, year, params.id, addToHistory],
   );
 
   const collection = detail?.collection || null;
@@ -763,6 +779,22 @@ export default function MediaDetailScreen() {
       type,
       season: type === "series" ? startSeason : undefined,
       episode: type === "series" ? startEpisode : undefined,
+    });
+    addToHistory({
+      id: finalTmdbId || id,
+      contentId: finalTmdbId || id,
+      type,
+      title,
+      poster: poster ?? null,
+      backdrop: backdrop ?? null,
+      lastWatched: new Date().toISOString(),
+      progress: 0.08,
+      currentTime: 8,
+      duration: 100,
+      season: type === "series" ? startSeason : undefined,
+      episode: type === "series" ? startEpisode : undefined,
+      tmdbId: finalTmdbId ? Number(finalTmdbId) : undefined,
+      year: year ? Number(year) || null : null,
     });
     router.push({
       pathname: "/player",

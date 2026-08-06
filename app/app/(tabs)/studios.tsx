@@ -46,8 +46,9 @@ export default function StudiosScreen() {
         <View style={{ marginBottom: 4 }}>
           <Text style={styles.title}>Studios</Text>
           <Text style={styles.subtitle}>
-            Blader door films van je favoriete studio's, zoals Marvel, Pixar
-            en Warner Bros.
+            {
+              "Blader door films van je favoriete studio's, zoals Marvel, Pixar en Warner Bros."
+            }
           </Text>
         </View>
       }

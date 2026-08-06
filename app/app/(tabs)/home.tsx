@@ -30,6 +30,8 @@ import {
 import { ONBOARDING_GENRE_TMDB_IDS } from "@/lib/tmdb";
 import { useProfileStore } from "@/store/profileStore";
 import { useUserAccountStore } from "@/store/userAccountStore";
+import { useNexora, type WatchedItem } from "@/context/NexoraContext";
+import { getMediaKind, getRawId } from "@/lib/id-namespace";
 import type { Movie, Series } from "@/types/streaming";
 import { recoverEmptyList } from "@/core/self-healing";
 import { resolveBestHeaderUri } from "@/core/self-healing/imageFallback";
@@ -85,7 +87,15 @@ function toDetail(item: Content) {
   });
 }
 
-function Hero({ item }: { item: Content }) {
+function Hero({
+  item,
+  isInList,
+  onToggleList,
+}: {
+  item: Content;
+  isInList: boolean;
+  onToggleList: () => void;
+}) {
   return (
     <View style={styles.hero}>
       <ExpoImage
@@ -172,13 +182,97 @@ function Hero({ item }: { item: Content }) {
               styles.listBtn,
               pressed && { opacity: 0.82 },
             ]}
-            onPress={() => toDetail(item)}
+            onPress={onToggleList}
+            accessibilityRole="button"
+            accessibilityLabel={
+              isInList ? "Verwijder uit mijn lijst" : "Voeg toe aan mijn lijst"
+            }
           >
-            <Ionicons name="add" size={17} color={COLORS.text} />
+            <Ionicons
+              name={isInList ? "checkmark" : "add"}
+              size={17}
+              color={COLORS.text}
+            />
             <Text style={styles.listBtnText}>Mijn lijst</Text>
           </Pressable>
         </View>
       </View>
+    </View>
+  );
+}
+
+function ContinueWatchingRail({ items }: { items: WatchedItem[] }) {
+  if (!items.length) return null;
+
+  return (
+    <View style={styles.section}>
+      <View style={styles.sectionHead}>
+        <Text style={styles.sectionTitle}>Kijk verder</Text>
+      </View>
+      <FlatList
+        horizontal
+        data={items}
+        keyExtractor={(item) => item.id}
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.railPad}
+        renderItem={({ item }) => {
+          const rawId = getRawId(item.id);
+          const kind =
+            getMediaKind(item.id) ||
+            (item.type === "series" ? "series" : "movie");
+          const progress = Math.min(1, Math.max(0, Number(item.progress || 0)));
+          return (
+            <Pressable
+              style={({ pressed }) => [
+                styles.continueCard,
+                pressed && { opacity: 0.85 },
+              ]}
+              onPress={() =>
+                router.push({
+                  pathname: "/media/detail",
+                  params: { id: rawId, type: kind },
+                })
+              }
+              accessibilityRole="button"
+              accessibilityLabel={item.title}
+            >
+              <View style={styles.continuePoster}>
+                <ExpoImage
+                  source={item.poster ?? item.backdrop ?? undefined}
+                  style={StyleSheet.absoluteFillObject}
+                  contentFit="cover"
+                  transition={200}
+                />
+                {!item.poster && !item.backdrop ? (
+                  <View style={styles.continueFallback}>
+                    <Ionicons
+                      name="play-circle-outline"
+                      size={28}
+                      color={COLORS.textMuted}
+                    />
+                  </View>
+                ) : null}
+                <View style={styles.continueProgressTrack}>
+                  <View
+                    style={[
+                      styles.continueProgressFill,
+                      { width: `${Math.max(8, progress * 100)}%` },
+                    ]}
+                  />
+                </View>
+              </View>
+              <Text style={styles.continueTitle} numberOfLines={2}>
+                {item.title}
+              </Text>
+              {item.type === "series" && item.season && item.episode ? (
+                <Text style={styles.continueMeta} numberOfLines={1}>
+                  S{item.season} E{item.episode}
+                </Text>
+              ) : null}
+            </Pressable>
+          );
+        }}
+      />
     </View>
   );
 }
@@ -327,6 +421,7 @@ function Section({
 export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const [refreshing, setRefreshing] = useState(false);
+  const { watchHistory, toggleFavorite, isFavorite } = useNexora();
 
   const activeProfile = useProfileStore((s) => s.getActiveProfile());
   const preferredGenres = useUserAccountStore((s) => s.info.genres) ?? EMPTY_GENRES;
@@ -517,6 +612,23 @@ export default function HomeScreen() {
     setRefreshing(false);
   };
 
+  const continueWatching = useMemo(
+    () =>
+      watchHistory
+        .filter(
+          (item) =>
+            (item.type === "movie" || item.type === "series") &&
+            !!item.title &&
+            (item.progress == null || item.progress < 0.95),
+        )
+        .slice(0, 20),
+    [watchHistory],
+  );
+
+  const heroInList = heroItem
+    ? isFavorite(String(heroItem.id), heroItem.type)
+    : false;
+
   return (
     <View style={styles.root}>
       <ScrollView
@@ -530,7 +642,15 @@ export default function HomeScreen() {
         }
         contentContainerStyle={{ paddingBottom: insets.bottom + 32 }}
       >
-        {heroItem ? <Hero item={heroItem} /> : null}
+        {heroItem ? (
+          <Hero
+            item={heroItem}
+            isInList={heroInList}
+            onToggleList={() =>
+              toggleFavorite(String(heroItem.id), heroItem.type)
+            }
+          />
+        ) : null}
 
         <StreamingServiceRow />
 
@@ -539,6 +659,8 @@ export default function HomeScreen() {
             Welkom {activeProfile?.name ?? "bij Cinelog"}
           </Text>
         </View>
+
+        <ContinueWatchingRail items={continueWatching} />
 
         {isLoading && !hasAnyContent ? (
           <View style={styles.emptyWrap}>
@@ -723,6 +845,47 @@ const styles = StyleSheet.create({
     fontFamily: "Inter_500Medium",
   },
   railPad: { paddingHorizontal: 16 },
+  continueCard: {
+    width: POSTER_W,
+    marginRight: 10,
+  },
+  continuePoster: {
+    width: POSTER_W,
+    height: Math.round(POSTER_W * 0.56),
+    borderRadius: 10,
+    overflow: "hidden",
+    backgroundColor: COLORS.cardElevated,
+  },
+  continueFallback: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  continueProgressTrack: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: 3,
+    backgroundColor: "rgba(255,255,255,0.22)",
+  },
+  continueProgressFill: {
+    height: "100%",
+    backgroundColor: COLORS.accent,
+  },
+  continueTitle: {
+    color: COLORS.text,
+    fontSize: 13,
+    fontFamily: "Inter_600SemiBold",
+    marginTop: 8,
+    lineHeight: 17,
+  },
+  continueMeta: {
+    color: COLORS.textMuted,
+    fontSize: 11,
+    fontFamily: "Inter_400Regular",
+    marginTop: 2,
+  },
   poster: {
     width: POSTER_W,
     height: POSTER_H,

@@ -13,7 +13,14 @@ import {
   clearWatchHistory,
   trackWatchProgress,
 } from "@/lib/services/user-state-service";
-import { ensureNamespaced, getSource, parseNamespacedId, getRawId } from "@/lib/id-namespace";
+import {
+  canonicalizeStoredMediaId,
+  ensureNamespaced,
+  getMediaKind,
+  getSource,
+  parseNamespacedId,
+  getRawId,
+} from "@/lib/id-namespace";
 import type { MediaKind } from "@/lib/id-namespace";
 import {
   authenticateWithEmail,
@@ -280,35 +287,47 @@ export function NexoraProvider({ children }: { children: ReactNode }) {
           unlockedPredictions,
         ] = await AsyncStorage.multiGet(keys).then((r) => r.map(([, v]) => v));
 
-        if (favs) setFavorites(JSON.parse(favs));
+        if (favs) {
+          const parsed = JSON.parse(favs);
+          if (Array.isArray(parsed)) {
+            const normalizedFavs = Array.from(
+              new Set(
+                parsed
+                  .map((id) => String(id || "").trim())
+                  .filter(Boolean)
+                  .map((id) => canonicalizeStoredMediaId(id)),
+              ),
+            );
+            setFavorites(normalizedFavs);
+            // Persist rewritten tmdb_m_/tmdb_s_ favorites so my-list can resolve them.
+            if (JSON.stringify(parsed) !== JSON.stringify(normalizedFavs)) {
+              AsyncStorage.setItem(
+                "nexora_favorites",
+                JSON.stringify(normalizedFavs),
+              ).catch(() => undefined);
+            }
+          }
+        }
         if (hist) {
           const parsed = JSON.parse(hist);
           if (Array.isArray(parsed)) {
             const normalized = parsed
               .filter((entry) => entry && typeof entry === "object")
-              .map((entry) => ({
-                ...entry,
-                id: ensureNamespaced(
-                  entry.type === "sport"
-                    ? "sports"
-                    : entry.type === "channel"
-                      ? "channel"
-                      : "media",
-                  String(entry.id || "").trim(),
-                ),
-                contentId: entry.contentId
-                  ? ensureNamespaced(
-                      entry.type === "sport"
-                        ? "sports"
-                        : entry.type === "channel"
-                          ? "channel"
-                          : "media",
-                      String(entry.contentId || "").trim(),
-                    )
-                  : undefined,
-                title: String(entry.title || "").trim(),
-                type: entry.type || "movie",
-              }))
+              .map((entry) => {
+                const type = entry.type || "movie";
+                return {
+                  ...entry,
+                  id: canonicalizeStoredMediaId(String(entry.id || "").trim(), type),
+                  contentId: entry.contentId
+                    ? canonicalizeStoredMediaId(
+                        String(entry.contentId || "").trim(),
+                        type,
+                      )
+                    : undefined,
+                  title: String(entry.title || "").trim(),
+                  type,
+                };
+              })
               .filter((entry) => entry.id && entry.title);
             setWatchHistory(normalized);
           }
@@ -449,19 +468,27 @@ export function NexoraProvider({ children }: { children: ReactNode }) {
     const source =
       getSource(id, type) || (type === "sport" ? "sports" : "media");
     const mediaKind: MediaKind | undefined =
-      type === "movie" || type === "series" ? type : undefined;
+      type === "movie" || type === "series"
+        ? type
+        : getMediaKind(id) ?? undefined;
     const rawId = getRawId(id);
+    const canonical = ensureNamespaced(source, id, mediaKind);
 
     setFavorites((prev) => {
-      // Match by source+rawId (not exact string) so a legacy untagged entry
-      // is found and removed instead of leaving a duplicate tagged entry behind.
+      // Match by source+rawId (+ kind when known) so legacy tmdb_m_/untagged
+      // entries are found and removed instead of leaving duplicates behind.
       const existing = prev.find((f) => {
         const parsed = parseNamespacedId(f);
-        return parsed?.source === source && parsed.id === rawId;
+        if (!parsed || parsed.source !== source) return false;
+        if (getRawId(f) !== rawId) return false;
+        if (mediaKind && parsed.mediaKind && parsed.mediaKind !== mediaKind) {
+          return false;
+        }
+        return true;
       });
       const next = existing
         ? prev.filter((f) => f !== existing)
-        : [...prev, ensureNamespaced(source, id, mediaKind)];
+        : [...prev, canonical];
       AsyncStorage.setItem("nexora_favorites", JSON.stringify(next)).catch(
         () => undefined,
       );
@@ -475,21 +502,29 @@ export function NexoraProvider({ children }: { children: ReactNode }) {
   ) => {
     const source =
       getSource(id, type) || (type === "sport" ? "sports" : "media");
+    const mediaKind: MediaKind | undefined =
+      type === "movie" || type === "series"
+        ? type
+        : getMediaKind(id) ?? undefined;
     const rawId = getRawId(id);
     return favorites.some((f) => {
       const parsed = parseNamespacedId(f);
-      return parsed?.source === source && parsed.id === rawId;
+      if (!parsed || parsed.source !== source) return false;
+      if (getRawId(f) !== rawId) return false;
+      if (mediaKind && parsed.mediaKind && parsed.mediaKind !== mediaKind) {
+        return false;
+      }
+      return true;
     });
   };
 
   const addToHistory = async (item: WatchedItem) => {
-    // Namespace the ID to prevent collisions
-    const source = item.type === "sport" ? "sports" : "media";
+    // Namespace the ID to prevent collisions; also strip tmdb_m_/tmdb_s_ prefixes.
     const namespacedItem = {
       ...item,
-      id: ensureNamespaced(source, item.id),
+      id: canonicalizeStoredMediaId(item.id, item.type),
       contentId: item.contentId
-        ? ensureNamespaced(source, item.contentId)
+        ? canonicalizeStoredMediaId(item.contentId, item.type)
         : undefined,
     };
 
@@ -508,29 +543,36 @@ export function NexoraProvider({ children }: { children: ReactNode }) {
     ].slice(0, 50);
     setWatchHistory(next);
     await AsyncStorage.setItem("nexora_history", JSON.stringify(next));
-    // Bridge to user-state-service so mood derivation and continueWatching work
-    if (item.duration && item.duration > 0) {
-      trackWatchProgress({
-        contentId: namespacedItem.contentId ?? namespacedItem.id,
-        mediaType: item.type as "movie" | "series" | "channel" | "sport",
-        title: item.title,
-        posterUri: item.poster ?? null,
-        progress: item.progress ?? 0,
-        currentTime: item.currentTime ?? 0,
-        duration: item.duration,
-        season: item.season ?? null,
-        episode: item.episode ?? null,
-        episodeTitle: item.episodeTitle ?? null,
-        lastWatchedAt: item.lastWatched,
-        tmdbId: item.tmdbId ?? null,
-        year: item.year ?? null,
-        // Extra fields preserved by user-state-service spread
-        ...(item.backdrop ? { backdropUri: item.backdrop } : {}),
-        ...(item.genre_ids?.length ? { genreIds: item.genre_ids } : {}),
-      } as Parameters<typeof trackWatchProgress>[0]).catch(() => {
-        /* non-fatal */
-      });
-    }
+    // Bridge to user-state-service so mood derivation and continueWatching work.
+    // Even without a known duration, seed progress so "Kijk verder" can show the item.
+    const duration = item.duration && item.duration > 0 ? item.duration : 100;
+    const currentTime =
+      item.currentTime && item.currentTime > 0
+        ? item.currentTime
+        : Math.max(6, Math.round(duration * 0.08));
+    const progress =
+      item.progress && item.progress > 0
+        ? item.progress
+        : Math.min(0.94, currentTime / duration);
+    trackWatchProgress({
+      contentId: namespacedItem.contentId ?? namespacedItem.id,
+      mediaType: item.type as "movie" | "series" | "channel" | "sport",
+      title: item.title,
+      posterUri: item.poster ?? null,
+      progress,
+      currentTime,
+      duration,
+      season: item.season ?? null,
+      episode: item.episode ?? null,
+      episodeTitle: item.episodeTitle ?? null,
+      lastWatchedAt: item.lastWatched,
+      tmdbId: item.tmdbId ?? null,
+      year: item.year ?? null,
+      ...(item.backdrop ? { backdropUri: item.backdrop } : {}),
+      ...(item.genre_ids?.length ? { genreIds: item.genre_ids } : {}),
+    } as Parameters<typeof trackWatchProgress>[0]).catch(() => {
+      /* non-fatal */
+    });
   };
 
   const updateProgress = async (
