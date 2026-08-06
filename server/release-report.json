@@ -1,6 +1,22 @@
 {
   "runs": [
     {
+      "at": "2026-08-06T20:54:35.702Z",
+      "mode": "ota",
+      "route": "ota",
+      "version": "1.0.8",
+      "commitSha": "b3d7d219cf6e60a5940922d169fae678ccacdc9e",
+      "apkUrl": null
+    },
+    {
+      "at": "2026-08-06T20:54:34.983Z",
+      "mode": "apk",
+      "route": "apk",
+      "version": "1.0.18",
+      "commitSha": "b3d7d219cf6e60a5940922d169fae678ccacdc9e",
+      "apkUrl": "https://github.com/butsejens/nexora/releases/download/v1.0.18/nexora-v1.0.18.apk"
+    },
+    {
       "at": "2026-08-06T17:55:35.667Z",
       "mode": "apk",
       "route": "apk",
