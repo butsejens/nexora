@@ -197,11 +197,10 @@ export default function MyListScreen() {
         }),
       );
       return results
-        .filter(
-          (r): r is PromiseFulfilledResult<ListItem> =>
-            r.status === "fulfilled" && r.value != null,
-        )
-        .map((r) => r.value)
+        .flatMap((r) => {
+          if (r.status !== "fulfilled" || r.value == null) return [];
+          return [r.value as ListItem];
+        })
         .filter((item) => !!item.title);
     },
     enabled: favIds.length > 0,

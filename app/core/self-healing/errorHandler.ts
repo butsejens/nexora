@@ -12,8 +12,8 @@ export function installGlobalErrorHandler() {
   if (installed) return;
   installed = true;
 
-  const previous = (global as any).ErrorUtils?.getGlobalHandler?.();
-  (global as any).ErrorUtils?.setGlobalHandler?.(
+  const previous = (globalThis as any).ErrorUtils?.getGlobalHandler?.();
+  (globalThis as any).ErrorUtils?.setGlobalHandler?.(
     (error: unknown, isFatal?: boolean) => {
       const message = toErrorMessage(error);
       void logSelfHealing("error", "CRASH", "global-error-captured", {
