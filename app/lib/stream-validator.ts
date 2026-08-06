@@ -329,7 +329,7 @@ export async function validateSources(
   }[],
   options: { concurrency?: number; minValid?: number; timeoutMs?: number } = {},
 ): Promise<ValidatedSource[]> {
-  const { concurrency = 4, minValid = 3, timeoutMs = 8000 } = options;
+  const { concurrency = 6, minValid = 3, timeoutMs = 5000 } = options;
   const results: ValidatedSource[] = [];
   let validCount = 0;
   let index = 0;
@@ -342,7 +342,7 @@ export async function validateSources(
   );
 
   async function processNext(): Promise<void> {
-    while (index < sources.length && validCount < minValid + 2) {
+    while (index < sources.length && validCount < minValid) {
       const current = sources[index++];
       if (!current) break;
 

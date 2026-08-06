@@ -20,6 +20,7 @@ import Constants from "expo-constants";
 import { PersonalizationBridge } from "@/components/PersonalizationBridge";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { NexoraMenuOverlay } from "@/components/navigation/NexoraMenuOverlay";
+import { StartupUpdateBar } from "@/components/update";
 import appConfig from "@/app.json";
 import { queryClient } from "@/lib/query-client";
 import { NexoraProvider } from "@/context/NexoraContext";
@@ -295,6 +296,7 @@ export default function RootLayout() {
                 <PersonalizationBridge />
                 <RootLayoutNav />
                 <NexoraMenuOverlay />
+                <StartupUpdateBar />
               </UserStateProvider>
             </NexoraProvider>
           </GestureHandlerRootView>
