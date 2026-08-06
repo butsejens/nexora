@@ -418,7 +418,7 @@ export default function DetailScreen() {
     );
   }
 
-  const inList = isFavorite(content.id);
+  const inList = isFavorite(content.id, content.type as any);
   const isMovie = content.type === "movie";
   const movie = isMovie ? (content as Movie) : null;
   const series = !isMovie ? (content as Series) : null;

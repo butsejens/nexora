@@ -17,31 +17,56 @@
  */
 
 export type ContentSource = "sports" | "media" | "channel";
+/** TMDB movie and TV IDs are independent numbering spaces and commonly collide. */
+export type MediaKind = "movie" | "series";
 
 const PREFIX_SEPARATOR = ":";
 
 /**
- * Add namespace prefix to an ID
- * @param source - Content source (sports, media, channel)
- * @param id - Original ID (can be string or number)
- * @returns Namespaced ID "source:id"
+ * Add namespace prefix to an ID.
+ * For "media" IDs, pass mediaKind so movie/series is baked into the ID —
+ * TMDB movie and TV IDs overlap, so the same numeric ID can point to two
+ * unrelated titles and must never be guessed at lookup time.
+ * @returns Namespaced ID "source:id" or "media:movie|series:id"
  */
-export function namespaceId(source: ContentSource, id: string | number): string {
+export function namespaceId(
+  source: ContentSource,
+  id: string | number,
+  mediaKind?: MediaKind,
+): string {
   const idStr = typeof id === "number" ? id.toString() : id;
+  if (source === "media" && mediaKind) {
+    return `media${PREFIX_SEPARATOR}${mediaKind}${PREFIX_SEPARATOR}${idStr}`;
+  }
   return `${source}${PREFIX_SEPARATOR}${idStr}`;
 }
 
 /**
- * Extract source and original ID from namespaced ID
- * @param namespacedId - Prefixed ID like "sports:550" or "media:550"
- * @returns { source, id } or null if invalid format
+ * Extract source, mediaKind (if known) and original ID from a namespaced ID.
+ * Supports both "source:id" and "media:movie|series:id" formats.
+ * @param namespacedId - Prefixed ID like "sports:550", "media:550" or "media:movie:550"
+ * @returns { source, id, mediaKind } or null if invalid format
  */
-export function parseNamespacedId(namespacedId: string): { source: ContentSource; id: string } | null {
+export function parseNamespacedId(
+  namespacedId: string,
+): { source: ContentSource; id: string; mediaKind: MediaKind | null } | null {
   const parts = namespacedId.split(PREFIX_SEPARATOR);
-  if (parts.length !== 2) return null;
-  const [source, id] = parts;
-  if (!["sports", "media", "channel"].includes(source)) return null;
-  return { source: source as ContentSource, id };
+
+  if (parts.length === 3) {
+    const [source, kind, id] = parts;
+    if (source === "media" && (kind === "movie" || kind === "series") && id) {
+      return { source: "media", id, mediaKind: kind };
+    }
+    return null;
+  }
+
+  if (parts.length === 2) {
+    const [source, id] = parts;
+    if (!["sports", "media", "channel"].includes(source)) return null;
+    return { source: source as ContentSource, id, mediaKind: null };
+  }
+
+  return null;
 }
 
 /**
@@ -54,10 +79,14 @@ export function isNamespaced(id: string): boolean {
 /**
  * Ensure an ID is namespaced (avoid double-prefixing)
  */
-export function ensureNamespaced(source: ContentSource, id: string | number): string {
+export function ensureNamespaced(
+  source: ContentSource,
+  id: string | number,
+  mediaKind?: MediaKind,
+): string {
   const idStr = typeof id === "number" ? id.toString() : id;
   if (isNamespaced(idStr)) return idStr;
-  return namespaceId(source, idStr);
+  return namespaceId(source, idStr, mediaKind);
 }
 
 /**
@@ -66,6 +95,15 @@ export function ensureNamespaced(source: ContentSource, id: string | number): st
 export function getRawId(id: string): string {
   const parsed = parseNamespacedId(id);
   return parsed ? parsed.id : id;
+}
+
+/**
+ * Get the known movie/series kind from a namespaced ID, if it was recorded.
+ * Returns null for legacy IDs stored before kind-tagging existed.
+ */
+export function getMediaKind(id: string): MediaKind | null {
+  const parsed = parseNamespacedId(id);
+  return parsed ? parsed.mediaKind : null;
 }
 
 /**

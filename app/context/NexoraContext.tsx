@@ -13,7 +13,8 @@ import {
   clearWatchHistory,
   trackWatchProgress,
 } from "@/lib/services/user-state-service";
-import { ensureNamespaced, getSource } from "@/lib/id-namespace";
+import { ensureNamespaced, getSource, parseNamespacedId, getRawId } from "@/lib/id-namespace";
+import type { MediaKind } from "@/lib/id-namespace";
 import {
   authenticateWithEmail,
   isFirebaseAuthConfigured,
@@ -447,12 +448,20 @@ export function NexoraProvider({ children }: { children: ReactNode }) {
   ) => {
     const source =
       getSource(id, type) || (type === "sport" ? "sports" : "media");
-    const namespacedId = ensureNamespaced(source, id);
+    const mediaKind: MediaKind | undefined =
+      type === "movie" || type === "series" ? type : undefined;
+    const rawId = getRawId(id);
 
     setFavorites((prev) => {
-      const next = prev.includes(namespacedId)
-        ? prev.filter((f) => f !== namespacedId)
-        : [...prev, namespacedId];
+      // Match by source+rawId (not exact string) so a legacy untagged entry
+      // is found and removed instead of leaving a duplicate tagged entry behind.
+      const existing = prev.find((f) => {
+        const parsed = parseNamespacedId(f);
+        return parsed?.source === source && parsed.id === rawId;
+      });
+      const next = existing
+        ? prev.filter((f) => f !== existing)
+        : [...prev, ensureNamespaced(source, id, mediaKind)];
       AsyncStorage.setItem("nexora_favorites", JSON.stringify(next)).catch(
         () => undefined,
       );
@@ -466,8 +475,11 @@ export function NexoraProvider({ children }: { children: ReactNode }) {
   ) => {
     const source =
       getSource(id, type) || (type === "sport" ? "sports" : "media");
-    const namespacedId = ensureNamespaced(source, id);
-    return favorites.includes(namespacedId);
+    const rawId = getRawId(id);
+    return favorites.some((f) => {
+      const parsed = parseNamespacedId(f);
+      return parsed?.source === source && parsed.id === rawId;
+    });
   };
 
   const addToHistory = async (item: WatchedItem) => {

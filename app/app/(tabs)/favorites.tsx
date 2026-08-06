@@ -20,7 +20,7 @@ import { TYPOGRAPHY } from "@/constants/design-system";
 import { NexoraHeader } from "@/components/NexoraHeader";
 import { SectionHeader, StateBlock, SurfaceCard } from "@/components/ui";
 import { useNexora } from "@/context/NexoraContext";
-import { getRawId } from "@/lib/id-namespace";
+import { getMediaKind, getRawId } from "@/lib/id-namespace";
 import { apiRequest } from "@/lib/query-client";
 import { useTranslation } from "@/lib/useTranslation";
 
@@ -45,11 +45,15 @@ function nextPriority(current?: WatchPriority): WatchPriority {
 
 async function fetchMovieFull(id: string) {
   const res = await apiRequest("GET", `/api/movies/${id}/full`);
-  return res.json();
+  const data = await res.json();
+  return data && data.title && !data.error ? data : null;
 }
 async function fetchSeriesFull(id: string) {
   const res = await apiRequest("GET", `/api/series/${id}/full`);
-  return res.json();
+  const data = await res.json();
+  return data && (data.title || data.name) && !data.error
+    ? { ...data, title: data.title ?? data.name }
+    : null;
 }
 
 function Poster({ uri, size = 54 }: { uri?: string | null; size?: number }) {
@@ -118,21 +122,30 @@ export default function FavoritesScreen() {
 
   const favIds = useMemo(() => favorites.map((id) => String(id)), [favorites]);
 
-  // Fetch TMDB favorites (best-effort: try movie then series)
+  // Fetch TMDB favorites — uses the recorded movie/series kind when known
+  // (TMDB movie and TV IDs overlap, so guessing can resolve the wrong title).
   const { data: tmdbData } = useQuery({
     queryKey: ["favorites", "tmdb", favIds.join(",")],
     queryFn: async () => {
       const results = await Promise.allSettled(
-        favIds.slice(0, 80).map(async (id) => {
-          const rawId = getRawId(id);
-          try {
-            const m = await fetchMovieFull(rawId);
-            return { ...m, _type: "movie" as const };
-          } catch {}
-          try {
-            const s = await fetchSeriesFull(rawId);
-            return { ...s, _type: "series" as const };
-          } catch {}
+        favIds.slice(0, 80).map(async (favoriteId) => {
+          const rawId = getRawId(favoriteId);
+          const knownKind = getMediaKind(favoriteId);
+
+          if (knownKind === "movie") {
+            const m = await fetchMovieFull(rawId).catch(() => null);
+            return m ? { ...m, _type: "movie" as const, favoriteId } : null;
+          }
+          if (knownKind === "series") {
+            const s = await fetchSeriesFull(rawId).catch(() => null);
+            return s ? { ...s, _type: "series" as const, favoriteId } : null;
+          }
+
+          // Legacy favorite stored before kind-tagging existed — best-effort guess.
+          const m = await fetchMovieFull(rawId).catch(() => null);
+          if (m) return { ...m, _type: "movie" as const, favoriteId };
+          const s = await fetchSeriesFull(rawId).catch(() => null);
+          if (s) return { ...s, _type: "series" as const, favoriteId };
           return null;
         }),
       );
@@ -257,7 +270,7 @@ export default function FavoritesScreen() {
               </TouchableOpacity>
               <View style={styles.rowActions}>
                 <TouchableOpacity
-                  onPress={() => toggleFavorite(String(it.id))}
+                  onPress={() => toggleFavorite(it.favoriteId)}
                   style={styles.iconBtn}
                 >
                   <Ionicons

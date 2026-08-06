@@ -15,7 +15,7 @@ import { useQuery } from "@tanstack/react-query";
 import { COLORS } from "@/constants/colors";
 import { TOP_NAV_H } from "@/constants/layout";
 import { useNexora } from "@/context/NexoraContext";
-import { getRawId } from "@/lib/id-namespace";
+import { getMediaKind, getRawId } from "@/lib/id-namespace";
 import { apiRequest } from "@/lib/query-client";
 
 type ListItem = {
@@ -33,24 +33,34 @@ type ListItem = {
   totalEpisodes?: number;
 };
 
-async function fetchTmdbItem(id: string): Promise<ListItem | null> {
-  try {
-    const res = await apiRequest("GET", `/api/movies/${id}/full`);
-    const data = await res.json();
-    if (data && data.title && !data.error)
-      return { ...data, type: "movie" as const };
-  } catch {}
-  try {
-    const res = await apiRequest("GET", `/api/series/${id}/full`);
-    const data = await res.json();
-    if (data && (data.title || data.name) && !data.error)
-      return {
-        ...data,
-        title: data.title ?? data.name,
-        type: "series" as const,
-      };
-  } catch {}
-  return null;
+async function fetchMovie(id: string): Promise<ListItem | null> {
+  const res = await apiRequest("GET", `/api/movies/${id}/full`);
+  const data = await res.json();
+  return data && data.title && !data.error
+    ? { ...data, type: "movie" as const }
+    : null;
+}
+
+async function fetchSeries(id: string): Promise<ListItem | null> {
+  const res = await apiRequest("GET", `/api/series/${id}/full`);
+  const data = await res.json();
+  return data && (data.title || data.name) && !data.error
+    ? { ...data, title: data.title ?? data.name, type: "series" as const }
+    : null;
+}
+
+// TMDB movie and TV IDs are independent numbering spaces and commonly collide,
+// so use the kind recorded at favorite-time when available instead of guessing.
+async function fetchTmdbItem(
+  id: string,
+  knownKind: "movie" | "series" | null,
+): Promise<ListItem | null> {
+  if (knownKind === "movie") return fetchMovie(id).catch(() => null);
+  if (knownKind === "series") return fetchSeries(id).catch(() => null);
+
+  const movie = await fetchMovie(id).catch(() => null);
+  if (movie) return movie;
+  return fetchSeries(id).catch(() => null);
 }
 
 function MyListCard({
@@ -172,7 +182,8 @@ export default function MyListScreen() {
       const results = await Promise.allSettled(
         favIds.slice(0, 80).map(async (favoriteId) => {
           const rawId = getRawId(favoriteId);
-          const item = await fetchTmdbItem(rawId);
+          const knownKind = getMediaKind(favoriteId);
+          const item = await fetchTmdbItem(rawId, knownKind);
           return item ? { ...item, favoriteId, id: rawId } : null;
         }),
       );
