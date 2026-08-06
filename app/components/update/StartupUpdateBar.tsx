@@ -26,8 +26,7 @@ type BarState =
   | "downloading"
   | "restarting"
   | "no-update"
-  | "apk-available"
-  | "error";
+  | "apk-available";
 
 const AUTO_HIDE_MS = 3200;
 
@@ -44,7 +43,6 @@ const STATE_META: Record<
     color: "#E50914",
     icon: "arrow-down-circle-outline",
   },
-  error: { label: "Kon niet controleren op updates", color: "#EF4444", icon: "alert-circle-outline" },
 };
 
 export function StartupUpdateBar() {
@@ -94,7 +92,10 @@ export function StartupUpdateBar() {
           if (!aliveRef.current) return;
           setState("restarting");
           setTimeout(() => {
-            reloadToLatestUpdate().catch(() => scheduleHide("error"));
+            reloadToLatestUpdate().catch((error) => {
+              if (__DEV__) console.warn("[startup-update-bar] reload failed", error);
+              if (aliveRef.current) setState("hidden");
+            });
           }, 900);
           return;
         }
@@ -104,14 +105,18 @@ export function StartupUpdateBar() {
           return;
         }
 
+        // Background check failures aren't actionable here (often just a cold-starting
+        // backend); fail silently instead of alarming the user with a red banner.
         if (result.kind === "error" || result.kind === "apk-unavailable") {
-          scheduleHide("error");
+          if (__DEV__) console.warn("[startup-update-bar] check failed", result.errorMessage);
+          setState("hidden");
           return;
         }
 
         scheduleHide("no-update");
-      } catch {
-        scheduleHide("error");
+      } catch (error) {
+        if (__DEV__) console.warn("[startup-update-bar] check threw", error);
+        setState("hidden");
       }
     };
 
