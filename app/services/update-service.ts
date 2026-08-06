@@ -195,6 +195,22 @@ async function checkOtaAvailability(): Promise<OtaCheckState> {
   }
 }
 
+export type StartupOtaCheck = {
+  enabled: boolean;
+  available: boolean;
+  errorMessage: string | null;
+};
+
+/** Expo OTA availability only — never looks at APK/native manifests. */
+export async function checkOtaUpdateAvailable(): Promise<StartupOtaCheck> {
+  const ota = await checkOtaAvailability();
+  return {
+    enabled: ota.enabled,
+    available: ota.available,
+    errorMessage: ota.errorMessage,
+  };
+}
+
 async function detectServerChange(serverVersion: string): Promise<boolean> {
   const normalized = safeString(serverVersion);
   if (!normalized) return false;

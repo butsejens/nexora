@@ -125,9 +125,33 @@ export function resolveUpdateDecision(input: ResolveUpdateDecisionInput): Update
     compareVersions,
   } = input;
 
-  const nativeIsNewer = manifest ? compareVersions(manifest.native.version, currentNativeVersion) > 0 : false;
-  const apkDownloadUrl = manifest?.native.apk.downloadUrl || manifest?.endpoints.apkDownloadUrl || null;
+  const nativeIsNewer = manifest
+    ? compareVersions(manifest.native.version, currentNativeVersion) > 0
+    : false;
+  const nativeRequired = Boolean(manifest?.native.required);
+  const apkDownloadUrl =
+    manifest?.native.apk.downloadUrl || manifest?.endpoints.apkDownloadUrl || null;
   const apkMetadataValid = isValidApkMetadata(manifest);
+
+  // Prefer Expo OTA for everyday JS/UI updates. Only force an APK path when the
+  // native release is marked required (or when no OTA bundle is available).
+  if (otaAvailable && !(nativeIsNewer && nativeRequired)) {
+    return buildBaseResult(
+      "ota",
+      nativeIsNewer ? "OTA update beschikbaar" : "OTA update beschikbaar",
+      nativeIsNewer
+        ? `Er is een snelle update beschikbaar voor runtime ${manifest?.ota.runtimeVersion || currentRuntimeVersion}. Geen nieuwe APK-installatie nodig.`
+        : `Er is een JS/UI update beschikbaar voor runtime ${manifest?.ota.runtimeVersion || currentRuntimeVersion}.`,
+      manifest,
+      currentVersion,
+      currentNativeVersion,
+      currentRuntimeVersion,
+      null,
+      serverChanged,
+      true,
+      null,
+    );
+  }
 
   if (nativeIsNewer) {
     if (apkMetadataValid && apkDownloadUrl) {
@@ -146,26 +170,12 @@ export function resolveUpdateDecision(input: ResolveUpdateDecisionInput): Update
       );
     }
 
-    if (otaAvailable) {
-      return buildBaseResult(
-        "ota",
-        "OTA fallback beschikbaar",
-        manifest?.native.apk.fallbackMessage || "De nieuwe APK is nog niet gepubliceerd, maar er is wel een OTA update voor je huidige runtime.",
-        manifest,
-        currentVersion,
-        currentNativeVersion,
-        currentRuntimeVersion,
-        null,
-        serverChanged,
-        true,
-        null,
-      );
-    }
-
     return buildBaseResult(
       "apk-unavailable",
       "Native update nog niet downloadbaar",
-      manifest?.native.apk.unavailableReason || manifest?.native.apk.fallbackMessage || "De app ziet een nieuwe native versie, maar er is nog geen geldige APK download gepubliceerd.",
+      manifest?.native.apk.unavailableReason ||
+        manifest?.native.apk.fallbackMessage ||
+        "De app ziet een nieuwe native versie, maar er is nog geen geldige APK download gepubliceerd.",
       manifest,
       currentVersion,
       currentNativeVersion,
@@ -173,22 +183,6 @@ export function resolveUpdateDecision(input: ResolveUpdateDecisionInput): Update
       null,
       serverChanged,
       otaAvailable,
-      null,
-    );
-  }
-
-  if (otaAvailable) {
-    return buildBaseResult(
-      "ota",
-      "OTA update beschikbaar",
-      `Er is een JS/UI update beschikbaar voor runtime ${manifest?.ota.runtimeVersion || currentRuntimeVersion}.`,
-      manifest,
-      currentVersion,
-      currentNativeVersion,
-      currentRuntimeVersion,
-      null,
-      serverChanged,
-      true,
       null,
     );
   }

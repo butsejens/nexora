@@ -1,48 +1,44 @@
 /**
  * StartupUpdateBar
  *
- * Auto-runs on every app launch (no user action needed) and shows a slim
- * status bar reporting the OTA check result, then auto-hides. If a JS-only
- * (OTA) update is found it downloads and applies it automatically — no new
- * APK required. Native-only updates are surfaced as a tap-to-open banner
- * since installing an APK always needs explicit user consent on Android.
+ * Auto-runs on every app launch and checks Expo OTA only.
+ * If a JS/UI update is available it downloads and reloads automatically —
+ * no APK install required. Optional native APK bumps are never forced here;
+ * required native updates stay available from Settings → Update.
  */
 import React, { useEffect, useRef, useState } from "react";
-import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
+import { AppState, Platform, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { router } from "expo-router";
-import Constants from "expo-constants";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import {
-  checkForAppUpdates,
+  checkOtaUpdateAvailable,
   prepareOtaUpdate,
   reloadToLatestUpdate,
 } from "@/services/update-service";
 import { getUpdateDiagnostics } from "@/services/update-diagnostics";
+import { logStartupEvent } from "@/services/startup-orchestrator";
 
 type BarState =
   | "hidden"
   | "checking"
   | "downloading"
   | "restarting"
-  | "no-update"
-  | "apk-available";
+  | "no-update";
 
-const AUTO_HIDE_MS = 3200;
+const AUTO_HIDE_MS = 2800;
 
 const STATE_META: Record<
   Exclude<BarState, "hidden">,
   { label: string; color: string; icon: keyof typeof MaterialCommunityIcons.glyphMap }
 > = {
   checking: { label: "Controleren op updates...", color: "#3B82F6", icon: "magnify" },
-  downloading: { label: "Update wordt gedownload...", color: "#F59E0B", icon: "download" },
-  restarting: { label: "Update gevonden — app wordt herstart...", color: "#F59E0B", icon: "restart" },
-  "no-update": { label: "App is up-to-date", color: "#10B981", icon: "check-circle-outline" },
-  "apk-available": {
-    label: "Nieuwe versie beschikbaar — tik om te downloaden",
-    color: "#E50914",
-    icon: "arrow-down-circle-outline",
+  downloading: { label: "Snelle update wordt gedownload...", color: "#F59E0B", icon: "download" },
+  restarting: {
+    label: "Update klaar — app wordt herstart...",
+    color: "#F59E0B",
+    icon: "restart",
   },
+  "no-update": { label: "App is up-to-date", color: "#10B981", icon: "check-circle-outline" },
 };
 
 export function StartupUpdateBar() {
@@ -67,7 +63,16 @@ export function StartupUpdateBar() {
     const diagnostics = getUpdateDiagnostics();
     const unsupported =
       diagnostics.isDevelopment || Platform.OS === "web" || !diagnostics.isEnabled;
-    if (unsupported) return;
+    if (unsupported) {
+      logStartupEvent("boot", "info", "startup-ota-skipped", {
+        reason: diagnostics.isDevelopment
+          ? "development"
+          : Platform.OS === "web"
+            ? "web"
+            : "updates-disabled",
+      });
+      return;
+    }
 
     const scheduleHide = (next: Exclude<BarState, "hidden">) => {
       if (!aliveRef.current) return;
@@ -79,42 +84,52 @@ export function StartupUpdateBar() {
     };
 
     const run = async () => {
+      // Let the first frame paint before the update check.
+      await new Promise((resolve) => setTimeout(resolve, 600));
+      if (!aliveRef.current) return;
+      if (AppState.currentState !== "active") return;
+
       setState("checking");
       try {
-        const result = await checkForAppUpdates({
-          currentVersion: String(Constants.expoConfig?.version || ""),
-        });
+        const ota = await checkOtaUpdateAvailable();
         if (!aliveRef.current) return;
 
-        if (result.kind === "ota") {
-          setState("downloading");
-          await prepareOtaUpdate();
-          if (!aliveRef.current) return;
-          setState("restarting");
-          setTimeout(() => {
-            reloadToLatestUpdate().catch((error) => {
-              if (__DEV__) console.warn("[startup-update-bar] reload failed", error);
-              if (aliveRef.current) setState("hidden");
-            });
-          }, 900);
+        logStartupEvent("boot", "info", "startup-ota-check", {
+          enabled: ota.enabled,
+          available: ota.available,
+          errorMessage: ota.errorMessage,
+        });
+
+        if (!ota.enabled) {
+          scheduleHide("no-update");
           return;
         }
 
-        if (result.kind === "apk") {
-          scheduleHide("apk-available");
-          return;
-        }
-
-        // Background check failures aren't actionable here (often just a cold-starting
-        // backend); fail silently instead of alarming the user with a red banner.
-        if (result.kind === "error" || result.kind === "apk-unavailable") {
-          if (__DEV__) console.warn("[startup-update-bar] check failed", result.errorMessage);
+        if (ota.errorMessage) {
           setState("hidden");
           return;
         }
 
-        scheduleHide("no-update");
+        if (!ota.available) {
+          scheduleHide("no-update");
+          return;
+        }
+
+        setState("downloading");
+        await prepareOtaUpdate();
+        if (!aliveRef.current) return;
+
+        setState("restarting");
+        setTimeout(() => {
+          reloadToLatestUpdate().catch((error) => {
+            if (__DEV__) console.warn("[startup-update-bar] reload failed", error);
+            if (aliveRef.current) setState("hidden");
+          });
+        }, 700);
       } catch (error) {
+        logStartupEvent("boot", "warn", "startup-ota-failed", {
+          message: error instanceof Error ? error.message : "unknown",
+        });
         if (__DEV__) console.warn("[startup-update-bar] check threw", error);
         setState("hidden");
       }
@@ -126,28 +141,13 @@ export function StartupUpdateBar() {
   if (state === "hidden") return null;
 
   const meta = STATE_META[state];
-  const isTappable = state === "apk-available";
-
-  const bar = (
+  return (
     <View style={[styles.bar, { paddingTop: insets.top + 8, backgroundColor: meta.color }]}>
       <MaterialCommunityIcons name={meta.icon} size={16} color="#04070c" />
       <Text style={styles.text} numberOfLines={1}>
         {meta.label}
       </Text>
     </View>
-  );
-
-  if (!isTappable) return bar;
-
-  return (
-    <Pressable
-      onPress={() => {
-        setState("hidden");
-        router.push("/more?openUpdate=1");
-      }}
-    >
-      {bar}
-    </Pressable>
   );
 }
 
