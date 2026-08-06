@@ -392,18 +392,16 @@ export function getProviderUrls(providerId) {
 
 // ─── Background Schedule ──────────────────────────────────────────────────────
 
-const CHECK_INTERVAL = 6 * 60 * 60 * 1000; // 6 hours
-const INITIAL_DELAY = 2 * 60 * 1000; // 2 min after server start
+const CHECK_INTERVAL = 24 * 60 * 60 * 1000; // daily refresh
+const INITIAL_DELAY = 5 * 1000; // short startup warm-up before the first probe
 
 export function startHealthCheckSchedule() {
-  // Initial check after server stabilizes
   setTimeout(() => {
     runHealthCheck().catch((err) =>
       log.error("Initial stream check failed", { error: err.message }),
     );
   }, INITIAL_DELAY);
 
-  // Daily recurring check
   setInterval(() => {
     runHealthCheck().catch((err) =>
       log.error("Scheduled stream check failed", { error: err.message }),
@@ -412,7 +410,7 @@ export function startHealthCheckSchedule() {
 
   log.info("Stream health monitor scheduled", {
     intervalHours: CHECK_INTERVAL / 3_600_000,
-    initialDelayMin: INITIAL_DELAY / 60_000,
+    initialDelaySec: INITIAL_DELAY / 1000,
     reserveCount: reserveProviders.length,
   });
 }
@@ -426,7 +424,11 @@ export const router = Router();
  * Returns the current active provider list for the mobile app.
  * The app calls this on startup (or periodically) to get the latest working servers.
  */
-router.get("/providers", (_req, res) => {
+router.get("/providers", async (_req, res) => {
+  if (!lastHealthReport || !lastCheckAt) {
+    await runHealthCheck().catch(() => undefined);
+  }
+
   const providers = activeProviders.map((p, i) => ({
     id: p.id,
     label: `Server ${i + 1}`,

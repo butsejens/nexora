@@ -48,9 +48,17 @@ function supportsNativeVideo(url: string): boolean {
   const value = String(url || "").toLowerCase();
   return (
     value.endsWith(".m3u8") ||
+    value.endsWith(".m3u") ||
+    value.endsWith(".ts") ||
     value.endsWith(".mp4") ||
     value.includes(".m3u8?") ||
-    value.includes(".mp4?")
+    value.includes(".m3u?") ||
+    value.includes(".ts?") ||
+    value.includes(".mp4?") ||
+    value.includes("/live/") ||
+    value.includes("playlist") ||
+    value.includes("manifest") ||
+    value.includes("stream")
   );
 }
 
@@ -234,21 +242,28 @@ export default function PlayerScreen() {
         return;
       }
 
-      // Auto clean mode: prefer ad-free direct sources only.
       const directSources = initialSources.filter((s) =>
         supportsNativeVideo(s.url),
       );
+      const providerSources = initialSources.filter(
+        (s) => !supportsNativeVideo(s.url),
+      );
 
-      let validatedSources = directSources;
-      if (directSources.length > 0 && Platform.OS !== "web") {
+      let validatedSources = initialSources;
+      if (Platform.OS !== "web") {
         setLoadingMessage("Servers testen...");
         streamLog(
           "info",
           "player",
-          `Validating ${directSources.length} direct sources`,
+          `Validating ${initialSources.length} playback sources`,
         );
         const probeResults = await validateSources(
-          directSources.map((s) => ({ url: s.url, type: "direct" as const })),
+          initialSources.map((source) => ({
+            url: source.url,
+            type: supportsNativeVideo(source.url)
+              ? ("direct" as const)
+              : ("embed" as const),
+          })),
         );
         const validUrls = new Set(
           probeResults.filter((r) => r.probe.ok).map((r) => r.url),
@@ -260,9 +275,10 @@ export default function PlayerScreen() {
             status: r.probe.statusCode,
           });
         });
-        // Keep only validated direct sources to avoid ad-heavy embed providers.
+
         const validDirect = directSources.filter((s) => validUrls.has(s.url));
-        validatedSources = validDirect;
+        const validProviders = providerSources.filter((s) => validUrls.has(s.url));
+        validatedSources = [...validDirect, ...validProviders];
       }
 
       if (!alive) return;
@@ -270,7 +286,7 @@ export default function PlayerScreen() {
       if (!validatedSources.length) {
         setSources([]);
         setSelectedId("");
-        setError("Geen advertentievrije afspeelbron gevonden. Probeer later opnieuw.");
+        setError("Geen afspeelbron gevonden. Probeer later opnieuw.");
         setLoading(false);
         return;
       }
@@ -597,6 +613,32 @@ function EmbedWebView({
     [onAdDetected],
   );
 
+  const handleOpenWindow = useCallback((event: any) => {
+    const targetUrl = String(event?.nativeEvent?.targetUrl || "").trim();
+    if (!targetUrl) return;
+
+    if (isAllowedNavigation(targetUrl)) {
+      streamLog("warn", "player", "Blocking popup window and keeping playback in-frame", {
+        targetUrl,
+      });
+      try {
+        webRef.current?.injectJavaScript?.(
+          `window.location.href = ${JSON.stringify(targetUrl)}; true;`,
+        );
+      } catch (error) {
+        streamLog("error", "player", "Failed to redirect popup in-frame", {
+          targetUrl,
+          error: String(error),
+        });
+        // If the WebView cannot be redirected, keep the popup blocked.
+      }
+    } else {
+      streamLog("warn", "player", "Blocked popup window", {
+        targetUrl,
+      });
+    }
+  }, []);
+
   if (Platform.OS === "web") {
     return (
       <View style={styles.webFrameWrap}>
@@ -666,6 +708,7 @@ function EmbedWebView({
       domStorageEnabled
       startInLoadingState
       setSupportMultipleWindows={false}
+      onOpenWindow={handleOpenWindow}
       allowsBackForwardNavigationGestures={false}
       androidLayerType="hardware"
       injectedJavaScript={AD_BLOCK_JS}

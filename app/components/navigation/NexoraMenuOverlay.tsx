@@ -1,7 +1,7 @@
 import React, { useMemo, useRef, useEffect } from "react";
 import { Animated, Modal, StyleSheet, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { router, useRootNavigationState } from "expo-router";
+import { router, usePathname, useRootNavigationState } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { COLORS } from "@/constants/colors";
@@ -37,6 +37,7 @@ const LANG_OPTIONS: { code: Language; flag: string; label: string }[] = [
 export function NexoraMenuOverlay() {
   const insets = useSafeAreaInsets();
   const navState = useRootNavigationState();
+  const pathname = usePathname();
   const isOpen = useUiStore((state) => state.nexoraMenuOpen);
   const closeMenu = useUiStore((state) => state.closeNexoraMenu);
   const { uiLanguage, setUiLanguage } = useNexora();
@@ -73,7 +74,7 @@ export function NexoraMenuOverlay() {
     closeMenu();
   }, [navSignature, closeMenu]);
 
-  const activeRoute = "";
+  const activeRoute = pathname ?? "";
 
   return (
     <Modal
@@ -94,7 +95,10 @@ export function NexoraMenuOverlay() {
           ]}
         >
           <View style={styles.headerRow}>
-            <Text style={styles.brand}>CINELOG</Text>
+            <View>
+              <Text style={styles.brand}>CINELOG</Text>
+              <Text style={styles.brandSub}>Quick access</Text>
+            </View>
             <ScalePress onPress={closeMenu} style={styles.closeWrap}>
               <View style={styles.closeBtn}>
                 <Ionicons name="close" size={20} color={COLORS.text} />
@@ -104,9 +108,9 @@ export function NexoraMenuOverlay() {
 
           <View style={styles.itemsWrap}>
             {MENU_ITEMS.map((item) => {
+              const routeKey = item.route.split("/").pop() ?? item.route;
               const isActive =
-                activeRoute === item.route ||
-                activeRoute.startsWith(`${item.route}/`);
+                activeRoute === item.route || activeRoute.includes(routeKey);
               return (
                 <ScalePress
                   key={item.route}
@@ -183,7 +187,7 @@ export function NexoraMenuOverlay() {
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: "rgba(0,0,0,0.72)",
+    backgroundColor: "rgba(3,4,8,0.84)",
     justifyContent: "flex-start",
   },
   backdropHit: {
@@ -191,22 +195,30 @@ const styles = StyleSheet.create({
   },
   panel: {
     flex: 1,
-    backgroundColor: COLORS.background,
+    backgroundColor: "rgba(8,10,18,0.98)",
     borderTopWidth: 1,
     borderTopColor: COLORS.border,
-    paddingHorizontal: 20,
+    paddingHorizontal: 18,
+    paddingBottom: 20,
   },
   headerRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    marginBottom: 26,
+    marginBottom: 22,
   },
   brand: {
     fontFamily: "Inter_800ExtraBold",
     letterSpacing: 2.3,
     color: COLORS.text,
     fontSize: 20,
+  },
+  brandSub: {
+    marginTop: 2,
+    color: COLORS.textMuted,
+    fontFamily: "Inter_500Medium",
+    fontSize: 12,
+    letterSpacing: 0.2,
   },
   closeWrap: {
     borderRadius: 999,
@@ -215,21 +227,21 @@ const styles = StyleSheet.create({
     width: 38,
     height: 38,
     borderRadius: 19,
-    backgroundColor: COLORS.card,
+    backgroundColor: COLORS.cardElevated,
     borderWidth: 1,
     borderColor: COLORS.border,
     alignItems: "center",
     justifyContent: "center",
   },
   itemsWrap: {
-    gap: 10,
+    gap: 12,
   },
   itemPressWrap: {
-    borderRadius: 14,
+    borderRadius: 18,
   },
   item: {
-    minHeight: 58,
-    borderRadius: 14,
+    minHeight: 60,
+    borderRadius: 18,
     borderWidth: 1,
     borderColor: COLORS.border,
     backgroundColor: COLORS.card,
@@ -239,7 +251,7 @@ const styles = StyleSheet.create({
   },
   itemActive: {
     borderColor: COLORS.accent,
-    backgroundColor: "rgba(229,9,20,0.12)",
+    backgroundColor: "rgba(192,38,211,0.12)",
   },
   itemIcon: {
     marginRight: 12,
@@ -262,12 +274,13 @@ const styles = StyleSheet.create({
   },
   langSection: {
     flexDirection: "row",
-    alignItems: "center",
+    alignItems: "flex-start",
     marginTop: 24,
     paddingHorizontal: 4,
   },
   langIcon: {
     marginRight: 10,
+    marginTop: 4,
   },
   langRow: {
     flexDirection: "row",
@@ -285,11 +298,11 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     borderWidth: 1,
     borderColor: COLORS.border,
-    backgroundColor: COLORS.card,
+    backgroundColor: COLORS.cardElevated,
   },
   langChipActive: {
     borderColor: COLORS.accent,
-    backgroundColor: "rgba(229,9,20,0.12)",
+    backgroundColor: "rgba(192,38,211,0.12)",
   },
   langFlag: {
     fontSize: 16,

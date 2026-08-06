@@ -2,9 +2,8 @@
  * Nexora – Background Job Queue (BullMQ + ioredis)
  *
  * Provides a Redis-backed job queue for background tasks:
- *   - Cache warming (pre-fetch match data before kickoff)
- *   - Data enrichment (player photos, standings, xG)
- *   - Scheduled lineup polling during live matches
+ *   - Cache warming (pre-fetch media data)
+ *   - Data enrichment (posters, metadata)
  *
  * Requires REDIS_URL in environment. When Redis is absent, all queue
  * operations degrade gracefully (no-ops or direct execution).
@@ -41,11 +40,7 @@ if (REDIS_URL) {
 // ─── Job name constants ───────────────────────────────────────────────────────
 
 export const JOB = Object.freeze({
-  WARM_MATCH: "warm-match", // pre-fetch match detail before kickoff
-  ENRICH_LINEUPS: "enrich-lineups", // fetch player photos for a match lineup
-  WARM_STANDINGS: "warm-standings", // pre-fetch standings for a competition
-  POLL_LIVE_MATCH: "poll-live-match", // poll a live match every 30 s
-  SYNC_PLAYER_PHOTOS: "sync-player-photos", // batch-sync ESPN headshot URLs
+  // Reserved for future background tasks
 });
 
 // ─── Queue setup ──────────────────────────────────────────────────────────────

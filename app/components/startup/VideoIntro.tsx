@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
+  Image,
   Platform,
   Pressable,
   StyleSheet,
@@ -20,16 +21,19 @@ import Animated, {
 import { COLORS } from "@/constants/colors";
 
 type VideoIntroProps = {
+  variant?: "standard" | "extended";
   onFinish: () => void;
 };
 
-export function VideoIntro({ onFinish }: VideoIntroProps) {
+export function VideoIntro({ variant = "standard", onFinish }: VideoIntroProps) {
   const doneRef = useRef(false);
   const onFinishRef = useRef(onFinish);
   const [showSkip, setShowSkip] = useState(false);
   const opacity = useSharedValue(1);
   const markScale = useSharedValue(0.72);
   const markOpacity = useSharedValue(0);
+  const glowScale = useSharedValue(0.84);
+  const glowOpacity = useSharedValue(0.22);
   const wordOpacity = useSharedValue(0);
   const tagOpacity = useSharedValue(0);
   const isWeb = Platform.OS === "web";
@@ -54,45 +58,65 @@ export function VideoIntro({ onFinish }: VideoIntroProps) {
       }),
       withTiming(1, { duration: 280, easing: Easing.inOut(Easing.quad) }),
     );
+    glowScale.value = withSequence(
+      withTiming(1.08, { duration: 760, easing: Easing.out(Easing.cubic) }),
+      withTiming(1, { duration: 420, easing: Easing.inOut(Easing.quad) }),
+    );
+    glowOpacity.value = withSequence(
+      withTiming(0.38, { duration: 520, easing: Easing.out(Easing.quad) }),
+      withTiming(0.24, { duration: 420, easing: Easing.inOut(Easing.quad) }),
+    );
     wordOpacity.value = withDelay(280, withTiming(1, { duration: 480 }));
     tagOpacity.value = withDelay(560, withTiming(1, { duration: 420 }));
 
     const skipTimer = setTimeout(
       () => setShowSkip(true),
-      isWeb ? 300 : 900,
+      variant === "extended"
+        ? (isWeb ? 900 : 1700)
+        : (isWeb ? 650 : 1200),
     );
     const finishTimer = setTimeout(
       () => finish(),
-      isWeb ? 900 : 2800,
+      variant === "extended"
+        ? (isWeb ? 1800 : 4300)
+        : (isWeb ? 1300 : 3200),
     );
 
     return () => {
       clearTimeout(skipTimer);
       clearTimeout(finishTimer);
     };
-  }, [finish, isWeb, markOpacity, markScale, tagOpacity, wordOpacity]);
+  }, [finish, glowOpacity, glowScale, isWeb, markOpacity, markScale, tagOpacity, variant, wordOpacity]);
 
   const fadeStyle = useAnimatedStyle(() => ({ opacity: opacity.value }));
   const markStyle = useAnimatedStyle(() => ({
     opacity: markOpacity.value,
     transform: [{ scale: markScale.value }],
   }));
+  const glowStyle = useAnimatedStyle(() => ({
+    opacity: glowOpacity.value,
+    transform: [{ scale: glowScale.value }],
+  }));
   const wordStyle = useAnimatedStyle(() => ({ opacity: wordOpacity.value }));
   const tagStyle = useAnimatedStyle(() => ({ opacity: tagOpacity.value }));
 
   return (
     <Animated.View style={[styles.container, fadeStyle]}>
-      <View style={styles.glow} />
+      <Animated.View style={[styles.glow, glowStyle]} />
       <Animated.View style={[styles.markWrap, markStyle]}>
         <View style={styles.mark}>
-          <View style={styles.markC} />
+          <Image
+            source={require("@/assets/images/logo.png")}
+            style={styles.logoImage}
+            resizeMode="contain"
+          />
         </View>
       </Animated.View>
       <Animated.Text style={[styles.wordmark, wordStyle]}>
         <Text style={styles.wordmarkC}>C</Text>INELOG
       </Animated.Text>
       <Animated.Text style={[styles.tagline, tagStyle]}>
-        ALL YOUR CONTENT. ONE PLACE.
+        JOUW FILMS EN SERIES. EEN PLEK.
       </Animated.Text>
       {showSkip ? (
         <Animated.View entering={FadeIn} exiting={FadeOut} style={styles.skipWrap}>
@@ -115,18 +139,18 @@ const styles = StyleSheet.create({
   },
   glow: {
     position: "absolute",
-    width: 280,
-    height: 280,
-    borderRadius: 140,
-    backgroundColor: "rgba(192,38,211,0.16)",
+    width: 340,
+    height: 340,
+    borderRadius: 170,
+    backgroundColor: "rgba(192,38,211,0.14)",
   },
   markWrap: {
     marginBottom: 28,
   },
   mark: {
-    width: 88,
-    height: 88,
-    borderRadius: 24,
+    width: 110,
+    height: 110,
+    borderRadius: 30,
     backgroundColor: "#0A0A12",
     borderWidth: 1,
     borderColor: "rgba(192,38,211,0.35)",
@@ -134,14 +158,9 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     overflow: "hidden",
   },
-  markC: {
-    width: 46,
-    height: 46,
-    borderRadius: 23,
-    borderWidth: 10,
-    borderColor: COLORS.accent,
-    borderRightColor: "transparent",
-    transform: [{ rotate: "-35deg" }],
+  logoImage: {
+    width: 88,
+    height: 88,
   },
   wordmark: {
     fontSize: 34,

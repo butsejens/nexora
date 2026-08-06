@@ -35,6 +35,8 @@ import {
 
 import { setLanguage as setI18nLanguage, type Language } from "@/lib/i18n";
 import { useProfileStore } from "@/store/profileStore";
+import { useOnboardingStore } from "@/store/onboarding-store";
+import { useUserAccountStore } from "@/store/userAccountStore";
 
 export type PremiumCategory = "movies" | "series" | "live" | "sport";
 export type AuthProvider = "google" | "apple" | "email";
@@ -850,6 +852,9 @@ export function NexoraProvider({ children }: { children: ReactNode }) {
         await AsyncStorage.clear();
       } catch {}
     }
+    // Re-trigger the first-launch account setup (name/age/email/color/language) on next boot.
+    useOnboardingStore.getState().resetOnboarding();
+    useUserAccountStore.getState().resetAccountSetup();
     setFavorites([]);
     setWatchHistory([]);
     setSelectedQualityState("Auto");

@@ -178,10 +178,10 @@ export function SearchTab({ onSelectResult }: SearchTabProps) {
         poster:
           movie.poster ||
           (movie.poster_path
-            ? `https://image.tmdb.org/t/p/w342${movie.poster_path}`
+               ? `https://image.tmdb.org/t/p/original${movie.poster_path}`
             : undefined) ||
           (movie.backdrop_path
-            ? `https://image.tmdb.org/t/p/w342${movie.backdrop_path}`
+               ? `https://image.tmdb.org/t/p/original${movie.backdrop_path}`
             : undefined) ||
           movie.backdrop ||
           undefined,
@@ -201,10 +201,10 @@ export function SearchTab({ onSelectResult }: SearchTabProps) {
         poster:
           show.poster ||
           (show.poster_path
-            ? `https://image.tmdb.org/t/p/w342${show.poster_path}`
+               ? `https://image.tmdb.org/t/p/original${show.poster_path}`
             : undefined) ||
           (show.backdrop_path
-            ? `https://image.tmdb.org/t/p/w342${show.backdrop_path}`
+               ? `https://image.tmdb.org/t/p/original${show.backdrop_path}`
             : undefined) ||
           show.backdrop ||
           undefined,

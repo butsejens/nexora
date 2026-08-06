@@ -5,16 +5,30 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { COLORS } from "@/constants/colors";
 import { useOnboardingStore } from "@/store/onboarding-store";
+import { useUserAccountStore } from "@/store/userAccountStore";
+import { useProfileStore, AVATAR_COLORS } from "@/store/profileStore";
+import { useTranslation } from "@/lib/useTranslation";
+import type { Language } from "@/lib/i18n";
 
 type PremiumOnboardingFlowProps = {
   mode?: "first-launch" | "editor";
   onFinished?: () => void;
 };
+
+const LANGUAGE_OPTIONS: { key: Language; label: string; flag: string }[] = [
+  { key: "nl", label: "Nederlands", flag: "🇳🇱" },
+  { key: "en", label: "English", flag: "🇬🇧" },
+  { key: "fr", label: "Français", flag: "🇫🇷" },
+  { key: "de", label: "Deutsch", flag: "🇩🇪" },
+  { key: "es", label: "Español", flag: "🇪🇸" },
+  { key: "pt", label: "Português", flag: "🇵🇹" },
+];
 
 const GENRE_OPTIONS = [
   { key: "action",    label: "Action",       icon: "🎬" },
@@ -30,7 +44,7 @@ const GENRE_OPTIONS = [
   { key: "news",      label: "News",         icon: "📰" },
 ] as const;
 
-const STEP_TOTAL = 2;
+const STEP_TOTAL = 3;
 
 function StepDots({ step, total }: { step: number; total: number }) {
   return (
@@ -79,9 +93,18 @@ export function PremiumOnboardingFlow({
 }: PremiumOnboardingFlowProps) {
   const router = useRouter();
   const { completeOnboarding, moviesEnabled, setMoviesEnabled } = useOnboardingStore();
+  const { updateAccountInfo, completeAccountSetup, info: accountInfo } = useUserAccountStore();
+  const updateProfile = useProfileStore((s) => s.updateProfile);
+  const { language, setLanguage } = useTranslation();
 
   const [step, setStep]           = useState(1);
-  const [genres, setGenres]       = useState<string[]>(["action", "drama", "scifi"]);
+  const [genres, setGenres]       = useState<string[]>(
+    accountInfo.genres?.length ? accountInfo.genres : ["action", "drama", "scifi"],
+  );
+  const [name, setName]           = useState(accountInfo.name);
+  const [age, setAge]             = useState(accountInfo.age);
+  const [email, setEmail]         = useState(accountInfo.email);
+  const [accentColor, setAccentColor] = useState(accountInfo.accentColor);
   const isFinishing               = useRef(false);
 
   const toggleGenre = useCallback((key: string) => {
@@ -90,18 +113,52 @@ export function PremiumOnboardingFlow({
     );
   }, []);
 
+  const applyAccentColor = useCallback(
+    (color: string) => {
+      setAccentColor(color);
+      updateAccountInfo({ accentColor: color });
+      updateProfile("main", { avatarColor: color });
+    },
+    [updateAccountInfo, updateProfile],
+  );
+
+  const applyLanguage = useCallback(
+    (lang: Language) => {
+      setLanguage(lang);
+      updateAccountInfo({ language: lang });
+    },
+    [setLanguage, updateAccountInfo],
+  );
+
   const handleFinish = useCallback(() => {
     if (isFinishing.current) return;
     isFinishing.current = true;
+    updateAccountInfo({ name: name.trim(), age: age.trim(), email: email.trim(), genres });
+    if (name.trim()) {
+      updateProfile("main", { name: name.trim() });
+    }
+    completeAccountSetup();
     completeOnboarding();
     if (onFinished) {
       onFinished();
     } else {
       router.replace("/(tabs)/home");
     }
-  }, [completeOnboarding, onFinished, router]);
+  }, [
+    age,
+    completeAccountSetup,
+    completeOnboarding,
+    email,
+    genres,
+    name,
+    onFinished,
+    router,
+    updateAccountInfo,
+    updateProfile,
+  ]);
 
-  const canAdvance  = step === 1 ? genres.length > 0 : true;
+  const canAdvance =
+    step === 1 ? name.trim().length > 0 : step === 2 ? genres.length > 0 : true;
   const isLastStep  = step === STEP_TOTAL;
 
   return (
@@ -117,8 +174,79 @@ export function PremiumOnboardingFlow({
           <StepDots step={step} total={STEP_TOTAL} />
         </View>
 
-        {/* ── Step 1: Genre preferences ── */}
+        {/* ── Step 1: Account & personalisation ── */}
         {step === 1 && (
+          <View style={styles.stepWrap}>
+            <Text style={styles.stepTitle}>Vertel ons over jezelf</Text>
+            <Text style={styles.stepSub}>
+              We personaliseren de app op basis van jouw gegevens en gekozen kleur.
+            </Text>
+
+            <Text style={styles.fieldLabel}>Naam</Text>
+            <TextInput
+              value={name}
+              onChangeText={setName}
+              placeholder="Jouw naam"
+              placeholderTextColor={COLORS.textMuted}
+              style={styles.textInput}
+              autoCapitalize="words"
+            />
+
+            <Text style={styles.fieldLabel}>Leeftijd</Text>
+            <TextInput
+              value={age}
+              onChangeText={(v) => setAge(v.replace(/[^0-9]/g, ""))}
+              placeholder="Bijv. 28"
+              placeholderTextColor={COLORS.textMuted}
+              style={styles.textInput}
+              keyboardType="number-pad"
+              maxLength={3}
+            />
+
+            <Text style={styles.fieldLabel}>E-mailadres</Text>
+            <TextInput
+              value={email}
+              onChangeText={setEmail}
+              placeholder="jij@voorbeeld.com"
+              placeholderTextColor={COLORS.textMuted}
+              style={styles.textInput}
+              keyboardType="email-address"
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
+
+            <Text style={styles.fieldLabel}>Taal</Text>
+            <View style={styles.chipGrid}>
+              {LANGUAGE_OPTIONS.map((l) => (
+                <ChoiceChip
+                  key={l.key}
+                  active={language === l.key}
+                  label={l.label}
+                  icon={l.flag}
+                  onPress={() => applyLanguage(l.key)}
+                />
+              ))}
+            </View>
+
+            <Text style={styles.fieldLabel}>Kleur</Text>
+            <View style={styles.colorRow}>
+              {AVATAR_COLORS.map((color) => (
+                <Pressable
+                  key={color}
+                  onPress={() => applyAccentColor(color)}
+                  style={[
+                    styles.colorSwatch,
+                    { backgroundColor: color },
+                    accentColor === color && styles.colorSwatchActive,
+                  ]}
+                />
+              ))}
+            </View>
+          </View>
+        )}
+
+        {/* ── Step 2: Genre preferences ── */}
+        {step === 2 && (
           <View style={styles.stepWrap}>
             <Text style={styles.stepTitle}>What do you love watching?</Text>
             <Text style={styles.stepSub}>
@@ -138,8 +266,8 @@ export function PremiumOnboardingFlow({
           </View>
         )}
 
-        {/* ── Step 2: Notifications ── */}
-        {step === 2 && (
+        {/* ── Step 3: Notifications ── */}
+        {step === 3 && (
           <View style={styles.stepWrap}>
             <Text style={styles.stepTitle}>Stay in the loop</Text>
             <Text style={styles.stepSub}>
@@ -175,7 +303,7 @@ export function PremiumOnboardingFlow({
           style={[styles.btn, !canAdvance && styles.btnDisabled]}
         >
           <Text style={styles.btnText}>
-            {step === 1 ? "Continue" : "Start Watching"}
+            {isLastStep ? "Start Watching" : "Continue"}
           </Text>
         </Pressable>
         {step > 1 && (
@@ -252,6 +380,40 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     flexWrap: "wrap",
     gap: 10,
+    marginBottom: 8,
+  },
+  fieldLabel: {
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 13,
+    color: COLORS.textSecondary,
+    marginTop: 14,
+    marginBottom: 8,
+  },
+  textInput: {
+    borderRadius: 14,
+    borderWidth: 1.5,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.card,
+    paddingHorizontal: 16,
+    paddingVertical: 13,
+    fontFamily: "Inter_500Medium",
+    fontSize: 15,
+    color: COLORS.text,
+  },
+  colorRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 12,
+  },
+  colorSwatch: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    borderWidth: 2,
+    borderColor: "transparent",
+  },
+  colorSwatchActive: {
+    borderColor: COLORS.text,
   },
   chip: {
     flexDirection: "row",

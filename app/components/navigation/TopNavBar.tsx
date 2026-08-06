@@ -19,6 +19,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { COLORS } from "@/constants/colors";
 import { TOP_NAV_H } from "@/constants/layout";
 import { useProfileStore } from "@/store/profileStore";
+import { useAccentColor } from "@/hooks/useAccentColor";
 import { ProfileDropdown } from "./ProfileDropdown";
 
 type NavItem = {
@@ -31,6 +32,7 @@ const NAV_ITEMS: NavItem[] = [
   { label: "Home", route: "/(tabs)/home", matchKeys: ["home", "index"] },
   { label: "Series", route: "/(tabs)/series", matchKeys: ["series"] },
   { label: "Films", route: "/(tabs)/movies", matchKeys: ["movies", "films"] },
+  { label: "Live TV", route: "/(tabs)/live-tv", matchKeys: ["live-tv"] },
   { label: "Kids", route: "/(tabs)/kids", matchKeys: ["kids"] },
   { label: "Collectie", route: "/(tabs)/collection", matchKeys: ["collection"] },
   { label: "Studios", route: "/(tabs)/studios", matchKeys: ["studios"] },
@@ -45,6 +47,7 @@ export function TopNavBar() {
   const [dropdownOpen, setDropdownOpen] = useState(false);
 
   const activeProfile = useProfileStore((s) => s.getActiveProfile());
+  const accentColor = useAccentColor();
 
   const isActive = useMemo(
     () => (item: NavItem) =>
@@ -74,14 +77,14 @@ export function TopNavBar() {
 
         <View style={styles.mainRow} pointerEvents="box-none">
           <Pressable
-            onPress={() => router.push("/(tabs)/home")}
+            onPress={() => router.push("/home")}
             style={({ pressed }) => [
               styles.logoBtn,
               pressed && { opacity: 0.8 },
             ]}
           >
             <Text style={styles.logoText}>
-              <Text style={styles.logoAccent}>C</Text>INELOG
+              <Text style={{ color: accentColor }}>C</Text>INELOG
             </Text>
           </Pressable>
 
@@ -141,7 +144,7 @@ export function TopNavBar() {
                   styles.avatar,
                   {
                     backgroundColor:
-                      activeProfile?.avatarColor ?? COLORS.accent,
+                      activeProfile?.avatarColor ?? accentColor,
                   },
                 ]}
               >
@@ -197,9 +200,6 @@ const styles = StyleSheet.create({
     textShadowColor: "rgba(0,0,0,0.35)",
     textShadowOffset: { width: 0, height: 2 },
     textShadowRadius: 4,
-  },
-  logoAccent: {
-    color: COLORS.accent,
   },
   navWrap: {
     flex: 1,

@@ -20,6 +20,7 @@ const LAST_SEEN_SERVER_VERSION_KEY = "nexora_last_seen_server_version_v2";
 const OTA_CHECK_TIMEOUT_MS = 8_000;
 const OTA_FETCH_TIMEOUT_MS = 30_000;
 const MANIFEST_CHECK_TIMEOUT_MS = 12_000;
+let otaFetchInFlight: Promise<void> | null = null;
 
 function getUpdatesModule(): any | null {
   try {
@@ -232,6 +233,7 @@ export async function checkForAppUpdates(options?: CheckOptions): Promise<Update
     serverChanged,
     otaAvailable: ota.available,
     manifestError,
+    otaError: ota.errorMessage,
     compareVersions,
   });
 
@@ -320,14 +322,27 @@ export function fallbackIfMissing(reason?: string | null): never {
 }
 
 export async function prepareOtaUpdate(): Promise<void> {
-  const Updates = getUpdatesModule();
-  if (__DEV__ || !Updates?.isEnabled) {
-    throw new Error("OTA is not enabled in this build.");
+  if (otaFetchInFlight) {
+    await otaFetchInFlight;
+    return;
   }
 
-  const result: any = await withTimeout(Updates.fetchUpdateAsync(), OTA_FETCH_TIMEOUT_MS);
-  if (!result || !result.isNew) {
-    throw new Error("No OTA update payload could be fetched.");
+  otaFetchInFlight = (async () => {
+    const Updates = getUpdatesModule();
+    if (__DEV__ || !Updates?.isEnabled) {
+      throw new Error("OTA is not enabled in this build.");
+    }
+
+    const result: any = await withTimeout(Updates.fetchUpdateAsync(), OTA_FETCH_TIMEOUT_MS);
+    if (!result || !result.isNew) {
+      throw new Error("No OTA update payload could be fetched.");
+    }
+  })();
+
+  try {
+    await otaFetchInFlight;
+  } finally {
+    otaFetchInFlight = null;
   }
 }
 

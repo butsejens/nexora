@@ -319,7 +319,7 @@ export function normalizeMatchEvents(
   return rawEvents
     .filter(Boolean)
     .map((e, i) => normalizeMatchEvent(e, matchId, i))
-    .sort((a, b) => a.minute - b.minute);
+    .sort((a, b) => (a.minute ?? 0) - (b.minute ?? 0));
 }
 
 // ─── Lineups ──────────────────────────────────────────────────────────────────
@@ -651,7 +651,7 @@ export function normalizeLeaderboardRow(
 
 function tmdbImageUrl(
   path: string | null | undefined,
-  size: "w500" | "w780" | "original" = "w780",
+  size: "w500" | "w780" | "original" = "original",
 ): string | null {
   if (!path) return null;
   return `https://image.tmdb.org/t/p/${size}${path}`;

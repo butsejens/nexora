@@ -46,7 +46,7 @@ try {
     native: {
       ...base.native,
       version: "2.6.28",
-      apk: { ...base.native.apk, url: null, fileName: null, fileSizeBytes: 0 },
+      apk: { ...base.native.apk, downloadUrl: null, url: null, fileName: null, fileSizeBytes: 0 },
     },
   });
 
@@ -57,7 +57,7 @@ try {
     ...base,
     native: {
       ...base.native,
-      apk: { ...base.native.apk, url: "/api/app-updates/native" },
+      apk: { ...base.native.apk, downloadUrl: null, url: "/api/app-updates/native" },
     },
   });
 
@@ -70,7 +70,7 @@ try {
     ...base,
     native: {
       ...base.native,
-      apk: { ...base.native.apk, url: null, fileName: null, fileSizeBytes: 0 },
+      apk: { ...base.native.apk, downloadUrl: null, url: null, fileName: null, fileSizeBytes: 0 },
     },
   });
 

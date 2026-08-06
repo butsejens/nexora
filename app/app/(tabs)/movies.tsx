@@ -14,6 +14,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { COLORS } from "@/constants/colors";
+import { FRANCHISE_COLLECTION_IDS } from "@/constants/franchiseCollections";
 import {
   useMoviesByGenreAll,
   useMoviesFromYearRange,
@@ -234,28 +235,6 @@ const COUNTRY_CODE_BY_ID: Record<number, string> = Object.fromEntries(
 
 // All franchise/themed collections — rotated weekly (5 shown at a time)
 // Titles come from the TMDB API directly so they always match the actual films
-const ALL_FRANCHISE_COLLECTIONS: readonly number[] = [
-  1241, // Harry Potter
-  131296, // The Hunger Games
-  9485, // Fast & Furious
-  119, // The Lord of the Rings
-  87359, // Mission: Impossible
-  404609, // John Wick
-  556, // Spider-Man (Raimi)
-  86311, // The Avengers
-  328, // Jurassic Park
-  748, // X-Men
-  295130, // Pirates of the Caribbean
-  84, // Indiana Jones
-  4321, // Scream
-  656, // Saw
-  10194, // Toy Story
-  2150, // Shrek
-  528, // Terminator
-  8091, // Alien
-  531241, // Spider-Man: Homecoming
-] as const;
-
 function getWeeklyPicks<T>(list: readonly T[], count: number): T[] {
   const week = Math.floor(Date.now() / (1000 * 60 * 60 * 24 * 7));
   const step = Math.max(1, Math.floor(list.length / count));
@@ -291,15 +270,15 @@ export default function MoviesScreen() {
   const { data: nowPlaying = [] } = useNowPlayingMovies();
   const { data: popular = [] } = usePopularMovies();
   const { data: topRated = [] } = useTopRatedMovies();
-  const { data: documentaries = [] } = useMoviesByGenreAll([99], true, 2);
-  const { data: genreActie = [] } = useMoviesByGenreAll([28], true, 2);
-  const { data: genreMisdaad = [] } = useMoviesByGenreAll([80], true, 2);
-  const { data: genreDrama = [] } = useMoviesByGenreAll([18], true, 2);
-  const { data: genreHorror = [] } = useMoviesByGenreAll([27], true, 2);
-  const { data: genreKomedie = [] } = useMoviesByGenreAll([35], true, 2);
-  const { data: genreThriller = [] } = useMoviesByGenreAll([53], true, 2);
-  const { data: genreFamilie = [] } = useMoviesByGenreAll([10751], true, 2);
-  const { data: genreFantasy = [] } = useMoviesByGenreAll([14], true, 2);
+  const { data: documentaries = [] } = useMoviesByGenreAll([99], true, 1);
+  const { data: genreActie = [] } = useMoviesByGenreAll([28], true, 1);
+  const { data: genreMisdaad = [] } = useMoviesByGenreAll([80], true, 1);
+  const { data: genreDrama = [] } = useMoviesByGenreAll([18], true, 1);
+  const { data: genreHorror = [] } = useMoviesByGenreAll([27], true, 1);
+  const { data: genreKomedie = [] } = useMoviesByGenreAll([35], true, 1);
+  const { data: genreThriller = [] } = useMoviesByGenreAll([53], true, 1);
+  const { data: genreFamilie = [] } = useMoviesByGenreAll([10751], true, 1);
+  const { data: genreFantasy = [] } = useMoviesByGenreAll([14], true, 1);
 
   // Year-range rails: films from 1950 to today + upcoming
   const { data: klassiekers = [] } = useMoviesFromYearRange(1950, 1989);
@@ -341,7 +320,7 @@ export default function MoviesScreen() {
   }, [heroMovie?.id, heroMovie?.backdrop]);
 
   const weeklyCollections = useMemo(
-    () => getWeeklyPicks(ALL_FRANCHISE_COLLECTIONS, 5),
+    () => getWeeklyPicks(FRANCHISE_COLLECTION_IDS, 5),
     [],
   );
 
@@ -532,19 +511,46 @@ export default function MoviesScreen() {
             title="Top 10 films op Cinelog"
             data={rails.topTenFilms}
             onPress={openDetail}
-            onSeeAll={() => {}}
+            onSeeAll={() =>
+              router.push({
+                pathname: "/media/list",
+                params: {
+                  listType: "popular",
+                  type: "movie",
+                  title: "Top 10 films op Cinelog",
+                },
+              })
+            }
           />
           <PosterRail
             title="Trending nu"
             data={rails.trendingNow}
             onPress={openDetail}
-            onSeeAll={() => {}}
+            onSeeAll={() =>
+              router.push({
+                pathname: "/media/list",
+                params: {
+                  listType: "popular",
+                  type: "movie",
+                  title: "Trending nu",
+                },
+              })
+            }
           />
           <PosterRail
             title="Nieuw in de bioscoop"
             data={rails.newCinema}
             onPress={openDetail}
-            onSeeAll={() => {}}
+            onSeeAll={() =>
+              router.push({
+                pathname: "/media/list",
+                params: {
+                  listType: "now_playing",
+                  type: "movie",
+                  title: "Nieuw in de bioscoop",
+                },
+              })
+            }
           />
           {weeklyCollections[0] != null && (
             <FeaturedCollectionRail
@@ -556,13 +562,31 @@ export default function MoviesScreen() {
             title="Top 10 docu's op Cinelog"
             data={rails.topTenDocu}
             onPress={openDetail}
-            onSeeAll={() => {}}
+            onSeeAll={() =>
+              router.push({
+                pathname: "/media/genre",
+                params: {
+                  genreId: "99",
+                  genreTitle: "Documentaires",
+                  type: "movie",
+                },
+              })
+            }
           />
           <PosterRail
             title="Hoogst gewaardeerd"
             data={rails.bestRated}
             onPress={openDetail}
-            onSeeAll={() => {}}
+            onSeeAll={() =>
+              router.push({
+                pathname: "/media/list",
+                params: {
+                  listType: "top_rated",
+                  type: "movie",
+                  title: "Hoogst gewaardeerd",
+                },
+              })
+            }
           />
           {weeklyCollections[1] != null && (
             <FeaturedCollectionRail
@@ -575,7 +599,16 @@ export default function MoviesScreen() {
               title="🎬 Binnenkort te zien"
               data={rails.upcomingRail}
               onPress={openDetail}
-              onSeeAll={() => {}}
+              onSeeAll={() =>
+                router.push({
+                  pathname: "/media/list",
+                  params: {
+                    listType: "upcoming",
+                    type: "movie",
+                    title: "Binnenkort te zien",
+                  },
+                })
+              }
             />
           )}
           {rails.genreRails.slice(0, 1).map((genre) => (
@@ -673,7 +706,18 @@ export default function MoviesScreen() {
               title="📽️ Jaren 2000 — Populaire films"
               data={rails.jaren2000Rail}
               onPress={openDetail}
-              onSeeAll={() => {}}
+              onSeeAll={() =>
+                router.push({
+                  pathname: "/media/list",
+                  params: {
+                    listType: "year_range",
+                    type: "movie",
+                    title: "Jaren 2000 — Populaire films",
+                    fromYear: "2000",
+                    toYear: "2009",
+                  },
+                })
+              }
             />
           )}
           {rails.jaren90Rail.length > 0 && (
@@ -681,7 +725,18 @@ export default function MoviesScreen() {
               title="🎞️ Jaren '90 — Klassiekers"
               data={rails.jaren90Rail}
               onPress={openDetail}
-              onSeeAll={() => {}}
+              onSeeAll={() =>
+                router.push({
+                  pathname: "/media/list",
+                  params: {
+                    listType: "year_range",
+                    type: "movie",
+                    title: "Jaren '90 — Klassiekers",
+                    fromYear: "1990",
+                    toYear: "1999",
+                  },
+                })
+              }
             />
           )}
           {rails.klassieker.length > 0 && (
@@ -689,7 +744,18 @@ export default function MoviesScreen() {
               title="🎬 Meesterwerken 1950–1989"
               data={rails.klassieker}
               onPress={openDetail}
-              onSeeAll={() => {}}
+              onSeeAll={() =>
+                router.push({
+                  pathname: "/media/list",
+                  params: {
+                    listType: "year_range",
+                    type: "movie",
+                    title: "Meesterwerken 1950–1989",
+                    fromYear: "1950",
+                    toYear: "1989",
+                  },
+                })
+              }
             />
           )}
         </>

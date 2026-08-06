@@ -25,6 +25,7 @@ import { router } from "expo-router";
 import { COLORS } from "@/constants/colors";
 import { ScalePress } from "@/components/ui/ScalePress";
 import { useUiStore } from "@/store/uiStore";
+import { useAccentColor } from "@/hooks/useAccentColor";
 
 export interface NexoraHeaderProps {
   /** Page/module title shown below CINELOG wordmark (HOME, SPORT, MENU …) */
@@ -83,6 +84,7 @@ export function NexoraHeader({
   const isTablet = width >= 760;
   const isModule = variant === "module";
   const openMenu = useUiStore((state) => state.openNexoraMenu);
+  const accentColor = useAccentColor();
 
   const handleBack = onBack ?? (() => router.back());
   const handleNotification =
@@ -93,7 +95,7 @@ export function NexoraHeader({
   const handleMenu = () => openMenu();
   const handleHome = () => router.replace("/(tabs)/home");
 
-  const labelColor = titleColor ?? COLORS.accent;
+  const labelColor = titleColor ?? accentColor;
   const hasTitle = Boolean(title?.trim());
   const btnSize = isTablet ? 40 : 36;
   const iconSize = isTablet ? 20 : 18;
@@ -150,7 +152,7 @@ export function NexoraHeader({
         <View style={styles.brand}>
           <View style={styles.brandTopRow}>
             <Text style={styles.wordmark} numberOfLines={1}>
-              <Text style={styles.wordmarkC}>C</Text>INELOG
+              <Text style={{ color: accentColor }}>C</Text>INELOG
             </Text>
           </View>
           {hasTitle ? (
@@ -215,7 +217,7 @@ export function NexoraHeader({
               <Ionicons
                 name="person"
                 size={iconSize - 1}
-                color={COLORS.accent}
+                color={accentColor}
               />
             </ScalePress>
           ) : null}
@@ -322,9 +324,6 @@ const styles = StyleSheet.create({
     fontFamily: "Inter_800ExtraBold",
     color: COLORS.text,
     flexShrink: 1,
-  },
-  wordmarkC: {
-    color: COLORS.accent,
   },
   moduleLabel: {
     fontSize: 11,

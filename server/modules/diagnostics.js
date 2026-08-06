@@ -56,8 +56,6 @@ router.get('/api/config-check', (req, res) => {
     ok: true,
     services: {
       tmdb:        Boolean(process.env.TMDB_API_KEY),
-      espn:        true,    // ESPN is keyless
-      scorebat:    true,    // highlights — keyless
       tvmaze:      true,    // TV schedules — keyless
       gemini:      Boolean(process.env.GEMINI_API_KEY),
       openrouter:  Boolean(process.env.OPENROUTER_API_KEY),

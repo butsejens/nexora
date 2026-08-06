@@ -14,6 +14,8 @@ export interface NexoraProfile {
   isKids: boolean;
   birthdate?: string; // dd/mm/yyyy
   gender?: "man" | "vrouw" | "x" | null;
+  age?: string;
+  email?: string;
 }
 
 const DEFAULT_PROFILES: NexoraProfile[] = [

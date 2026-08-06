@@ -151,7 +151,7 @@ async function fetchMediaEnvelope<T>(route: string): Promise<T | null> {
 /** Build an absolute TMDB image URL. Returns null for missing paths. */
 export function tmdbImg(
   path: string | null | undefined,
-  size: "w300" | "w500" | "w780" | "w1280" | "original" = "w500",
+  size: "w300" | "w500" | "w780" | "w1280" | "original" = "original",
 ): string | null {
   if (!path) return null;
   return `${IMG_BASE}/${size}${path}`;
@@ -285,7 +285,7 @@ export function tmdbMovieToNexora(movie: TmdbMovie): Movie {
     type: "movie",
     title: movie.title ?? "",
     description: movie.overview || "No description available.",
-    poster: tmdbImg(movie.poster_path, "w780"),
+    poster: tmdbImg(movie.poster_path, "original"),
     backdrop: tmdbImg(movie.backdrop_path, "original"),
     genres: mapGenres(movie.genre_ids ?? []),
     rating: safeRating,
@@ -313,7 +313,7 @@ export function tmdbTvToNexora(tv: TmdbTv): Series {
     type: "series",
     title: tv.name ?? "",
     description: tv.overview || "No description available.",
-    poster: tmdbImg(tv.poster_path, "w780"),
+    poster: tmdbImg(tv.poster_path, "original"),
     backdrop: tmdbImg(tv.backdrop_path, "original"),
     genres: mapGenres(tv.genre_ids ?? []),
     rating: safeRating,
@@ -679,6 +679,114 @@ export async function getOnAirTv(): Promise<Series[]> {
   }
 }
 
+/**
+ * Generic multi-page fetcher for TMDB "list" movie endpoints
+ * (/movie/popular, /movie/top_rated, /movie/now_playing).
+ * Used by the "Alle" (see-all) browse page for rails that pool from a
+ * standard list rather than a single genre.
+ */
+async function getMovieListAll(
+  endpoint: string,
+  maxPages: number,
+  topRated = false,
+): Promise<Movie[]> {
+  try {
+    const first = await tmdbFetch<TmdbListResult<TmdbMovie>>(endpoint, {
+      page: "1",
+    });
+    const totalPages = Math.min(first.total_pages ?? 1, maxPages);
+    const extraPages =
+      totalPages > 1
+        ? await Promise.all(
+            Array.from({ length: totalPages - 1 }, (_, i) =>
+              tmdbFetch<TmdbListResult<TmdbMovie>>(endpoint, {
+                page: String(i + 2),
+              }).catch(() => ({ results: [] as TmdbMovie[], total_pages: 0 })),
+            ),
+          )
+        : [];
+    const all = [first, ...extraPages].flatMap((d) => d.results ?? []);
+    const seen = new Set<number>();
+    return all
+      .filter((m) => {
+        if (seen.has(m.id)) return false;
+        seen.add(m.id);
+        return isReliableItem({
+          title: m.title,
+          posterPath: m.poster_path,
+          rating: m.vote_average,
+          voteCount: m.vote_count,
+          year: m.release_date,
+          topRated,
+        });
+      })
+      .map(tmdbMovieToNexora);
+  } catch {
+    return [];
+  }
+}
+
+/** Same as {@link getMovieListAll} but for TV "list" endpoints. */
+async function getTvListAll(
+  endpoint: string,
+  maxPages: number,
+  topRated = false,
+): Promise<Series[]> {
+  try {
+    const first = await tmdbFetch<TmdbListResult<TmdbTv>>(endpoint, {
+      page: "1",
+    });
+    const totalPages = Math.min(first.total_pages ?? 1, maxPages);
+    const extraPages =
+      totalPages > 1
+        ? await Promise.all(
+            Array.from({ length: totalPages - 1 }, (_, i) =>
+              tmdbFetch<TmdbListResult<TmdbTv>>(endpoint, {
+                page: String(i + 2),
+              }).catch(() => ({ results: [] as TmdbTv[], total_pages: 0 })),
+            ),
+          )
+        : [];
+    const all = [first, ...extraPages].flatMap((d) => d.results ?? []);
+    const seen = new Set<number>();
+    return all
+      .filter((s) => {
+        if (seen.has(s.id)) return false;
+        seen.add(s.id);
+        return isReliableItem({
+          title: s.name,
+          posterPath: s.poster_path,
+          rating: s.vote_average,
+          voteCount: s.vote_count,
+          year: s.first_air_date,
+          topRated,
+        });
+      })
+      .map(tmdbTvToNexora);
+  } catch {
+    return [];
+  }
+}
+
+export async function getPopularMoviesAll(maxPages = 5): Promise<Movie[]> {
+  return getMovieListAll("/movie/popular", maxPages);
+}
+export async function getTopRatedMoviesAll(maxPages = 5): Promise<Movie[]> {
+  return getMovieListAll("/movie/top_rated", maxPages, true);
+}
+export async function getNowPlayingMoviesAll(maxPages = 5): Promise<Movie[]> {
+  return getMovieListAll("/movie/now_playing", maxPages);
+}
+export async function getPopularSeriesAll(maxPages = 5): Promise<Series[]> {
+  return getTvListAll("/tv/popular", maxPages);
+}
+export async function getTopRatedSeriesAll(maxPages = 5): Promise<Series[]> {
+  return getTvListAll("/tv/top_rated", maxPages, true);
+}
+export async function getOnAirSeriesAll(maxPages = 5): Promise<Series[]> {
+  return getTvListAll("/tv/on_the_air", maxPages);
+}
+
 /** Fetch a single movie by TMDB id, including credits & runtime */
 export async function getMovieById(tmdbId: number): Promise<Movie> {
   try {
@@ -809,6 +917,25 @@ export async function searchTmdb(query: string): Promise<(Movie | Series)[]> {
 // ── Genre / Discover ──────────────────────────────────────────────────────────
 
 /**
+ * TMDB's TV genre list has no "Horror" (27) or "Thriller" (53) entries — those
+ * are movie-only genre IDs. `with_genres=27`/`with_genres=53` on /discover/tv
+ * always returns 0 results. Fall back to keyword-based discovery instead.
+ */
+const TV_GENRE_ID_TO_KEYWORD_ID: Record<number, number> = {
+  27: 315058, // "horror" keyword
+  53: 316362, // "thriller" keyword
+};
+
+function buildTvDiscoverParams(genreIds: number[]): Record<string, string> {
+  const keywordId =
+    genreIds.length === 1 ? TV_GENRE_ID_TO_KEYWORD_ID[genreIds[0]] : undefined;
+  if (keywordId) {
+    return { with_keywords: String(keywordId), sort_by: "popularity.desc" };
+  }
+  return { with_genres: genreIds.join(","), sort_by: "popularity.desc" };
+}
+
+/**
  * Discover movies filtered by one or more TMDB genre IDs.
  * Uses /discover/movie?with_genres=<ids>&sort_by=popularity.desc
  */
@@ -894,10 +1021,10 @@ export async function getMoviesByGenreAll(
 export async function getTvByGenre(genreIds: number[]): Promise<Series[]> {
   if (!genreIds.length) return [];
   try {
-    const data = await tmdbFetch<TmdbListResult<TmdbTv>>("/discover/tv", {
-      with_genres: genreIds.join(","),
-      sort_by: "popularity.desc",
-    });
+    const data = await tmdbFetch<TmdbListResult<TmdbTv>>(
+      "/discover/tv",
+      buildTvDiscoverParams(genreIds),
+    );
     return data.results
       .filter((s) =>
         isReliableItem({
@@ -925,9 +1052,9 @@ export async function getTvByGenreAll(
 ): Promise<Series[]> {
   if (!genreIds.length) return [];
   try {
+    const baseParams = buildTvDiscoverParams(genreIds);
     const first = await tmdbFetch<TmdbListResult<TmdbTv>>("/discover/tv", {
-      with_genres: genreIds.join(","),
-      sort_by: "popularity.desc",
+      ...baseParams,
       page: "1",
     });
     const totalPages = Math.min(first.total_pages ?? 1, maxPages);
@@ -936,8 +1063,7 @@ export async function getTvByGenreAll(
         ? await Promise.all(
             Array.from({ length: totalPages - 1 }, (_, i) =>
               tmdbFetch<TmdbListResult<TmdbTv>>("/discover/tv", {
-                with_genres: genreIds.join(","),
-                sort_by: "popularity.desc",
+                ...baseParams,
                 page: String(i + 2),
               }).catch(() => ({ results: [] as TmdbTv[], total_pages: 0 })),
             ),
@@ -961,6 +1087,78 @@ export async function getTvByGenreAll(
   } catch {
     return [];
   }
+}
+
+/**
+ * Onboarding genre keys → TMDB genre IDs (movie / tv discover endpoints use
+ * different genre IDs for a few categories, e.g. "Kids" is Family for movies
+ * but a dedicated Kids genre for TV).
+ */
+export const ONBOARDING_GENRE_TMDB_IDS: Record<string, { movie?: number; tv?: number }> = {
+  action: { movie: 28, tv: 10759 },
+  comedy: { movie: 35, tv: 35 },
+  drama: { movie: 18, tv: 18 },
+  thriller: { movie: 53, tv: 9648 },
+  scifi: { movie: 878, tv: 10765 },
+  horror: { movie: 27 },
+  romance: { movie: 10749 },
+  animation: { movie: 16, tv: 16 },
+  docs: { movie: 99, tv: 99 },
+  kids: { movie: 10751, tv: 10762 },
+  news: { tv: 10763 },
+};
+
+/**
+ * Movies matching ANY of the given genres (OR semantics — `with_genres`
+ * itself is an AND filter, so each genre is fetched separately and merged).
+ * Results are interleaved so no single genre dominates the front of the list.
+ * Used to personalize home-screen rails based on onboarding genre picks.
+ */
+export async function getMoviesByAnyGenre(
+  genreIds: number[],
+  perGenrePages = 2,
+): Promise<Movie[]> {
+  if (!genreIds.length) return [];
+  const lists = await Promise.all(
+    genreIds.map((id) => getMoviesByGenreAll([id], perGenrePages).catch(() => [])),
+  );
+  const seen = new Set<string>();
+  const merged: Movie[] = [];
+  const maxLen = Math.max(0, ...lists.map((l) => l.length));
+  for (let i = 0; i < maxLen; i++) {
+    for (const list of lists) {
+      const item = list[i];
+      if (item && !seen.has(item.id)) {
+        seen.add(item.id);
+        merged.push(item);
+      }
+    }
+  }
+  return merged;
+}
+
+/** TV equivalent of {@link getMoviesByAnyGenre}. */
+export async function getTvByAnyGenre(
+  genreIds: number[],
+  perGenrePages = 2,
+): Promise<Series[]> {
+  if (!genreIds.length) return [];
+  const lists = await Promise.all(
+    genreIds.map((id) => getTvByGenreAll([id], perGenrePages).catch(() => [])),
+  );
+  const seen = new Set<string>();
+  const merged: Series[] = [];
+  const maxLen = Math.max(0, ...lists.map((l) => l.length));
+  for (let i = 0; i < maxLen; i++) {
+    for (const list of lists) {
+      const item = list[i];
+      if (item && !seen.has(item.id)) {
+        seen.add(item.id);
+        merged.push(item);
+      }
+    }
+  }
+  return merged;
 }
 
 // ── Cast ──────────────────────────────────────────────────────────────────────

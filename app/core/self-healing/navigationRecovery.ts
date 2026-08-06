@@ -7,6 +7,7 @@ export const SAFE_HOME_ROUTE = "/(tabs)/home";
 /** Tab screen names — expo-router pathname omits the /(tabs) group on web. */
 const TAB_ROUTES = new Set([
   "home",
+  "live-tv",
   "series",
   "movies",
   "kids",

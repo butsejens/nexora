@@ -523,7 +523,6 @@ export default function KidsScreen() {
             title="Top 10 Kids op Cinelog"
             data={topTen}
             onPress={openDetail}
-            onSeeAll={() => {}}
           />
 
           {nickRail.length > 0 && (
@@ -616,7 +615,17 @@ export default function KidsScreen() {
               title="Disney films"
               data={disneyMoviesRail}
               onPress={openDetail}
-              onSeeAll={() => {}}
+              onSeeAll={() =>
+                router.push({
+                  pathname: "/media/genre",
+                  params: {
+                    genreId: "2",
+                    genreTitle: "Disney films",
+                    type: "movie",
+                    source: "company",
+                  },
+                })
+              }
             />
           )}
 
@@ -625,7 +634,17 @@ export default function KidsScreen() {
               title="Pixar"
               data={pixarRail}
               onPress={openDetail}
-              onSeeAll={() => {}}
+              onSeeAll={() =>
+                router.push({
+                  pathname: "/media/genre",
+                  params: {
+                    genreId: "3",
+                    genreTitle: "Pixar",
+                    type: "movie",
+                    source: "company",
+                  },
+                })
+              }
             />
           )}
 
@@ -661,7 +680,17 @@ export default function KidsScreen() {
               title="DreamWorks"
               data={dreamworksRail}
               onPress={openDetail}
-              onSeeAll={() => {}}
+              onSeeAll={() =>
+                router.push({
+                  pathname: "/media/genre",
+                  params: {
+                    genreId: "521",
+                    genreTitle: "DreamWorks",
+                    type: "movie",
+                    source: "company",
+                  },
+                })
+              }
             />
           )}
 
@@ -670,7 +699,17 @@ export default function KidsScreen() {
               title="Illumination"
               data={illuminationRail}
               onPress={openDetail}
-              onSeeAll={() => {}}
+              onSeeAll={() =>
+                router.push({
+                  pathname: "/media/genre",
+                  params: {
+                    genreId: "6704",
+                    genreTitle: "Illumination",
+                    type: "movie",
+                    source: "company",
+                  },
+                })
+              }
             />
           )}
 
@@ -679,7 +718,17 @@ export default function KidsScreen() {
               title="Studio Ghibli"
               data={ghibliRail}
               onPress={openDetail}
-              onSeeAll={() => {}}
+              onSeeAll={() =>
+                router.push({
+                  pathname: "/media/genre",
+                  params: {
+                    genreId: "10342",
+                    genreTitle: "Studio Ghibli",
+                    type: "movie",
+                    source: "company",
+                  },
+                })
+              }
             />
           )}
 

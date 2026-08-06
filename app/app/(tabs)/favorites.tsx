@@ -43,14 +43,6 @@ function nextPriority(current?: WatchPriority): WatchPriority {
   return PRIORITY_ORDER[(idx + 1) % PRIORITY_ORDER.length];
 }
 
-// Older favorites were stored with the Cinelog-prefixed route id (e.g. "tmdb_m_550")
-// instead of the plain numeric TMDB id; normalize before hitting /full.
-function toPlainTmdbId(id: string): string {
-  const match = /^tmdb_[ms]_(\d+)$/i.exec(String(id || "").trim());
-  if (match) return match[1];
-  return String(id || "").trim();
-}
-
 async function fetchMovieFull(id: string) {
   const res = await apiRequest("GET", `/api/movies/${id}/full`);
   return res.json();
@@ -132,7 +124,7 @@ export default function FavoritesScreen() {
     queryFn: async () => {
       const results = await Promise.allSettled(
         favIds.slice(0, 80).map(async (id) => {
-          const rawId = toPlainTmdbId(getRawId(id));
+          const rawId = getRawId(id);
           try {
             const m = await fetchMovieFull(rawId);
             return { ...m, _type: "movie" as const };

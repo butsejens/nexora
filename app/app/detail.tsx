@@ -12,6 +12,7 @@ import {
   ActivityIndicator,
   Dimensions,
   FlatList,
+  Linking,
   Modal,
   Platform,
   Pressable,
@@ -518,11 +519,38 @@ export default function DetailScreen() {
     });
   };
 
-  const trailer =
-    tmdbVideos.find((v) => v.type === "Trailer" && v.official) ??
-    tmdbVideos.find((v) => v.type === "Trailer") ??
-    tmdbVideos[0] ??
-    null;
+  const trailerCandidates = Array.from(
+    new Set(
+      tmdbVideos
+        .filter(
+          (video) =>
+            String(video?.site || "").toLowerCase() === "youtube" &&
+            String(video?.key || "").trim().length > 0,
+        )
+        .sort((left, right) => {
+          const leftRank =
+            left.type === "Trailer" && left.official
+              ? 0
+              : left.type === "Trailer"
+                ? 1
+                : left.type === "Teaser"
+                  ? 2
+                  : 3;
+          const rightRank =
+            right.type === "Trailer" && right.official
+              ? 0
+              : right.type === "Trailer"
+                ? 1
+                : right.type === "Teaser"
+                  ? 2
+                  : 3;
+          return leftRank - rightRank;
+        })
+        .map((video) => String(video.key || "").trim()),
+    ),
+  ).filter(Boolean);
+
+  const trailer = trailerCandidates[0] || null;
 
   const handleTrailer = () => {
     if (!trailer) return;
@@ -575,7 +603,7 @@ export default function DetailScreen() {
       {/* In-app trailer modal */}
       {trailer ? (
         <TrailerModal
-          videoKey={trailer.key}
+          videoKeys={trailerCandidates}
           visible={showTrailer}
           onClose={() => setShowTrailer(false)}
         />
@@ -1321,17 +1349,72 @@ const styles = StyleSheet.create({
 // ─── In-app YouTube trailer modal ────────────────────────────────────────────
 
 function TrailerModal({
-  videoKey,
+  videoKeys,
   visible,
   onClose,
 }: {
-  videoKey: string;
+  videoKeys: string[];
   visible: boolean;
   onClose: () => void;
 }) {
-  const embedUri = `https://www.youtube.com/embed/${videoKey}?autoplay=1&rel=0&modestbranding=1&playsinline=1`;
+  const [activeIndex, setActiveIndex] = useState(0);
+  const [failedAll, setFailedAll] = useState(false);
+  const [webReady, setWebReady] = useState(false);
+  const currentKey = String(videoKeys[activeIndex] || "").trim();
+  const embedUri = currentKey
+    ? `https://www.youtube-nocookie.com/embed/${encodeURIComponent(currentKey)}?autoplay=1&rel=0&modestbranding=1&playsinline=1&controls=1`
+    : "";
+  const watchUri = currentKey
+    ? `https://www.youtube.com/watch?v=${encodeURIComponent(currentKey)}`
+    : "";
   const [WebView, setWebView] = useState<any>(null);
   const iframeRef = useRef<any>(null);
+
+  useEffect(() => {
+    if (!visible) return;
+    setActiveIndex(0);
+    setWebReady(false);
+    setFailedAll(false);
+  }, [visible, videoKeys]);
+
+  useEffect(() => {
+    if (!visible) return;
+    setWebReady(false);
+  }, [visible, currentKey]);
+
+  useEffect(() => {
+    if (!visible || Platform.OS !== "web" || !embedUri) return;
+    const timer = setTimeout(() => {
+      if (!webReady) {
+        setActiveIndex((index) => {
+          if (index < videoKeys.length - 1) return index + 1;
+          setFailedAll(true);
+          return index;
+        });
+      }
+    }, 6000);
+    return () => clearTimeout(timer);
+  }, [embedUri, videoKeys.length, visible, webReady]);
+
+  const handleTrailerError = () => {
+    setActiveIndex((index) => {
+      if (index < videoKeys.length - 1) return index + 1;
+      setFailedAll(true);
+      return index;
+    });
+  };
+
+  const openOriginalTrailer = async () => {
+    if (!watchUri) return;
+    try {
+      const supported = await Linking.canOpenURL(watchUri);
+      if (supported) {
+        await Linking.openURL(watchUri);
+      }
+    } catch {
+      // Ignore fallback launcher errors.
+    }
+  };
 
   // Load WebView lazily on native so the bundle stays lightweight on web
   useEffect(() => {
@@ -1365,13 +1448,15 @@ function TrailerModal({
 
           {/* Player */}
           <View style={trailerStyles.playerBox}>
-            {Platform.OS === "web" ? (
+            {embedUri && !failedAll && Platform.OS === "web" ? (
               // @ts-ignore — web-only iframe
               <iframe
                 ref={iframeRef}
                 src={embedUri}
                 allow="autoplay; fullscreen; encrypted-media; picture-in-picture"
                 allowFullScreen
+                onLoad={() => setWebReady(true)}
+                onError={handleTrailerError}
                 style={{
                   width: "100%",
                   height: "100%",
@@ -1379,7 +1464,7 @@ function TrailerModal({
                   backgroundColor: "#000",
                 }}
               />
-            ) : WebView ? (
+            ) : embedUri && !failedAll && WebView ? (
               <WebView
                 source={{ uri: embedUri }}
                 style={{ flex: 1, backgroundColor: "#000" }}
@@ -1389,11 +1474,19 @@ function TrailerModal({
                 javaScriptEnabled
                 domStorageEnabled
                 androidLayerType="hardware"
+                onError={handleTrailerError}
+                onHttpError={handleTrailerError}
                 userAgent="Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1"
               />
             ) : (
               <View style={trailerStyles.loading}>
                 <ActivityIndicator size="large" color={COLORS.accent} />
+                <Text style={trailerStyles.fallbackText}>
+                  Trailer kon niet in-app worden geladen.
+                </Text>
+                <Pressable style={trailerStyles.fallbackBtn} onPress={openOriginalTrailer}>
+                  <Text style={trailerStyles.fallbackBtnText}>Open originele trailer</Text>
+                </Pressable>
               </View>
             )}
           </View>
@@ -1446,5 +1539,24 @@ const trailerStyles = StyleSheet.create({
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
+    gap: 12,
+    paddingHorizontal: 20,
+  },
+  fallbackText: {
+    color: COLORS.textSecondary,
+    fontSize: 13,
+    fontFamily: "Inter_500Medium",
+    textAlign: "center",
+  },
+  fallbackBtn: {
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    borderRadius: 999,
+    backgroundColor: "rgba(255,255,255,0.12)",
+  },
+  fallbackBtnText: {
+    color: COLORS.text,
+    fontSize: 13,
+    fontFamily: "Inter_700Bold",
   },
 });

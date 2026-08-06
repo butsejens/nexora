@@ -33,15 +33,6 @@ type ListItem = {
   totalEpisodes?: number;
 };
 
-// Older favorites were stored with the Cinelog-prefixed route id (e.g. "tmdb_m_550")
-// instead of the plain numeric TMDB id; normalize before hitting /full so those
-// still resolve instead of permanently showing "could not load".
-function toPlainTmdbId(id: string): string {
-  const match = /^tmdb_[ms]_(\d+)$/i.exec(String(id || "").trim());
-  if (match) return match[1];
-  return String(id || "").trim();
-}
-
 async function fetchTmdbItem(id: string): Promise<ListItem | null> {
   try {
     const res = await apiRequest("GET", `/api/movies/${id}/full`);
@@ -180,7 +171,7 @@ export default function MyListScreen() {
     queryFn: async () => {
       const results = await Promise.allSettled(
         favIds.slice(0, 80).map(async (favoriteId) => {
-          const rawId = toPlainTmdbId(getRawId(favoriteId));
+          const rawId = getRawId(favoriteId);
           const item = await fetchTmdbItem(rawId);
           return item ? { ...item, favoriteId, id: rawId } : null;
         }),

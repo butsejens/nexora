@@ -8,6 +8,7 @@ export function validateBeforePlay(input: PlayerGuardInput): PlayerGuardResult {
   const id = String(input.id || "").trim();
   const type = String(input.type || "").trim().toLowerCase();
   const source = String(input.sourceUrl || "").trim();
+  const allowedTypes = new Set(["movie", "series", "tv", "live"]);
 
   if (!id) {
     return {
@@ -16,7 +17,7 @@ export function validateBeforePlay(input: PlayerGuardInput): PlayerGuardResult {
       suggestion: "Open een ander item of probeer opnieuw.",
     };
   }
-  if (!type || (type !== "movie" && type !== "series" && type !== "tv")) {
+  if (!type || !allowedTypes.has(type)) {
     return {
       ok: false,
       message: "Onbekend contenttype voor afspelen.",

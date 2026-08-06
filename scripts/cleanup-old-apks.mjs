@@ -35,7 +35,7 @@ function removeOldVersionedApks(baseDir, currentVersion) {
 
 function main() {
   const currentVersion = readCurrentVersion();
-  const targets = [repoRoot, path.join(repoRoot, "app")];
+  const targets = [repoRoot, path.join(repoRoot, "app"), path.join(repoRoot, "releases")];
   const removed = targets.flatMap((dir) => removeOldVersionedApks(dir, currentVersion));
 
   if (removed.length === 0) {

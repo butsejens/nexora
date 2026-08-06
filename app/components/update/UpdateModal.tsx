@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Alert,
   Modal,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -24,6 +25,7 @@ import {
   validateApkAvailability,
 } from "@/services/update-service";
 import type { UpdateCheckResult } from "@/services/update-decision";
+import { getUpdateDiagnostics } from "@/services/update-diagnostics";
 import { ChangelogEntry, type ChangelogEntryData } from "./ChangelogEntry";
 import { DownloadProgressBar } from "./DownloadProgressBar";
 import { UpdateStateCard, type UpdateStateType } from "./UpdateStateCard";
@@ -79,6 +81,11 @@ export function UpdateModal({ visible, currentVersion, onClose }: UpdateModalPro
   const [otaReady, setOtaReady] = useState(false);
   const [downloadingApk, setDownloadingApk] = useState(false);
   const [downloadProgress, setDownloadProgress] = useState(0);
+  const updateDiagnostics = getUpdateDiagnostics();
+  const otaUnsupportedInCurrentBuild =
+    updateDiagnostics.isDevelopment ||
+    Platform.OS === "web" ||
+    !updateDiagnostics.isEnabled;
 
   // Determine the primary state for display
   const displayState = useMemo((): UpdateStateType => {
@@ -101,6 +108,26 @@ export function UpdateModal({ visible, currentVersion, onClose }: UpdateModalPro
     setOtaReady(false);
     setDownloadingApk(false);
     setDownloadProgress(0);
+
+    if (otaUnsupportedInCurrentBuild) {
+      setResult({
+        kind: "error",
+        headline: "OTA niet beschikbaar in deze build",
+        detail:
+          "Je gebruikt een development/web build. OTA updates werken alleen in een release build (preview/production APK of store build).",
+        manifest: null,
+        currentVersion,
+        currentNativeVersion: updateDiagnostics.nativeVersion,
+        currentRuntimeVersion: updateDiagnostics.runtimeVersion,
+        downloadUrl: null,
+        serverChanged: false,
+        otaAvailable: false,
+        errorMessage: "ota-unsupported-build",
+      });
+      setChecking(false);
+      return;
+    }
+
     try {
       const next = await checkForAppUpdates({ currentVersion });
       setResult(next);
@@ -139,7 +166,12 @@ export function UpdateModal({ visible, currentVersion, onClose }: UpdateModalPro
     } finally {
       setChecking(false);
     }
-  }, [currentVersion]);
+  }, [
+    currentVersion,
+    otaUnsupportedInCurrentBuild,
+    updateDiagnostics.nativeVersion,
+    updateDiagnostics.runtimeVersion,
+  ]);
 
   const handlePrimaryAction = useCallback(async () => {
     // If no result yet, just check for updates
@@ -284,6 +316,10 @@ export function UpdateModal({ visible, currentVersion, onClose }: UpdateModalPro
       return { label: "APK downloaden...", disabled: true, icon: null };
     }
 
+    if (otaUnsupportedInCurrentBuild) {
+      return { label: "OTA niet beschikbaar", disabled: true, icon: "information-outline" };
+    }
+
     if (!result || result.kind === "none" || result.kind === "server" || result.kind === "error" || result.kind === "apk-unavailable") {
       return { label: "Controleer op updates", disabled: false, icon: "refresh" };
     }
@@ -306,6 +342,14 @@ export function UpdateModal({ visible, currentVersion, onClose }: UpdateModalPro
 
   // Render different headline/detail based on state
   const getHeadlineAndDetail = () => {
+    if (otaUnsupportedInCurrentBuild) {
+      return {
+        headline: "OTA niet beschikbaar in deze build",
+        detail:
+          "Deze app draait in development/web modus. Installeer de preview/production build om OTA-updates te ontvangen.",
+      };
+    }
+
     if (!result) {
       return {
         headline: "Updates controleren",
@@ -320,6 +364,12 @@ export function UpdateModal({ visible, currentVersion, onClose }: UpdateModalPro
   };
 
   const { headline, detail } = getHeadlineAndDetail();
+  const diagnosticsLine = [
+    `runtime ${updateDiagnostics.runtimeVersion}`,
+    `channel ${updateDiagnostics.channel}`,
+    `source ${updateDiagnostics.source}`,
+    `update ${updateDiagnostics.shortUpdateId}`,
+  ].join(" • ");
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
@@ -349,6 +399,7 @@ export function UpdateModal({ visible, currentVersion, onClose }: UpdateModalPro
             <View style={styles.section}>
               <Text style={styles.label}>Je huidige versie</Text>
               <VersionInfoBlock currentVersion={currentVersion} />
+              <Text style={styles.diagnosticsText}>{diagnosticsLine}</Text>
             </View>
 
             {/* State Card */}
@@ -487,6 +538,12 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
     letterSpacing: 0.7,
     marginBottom: 10,
+  },
+  diagnosticsText: {
+    marginTop: 8,
+    color: "rgba(255,255,255,0.6)",
+    fontFamily: "Inter_500Medium",
+    fontSize: 11,
   },
   detailsGrid: {
     flexDirection: "row",

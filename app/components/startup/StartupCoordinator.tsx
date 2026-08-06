@@ -40,6 +40,7 @@ export function StartupCoordinator() {
   const [bootstrapState, setBootstrapState] = useState<BootstrapState>("idle");
   const [bootstrapError, setBootstrapError] = useState<string | null>(null);
   const [clockMs, setClockMs] = useState(Date.now());
+  const [startupProgress, setStartupProgress] = useState(0);
 
   const contextRef = useRef<StartupLaunchContext | null>(null);
   const startedAtRef = useRef<number>(Date.now());
@@ -180,6 +181,20 @@ export function StartupCoordinator() {
   }, [criticalBootstrapDone, introVariant]);
 
   useEffect(() => {
+    if (!visible || bootstrapState === "failed") {
+      return;
+    }
+
+    const nextProgress = criticalBootstrapDone
+      ? 100
+      : Math.min(
+          92,
+          Math.round(((clockMs - startedAtRef.current) / 4500) * 100),
+        );
+    setStartupProgress(nextProgress);
+  }, [clockMs, bootstrapState, criticalBootstrapDone, visible]);
+
+  useEffect(() => {
     if (
       !visible ||
       routeAppliedRef.current ||
@@ -190,7 +205,7 @@ export function StartupCoordinator() {
     ) {
       return;
     }
-    if (isAuthenticated && !onboardingHydrated) {
+    if (!onboardingHydrated) {
       return;
     }
 
@@ -202,8 +217,10 @@ export function StartupCoordinator() {
       void persistStartupLaunchContext(context).catch(() => undefined);
     }
 
-    // Temporary bypass: skip auth screen and enter the app directly.
-    const target = "/(tabs)/home" as const;
+    // Temporary bypass: skip auth screen, but still gate on onboarding completion.
+    const target = hasCompletedOnboarding
+      ? ("/(tabs)/home" as const)
+      : ("/onboarding/quick-start" as const);
     // #region agent log
     if (__DEV__) {
       fetch("http://127.0.0.1:7379/ingest/4d747d85-0c03-4a11-8a60-a6d4fd09190a", {
@@ -299,11 +316,27 @@ export function StartupCoordinator() {
     <View style={StyleSheet.absoluteFill} pointerEvents="auto">
       {!introCompleted ? (
         <VideoIntro
+          variant={introVariant}
           onFinish={() => {
             setIntroCompleted(true);
             useUiStore.getState().setIntroPlaying(false);
           }}
         />
+      ) : null}
+
+      {bootstrapState === "running" ? (
+        <View style={styles.progressCard}>
+          <Text style={styles.progressTitle}>Streaming servers laden…</Text>
+          <Text style={styles.progressBody}>
+            We controleren de werkende film- en serie-servers voor je eerste
+            start.
+          </Text>
+          <View style={styles.progressTrack}>
+            <View
+              style={[styles.progressFill, { width: `${startupProgress}%` }]}
+            />
+          </View>
+        </View>
       ) : null}
 
       {bootstrapState === "failed" ? (
@@ -327,6 +360,40 @@ export function StartupCoordinator() {
 }
 
 const styles = StyleSheet.create({
+  progressCard: {
+    position: "absolute",
+    left: 20,
+    right: 20,
+    bottom: 30,
+    backgroundColor: "rgba(11,11,16,0.94)",
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.12)",
+    padding: 16,
+    gap: 10,
+  },
+  progressTitle: {
+    color: "#F9FAFC",
+    fontFamily: "Inter_700Bold",
+    fontSize: 15,
+  },
+  progressBody: {
+    color: "#AEB3BC",
+    fontFamily: "Inter_500Medium",
+    fontSize: 12,
+    lineHeight: 18,
+  },
+  progressTrack: {
+    height: 8,
+    borderRadius: 999,
+    backgroundColor: "rgba(255,255,255,0.12)",
+    overflow: "hidden",
+  },
+  progressFill: {
+    height: "100%",
+    borderRadius: 999,
+    backgroundColor: "#D41320",
+  },
   fallbackCard: {
     position: "absolute",
     left: 20,

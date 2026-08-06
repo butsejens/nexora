@@ -8,8 +8,6 @@ import {
 import Constants from "expo-constants";
 import { logRealtimeEvent } from "@/services/realtime-telemetry";
 import { recordPageRequest } from "@/services/page-only-debug";
-import { hasEmptyContent, logSelfHealing, withApiRecovery } from "@/core/self-healing";
-import { withRecovery } from "@/src/core/autonomous/recoveryManager";
 
 // ── React Native: wire React Query's focusManager to AppState ────────────────
 // This keeps React Query's internal "focused" state accurate so that any query
@@ -27,12 +25,12 @@ let lastWorkingSportsApiBase = "";
 export const DEFAULT_RENDER_API_BASE = "https://nexora-api-8xxb.onrender.com";
 const inflightJsonRequests = new Map<string, Promise<unknown>>();
 
-function isCloudflareSportsUrl(url: string): boolean {
-  return /\.workers\.dev/i.test(url) || /cloudflare/i.test(url);
-}
-
 function isRenderUrl(url: string): boolean {
   return /\.onrender\.com/i.test(url);
+}
+
+function isCloudflareSportsUrl(url: string): boolean {
+  return /\.workers\.dev/i.test(url) || /cloudflare/i.test(url);
 }
 
 function normalizeBase(base: string): string {
@@ -243,9 +241,6 @@ export function getSportsApiBaseCandidates(): string[] {
   if (/:8082(?:\/|$)/.test(lastWorkingSportsApiBase)) {
     lastWorkingSportsApiBase = "";
   }
-  // In dev, don't cache a cloud/production URL as last-working for sports:
-  // a brief local server restart can pin the app to production, which lacks
-  // basketball/baseball and other non-soccer sports data.
   if (
     __DEV__ &&
     (isRenderUrl(lastWorkingSportsApiBase) ||
@@ -253,14 +248,13 @@ export function getSportsApiBaseCandidates(): string[] {
   ) {
     lastWorkingSportsApiBase = "";
   }
+
   const explicit = normalizeBase(process.env.EXPO_PUBLIC_SPORTS_API_BASE || "");
   const explicitList = parseEnvBaseList(
     process.env.EXPO_PUBLIC_SPORTS_API_BASES || "",
   );
   const hasExplicitSportsBase = Boolean(explicit) || explicitList.length > 0;
 
-  // Dev ergonomics: if no dedicated sports base is configured, prefer local/general
-  // API candidates first to avoid unnecessary edge/network hops while developing.
   if (__DEV__ && !hasExplicitSportsBase) {
     return unique([
       lastWorkingSportsApiBase,
@@ -269,12 +263,11 @@ export function getSportsApiBaseCandidates(): string[] {
     ]);
   }
 
-  // Production/default: explicit edge-first for sports, then Render/general fallbacks.
-  // Avoid hardcoded worker domains that can silently go stale.
   const safeExplicit = !__DEV__ && isLoopbackHost(explicit) ? "" : explicit;
   const safeExplicitList = !__DEV__
     ? explicitList.filter((candidate) => !isLoopbackHost(candidate))
     : explicitList;
+
   return unique([
     lastWorkingSportsApiBase,
     safeExplicit,
@@ -328,10 +321,7 @@ async function throwIfResNotOk(res: Response) {
 // take ~10s on a cold cache. Use 20s so we don't abort a valid slow response.
 // Sports routes to non-deployed Cloudflare → use failfast to prioritize Render
 // Render free-tier cold starts can take up to ~50s; 65s covers worst case.
-// Team detail pages require multiple external API calls (ESPN + Transfermarkt +
-// TheSportsDB) and enrichment, routinely taking 12-15s on cold cache — allow 25s
-// for local sports so they don't prematurely abort.
-function timeoutForUrl(url: string, isSports: boolean = false): number {
+function timeoutForUrl(url: string, isSports = false): number {
   if (__DEV__) {
     if (isSports) {
       if (isCloudflareSportsUrl(url)) return 4500;
@@ -355,7 +345,6 @@ function requestBudgetForRoute(route: string, isSports: boolean): number {
   if (__DEV__) {
     return isSports ? 16000 : 18000;
   }
-  // Production keeps a larger budget to tolerate cold starts on free-tier hosts.
   return isSports ? 90000 : 75000;
 }
 
@@ -382,7 +371,7 @@ async function fetchWithTimeout(
   url: string,
   init?: RequestInit,
   timeoutMs?: number,
-  isSports?: boolean,
+  isSports = false,
 ): Promise<Response> {
   const ms = timeoutMs ?? timeoutForUrl(url, isSports);
   const controller = new AbortController();
@@ -469,8 +458,6 @@ export async function apiRequest(
         isSports,
       );
 
-      // Wrong targets and transient upstream/edge failures should fall through to
-      // the next candidate (for example Cloudflare -> Render fallback).
       if (shouldTryNextBaseForResponse(route, res)) {
         lastError = new Error(`${res.status} from ${baseUrl}`);
         logRealtimeEvent("fetch", "api-request-fallback", {
@@ -540,11 +527,7 @@ export async function apiRequest(
   if (lastError instanceof RangeError) {
     throw new Error("Netwerkfout: server niet bereikbaar");
   }
-  if (lastError) {
-    throw lastError instanceof Error
-      ? lastError
-      : new Error(String((lastError as any)?.message || lastError));
-  }
+  if (lastError) throw lastError as Error;
   throw new Error("Netwerkfout: server niet bereikbaar");
 }
 
@@ -578,21 +561,8 @@ export async function apiRequestJson<T>(
     options?.dedupeKey || buildJsonDedupeKey(method, route, options?.data);
 
   const run = async (): Promise<T> => {
-    return await withRecovery(
-      async () =>
-        await withApiRecovery<T>(`json:${requestKey}`, async () => {
-          const res = await apiRequest(method, route, options?.data);
-          const parsed = (await res.json()) as T;
-          if (hasEmptyContent(parsed)) {
-            void logSelfHealing("warn", "DATA", "empty-json-response-detected", {
-              route,
-              method,
-            });
-          }
-          return parsed;
-        }),
-      { op: `api-json:${requestKey}`, maxAttempts: 2 },
-    );
+    const res = await apiRequest(method, route, options?.data);
+    return (await res.json()) as T;
   };
 
   if (!shouldDedupe) return await run();
@@ -630,10 +600,7 @@ export const getQueryFn: <T>(options: {
 
     let lastError: unknown;
 
-    return await withRecovery(
-      async () =>
-        await withApiRecovery(`query:${path}`, async () => {
-      for (const baseUrl of baseUrls) {
+    for (const baseUrl of baseUrls) {
       if (Date.now() - startedAt >= totalBudgetMs) {
         lastError = new Error(
           `[nexora] query budget exceeded (${totalBudgetMs}ms) for ${path}`,
@@ -645,7 +612,7 @@ export const getQueryFn: <T>(options: {
         const res = await fetchWithTimeout(url, undefined, undefined, isSports);
 
         if (unauthorizedBehavior === "returnNull" && res.status === 401) {
-          return null as any;
+          return null;
         }
 
         if (shouldTryNextBaseForResponse(path, res)) {
@@ -655,14 +622,7 @@ export const getQueryFn: <T>(options: {
 
         await throwIfResNotOk(res);
         markWorkingBaseForRoute(path, baseUrl);
-        const payload = (await res.json()) as any;
-        if (hasEmptyContent(payload)) {
-          void logSelfHealing("warn", "DATA", "empty-query-response-detected", {
-            path,
-            baseUrl,
-          });
-        }
-        return payload;
+        return await res.json();
       } catch (e: any) {
         lastError = e;
         if (e instanceof RangeError) continue;
@@ -681,15 +641,8 @@ export const getQueryFn: <T>(options: {
 
     if (lastError instanceof RangeError)
       throw new Error("Netwerkfout: server niet bereikbaar");
-    if (lastError) {
-      throw lastError instanceof Error
-        ? lastError
-        : new Error(String((lastError as any)?.message || lastError));
-    }
+    if (lastError) throw lastError as Error;
     throw new Error("Netwerkfout: server niet bereikbaar");
-        }),
-      { op: `query:${path}`, maxAttempts: 2 },
-    );
   };
 
 export const queryClient = new QueryClient({

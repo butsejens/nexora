@@ -250,18 +250,18 @@ export default function SeriesScreen() {
   const { data: onAir = [] } = useOnAirSeries();
   const { data: popular = [] } = usePopularSeries();
   const { data: topRated = [] } = useTopRatedSeries();
-  const { data: documentaries = [] } = useTvByGenreAll([99], true, 2);
-  const { data: genreActie = [] } = useTvByGenreAll([10759], true, 2);
-  const { data: genreMisdaad = [] } = useTvByGenreAll([80], true, 2);
-  const { data: genreDrama = [] } = useTvByGenreAll([18], true, 2);
-  const { data: genreHorror = [] } = useTvByGenreAll([27], true, 2);
-  const { data: genreKomedie = [] } = useTvByGenreAll([35], true, 2);
-  const { data: genreThriller = [] } = useTvByGenreAll([53], true, 2);
-  const { data: genreFamilie = [] } = useTvByGenreAll([10751], true, 2);
-  const { data: genreFantasy = [] } = useTvByGenreAll([10765], true, 2);
-  const { data: genreMysterie = [] } = useTvByGenreAll([9648], true, 2);
-  const { data: genreRealiteit = [] } = useTvByGenreAll([10764], true, 2);
-  const { data: genreTrueCrime = [] } = useTvByGenreAll([80, 99], true, 2);
+  const { data: documentaries = [] } = useTvByGenreAll([99], true, 1);
+  const { data: genreActie = [] } = useTvByGenreAll([10759], true, 1);
+  const { data: genreMisdaad = [] } = useTvByGenreAll([80], true, 1);
+  const { data: genreDrama = [] } = useTvByGenreAll([18], true, 1);
+  const { data: genreHorror = [] } = useTvByGenreAll([27], true, 1);
+  const { data: genreKomedie = [] } = useTvByGenreAll([35], true, 1);
+  const { data: genreThriller = [] } = useTvByGenreAll([53], true, 1);
+  const { data: genreFamilie = [] } = useTvByGenreAll([10751], true, 1);
+  const { data: genreFantasy = [] } = useTvByGenreAll([10765], true, 1);
+  const { data: genreMysterie = [] } = useTvByGenreAll([9648], true, 1);
+  const { data: genreRealiteit = [] } = useTvByGenreAll([10764], true, 1);
+  const { data: genreTrueCrime = [] } = useTvByGenreAll([80, 99], true, 1);
 
   const heroSeries = useMemo(
     () =>
@@ -462,7 +462,16 @@ export default function SeriesScreen() {
             title="Top 10 series op Cinelog"
             data={rails.topTenSeries}
             onPress={openDetail}
-            onSeeAll={() => {}}
+            onSeeAll={() =>
+              router.push({
+                pathname: "/media/list",
+                params: {
+                  listType: "popular",
+                  type: "series",
+                  title: "Top 10 series op Cinelog",
+                },
+              })
+            }
           />
 
           {/* CollectionRail: grote lead + kleine rest */}
@@ -477,7 +486,16 @@ export default function SeriesScreen() {
             title="Trending nu"
             data={rails.trendingSeries}
             onPress={openDetail}
-            onSeeAll={() => {}}
+            onSeeAll={() =>
+              router.push({
+                pathname: "/media/list",
+                params: {
+                  listType: "popular",
+                  type: "series",
+                  title: "Trending nu",
+                },
+              })
+            }
           />
 
           {/* Top 10 documentaires — 2nd separator before Actie */}
@@ -485,7 +503,16 @@ export default function SeriesScreen() {
             title="Top 10 docu's op Cinelog"
             data={rails.topTenDocu}
             onPress={openDetail}
-            onSeeAll={() => {}}
+            onSeeAll={() =>
+              router.push({
+                pathname: "/media/genre",
+                params: {
+                  genreId: "99",
+                  genreTitle: "Documentaires",
+                  type: "series",
+                },
+              })
+            }
           />
 
           <CollectionRail
@@ -499,7 +526,16 @@ export default function SeriesScreen() {
             title="Nu op tv"
             data={rails.onAirRail}
             onPress={openDetail}
-            onSeeAll={() => {}}
+            onSeeAll={() =>
+              router.push({
+                pathname: "/media/list",
+                params: {
+                  listType: "on_the_air",
+                  type: "series",
+                  title: "Nu op tv",
+                },
+              })
+            }
           />
 
           <PosterRail
@@ -568,7 +604,16 @@ export default function SeriesScreen() {
             title="Hoogst gewaardeerd"
             data={rails.bestRated}
             onPress={openDetail}
-            onSeeAll={() => {}}
+            onSeeAll={() =>
+              router.push({
+                pathname: "/media/list",
+                params: {
+                  listType: "top_rated",
+                  type: "series",
+                  title: "Hoogst gewaardeerd",
+                },
+              })
+            }
           />
 
           <CollectionRail

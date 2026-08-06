@@ -10,6 +10,8 @@ import {
 import { Stack, router, usePathname, useRootNavigationState } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import * as Updates from "expo-updates";
+import { Asset } from "expo-asset";
+import * as SystemUI from "expo-system-ui";
 import React, { useEffect, useRef } from "react";
 import { AppState } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
@@ -18,6 +20,7 @@ import Constants from "expo-constants";
 import { PersonalizationBridge } from "@/components/PersonalizationBridge";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { NexoraMenuOverlay } from "@/components/navigation/NexoraMenuOverlay";
+import appConfig from "@/app.json";
 import { queryClient } from "@/lib/query-client";
 import { NexoraProvider } from "@/context/NexoraContext";
 import { UserStateProvider } from "@/context/UserStateContext";
@@ -125,6 +128,12 @@ export default function RootLayout() {
   }, []);
 
   useEffect(() => {
+    SystemUI.setBackgroundColorAsync(COLORS.background).catch(() => {
+      // Ignore if unsupported on current platform.
+    });
+  }, []);
+
+  useEffect(() => {
     const bootstrapDelay = setTimeout(() => {
       refreshStreamProviders();
     }, 1500);
@@ -217,6 +226,37 @@ export default function RootLayout() {
   }, []);
 
   useEffect(() => {
+    if (typeof document === "undefined") return;
+
+    try {
+      const iconUri = Asset.fromModule(
+        require("../assets/images/favicon.png"),
+      ).uri;
+      const configVersion = String(Constants.expoConfig?.version || "0.0.0");
+      const staticConfigVersion = String((appConfig as any)?.expo?.version || "0.0.0");
+      const faviconVersion =
+        staticConfigVersion !== "0.0.0" ? staticConfigVersion : configVersion;
+      const cacheBustedHref = iconUri.includes("?")
+        ? `${iconUri}&v=${faviconVersion}`
+        : `${iconUri}?v=${faviconVersion}`;
+
+      const existing = document.querySelector('link[rel="icon"]');
+      const faviconLink = existing || document.createElement("link");
+      faviconLink.setAttribute("rel", "icon");
+      faviconLink.setAttribute("type", "image/png");
+      faviconLink.setAttribute("href", cacheBustedHref);
+
+      if (!faviconLink.parentNode) {
+        document.head.appendChild(faviconLink);
+      }
+    } catch (error) {
+      if (__DEV__) {
+        console.warn("[nexora:web] failed to set favicon", error);
+      }
+    }
+  }, []);
+
+  useEffect(() => {
     if (!__DEV__) return;
     // #region agent log
     fetch("http://127.0.0.1:7379/ingest/4d747d85-0c03-4a11-8a60-a6d4fd09190a", {
@@ -246,8 +286,10 @@ export default function RootLayout() {
   return (
     <ErrorBoundary>
       <QueryClientProvider client={queryClient}>
-        <SafeAreaProvider>
-          <GestureHandlerRootView style={{ flex: 1 }}>
+        <SafeAreaProvider style={{ flex: 1, backgroundColor: COLORS.background }}>
+          <GestureHandlerRootView
+            style={{ flex: 1, backgroundColor: COLORS.background }}
+          >
             <NexoraProvider>
               <UserStateProvider>
                 <PersonalizationBridge />

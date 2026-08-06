@@ -7,11 +7,10 @@
  *
  * Sections:
  *   1. Shared primitives
- *   2. Sports models
- *   3. Media models
- *   4. User / state models
- *   5. Recommendation models
- *   6. Download / offline models
+ *   2. Media models
+ *   3. User / state models
+ *   4. Recommendation models
+ *   5. Download / offline models
  */
 
 // ─── 1. SHARED PRIMITIVES ────────────────────────────────────────────────────
@@ -24,19 +23,16 @@ export type ISODateString = string;
 
 /** Data provenance — where the value ultimately came from */
 export type SourceName =
-  | "espn"
-  | "sofascore"
-  | "transfermarkt"
-  | "thesportsdb"
   | "tmdb"
-  | "football-logos"
   | "wikipedia"
   | "ai-enrichment"
   | "ui-avatars"
   | "local-assets"
   | "m3u"
   | "xtream"
-  | "internal";
+  | "internal"
+  | "espn"
+  | "sofascore";
 
 /** Confidence [0..1] for merged/enriched fields */
 export type Confidence = number;
@@ -51,410 +47,6 @@ export interface SourceMeta {
   fetchedAt: ISODateString;
   /** Confidence in the overall entity match [0..1] */
   confidence: Confidence;
-}
-
-// ─── 2. SPORTS MODELS ────────────────────────────────────────────────────────
-
-export interface CompetitionId {
-  espnSlug: string; // e.g. "bel.1", "uefa.champions"
-  displayName: string; // e.g. "Jupiler Pro League"
-  country?: string;
-  season?: number; // e.g. 2024
-  type: "league" | "cup" | "international";
-}
-
-export interface Competition {
-  id: CompetitionId;
-  logo?: string | null;
-  /** Short label for UI chips, e.g. "JPL" */
-  abbreviation?: string;
-  currentPhase?: string;
-  meta?: SourceMeta;
-}
-
-export interface TeamLogo {
-  uri: string;
-  source: SourceName;
-  confidence: Confidence;
-}
-
-export interface Team {
-  /** Canonical ID: ESPN team ID when available, else slugified name */
-  id: EntityId;
-  name: string;
-  shortName?: string;
-  alternateNames?: string[];
-  country?: string;
-  logo?: TeamLogo | null;
-  color?: string;
-  founded?: number | null;
-  venue?: string;
-  stadiumCapacity?: number | null;
-  coach?: string | null;
-  clubColors?: string[];
-  /** Parent club when this is a B-team or youth team */
-  parentTeamId?: EntityId | null;
-  competition?: CompetitionId;
-  meta?: SourceMeta;
-}
-
-export interface TeamStats {
-  teamId: EntityId;
-  competitionId: CompetitionId;
-  played: number;
-  won: number;
-  drawn: number;
-  lost: number;
-  goalsFor: number;
-  goalsAgainst: number;
-  goalDifference: number;
-  points: number;
-  cleanSheets?: number | null;
-  yellowCards?: number | null;
-  redCards?: number | null;
-  form?: string | null; // e.g. "WWDLL"
-  squadMarketValue?: string | null;
-}
-
-export interface TeamStanding extends TeamStats {
-  rank: number;
-  team: Team;
-  groupPhase?: string | null;
-  groupIndex?: number | null;
-  recentResults?: MatchResultSummary[];
-  upcomingMatches?: MatchPreview[];
-}
-
-export interface PlayerImage {
-  uri: string;
-  source: SourceName;
-  confidence: Confidence;
-}
-
-export interface Player {
-  /** Canonical ID: ESPN ID when available, else slugified name+team */
-  id: EntityId;
-  espnId?: string | null;
-  name: string;
-  firstName?: string;
-  lastName?: string;
-  age?: number | null;
-  /** Date of birth, ISO-8601 */
-  birthDate?: ISODateString | null;
-  nationality?: string | null;
-  position?: string | null;
-  positionAbbr?: string | null;
-  height?: string | null;
-  weight?: string | null;
-  shirtNumber?: number | null;
-  marketValue?: string | null;
-  teamId?: EntityId | null;
-  teamName?: string | null;
-  competitionId?: CompetitionId | null;
-  image?: PlayerImage | null;
-  /** Contract end date */
-  contractUntil?: ISODateString | null;
-  foot?: "left" | "right" | "both" | null;
-  clubHistory?: ClubHistoryItem[];
-  meta?: SourceMeta;
-}
-
-export interface ClubHistoryItem {
-  teamId?: EntityId;
-  teamName: string;
-  logo?: string | null;
-  from?: number | null; // year
-  to?: number | null; // year; null = present
-  appearances?: number | null;
-  goals?: number | null;
-}
-
-export interface PlayerStats {
-  playerId: EntityId;
-  competitionId: CompetitionId;
-  season?: number;
-  goals?: number | null;
-  assists?: number | null;
-  appearances?: number | null;
-  minutesPlayed?: number | null;
-  yellowCards?: number | null;
-  redCards?: number | null;
-  rating?: number | null;
-}
-
-export type MatchStatus =
-  | "scheduled"
-  | "live"
-  | "halftime"
-  | "finished"
-  | "postponed"
-  | "cancelled"
-  | "delayed";
-
-/** ESPN sport slugs as documented in github.com/pseudo-r/Public-ESPN-API */
-export type SportSlug =
-  | "soccer"
-  | "basketball"
-  | "football"
-  | "hockey"
-  | "baseball"
-  | "racing"
-  | "tennis"
-  | "rugby"
-  | "golf"
-  | "mma"
-  | "cricket"
-  | "volleyball"
-  | "lacrosse";
-
-/** Normalized event from any ESPN sport (NBA, NFL, NHL, F1, ATP etc.) */
-export interface MultiSportEvent {
-  id: string;
-  sport: SportSlug | string;
-  espnLeague: string;
-  league: string;
-  homeTeamId: string;
-  awayTeamId: string;
-  homeTeam: string;
-  awayTeam: string;
-  homeTeamLogo: string | null;
-  awayTeamLogo: string | null;
-  homeScore: number;
-  awayScore: number;
-  status: MatchStatus;
-  statusDetail: string;
-  /** Minute (soccer) or null */
-  minute: number | null;
-  /** Period / quarter / half (basketball, hockey, football) */
-  period: number | null;
-  /** Game clock display string (e.g. "3:25", "Halftime") */
-  clock: string | null;
-  startDate: string | null;
-  startTime: string | null;
-  venue: string | null;
-  /** TV broadcast info */
-  broadcast: string | null;
-}
-
-export interface MultiSportStandingEntry {
-  teamId: string;
-  teamName: string;
-  abbreviation: string;
-  logo: string | null;
-  group: string;
-  wins: number;
-  losses: number;
-  winPct: number;
-  gamesBack: string | null;
-  streak: string | null;
-  stats: Record<string, string | number | null>;
-}
-
-export interface EspnNewsItem {
-  id: string;
-  headline: string;
-  description: string;
-  published: string;
-  imageUrl: string | null;
-  linkUrl: string | null;
-  sport: string;
-  league: string;
-  author: string;
-  categories: string[];
-}
-
-export interface MultiSportTeam {
-  id: string;
-  slug: string;
-  displayName: string;
-  shortName: string;
-  abbreviation: string;
-  location: string;
-  color: string;
-  alternateColor: string;
-  logo: string | null;
-  sport: string;
-  league: string;
-}
-
-export interface MatchOdds {
-  matchId: string;
-  sport: string;
-  league: string;
-  odds: Array<{
-    provider: string;
-    moneylineHome: number | null;
-    moneylineAway: number | null;
-    spreadHome: number | null;
-    spreadAway: number | null;
-    overUnder: number | null;
-    details: string;
-  }>;
-}
-
-export interface MatchScore {
-  home: number | null;
-  away: number | null;
-  /** Score after extra time or penalties if applicable */
-  aggregate?: { home: number; away: number } | null;
-  penalties?: { home: number; away: number } | null;
-}
-
-export interface MatchResultSummary {
-  matchId: EntityId;
-  opponent: string;
-  isHome: boolean;
-  status: MatchStatus;
-  score?: MatchScore | null;
-  date?: ISODateString | null;
-}
-
-export interface MatchPreview {
-  matchId: EntityId;
-  opponent: string;
-  isHome: boolean;
-  date?: ISODateString | null;
-}
-
-export interface MatchTeamRef {
-  id: EntityId;
-  name: string;
-  logo?: string | null;
-  score?: number | null;
-  logoSource?: SourceName;
-}
-
-export interface Match {
-  id: EntityId;
-  espnId?: string | null;
-  sofascoreId?: string | null;
-  sport?: SportSlug | string;
-  espnLeague?: string | null;
-  league?: string | null;
-  homeTeam: MatchTeamRef;
-  awayTeam: MatchTeamRef;
-  competition: CompetitionId;
-  status: MatchStatus;
-  score: MatchScore;
-  /** Kick-off time ISO-8601 */
-  startTime?: ISODateString | null;
-  /** Elapsed minutes when live */
-  minute?: number | null;
-  venue?: string | null;
-  round?: string | null;
-  /** Whether a live stream link is available */
-  hasStream?: boolean;
-  meta?: SourceMeta;
-}
-
-export type EventType =
-  | "goal"
-  | "yellow_card"
-  | "red_card"
-  | "second_yellow"
-  | "substitution"
-  | "penalty_goal"
-  | "penalty_miss"
-  | "own_goal"
-  | "var_decision"
-  | "kickoff"
-  | "halftime"
-  | "fulltime"
-  | "extra_time_start"
-  | "penalty_shootout_start"
-  | "other";
-
-export interface MatchEvent {
-  id: EntityId;
-  matchId: EntityId;
-  type: EventType;
-  minute: number;
-  minuteExtra?: number | null;
-  /** Primary player involved (scorer, carded player, player substituted out) */
-  playerId?: EntityId | null;
-  playerName?: string | null;
-  /** Secondary player (assist, substitute-in) */
-  relatedPlayerId?: EntityId | null;
-  relatedPlayerName?: string | null;
-  /** "home" or "away" */
-  team: "home" | "away";
-  description?: string | null;
-  isHome?: boolean;
-}
-
-export interface MatchLineupPlayer {
-  playerId: EntityId;
-  name: string;
-  position?: string | null;
-  positionAbbr?: string | null;
-  shirtNumber?: number | null;
-  isStarter: boolean;
-  image?: string | null;
-  photoSource?: string | null;
-  rating?: number | null;
-}
-
-export interface MatchLineupsData {
-  matchId: EntityId;
-  home: MatchLineupPlayer[];
-  away: MatchLineupPlayer[];
-  formation?: { home?: string; away?: string };
-}
-
-export interface MatchStatEntry {
-  label: string;
-  home: string | number;
-  away: string | number;
-}
-
-export interface MatchStats {
-  matchId: EntityId;
-  entries: MatchStatEntry[];
-}
-
-/** Full match detail — all data in one normalized object */
-export interface MatchDetail {
-  match: Match;
-  events: MatchEvent[];
-  lineups?: MatchLineupsData | null;
-  stats?: MatchStats | null;
-  /** Raw input blob for AI analysis */
-  analysisInput?: MatchAnalysisInput | null;
-  meta?: SourceMeta;
-}
-
-/** Compact payload for AI prediction/analysis */
-export interface MatchAnalysisInput {
-  matchId: EntityId;
-  homeTeam: string;
-  awayTeam: string;
-  competition: string;
-  homeScore?: number | null;
-  awayScore?: number | null;
-  isLive?: boolean | null;
-  minute?: number | null;
-  events: Array<{
-    minute: number;
-    type: string;
-    team: string;
-    player?: string;
-  }>;
-  stats?: MatchStatEntry[];
-  standings?: Array<{
-    team: string;
-    rank: number;
-    points: number;
-    goalsFor: number;
-    goalsAgainst: number;
-    form?: string;
-    cleanSheets?: number | null;
-    gamesPlayed?: number | null;
-  }>;
-  headToHead?: {
-    homeWins: number;
-    awayWins: number;
-    draws: number;
-  } | null;
 }
 
 // ─── 3. MEDIA MODELS ─────────────────────────────────────────────────────────
@@ -612,29 +204,9 @@ export interface RecommendationItem {
 
 // ─── 4. USER / STATE MODELS ──────────────────────────────────────────────────
 
-export interface FollowedTeam {
-  teamId: EntityId;
-  teamName: string;
-  logo?: string | null;
-  competition?: string | null;
-  followedAt: ISODateString;
-}
-
-export interface FollowedMatch {
-  matchId: EntityId;
-  homeTeam: string;
-  awayTeam: string;
-  competition?: string | null;
-  espnLeague?: string | null;
-  startTime?: ISODateString | null;
-  venue?: string | null;
-  notificationsEnabled: boolean;
-  followedAt: ISODateString;
-}
-
 export interface WatchProgress {
   contentId: EntityId;
-  mediaType: MediaType | "channel" | "sport";
+  mediaType: MediaType | "channel";
   title: string;
   posterUri?: string | null;
   /** Progress ratio [0..1] */
@@ -668,10 +240,357 @@ export interface RecommendationContext {
   userId?: string;
   moods?: MoodPreference[];
   recentlyWatched?: EntityId[];
-  followedTeams?: EntityId[];
   genres?: number[];
   runtimePreference?: "short" | "medium" | "long" | null;
   language?: string;
+}
+
+// ─── 6. SPORTS / FOLLOW STATE MODELS (compatibility surface) ──────────────
+
+export type SportSlug = string;
+
+export type CompetitionId = {
+  espnSlug: string;
+  displayName: string;
+  country?: string;
+  season?: number;
+  type?: "league" | "cup" | "international";
+};
+
+export type MatchStatus =
+  | "scheduled"
+  | "live"
+  | "halftime"
+  | "finished"
+  | "postponed"
+  | "cancelled"
+  | "delayed";
+
+export type EventType = string;
+
+export interface Team {
+  id: EntityId;
+  name: string;
+  shortName?: string | null;
+  logoUri?: string | null;
+  country?: string | null;
+  alternateNames?: string[];
+  logo?: { uri: string; source: SourceName; confidence: number } | null;
+  color?: string | null;
+  founded?: number | null;
+  venue?: string | null;
+  stadiumCapacity?: number | null;
+  coach?: string | null;
+  clubColors?: string[];
+  parentTeamId?: string | null;
+  meta?: SourceMeta | null;
+}
+
+export interface TeamStanding {
+  team: Team;
+  position?: number | null;
+  played?: number | null;
+  won?: number | null;
+  drawn?: number | null;
+  lost?: number | null;
+  points?: number | null;
+  goalDiff?: number | null;
+  rank?: number | null;
+  groupPhase?: string | null;
+  groupIndex?: number | null;
+}
+
+export interface TeamStats {
+  teamId?: EntityId;
+  competitionId?: CompetitionId;
+  possession?: number | null;
+  shotsOnTarget?: number | null;
+  shots?: number | null;
+  fouls?: number | null;
+  corners?: number | null;
+  yellowCards?: number | null;
+  redCards?: number | null;
+  played?: number | null;
+  won?: number | null;
+  drawn?: number | null;
+  lost?: number | null;
+  goalsFor?: number | null;
+  goalsAgainst?: number | null;
+  goalDifference?: number | null;
+  points?: number | null;
+  cleanSheets?: number | null;
+  form?: string | null;
+  squadMarketValue?: unknown;
+}
+
+export interface Player {
+  id: EntityId;
+  name?: string | null;
+  team?: Team | null;
+  position?: string | null;
+  nationality?: string | null;
+  imageUri?: string | null;
+  espnId?: string | null;
+  firstName?: string | null;
+  lastName?: string | null;
+  age?: number | null;
+  birthDate?: string | null;
+  positionAbbr?: string | null;
+  height?: string | null;
+  weight?: string | null;
+  shirtNumber?: number | null;
+  marketValue?: number | null;
+  teamId?: string | null;
+  teamName?: string | null;
+  image?: PlayerImage | null;
+  contractUntil?: string | null;
+  foot?: string | null;
+  clubHistory?: string[];
+  meta?: SourceMeta | null;
+}
+
+export interface PlayerStats {
+  playerId?: EntityId;
+  competitionId?: CompetitionId;
+  season?: number | null;
+  goals?: number | null;
+  assists?: number | null;
+  minutes?: number | null;
+  rating?: number | null;
+  minutesPlayed?: number | null;
+  appearances?: number | null;
+  yellowCards?: number | null;
+  redCards?: number | null;
+}
+
+export interface PlayerImage {
+  id?: EntityId;
+  url?: string | null;
+  width?: number | null;
+  height?: number | null;
+  uri?: string | null;
+  source?: SourceName | null;
+  confidence?: number | null;
+}
+
+export interface MatchTeamRef {
+  id: EntityId;
+  name?: string | null;
+  shortName?: string | null;
+  score?: number | null;
+  logoUri?: string | null;
+  logo?: { uri: string; source?: SourceName; confidence?: number } | null;
+  [key: string]: unknown;
+}
+
+export interface MatchScore {
+  home?: number | null;
+  away?: number | null;
+  aggregate?: number | null;
+}
+
+export interface Match {
+  id: EntityId;
+  competitionId?: CompetitionId;
+  homeTeam?: MatchTeamRef | Team | string | null;
+  awayTeam?: MatchTeamRef | Team | string | null;
+  score?: MatchScore | null;
+  status: MatchStatus;
+  startTime?: ISODateString | null;
+  venue?: string | null;
+  round?: string | null;
+  season?: number | null;
+  meta?: SourceMeta;
+  espnId?: string | null;
+  sofascoreId?: string | null;
+  sport?: string | null;
+  espnLeague?: string | null;
+  league?: string | null;
+  competition?: { displayName?: string | null; espnSlug?: string | null } | null;
+  [key: string]: unknown;
+}
+
+export interface MatchDetail {
+  match?: Match | null;
+  events?: MatchEvent[];
+  stats?: MatchStats | null;
+  lineups?: MatchLineupsData | null;
+  analysisInput?: MatchAnalysisInput;
+  meta?: SourceMeta;
+}
+
+export interface MatchEvent {
+  id: EntityId;
+  type: EventType;
+  minute?: number | null;
+  minuteExtra?: number | null;
+  teamId?: EntityId | null;
+  playerId?: EntityId | null;
+  playerName?: string | null;
+  player?: string | null;
+  relatedPlayerId?: EntityId | null;
+  relatedPlayerName?: string | null;
+  team?: "home" | "away" | null;
+  description?: string | null;
+  isHome?: boolean;
+  matchId?: EntityId;
+}
+
+export interface MatchLineupPlayer {
+  id?: EntityId;
+  playerId?: EntityId;
+  name?: string | null;
+  position?: string | null;
+  positionAbbr?: string | null;
+  shirtNumber?: number | null;
+  jerseyNumber?: number | null;
+  isStarter?: boolean;
+  image?: string | null;
+  photoSource?: string | null;
+  rating?: number | null;
+}
+
+export interface MatchLineupsData {
+  matchId?: EntityId;
+  home?: MatchLineupPlayer[];
+  away?: MatchLineupPlayer[];
+  formation?: { home?: string | null; away?: string | null };
+}
+
+export interface MatchStats {
+  home?: TeamStats | null;
+  away?: TeamStats | null;
+  matchId?: EntityId;
+  entries?: unknown[];
+  [key: string]: unknown;
+}
+
+export interface Competition {
+  id: CompetitionId;
+  name: string;
+  country?: string | null;
+  type?: "league" | "cup" | "international";
+}
+
+export interface MatchAnalysisInput {
+  matchId?: string;
+  competition?: CompetitionId | { displayName?: string | null } | null;
+  homeTeam?: Team | string | null;
+  awayTeam?: Team | string | null;
+  events?: MatchEvent[];
+  stats?: MatchStats | unknown[] | null;
+  status?: MatchStatus;
+  homeScore?: number | null;
+  awayScore?: number | null;
+  minute?: number | null;
+  isLive?: boolean;
+  [key: string]: unknown;
+}
+
+export interface FollowedTeam {
+  teamId: EntityId;
+  teamName: string;
+  competitionId?: string | null;
+  competition?: string | null;
+  logoUri?: string | null;
+  followedAt: ISODateString;
+}
+
+export interface FollowedMatch {
+  matchId: EntityId;
+  homeTeamName: string;
+  awayTeamName: string;
+  homeTeam?: string;
+  awayTeam?: string;
+  competitionId?: string | null;
+  competition?: string | null;
+  espnLeague?: string | null;
+  startTime?: ISODateString | null;
+  notificationsEnabled?: boolean;
+  followedAt: ISODateString;
+}
+
+export type TeamDNA = {
+  teamId?: string;
+  teamName?: string;
+  season?: number | null;
+  competition?: string | null;
+  styleLabels?: unknown[];
+  formations?: string[];
+  attack?: Record<string, unknown>;
+  defence?: Record<string, unknown>;
+  buildUp?: Record<string, unknown>;
+  discipline?: Record<string, unknown>;
+  [key: string]: unknown;
+};
+export type TeamDNAMetric = Record<string, unknown>;
+export type PlayStyleLabel = string;
+export type AttackWidthLabel = string;
+export type DefensiveLineLabel = string;
+export type BuildUpLabel = string;
+export type ThreatLevel = "low" | "medium" | "high" | "critical";
+export interface LiveMatchIntelligence {
+  matchId?: EntityId;
+  phase?: string | null;
+  threatLevel?: ThreatLevel | null;
+  narrative?: string | null;
+  isLive?: boolean;
+  [key: string]: unknown;
+}
+export interface AIMatchExplanation {
+  matchId?: EntityId;
+  phase?: string | null;
+  summary?: string | null;
+  headline?: string | null;
+  [key: string]: unknown;
+}
+export interface PlayerMarketValue {
+  playerId: EntityId;
+  marketValue?: number | null;
+  currency?: string | null;
+  displayValue?: string | null;
+  numericValue?: number | null;
+  history?: Array<{ value?: number | null; source?: string | null }> | null;
+  source?: string | null;
+  [key: string]: unknown;
+}
+export type MatchIntelligenceModel = Record<string, unknown>;
+
+export interface MultiSportEvent {
+  id?: EntityId;
+  matchId?: EntityId;
+  homeTeam?: Team | null;
+  awayTeam?: Team | null;
+  status?: string | null;
+  startTime?: ISODateString | null;
+  [key: string]: unknown;
+}
+
+export interface MultiSportStandingEntry {
+  rank?: number | null;
+  team?: Team | null;
+  [key: string]: unknown;
+}
+
+export interface MultiSportTeam {
+  id?: EntityId;
+  name?: string | null;
+  shortName?: string | null;
+  logoUri?: string | null;
+  [key: string]: unknown;
+}
+
+export interface EspnNewsItem {
+  id?: EntityId;
+  title?: string | null;
+  url?: string | null;
+  [key: string]: unknown;
+}
+
+export interface MatchOdds {
+  matchId?: EntityId;
+  bookmakers?: unknown[];
+  [key: string]: unknown;
 }
 
 // ─── 6. DOWNLOAD / OFFLINE MODELS ───────────────────────────────────────────
@@ -725,273 +644,3 @@ export interface ResolutionResult<T> {
 }
 
 // ─── 8. TEAM DNA ─────────────────────────────────────────────────────────────
-
-export type PlayStyleLabel =
-  | "high-press"
-  | "mid-press"
-  | "low-block"
-  | "possession"
-  | "counter-attack"
-  | "direct"
-  | "tiki-taka"
-  | "long-ball"
-  | "gegenpressing";
-
-export type AttackWidthLabel = "wide" | "central" | "narrow" | "mixed";
-export type DefensiveLineLabel = "high" | "medium" | "deep";
-export type BuildUpLabel = "short-pass" | "long-ball" | "mixed";
-
-/** A single quantified tactical metric with a display label and 0–100 value */
-export interface TeamDNAMetric {
-  /** Machine key — used for icon/style mapping */
-  key: string;
-  /** Human-readable label */
-  label: string;
-  /** Normalized value 0–100 */
-  value: number;
-  /** Optional contextual description */
-  description?: string | null;
-}
-
-/**
- * Team DNA — tactical fingerprint derived from season stats.
- * Tells users HOW a team plays before the match starts.
- */
-export interface TeamDNA {
-  teamId: EntityId;
-  teamName: string;
-  season?: number | null;
-  competition?: string | null;
-
-  /** Primary tactical style labels (up to 3) */
-  styleLabels: PlayStyleLabel[];
-  /** Preferred formation(s) this season */
-  formations: string[];
-
-  /** Attack profile */
-  attack: {
-    width: AttackWidthLabel;
-    setpieceThreat: number; // 0–100
-    counterAttackSpeed: number; // 0–100
-    goalScoringRate: number; // goals/90
-    shotsPerGame: number;
-  };
-
-  /** Defence profile */
-  defence: {
-    line: DefensiveLineLabel;
-    pressingIntensity: number; // 0–100: PPDA-derived or proxy
-    cleanSheetRate: number; // 0–100
-    goalsAllowedPerGame: number;
-    tackles: number; // tackles/90
-  };
-
-  /** Build-up play */
-  buildUp: {
-    style: BuildUpLabel;
-    possessionAvg: number; // %
-    passAccuracy: number; // %
-    shortPassRatio: number; // 0-100
-  };
-
-  /** Discipline */
-  discipline: {
-    yellowCardsPerGame: number;
-    redCardsPerGame: number;
-    foulsPerGame: number;
-    foulsTaken: number;
-  };
-
-  /** Individual metrics for radar/spider charts */
-  metrics: TeamDNAMetric[];
-
-  meta?: SourceMeta;
-}
-
-// ─── 9. LIVE MATCH INTELLIGENCE ──────────────────────────────────────────────
-
-export type ThreatLevel = "low" | "medium" | "high" | "critical";
-
-export interface MatchMomentumSnapshot {
-  /** Minutes elapsed at this snapshot */
-  minute: number;
-  /** Home momentum 0–100 */
-  home: number;
-  /** Away momentum 0–100 */
-  away: number;
-}
-
-/**
- * Live Match Intelligence — real-time tactical and statistical read of
- * a match in progress.  Also available for finished matches as a summary.
- */
-export interface LiveMatchIntelligence {
-  matchId: EntityId;
-  isLive: boolean;
-  minute?: number | null;
-
-  /** Overall match momentum (home 0–100, away = 100-home) */
-  momentum: {
-    home: number;
-    away: number;
-    dominantSide: "home" | "away" | "balanced";
-    /** Intensity of play overall 0–100 */
-    intensity: number;
-    /** Rolling snapshots for sparkline chart */
-    history: MatchMomentumSnapshot[];
-  };
-
-  /** Per-side threat levels */
-  threat: {
-    home: ThreatLevel;
-    away: ThreatLevel;
-  };
-
-  /** Head-to-head stat comparison */
-  statsComparison: Array<{
-    label: string;
-    homeValue: string | number;
-    awayValue: string | number;
-    /** Which side is ahead */
-    advantage: "home" | "away" | "equal";
-  }>;
-
-  /** Narrative: key events in last 15 minutes */
-  recentNarrative: string[];
-
-  /** Flag: is this data live or reconstructed post-match */
-  dataQuality: "live" | "reconstructed" | "limited";
-
-  meta?: SourceMeta;
-}
-
-// ─── 10. AI MATCH EXPLANATION ────────────────────────────────────────────────
-
-/**
- * AI-generated human-readable explanation of a match.
- * Generated client-side from the match analysis engine + LLM fallback.
- */
-export interface AIMatchExplanation {
-  matchId: EntityId;
-  phase: "prematch" | "live" | "halftime" | "fulltime";
-  headline: string;
-  summary: string;
-  keyFactors: string[];
-  /** Data signals that were available */
-  dataSignals: {
-    form: boolean;
-    standings: boolean;
-    lineups: boolean;
-    liveStats: boolean;
-    headToHead: boolean;
-    injuries: boolean;
-  };
-  /** Confidence 0–1 in narrative quality */
-  confidence: number;
-  generatedAt: ISODateString;
-}
-
-// ─── 11. PLAYER MARKET VALUE ─────────────────────────────────────────────────
-
-export interface PlayerMarketValue {
-  playerId: EntityId;
-  playerName: string;
-  /** Formatted string e.g. "€45.0M" */
-  displayValue: string | null;
-  /** Raw numeric value in EUR */
-  numericValue: number | null;
-  /** Source that provided the value */
-  source: SourceName;
-  /** Date the valuation was recorded */
-  valuationDate?: ISODateString | null;
-  /** Historic valuations for sparkline */
-  history?: Array<{
-    date: ISODateString;
-    value: number;
-    formatted: string;
-  }> | null;
-  meta?: SourceMeta;
-}
-
-// ─── 12. MATCH INTELLIGENCE ─────────────────────────────────────────────────
-
-/**
- * Unified AI match intelligence — combines prediction, rating,
- * hot team, upset alert, momentum, and post-match explainer
- * into a single structured shape.
- */
-export interface MatchIntelligenceModel {
-  matchId: EntityId | null;
-  phase: "prematch" | "live" | "halftime" | "fulltime";
-
-  /** The team name or "Draw" */
-  predictedWinner: string;
-  prediction: "Home Win" | "Away Win" | "Draw";
-  /** Confidence 0–100 */
-  confidence: number;
-  confidenceLabel: "Low" | "Medium" | "High" | "Elite";
-  expectedScore: string;
-  reasoning: string;
-  keyFactors: string[];
-
-  probabilities: {
-    home: number;
-    draw: number;
-    away: number;
-  };
-
-  /** Entertainment/quality rating 1–10 */
-  matchRating: number;
-  matchRatingLabel: string;
-
-  /** Home-biased momentum 0–100 */
-  momentumScore: number;
-  momentumSide: "home" | "away" | "balanced";
-
-  upsetAlert: {
-    active: boolean;
-    probability: number;
-    underdogTeam: string | null;
-    reasoning: string | null;
-  };
-
-  hotTeam: {
-    active: boolean;
-    team: string | null;
-    side: "home" | "away" | null;
-    form: string | null;
-    formPoints: number;
-    reasoning: string | null;
-  };
-
-  postMatchExplainer: {
-    available: boolean;
-    whyResult: string;
-    keyMoments: {
-      minute: number;
-      description: string;
-      impact: "high" | "medium" | "low";
-    }[];
-    playerImpact: {
-      player: string;
-      team: string;
-      contribution: string;
-      rating: number;
-    }[];
-    tacticalSummary: string | null;
-    resultVsPrediction: "expected" | "upset" | "partial-surprise";
-  } | null;
-
-  dataSignals: {
-    form: boolean;
-    standings: boolean;
-    headToHead: boolean;
-    injuries: boolean;
-    liveStats: boolean;
-    lineups: boolean;
-  };
-  dataQuality: "rich" | "moderate" | "limited";
-
-  source: "nexora-match-intelligence";
-  generatedAt: ISODateString;
-}

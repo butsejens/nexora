@@ -1,7 +1,7 @@
 /**
  * CINELOG Settings — compacte instellingenpagina
  */
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -24,18 +24,18 @@ import * as ImagePicker from "expo-image-picker";
 import Constants from "expo-constants";
 import * as Application from "expo-application";
 import * as Updates from "expo-updates";
+import appConfig from "@/app.json";
 
 import { UpdateModal } from "@/components/update";
-import { NexoraHeader } from "@/components/NexoraHeader";
 import { COLORS } from "@/constants/colors";
 import { useNexora } from "@/context/NexoraContext";
 import { t as tFn } from "@/lib/i18n";
 import { getActiveProviderLabels } from "@/lib/playback-engine";
 import { apiRequest, queryClient } from "@/lib/query-client";
+import { SafeAlert } from "@/lib/safeAlert";
 import { SafeHaptics } from "@/lib/safeHaptics";
 import { useTranslation } from "@/lib/useTranslation";
 import { compareVersions } from "@/services/update-service";
-import { useOnboardingStore } from "@/store/onboarding-store";
 import { useUiStore } from "@/store/uiStore";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -69,22 +69,6 @@ const QUALITY_OPTIONS = [
   { code: "FHD", labelKey: "settings.qualityFHD" },
   { code: "HD", labelKey: "settings.qualityHD" },
 ] as const;
-
-const SERVER_DOMAIN_MAP: Record<string, string> = {
-  "Server 1": "https://vidlink.pro",
-  "Server 2": "https://vidfast.pro",
-  "Server 3": "https://player.videasy.net",
-  "Server 4": "https://player.vidsrc.nl",
-  "Server 5": "https://warezcdn.com",
-  "Server 6": "https://flicky.host",
-  "Server 7": "https://moviesapi.club",
-  "Server 8": "https://flickystream.ru",
-  "Server 9": "https://autoembed.cc",
-  "Server 10": "https://embed.su",
-  "Server 11": "https://111movies.net",
-  "Server 12": "https://vidsrc.stream",
-  "Server 13": "https://www.2embed.org",
-};
 
 const SERVER_ID_MAP: Record<string, string> = {
   "Server 1": "vidlinkpro",
@@ -342,8 +326,6 @@ export default function MoreScreen() {
   const { t } = useTranslation();
   const closeNexoraMenu = useUiStore((state) => state.closeNexoraMenu);
   const { openUpdate } = useLocalSearchParams<{ openUpdate?: string }>();
-  const {} = useOnboardingStore();
-
   const {
     isPremium,
     selectedQuality, setSelectedQuality,
@@ -374,8 +356,11 @@ export default function MoreScreen() {
 
   const nativeVersion = String(Application.nativeApplicationVersion || "0.0.0");
   const configVersion = String(Constants.expoConfig?.version || "0.0.0");
+  const staticConfigVersion = String((appConfig as any)?.expo?.version || "0.0.0");
   const runtimeVersion = String(Updates.runtimeVersion || "0.0.0");
-  const appVersion = [nativeVersion, configVersion, runtimeVersion].sort(compareVersions).at(-1) ?? nativeVersion;
+  const appVersion = [nativeVersion, configVersion, staticConfigVersion, runtimeVersion]
+    .sort(compareVersions)
+    .at(-1) ?? nativeVersion;
   const handleManualUpdateCheck = useCallback(() => setShowUpdateModal(true), []);
 
   const selectedLangLabel = LANGUAGES.find((l) => l.code === audioLanguage)?.label ?? "Auto";
@@ -406,35 +391,30 @@ export default function MoreScreen() {
   };
 
   const handleClearHistory = () => {
-    Alert.alert(
+    SafeAlert.confirm(
       "Kijkgeschiedenis wissen",
       "Weet je zeker dat je je kijkgeschiedenis wilt wissen? Dit kan niet ongedaan worden gemaakt.",
-      [
-        { text: "Annuleren", style: "cancel" },
-        { text: "Wissen", style: "destructive", onPress: async () => { await clearHistory(); SafeHaptics.success(); } },
-      ],
+      "Wissen",
+      async () => { await clearHistory(); SafeHaptics.success(); },
     );
   };
 
   const handleResetApp = () => {
-    Alert.alert(
+    SafeAlert.confirm(
       "App data resetten",
-      "Dit verwijdert favorieten, kijkgeschiedenis en cache. Weet je het zeker?",
-      [
-        { text: "Annuleren", style: "cancel" },
-        {
-          text: "Resetten", style: "destructive",
-          onPress: async () => {
-            try {
-              await resetAll();
-              queryClient.clear();
-              SafeHaptics.success();
-            } catch (e: any) {
-              Alert.alert("Fout", e?.message ?? "Kon app data niet resetten");
-            }
-          },
-        },
-      ],
+      "Dit verwijdert favorieten, kijkgeschiedenis en cache, en start de accountinstellingen opnieuw. Weet je het zeker?",
+      "Resetten",
+      async () => {
+        try {
+          await resetAll();
+          queryClient.clear();
+          SafeHaptics.success();
+          closeNexoraMenu();
+          router.replace("/onboarding/quick-start");
+        } catch (e: any) {
+          Alert.alert("Fout", e?.message ?? "Kon app data niet resetten");
+        }
+      },
     );
   };
 
@@ -458,61 +438,111 @@ export default function MoreScreen() {
 
   return (
     <View style={styles.screen}>
-      <View style={styles.glowBg} pointerEvents="none" />
-
-      <NexoraHeader
-        variant="module"
-        title={t("menu.title")}
-        titleColor={COLORS.accent}
-        showSearch={false}
-      />
+      <View style={styles.backdropOrbs} pointerEvents="none">
+        <LinearGradient
+          colors={["rgba(192,38,211,0.18)", "rgba(5,6,10,0)"]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.orbLeft}
+        />
+        <LinearGradient
+          colors={["rgba(34,211,238,0.10)", "rgba(5,6,10,0)"]}
+          start={{ x: 0, y: 1 }}
+          end={{ x: 1, y: 0 }}
+          style={styles.orbRight}
+        />
+      </View>
 
       <ScrollView
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={[styles.content, { paddingBottom: (Platform.OS === "web" ? 34 : insets.bottom + 90) }]}
+        contentContainerStyle={[
+          styles.content,
+          { paddingTop: insets.top + 18, paddingBottom: Platform.OS === "web" ? 34 : insets.bottom + 96 },
+        ]}
       >
-        {/* ── Profielkaart ── */}
-        <TouchableOpacity style={styles.profileCard} onPress={() => router.push("/profile")} activeOpacity={0.88}>
-          <LinearGradient
-            colors={["rgba(192,38,211,0.10)", COLORS.card]}
-            start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
-            style={StyleSheet.absoluteFill}
-          />
-          <TouchableOpacity style={styles.avatarWrap} onPress={handlePickAvatar} activeOpacity={0.8}>
-            <View style={styles.avatar}>
+        <TouchableOpacity
+          style={styles.backButton}
+          activeOpacity={0.8}
+          onPress={() => {
+            if (router.canGoBack()) {
+              router.back();
+              return;
+            }
+            router.replace("/(tabs)/home");
+          }}
+          accessibilityRole="button"
+          accessibilityLabel="Ga terug"
+        >
+          <Ionicons name="chevron-back" size={16} color={COLORS.text} />
+          <Text style={styles.backButtonText}>Terug</Text>
+        </TouchableOpacity>
+
+        <View style={styles.homeHeader}>
+          <View style={styles.homeHeaderCopy}>
+            <Text style={styles.homeHeaderTitle}>Welkom terug</Text>
+          </View>
+          <TouchableOpacity style={styles.avatarCard} onPress={handlePickAvatar} activeOpacity={0.85}>
+            <LinearGradient
+              colors={["rgba(192,38,211,0.20)", "rgba(34,211,238,0.10)"]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={StyleSheet.absoluteFill}
+            />
+            <View style={styles.avatarInner}>
               {avatarUri
-                ? <Image source={{ uri: avatarUri }} style={styles.avatarImg} />
-                : <Ionicons name="person" size={22} color={COLORS.accent} />}
+                ? <Image source={{ uri: avatarUri }} style={styles.avatarImage} />
+                : <Ionicons name="person" size={24} color={COLORS.text} />}
             </View>
-            <View style={styles.cameraChip}>
+            <View style={styles.avatarEditBadge}>
               <Ionicons name="camera" size={9} color="#fff" />
             </View>
           </TouchableOpacity>
-          <View style={styles.profileInfo}>
-            <Text style={styles.profileName}>{t("settings.mainProfile")}</Text>
-            <TouchableOpacity
-              style={[styles.premiumBadge, isPremium && styles.premiumBadgeActive]}
-              onPress={() => router.push("/premium")}
-              activeOpacity={0.8}
-            >
-              <MaterialCommunityIcons name="crown" size={10} color={isPremium ? COLORS.gold : COLORS.textMuted} />
-              <Text style={[styles.premiumBadgeText, isPremium && styles.premiumBadgeTextActive]}>
-                {isPremium ? "Premium" : "Upgrade naar Premium"}
-              </Text>
-            </TouchableOpacity>
-          </View>
-          <View style={{ alignItems: "flex-end", gap: 1 }}>
-            <Text style={{ fontFamily: "Inter_700Bold", fontSize: 13, color: COLORS.text }}>{favorites.length}</Text>
-            <Text style={{ fontFamily: "Inter_400Regular", fontSize: 10, color: COLORS.textMuted }}>{t("settings.favorites")}</Text>
-          </View>
-          <Ionicons name="chevron-forward" size={14} color={COLORS.textMuted} />
-        </TouchableOpacity>
+        </View>
 
-        <View style={styles.compactSpacer} />
+        <View style={styles.quickActionRow}>
+          <TouchableOpacity
+            style={styles.quickActionCard}
+            onPress={() => router.push("/profile")}
+            activeOpacity={0.86}
+            accessibilityRole="button"
+            accessibilityLabel={t("settings.mainProfile")}
+          >
+            <Ionicons name="person-circle-outline" size={18} color={COLORS.text} />
+            <Text style={styles.quickActionTitle}>{t("settings.mainProfile")}</Text>
+            <Ionicons name="chevron-forward" size={14} color={COLORS.textMuted} />
+          </TouchableOpacity>
 
-        {/* ══════════════════════════════════════════════════════════
-            INSTELLINGEN — inline hieronder
-        ══════════════════════════════════════════════════════════ */}
+          <TouchableOpacity
+            style={styles.quickActionCard}
+            onPress={() => router.push("/premium")}
+            activeOpacity={0.86}
+            accessibilityRole="button"
+            accessibilityLabel={isPremium ? "Premium" : "Upgrade naar Premium"}
+          >
+            <MaterialCommunityIcons name="crown" size={16} color={isPremium ? COLORS.gold : COLORS.textMuted} />
+            <Text style={styles.quickActionTitle}>{isPremium ? "Premium" : "Upgrade"}</Text>
+            <Ionicons name="chevron-forward" size={14} color={COLORS.textMuted} />
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.statusStrip}>
+          <View style={styles.statusItem}>
+            <Text style={styles.statusLabel}>{t("settings.favorites")}</Text>
+            <Text style={styles.statusValue}>{favorites.length}</Text>
+          </View>
+          <View style={styles.statusDivider} />
+          <View style={styles.statusItem}>
+            <Text style={styles.statusLabel}>History</Text>
+            <Text style={styles.statusValue}>{watchHistory.length}</Text>
+          </View>
+          <View style={styles.statusDivider} />
+          <View style={styles.statusItemWide}>
+            <Text style={styles.statusLabel}>Server</Text>
+            <Text style={styles.statusValueSmall}>{preferredServerLabel}</Text>
+          </View>
+        </View>
+
+        <Text style={styles.sectionIntroEyebrow}>SETTINGS</Text>
 
         {/* ── Afspeelbeheer ── */}
         <SettingsSection title={t("settings.playback")}>
@@ -686,127 +716,329 @@ const sheet = StyleSheet.create({
 // ─────────────────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: COLORS.background },
-  glowBg: {
-    position: "absolute", top: -60, left: -80, width: 300, height: 300,
-    borderRadius: 300, backgroundColor: "rgba(229,9,20,0.08)",
+  backdropOrbs: {
+    ...StyleSheet.absoluteFillObject,
   },
-  content: { paddingHorizontal: 16, paddingTop: 10, gap: 12 },
-  compactSpacer: { height: 2 },
-
-  // Feature grid
-  featureGrid: { flexDirection: "row", gap: 10 },
-  featureCard: { flex: 1, borderRadius: 18, overflow: "hidden", borderWidth: 1, borderColor: COLORS.glassBorder },
-  featureGradient: { padding: 16, minHeight: 148, gap: 6 },
-  featureIconWrap: {
-    width: 44, height: 44, borderRadius: 12,
-    backgroundColor: COLORS.glass, alignItems: "center", justifyContent: "center",
-    marginBottom: 6, borderWidth: 1, borderColor: COLORS.glassBorder,
+  orbLeft: {
+    position: "absolute",
+    top: -120,
+    left: -110,
+    width: 310,
+    height: 310,
+    borderRadius: 310,
+    opacity: 0.45,
   },
-  featureIconAccent: { backgroundColor: "rgba(229,9,20,0.16)", borderColor: "rgba(229,9,20,0.28)" },
-  featureTitle: { color: COLORS.text, fontSize: 15, fontFamily: "Inter_700Bold" },
-  featureSubtitle: { color: COLORS.textSecondary, fontSize: 12, fontFamily: "Inter_500Medium", lineHeight: 17 },
-
-  // Profiel
-  profileCard: {
-    borderRadius: 14, overflow: "hidden", borderWidth: 1, borderColor: COLORS.glassBorder,
-    flexDirection: "row", alignItems: "center", paddingHorizontal: 12, paddingVertical: 10, gap: 10,
+  orbRight: {
+    position: "absolute",
+    top: 220,
+    right: -120,
+    width: 240,
+    height: 240,
+    borderRadius: 240,
+    opacity: 0.32,
   },
-  avatarWrap: { position: "relative" },
-  avatar: {
-    width: 44, height: 44, borderRadius: 12,
-    backgroundColor: COLORS.glass, borderWidth: 1, borderColor: "rgba(192,38,211,0.30)",
-    alignItems: "center", justifyContent: "center", overflow: "hidden",
+  content: {
+    paddingHorizontal: 16,
+    gap: 12,
   },
-  avatarImg: { width: 44, height: 44, borderRadius: 12 },
-  cameraChip: {
-    position: "absolute", bottom: -2, right: -2, width: 18, height: 18, borderRadius: 6,
-    backgroundColor: COLORS.accent, alignItems: "center", justifyContent: "center",
-    borderWidth: 1.5, borderColor: COLORS.background,
+  backButton: {
+    alignSelf: "flex-start",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: 999,
+    backgroundColor: COLORS.cardElevated,
+    borderWidth: 1,
+    borderColor: COLORS.borderLight,
   },
-  profileInfo: { flex: 1, gap: 3 },
-  profileName: { fontFamily: "Inter_600SemiBold", fontSize: 14, color: COLORS.text },
+  backButtonText: {
+    color: COLORS.text,
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 12,
+  },
+  homeHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+    paddingHorizontal: 2,
+  },
+  homeHeaderCopy: {
+    flex: 1,
+    gap: 4,
+  },
+  homeHeaderTitle: {
+    color: COLORS.text,
+    fontFamily: "Inter_800ExtraBold",
+    fontSize: 30,
+    lineHeight: 34,
+    letterSpacing: -1,
+  },
+  quickActionRow: {
+    flexDirection: "row",
+    gap: 10,
+  },
+  quickActionCard: {
+    flex: 1,
+    minHeight: 56,
+    borderRadius: 12,
+    backgroundColor: "rgba(14,12,26,0.92)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.09)",
+    paddingHorizontal: 12,
+    paddingVertical: 11,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  quickActionTitle: {
+    flex: 1,
+    color: COLORS.text,
+    fontFamily: "Inter_700Bold",
+    fontSize: 13,
+    letterSpacing: -0.1,
+  },
+  statusStrip: {
+    flexDirection: "row",
+    alignItems: "center",
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.09)",
+    backgroundColor: "rgba(14,12,26,0.9)",
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+  statusItem: {
+    flex: 1,
+    gap: 3,
+  },
+  statusItemWide: {
+    flex: 1.3,
+    gap: 3,
+  },
+  statusLabel: {
+    color: COLORS.textMuted,
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 10,
+    letterSpacing: 0.8,
+    textTransform: "uppercase",
+  },
+  statusValue: {
+    color: COLORS.text,
+    fontFamily: "Inter_800ExtraBold",
+    fontSize: 18,
+    letterSpacing: -0.4,
+  },
+  statusValueSmall: {
+    color: COLORS.text,
+    fontFamily: "Inter_700Bold",
+    fontSize: 12,
+    lineHeight: 16,
+  },
+  statusDivider: {
+    width: 1,
+    alignSelf: "stretch",
+    backgroundColor: "rgba(255,255,255,0.09)",
+    marginHorizontal: 10,
+  },
+  heroShell: {
+    borderRadius: 28,
+    overflow: "hidden",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.08)",
+    padding: 18,
+    gap: 16,
+    backgroundColor: "rgba(8,10,16,0.92)",
+  },
+  heroTopRow: {
+    flexDirection: "row",
+    gap: 14,
+    alignItems: "flex-start",
+  },
+  brandStack: {
+    flex: 1,
+    gap: 10,
+  },
+  brandChip: {
+    flexDirection: "row",
+    alignSelf: "flex-start",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: "rgba(192,38,211,0.10)",
+    borderWidth: 1,
+    borderColor: "rgba(192,38,211,0.22)",
+  },
+  brandChipText: {
+    color: COLORS.textMuted,
+    fontFamily: "Inter_700Bold",
+    fontSize: 10,
+    letterSpacing: 1.4,
+  },
+  heroTitle: {
+    color: COLORS.text,
+    fontFamily: "Inter_800ExtraBold",
+    fontSize: 34,
+    letterSpacing: -1.3,
+    lineHeight: 36,
+  },
+  heroSubtitle: {
+    color: COLORS.textSecondary,
+    fontFamily: "Inter_500Medium",
+    fontSize: 13,
+    lineHeight: 19,
+    maxWidth: 280,
+  },
+  avatarCard: {
+    width: 86,
+    height: 86,
+    borderRadius: 26,
+    overflow: "hidden",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.10)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  avatarInner: {
+    width: 68,
+    height: 68,
+    borderRadius: 22,
+    backgroundColor: "rgba(255,255,255,0.04)",
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
+  },
+  avatarImage: {
+    width: 68,
+    height: 68,
+    borderRadius: 22,
+  },
+  avatarEditBadge: {
+    position: "absolute",
+    bottom: 6,
+    right: 6,
+    width: 20,
+    height: 20,
+    borderRadius: 7,
+    backgroundColor: COLORS.accent,
+    borderWidth: 1.5,
+    borderColor: "#05060a",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  heroProfileRow: {
+    gap: 10,
+  },
+  heroProfileCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    borderRadius: 22,
+    backgroundColor: "rgba(255,255,255,0.03)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.07)",
+  },
+  heroProfileCopy: {
+    gap: 8,
+  },
+  heroProfileLabel: {
+    color: COLORS.text,
+    fontFamily: "Inter_700Bold",
+    fontSize: 16,
+    letterSpacing: -0.2,
+  },
   premiumBadge: {
-    flexDirection: "row", alignItems: "center", gap: 4, alignSelf: "flex-start",
-    backgroundColor: COLORS.glass, borderRadius: 99, borderWidth: 1, borderColor: COLORS.glassBorder,
-    paddingHorizontal: 8, paddingVertical: 3,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    alignSelf: "flex-start",
+    backgroundColor: "rgba(255,255,255,0.04)",
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.08)",
+    paddingHorizontal: 9,
+    paddingVertical: 4,
   },
-  premiumBadgeActive: { backgroundColor: "rgba(255,215,0,0.06)", borderColor: "rgba(255,215,0,0.25)" },
-  premiumBadgeText: { fontFamily: "Inter_600SemiBold", fontSize: 10, color: COLORS.textMuted },
-  premiumBadgeTextActive: { color: COLORS.gold },
-
-  // Cinelog+ banner
-  premiumBanner: { borderRadius: 18, overflow: "hidden", borderWidth: 1, borderColor: COLORS.borderGlow },
-  premiumBannerGradient: { padding: 16, gap: 12 },
-  premiumBannerTop: { flexDirection: "row", alignItems: "center", gap: 12 },
-  premiumBannerIcon: {
-    width: 40, height: 40, borderRadius: 12,
-    backgroundColor: COLORS.accentGlow, borderWidth: 1, borderColor: COLORS.borderGlow,
-    alignItems: "center", justifyContent: "center",
+  premiumBadgeActive: {
+    backgroundColor: "rgba(255,215,0,0.08)",
+    borderColor: "rgba(255,215,0,0.22)",
   },
-  premiumBannerTitle: { fontFamily: "Inter_800ExtraBold", fontSize: 17, color: COLORS.text },
-  premiumBannerSub: { fontFamily: "Inter_400Regular", fontSize: 12, color: COLORS.textSecondary, marginTop: 1 },
-  premiumPriceRow: { flexDirection: "row", gap: 8 },
-  premiumPriceChip: {
-    flex: 1, borderRadius: 10, backgroundColor: COLORS.glass,
-    borderWidth: 1, borderColor: COLORS.glassBorder, paddingVertical: 10, alignItems: "center", gap: 1,
+  premiumBadgeText: {
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 10,
+    color: COLORS.textMuted,
   },
-  premiumPriceChipPopular: { backgroundColor: COLORS.accentGlow, borderColor: COLORS.borderGlow },
-  popularDot: { position: "absolute", top: 6, right: 6, width: 6, height: 6, borderRadius: 3, backgroundColor: COLORS.accent },
-  premiumPriceAmount: { fontFamily: "Inter_700Bold", fontSize: 15, color: COLORS.text },
-  premiumPricePeriod: { fontFamily: "Inter_400Regular", fontSize: 10, color: COLORS.textMuted },
-  premiumTrialNote: { fontFamily: "Inter_500Medium", fontSize: 11, color: COLORS.accent, textAlign: "center" },
-  premiumActiveBanner: {
-    flexDirection: "row", alignItems: "center", gap: 12,
-    backgroundColor: COLORS.accentGlow, borderRadius: 14, borderWidth: 1, borderColor: COLORS.borderGlow,
-    paddingHorizontal: 14, paddingVertical: 14,
+  premiumBadgeTextActive: {
+    color: COLORS.gold,
   },
-  premiumActiveBannerIcon: {
-    width: 36, height: 36, borderRadius: 10,
-    backgroundColor: "rgba(192,38,211,0.18)", alignItems: "center", justifyContent: "center",
+  statsGrid: {
+    flexDirection: "row",
+    gap: 8,
   },
-  premiumActiveBannerTitle: { fontFamily: "Inter_700Bold", fontSize: 14, color: COLORS.text },
-  premiumActiveBannerSub: { fontFamily: "Inter_400Regular", fontSize: 12, color: COLORS.textSecondary, marginTop: 1 },
-
-  // Menu navigatie
-  menuSection: { gap: 0 },
-  menuSectionTitle: {
-    color: COLORS.textMuted, fontSize: 10, letterSpacing: 1.8,
-    fontFamily: "Inter_700Bold", marginLeft: 2, marginBottom: 8, textTransform: "uppercase",
+  statCard: {
+    flex: 1,
+    minHeight: 74,
+    borderRadius: 18,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    backgroundColor: "rgba(255,255,255,0.03)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.07)",
+    justifyContent: "space-between",
   },
-  menuSectionCard: {
-    backgroundColor: COLORS.glass, borderRadius: 16,
-    borderWidth: 1, borderColor: COLORS.glassBorder, overflow: "hidden",
+  statCardAccent: {
+    backgroundColor: "rgba(192,38,211,0.10)",
+    borderColor: "rgba(192,38,211,0.20)",
   },
-  menuRow: { flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 14, paddingVertical: 13 },
-  menuIconWrap: {
-    width: 36, height: 36, borderRadius: 9,
-    backgroundColor: "rgba(229,9,20,0.10)", borderWidth: 1, borderColor: "rgba(229,9,20,0.20)",
-    alignItems: "center", justifyContent: "center",
+  statValue: {
+    color: COLORS.text,
+    fontFamily: "Inter_800ExtraBold",
+    fontSize: 22,
+    letterSpacing: -0.6,
   },
-  menuRowText: { flex: 1 },
-  menuRowTitle: { color: COLORS.text, fontSize: 14, fontFamily: "Inter_600SemiBold" },
-  menuRowSub: { color: COLORS.textSecondary, fontSize: 11, fontFamily: "Inter_500Medium", lineHeight: 16 },
-  menuDivider: { height: 1, backgroundColor: COLORS.glassBorder, marginLeft: 62 },
-  badge: {
-    backgroundColor: "rgba(229,9,20,0.16)", borderColor: "rgba(229,9,20,0.28)",
-    borderWidth: 1, borderRadius: 99, paddingHorizontal: 8, paddingVertical: 2,
+  statValueSmall: {
+    color: COLORS.text,
+    fontFamily: "Inter_700Bold",
+    fontSize: 12,
+    lineHeight: 15,
   },
-  badgeText: { color: COLORS.accent, fontSize: 10, fontFamily: "Inter_700Bold" },
+  statLabel: {
+    color: COLORS.textMuted,
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 10,
+    letterSpacing: 0.8,
+    textTransform: "uppercase",
+  },
+  sectionIntroEyebrow: {
+    color: COLORS.textMuted,
+    fontFamily: "Inter_700Bold",
+    fontSize: 10,
+    letterSpacing: 1.8,
+    textTransform: "uppercase",
+    paddingTop: 8,
+    paddingHorizontal: 2,
+  },
 
   // Settings secties
-  section: { gap: 6 },
+  section: { gap: 8 },
   sectionTitle: {
     color: COLORS.text,
-    fontSize: 18,
-    letterSpacing: -0.2,
+    fontSize: 20,
+    letterSpacing: -0.3,
     fontFamily: "Inter_700Bold",
-    marginBottom: 4,
+    marginBottom: 0,
   },
   sectionCard: {
-    backgroundColor: COLORS.card,
-    borderRadius: 14,
+    backgroundColor: COLORS.cardElevated,
+    borderRadius: 12,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: COLORS.borderLight,
     overflow: "hidden",
   },
   row: {
@@ -814,7 +1046,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 12,
     paddingHorizontal: 14,
-    paddingVertical: 12,
+    paddingVertical: 13,
   },
   rowIcon: {
     width: 34,
@@ -825,7 +1057,7 @@ const styles = StyleSheet.create({
     borderColor: COLORS.borderGlow,
     alignItems: "center", justifyContent: "center",
   },
-  rowIconDanger: { backgroundColor: "rgba(239,68,68,0.10)", borderColor: "rgba(239,68,68,0.20)" },
+  rowIconDanger: { backgroundColor: "rgba(239,68,68,0.10)", borderColor: "rgba(239,68,68,0.24)" },
   rowBody: { flex: 1 },
   rowLabel: { fontFamily: "Inter_600SemiBold", fontSize: 15, color: COLORS.text },
   rowLabelDanger: { color: COLORS.live },

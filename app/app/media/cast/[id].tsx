@@ -60,10 +60,10 @@ function mapTmdbKnownFor(items: any[]): KnownForItem[] {
       popularity: Number(item.popularity || 0) || null,
       voteCount: Number(item.vote_count || 0) || null,
       poster: item.poster_path
-        ? `https://image.tmdb.org/t/p/w780${item.poster_path}`
+        ? `https://image.tmdb.org/t/p/original${item.poster_path}`
         : null,
       backdrop: item.backdrop_path
-        ? `https://image.tmdb.org/t/p/w1280${item.backdrop_path}`
+        ? `https://image.tmdb.org/t/p/original${item.backdrop_path}`
         : null,
       year: String(item.release_date || item.first_air_date || "").slice(0, 4),
       rating: Number(item.vote_average || 0) || null,
@@ -107,7 +107,7 @@ async function fetchPersonDetail(id: string): Promise<PersonDetail | null> {
       placeOfBirth: data?.place_of_birth || null,
       knownForDepartment: data?.known_for_department || null,
       profile: data?.profile_path
-        ? `https://image.tmdb.org/t/p/w780${data.profile_path}`
+        ? `https://image.tmdb.org/t/p/original${data.profile_path}`
         : null,
       knownFor: mapTmdbKnownFor(knownFor),
     };

@@ -70,6 +70,7 @@ export type ResolveUpdateDecisionInput = {
   serverChanged: boolean;
   otaAvailable: boolean;
   manifestError: string | null;
+  otaError?: string | null;
   compareVersions: (left: string, right: string) => number;
 };
 
@@ -120,6 +121,7 @@ export function resolveUpdateDecision(input: ResolveUpdateDecisionInput): Update
     serverChanged,
     otaAvailable,
     manifestError,
+    otaError,
     compareVersions,
   } = input;
 
@@ -223,6 +225,22 @@ export function resolveUpdateDecision(input: ResolveUpdateDecisionInput): Update
       false,
       otaAvailable,
       manifestError,
+    );
+  }
+
+  if (otaError) {
+    return buildBaseResult(
+      "error",
+      "OTA-check mislukt",
+      `De OTA-controle kon niet worden voltooid (${otaError}). Dit is geen bevestiging dat je up-to-date bent. Probeer opnieuw met een stabiele verbinding.`,
+      manifest,
+      currentVersion,
+      currentNativeVersion,
+      currentRuntimeVersion,
+      null,
+      serverChanged,
+      false,
+      otaError,
     );
   }
 

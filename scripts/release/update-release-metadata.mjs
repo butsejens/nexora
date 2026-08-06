@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import crypto from "node:crypto";
 
 const mode = String(process.argv[2] || "").trim();
 const version = String(process.argv[3] || "").trim();
@@ -26,6 +27,23 @@ function writeJson(path, data) {
 
 function nowIso() {
   return new Date().toISOString();
+}
+
+function formatFileSizeLabel(bytes) {
+  return `${(bytes / (1024 * 1024)).toFixed(0)} MB`;
+}
+
+// Reads the locally built APK (releases/nexora-v<version>.apk) to compute real size/checksum,
+// so manifest metadata never drifts from the actual uploaded artifact.
+function readLocalApkStats(version) {
+  const localPath = `releases/nexora-v${version}.apk`;
+  if (!fs.existsSync(localPath)) return null;
+  const buffer = fs.readFileSync(localPath);
+  return {
+    fileSizeBytes: buffer.length,
+    fileSizeLabel: formatFileSizeLabel(buffer.length),
+    checksumSha256: crypto.createHash("sha256").update(buffer).digest("hex"),
+  };
 }
 
 function buildVersionCode(versionString) {
@@ -65,6 +83,7 @@ function main() {
     if (!manifest.native.apk || typeof manifest.native.apk !== "object") {
       manifest.native.apk = {};
     }
+    const localStats = readLocalApkStats(version);
     Object.assign(manifest.native.apk, {
       available: Boolean(apkUrl),
       provider: "github-releases",
@@ -81,6 +100,7 @@ function main() {
       unavailableReason: apkUrl ? null : "APK URL ontbreekt",
       fallbackMessage:
         "Download de nieuwste APK via de GitHub releases pagina als de download niet werkt.",
+      ...(localStats ?? {}),
     });
     if (!manifest.endpoints || typeof manifest.endpoints !== "object") {
       manifest.endpoints = {};
@@ -99,7 +119,11 @@ function main() {
   }
 
   const reportPath = "server/release-report.json";
-  const report = fs.existsSync(reportPath) ? readJson(reportPath) : { runs: [] };
+  const existingReport = fs.existsSync(reportPath) ? readJson(reportPath) : null;
+  const report =
+    existingReport && typeof existingReport === "object" && Array.isArray(existingReport.runs)
+      ? existingReport
+      : { runs: [] };
   report.runs.unshift({
     at: timestamp,
     mode,

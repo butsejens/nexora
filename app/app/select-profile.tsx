@@ -13,10 +13,12 @@ import { LinearGradient } from "expo-linear-gradient";
 
 import { COLORS } from "@/constants/colors";
 import { useProfileStore, NexoraProfile } from "@/store/profileStore";
+import { useAccentColor } from "@/hooks/useAccentColor";
 
 export default function SelectProfileScreen() {
   const insets = useSafeAreaInsets();
   const { profiles, setActiveProfile } = useProfileStore();
+  const accentColor = useAccentColor();
   const [selecting, setSelecting] = useState<string | null>(null);
 
   function handleSelect(profile: NexoraProfile) {
@@ -49,7 +51,7 @@ export default function SelectProfileScreen() {
         {/* Logo */}
         <Animated.View entering={FadeIn.delay(60)} style={styles.logoRow}>
           <Text style={styles.logoText}>
-            <Text style={styles.logoAccent}>C</Text>INELOG
+            <Text style={{ color: accentColor }}>C</Text>INELOG
           </Text>
         </Animated.View>
 

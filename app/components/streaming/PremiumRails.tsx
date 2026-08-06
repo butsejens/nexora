@@ -12,6 +12,7 @@ import { LinearGradient } from "expo-linear-gradient";
 
 import { COLORS } from "@/constants/colors";
 import { useMovieCollection } from "@/lib/use-tmdb";
+import { resolveBestPosterUri } from "@/core/self-healing/imageFallback";
 import type { Movie } from "@/types/streaming";
 
 const { width: W } = Dimensions.get("window");
@@ -94,7 +95,7 @@ export function TopTenRail({
           <Pressable style={styles.topTenItem} onPress={() => onPress(item)}>
             <View style={styles.topCard}>
               <ExpoImage
-                source={item.poster ?? item.backdrop ?? undefined}
+                source={resolveBestPosterUri(item.poster ?? item.backdrop ?? undefined)}
                 style={StyleSheet.absoluteFillObject}
                 contentFit="cover"
                 transition={220}
@@ -151,7 +152,7 @@ export function PosterRail({
         renderItem={({ item }) => (
           <Pressable style={[styles.posterCard, cardWidth ? { width: CARD_W, height: CARD_H } : null]} onPress={() => onPress(item)}>
             <ExpoImage
-              source={item.poster ?? item.backdrop ?? undefined}
+              source={resolveBestPosterUri(item.poster ?? item.backdrop ?? undefined)}
               style={StyleSheet.absoluteFillObject}
               contentFit="cover"
               transition={220}
@@ -196,7 +197,7 @@ export function CollectionRail({
             onPress={() => onPress(lead)}
           >
             <ExpoImage
-              source={lead.backdrop ?? lead.poster ?? undefined}
+              source={resolveBestPosterUri(lead.backdrop ?? lead.poster ?? undefined)}
               style={StyleSheet.absoluteFillObject}
               contentFit="cover"
               transition={220}
@@ -220,7 +221,7 @@ export function CollectionRail({
             onPress={() => onPress(item)}
           >
             <ExpoImage
-              source={item.poster ?? item.backdrop ?? undefined}
+              source={resolveBestPosterUri(item.poster ?? item.backdrop ?? undefined)}
               style={StyleSheet.absoluteFillObject}
               contentFit="cover"
               transition={220}

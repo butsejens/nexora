@@ -28,9 +28,9 @@ export interface PlaybackPlan {
 
 interface ProviderCountryShape {
   link?: string;
-  flatrate?: Array<{ provider_id?: number; provider_name?: string }>;
-  rent?: Array<{ provider_id?: number; provider_name?: string }>;
-  buy?: Array<{ provider_id?: number; provider_name?: string }>;
+  flatrate?: { provider_id?: number; provider_name?: string }[];
+  rent?: { provider_id?: number; provider_name?: string }[];
+  buy?: { provider_id?: number; provider_name?: string }[];
 }
 
 const BLOCKED_PLAYBACK_DOMAINS = [
@@ -74,32 +74,25 @@ const BLOCKED_PLAYBACK_DOMAINS = [
 interface DynamicProvider {
   id: string;
   label: string;
-  movieUrl: string;
-  tvUrl: string;
+  movieUrl?: string;
+  tvUrl?: string;
 }
 
-const FALLBACK_PROVIDERS = [
-  // ── Tier 1: Tested clean players (ex-Server 2–9) ──
+export const FALLBACK_PROVIDERS: DynamicProvider[] = [
   { id: "vidlinkpro", label: "Server 1" },
-  { id: "vidfast", label: "Server 2" },
   { id: "videasy", label: "Server 3" },
   { id: "vidsrcnl", label: "Server 4" },
   { id: "warezcdn", label: "Server 5" },
   { id: "flicky", label: "Server 6" },
-  { id: "moviesapi", label: "Server 7" },
   { id: "flickystream", label: "Server 8" },
-  // ── Tier 2: Additional reliable providers (added 2026-04-13) ──
-  { id: "autoembed", label: "Server 9" },
-  { id: "embedsu", label: "Server 10" },
   { id: "111movies", label: "Server 11" },
-  { id: "vidsrcstream", label: "Server 12" },
-  { id: "2embedorg", label: "Server 13" },
 ];
 
-// Dynamic provider cache — refreshed from server every 6 hours
+// Dynamic provider cache — refreshed from server on startup and then revalidated.
 let dynamicProviders: DynamicProvider[] | null = null;
 let dynamicFetchedAt = 0;
-const DYNAMIC_TTL = 6 * 60 * 60 * 1000; // 6 hours — matches server check interval
+let providerInitPromise: Promise<void> | null = null;
+const DYNAMIC_TTL = 6 * 60 * 60 * 1000;
 
 export const PREFERRED_SERVER_LABELS = FALLBACK_PROVIDERS.map(
   (provider) => provider.label,
@@ -124,12 +117,35 @@ async function fetchDynamicProviders(): Promise<DynamicProvider[] | null> {
   return null;
 }
 
+/** Ensure provider list is hydrated before app navigation proceeds. */
+export async function initializeStreamProviders(): Promise<void> {
+  if (providerInitPromise) {
+    await providerInitPromise;
+    return;
+  }
+
+  providerInitPromise = (async () => {
+    const providers = await fetchDynamicProviders();
+    if (!providers || providers.length === 0) {
+      dynamicProviders = [...FALLBACK_PROVIDERS];
+      dynamicFetchedAt = Date.now();
+    }
+  })().finally(() => {
+    if (!dynamicProviders || dynamicProviders.length === 0) {
+      dynamicProviders = [...FALLBACK_PROVIDERS];
+      dynamicFetchedAt = Date.now();
+    }
+  });
+
+  await providerInitPromise;
+}
+
 /** Get the active provider list (dynamic or fallback) */
 function getStreamProviders(): { id: string; label: string }[] {
   if (dynamicProviders && Date.now() - dynamicFetchedAt < DYNAMIC_TTL) {
     return dynamicProviders;
   }
-  return FALLBACK_PROVIDERS;
+  return [...FALLBACK_PROVIDERS];
 }
 
 /** Refresh dynamic providers in background (non-blocking) */
@@ -158,6 +174,7 @@ function getDynamicEmbedUrl(
   if (provider.movieUrl && provider.tvUrl) {
     const dynamic = provider as DynamicProvider;
     const tpl = isMovie ? dynamic.movieUrl : dynamic.tvUrl;
+    if (!tpl) return getEmbedUrl(provider.id, tmdbId, type, s, e);
     return tpl.replace("{tmdbId}", tmdbId).replace("{s}", s).replace("{e}", e);
   }
 
@@ -294,7 +311,7 @@ function normalizeYouTubeEmbed(input: string): string {
   return raw;
 }
 
-function isSafePlaybackUrl(input: string): boolean {
+export function isSafePlaybackUrl(input: string): boolean {
   const raw = String(input || "").trim();
   if (!/^https?:\/\//i.test(raw)) return false;
   const lower = raw.toLowerCase();
@@ -404,6 +421,7 @@ async function fetchProviderResults(
 
 export async function buildPlaybackPlan(input: {
   streamUrl?: string | string[];
+  fallbackUrls?: string | string[];
   trailerKey?: string | string[];
   embedUrl?: string | string[];
   tmdbId?: string | string[];
@@ -418,6 +436,13 @@ export async function buildPlaybackPlan(input: {
   const rawType = toSingle(input.type).trim().toLowerCase();
   const rawSeason = toSingle(input.season).trim() || "1";
   const rawEpisode = toSingle(input.episode).trim() || "1";
+  const streamCandidates = extractDelimitedUrls(rawStream);
+  const primaryStreamUrl = streamCandidates[0] || rawStream;
+
+  const parsedFallbackUrls = [
+    ...toList(input.fallbackUrls),
+    ...streamCandidates,
+  ].filter((url) => /^https?:\/\//i.test(url));
 
   const mediaType: MediaType =
     rawType === "series" || rawType === "tv"
@@ -440,13 +465,13 @@ export async function buildPlaybackPlan(input: {
     hasTrailerKey: Boolean(rawTrailerKey),
   });
 
-  const directStream = /^https?:\/\//i.test(rawStream)
+  const directStream = /^https?:\/\//i.test(primaryStreamUrl)
     ? {
         id: "direct-stream",
         label: "Direct Stream",
         type: "stream" as const,
-        url: rawStream,
-        quality: detectQuality(rawStream),
+        url: primaryStreamUrl,
+        quality: detectQuality(primaryStreamUrl),
       }
     : null;
 
@@ -463,17 +488,28 @@ export async function buildPlaybackPlan(input: {
   // Live / direct HLS: skip VOD provider lookups entirely (faster, no ads/embeds).
   const isLive = rawType === "live" || rawType === "tv-live";
   if (directStream && (isLive || !normalizedTmdbId)) {
+    const fallbackDirectSources = parsedFallbackUrls
+      .filter((url) => url !== directStream.url)
+      .map((url, index) => ({
+        id: `direct-fallback-${index + 1}`,
+        label: `Direct Stream ${index + 2}`,
+        type: "stream" as const,
+        url,
+        quality: detectQuality(url),
+      }));
+
     streamLog("info", "resolver", "Playback resolver chose direct stream", {
       url: directStream.url,
       isLive,
+      fallbackCount: fallbackDirectSources.length,
     });
     return {
       primary: directStream,
-      fallbacks: [],
+      fallbacks: fallbackDirectSources,
       diagnostics: {
         hasDirectStream: true,
         hasTrailer: false,
-        providerCount: 0,
+        providerCount: fallbackDirectSources.length,
         source: "direct",
       },
     };
@@ -586,6 +622,26 @@ export async function buildPlaybackPlan(input: {
       source: "none",
     },
   };
+}
+
+function toList(value?: string | string[]): string[] {
+  if (!value) return [];
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => String(item || "").trim())
+      .filter(Boolean);
+  }
+  const raw = String(value || "").trim();
+  return raw ? [raw] : [];
+}
+
+function extractDelimitedUrls(value: string): string[] {
+  const raw = String(value || "").trim();
+  if (!raw || !raw.includes("||")) return [];
+  return raw
+    .split("||")
+    .map((item) => item.trim())
+    .filter((item) => /^https?:\/\//i.test(item));
 }
 
 export async function startSession(

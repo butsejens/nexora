@@ -1,6 +1,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import type { QueryClient } from "@tanstack/react-query";
 import Constants from "expo-constants";
+import * as Application from "expo-application";
 
 import { cacheWarmup } from "@/lib/services/cache-service";
 import { hydratePhotoCache } from "@/lib/image-resolver";
@@ -9,15 +10,65 @@ import {
   primeBootstrapRealtimeData,
   realtimeCacheKeys,
 } from "@/services/realtime-engine";
-import { checkForAppUpdates } from "@/services/update-service";
+import {
+  prepareOtaUpdate,
+  reloadToLatestUpdate,
+} from "@/services/update-service";
 import {
   logStartupEvent,
   runStartupTask,
 } from "@/services/startup-orchestrator";
 import { runAutonomousStartup } from "@/src/core/autonomous/startupManager";
+import { initializeStreamProviders } from "@/lib/playback-engine";
 
 const FEATURE_FLAGS_KEY = "nexora_feature_flags_v1";
 const MODULE_STATE_KEY = "nexora_module_state_v1";
+const OTA_READY_KEY = "nexora_ota_ready_v1";
+
+type OtaReadyRecord = {
+  ready: boolean;
+  nativeVersion: string;
+  runtimeVersion: string;
+  updatedAt?: string;
+};
+
+function parseOtaReadyRecord(raw: string | null): OtaReadyRecord | null {
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as Partial<OtaReadyRecord>;
+    if (!parsed || parsed.ready !== true) return null;
+    return {
+      ready: true,
+      nativeVersion: String(parsed.nativeVersion || ""),
+      runtimeVersion: String(parsed.runtimeVersion || ""),
+      updatedAt:
+        typeof parsed.updatedAt === "string" ? parsed.updatedAt : undefined,
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function applyPendingOtaIfReady() {
+  const record = parseOtaReadyRecord(await AsyncStorage.getItem(OTA_READY_KEY));
+  if (!record?.ready) return;
+
+  const currentNativeVersion = String(
+    Application.nativeApplicationVersion || "unknown",
+  );
+  const currentRuntimeVersion = getRuntimeVersionSafe();
+  const matchesRuntime = record.runtimeVersion === currentRuntimeVersion;
+  const matchesNative =
+    !record.nativeVersion || record.nativeVersion === currentNativeVersion;
+
+  if (!matchesRuntime || !matchesNative) {
+    await AsyncStorage.removeItem(OTA_READY_KEY).catch(() => undefined);
+    return;
+  }
+
+  await AsyncStorage.removeItem(OTA_READY_KEY).catch(() => undefined);
+  await reloadToLatestUpdate();
+}
 
 function getRuntimeVersionSafe(): string {
   try {
@@ -66,6 +117,14 @@ export function runStartupBootstrap(queryClient: QueryClient): BootstrapResult {
   const criticalTasks = Promise.all([
     runStartupTask({
       scope: "boot",
+      name: "ota-apply-pending",
+      timeoutMs: 3500,
+      run: async () => {
+        await applyPendingOtaIfReady();
+      },
+    }),
+    runStartupTask({
+      scope: "boot",
       name: "cache-seed",
       timeoutMs: 1200,
       run: async () => {
@@ -86,16 +145,62 @@ export function runStartupBootstrap(queryClient: QueryClient): BootstrapResult {
       name: "update-check",
       timeoutMs: 2000,
       run: async () => {
-        const result = await checkForAppUpdates();
+        const currentNativeVersion = String(
+          Application.nativeApplicationVersion || "unknown",
+        );
         logStartupEvent("boot", "info", "update-check-result", {
-          kind: result.kind,
-          nativeVersion: result.manifest?.native?.version || null,
+          kind: "startup-probe",
+          nativeVersion: currentNativeVersion,
+          runtimeVersion: getRuntimeVersionSafe(),
         });
       },
     }),
   ]).then(() => undefined);
 
   const backgroundTasks = Promise.all([
+    runStartupTask({
+      scope: "background",
+      name: "provider-health-bootstrap",
+      timeoutMs: 8000,
+      run: async () => {
+        await initializeStreamProviders();
+        logStartupEvent("background", "info", "provider-health-bootstrap-finished");
+      },
+    }),
+    runStartupTask({
+      scope: "background",
+      name: "ota-preload",
+      timeoutMs: 30000,
+      run: async () => {
+        await criticalTasks;
+
+        try {
+          await prepareOtaUpdate();
+          const currentNativeVersion = String(
+            Application.nativeApplicationVersion || "unknown",
+          );
+          const currentRuntimeVersion = getRuntimeVersionSafe();
+          await AsyncStorage.setItem(
+            OTA_READY_KEY,
+            JSON.stringify({
+              ready: true,
+              nativeVersion: currentNativeVersion,
+              runtimeVersion: currentRuntimeVersion,
+              updatedAt: new Date().toISOString(),
+            }),
+          );
+          logStartupEvent("background", "info", "ota-update-ready", {
+            runtimeVersion: currentRuntimeVersion,
+            nativeVersion: currentNativeVersion,
+          });
+        } catch (error) {
+          await AsyncStorage.removeItem(OTA_READY_KEY).catch(() => undefined);
+          logStartupEvent("background", "warn", "ota-preload-failed", {
+            message: error instanceof Error ? error.message : "Unknown OTA preload failure",
+          });
+        }
+      },
+    }),
     runStartupTask({
       scope: "background",
       name: "autonomous-startup-manager",

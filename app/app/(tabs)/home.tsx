@@ -22,10 +22,17 @@ import {
   usePopularSeries,
   useNowPlayingMovies,
   useOnAirSeries,
+  useTopRatedMovies,
+  useTopRatedSeries,
+  usePersonalizedMovies,
+  usePersonalizedSeries,
 } from "@/lib/use-tmdb";
+import { ONBOARDING_GENRE_TMDB_IDS } from "@/lib/tmdb";
 import { useProfileStore } from "@/store/profileStore";
+import { useUserAccountStore } from "@/store/userAccountStore";
 import type { Movie, Series } from "@/types/streaming";
 import { recoverEmptyList } from "@/core/self-healing";
+import { resolveBestHeaderUri } from "@/core/self-healing/imageFallback";
 
 const { width: W, height: H } = Dimensions.get("window");
 const HERO_H = Math.min(H * 0.72, 620);
@@ -46,6 +53,7 @@ const STREAMING_SERVICES = [
 
 type Content = Movie | Series;
 const EMPTY_CONTENT: Content[] = [];
+const EMPTY_GENRES: string[] = [];
 
 function contentKey(item: Content): string {
   return `${item.type}:${item.id}`;
@@ -81,34 +89,36 @@ function Hero({ item }: { item: Content }) {
   return (
     <View style={styles.hero}>
       <ExpoImage
-        source={item.backdrop ?? item.poster ?? undefined}
+        source={resolveBestHeaderUri(item.backdrop ?? item.poster ?? undefined)}
         style={StyleSheet.absoluteFillObject}
         contentFit="cover"
         priority="high"
         cachePolicy="memory-disk"
         onLoad={(event) => {
           // #region agent log
-          fetch("http://127.0.0.1:7379/ingest/4d747d85-0c03-4a11-8a60-a6d4fd09190a", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "X-Debug-Session-Id": "165c99",
-            },
-            body: JSON.stringify({
-              sessionId: "165c99",
-              runId: "baseline-4",
-              hypothesisId: "H9",
-              location: "tabs/home:hero-image-onLoad",
-              message: "hero-image-loaded",
-              data: {
-                id: item.id,
-                src: item.backdrop ?? item.poster ?? null,
-                width: event?.source?.width ?? null,
-                height: event?.source?.height ?? null,
+          if (__DEV__) {
+            fetch("http://127.0.0.1:7379/ingest/4d747d85-0c03-4a11-8a60-a6d4fd09190a", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "X-Debug-Session-Id": "165c99",
               },
-              timestamp: Date.now(),
-            }),
-          }).catch(() => {});
+              body: JSON.stringify({
+                sessionId: "165c99",
+                runId: "baseline-4",
+                hypothesisId: "H9",
+                location: "tabs/home:hero-image-onLoad",
+                message: "hero-image-loaded",
+                data: {
+                  id: item.id,
+                  src: item.backdrop ?? item.poster ?? null,
+                  width: event?.source?.width ?? null,
+                  height: event?.source?.height ?? null,
+                },
+                timestamp: Date.now(),
+              }),
+            }).catch(() => {});
+          }
           // #endregion
         }}
       />
@@ -209,7 +219,7 @@ function Top10Rail({ data }: { data: Content[] }) {
               {/* Poster card — absolutely positioned on the right */}
               <View style={styles.top10Card}>
                 <ExpoImage
-                  source={item.poster ?? item.backdrop ?? undefined}
+                  source={resolveBestHeaderUri(item.poster ?? item.backdrop ?? undefined)}
                   style={StyleSheet.absoluteFillObject}
                   contentFit="cover"
                   transition={200}
@@ -319,18 +329,42 @@ export default function HomeScreen() {
   const [refreshing, setRefreshing] = useState(false);
 
   const activeProfile = useProfileStore((s) => s.getActiveProfile());
+  const preferredGenres = useUserAccountStore((s) => s.info.genres) ?? EMPTY_GENRES;
+
+  const movieGenreIds = useMemo(
+    () =>
+      preferredGenres
+        .map((key) => ONBOARDING_GENRE_TMDB_IDS[key]?.movie)
+        .filter((id): id is number => typeof id === "number"),
+    [preferredGenres],
+  );
+  const tvGenreIds = useMemo(
+    () =>
+      preferredGenres
+        .map((key) => ONBOARDING_GENRE_TMDB_IDS[key]?.tv)
+        .filter((id): id is number => typeof id === "number"),
+    [preferredGenres],
+  );
 
   const trendingQuery = useTrending();
   const popularMoviesQuery = usePopularMovies();
   const popularSeriesQuery = usePopularSeries();
   const nowPlayingQuery = useNowPlayingMovies();
   const onAirQuery = useOnAirSeries();
+  const topRatedMoviesQuery = useTopRatedMovies();
+  const topRatedSeriesQuery = useTopRatedSeries();
+  const personalizedMoviesQuery = usePersonalizedMovies(movieGenreIds, movieGenreIds.length > 0);
+  const personalizedSeriesQuery = usePersonalizedSeries(tvGenreIds, tvGenreIds.length > 0);
 
   const trending = trendingQuery.data ?? EMPTY_CONTENT;
   const popularMovies = popularMoviesQuery.data ?? EMPTY_CONTENT;
   const popularSeries = popularSeriesQuery.data ?? EMPTY_CONTENT;
   const nowPlaying = nowPlayingQuery.data ?? EMPTY_CONTENT;
   const onAir = onAirQuery.data ?? EMPTY_CONTENT;
+  const topRatedMovies = topRatedMoviesQuery.data ?? EMPTY_CONTENT;
+  const topRatedSeries = topRatedSeriesQuery.data ?? EMPTY_CONTENT;
+  const personalizedMovies = personalizedMoviesQuery.data ?? EMPTY_CONTENT;
+  const personalizedSeries = personalizedSeriesQuery.data ?? EMPTY_CONTENT;
   const refetchTrending = trendingQuery.refetch;
   const trendingSafe = useMemo(
     () =>
@@ -392,16 +426,19 @@ export default function HomeScreen() {
       return result;
     };
 
+    // Each rail draws from its own genre-personalized + top-rated pool first
+    // (biggest, most genre-relevant source) before falling back to the
+    // popular/now-playing/on-air pools, so rails don't starve each other.
     const mustWatch = pick(
-      [...popularMovies, ...nowPlaying] as Content[],
+      [...personalizedMovies, ...popularMovies, ...nowPlaying, ...topRatedMovies] as Content[],
       16,
     );
     const seriesPicks = pick(
-      [...popularSeries, ...onAir] as Content[],
+      [...personalizedSeries, ...popularSeries, ...onAir, ...topRatedSeries] as Content[],
       16,
     );
     const moviePicks = pick(
-      [...popularMovies, ...nowPlaying] as Content[],
+      [...topRatedMovies, ...personalizedMovies, ...popularMovies, ...nowPlaying] as Content[],
       16,
     );
     const trendingRail = pick(
@@ -418,6 +455,10 @@ export default function HomeScreen() {
     onAir,
     trendingSafe,
     fallbackPool,
+    topRatedMovies,
+    topRatedSeries,
+    personalizedMovies,
+    personalizedSeries,
   ]);
 
   // Pick the best hero: must have a real backdrop + rating ≥ 6.8

@@ -23,6 +23,8 @@ import {
   getMoviesByGenreAll,
   getTvByGenre,
   getTvByGenreAll,
+  getMoviesByAnyGenre,
+  getTvByAnyGenre,
   searchTmdb,
   getMovieById,
   getTvById,
@@ -46,6 +48,12 @@ import {
   getMoviesByCompany,
   getMoviesFromYearRange,
   getUpcomingMovies,
+  getPopularMoviesAll,
+  getTopRatedMoviesAll,
+  getNowPlayingMoviesAll,
+  getPopularSeriesAll,
+  getTopRatedSeriesAll,
+  getOnAirSeriesAll,
   type TmdbCastMember,
   type TmdbEpisode,
   type TmdbSeasonInfo,
@@ -56,8 +64,8 @@ import type { Movie, Series } from "@/types/streaming";
 import { cachePeekStale, cacheSet, CacheTTL } from "@/lib/services/cache-service";
 import { logAutonomousEvent } from "@/src/core/autonomous/autonomousLogger";
 
-const STALE_5MIN = 5 * 60 * 1000;
-const STALE_1H = 60 * 60 * 1000;
+const STALE_15MIN = 15 * 60 * 1000;
+const STALE_3H = 3 * 60 * 60 * 1000;
 
 async function withAutonomousCache<T>(
   key: string,
@@ -86,7 +94,7 @@ export function useTrending() {
   return useQuery<(Movie | Series)[]>({
     queryKey: ["tmdb", "trending"],
     queryFn: () => withAutonomousCache(cacheKey, getTrendingAll),
-    staleTime: STALE_5MIN,
+    staleTime: STALE_15MIN,
     placeholderData: () => cachePeekStale<(Movie | Series)[]>(cacheKey) ?? [],
   });
 }
@@ -97,7 +105,7 @@ export function usePopularMovies() {
   return useQuery<Movie[]>({
     queryKey: ["tmdb", "popular-movies"],
     queryFn: () => withAutonomousCache(cacheKey, getPopularMovies),
-    staleTime: STALE_1H,
+    staleTime: STALE_3H,
     placeholderData: () => cachePeekStale<Movie[]>(cacheKey) ?? [],
   });
 }
@@ -108,7 +116,7 @@ export function usePopularSeries() {
   return useQuery<Series[]>({
     queryKey: ["tmdb", "popular-tv"],
     queryFn: () => withAutonomousCache(cacheKey, getPopularTv),
-    staleTime: STALE_1H,
+    staleTime: STALE_3H,
     placeholderData: () => cachePeekStale<Series[]>(cacheKey) ?? [],
   });
 }
@@ -119,7 +127,7 @@ export function useTopRatedMovies() {
   return useQuery<Movie[]>({
     queryKey: ["tmdb", "top-rated-movies"],
     queryFn: () => withAutonomousCache(cacheKey, getTopRatedMovies),
-    staleTime: STALE_1H,
+    staleTime: STALE_3H,
     placeholderData: () => cachePeekStale<Movie[]>(cacheKey) ?? [],
   });
 }
@@ -130,7 +138,7 @@ export function useTopRatedSeries() {
   return useQuery<Series[]>({
     queryKey: ["tmdb", "top-rated-tv"],
     queryFn: () => withAutonomousCache(cacheKey, getTopRatedTv),
-    staleTime: STALE_1H,
+    staleTime: STALE_3H,
     placeholderData: () => cachePeekStale<Series[]>(cacheKey) ?? [],
   });
 }
@@ -141,7 +149,7 @@ export function useNowPlayingMovies() {
   return useQuery<Movie[]>({
     queryKey: ["tmdb", "now-playing"],
     queryFn: () => withAutonomousCache(cacheKey, getNowPlayingMovies),
-    staleTime: STALE_5MIN,
+    staleTime: STALE_15MIN,
     placeholderData: () => cachePeekStale<Movie[]>(cacheKey) ?? [],
   });
 }
@@ -152,8 +160,73 @@ export function useOnAirSeries() {
   return useQuery<Series[]>({
     queryKey: ["tmdb", "on-air"],
     queryFn: () => withAutonomousCache(cacheKey, getOnAirTv),
-    staleTime: STALE_5MIN,
+    staleTime: STALE_15MIN,
     placeholderData: () => cachePeekStale<Series[]>(cacheKey) ?? [],
+  });
+}
+
+/**
+ * Multi-page "list" hooks — used by the generic /media/list browse page so
+ * "Alle" (see-all) buttons on non-genre rails (Populair, Trending, Nu op tv,
+ * Hoogst gewaardeerd, ...) have somewhere real to navigate to.
+ */
+export function usePopularMoviesAll(enabled = true) {
+  return useQuery<Movie[]>({
+    queryKey: ["tmdb", "popular-movies-all"],
+    queryFn: () => getPopularMoviesAll(5),
+    staleTime: STALE_3H,
+    enabled,
+    placeholderData: [],
+  });
+}
+
+export function useTopRatedMoviesAll(enabled = true) {
+  return useQuery<Movie[]>({
+    queryKey: ["tmdb", "top-rated-movies-all"],
+    queryFn: () => getTopRatedMoviesAll(5),
+    staleTime: STALE_3H,
+    enabled,
+    placeholderData: [],
+  });
+}
+
+export function useNowPlayingMoviesAll(enabled = true) {
+  return useQuery<Movie[]>({
+    queryKey: ["tmdb", "now-playing-movies-all"],
+    queryFn: () => getNowPlayingMoviesAll(5),
+    staleTime: STALE_15MIN,
+    enabled,
+    placeholderData: [],
+  });
+}
+
+export function usePopularSeriesAll(enabled = true) {
+  return useQuery<Series[]>({
+    queryKey: ["tmdb", "popular-series-all"],
+    queryFn: () => getPopularSeriesAll(5),
+    staleTime: STALE_3H,
+    enabled,
+    placeholderData: [],
+  });
+}
+
+export function useTopRatedSeriesAll(enabled = true) {
+  return useQuery<Series[]>({
+    queryKey: ["tmdb", "top-rated-series-all"],
+    queryFn: () => getTopRatedSeriesAll(5),
+    staleTime: STALE_3H,
+    enabled,
+    placeholderData: [],
+  });
+}
+
+export function useOnAirSeriesAll(enabled = true) {
+  return useQuery<Series[]>({
+    queryKey: ["tmdb", "on-air-series-all"],
+    queryFn: () => getOnAirSeriesAll(5),
+    staleTime: STALE_15MIN,
+    enabled,
+    placeholderData: [],
   });
 }
 
@@ -165,7 +238,7 @@ export function useMoviesByGenre(genreIds: number[], enabled = true) {
   return useQuery<Movie[]>({
     queryKey: ["tmdb", "movies-by-genre", genreIds.join(",")],
     queryFn: () => getMoviesByGenre(genreIds),
-    staleTime: STALE_1H,
+    staleTime: STALE_3H,
     enabled: enabled && genreIds.length > 0,
     placeholderData: [],
   });
@@ -179,7 +252,7 @@ export function useTvByGenre(genreIds: number[], enabled = true) {
   return useQuery<Series[]>({
     queryKey: ["tmdb", "tv-by-genre", genreIds.join(",")],
     queryFn: () => getTvByGenre(genreIds),
-    staleTime: STALE_1H,
+    staleTime: STALE_3H,
     enabled: enabled && genreIds.length > 0,
     placeholderData: [],
   });
@@ -192,7 +265,7 @@ export function useMoviesByGenreAll(genreIds: number[], enabled = true, maxPages
   return useQuery<Movie[]>({
     queryKey: ["tmdb", "movies-by-genre-all", genreIds.join(","), maxPages],
     queryFn: () => getMoviesByGenreAll(genreIds, maxPages),
-    staleTime: STALE_1H,
+    staleTime: STALE_3H,
     enabled: enabled && genreIds.length > 0,
     placeholderData: [],
   });
@@ -205,7 +278,34 @@ export function useTvByGenreAll(genreIds: number[], enabled = true, maxPages = 8
   return useQuery<Series[]>({
     queryKey: ["tmdb", "tv-by-genre-all", genreIds.join(","), maxPages],
     queryFn: () => getTvByGenreAll(genreIds, maxPages),
-    staleTime: STALE_1H,
+    staleTime: STALE_3H,
+    enabled: enabled && genreIds.length > 0,
+    placeholderData: [],
+  });
+}
+
+/**
+ * Movies matching ANY of the user's onboarding genre picks (OR semantics).
+ * Used to personalize home-screen rails based on the choice made during onboarding.
+ */
+export function usePersonalizedMovies(genreIds: number[], enabled = true) {
+  const sortedKey = genreIds.slice().sort((a, b) => a - b).join(",");
+  return useQuery<Movie[]>({
+    queryKey: ["tmdb", "personalized-movies", sortedKey],
+    queryFn: () => getMoviesByAnyGenre(genreIds),
+    staleTime: STALE_3H,
+    enabled: enabled && genreIds.length > 0,
+    placeholderData: [],
+  });
+}
+
+/** TV equivalent of {@link usePersonalizedMovies}. */
+export function usePersonalizedSeries(genreIds: number[], enabled = true) {
+  const sortedKey = genreIds.slice().sort((a, b) => a - b).join(",");
+  return useQuery<Series[]>({
+    queryKey: ["tmdb", "personalized-series", sortedKey],
+    queryFn: () => getTvByAnyGenre(genreIds),
+    staleTime: STALE_3H,
     enabled: enabled && genreIds.length > 0,
     placeholderData: [],
   });
@@ -219,7 +319,7 @@ export function useTmdbSearch(query: string) {
   return useQuery<(Movie | Series)[]>({
     queryKey: ["tmdb", "search", query],
     queryFn: () => searchTmdb(query),
-    staleTime: STALE_1H,
+    staleTime: STALE_3H,
     enabled: query.trim().length >= 2,
     placeholderData: [],
   });
@@ -235,7 +335,7 @@ export function useMovieDetail(tmdbId: number | null) {
     queryKey: ["tmdb", "movie-detail", tmdbId],
     queryFn: () => getMovieById(tmdbId!),
     enabled: tmdbId !== null,
-    staleTime: STALE_1H,
+    staleTime: STALE_3H,
   });
 }
 
@@ -245,7 +345,7 @@ export function useTvDetail(tmdbId: number | null) {
     queryKey: ["tmdb", "tv-detail", tmdbId],
     queryFn: () => getTvById(tmdbId!),
     enabled: tmdbId !== null,
-    staleTime: STALE_1H,
+    staleTime: STALE_3H,
   });
 }
 
@@ -255,37 +355,37 @@ export function usePrefetchHomeRails() {
     void qc.prefetchQuery({
       queryKey: ["tmdb", "trending"],
       queryFn: getTrendingAll,
-      staleTime: STALE_5MIN,
+      staleTime: STALE_15MIN,
     });
     void qc.prefetchQuery({
       queryKey: ["tmdb", "popular-movies"],
       queryFn: getPopularMovies,
-      staleTime: STALE_1H,
+      staleTime: STALE_3H,
     });
     void qc.prefetchQuery({
       queryKey: ["tmdb", "popular-tv"],
       queryFn: getPopularTv,
-      staleTime: STALE_1H,
+      staleTime: STALE_3H,
     });
     void qc.prefetchQuery({
       queryKey: ["tmdb", "top-rated-movies"],
       queryFn: getTopRatedMovies,
-      staleTime: STALE_1H,
+      staleTime: STALE_3H,
     });
     void qc.prefetchQuery({
       queryKey: ["tmdb", "top-rated-tv"],
       queryFn: getTopRatedTv,
-      staleTime: STALE_1H,
+      staleTime: STALE_3H,
     });
     void qc.prefetchQuery({
       queryKey: ["tmdb", "now-playing"],
       queryFn: getNowPlayingMovies,
-      staleTime: STALE_5MIN,
+      staleTime: STALE_15MIN,
     });
     void qc.prefetchQuery({
       queryKey: ["tmdb", "on-air"],
       queryFn: getOnAirTv,
-      staleTime: STALE_5MIN,
+      staleTime: STALE_15MIN,
     });
   };
 }
@@ -308,13 +408,13 @@ export function useTmdbCast(contentId: string | undefined | null) {
     queryKey: ["tmdb", "cast-movie", parsed?.numericId],
     queryFn: () => getMovieCast(parsed!.numericId),
     enabled: parsed?.kind === "movie",
-    staleTime: STALE_1H,
+    staleTime: STALE_3H,
   });
   const tvCast = useQuery<TmdbCastMember[]>({
     queryKey: ["tmdb", "cast-tv", parsed?.numericId],
     queryFn: () => getTvCast(parsed!.numericId),
     enabled: parsed?.kind === "tv",
-    staleTime: STALE_1H,
+    staleTime: STALE_3H,
   });
   if (parsed?.kind === "movie") return movieCast;
   if (parsed?.kind === "tv") return tvCast;
@@ -331,7 +431,7 @@ export function useTmdbSeasons(contentId: string | undefined | null) {
     queryKey: ["tmdb", "seasons", parsed?.numericId],
     queryFn: () => getTvSeasons(parsed!.numericId),
     enabled: parsed?.kind === "tv",
-    staleTime: STALE_1H,
+    staleTime: STALE_3H,
   });
 }
 
@@ -344,7 +444,7 @@ export function useTmdbSeasonEpisodes(
     queryKey: ["tmdb", "season-episodes", tvId, seasonNumber],
     queryFn: () => getTvSeasonDetail(tvId!, seasonNumber!),
     enabled: tvId !== null && seasonNumber !== null,
-    staleTime: STALE_1H,
+    staleTime: STALE_3H,
   });
 }
 
@@ -358,13 +458,13 @@ export function useTmdbRecommendations(
     queryKey: ["tmdb", "recs-movie", parsed?.numericId],
     queryFn: () => getMovieRecommendations(parsed!.numericId),
     enabled: parsed?.kind === "movie" || (type === "movie" && parsed !== null),
-    staleTime: STALE_1H,
+    staleTime: STALE_3H,
   });
   const tvRecs = useQuery<(Movie | Series)[]>({
     queryKey: ["tmdb", "recs-tv", parsed?.numericId],
     queryFn: () => getTvRecommendations(parsed!.numericId),
     enabled: parsed?.kind === "tv" || (type === "series" && parsed !== null),
-    staleTime: STALE_1H,
+    staleTime: STALE_3H,
   });
   if (type === "movie" || parsed?.kind === "movie") return movieRecs;
   if (type === "series" || parsed?.kind === "tv") return tvRecs;
@@ -378,13 +478,13 @@ export function useTmdbVideos(contentId: string | undefined | null) {
     queryKey: ["tmdb", "videos-movie", parsed?.numericId],
     queryFn: () => getMovieVideos(parsed!.numericId),
     enabled: parsed?.kind === "movie",
-    staleTime: STALE_1H,
+    staleTime: STALE_3H,
   });
   const tvVideos = useQuery<TmdbVideo[]>({
     queryKey: ["tmdb", "videos-tv", parsed?.numericId],
     queryFn: () => getTvVideos(parsed!.numericId),
     enabled: parsed?.kind === "tv",
-    staleTime: STALE_1H,
+    staleTime: STALE_3H,
   });
   if (parsed?.kind === "movie") return movieVideos;
   if (parsed?.kind === "tv") return tvVideos;
@@ -397,7 +497,7 @@ export function useMovieCollection(collectionId: number | null) {
     queryKey: ["tmdb", "collection", collectionId],
     queryFn: () => getMovieCollection(collectionId!),
     enabled: collectionId !== null,
-    staleTime: STALE_1H,
+    staleTime: STALE_3H,
   });
 }
 
@@ -408,7 +508,7 @@ export function useTvUniverse(showIds: readonly number[], enabled = true) {
     queryKey: ["tmdb", "tv-universe", key],
     queryFn: () => getTvUniverse([...showIds]),
     enabled: enabled && showIds.length > 0,
-    staleTime: STALE_1H,
+    staleTime: STALE_3H,
   });
 }
 
@@ -424,7 +524,7 @@ export function useWatchProviders(region = "NL") {
   return useQuery<StreamingProvider[]>({
     queryKey: ["tmdb", "watch-providers", region],
     queryFn: () => getWatchProviders(region),
-    staleTime: STALE_1H * 24,
+    staleTime: STALE_3H * 24,
     placeholderData: [],
   });
 }
@@ -435,7 +535,7 @@ export function useProviderMovies(providerId: number | null, region = "NL") {
     queryKey: ["tmdb", "provider-movies", providerId, region],
     queryFn: () => getMoviesByProvider(providerId!, region),
     enabled: providerId !== null,
-    staleTime: STALE_1H,
+    staleTime: STALE_3H,
     placeholderData: [],
   });
 }
@@ -446,7 +546,7 @@ export function useProviderSeries(providerId: number | null, region = "NL") {
     queryKey: ["tmdb", "provider-series", providerId, region],
     queryFn: () => getTvByProvider(providerId!, region),
     enabled: providerId !== null,
-    staleTime: STALE_1H,
+    staleTime: STALE_3H,
     placeholderData: [],
   });
 }
@@ -458,7 +558,7 @@ export function useCountryMovies(countryCode: string | null) {
     queryKey: ["tmdb", "country-movies", country],
     queryFn: () => getMoviesByCountry(country, 12),
     enabled: country.length >= 2,
-    staleTime: STALE_1H,
+    staleTime: STALE_3H,
     placeholderData: [],
   });
 }
@@ -470,7 +570,7 @@ export function useCountrySeries(countryCode: string | null) {
     queryKey: ["tmdb", "country-series", country],
     queryFn: () => getTvByCountry(country, 12),
     enabled: country.length >= 2,
-    staleTime: STALE_1H,
+    staleTime: STALE_3H,
     placeholderData: [],
   });
 }
@@ -485,7 +585,7 @@ export function useTvByNetwork(networkId: number, enabled = true) {
   return useQuery<Series[]>({
     queryKey: ["tmdb", "tv-by-network", networkId],
     queryFn: () => getTvByNetwork(networkId, 5),
-    staleTime: STALE_1H,
+    staleTime: STALE_3H,
     enabled: enabled && networkId > 0,
     placeholderData: [],
   });
@@ -499,7 +599,7 @@ export function useTvByNetworkKids(networkId: number, enabled = true) {
   return useQuery<Series[]>({
     queryKey: ["tmdb", "tv-by-network-kids", networkId],
     queryFn: () => getTvByNetworkKids(networkId, 5),
-    staleTime: STALE_1H,
+    staleTime: STALE_3H,
     enabled: enabled && networkId > 0,
     placeholderData: [],
   });
@@ -515,7 +615,7 @@ export function useMoviesByCompany(companyIds: number[], enabled = true) {
   return useQuery<Movie[]>({
     queryKey: ["tmdb", "movies-by-company", key],
     queryFn: () => getMoviesByCompany(companyIds, 5),
-    staleTime: STALE_1H,
+    staleTime: STALE_3H,
     enabled: enabled && companyIds.length > 0,
     placeholderData: [],
   });
@@ -533,7 +633,7 @@ export function useMoviesFromYearRange(
   return useQuery<Movie[]>({
     queryKey: ["tmdb", "movies-year-range", fromYear, toYear],
     queryFn: () => getMoviesFromYearRange(fromYear, toYear, 4),
-    staleTime: STALE_1H,
+    staleTime: STALE_3H,
     enabled,
     placeholderData: [],
   });
@@ -544,7 +644,7 @@ export function useUpcomingMovies(enabled = true) {
   return useQuery<Movie[]>({
     queryKey: ["tmdb", "upcoming-movies"],
     queryFn: () => getUpcomingMovies(3),
-    staleTime: STALE_5MIN,
+    staleTime: STALE_15MIN,
     enabled,
     placeholderData: [],
   });

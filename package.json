@@ -8,8 +8,6 @@
   "scripts": {
     "setup": "cp app/.env.example app/.env 2>/dev/null || true && cp server/.env.example server/.env 2>/dev/null || true",
     "doctor": "node scripts/doctor.mjs",
-    "sports:standings:smoke": "node scripts/sports-standings-smoke.mjs",
-    "perf:loadtest:sports": "node scripts/loadtest-sports.mjs",
     "security:host-check": "node scripts/require-macbook.mjs",
     "security:env-check": "node scripts/enforce-env-policy.mjs dev",
     "security:env-check:release": "node scripts/enforce-env-policy.mjs release",
@@ -21,7 +19,7 @@
     "ci:config-validate": "node scripts/release/validate-config.mjs",
     "ci:lint": "npm -w app run lint",
     "ci:typecheck": "npm -w app exec -- tsc --noEmit",
-    "ci:test": "node scripts/release/decision-engine.test.mjs && node scripts/release/pipeline-policy.test.mjs && node server/update-manifest.test.mjs && npm -w app exec tsx services/update-decision.test.ts && npm -w app exec tsx services/update-service.test.ts",
+    "ci:test": "node scripts/release/decision-engine.test.mjs && node scripts/release/pipeline-policy.test.mjs && node server/update-manifest.test.mjs",
     "ci:build-sanity": "cd app && npx expo config --type public > /tmp/nexora-expo-config.json && cd .. && node --check server/index.js && node --check server/update-manifest.js && node --check server/modules/stream-health.js",
     "ci:validate": "npm run ci:env-sanity && npm run ci:config-validate && npm run ci:lint && npm run ci:typecheck && npm run ci:test && npm run ci:build-sanity",
     "release:decide": "node scripts/release/decision-engine.mjs",

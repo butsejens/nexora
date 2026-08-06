@@ -90,7 +90,7 @@ export default function TabLayout() {
       screenOptions={{ headerShown: false }}
     >
       <Tabs.Screen name="home" options={{ title: "Home" }} />
-      <Tabs.Screen name="live-tv" options={{ href: null }} />
+      <Tabs.Screen name="live-tv" options={{ title: "Live TV" }} />
       <Tabs.Screen name="series" options={{ title: "Series" }} />
       <Tabs.Screen name="movies" options={{ title: "Films" }} />
       <Tabs.Screen name="kids" options={{ title: "Kids" }} />
@@ -98,7 +98,7 @@ export default function TabLayout() {
       <Tabs.Screen name="studios" options={{ title: "Studios" }} />
       <Tabs.Screen name="my-list" options={{ title: "Mijn lijst" }} />
       <Tabs.Screen name="search" options={{ href: null }} />
-      <Tabs.Screen name="more" options={{ href: null }} />
+      <Tabs.Screen name="more" options={{ title: "Menu", href: null }} />
       <Tabs.Screen name="smart-feed" options={{ href: null }} />
       <Tabs.Screen name="downloads" options={{ href: null }} />
       <Tabs.Screen name="favorites" options={{ href: null }} />

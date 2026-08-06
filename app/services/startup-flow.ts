@@ -77,15 +77,15 @@ export function resolveIntroVariant(
 export function getIntroTimings(variant: IntroVariant): StartupTimings {
   if (variant === "extended") {
     return {
-      minDurationMs: 1800,
-      maxDurationMs: 4500,
-      skipAfterMs: 1000,
+      minDurationMs: 3200,
+      maxDurationMs: 7000,
+      skipAfterMs: 2500,
     };
   }
 
   return {
-    minDurationMs: 600,
-    maxDurationMs: 2500,
+    minDurationMs: 900,
+    maxDurationMs: 3000,
     skipAfterMs: 0,
   };
 }

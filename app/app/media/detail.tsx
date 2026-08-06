@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Dimensions,
   FlatList,
+  Linking,
   Modal,
   Platform,
   RefreshControl,
@@ -30,6 +31,7 @@ import { buildTrailerCandidates } from "@/features/media/services/trailerService
 import { RealContentCard } from "@/components/RealContentCard";
 import { useTranslation } from "@/lib/useTranslation";
 import { logSelfHealing, validateBeforePlay } from "@/core/self-healing";
+import { resolveBestHeaderUri } from "@/core/self-healing/imageFallback";
 
 function toMediaType(value: string | undefined): "movie" | "series" {
   return value === "series" ? "series" : "movie";
@@ -71,14 +73,15 @@ function toPoster(raw: any) {
 }
 
 function toBackdrop(raw: any) {
-  return (
+  const highestQualityBackdrop =
     normalizeTmdbImage(raw?.backdropUri, "original") ||
     normalizeTmdbImage(raw?.backdrop, "original") ||
     normalizeTmdbImage(raw?.backdrop_path, "original") ||
-    normalizeTmdbImage(raw?.posterUri, "w1280") ||
-    normalizeTmdbImage(raw?.poster, "w1280") ||
-    null
-  );
+    normalizeTmdbImage(raw?.posterUri, "original") ||
+    normalizeTmdbImage(raw?.poster, "original") ||
+    null;
+
+  return highestQualityBackdrop ? resolveBestHeaderUri(highestQualityBackdrop) : null;
 }
 
 function toTrailerKey(raw: any): string {
@@ -277,9 +280,6 @@ export default function MediaDetailScreen() {
 
   const id = String(params.id || "").trim();
   const numericRouteTmdbId = parseNumericTmdbId(id);
-  // Favorites must always be stored/checked using the plain numeric TMDB id,
-  // never the "tmdb_m_"/"tmdb_s_" prefixed route id, or My List can't resolve them.
-  const favoriteId = numericRouteTmdbId || id;
   const type = toMediaType(params.type);
 
   useEffect(() => {
@@ -319,7 +319,7 @@ export default function MediaDetailScreen() {
   const [episodeQuery, setEpisodeQuery] = useState("");
   const [episodesModalOpen, setEpisodesModalOpen] = useState(false);
   const [trailerFailedAll, setTrailerFailedAll] = useState(false);
-  const faved = isFavorite(favoriteId, type);
+  const faved = isFavorite(id, type);
 
   const detailQuery = useQuery({
     queryKey: ["media-detail-v2", type, id],
@@ -540,16 +540,12 @@ export default function MediaDetailScreen() {
   }, [id, type]);
 
   const activeTrailerKey = trailerKeys[trailerCandidateIndex] || "";
+  const trailerWatchUrl = activeTrailerKey
+    ? `https://www.youtube.com/watch?v=${encodeURIComponent(activeTrailerKey)}`
+    : "";
   const trailerUrl = activeTrailerKey && !trailerFailedAll
     ? `https://www.youtube-nocookie.com/embed/${encodeURIComponent(activeTrailerKey)}?autoplay=1&playsinline=1&rel=0&modestbranding=1&controls=1`
     : "";
-  // Loading the embed URL directly as a top-level WebView navigation sends no
-  // referrer/origin, which YouTube's player rejects with error 153. Wrapping it
-  // in an iframe on a youtube.com baseUrl satisfies the origin check instead.
-  const trailerHtml = useMemo(() => {
-    if (!trailerUrl) return "";
-    return `<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"><style>html,body{margin:0;padding:0;background:#000;height:100%;overflow:hidden;}iframe{position:absolute;top:0;left:0;width:100%;height:100%;border:0;}</style></head><body><iframe src="${trailerUrl}" allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen></iframe></body></html>`;
-  }, [trailerUrl]);
   const hasTrailer = trailerKeys.length > 0;
   const trailerLoading =
     trailerKeys.length === 0 && trailerFallbackQuery.isLoading;
@@ -563,6 +559,18 @@ export default function MediaDetailScreen() {
       return current + 1;
     });
   }, [trailerKeys.length]);
+
+  const openOriginalTrailer = useCallback(async () => {
+    if (!trailerWatchUrl) return;
+    try {
+      const supported = await Linking.canOpenURL(trailerWatchUrl);
+      if (supported) {
+        await Linking.openURL(trailerWatchUrl);
+      }
+    } catch {
+      // Ignore launcher errors for fallback action.
+    }
+  }, [trailerWatchUrl]);
 
   useEffect(() => {
     setWebTrailerReady(false);
@@ -846,7 +854,7 @@ export default function MediaDetailScreen() {
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.myListBtn}
-                onPress={() => toggleFavorite(favoriteId, type)}
+                onPress={() => toggleFavorite(id, type)}
               >
                 <Ionicons
                   name={faved ? "checkmark" : "add"}
@@ -1409,12 +1417,20 @@ export default function MediaDetailScreen() {
         <View style={styles.trailerModal}>
           <View style={[styles.trailerHeader, { paddingTop: insets.top + 6 }]}>
             <Text style={styles.trailerHeaderTitle}>Trailer</Text>
-            <TouchableOpacity
-              onPress={() => setTrailerOpen(false)}
-              style={styles.closeBtn}
-            >
-              <Ionicons name="close" size={18} color="#fff" />
-            </TouchableOpacity>
+            <View style={styles.trailerHeaderActions}>
+              {trailerWatchUrl ? (
+                <TouchableOpacity onPress={openOriginalTrailer} style={styles.trailerExternalBtn}>
+                  <Ionicons name="open-outline" size={16} color="#fff" />
+                  <Text style={styles.trailerExternalText}>YouTube</Text>
+                </TouchableOpacity>
+              ) : null}
+              <TouchableOpacity
+                onPress={() => setTrailerOpen(false)}
+                style={styles.closeBtn}
+              >
+                <Ionicons name="close" size={18} color="#fff" />
+              </TouchableOpacity>
+            </View>
           </View>
           {trailerUrl ? (
             Platform.OS === "web" ? (
@@ -1433,9 +1449,8 @@ export default function MediaDetailScreen() {
             ) : (
               <WebView
                 key={activeTrailerKey}
-                source={{ html: trailerHtml, baseUrl: "https://www.youtube.com" }}
+                source={{ uri: trailerUrl }}
                 style={styles.trailerWebView}
-                originWhitelist={["*"]}
                 allowsInlineMediaPlayback
                 mediaPlaybackRequiresUserAction={false}
                 javaScriptEnabled
@@ -1450,6 +1465,11 @@ export default function MediaDetailScreen() {
           ) : (
             <View style={styles.trailerFallback}>
               <Text style={styles.emptyText}>Trailer unavailable.</Text>
+              {trailerWatchUrl ? (
+                <TouchableOpacity style={styles.trailerFallbackBtn} onPress={openOriginalTrailer}>
+                  <Text style={styles.trailerFallbackBtnText}>Open originele trailer</Text>
+                </TouchableOpacity>
+              ) : null}
             </View>
           )}
         </View>
@@ -2114,6 +2134,25 @@ const styles = StyleSheet.create({
     fontFamily: "Inter_700Bold",
     fontSize: 15,
   },
+  trailerHeaderActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  trailerExternalBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: 999,
+    backgroundColor: "rgba(255,255,255,0.14)",
+  },
+  trailerExternalText: {
+    color: "#fff",
+    fontFamily: "Inter_700Bold",
+    fontSize: 12,
+  },
   closeBtn: {
     width: 34,
     height: 34,
@@ -2123,7 +2162,18 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(255,255,255,0.1)",
   },
   trailerWebView: { flex: 1, backgroundColor: "#000" },
-  trailerFallback: { flex: 1, alignItems: "center", justifyContent: "center" },
+  trailerFallback: { flex: 1, alignItems: "center", justifyContent: "center", gap: 12 },
+  trailerFallbackBtn: {
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    borderRadius: 999,
+    backgroundColor: "rgba(255,255,255,0.14)",
+  },
+  trailerFallbackBtnText: {
+    color: "#fff",
+    fontFamily: "Inter_700Bold",
+    fontSize: 13,
+  },
 
   trailerCard: {
     borderRadius: 14,

@@ -80,7 +80,13 @@ export async function validateApkAvailability(metadata: LatestApkMetadata): Prom
 
   const resolvedContentType = safeString(headResponse.headers.get("content-type")).toLowerCase() || null;
   const resolvedContentLength = safeNumber(headResponse.headers.get("content-length"), 0);
-  const contentTypeOk = Boolean(resolvedContentType && resolvedContentType.includes("android.package-archive"));
+  const contentTypeOk = Boolean(
+    resolvedContentType
+      && (
+        resolvedContentType.includes("android.package-archive")
+        || resolvedContentType.includes("application/octet-stream")
+      ),
+  );
   const contentLengthOk = resolvedContentLength <= 0 || Math.abs(resolvedContentLength - metadata.fileSizeBytes) < 2048;
 
   if (!contentTypeOk) {

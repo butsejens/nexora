@@ -774,6 +774,19 @@ export async function getMatchDetail(
     raw?.events ?? matchRaw?.events ?? [],
     match.id,
   );
+  const homeTeamName =
+    typeof matchRaw?.homeTeam === "string"
+      ? matchRaw.homeTeam
+      : typeof match?.homeTeam === "string"
+        ? match.homeTeam
+        : (match?.homeTeam as any)?.name ?? "";
+  const awayTeamName =
+    typeof matchRaw?.awayTeam === "string"
+      ? matchRaw.awayTeam
+      : typeof match?.awayTeam === "string"
+        ? match.awayTeam
+        : (match?.awayTeam as any)?.name ?? "";
+
   const lineups = normalizeMatchLineups(
     raw?.lineups ??
       matchRaw?.lineups ??
@@ -782,8 +795,8 @@ export async function getMatchDetail(
       null,
     match.id,
     {
-      homeTeamName: matchRaw?.homeTeam || match?.homeTeam?.name || "",
-      awayTeamName: matchRaw?.awayTeam || match?.awayTeam?.name || "",
+      homeTeamName,
+      awayTeamName,
     },
   );
 
@@ -801,7 +814,7 @@ export async function getMatchDetail(
     analysisInput: buildAnalysisInput(match, events, stats),
     meta: {
       primarySource: "espn",
-      mergedSources: match.sofascoreId ? ["espn", "sofascore"] : ["espn"],
+      mergedSources: ["espn"],
       fetchedAt: new Date().toISOString(),
       confidence: 1,
     },
@@ -813,22 +826,33 @@ function buildAnalysisInput(
   events: MatchEvent[],
   stats: MatchStats | null,
 ): MatchAnalysisInput {
+  const homeTeamName =
+    typeof match.homeTeam === "string"
+      ? match.homeTeam
+      : match.homeTeam?.name ?? null;
+  const awayTeamName =
+    typeof match.awayTeam === "string"
+      ? match.awayTeam
+      : match.awayTeam?.name ?? null;
+  const competition = match.competition?.displayName ?? match.competitionId?.displayName;
+
   return {
     matchId: match.id,
-    homeTeam: match.homeTeam.name,
-    awayTeam: match.awayTeam.name,
-    competition: match.competition.displayName,
-    homeScore: match.score.home,
-    awayScore: match.score.away,
+    homeTeam: homeTeamName,
+    awayTeam: awayTeamName,
+    competition: competition ? { displayName: competition } : null,
+    homeScore: match.score?.home ?? null,
+    awayScore: match.score?.away ?? null,
     isLive: match.status === "live",
     minute: (match as any).minute ?? null,
     events: events.map((e) => ({
+      id: e.id,
       minute: e.minute,
       type: e.type,
       team: e.team,
       player: e.playerName ?? undefined,
     })),
-    stats: stats?.entries,
+    stats: Array.isArray(stats?.entries) ? stats.entries : undefined,
   };
 }
 
@@ -1193,9 +1217,22 @@ export async function getMatchDetailFull(params: {
     lineupsRaw ??
     null;
 
+  const homeTeamName =
+    typeof matchRaw?.homeTeam === "string"
+      ? matchRaw.homeTeam
+      : typeof match?.homeTeam === "string"
+        ? match.homeTeam
+        : (match?.homeTeam as any)?.name ?? "";
+  const awayTeamName =
+    typeof matchRaw?.awayTeam === "string"
+      ? matchRaw.awayTeam
+      : typeof match?.awayTeam === "string"
+        ? match.awayTeam
+        : (match?.awayTeam as any)?.name ?? "";
+
   const lineups = normalizeMatchLineups(lineupsSource, match.id, {
-    homeTeamName: matchRaw?.homeTeam || match?.homeTeam?.name || "",
-    awayTeamName: matchRaw?.awayTeam || match?.awayTeam?.name || "",
+    homeTeamName,
+    awayTeamName,
   });
 
   let stats: MatchStats | null = null;

@@ -334,13 +334,14 @@ export function deduplicateById<T extends { id: EntityId }>(items: T[]): T[] {
 /**
  * Deduplicate leaderboard rows by player name + team (when no id available).
  */
-export function deduplicateLeaderboard<T extends { player: { name: string; teamName?: string | null } }>(
+export function deduplicateLeaderboard<T extends { player: { name?: string | null; teamName?: string | null } }>(
   rows: T[],
 ): T[] {
   const seen = new Set<string>();
   const out: T[] = [];
   for (const row of rows) {
-    const key = `${normalize(row.player.name)}|${normalize(row.player.teamName ?? "")}`;
+    const playerName = row.player.name ?? "";
+    const key = `${normalize(playerName)}|${normalize(row.player.teamName ?? "")}`;
     if (!seen.has(key)) {
       seen.add(key);
       out.push(row);

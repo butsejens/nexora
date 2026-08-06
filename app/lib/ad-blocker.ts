@@ -140,6 +140,46 @@ export function isAllowedNavigation(url: string): boolean {
   return true;
 }
 
+/**
+ * Live TV-specific navigation guard that keeps users on the main stream page
+ * while blocking popup/ad redirects from the embedded provider sites.
+ */
+export function shouldAllowLiveTvNavigation(url: string): boolean {
+  const value = String(url || "").trim();
+  if (!value) return false;
+  if (!/^https?:\/\//i.test(value)) return false;
+
+  const lower = value.toLowerCase();
+  if (isBlockedUrl(lower)) return false;
+  if (isBlockedPath(lower)) return false;
+
+  if (/(\/ads\/|\/ad\/|[?&](?:ads|ad)=|\/adserv|popunder|popclick|clickunder|casino|gambling|betting|slot[_-]|poker|roulette|jackpot|spin[_-]?wheel|bonus[_-]?game|free[_-]?spin)/i.test(lower)) {
+    return false;
+  }
+
+  return true;
+}
+
+export type LiveTvStreamOption = {
+  id: string;
+  label: string;
+  url: string;
+  priority?: number;
+};
+
+export function pickBestLiveTvStream(options: LiveTvStreamOption[]): LiveTvStreamOption | null {
+  if (!Array.isArray(options) || options.length === 0) return null;
+
+  return [...options]
+    .filter((option) => Boolean(option?.url))
+    .sort((left, right) => {
+      const leftPriority = Number(left.priority ?? 999);
+      const rightPriority = Number(right.priority ?? 999);
+      if (leftPriority !== rightPriority) return leftPriority - rightPriority;
+      return left.label.localeCompare(right.label);
+    })[0] ?? null;
+}
+
 /** Content keywords that indicate an ad takeover page */
 const AD_CONTENT_KEYWORDS = [
   "casino",

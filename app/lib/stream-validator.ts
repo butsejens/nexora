@@ -81,20 +81,31 @@ export async function probeDirectStream(
   const tag = "probe";
 
   try {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    const probeRequest = async (method: "HEAD" | "GET") => {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), timeoutMs);
+      try {
+        const response = await fetch(url, {
+          method,
+          signal: controller.signal,
+          redirect: "follow",
+          headers: {
+            "User-Agent":
+              "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15",
+            ...(method === "GET" ? { Range: "bytes=0-2048" } : {}),
+          },
+        });
+        return response;
+      } finally {
+        clearTimeout(timer);
+      }
+    };
 
-    const response = await fetch(url, {
-      method: "HEAD",
-      signal: controller.signal,
-      redirect: "follow",
-      headers: {
-        "User-Agent":
-          "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15",
-      },
-    });
+    let response = await probeRequest("HEAD");
+    if (!response.ok && [400, 403, 405, 406, 415, 500, 501].includes(response.status)) {
+      response = await probeRequest("GET");
+    }
 
-    clearTimeout(timer);
     const elapsed = Date.now() - start;
     const contentType = (
       response.headers.get("content-type") || ""
