@@ -22,24 +22,46 @@ jobs:
       EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
       EXPO_PUBLIC_API_BASE: ${{ secrets.EXPO_PUBLIC_API_BASE }}
     steps:
+      - name: Check OTA credentials
+        id: creds
+        run: |
+          if [ -z "${EXPO_TOKEN}" ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            {
+              echo "## OTA skipped"
+              echo ""
+              echo "\`EXPO_TOKEN\` is not configured in repository secrets."
+              echo "Add an Expo/EAS access token as \`EXPO_TOKEN\` to enable OTA publishes."
+              echo "Validation and other release routes are unaffected."
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "::notice title=OTA skipped::EXPO_TOKEN secret is not configured; OTA publish was skipped."
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Checkout
+        if: steps.creds.outputs.skip != 'true'
         uses: actions/checkout@v4
         with:
           ref: ${{ inputs.commit_sha }}
 
       - name: Setup Node.js
+        if: steps.creds.outputs.skip != 'true'
         uses: actions/setup-node@v4
         with:
           node-version: "20"
           cache: npm
 
       - name: Install dependencies
+        if: steps.creds.outputs.skip != 'true'
         run: npm ci --ignore-scripts
 
       - name: Validate release env
+        if: steps.creds.outputs.skip != 'true'
         run: node scripts/release/validate-release-env.mjs release ota
 
       - name: Publish OTA to production channel
+        if: steps.creds.outputs.skip != 'true'
         working-directory: app
         run: |
           npx eas-cli update \
@@ -47,11 +69,13 @@ jobs:
             --message "ota:${{ github.sha }}"
 
       - name: Update release metadata
+        if: steps.creds.outputs.skip != 'true'
         run: |
           VERSION=$(node -e "console.log(require('./app/app.json').expo.version)")
           node scripts/release/update-release-metadata.mjs ota "$VERSION" "${{ github.sha }}" "${{ inputs.route }}"
 
       - name: Commit metadata update
+        if: steps.creds.outputs.skip != 'true'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
