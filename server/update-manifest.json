@@ -1,32 +1,32 @@
 {
   "schemaVersion": 2,
   "native": {
-    "version": "1.0.18",
-    "versionCode": 10018,
-    "buildId": "android-1.0.18",
+    "version": "1.0.19",
+    "versionCode": 10019,
+    "buildId": "android-1.0.19",
     "required": false,
-    "releasedAt": "2026-08-06T20:54:34.983Z",
+    "releasedAt": "2026-08-06T21:13:03.939Z",
     "notes": [
-      "Native build published for 1.0.18",
-      "Commit: b3d7d219cf6e60a5940922d169fae678ccacdc9e",
+      "Native build published for 1.0.19",
+      "Commit: 684815eb8358424c95d26d8e403dc3a16e424aeb",
       "Runtime/OTA channel aligned for automatic Expo Updates"
     ],
     "apk": {
       "available": true,
       "provider": "github-releases",
       "source": "github",
-      "downloadUrl": "https://github.com/butsejens/nexora/releases/download/v1.0.18/nexora-v1.0.18.apk",
-      "url": "https://github.com/butsejens/nexora/releases/download/v1.0.18/nexora-v1.0.18.apk",
-      "fileName": "nexora-v1.0.18.apk",
+      "downloadUrl": "https://github.com/butsejens/nexora/releases/download/v1.0.19/nexora-v1.0.19.apk",
+      "url": "https://github.com/butsejens/nexora/releases/download/v1.0.19/nexora-v1.0.19.apk",
+      "fileName": "nexora-v1.0.19.apk",
       "contentType": "application/vnd.android.package-archive",
-      "fileSizeBytes": 156842156,
+      "fileSizeBytes": 156843364,
       "fileSizeLabel": "150 MB",
-      "versionName": "1.0.18",
-      "versionCode": 10018,
-      "buildId": "android-1.0.18",
-      "checksumSha256": "cf6c1fc532e3132d0f9edf527b524577b67dd3c042526b3d53095701eb40fe28",
+      "versionName": "1.0.19",
+      "versionCode": 10019,
+      "buildId": "android-1.0.19",
+      "checksumSha256": "a0b4b7c300caab34fc970f7a00b0778c043fdd849298097d74e5008b193bb9bb",
       "signature": null,
-      "validatedAt": "2026-08-06T20:54:34.983Z",
+      "validatedAt": "2026-08-06T21:13:03.939Z",
       "unavailableReason": null,
       "fallbackMessage": "Download de nieuwste APK via de GitHub releases pagina als de download niet werkt."
     }
@@ -47,6 +47,6 @@
     "manifestUrl": null,
     "otaUrl": null,
     "nativeUrl": null,
-    "apkDownloadUrl": "https://github.com/butsejens/nexora/releases/download/v1.0.18/nexora-v1.0.18.apk"
+    "apkDownloadUrl": "https://github.com/butsejens/nexora/releases/download/v1.0.19/nexora-v1.0.19.apk"
   }
 }
