@@ -33,9 +33,9 @@
   },
   "ota": {
     "channel": "production",
-    "runtimeVersion": "1.0.8",
+    "runtimeVersion": "1.0.19",
     "strategy": "expo-updates",
-    "releasedAt": "2026-08-06T20:54:35.702Z"
+    "releasedAt": "2026-08-07T23:16:01.825Z"
   },
   "server": {
     "version": "1.0.13",

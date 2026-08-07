@@ -1,6 +1,14 @@
 {
   "runs": [
     {
+      "at": "2026-08-07T23:16:01.825Z",
+      "mode": "ota",
+      "route": "ota",
+      "version": "1.0.19",
+      "commitSha": "49361c970ab09eab0450f36e19301338e20b8c6e",
+      "apkUrl": null
+    },
+    {
       "at": "2026-08-06T21:13:03.939Z",
       "mode": "apk",
       "route": "apk",
