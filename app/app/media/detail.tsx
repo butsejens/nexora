@@ -3,9 +3,7 @@ import {
   ActivityIndicator,
   Dimensions,
   FlatList,
-  Linking,
   Modal,
-  Platform,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -20,7 +18,6 @@ import { useQuery } from "@tanstack/react-query";
 import { Ionicons } from "@expo/vector-icons";
 import { Image as ExpoImage } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
-import WebView from "react-native-webview";
 
 import { COLORS } from "@/constants/colors";
 import { apiRequest } from "@/lib/query-client";
@@ -29,6 +26,7 @@ import { useNexora } from "@/context/NexoraContext";
 import { streamLog } from "@/lib/stream-logger";
 import { buildTrailerCandidates } from "@/features/media/services/trailerService";
 import { RealContentCard } from "@/components/RealContentCard";
+import { YouTubeTrailerPlayer } from "@/components/YouTubeTrailerPlayer";
 import { useTranslation } from "@/lib/useTranslation";
 import { logSelfHealing, validateBeforePlay } from "@/core/self-healing";
 import { resolveBestHeaderUri } from "@/core/self-healing/imageFallback";
@@ -318,7 +316,6 @@ export default function MediaDetailScreen() {
   const [seasonSheetOpen, setSeasonSheetOpen] = useState(false);
   const [episodeQuery, setEpisodeQuery] = useState("");
   const [episodesModalOpen, setEpisodesModalOpen] = useState(false);
-  const [trailerFailedAll, setTrailerFailedAll] = useState(false);
   const faved = isFavorite(id, type);
 
   const detailQuery = useQuery({
@@ -531,62 +528,9 @@ export default function MediaDetailScreen() {
     return Array.from(keys);
   }, [trailerKeysFromDetail, trailerFallbackQuery.data]);
 
-  const [trailerCandidateIndex, setTrailerCandidateIndex] = useState(0);
-  const [webTrailerReady, setWebTrailerReady] = useState(false);
-
-  useEffect(() => {
-    setTrailerCandidateIndex(0);
-    setTrailerFailedAll(false);
-  }, [id, type]);
-
-  const activeTrailerKey = trailerKeys[trailerCandidateIndex] || "";
-  const trailerWatchUrl = activeTrailerKey
-    ? `https://www.youtube.com/watch?v=${encodeURIComponent(activeTrailerKey)}`
-    : "";
-  const trailerUrl = activeTrailerKey && !trailerFailedAll
-    ? `https://www.youtube-nocookie.com/embed/${encodeURIComponent(activeTrailerKey)}?autoplay=1&playsinline=1&rel=0&modestbranding=1&controls=1`
-    : "";
   const hasTrailer = trailerKeys.length > 0;
   const trailerLoading =
     trailerKeys.length === 0 && trailerFallbackQuery.isLoading;
-
-  const handleTrailerWebError = useCallback(() => {
-    setTrailerCandidateIndex((current) => {
-      if (current >= trailerKeys.length - 1) {
-        setTrailerFailedAll(true);
-        return current;
-      }
-      return current + 1;
-    });
-  }, [trailerKeys.length]);
-
-  const openOriginalTrailer = useCallback(async () => {
-    if (!trailerWatchUrl) return;
-    try {
-      const supported = await Linking.canOpenURL(trailerWatchUrl);
-      if (supported) {
-        await Linking.openURL(trailerWatchUrl);
-      }
-    } catch {
-      // Ignore launcher errors for fallback action.
-    }
-  }, [trailerWatchUrl]);
-
-  useEffect(() => {
-    setWebTrailerReady(false);
-  }, [activeTrailerKey, trailerOpen]);
-
-  useEffect(() => {
-    if (!trailerOpen || Platform.OS !== "web" || !trailerUrl) return;
-
-    const watchdog = setTimeout(() => {
-      if (!webTrailerReady) {
-        handleTrailerWebError();
-      }
-    }, 12_000);
-
-    return () => clearTimeout(watchdog);
-  }, [handleTrailerWebError, trailerOpen, trailerUrl, webTrailerReady]);
 
   const handlePlayEpisode = useCallback(
     (seasonNum: number, episodeNum: number) => {
@@ -902,8 +846,6 @@ export default function MediaDetailScreen() {
                 ]}
                 onPress={() => {
                   if (!hasTrailer) return;
-                  setTrailerFailedAll(false);
-                  setTrailerCandidateIndex(0);
                   setTrailerOpen(true);
                 }}
                 disabled={!hasTrailer && !trailerLoading}
@@ -1450,12 +1392,6 @@ export default function MediaDetailScreen() {
           <View style={[styles.trailerHeader, { paddingTop: insets.top + 6 }]}>
             <Text style={styles.trailerHeaderTitle}>Trailer</Text>
             <View style={styles.trailerHeaderActions}>
-              {trailerWatchUrl ? (
-                <TouchableOpacity onPress={openOriginalTrailer} style={styles.trailerExternalBtn}>
-                  <Ionicons name="open-outline" size={16} color="#fff" />
-                  <Text style={styles.trailerExternalText}>YouTube</Text>
-                </TouchableOpacity>
-              ) : null}
               <TouchableOpacity
                 onPress={() => setTrailerOpen(false)}
                 style={styles.closeBtn}
@@ -1464,44 +1400,14 @@ export default function MediaDetailScreen() {
               </TouchableOpacity>
             </View>
           </View>
-          {trailerUrl ? (
-            Platform.OS === "web" ? (
-              <View style={styles.trailerWebView}>
-                <iframe
-                  key={activeTrailerKey}
-                  title="Trailer player"
-                  src={trailerUrl}
-                  style={{ width: "100%", height: "100%", border: 0 }}
-                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                  allowFullScreen
-                  onLoad={() => setWebTrailerReady(true)}
-                  onError={handleTrailerWebError}
-                />
-              </View>
-            ) : (
-              <WebView
-                key={activeTrailerKey}
-                source={{ uri: trailerUrl }}
-                style={styles.trailerWebView}
-                allowsInlineMediaPlayback
-                mediaPlaybackRequiresUserAction={false}
-                javaScriptEnabled
-                domStorageEnabled
-                javaScriptCanOpenWindowsAutomatically={false}
-                setSupportMultipleWindows={false}
-                allowsBackForwardNavigationGestures={false}
-                onError={handleTrailerWebError}
-                onHttpError={handleTrailerWebError}
-              />
-            )
+          {hasTrailer ? (
+            <YouTubeTrailerPlayer
+              videoKeys={trailerKeys}
+              style={styles.trailerWebView}
+            />
           ) : (
             <View style={styles.trailerFallback}>
               <Text style={styles.emptyText}>Trailer unavailable.</Text>
-              {trailerWatchUrl ? (
-                <TouchableOpacity style={styles.trailerFallbackBtn} onPress={openOriginalTrailer}>
-                  <Text style={styles.trailerFallbackBtnText}>Open originele trailer</Text>
-                </TouchableOpacity>
-              ) : null}
             </View>
           )}
         </View>
@@ -2171,20 +2077,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 8,
   },
-  trailerExternalBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    paddingHorizontal: 10,
-    paddingVertical: 7,
-    borderRadius: 999,
-    backgroundColor: "rgba(255,255,255,0.14)",
-  },
-  trailerExternalText: {
-    color: "#fff",
-    fontFamily: "Inter_700Bold",
-    fontSize: 12,
-  },
   closeBtn: {
     width: 34,
     height: 34,
@@ -2195,17 +2087,6 @@ const styles = StyleSheet.create({
   },
   trailerWebView: { flex: 1, backgroundColor: "#000" },
   trailerFallback: { flex: 1, alignItems: "center", justifyContent: "center", gap: 12 },
-  trailerFallbackBtn: {
-    paddingHorizontal: 14,
-    paddingVertical: 9,
-    borderRadius: 999,
-    backgroundColor: "rgba(255,255,255,0.14)",
-  },
-  trailerFallbackBtnText: {
-    color: "#fff",
-    fontFamily: "Inter_700Bold",
-    fontSize: 13,
-  },
 
   trailerCard: {
     borderRadius: 14,

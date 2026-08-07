@@ -3,18 +3,13 @@
  * Premium movie & series detail page with episodes, cast, and add-to-list.
  */
 import React, {
-  useEffect,
-  useRef,
   useMemo,
   useState,
 } from "react";
 import {
-  ActivityIndicator,
   Dimensions,
   FlatList,
-  Linking,
   Modal,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -30,6 +25,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { COLORS } from "@/constants/colors";
 import { useNexora } from "@/context/NexoraContext";
 import { streamLog } from "@/lib/stream-logger";
+import { YouTubeTrailerPlayer } from "@/components/YouTubeTrailerPlayer";
 import {
   useMovieDetail,
   useTvDetail,
@@ -1357,73 +1353,6 @@ function TrailerModal({
   visible: boolean;
   onClose: () => void;
 }) {
-  const [activeIndex, setActiveIndex] = useState(0);
-  const [failedAll, setFailedAll] = useState(false);
-  const [webReady, setWebReady] = useState(false);
-  const currentKey = String(videoKeys[activeIndex] || "").trim();
-  const embedUri = currentKey
-    ? `https://www.youtube-nocookie.com/embed/${encodeURIComponent(currentKey)}?autoplay=1&rel=0&modestbranding=1&playsinline=1&controls=1`
-    : "";
-  const watchUri = currentKey
-    ? `https://www.youtube.com/watch?v=${encodeURIComponent(currentKey)}`
-    : "";
-  const [WebView, setWebView] = useState<any>(null);
-  const iframeRef = useRef<any>(null);
-
-  useEffect(() => {
-    if (!visible) return;
-    setActiveIndex(0);
-    setWebReady(false);
-    setFailedAll(false);
-  }, [visible, videoKeys]);
-
-  useEffect(() => {
-    if (!visible) return;
-    setWebReady(false);
-  }, [visible, currentKey]);
-
-  useEffect(() => {
-    if (!visible || Platform.OS !== "web" || !embedUri) return;
-    const timer = setTimeout(() => {
-      if (!webReady) {
-        setActiveIndex((index) => {
-          if (index < videoKeys.length - 1) return index + 1;
-          setFailedAll(true);
-          return index;
-        });
-      }
-    }, 6000);
-    return () => clearTimeout(timer);
-  }, [embedUri, videoKeys.length, visible, webReady]);
-
-  const handleTrailerError = () => {
-    setActiveIndex((index) => {
-      if (index < videoKeys.length - 1) return index + 1;
-      setFailedAll(true);
-      return index;
-    });
-  };
-
-  const openOriginalTrailer = async () => {
-    if (!watchUri) return;
-    try {
-      const supported = await Linking.canOpenURL(watchUri);
-      if (supported) {
-        await Linking.openURL(watchUri);
-      }
-    } catch {
-      // Ignore fallback launcher errors.
-    }
-  };
-
-  // Load WebView lazily on native so the bundle stays lightweight on web
-  useEffect(() => {
-    if (Platform.OS === "web" || !visible) return;
-    import("react-native-webview")
-      .then((mod) => setWebView(() => mod.WebView ?? mod.default))
-      .catch(() => {});
-  }, [visible]);
-
   return (
     <Modal
       visible={visible}
@@ -1435,7 +1364,6 @@ function TrailerModal({
     >
       <View style={trailerStyles.overlay}>
         <View style={trailerStyles.sheet}>
-          {/* Close bar */}
           <Pressable style={trailerStyles.closeRow} onPress={onClose}>
             <View style={trailerStyles.handle} />
             <Ionicons
@@ -1446,49 +1374,10 @@ function TrailerModal({
             />
           </Pressable>
 
-          {/* Player */}
           <View style={trailerStyles.playerBox}>
-            {embedUri && !failedAll && Platform.OS === "web" ? (
-              // @ts-ignore — web-only iframe
-              <iframe
-                ref={iframeRef}
-                src={embedUri}
-                allow="autoplay; fullscreen; encrypted-media; picture-in-picture"
-                allowFullScreen
-                onLoad={() => setWebReady(true)}
-                onError={handleTrailerError}
-                style={{
-                  width: "100%",
-                  height: "100%",
-                  border: "none",
-                  backgroundColor: "#000",
-                }}
-              />
-            ) : embedUri && !failedAll && WebView ? (
-              <WebView
-                source={{ uri: embedUri }}
-                style={{ flex: 1, backgroundColor: "#000" }}
-                allowsInlineMediaPlayback
-                allowsFullscreenVideo
-                mediaPlaybackRequiresUserAction={false}
-                javaScriptEnabled
-                domStorageEnabled
-                androidLayerType="hardware"
-                onError={handleTrailerError}
-                onHttpError={handleTrailerError}
-                userAgent="Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1"
-              />
-            ) : (
-              <View style={trailerStyles.loading}>
-                <ActivityIndicator size="large" color={COLORS.accent} />
-                <Text style={trailerStyles.fallbackText}>
-                  Trailer kon niet in-app worden geladen.
-                </Text>
-                <Pressable style={trailerStyles.fallbackBtn} onPress={openOriginalTrailer}>
-                  <Text style={trailerStyles.fallbackBtnText}>Open originele trailer</Text>
-                </Pressable>
-              </View>
-            )}
+            {visible ? (
+              <YouTubeTrailerPlayer videoKeys={videoKeys} style={{ flex: 1 }} />
+            ) : null}
           </View>
         </View>
       </View>
@@ -1534,29 +1423,5 @@ const trailerStyles = StyleSheet.create({
     width: TRAILER_W,
     height: TRAILER_H,
     backgroundColor: "#000",
-  },
-  loading: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 12,
-    paddingHorizontal: 20,
-  },
-  fallbackText: {
-    color: COLORS.textSecondary,
-    fontSize: 13,
-    fontFamily: "Inter_500Medium",
-    textAlign: "center",
-  },
-  fallbackBtn: {
-    paddingHorizontal: 14,
-    paddingVertical: 9,
-    borderRadius: 999,
-    backgroundColor: "rgba(255,255,255,0.12)",
-  },
-  fallbackBtnText: {
-    color: COLORS.text,
-    fontSize: 13,
-    fontFamily: "Inter_700Bold",
   },
 });
