@@ -116,27 +116,25 @@ export const TYPE = {
   label: { fontFamily: FONTS.semibold, fontSize: 12, lineHeight: 16 },
 } as const;
 
+/**
+ * `boxShadow` replaces the per-platform `shadow*` props, which react-native-web
+ * deprecated and which never rendered consistently on Android.
+ */
 export const SHADOWS = {
   card: {
-    shadowColor: "#000",
-    shadowOpacity: 0.4,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 6,
+    boxShadow: [
+      { offsetX: 0, offsetY: 6, blurRadius: 12, color: "rgba(0, 0, 0, 0.4)" },
+    ],
   },
   raised: {
-    shadowColor: "#000",
-    shadowOpacity: 0.5,
-    shadowRadius: 24,
-    shadowOffset: { width: 0, height: 12 },
-    elevation: 12,
+    boxShadow: [
+      { offsetX: 0, offsetY: 12, blurRadius: 24, color: "rgba(0, 0, 0, 0.5)" },
+    ],
   },
   accent: {
-    shadowColor: COLORS.accent,
-    shadowOpacity: 0.45,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 8,
+    boxShadow: [
+      { offsetX: 0, offsetY: 6, blurRadius: 16, color: COLORS.accentGlow },
+    ],
   },
 } as const;
 
