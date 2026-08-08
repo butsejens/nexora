@@ -1,54 +1,57 @@
-import React, { Component, ComponentType, PropsWithChildren } from "react";
-import { ErrorFallback, ErrorFallbackProps } from "@/components/ErrorFallback";
-
-export type ErrorBoundaryProps = PropsWithChildren<{
-  FallbackComponent?: ComponentType<ErrorFallbackProps>;
-  onError?: (error: Error, stackTrace: string) => void;
-}>;
-
-type ErrorBoundaryState = { error: Error | null };
-
 /**
- * This is a special case for for using the class components. Error boundaries must be class components because React only provides error boundary functionality through lifecycle methods (componentDidCatch and getDerivedStateFromError) which are not available in functional components.
+ * CineLog — top-level error boundary.
+ *
+ * Error boundaries have to be class components: React only exposes
+ * `getDerivedStateFromError` / `componentDidCatch` through lifecycle methods.
  * https://react.dev/reference/react/Component#catching-rendering-errors-with-an-error-boundary
  */
 
+import React, { Component, type PropsWithChildren } from "react";
+import { StyleSheet, View } from "react-native";
+
+import { ErrorState } from "@/components/ui/States";
+import { COLORS } from "@/constants/theme";
+
+type ErrorBoundaryState = { error: Error | null };
+
 export class ErrorBoundary extends Component<
-  ErrorBoundaryProps,
+  PropsWithChildren,
   ErrorBoundaryState
 > {
   state: ErrorBoundaryState = { error: null };
-
-  static defaultProps: {
-    FallbackComponent: ComponentType<ErrorFallbackProps>;
-  } = {
-    FallbackComponent: ErrorFallback,
-  };
 
   static getDerivedStateFromError(error: Error): ErrorBoundaryState {
     return { error };
   }
 
-  componentDidCatch(error: Error, info: { componentStack: string }): void {
-    if (typeof this.props.onError === "function") {
-      this.props.onError(error, info.componentStack);
-    }
+  componentDidCatch(error: Error): void {
+    if (__DEV__) console.error("[cinelog] unhandled render error", error);
   }
 
-  resetError = (): void => {
+  private reset = (): void => {
     this.setState({ error: null });
   };
 
   render() {
-    const { FallbackComponent } = this.props;
+    if (!this.state.error) return this.props.children;
 
-    return this.state.error && FallbackComponent ? (
-      <FallbackComponent
-        error={this.state.error}
-        resetError={this.resetError}
-      />
-    ) : (
-      this.props.children
+    return (
+      <View style={styles.root}>
+        <ErrorState
+          title="CineLog hit a snag"
+          message="Something unexpected happened while rendering this screen. Reloading usually fixes it."
+          onRetry={this.reset}
+        />
+      </View>
     );
   }
 }
+
+const styles = StyleSheet.create({
+  root: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: COLORS.background,
+  },
+});
