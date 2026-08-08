@@ -1,20 +1,18 @@
 /**
  * CineLog — media data layer.
  *
- * Two transports, one set of normalizers:
+ * Talks to the CineLog media API, which holds the TMDB key server-side and
+ * already caches upstream responses. A single tolerant set of parsers turns
+ * those payloads into CineLog types.
  *
- *  1. CineLog API (default) — `/api/media/*`, which keeps `TMDB_API_KEY` on the
- *     server, adds shared caching and never exposes a key to the client.
- *  2. Direct TMDB — used only when `EXPO_PUBLIC_TMDB_API_KEY` is set, which
- *     removes a network hop for standalone builds shipped without a backend.
- *
- * The parsers below accept both the CineLog envelope shape (camelCase, absolute
- * image URLs) and raw TMDB shapes (snake_case, bare image paths), so switching
- * transport needs no changes anywhere else in the app.
+ * Setting `EXPO_PUBLIC_TMDB_API_KEY` switches the transport to TMDB directly,
+ * which standalone builds shipped without a backend can use. The parsers accept
+ * both shapes (camelCase with absolute image URLs, or raw snake_case TMDB), so
+ * nothing else in the app changes between the two modes.
  */
 
 import { ENV, hasDirectTmdbKey } from "@/constants/env";
-import { apiData } from "@/lib/http";
+import { apiData, apiJson } from "@/lib/http";
 import { genreNames } from "@/lib/cinelog/genres";
 import type {
   CastMember,
@@ -39,8 +37,14 @@ import type {
 const TMDB_BASE = "https://api.themoviedb.org/3";
 const TMDB_IMAGE_BASE = "https://image.tmdb.org/t/p";
 
-/** Minimum TMDB votes required before a title is considered list-worthy. */
+/** Below this vote count a TMDB score isn't meaningful enough to rank on. */
 const MIN_VOTES = 50;
+
+/**
+ * People search needs TMDB's `/search/person`, which the media API doesn't
+ * expose, so the People tab only appears when the direct transport is enabled.
+ */
+export const supportsPeopleSearch = hasDirectTmdbKey;
 
 type RawRecord = Record<string, unknown>;
 
@@ -85,7 +89,7 @@ function num(value: unknown): number {
 function image(value: unknown, size: string): string | null {
   const path = str(value);
   if (!path) return null;
-  // CineLog API returns absolute URLs; TMDB returns "/abc.jpg".
+  // The media API returns absolute URLs; TMDB returns "/abc.jpg".
   if (path.startsWith("http")) return path;
   return `${TMDB_IMAGE_BASE}/${size}${path}`;
 }
@@ -113,20 +117,17 @@ function toGenreIds(value: unknown): number[] {
     .filter((id) => id > 0);
 }
 
-function toGenreLabels(value: unknown, ids: number[]): string[] {
-  if (Array.isArray(value)) {
-    const names = value
-      .map((entry) => {
-        if (typeof entry === "string") return entry;
-        if (entry && typeof entry === "object" && "name" in entry) {
-          return str((entry as RawRecord).name);
-        }
-        return "";
-      })
-      .filter(Boolean);
-    if (names.length > 0) return names;
-  }
-  return genreNames(ids);
+function toNames(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((entry) => {
+      if (typeof entry === "string") return entry;
+      if (entry && typeof entry === "object" && "name" in entry) {
+        return str((entry as RawRecord).name);
+      }
+      return "";
+    })
+    .filter(Boolean);
 }
 
 // ── Normalizers ──────────────────────────────────────────────────────────────
@@ -150,10 +151,14 @@ export function parseSummary(
   if (!tmdbId) return null;
 
   const type = inferType(raw, fallbackType);
-  const title = str(raw.title || raw.name || raw.original_title || raw.original_name);
+  const title = str(
+    raw.title || raw.name || raw.original_title || raw.original_name,
+  );
   if (!title) return null;
 
   const genreIds = toGenreIds(raw.genreIds ?? raw.genre_ids ?? raw.genres);
+  // The media API exposes genre names as `genre`; TMDB detail uses `genres`.
+  const genreLabels = toNames(raw.genre ?? raw.genres);
 
   return {
     id: `${type}:${tmdbId}`,
@@ -173,11 +178,15 @@ export function parseSummary(
     rating: Math.round(num(raw.rating ?? raw.vote_average) * 10) / 10,
     voteCount: num(raw.voteCount ?? raw.vote_count),
     genreIds,
-    genres: toGenreLabels(raw.genres, genreIds),
+    genres: genreLabels.length > 0 ? genreLabels : genreNames(genreIds),
     popularity: num(raw.popularity),
     releaseDate:
-      str(raw.releaseDate ?? raw.release_date ?? raw.firstAirDate ?? raw.first_air_date) ||
-      null,
+      str(
+        raw.releaseDate ??
+          raw.release_date ??
+          raw.firstAirDate ??
+          raw.first_air_date,
+      ) || null,
   };
 }
 
@@ -197,14 +206,32 @@ function parseSummaries(
   return out;
 }
 
-/** Drop entries without artwork or with too few votes to be meaningful. */
+/**
+ * Drop entries that would render as a broken card. Vote counts are only
+ * enforced when the payload includes them, since the media API's list shape
+ * omits them.
+ */
 function presentable(items: MediaSummary[], requireVotes = true): MediaSummary[] {
   return items.filter(
     (item) =>
       Boolean(item.poster) &&
       item.year > 0 &&
+      item.rating > 0 &&
       (!requireVotes || item.voteCount === 0 || item.voteCount >= MIN_VOTES),
   );
+}
+
+function mergeUnique(...lists: MediaSummary[][]): MediaSummary[] {
+  const seen = new Set<string>();
+  const out: MediaSummary[] = [];
+  for (const list of lists) {
+    for (const item of list) {
+      if (seen.has(item.id)) continue;
+      seen.add(item.id);
+      out.push(item);
+    }
+  }
+  return out;
 }
 
 function parseCast(input: unknown): CastMember[] {
@@ -245,7 +272,7 @@ function parseTrailers(input: unknown): Trailer[] {
     .map((entry) => {
       const raw = (entry ?? {}) as RawRecord;
       const site = str(raw.site);
-      // CineLog API only ever returns YouTube trailers, so a missing site is fine.
+      // The media API only ever returns YouTube trailers, so it omits `site`.
       if (site && site.toLowerCase() !== "youtube") return null;
       const key = str(raw.key);
       if (!key) return null;
@@ -257,11 +284,11 @@ function parseTrailers(input: unknown): Trailer[] {
       };
     })
     .filter((trailer): trailer is Trailer => trailer !== null)
-    .sort((a, b) => {
-      const rank = (t: Trailer) =>
-        (t.type === "Trailer" ? 0 : t.type === "Teaser" ? 1 : 2) +
-        (t.official ? 0 : 0.5);
-      return rank(a) - rank(b);
+    .sort((left, right) => {
+      const rank = (trailer: Trailer) =>
+        (trailer.type === "Trailer" ? 0 : trailer.type === "Teaser" ? 1 : 2) +
+        (trailer.official ? 0 : 0.5);
+      return rank(left) - rank(right);
     });
 }
 
@@ -282,7 +309,7 @@ function parseSeasonSummaries(input: unknown): SeasonSummary[] {
     })
     // Season 0 holds specials; the detail page lists real seasons only.
     .filter((season) => season.seasonNumber > 0)
-    .sort((a, b) => a.seasonNumber - b.seasonNumber);
+    .sort((left, right) => left.seasonNumber - right.seasonNumber);
 }
 
 function parseEpisodes(input: unknown, seasonNumber: number): Episode[] {
@@ -291,9 +318,11 @@ function parseEpisodes(input: unknown, seasonNumber: number): Episode[] {
     .map((entry) => {
       const raw = (entry ?? {}) as RawRecord;
       const tmdbId = num(raw.id);
-      const episodeNumber = num(raw.episodeNumber ?? raw.episode_number);
+      const episodeNumber = num(
+        raw.episodeNumber ?? raw.episode_number ?? raw.number,
+      );
       return {
-        id: `${tmdbId || `${seasonNumber}-${episodeNumber}`}`,
+        id: String(tmdbId || `${seasonNumber}-${episodeNumber}`),
         tmdbId,
         seasonNumber: num(raw.seasonNumber ?? raw.season_number) || seasonNumber,
         episodeNumber,
@@ -305,10 +334,11 @@ function parseEpisodes(input: unknown, seasonNumber: number): Episode[] {
         rating: Math.round(num(raw.rating ?? raw.vote_average) * 10) / 10,
       };
     })
-    .sort((a, b) => a.episodeNumber - b.episodeNumber);
+    .filter((episode) => episode.episodeNumber > 0)
+    .sort((left, right) => left.episodeNumber - right.episodeNumber);
 }
 
-/** Pick the US age certification from a TMDB release-dates/content-ratings block. */
+/** US age certification from a TMDB release-dates / content-ratings block. */
 function parseCertification(raw: RawRecord): string | null {
   const direct = str(raw.certification);
   if (direct) return direct;
@@ -320,7 +350,7 @@ function parseCertification(raw: RawRecord): string | null {
       const dates = Array.isArray(entry.release_dates)
         ? (entry.release_dates as RawRecord[])
         : [];
-      const found = dates.map((d) => str(d.certification)).find(Boolean);
+      const found = dates.map((date) => str(date.certification)).find(Boolean);
       if (found) return found;
     }
   }
@@ -337,10 +367,19 @@ function parseCertification(raw: RawRecord): string | null {
   return null;
 }
 
-function jobNames(crew: CrewMember[], job: string): string[] {
+function jobNames(crew: CrewMember[], ...jobs: string[]): string[] {
   return Array.from(
-    new Set(crew.filter((member) => member.job === job).map((m) => m.name)),
+    new Set(
+      crew.filter((member) => jobs.includes(member.job)).map((member) => member.name),
+    ),
   );
+}
+
+function nested(raw: RawRecord, key: string): unknown {
+  const value = raw[key];
+  if (Array.isArray(value)) return value;
+  if (value && typeof value === "object") return (value as RawRecord).results;
+  return undefined;
 }
 
 function parseMovieDetail(input: unknown): TitleDetail<Movie> {
@@ -351,7 +390,6 @@ function parseMovieDetail(input: unknown): TitleDetail<Movie> {
   const credits = (raw.credits as RawRecord | undefined) ?? {};
   const cast = parseCast(raw.cast ?? credits.cast);
   const crew = parseCrew(raw.crew ?? credits.crew);
-  const videos = (raw.videos as RawRecord | undefined)?.results;
 
   const movie: Movie = {
     ...summary,
@@ -362,27 +400,17 @@ function parseMovieDetail(input: unknown): TitleDetail<Movie> {
     certification: parseCertification(raw),
     imdbId: str(raw.imdbId ?? raw.imdb_id) || null,
     directors: jobNames(crew, "Director"),
-    writers: [...jobNames(crew, "Writer"), ...jobNames(crew, "Screenplay")],
+    writers: jobNames(crew, "Writer", "Screenplay"),
   };
 
   return {
     title: movie,
     cast,
     crew,
-    trailers: parseTrailers(raw.trailers ?? videos),
-    similar: presentable(
-      parseSummaries(
-        raw.similar ?? (raw.similar as RawRecord | undefined)?.results,
-        "movie",
-      ),
-      false,
-    ),
+    trailers: parseTrailers(raw.trailers ?? nested(raw, "videos")),
+    similar: presentable(parseSummaries(nested(raw, "similar"), "movie"), false),
     recommendations: presentable(
-      parseSummaries(
-        raw.recommendations ??
-          (raw.recommendations as RawRecord | undefined)?.results,
-        "movie",
-      ),
+      parseSummaries(nested(raw, "recommendations"), "movie"),
       false,
     ),
   };
@@ -397,9 +425,8 @@ function parseSeriesDetail(input: unknown): TitleDetail<Series> {
   const credits = (raw.credits as RawRecord | undefined) ?? {};
   const cast = parseCast(raw.cast ?? aggregate.cast ?? credits.cast);
   const crew = parseCrew(raw.crew ?? credits.crew);
-  const videos = (raw.videos as RawRecord | undefined)?.results;
   const runtimes = Array.isArray(raw.episode_run_time)
-    ? (raw.episode_run_time as number[])
+    ? (raw.episode_run_time as unknown[])
     : [];
 
   const series: Series = {
@@ -409,10 +436,8 @@ function parseSeriesDetail(input: unknown): TitleDetail<Series> {
     episodeCount: num(raw.episodeCount ?? raw.number_of_episodes),
     status: str(raw.status) || null,
     certification: parseCertification(raw),
-    networks: toGenreLabels(raw.networks, []),
-    creators: Array.isArray(raw.created_by)
-      ? (raw.created_by as RawRecord[]).map((c) => str(c.name)).filter(Boolean)
-      : jobNames(crew, "Creator"),
+    networks: toNames(raw.networks),
+    creators: toNames(raw.created_by),
     episodeRuntime: num(raw.episodeRuntime) || num(runtimes[0]),
     lastAirDate: str(raw.lastAirDate ?? raw.last_air_date) || null,
     seasons: parseSeasonSummaries(raw.seasons),
@@ -422,20 +447,10 @@ function parseSeriesDetail(input: unknown): TitleDetail<Series> {
     title: series,
     cast,
     crew,
-    trailers: parseTrailers(raw.trailers ?? videos),
-    similar: presentable(
-      parseSummaries(
-        raw.similar ?? (raw.similar as RawRecord | undefined)?.results,
-        "series",
-      ),
-      false,
-    ),
+    trailers: parseTrailers(raw.trailers ?? nested(raw, "videos")),
+    similar: presentable(parseSummaries(nested(raw, "similar"), "series"), false),
     recommendations: presentable(
-      parseSummaries(
-        raw.recommendations ??
-          (raw.recommendations as RawRecord | undefined)?.results,
-        "series",
-      ),
+      parseSummaries(nested(raw, "recommendations"), "series"),
       false,
     ),
   };
@@ -447,92 +462,188 @@ function parsePersonResult(input: unknown): PersonResult | null {
   const id = num(raw.id);
   const name = str(raw.name);
   if (!id || !name) return null;
-  const knownFor = Array.isArray(raw.knownForTitles)
-    ? (raw.knownForTitles as unknown[]).map(str).filter(Boolean)
-    : Array.isArray(raw.known_for)
-      ? (raw.known_for as RawRecord[])
-          .map((entry) => str(entry.title || entry.name))
-          .filter(Boolean)
-      : [];
   return {
     id,
     name,
     photo: image(raw.photo ?? raw.profile_path, "w300"),
     knownForDepartment:
       str(raw.knownForDepartment ?? raw.known_for_department) || null,
-    knownForTitles: knownFor.slice(0, 3),
+    knownForTitles: (Array.isArray(raw.known_for)
+      ? (raw.known_for as RawRecord[]).map((entry) =>
+          str(entry.title || entry.name),
+        )
+      : []
+    )
+      .filter(Boolean)
+      .slice(0, 3),
   };
 }
 
-function parsePaged(
+// ── Curated collections ──────────────────────────────────────────────────────
+
+/**
+ * Both the media API and TMDB expose curated collections as fixed first pages.
+ * The API bundles all of a media type's collections into one cached response, so
+ * the whole home screen costs two requests.
+ */
+export interface MovieCollections {
+  trending: MediaSummary[];
+  popular: MediaSummary[];
+  now_playing: MediaSummary[];
+  top_rated: MediaSummary[];
+  upcoming: MediaSummary[];
+}
+
+export interface SeriesCollections {
+  trending: MediaSummary[];
+  popular: MediaSummary[];
+  airing_now: MediaSummary[];
+  top_rated: MediaSummary[];
+  new_series: MediaSummary[];
+}
+
+function assertNonEmpty<T extends Record<string, MediaSummary[]>>(bundle: T): T {
+  const total = Object.values(bundle).reduce((sum, list) => sum + list.length, 0);
+  if (total === 0) {
+    throw new Error("The media API returned no titles.");
+  }
+  return bundle;
+}
+
+export async function fetchMovieCollections(): Promise<MovieCollections> {
+  if (hasDirectTmdbKey) {
+    const [trending, popular, nowPlaying, topRated, upcoming] = await Promise.all([
+      tmdbDirect<RawRecord>("/trending/movie/week"),
+      tmdbDirect<RawRecord>("/movie/popular"),
+      tmdbDirect<RawRecord>("/movie/now_playing"),
+      tmdbDirect<RawRecord>("/movie/top_rated"),
+      tmdbDirect<RawRecord>("/movie/upcoming"),
+    ]);
+    return assertNonEmpty({
+      trending: presentable(parseSummaries(trending.results, "movie")),
+      popular: presentable(parseSummaries(popular.results, "movie")),
+      now_playing: presentable(parseSummaries(nowPlaying.results, "movie")),
+      top_rated: presentable(parseSummaries(topRated.results, "movie")),
+      upcoming: presentable(parseSummaries(upcoming.results, "movie"), false),
+    });
+  }
+
+  const data = await apiJson<RawRecord>("/api/movies/trending");
+  return assertNonEmpty({
+    trending: presentable(parseSummaries(data.trending, "movie")),
+    popular: presentable(parseSummaries(data.popular, "movie")),
+    now_playing: presentable(parseSummaries(data.newReleases, "movie")),
+    // `acclaimed` is TMDB discover filtered to 8+ ratings with 1000+ votes,
+    // which extends the curated top-rated page without diluting it.
+    top_rated: mergeUnique(
+      presentable(parseSummaries(data.topRated, "movie")),
+      presentable(parseSummaries(data.acclaimed, "movie")),
+    ),
+    upcoming: presentable(parseSummaries(data.upcoming, "movie"), false),
+  });
+}
+
+export async function fetchSeriesCollections(): Promise<SeriesCollections> {
+  if (hasDirectTmdbKey) {
+    const [trending, popular, onAir, topRated, newSeries] = await Promise.all([
+      tmdbDirect<RawRecord>("/trending/tv/week"),
+      tmdbDirect<RawRecord>("/tv/popular"),
+      tmdbDirect<RawRecord>("/tv/on_the_air"),
+      tmdbDirect<RawRecord>("/tv/top_rated"),
+      tmdbDirect<RawRecord>("/discover/tv", {
+        sort_by: "first_air_date.desc",
+        "vote_count.gte": 10,
+      }),
+    ]);
+    return assertNonEmpty({
+      trending: presentable(parseSummaries(trending.results, "series")),
+      popular: presentable(parseSummaries(popular.results, "series")),
+      airing_now: presentable(parseSummaries(onAir.results, "series")),
+      top_rated: presentable(parseSummaries(topRated.results, "series")),
+      new_series: presentable(parseSummaries(newSeries.results, "series")),
+    });
+  }
+
+  const data = await apiJson<RawRecord>("/api/series/trending");
+  return assertNonEmpty({
+    trending: presentable(parseSummaries(data.trending, "series")),
+    popular: presentable(parseSummaries(data.popular, "series")),
+    airing_now: presentable(parseSummaries(data.newReleases, "series")),
+    top_rated: mergeUnique(
+      presentable(parseSummaries(data.topRated, "series")),
+      presentable(parseSummaries(data.hiddenGems, "series")),
+    ),
+    new_series: presentable(parseSummaries(data.airingToday, "series")),
+  });
+}
+
+// ── Paginated browse ─────────────────────────────────────────────────────────
+
+/**
+ * Browse filters that can keep loading pages. The remaining filters are curated
+ * fixed-size collections, which the hooks serve from the bundles above.
+ */
+export const PAGINATED_MOVIE_LISTS: Partial<Record<MovieListKey, string>> = {
+  popular: "popularity.desc",
+};
+
+export const PAGINATED_SERIES_LISTS: Partial<Record<SeriesListKey, string>> = {
+  popular: "popularity.desc",
+  new_series: "first_air_date.desc",
+};
+
+function parseItemsPage(
   input: unknown,
-  fallbackType?: MediaType,
+  fallbackType: MediaType,
+  requireVotes = true,
 ): PagedResult<MediaSummary> {
   const raw = (input ?? {}) as RawRecord;
+  const results = presentable(
+    parseSummaries(raw.items ?? raw.results, fallbackType),
+    requireVotes,
+  );
   return {
     page: num(raw.page) || 1,
     totalPages: num(raw.totalPages ?? raw.total_pages) || 1,
-    totalResults: num(raw.totalResults ?? raw.total_results),
-    results: presentable(parseSummaries(raw.results, fallbackType)),
+    totalResults: num(raw.totalResults ?? raw.total_results) || results.length,
+    results,
   };
 }
 
-// ── Curated list definitions for the direct-TMDB transport ───────────────────
-
-const DIRECT_MOVIE_LISTS: Record<MovieListKey, string> = {
-  popular: "/movie/popular",
-  trending: "/trending/movie/week",
-  top_rated: "/movie/top_rated",
-  now_playing: "/movie/now_playing",
-  upcoming: "/movie/upcoming",
-};
-
-const DIRECT_SERIES_LISTS: Record<SeriesListKey, string> = {
-  popular: "/tv/popular",
-  trending: "/trending/tv/week",
-  top_rated: "/tv/top_rated",
-  airing_now: "/tv/on_the_air",
-  new_series: "/discover/tv",
-};
-
-function directNewSeriesParams(page: number) {
-  const from = new Date(Date.now() - 120 * 24 * 60 * 60 * 1000)
-    .toISOString()
-    .slice(0, 10);
-  return {
-    page,
-    sort_by: "popularity.desc",
-    "first_air_date.gte": from,
-    "vote_count.gte": 10,
-  };
-}
-
-// ── Public API ───────────────────────────────────────────────────────────────
-
-export async function fetchMovieList(
-  list: MovieListKey,
-  page = 1,
+export async function fetchMoviePage(
+  sortBy: string,
+  page: number,
 ): Promise<PagedResult<MediaSummary>> {
   if (hasDirectTmdbKey) {
-    const data = await tmdbDirect(DIRECT_MOVIE_LISTS[list], { page });
-    return parsePaged(data, "movie");
+    const data = await tmdbDirect<RawRecord>("/discover/movie", {
+      sort_by: sortBy,
+      "vote_count.gte": MIN_VOTES,
+      page,
+    });
+    return parseItemsPage(data, "movie");
   }
-  const data = await apiData(`/api/media/movies${query({ list, page })}`);
-  return parsePaged(data, "movie");
+  const data = await apiJson<RawRecord>(
+    `/api/movies/all${query({ sort_by: sortBy, page })}`,
+  );
+  return parseItemsPage(data, "movie");
 }
 
-export async function fetchSeriesList(
-  list: SeriesListKey,
-  page = 1,
+export async function fetchSeriesPage(
+  sortBy: string,
+  page: number,
 ): Promise<PagedResult<MediaSummary>> {
   if (hasDirectTmdbKey) {
-    const params =
-      list === "new_series" ? directNewSeriesParams(page) : { page };
-    const data = await tmdbDirect(DIRECT_SERIES_LISTS[list], params);
-    return parsePaged(data, "series");
+    const data = await tmdbDirect<RawRecord>("/discover/tv", {
+      sort_by: sortBy,
+      "vote_count.gte": MIN_VOTES,
+      page,
+    });
+    return parseItemsPage(data, "series");
   }
-  const data = await apiData(`/api/media/series${query({ list, page })}`);
-  return parsePaged(data, "series");
+  const data = await apiJson<RawRecord>(
+    `/api/series/all${query({ sort_by: sortBy, page })}`,
+  );
+  return parseItemsPage(data, "series");
 }
 
 export async function fetchMoviesByGenre(
@@ -540,18 +651,18 @@ export async function fetchMoviesByGenre(
   page = 1,
 ): Promise<PagedResult<MediaSummary>> {
   if (hasDirectTmdbKey) {
-    const data = await tmdbDirect("/discover/movie", {
+    const data = await tmdbDirect<RawRecord>("/discover/movie", {
       with_genres: genreId,
       sort_by: "popularity.desc",
       "vote_count.gte": MIN_VOTES,
       page,
     });
-    return parsePaged(data, "movie");
+    return parseItemsPage(data, "movie");
   }
-  const data = await apiData(
-    `/api/media/movies${query({ genre: genreId, page, min_votes: MIN_VOTES })}`,
+  const data = await apiData<RawRecord>(
+    `/api/media/movies${query({ genre: genreId, page, sort: "popularity.desc" })}`,
   );
-  return parsePaged(data, "movie");
+  return parseItemsPage(data, "movie");
 }
 
 export async function fetchSeriesByGenre(
@@ -559,43 +670,32 @@ export async function fetchSeriesByGenre(
   page = 1,
 ): Promise<PagedResult<MediaSummary>> {
   if (hasDirectTmdbKey) {
-    const data = await tmdbDirect("/discover/tv", {
+    const data = await tmdbDirect<RawRecord>("/discover/tv", {
       with_genres: genreId,
       sort_by: "popularity.desc",
       "vote_count.gte": MIN_VOTES,
       page,
     });
-    return parsePaged(data, "series");
+    return parseItemsPage(data, "series");
   }
-  const data = await apiData(
-    `/api/media/series${query({ genre: genreId, page, min_votes: MIN_VOTES })}`,
+  const data = await apiData<RawRecord>(
+    `/api/media/series${query({ genre: genreId, page, sort: "popularity.desc" })}`,
   );
-  return parsePaged(data, "series");
+  return parseItemsPage(data, "series");
 }
 
-/** Mixed movie + series trending feed used for the home hero and top rail. */
-export async function fetchTrending(): Promise<MediaSummary[]> {
-  if (hasDirectTmdbKey) {
-    const data = await tmdbDirect<{ results: unknown[] }>("/trending/all/week");
-    return presentable(parseSummaries(data.results));
-  }
-  const data = await apiData<{ results: unknown[] }>(
-    "/api/media/trending?type=all&window=week",
-  );
-  return presentable(parseSummaries(data.results));
-}
+// ── Detail ───────────────────────────────────────────────────────────────────
 
 export async function fetchMovieDetail(
   tmdbId: number,
 ): Promise<TitleDetail<Movie>> {
   if (hasDirectTmdbKey) {
-    const data = await tmdbDirect(`/movie/${tmdbId}`, {
-      append_to_response:
-        "credits,videos,recommendations,similar,release_dates",
+    const data = await tmdbDirect<RawRecord>(`/movie/${tmdbId}`, {
+      append_to_response: "credits,videos,recommendations,similar,release_dates",
     });
     return parseMovieDetail(data);
   }
-  const data = await apiData(`/api/media/movie/${tmdbId}`);
+  const data = await apiData<RawRecord>(`/api/media/movie/${tmdbId}`);
   return parseMovieDetail(data);
 }
 
@@ -603,13 +703,13 @@ export async function fetchSeriesDetail(
   tmdbId: number,
 ): Promise<TitleDetail<Series>> {
   if (hasDirectTmdbKey) {
-    const data = await tmdbDirect(`/tv/${tmdbId}`, {
+    const data = await tmdbDirect<RawRecord>(`/tv/${tmdbId}`, {
       append_to_response:
         "aggregate_credits,videos,recommendations,similar,content_ratings",
     });
     return parseSeriesDetail(data);
   }
-  const data = await apiData(`/api/media/series/${tmdbId}`);
+  const data = await apiData<RawRecord>(`/api/media/series/${tmdbId}`);
   return parseSeriesDetail(data);
 }
 
@@ -628,16 +728,16 @@ export async function fetchSeason(
   });
 
   if (hasDirectTmdbKey) {
-    const data = await tmdbDirect<RawRecord>(
-      `/tv/${seriesId}/season/${seasonNumber}`,
+    return build(
+      await tmdbDirect<RawRecord>(`/tv/${seriesId}/season/${seasonNumber}`),
     );
-    return build(data);
   }
-  const data = await apiData<RawRecord>(
-    `/api/media/series/${seriesId}/season/${seasonNumber}`,
+  return build(
+    await apiJson<RawRecord>(`/api/series/${seriesId}/season/${seasonNumber}`),
   );
-  return build(data);
 }
+
+// ── Search ───────────────────────────────────────────────────────────────────
 
 export async function searchMedia(
   queryText: string,
@@ -646,47 +746,49 @@ export async function searchMedia(
   const trimmed = queryText.trim();
   if (trimmed.length < 2) return { movies: [], series: [], people: [] };
 
-  const collect = (results: unknown[]): SearchResults => {
+  const byPopularity = (left: MediaSummary, right: MediaSummary) =>
+    right.popularity - left.popularity;
+
+  if (hasDirectTmdbKey) {
+    const data = await tmdbDirect<{ results?: unknown[] }>("/search/multi", {
+      query: trimmed,
+      page,
+    });
     const movies: MediaSummary[] = [];
     const series: MediaSummary[] = [];
     const people: PersonResult[] = [];
-    for (const entry of results) {
+    for (const entry of data.results ?? []) {
       const raw = (entry ?? {}) as RawRecord;
-      const kind = str(raw.type || raw.media_type).toLowerCase();
-      if (kind === "person") {
+      if (str(raw.media_type) === "person") {
         const person = parsePersonResult(raw);
         if (person) people.push(person);
         continue;
       }
       const summary = parseSummary(raw);
-      if (!summary || !summary.poster) continue;
+      if (!summary?.poster) continue;
       if (summary.type === "movie") movies.push(summary);
       else series.push(summary);
     }
-    const byPopularity = (a: MediaSummary, b: MediaSummary) =>
-      b.popularity - a.popularity;
     return {
       movies: movies.sort(byPopularity),
       series: series.sort(byPopularity),
       people,
     };
-  };
-
-  if (hasDirectTmdbKey) {
-    const data = await tmdbDirect<{ results: unknown[] }>("/search/multi", {
-      query: trimmed,
-      page,
-    });
-    return collect(data.results ?? []);
   }
-  const data = await apiData<{ results: unknown[] }>(
+
+  const data = await apiData<RawRecord>(
     `/api/media/search${query({ q: trimmed, type: "all", page })}`,
   );
-  return collect(data.results ?? []);
+  const all = parseSummaries(data.results);
+  return {
+    movies: all.filter((item) => item.type === "movie" && item.poster).sort(byPopularity),
+    series: all.filter((item) => item.type === "series" && item.poster).sort(byPopularity),
+    people: [],
+  };
 }
 
 export async function fetchPerson(personId: number): Promise<Person> {
-  const build = (raw: RawRecord): Person => ({
+  const build = (raw: RawRecord, knownFor: MediaSummary[]): Person => ({
     id: num(raw.id),
     name: str(raw.name),
     biography: str(raw.biography),
@@ -696,7 +798,7 @@ export async function fetchPerson(personId: number): Promise<Person> {
     knownForDepartment:
       str(raw.knownForDepartment ?? raw.known_for_department) || null,
     photo: image(raw.photo ?? raw.profile ?? raw.profile_path, "w500"),
-    knownFor: presentable(parseSummaries(raw.knownFor), false),
+    knownFor,
   });
 
   if (hasDirectTmdbKey) {
@@ -708,12 +810,13 @@ export async function fetchPerson(personId: number): Promise<Person> {
       parseSummaries(Array.isArray(credits) ? credits : []),
       false,
     )
-      .sort((a, b) => b.popularity - a.popularity)
+      .sort((left, right) => right.popularity - left.popularity)
       .slice(0, 18);
-    return { ...build(data), knownFor };
+    return build(data, knownFor);
   }
+
   const data = await apiData<RawRecord>(`/api/media/person/${personId}`);
-  return build(data);
+  return build(data, presentable(parseSummaries(data.knownFor), false));
 }
 
 /** Preferred trailer for a title, or `null` when none is published. */
@@ -722,16 +825,16 @@ export async function fetchPrimaryTrailer(
   tmdbId: number,
 ): Promise<Trailer | null> {
   if (hasDirectTmdbKey) {
-    const path = type === "movie" ? `/movie/${tmdbId}/videos` : `/tv/${tmdbId}/videos`;
-    const data = await tmdbDirect<{ results: unknown[] }>(path);
-    return parseTrailers(data.results)[0] ?? null;
+    const path =
+      type === "movie" ? `/movie/${tmdbId}/videos` : `/tv/${tmdbId}/videos`;
+    const data = await tmdbDirect<{ results?: unknown[] }>(path);
+    return parseTrailers(data.results ?? [])[0] ?? null;
   }
   const apiType = type === "movie" ? "movie" : "tv";
   const data = await apiData<RawRecord | null>(
     `/api/media/trailer/${apiType}/${tmdbId}`,
   );
-  if (!data) return null;
-  return parseTrailers([data])[0] ?? null;
+  return data ? (parseTrailers([data])[0] ?? null) : null;
 }
 
 export { MIN_VOTES };

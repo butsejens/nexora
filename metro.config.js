@@ -1,14 +1,9 @@
 /**
- * Monorepo root Metro config — used by expo-updates when building Android APK.
+ * Monorepo root Metro config — used by expo-updates when building the Android APK.
  *
- * The expo-updates Gradle plugin determines projectRoot as:
- *   project.rootProject.projectDir.parentFile  =>  nexora/android/../  =>  nexora/
- *
- * findUpProjectRoot(nexora/) finds nexora/package.json and returns nexora/ as
- * the project root, so Metro loads THIS file instead of app/metro.config.js.
- *
- * We delegate to the app workspace config so that:
- *  - The @/ alias resolves to nexora/app/ (not nexora/)
- *  - hashAssetFiles and all other Expo Metro plugins are correctly configured
+ * The expo-updates Gradle plugin resolves the project root as
+ * `android/../`, i.e. the monorepo root, so Metro loads this file rather than
+ * app/metro.config.js. Delegating keeps the `@/` alias pointing at app/ and
+ * keeps every Expo Metro plugin (hashAssetFiles and friends) configured.
  */
 module.exports = require("./app/metro.config");

@@ -1,0 +1,306 @@
+import React, { useCallback, useMemo } from "react";
+import { ScrollView, StyleSheet, Text, View } from "react-native";
+import { router } from "expo-router";
+
+import { Footer } from "@/components/layout/Footer";
+import { Carousel } from "@/components/media/Carousel";
+import { ContinueWatchingCard } from "@/components/media/ContinueWatchingCard";
+import { HeroBanner } from "@/components/media/HeroBanner";
+import { PosterCard } from "@/components/media/PosterCard";
+import { MobileHeader } from "@/components/navigation/MobileHeader";
+import { GenrePill } from "@/components/ui/GenrePill";
+import { Screen } from "@/components/ui/Screen";
+import { ErrorState } from "@/components/ui/States";
+import { COLORS, FONTS, SPACING } from "@/constants/theme";
+import { useResponsive } from "@/hooks/useResponsive";
+import { useTrailerPlayer } from "@/hooks/useTrailerPlayer";
+import { GENRES } from "@/lib/cinelog/genres";
+import { openTitle } from "@/lib/cinelog/navigation";
+import { useMovieRail, useSeriesRail, useTrending } from "@/lib/cinelog/queries";
+import {
+  becauseYouWatched,
+  buildTasteProfile,
+  recommendForYou,
+} from "@/lib/cinelog/recommendations";
+import type { MediaSummary } from "@/lib/cinelog/types";
+import { useAuth } from "@/store/auth-store";
+import {
+  selectContinueWatching,
+  useLibrary,
+  type LibraryState,
+} from "@/store/library-store";
+
+export default function HomeScreen() {
+  const { isMobile, gutter, railPosterWidth, width } = useResponsive();
+  const user = useAuth((state) => state.user);
+  const trailer = useTrailerPlayer();
+
+  const trending = useTrending();
+  const popularMovies = useMovieRail("popular");
+  const popularSeries = useSeriesRail("popular");
+  const newReleases = useMovieRail("now_playing");
+  const topRatedMovies = useMovieRail("top_rated");
+  const topRatedSeries = useSeriesRail("top_rated");
+
+  const continueWatching = useLibrary(selectContinueWatching);
+  const clearProgress = useLibrary((state) => state.clearProgress);
+  const toggleWatchlist = useLibrary((state) => state.toggleWatchlist);
+  const libraryState = useLibrary((state) => state);
+
+  const hero = trending.items.find((item) => item.backdrop) ?? trending.items[0] ?? null;
+  const heroInWatchlist = useLibrary((state) =>
+    hero ? state.isInWatchlist(hero.id) : false,
+  );
+
+  /** Everything currently loaded, used as the recommendation candidate pool. */
+  const candidates = useMemo<MediaSummary[]>(() => {
+    const pools = [
+      trending.items,
+      popularMovies.items,
+      popularSeries.items,
+      newReleases.items,
+      topRatedMovies.items,
+      topRatedSeries.items,
+    ];
+    const seen = new Set<string>();
+    const merged: MediaSummary[] = [];
+    for (const pool of pools) {
+      for (const item of pool) {
+        if (seen.has(item.id)) continue;
+        seen.add(item.id);
+        merged.push(item);
+      }
+    }
+    return merged;
+  }, [
+    trending.items,
+    popularMovies.items,
+    popularSeries.items,
+    newReleases.items,
+    topRatedMovies.items,
+    topRatedSeries.items,
+  ]);
+
+  const profile = useMemo(
+    () => buildTasteProfile(libraryState as LibraryState),
+    [libraryState],
+  );
+
+  const recommended = useMemo(
+    () => recommendForYou({ candidates, profile }),
+    [candidates, profile],
+  );
+
+  const becauseRail = useMemo(
+    () => becauseYouWatched(candidates, profile),
+    [candidates, profile],
+  );
+
+  const topRated = useMemo(() => {
+    const movies = topRatedMovies.items;
+    const series = topRatedSeries.items;
+    const mixed: MediaSummary[] = [];
+    for (let index = 0; index < Math.max(movies.length, series.length); index += 1) {
+      if (movies[index]) mixed.push(movies[index]);
+      if (series[index]) mixed.push(series[index]);
+    }
+    return mixed;
+  }, [topRatedMovies.items, topRatedSeries.items]);
+
+  const renderPoster = useCallback(
+    (item: MediaSummary) => (
+      <PosterCard
+        item={item}
+        width={railPosterWidth}
+        onPress={() => openTitle(item)}
+        onPlayTrailer={() =>
+          trailer.open({ type: item.type, tmdbId: item.tmdbId, title: item.title })
+        }
+      />
+    ),
+    [railPosterWidth, trailer],
+  );
+
+  const continueCardWidth = isMobile
+    ? Math.min(width - gutter * 2, 300)
+    : 320;
+
+  const heroUnavailable = trending.isError && trending.items.length === 0;
+
+  return (
+    <>
+      <Screen
+        reserveBottomNav
+        header={
+          isMobile ? (
+            <MobileHeader
+              onOpenProfile={() => router.push("/profile")}
+              gutter={gutter}
+              displayName={user?.displayName ?? "Guest"}
+              avatarUrl={user?.avatarUrl ?? null}
+            />
+          ) : null
+        }
+      >
+        {heroUnavailable ? (
+          <ErrorState onRetry={trending.refetch} />
+        ) : (
+          <HeroBanner
+            item={hero}
+            isLoading={trending.isLoading}
+            onOpen={() => hero && openTitle(hero)}
+            onWatchTrailer={() =>
+              hero &&
+              trailer.open({
+                type: hero.type,
+                tmdbId: hero.tmdbId,
+                title: hero.title,
+              })
+            }
+            onToggleWatchlist={() => hero && toggleWatchlist(hero)}
+            inWatchlist={heroInWatchlist}
+          />
+        )}
+
+        <View style={styles.rails}>
+          <Carousel
+            title="Trending Now"
+            items={trending.items}
+            isLoading={trending.isLoading}
+            itemWidth={railPosterWidth}
+            keyExtractor={(item) => item.id}
+            renderItem={renderPoster}
+          />
+
+          <Carousel
+            title="Popular Movies"
+            items={popularMovies.items}
+            isLoading={popularMovies.isLoading}
+            itemWidth={railPosterWidth}
+            keyExtractor={(item) => item.id}
+            renderItem={renderPoster}
+            onSeeAll={() => router.navigate("/(tabs)/movies")}
+          />
+
+          <Carousel
+            title="Popular Series"
+            items={popularSeries.items}
+            isLoading={popularSeries.isLoading}
+            itemWidth={railPosterWidth}
+            keyExtractor={(item) => item.id}
+            renderItem={renderPoster}
+            onSeeAll={() => router.navigate("/(tabs)/series")}
+          />
+
+          {continueWatching.length > 0 ? (
+            <Carousel
+              title="Continue Watching"
+              subtitle="Pick up where you left off"
+              items={continueWatching}
+              isLoading={false}
+              itemWidth={continueCardWidth}
+              keyExtractor={(item) => item.id}
+              renderItem={(item) => (
+                <ContinueWatchingCard
+                  progress={item}
+                  width={continueCardWidth}
+                  onPress={() => openTitle(item)}
+                  onRemove={() => clearProgress(item.id)}
+                />
+              )}
+            />
+          ) : null}
+
+          <Carousel
+            title="New Releases"
+            subtitle="In cinemas now"
+            items={newReleases.items}
+            isLoading={newReleases.isLoading}
+            itemWidth={railPosterWidth}
+            keyExtractor={(item) => item.id}
+            renderItem={renderPoster}
+          />
+
+          <Carousel
+            title="Top Rated"
+            items={topRated}
+            isLoading={topRatedMovies.isLoading || topRatedSeries.isLoading}
+            itemWidth={railPosterWidth}
+            keyExtractor={(item) => item.id}
+            renderItem={renderPoster}
+          />
+
+          <Carousel
+            title="Recommended For You"
+            subtitle={
+              profile.hasSignal
+                ? "Based on what you watch, rate and save"
+                : "Rate a few titles and this gets personal"
+            }
+            items={recommended.map((entry) => entry.item)}
+            isLoading={candidates.length === 0}
+            itemWidth={railPosterWidth}
+            keyExtractor={(item) => item.id}
+            renderItem={renderPoster}
+          />
+
+          {becauseRail ? (
+            <Carousel
+              title={`Because You Watched ${becauseRail.seed.title}`}
+              items={becauseRail.items}
+              isLoading={false}
+              itemWidth={railPosterWidth}
+              keyExtractor={(item) => item.id}
+              renderItem={renderPoster}
+            />
+          ) : null}
+
+          <View style={styles.genreBlock}>
+            <Text style={[styles.genreHeading, { paddingHorizontal: gutter }]}>
+              Browse by Genre
+            </Text>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={[styles.genreRow, { paddingHorizontal: gutter }]}
+            >
+              {GENRES.map((genre) => (
+                <GenrePill
+                  key={genre.slug}
+                  label={genre.label}
+                  onPress={() =>
+                    router.navigate({
+                      pathname: "/(tabs)/movies",
+                      params: { genre: genre.slug },
+                    } as never)
+                  }
+                />
+              ))}
+            </ScrollView>
+          </View>
+        </View>
+
+        <Footer />
+      </Screen>
+      {trailer.element}
+    </>
+  );
+}
+
+const styles = StyleSheet.create({
+  rails: {
+    gap: SPACING.xxl,
+    paddingTop: SPACING.xxl,
+  },
+  genreBlock: {
+    gap: SPACING.md,
+  },
+  genreHeading: {
+    fontFamily: FONTS.bold,
+    fontSize: 19,
+    color: COLORS.textPrimary,
+  },
+  genreRow: {
+    gap: SPACING.sm,
+  },
+});

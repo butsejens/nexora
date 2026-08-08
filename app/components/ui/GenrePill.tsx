@@ -3,9 +3,13 @@
  */
 
 import React from "react";
-import { Pressable, StyleSheet, Text } from "react-native";
+import {
+  StyleSheet,
+  Text,
+} from "react-native";
 
 import { COLORS, FONTS, RADIUS, SPACING } from "@/constants/theme";
+import { Pressable } from "@/components/ui/Pressable";
 
 export interface GenrePillProps {
   label: string;

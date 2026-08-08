@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "CINELOG",
-    "slug": "nexora-sports-stream",
+    "name": "CineLog",
+    "slug": "cinelog",
     "version": "1.0.19",
     "runtimeVersion": "1.0.8",
     "extra": {

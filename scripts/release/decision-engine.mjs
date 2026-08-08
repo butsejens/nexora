@@ -209,7 +209,7 @@ export function main() {
     return;
   }
 
-  console.log("=== NEXORA RELEASE DECISION ===");
+  console.log("=== CINELOG RELEASE DECISION ===");
   console.log(`Route: ${result.route}`);
   console.log(`Reason: ${result.reason}`);
   console.log(`Changed files: ${result.changedFiles.length}`);

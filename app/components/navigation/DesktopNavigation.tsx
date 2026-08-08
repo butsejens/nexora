@@ -5,13 +5,18 @@
  */
 
 import React from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import {
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 import { Image } from "expo-image";
 import { Ionicons } from "@expo/vector-icons";
 
 import { CineLogLogo } from "@/components/brand/CineLogLogo";
 import { NAV_ITEMS } from "@/components/navigation/navItems";
 import { COLORS, FONTS, LAYOUT, RADIUS, SPACING } from "@/constants/theme";
+import { Pressable } from "@/components/ui/Pressable";
 
 export interface DesktopNavigationProps {
   activeRoute: string;

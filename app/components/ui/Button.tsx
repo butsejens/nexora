@@ -8,7 +8,6 @@
 import React from "react";
 import {
   ActivityIndicator,
-  Pressable,
   StyleSheet,
   Text,
   View,
@@ -17,6 +16,7 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 
 import { COLORS, FONTS, RADIUS, SPACING } from "@/constants/theme";
+import { Pressable } from "@/components/ui/Pressable";
 
 export type ButtonVariant = "primary" | "secondary" | "ghost" | "danger";
 export type ButtonSize = "sm" | "md" | "lg";

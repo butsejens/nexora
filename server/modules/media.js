@@ -1,9 +1,9 @@
 /**
- * CineLog – Media API
+ * Nexora – Media API Routes (v2)
  *
- * The single Express router behind every movie and series screen in the app.
- * TMDB is the canonical upstream; the API key stays here and is never shipped
- * to the client. Raw TMDB shapes never leave this module.
+ * Clean Express Router for all movie/series endpoints.
+ * Uses TMDB as the canonical source; normalized canonical responses.
+ * Never passes raw TMDB shapes to the client.
  *
  * Mounts at: /api/media (registered in index.js)
  */
@@ -39,14 +39,8 @@ function isTmdbAvailable() {
   return Boolean(getTmdbKey());
 }
 
-const DEFAULT_LANGUAGE = "en-US";
-
 function tmdbUrl(path, params = {}) {
-  const q = new URLSearchParams({
-    api_key: getTmdbKey(),
-    language: DEFAULT_LANGUAGE,
-    ...params,
-  });
+  const q = new URLSearchParams({ api_key: getTmdbKey(), ...params });
   return `${TMDB_BASE}${path}?${q}`;
 }
 
@@ -228,78 +222,74 @@ function normalizeListItem(item) {
   };
 }
 
-function normalizePersonResult(item) {
-  if (!item) return null;
-  return {
-    id: item.id,
-    type: "person",
-    name: item.name ?? null,
-    photo: imgUrl(item.profile_path, "w300"),
-    knownForDepartment: item.known_for_department ?? null,
-    knownForTitles: (item.known_for ?? [])
-      .map((entry) => entry?.title ?? entry?.name)
-      .filter(Boolean)
-      .slice(0, 3),
-    popularity: item.popularity ?? null,
-    source: "tmdb",
-  };
-}
-
-// ─── Curated list endpoints ───────────────────────────────────────────────────
-
-/**
- * CineLog browse filters mapped onto TMDB's curated list endpoints. Discover
- * queries cannot reproduce these (e.g. `sort_by=vote_average.desc` without a
- * vote floor surfaces obscure titles with a single 10/10 vote), so each filter
- * points at the endpoint TMDB actually curates.
- */
-const MOVIE_LISTS = {
-  popular: "/movie/popular",
-  trending: "/trending/movie/week",
-  top_rated: "/movie/top_rated",
-  now_playing: "/movie/now_playing",
-  upcoming: "/movie/upcoming",
-};
-
-const SERIES_LISTS = {
-  popular: "/tv/popular",
-  trending: "/trending/tv/week",
-  top_rated: "/tv/top_rated",
-  airing_now: "/tv/on_the_air",
-  new_series: "/discover/tv",
-};
-
-/** Discover params used for the "New Series" filter (no TMDB list equivalent). */
-function newSeriesParams(page) {
-  const from = new Date(Date.now() - 120 * 24 * 60 * 60 * 1000)
-    .toISOString()
-    .slice(0, 10);
-  return {
-    page,
-    sort_by: "popularity.desc",
-    "first_air_date.gte": from,
-    "vote_count.gte": "10",
-  };
-}
-
-async function fetchCuratedList(endpoint, params, label) {
-  const data = await tmdb(endpoint, params, label);
-  return {
-    page: data.page ?? 1,
-    total_pages: Math.min(data.total_pages ?? 1, 500),
-    total_results: data.total_results ?? 0,
-    results: (data.results ?? []).map(normalizeListItem).filter(Boolean),
-  };
-}
-
 // ─── Routes ───────────────────────────────────────────────────────────────────
 
 /**
- * GET /api/media/movies?list=popular&page=1&genre=28&min_votes=200
- *
- * `list` selects one of TMDB's curated collections (popular, trending,
- * top_rated, now_playing, upcoming). When a genre is supplied the request falls
- * through to discover so the filter can be combined with the genre.
+ * GET /api/media/home
+ * Aggregated home feed: trending + new movies + new series.
+ */
+router.get("/home", async (req, res) => {
+  const gate = checkTmdb(res);
+  if (gate) return gate;
+
+  const key = "media_v2_home";
+
+  try {
+    const { value, isCached } = await cache.getOrFetch(
+      key,
+      TTL.HOMEPAGE,
+      async () => {
+        const [moviesRes, seriesRes, trendingRes] = await Promise.allSettled([
+          tmdb("/trending/movie/week", {}, "tmdb:trending-movies"),
+          tmdb("/trending/tv/week", {}, "tmdb:trending-series"),
+          tmdb("/trending/all/week", {}, "tmdb:trending-all"),
+        ]);
+
+        const movies = (
+          moviesRes.status === "fulfilled"
+            ? (moviesRes.value?.results ?? [])
+            : []
+        )
+          .slice(0, 20)
+          .map(normalizeListItem)
+          .filter(Boolean);
+        const series = (
+          seriesRes.status === "fulfilled"
+            ? (seriesRes.value?.results ?? [])
+            : []
+        )
+          .slice(0, 20)
+          .map(normalizeListItem)
+          .filter(Boolean);
+        const trending = (
+          trendingRes.status === "fulfilled"
+            ? (trendingRes.value?.results ?? [])
+            : []
+        )
+          .slice(0, 10)
+          .map(normalizeListItem)
+          .filter(Boolean);
+
+        return { trending, movies, series };
+      },
+    );
+
+    return send(res, ok(value, { source: "tmdb", isCached }));
+  } catch (e) {
+    log.error("media home error", { message: e.message });
+    return send(
+      res,
+      err("MEDIA_HOME_UNAVAILABLE", "Media home feed unavailable", {
+        source: "tmdb",
+      }),
+      503,
+    );
+  }
+});
+
+/**
+ * GET /api/media/movies?page=1&genre=28&sort=popularity.desc&from_year=1950&to_year=2024&company_id=2
+ * Paginated movie catalog.
  */
 router.get("/movies", async (req, res) => {
   const gate = checkTmdb(res);
@@ -307,41 +297,34 @@ router.get("/movies", async (req, res) => {
 
   const page = Math.min(Math.max(Number(req.query.page || 1), 1), 500);
   const genre = req.query.genre ? String(req.query.genre) : null;
-  const list = MOVIE_LISTS[String(req.query.list || "")] ? String(req.query.list) : null;
   const sort = String(req.query.sort || "popularity.desc");
   const fromYear = req.query.from_year ? String(req.query.from_year) : null;
   const toYear = req.query.to_year ? String(req.query.to_year) : null;
   const companyId = req.query.company_id ? String(req.query.company_id) : null;
-  const minVotes = req.query.min_votes ? String(req.query.min_votes) : null;
-  const key = `media_movies_${page}_${list ?? "discover"}_${genre ?? "any"}_${sort}_${fromYear ?? ""}_${toYear ?? ""}_${companyId ?? ""}_${minVotes ?? ""}`;
+  const key = `media_v2_movies_${page}_${genre ?? "any"}_${sort}_${fromYear ?? ""}_${toYear ?? ""}_${companyId ?? ""}`;
 
   try {
     const { value, isCached } = await cache.getOrFetch(
       key,
       TTL.CATALOG,
       async () => {
-        if (list && !genre) {
-          return fetchCuratedList(
-            MOVIE_LISTS[list],
-            { page },
-            `tmdb:movies:${list}`,
-          );
-        }
-        return fetchCuratedList(
-          "/discover/movie",
-          {
-            page,
-            sort_by: sort,
-            ...(genre ? { with_genres: genre } : {}),
-            ...(fromYear
-              ? { "primary_release_date.gte": `${fromYear}-01-01` }
-              : {}),
-            ...(toYear ? { "primary_release_date.lte": `${toYear}-12-31` } : {}),
-            ...(companyId ? { with_companies: companyId } : {}),
-            ...(minVotes ? { "vote_count.gte": minVotes } : {}),
-          },
-          "tmdb:movies:discover",
-        );
+        const params = {
+          page,
+          sort_by: sort,
+          ...(genre ? { with_genres: genre } : {}),
+          ...(fromYear
+            ? { "primary_release_date.gte": `${fromYear}-01-01` }
+            : {}),
+          ...(toYear ? { "primary_release_date.lte": `${toYear}-12-31` } : {}),
+          ...(companyId ? { with_companies: companyId } : {}),
+        };
+        const data = await tmdb("/discover/movie", params, "tmdb:movies");
+        return {
+          page: data.page,
+          total_pages: Math.min(data.total_pages ?? 1, 500),
+          total_results: data.total_results ?? 0,
+          results: (data.results ?? []).map(normalizeListItem).filter(Boolean),
+        };
       },
     );
 
@@ -359,10 +342,8 @@ router.get("/movies", async (req, res) => {
 });
 
 /**
- * GET /api/media/series?list=popular&page=1&genre=18&network_id=13
- *
- * `list` selects one of TMDB's curated collections (popular, trending,
- * top_rated, airing_now, new_series).
+ * GET /api/media/series?page=1&genre=18&network_id=13
+ * Paginated series catalog.
  */
 router.get("/series", async (req, res) => {
   const gate = checkTmdb(res);
@@ -370,37 +351,28 @@ router.get("/series", async (req, res) => {
 
   const page = Math.min(Math.max(Number(req.query.page || 1), 1), 500);
   const genre = req.query.genre ? String(req.query.genre) : null;
-  const list = SERIES_LISTS[String(req.query.list || "")] ? String(req.query.list) : null;
   const sort = String(req.query.sort || "popularity.desc");
   const networkId = req.query.network_id ? String(req.query.network_id) : null;
-  const minVotes = req.query.min_votes ? String(req.query.min_votes) : null;
-  const key = `media_series_${page}_${list ?? "discover"}_${genre ?? "any"}_${sort}_${networkId ?? ""}_${minVotes ?? ""}`;
+  const key = `media_v2_series_${page}_${genre ?? "any"}_${sort}_${networkId ?? ""}`;
 
   try {
     const { value, isCached } = await cache.getOrFetch(
       key,
       TTL.CATALOG,
       async () => {
-        if (list && !genre) {
-          const params =
-            list === "new_series" ? newSeriesParams(page) : { page };
-          return fetchCuratedList(
-            SERIES_LISTS[list],
-            params,
-            `tmdb:series:${list}`,
-          );
-        }
-        return fetchCuratedList(
-          "/discover/tv",
-          {
-            page,
-            sort_by: sort,
-            ...(genre ? { with_genres: genre } : {}),
-            ...(networkId ? { with_networks: networkId } : {}),
-            ...(minVotes ? { "vote_count.gte": minVotes } : {}),
-          },
-          "tmdb:series:discover",
-        );
+        const params = {
+          page,
+          sort_by: sort,
+          ...(genre ? { with_genres: genre } : {}),
+          ...(networkId ? { with_networks: networkId } : {}),
+        };
+        const data = await tmdb("/discover/tv", params, "tmdb:series");
+        return {
+          page: data.page,
+          total_pages: Math.min(data.total_pages ?? 1, 500),
+          total_results: data.total_results ?? 0,
+          results: (data.results ?? []).map(normalizeListItem).filter(Boolean),
+        };
       },
     );
 
@@ -584,121 +556,8 @@ router.get("/series/:id", async (req, res) => {
 });
 
 /**
- * GET /api/media/series/:id/season/:seasonNumber
- * Episode list for one season, used by the series detail page.
- */
-router.get("/series/:id/season/:seasonNumber", async (req, res) => {
-  const gate = checkTmdb(res);
-  if (gate) return gate;
-
-  const id = parseInt(req.params.id, 10);
-  const seasonNumber = parseInt(req.params.seasonNumber, 10);
-  if (!id || id < 1 || !Number.isInteger(seasonNumber) || seasonNumber < 0) {
-    return send(
-      res,
-      err("INVALID_ID", "Invalid series or season number", { source: "tmdb" }),
-      400,
-    );
-  }
-
-  const key = `media_season_${id}_${seasonNumber}`;
-
-  try {
-    const { value, isCached } = await cache.getOrFetch(
-      key,
-      TTL.MEDIA_DETAIL,
-      async () => {
-        const data = await tmdb(
-          `/tv/${id}/season/${seasonNumber}`,
-          {},
-          "tmdb:season-detail",
-        );
-        return {
-          seasonNumber,
-          name: data.name ?? `Season ${seasonNumber}`,
-          overview: data.overview ?? "",
-          airDate: data.air_date ?? null,
-          poster: imgUrl(data.poster_path, "w500"),
-          episodeCount: (data.episodes ?? []).length,
-          episodes: (data.episodes ?? []).map((ep) => ({
-            id: ep.id,
-            seasonNumber: ep.season_number ?? seasonNumber,
-            episodeNumber: ep.episode_number ?? 0,
-            title: ep.name ?? `Episode ${ep.episode_number ?? 0}`,
-            overview: ep.overview ?? "",
-            still: imgUrl(ep.still_path, "w780"),
-            runtime: ep.runtime ?? null,
-            airDate: ep.air_date ?? null,
-            rating: ep.vote_average ?? null,
-          })),
-          source: "tmdb",
-        };
-      },
-    );
-
-    return send(res, ok(value, { source: "tmdb", isCached }));
-  } catch (e) {
-    if (e.status === 404 || e.message?.includes("404")) {
-      return send(
-        res,
-        err("SEASON_NOT_FOUND", `Season ${seasonNumber} not found`, {
-          source: "tmdb",
-        }),
-        404,
-      );
-    }
-    log.error("season detail error", { id, seasonNumber, message: e.message });
-    return send(
-      res,
-      err("SEASON_UNAVAILABLE", "Season detail unavailable", { source: "tmdb" }),
-      503,
-    );
-  }
-});
-
-/**
- * GET /api/media/genres
- * Movie and series genre catalogues, used to build the browse filters.
- */
-router.get("/genres", async (_req, res) => {
-  const gate = checkTmdb(res);
-  if (gate) return gate;
-
-  try {
-    const { value, isCached } = await cache.getOrFetch(
-      "media_genres",
-      TTL.COMPETITION,
-      async () => {
-        const [movieRes, seriesRes] = await Promise.allSettled([
-          tmdb("/genre/movie/list", {}, "tmdb:genres-movie"),
-          tmdb("/genre/tv/list", {}, "tmdb:genres-series"),
-        ]);
-        return {
-          movie:
-            movieRes.status === "fulfilled" ? (movieRes.value?.genres ?? []) : [],
-          series:
-            seriesRes.status === "fulfilled"
-              ? (seriesRes.value?.genres ?? [])
-              : [],
-        };
-      },
-    );
-    return send(res, ok(value, { source: "tmdb", isCached }));
-  } catch (e) {
-    log.error("genres error", { message: e.message });
-    return send(
-      res,
-      err("GENRES_UNAVAILABLE", "Genre catalogue unavailable", {
-        source: "tmdb",
-      }),
-      503,
-    );
-  }
-});
-
-/**
- * GET /api/media/search?q=...&type=movie|series|person|all&page=1
- * Unified search across movies, series and people.
+ * GET /api/media/search?q=...&type=movie|series|all&page=1
+ * Unified media search.
  */
 router.get("/search", async (req, res) => {
   const gate = checkTmdb(res);
@@ -725,50 +584,36 @@ router.get("/search", async (req, res) => {
       400,
     );
 
-  const key = `media_search_${type}_${page}_${Buffer.from(q).toString("base64").slice(0, 40)}`;
+  const key = `media_v2_search_${type}_${page}_${Buffer.from(q).toString("base64").slice(0, 30)}`;
 
   try {
     const { value, isCached } = await cache.getOrFetch(
       key,
       TTL.CATALOG,
       async () => {
-        const endpoint =
-          type === "movie"
-            ? "/search/movie"
-            : type === "series"
-              ? "/search/tv"
-              : type === "person"
-                ? "/search/person"
-                : "/search/multi";
+        let endpoint = "/search/multi";
+        if (type === "movie") endpoint = "/search/movie";
+        if (type === "series") endpoint = "/search/tv";
 
         const data = await tmdb(endpoint, { query: q, page }, "tmdb:search");
-        const raw = data.results ?? [];
-        const results = raw
-          .map((item) => {
-            // /search/movie and /search/tv omit media_type; infer it from the
-            // endpoint that was queried.
-            const mediaType =
-              item.media_type ??
-              (type === "movie"
-                ? "movie"
-                : type === "series"
-                  ? "tv"
-                  : type === "person"
-                    ? "person"
-                    : item.title
-                      ? "movie"
-                      : "tv");
-            return mediaType === "person"
-              ? normalizePersonResult(item)
-              : normalizeListItem({ ...item, media_type: mediaType });
-          })
-          .filter(Boolean);
-
         return {
           page: data.page,
           total_pages: data.total_pages,
           total_results: data.total_results,
-          results,
+          results: (data.results ?? [])
+            .filter((r) => {
+              const mt = r.media_type ?? type;
+              return (
+                mt === "movie" ||
+                mt === "tv" ||
+                mt === "series" ||
+                !!r.title ||
+                !!r.name
+              );
+            })
+            .filter((r) => r.media_type !== "person")
+            .map(normalizeListItem)
+            .filter(Boolean),
         };
       },
     );

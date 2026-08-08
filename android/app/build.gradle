@@ -105,9 +105,9 @@ android {
     buildToolsVersion = rootProject.ext.buildToolsVersion
     compileSdk = rootProject.ext.compileSdkVersion
 
-    namespace = "com.nexora.sportsstream"
+    namespace = "com.cinelog.app"
     defaultConfig {
-        applicationId "com.nexora.sportsstream"
+        applicationId "com.cinelog.app"
         minSdkVersion = rootProject.ext.minSdkVersion
         targetSdkVersion = rootProject.ext.targetSdkVersion
         versionCode versionCodeFromVersionName

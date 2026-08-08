@@ -12,7 +12,6 @@ import {
   ActivityIndicator,
   Modal,
   Platform,
-  Pressable,
   StyleSheet,
   Text,
   View,
@@ -23,6 +22,7 @@ import { ErrorState } from "@/components/ui/States";
 import { COLORS, FONTS, RADIUS, SPACING } from "@/constants/theme";
 import { useResponsive } from "@/hooks/useResponsive";
 import type { Trailer } from "@/lib/cinelog/types";
+import { Pressable } from "@/components/ui/Pressable";
 
 const YOUTUBE_ORIGIN = "https://www.youtube.com";
 
@@ -148,8 +148,9 @@ function TrailerPlayer({ videoKey, title }: TrailerPlayerProps) {
     });
   }
 
-  // Required only on native; keeping the import lazy avoids pulling the WebView
-  // bundle into the web build.
+  // Loaded lazily so the WebView bundle never reaches the web build, where the
+  // iframe path above is used instead.
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
   const { WebView } = require("react-native-webview");
   return (
     <WebView

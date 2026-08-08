@@ -5,7 +5,7 @@ import crypto from "node:crypto";
 
 const repoRoot = path.resolve(new URL("..", import.meta.url).pathname);
 const cryptoScript = path.join(repoRoot, "scripts", "secrets-crypto.mjs");
-const serviceName = "nexora-secrets-passphrase";
+const serviceName = "cinelog-secrets-passphrase";
 
 const targets = [
   { label: "app", plain: path.join(repoRoot, "app", ".env"), enc: path.join(repoRoot, "app", ".env.enc") },
@@ -41,7 +41,7 @@ function saveKeychainPassphrase(passphrase) {
 }
 
 function resolvePassphrase({ createIfMissing = false } = {}) {
-  const fromEnv = String(process.env.NEXORA_SECRETS_PASSPHRASE || "").trim();
+  const fromEnv = String(process.env.CINELOG_SECRETS_PASSPHRASE || "").trim();
   if (fromEnv) return fromEnv;
 
   const fromKeychain = tryReadKeychainPassphrase();
@@ -74,7 +74,7 @@ function ensureDecryptedFiles() {
 
     run(`node ${JSON.stringify(cryptoScript)} decrypt ${JSON.stringify(target.enc)} ${JSON.stringify(target.plain)}`, {
       ...process.env,
-      NEXORA_SECRETS_PASSPHRASE: passphrase,
+      CINELOG_SECRETS_PASSPHRASE: passphrase,
     });
   }
 }
@@ -89,7 +89,7 @@ function encryptAndLock() {
     if (!fs.existsSync(target.plain)) continue;
     run(`node ${JSON.stringify(cryptoScript)} encrypt ${JSON.stringify(target.plain)} ${JSON.stringify(target.enc)}`, {
       ...process.env,
-      NEXORA_SECRETS_PASSPHRASE: passphrase,
+      CINELOG_SECRETS_PASSPHRASE: passphrase,
     });
   }
 

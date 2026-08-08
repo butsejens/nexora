@@ -127,11 +127,17 @@ function timeoutFor(url: string): number {
   return __DEV__ ? 20_000 : 45_000;
 }
 
-async function fetchWithTimeout(url: string, init?: RequestInit) {
+interface FetchOptions {
+  method: string;
+  headers?: Record<string, string>;
+  body?: string;
+}
+
+async function fetchWithTimeout(url: string, init: FetchOptions) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutFor(url));
   try {
-    return await fetch(url, { ...init, signal: controller.signal } as RequestInit);
+    return await fetch(url, { ...init, signal: controller.signal });
   } finally {
     clearTimeout(timer);
   }
@@ -171,8 +177,12 @@ async function performRequest<T>(
     try {
       const res = await fetchWithTimeout(url, {
         method,
-        headers: options.body ? { "Content-Type": "application/json" } : undefined,
-        body: options.body ? JSON.stringify(options.body) : undefined,
+        ...(options.body
+          ? {
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(options.body),
+            }
+          : null),
       });
 
       if (shouldFailover(res)) {

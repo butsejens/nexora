@@ -6,13 +6,18 @@
  */
 
 import React from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import {
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 import { Image } from "expo-image";
 import { Ionicons } from "@expo/vector-icons";
 
 import { COLORS, FONTS, RADIUS, SPACING } from "@/constants/theme";
 import { formatDate, formatRuntime, metaLine } from "@/lib/format";
 import type { Episode } from "@/lib/cinelog/types";
+import { Pressable } from "@/components/ui/Pressable";
 
 export interface EpisodeCardProps {
   episode: Episode;

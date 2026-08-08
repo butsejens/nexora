@@ -1,7 +1,8 @@
 {
   "expo": {
-    "name": "CINELOG",
-    "slug": "nexora-sports-stream",
+    "name": "CineLog",
+    "slug": "cinelog",
+    "description": "Discover movies and series, build your watchlist, track what you watch and find your next favorite with CineLog.",
     "version": "1.0.19",
     "runtimeVersion": "1.0.8",
     "updates": {
@@ -14,27 +15,22 @@
       }
     },
     "orientation": "default",
-    "icon": "./assets/images/logo.png",
-    "scheme": "nexora",
+    "icon": "./assets/images/icon.png",
+    "scheme": "cinelog",
     "userInterfaceStyle": "dark",
     "newArchEnabled": true,
     "splash": {
-      "image": "./assets/images/logo.png",
+      "image": "./assets/images/splash-icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#050505"
+      "backgroundColor": "#08090B"
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.nexora.sportsstream",
-      "usesAppleSignIn": true,
+      "bundleIdentifier": "com.cinelog.app",
       "infoPlist": {
         "NSAppTransportSecurity": {
           "NSAllowsArbitraryLoads": false,
           "NSExceptionDomains": {
-            "nexora-api-8xxb.onrender.com": {
-              "NSExceptionAllowsInsecureHTTPLoads": false,
-              "NSIncludesSubdomains": true
-            },
             "localhost": {
               "NSExceptionAllowsInsecureHTTPLoads": true,
               "NSIncludesSubdomains": false
@@ -44,35 +40,41 @@
       }
     },
     "android": {
-      "package": "com.nexora.sportsstream",
-      "icon": "./assets/images/logo.png",
+      "package": "com.cinelog.app",
+      "icon": "./assets/images/icon.png",
       "adaptiveIcon": {
-        "backgroundColor": "#0B0F17",
+        "backgroundColor": "#08090B",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       }
     },
     "web": {
-      "favicon": "./assets/images/favicon.png"
+      "favicon": "./assets/images/favicon.png",
+      "bundler": "metro",
+      "output": "single",
+      "name": "CineLog",
+      "shortName": "CineLog",
+      "themeColor": "#08090B",
+      "backgroundColor": "#08090B",
+      "description": "Discover movies and series, build your watchlist, track what you watch and find your next favorite with CineLog.",
+      "lang": "en",
+      "display": "standalone",
+      "startUrl": "/",
+      "orientation": "portrait"
     },
     "plugins": [
       "expo-router",
       [
         "expo-splash-screen",
         {
-          "image": "./assets/images/logo.png",
+          "image": "./assets/images/splash-icon.png",
           "imageWidth": 180,
           "resizeMode": "contain",
-          "backgroundColor": "#050505"
+          "backgroundColor": "#08090B"
         }
       ],
-      "expo-font",
-      "expo-web-browser",
-      "expo-apple-authentication",
-      "expo-document-picker",
-      "expo-notifications",
-      "react-native-google-mobile-ads"
+      "expo-font"
     ],
     "experiments": {
       "typedRoutes": true,

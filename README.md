@@ -1,147 +1,109 @@
-# Nexora (app + server)
+# CineLog
 
-## 1) Install
-Open this folder in VS Code (the folder that contains **package.json**).
+**Discover. Track. Watch.**
 
-In Terminal:
+CineLog is a movies-and-series discovery and tracking app. Browse trending films
+and shows, build a watchlist, rate what you've seen, tick off episodes, and pick
+up where you left off. It runs from one codebase on iOS, Android and the web.
+
+CineLog does not host or stream video. Trailers play through YouTube's official
+embedded player; everything else is metadata.
+
+## What's in the repo
+
+| Path | Purpose |
+| --- | --- |
+| `app/` | Expo / React Native app (iOS, Android, web) using Expo Router |
+| `server/` | Node API that proxies TMDB, keeping the API key server-side |
+| `scripts/` | Release tooling, env policy checks and secret handling |
+| `android/` | Committed Android project used by the APK release workflow |
+
+## 1. Install
+
 ```bash
 npm install
-npm run setup   # creates app/.env and server/.env from the examples
-npm run doctor  # verifies Node/.env and checks Java for Android tooling
+npm run setup    # creates app/.env and server/.env from the examples
+npm run doctor   # verifies Node, .env files and Android tooling
 ```
 
-> 📁 **Environment setup**
-> If you prefer manual control, copy the example files yourself and configure the
-> API base URL and any required keys:
-> ```bash
-> cp app/.env.example app/.env
-> cp server/.env.example server/.env
-> # edit EXPO_PUBLIC_API_BASE in app/.env if you plan to run on a device
-> # fill in optional keys in server/.env (TMDB, AI providers, Apify)
-> # and optionally TMDB, OpenAI, etc.
-> ```
+## 2. Configure
 
-## 2) Start server + app together
-```bash
-npm run dev
-```
-
-- Server runs on http://localhost:8080 (change in server/index.js if needed)
-- Expo runs on port 8082 in non-interactive mode for reliable startup in scripts/CI.
-- Dev script frees ports 8080 and 8082 automatically before startup.
-
-## Run app without local server (cloud backend)
-If you don't want to start `server` on your Mac every time, deploy the backend once and point the app to that URL.
-
-### Free cloud option (Render)
-1. Push this repo to GitHub.
-2. In Render: **New +** → **Blueprint** → select the repo.
-3. Render will detect [render.yaml](render.yaml) and create `nexora-api`.
-4. In Render service environment variables, set keys from `server/.env.example` you need (for example `TMDB_API_KEY`, `OPENROUTER_API_KEY`).
-5. After deploy, copy your API URL (example: `https://your-nexora-api.onrender.com`).
-
-### Point the app to cloud API
-Edit `app/.env`:
-```bash
-EXPO_PUBLIC_API_BASE=https://your-nexora-api.onrender.com
-# optional fallback order (cloud first, local second)
-EXPO_PUBLIC_API_BASES=https://your-nexora-api.onrender.com,http://localhost:8080
-
-# optional: route sports endpoints to Cloudflare Workers
-# all /api/sports/* calls use this base first
-EXPO_PUBLIC_SPORTS_API_BASE=https://nexora.<your-account-or-domain>.workers.dev
-
-# optional sports fallback list
-EXPO_PUBLIC_SPORTS_API_BASES=https://nexora.<your-account-or-domain>.workers.dev,https://your-nexora-api.onrender.com
-```
-
-Then run only the app:
-```bash
-npm run app
-```
-
-Result: app works without running `npm run server` locally.
-
-## Network architecture (production)
-- Sports routes (`/api/sports/*`): App -> Cloudflare Worker (`EXPO_PUBLIC_SPORTS_API_BASE`) -> Render (`RENDER_SPORTS_ORIGIN`) -> upstream providers.
-- Non-sports routes (`/api/*`): App -> Render (`EXPO_PUBLIC_API_BASE`).
-- Fallback path for sports: if Cloudflare is unavailable/transiently failing, app automatically retries Render.
-
-Recommended env setup:
-```bash
-EXPO_PUBLIC_API_BASE=https://nexora-api-8xxb.onrender.com
-EXPO_PUBLIC_SPORTS_API_BASE=https://nexora.dhgpfz2h8r.workers.dev
-EXPO_PUBLIC_SPORTS_API_BASES=https://nexora.dhgpfz2h8r.workers.dev,https://nexora-api-8xxb.onrender.com
-```
-
-## Cloudflare Worker deploy (monorepo-safe)
-If Cloudflare Build Logs show:
-"The Wrangler application detection logic has been run in the root of a workspace..."
-
-Use this deploy command in Cloudflare Worker settings:
-```bash
-npm run cloudflare:deploy
-```
-
-This command always points Wrangler to the worker config in `cloudflare/sports-worker/wrangler.toml`, even when the repository root is used as working directory.
-
-Optional local check:
-```bash
-npm run cloudflare:deploy:dry-run
-```
-
-## Java (Android)
-- For Android builds/emulator support, install JDK 17+.
-- Verify with:
-```bash
-java -version
-```
-
-## 3) Start only server
-```bash
-npm run server
-```
-
-## 4) Start only app
-```bash
-npm run app
-```
-
-## Updates zonder nieuwe APK (OTA)
-Je hoeft niet telkens een nieuwe APK te bouwen voor JS/UI wijzigingen.
-
-Update-architectuur:
-- Backend API blijft op Render.
-- OTA checks lopen via `expo-updates` in de app zelf.
-- Native release metadata komt uit `server/update-manifest.json` via `/api/app-updates/manifest`.
-- APK downloads lopen alleen via een expliciete file endpoint (`/downloads/apk/<bestand>.apk`) of een directe `.apk` asset URL.
-- Server-only deploys vereisen geen app-update.
-
-Eenmalig:
-- Installeer 1 release APK op je toestel, bijvoorbeeld [releases/nexora-v1.0.16.apk](releases/nexora-v1.0.16.apk).
-
-Daarna voor updates:
-```bash
-cd app
-npx eas login
-npm run ota:production
-```
-
-De app checkt updates automatisch bij opstarten en je kunt ook handmatig via Profile → About → Check app updates.
-
-Wanneer is toch een nieuwe APK nodig?
-- Alleen bij native wijzigingen (nieuwe native package, Android/iOS config, permissions, SDK/native dependency updates).
-- Voor gewone scherm-, stijl-, API- en business logic updates volstaat OTA.
-
-## Common error: ENOENT package.json
-If you see `Could not read package.json`, you opened the wrong folder.
-Open the **root** folder (this one), not the subfolders.
-
-## Release pipeline
-Gebruik de release-scripts in `scripts/release/` voor OTA-, APK- en servermetadata-updates:
+The app reaches its data through the CineLog media API, which holds the TMDB key.
+Point the app at an API instance in `app/.env`:
 
 ```bash
-npm run release:decide
-npm run release:apk
-npm run release:test
+EXPO_PUBLIC_API_BASE=https://your-cinelog-api.onrender.com
 ```
+
+To run the API yourself, put a free [TMDB key](https://www.themoviedb.org/settings/api)
+in `server/.env` as `TMDB_API_KEY`. The key never reaches the client.
+
+Standalone builds shipped without a backend can instead set
+`EXPO_PUBLIC_TMDB_API_KEY` in `app/.env` and talk to TMDB directly. That key is
+inlined into the bundle, so only use it for builds you control. See
+`app/.env.example` for the full list of client variables.
+
+## 3. Run
+
+```bash
+npm run dev        # API on :8080 and the Expo dev server together
+npm run app        # app only, against whatever EXPO_PUBLIC_API_BASE points to
+npm run app:web    # app in the browser
+npm run server     # API only
+```
+
+## Architecture
+
+```
+app/
+  app/                 Expo Router routes
+    (tabs)/            home, movies, series, search, watchlist
+    movie/[id].tsx     movie detail
+    series/[id].tsx    series detail with seasons and episodes
+    person/[id].tsx    cast and crew profiles
+  components/          reusable UI (poster cards, carousels, hero, skeletons)
+  lib/cinelog/         data layer: types, API client, query hooks, recommendations
+  store/               persisted library, settings and account state
+  constants/theme.ts   design tokens — the only source of colour and spacing
+```
+
+**Data.** `lib/cinelog/api.ts` is the single place that talks to a network. It
+normalises both the CineLog API's payloads and raw TMDB responses into the types
+in `lib/cinelog/types.ts`, so switching transport changes nothing downstream.
+React Query caches everything; curated collections arrive as two bundled requests
+per media type, so the home screen loads in two round trips.
+
+**Library.** Watchlist, favourites, ratings, watch history and per-episode
+progress live in `store/library-store.ts`, persisted to the device so the app
+works offline and survives restarts. Continue Watching is derived from episode
+ticks and watch state.
+
+**Recommendations.** `lib/cinelog/recommendations.ts` builds a taste profile from
+watch history, ratings, favourites and the watchlist, widens it with adjacent
+genres, and scores candidates against it. That drives both "Recommended For You"
+and "Because You Watched …".
+
+## Quality gates
+
+```bash
+npm run ci:lint        # eslint
+npm run ci:typecheck   # tsc --noEmit
+npm run ci:test        # release tooling and manifest tests
+npm run ci:validate    # everything CI runs
+```
+
+## Releasing
+
+```bash
+npm run release:decide   # decides OTA vs native build from the changed files
+npm run release:apk      # local Android release build
+npm run ota:production   # publish an Expo OTA update
+```
+
+`scripts/release/` holds the decision engine and pipeline policy; both are
+covered by tests in `npm run release:test`.
+
+## Attribution
+
+Movie and series data comes from [The Movie Database](https://www.themoviedb.org/).
+CineLog uses the TMDB API but is not endorsed or certified by TMDB.

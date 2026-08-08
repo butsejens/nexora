@@ -1,12 +1,21 @@
 /**
  * CineLog — press and hover feedback.
  *
- * Scales down on touch and (on pointer devices) lifts slightly on hover, giving
- * the same card the right affordance on both mobile and desktop.
+ * `Pressable` re-exports React Native's Pressable with the hover state that
+ * react-native-web adds but React Native's own types don't describe, so desktop
+ * hover styles stay type-safe.
+ *
+ * `TouchableScale` scales down on touch and lifts slightly on hover, giving the
+ * same card the right affordance on both mobile and desktop.
  */
 
 import React, { useCallback } from "react";
-import { Pressable, type PressableProps, type ViewStyle } from "react-native";
+import {
+  Pressable as RNPressable,
+  type PressableProps as RNPressableProps,
+  type StyleProp,
+  type ViewStyle,
+} from "react-native";
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -16,9 +25,24 @@ import Animated, {
 import { ANIM } from "@/constants/theme";
 import { useResponsive } from "@/hooks/useResponsive";
 
-export interface TouchableScaleProps extends Omit<PressableProps, "style"> {
+/** Interaction state react-native-web passes to `style` and `children`. */
+export interface InteractionState {
+  pressed: boolean;
+  hovered?: boolean;
+  focused?: boolean;
+}
+
+export interface PressableProps extends Omit<RNPressableProps, "style"> {
+  style?:
+    | StyleProp<ViewStyle>
+    | ((state: InteractionState) => StyleProp<ViewStyle>);
+}
+
+export const Pressable = RNPressable as unknown as React.ComponentType<PressableProps>;
+
+export interface TouchableScaleProps extends Omit<RNPressableProps, "style"> {
   children: React.ReactNode;
-  style?: ViewStyle | ViewStyle[];
+  style?: StyleProp<ViewStyle>;
   /** Scale applied while hovering on pointer devices. */
   hoverScale?: number;
   /** Disable the hover lift (e.g. for full-width rows). */
@@ -47,7 +71,7 @@ export function TouchableScale({
   }));
 
   return (
-    <Pressable
+    <RNPressable
       {...props}
       onPressIn={(event) => {
         animate(ANIM.pressScale);
@@ -67,6 +91,6 @@ export function TouchableScale({
       }}
     >
       <Animated.View style={[style, animatedStyle]}>{children}</Animated.View>
-    </Pressable>
+    </RNPressable>
   );
 }

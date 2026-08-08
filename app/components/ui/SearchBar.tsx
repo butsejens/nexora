@@ -3,10 +3,11 @@
  */
 
 import React from "react";
-import { Platform, Pressable, StyleSheet, TextInput, View } from "react-native";
+import { Pressable, StyleSheet, TextInput, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 
 import { COLORS, FONTS, RADIUS, SPACING } from "@/constants/theme";
+import { NO_WEB_OUTLINE } from "@/lib/web-style";
 
 export interface SearchBarProps {
   value: string;
@@ -72,6 +73,6 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: COLORS.textPrimary,
     // react-native-web paints a focus ring that clashes with the pill border.
-    ...Platform.select({ web: { outlineStyle: "none" }, default: {} }),
+    ...NO_WEB_OUTLINE,
   },
 });

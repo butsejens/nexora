@@ -1,47 +1,32 @@
-import { Link, Stack } from "expo-router";
-import { StyleSheet, Text, View } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
-import { COLORS } from "@/constants/colors";
+import React from "react";
+import { StyleSheet, View } from "react-native";
+import { Stack, router } from "expo-router";
+
+import { EmptyState } from "@/components/ui/States";
+import { COLORS } from "@/constants/theme";
 
 export default function NotFoundScreen() {
   return (
     <>
-      <Stack.Screen options={{ title: "Niet gevonden", headerShown: false }} />
-      <View style={styles.container}>
-        <Ionicons name="alert-circle-outline" size={56} color={COLORS.textMuted} />
-        <Text style={styles.title}>Pagina niet gevonden</Text>
-        <Link href="/" style={styles.link}>
-          <Text style={styles.linkText}>Ga naar home</Text>
-        </Link>
+      <Stack.Screen options={{ title: "Not found", headerShown: false }} />
+      <View style={styles.root}>
+        <EmptyState
+          icon="compass-outline"
+          title="This page doesn't exist"
+          message="The link may be out of date. Let's get you back to discovering."
+          actionLabel="Go to Home"
+          onAction={() => router.replace("/(tabs)/home")}
+        />
       </View>
     </>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  root: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    padding: 20,
     backgroundColor: COLORS.background,
-    gap: 12,
-  },
-  title: {
-    fontSize: 18,
-    fontFamily: "Inter_600SemiBold",
-    color: COLORS.text,
-  },
-  link: {
-    marginTop: 8,
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    borderRadius: 12,
-    backgroundColor: COLORS.accent,
-  },
-  linkText: {
-    fontSize: 14,
-    fontFamily: "Inter_600SemiBold",
-    color: "#fff",
   },
 });

@@ -1,0 +1,32 @@
+{
+  "name": "CineLog — Discover. Track. Watch.",
+  "short_name": "CineLog",
+  "description": "Discover movies and series, build your watchlist, track what you watch and find your next favorite with CineLog.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#08090B",
+  "theme_color": "#08090B",
+  "categories": ["entertainment", "lifestyle"],
+  "icons": [
+    {
+      "src": "/assets/images/icon.png",
+      "sizes": "1024x1024",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/assets/images/android-icon-foreground.png",
+      "sizes": "1024x1024",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/assets/images/favicon.png",
+      "sizes": "256x256",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}

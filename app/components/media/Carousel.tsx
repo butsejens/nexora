@@ -9,7 +9,6 @@ import React, { useCallback, useRef } from "react";
 import {
   FlatList,
   Platform,
-  Pressable,
   StyleSheet,
   Text,
   View,
@@ -20,6 +19,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { SkeletonRail } from "@/components/ui/Skeleton";
 import { COLORS, FONTS, RADIUS, SPACING } from "@/constants/theme";
 import { useResponsive } from "@/hooks/useResponsive";
+import { Pressable } from "@/components/ui/Pressable";
 
 export interface CarouselProps<T> {
   title: string;

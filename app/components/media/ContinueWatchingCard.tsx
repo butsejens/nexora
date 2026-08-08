@@ -79,17 +79,18 @@ export function ContinueWatchingCard({
                   : "Continue"}
               </Text>
             </View>
-            <Text style={styles.percent}>{progress.percent}%</Text>
+            {progress.percent > 0 ? (
+              <Text style={styles.percent}>{progress.percent}%</Text>
+            ) : null}
           </View>
         </LinearGradient>
-        <View style={styles.progressTrack}>
-          <View
-            style={[
-              styles.progressFill,
-              { width: `${Math.min(100, Math.max(2, progress.percent))}%` },
-            ]}
-          />
-        </View>
+        {progress.percent > 0 ? (
+          <View style={styles.progressTrack}>
+            <View
+              style={[styles.progressFill, { width: `${Math.min(100, progress.percent)}%` }]}
+            />
+          </View>
+        ) : null}
       </View>
     </TouchableScale>
   );

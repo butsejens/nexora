@@ -6,11 +6,16 @@
  */
 
 import React from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import {
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 
 import { COLORS, FONTS, RADIUS, SPACING } from "@/constants/theme";
 import { formatCount, formatRating } from "@/lib/format";
+import { Pressable } from "@/components/ui/Pressable";
 
 export interface RatingBadgeProps {
   value: number;

@@ -33,10 +33,10 @@ function formatFileSizeLabel(bytes) {
   return `${(bytes / (1024 * 1024)).toFixed(0)} MB`;
 }
 
-// Reads the locally built APK (releases/nexora-v<version>.apk) to compute real size/checksum,
+// Reads the locally built APK (releases/cinelog-v<version>.apk) to compute real size/checksum,
 // so manifest metadata never drifts from the actual uploaded artifact.
 function readLocalApkStats(version) {
-  const localPath = `releases/nexora-v${version}.apk`;
+  const localPath = `releases/cinelog-v${version}.apk`;
   if (!fs.existsSync(localPath)) return null;
   const buffer = fs.readFileSync(localPath);
   return {
@@ -68,7 +68,7 @@ function main() {
     manifest.server.message =
       "Server deploys are independent from OTA bundles and APK releases.";
   } else if (mode === "apk") {
-    const fileName = apkUrl ? String(apkUrl).split("/").pop() : `nexora-v${version}.apk`;
+    const fileName = apkUrl ? String(apkUrl).split("/").pop() : `cinelog-v${version}.apk`;
     const versionCode = buildVersionCode(version);
     manifest.native.version = version;
     manifest.native.versionCode = versionCode;

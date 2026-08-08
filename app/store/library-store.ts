@@ -250,6 +250,20 @@ export const useLibrary = create<LibraryState>()(
               ];
             }
           }
+          if (watchState === "watching" && !state.progress[ref.id]) {
+            // Surface the title in Continue Watching straight away; episode ticks
+            // (or a later percentage) refine it from here.
+            patch.progress = {
+              ...state.progress,
+              [ref.id]: {
+                ...ref,
+                percent: 0,
+                positionSeconds: 0,
+                durationSeconds: 0,
+                updatedAt: new Date().toISOString(),
+              },
+            };
+          }
           return patch as LibraryState;
         });
       },

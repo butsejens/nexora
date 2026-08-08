@@ -30,7 +30,7 @@ jobs:
       - name: Build run summary
         run: |
           {
-            echo "## Nexora Release Report"
+            echo "## CineLog Release Report"
             echo ""
             echo "- Selected route: **${{ inputs.route }}**"
             echo "- Reason: ${{ inputs.reason }}"

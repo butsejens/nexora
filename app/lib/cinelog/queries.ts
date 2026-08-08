@@ -1,30 +1,32 @@
 /**
  * CineLog — React Query hooks over the media data layer.
  *
- * Every screen reads data through these hooks so caching, stale windows and
- * pagination behave consistently across the app.
+ * Curated collections come from two bundled requests per media type, so the home
+ * screen and the browse filters share one cache entry instead of firing a
+ * request per rail. Only the filters the API can paginate use infinite queries.
  */
 
-import {
-  useInfiniteQuery,
-  useQueries,
-  useQuery,
-  type UseQueryOptions,
-} from "@tanstack/react-query";
+import { useMemo } from "react";
+import { useInfiniteQuery, useQueries, useQuery } from "@tanstack/react-query";
 
 import { STALE } from "@/lib/query-client";
 import {
+  PAGINATED_MOVIE_LISTS,
+  PAGINATED_SERIES_LISTS,
+  fetchMovieCollections,
   fetchMovieDetail,
-  fetchMovieList,
+  fetchMoviePage,
   fetchMoviesByGenre,
   fetchPerson,
   fetchPrimaryTrailer,
   fetchSeason,
-  fetchSeriesDetail,
-  fetchSeriesList,
   fetchSeriesByGenre,
-  fetchTrending,
+  fetchSeriesCollections,
+  fetchSeriesDetail,
+  fetchSeriesPage,
   searchMedia,
+  type MovieCollections,
+  type SeriesCollections,
 } from "@/lib/cinelog/api";
 import type {
   MediaSummary,
@@ -35,10 +37,10 @@ import type {
 } from "@/lib/cinelog/types";
 
 export const mediaKeys = {
-  trending: () => ["media", "trending"] as const,
-  movieList: (list: MovieListKey) => ["media", "movies", "list", list] as const,
-  seriesList: (list: SeriesListKey) =>
-    ["media", "series", "list", list] as const,
+  movieCollections: () => ["media", "movies", "collections"] as const,
+  seriesCollections: () => ["media", "series", "collections"] as const,
+  moviePages: (sortBy: string) => ["media", "movies", "pages", sortBy] as const,
+  seriesPages: (sortBy: string) => ["media", "series", "pages", sortBy] as const,
   moviesByGenre: (genreId: number) =>
     ["media", "movies", "genre", genreId] as const,
   seriesByGenre: (genreId: number) =>
@@ -53,45 +55,207 @@ export const mediaKeys = {
     ["media", "trailer", type, id] as const,
 };
 
-/** Curated lists refresh a few times a day; genre browses change less often. */
-const LIST_STALE: Record<string, number> = {
-  trending: STALE.short,
-  now_playing: STALE.short,
-  airing_now: STALE.short,
-  upcoming: STALE.short,
-  new_series: STALE.short,
-};
+// ── Curated collections ──────────────────────────────────────────────────────
 
-function staleForList(list: string): number {
-  return LIST_STALE[list] ?? STALE.medium;
-}
-
-// ── Rails (first page only) ──────────────────────────────────────────────────
-
-export function useTrending() {
+export function useMovieCollections() {
   return useQuery({
-    queryKey: mediaKeys.trending(),
-    queryFn: fetchTrending,
+    queryKey: mediaKeys.movieCollections(),
+    queryFn: fetchMovieCollections,
     staleTime: STALE.short,
   });
 }
 
-export function useMovieRail(list: MovieListKey) {
+export function useSeriesCollections() {
   return useQuery({
-    queryKey: mediaKeys.movieList(list),
-    queryFn: () => fetchMovieList(list, 1),
-    select: (page: PagedResult<MediaSummary>) => page.results,
-    staleTime: staleForList(list),
+    queryKey: mediaKeys.seriesCollections(),
+    queryFn: fetchSeriesCollections,
+    staleTime: STALE.short,
   });
 }
 
-export function useSeriesRail(list: SeriesListKey) {
-  return useQuery({
-    queryKey: mediaKeys.seriesList(list),
-    queryFn: () => fetchSeriesList(list, 1),
-    select: (page: PagedResult<MediaSummary>) => page.results,
-    staleTime: staleForList(list),
+export interface Rail {
+  items: MediaSummary[];
+  isLoading: boolean;
+  isError: boolean;
+  refetch: () => void;
+}
+
+/** One rail out of the bundled movie collections. */
+export function useMovieRail(list: MovieListKey): Rail {
+  const query = useMovieCollections();
+  return {
+    items: query.data?.[list] ?? [],
+    isLoading: query.isLoading,
+    isError: query.isError,
+    refetch: () => void query.refetch(),
+  };
+}
+
+/** One rail out of the bundled series collections. */
+export function useSeriesRail(list: SeriesListKey): Rail {
+  const query = useSeriesCollections();
+  return {
+    items: query.data?.[list] ?? [],
+    isLoading: query.isLoading,
+    isError: query.isError,
+    refetch: () => void query.refetch(),
+  };
+}
+
+/** Mixed movie + series feed used by the home hero and the Trending rail. */
+export function useTrending(): Rail {
+  const movies = useMovieCollections();
+  const series = useSeriesCollections();
+
+  const items = useMemo(() => {
+    const movieList = movies.data?.trending ?? [];
+    const seriesList = series.data?.trending ?? [];
+    // Interleave so neither media type dominates the front of the rail.
+    const mixed: MediaSummary[] = [];
+    for (let index = 0; index < Math.max(movieList.length, seriesList.length); index += 1) {
+      if (movieList[index]) mixed.push(movieList[index]);
+      if (seriesList[index]) mixed.push(seriesList[index]);
+    }
+    return mixed;
+  }, [movies.data?.trending, series.data?.trending]);
+
+  return {
+    items,
+    isLoading: movies.isLoading || series.isLoading,
+    isError: movies.isError && series.isError,
+    refetch: () => {
+      void movies.refetch();
+      void series.refetch();
+    },
+  };
+}
+
+// ── Browse ───────────────────────────────────────────────────────────────────
+
+export interface Browse {
+  items: MediaSummary[];
+  isLoading: boolean;
+  isError: boolean;
+  isLoadingMore: boolean;
+  /** True when there is another page to load. */
+  canLoadMore: boolean;
+  loadMore: () => void;
+  refetch: () => void;
+}
+
+function dedupe(pages: PagedResult<MediaSummary>[] | undefined): MediaSummary[] {
+  if (!pages) return [];
+  const seen = new Set<string>();
+  const out: MediaSummary[] = [];
+  for (const page of pages) {
+    for (const item of page.results) {
+      if (seen.has(item.id)) continue;
+      seen.add(item.id);
+      out.push(item);
+    }
+  }
+  return out;
+}
+
+function getNextPageParam(last: PagedResult<MediaSummary>) {
+  // TMDB caps discover at 500 pages; 100 is far past what anyone scrolls.
+  return last.page < Math.min(last.totalPages, 100) ? last.page + 1 : undefined;
+}
+
+export function useMovieBrowse(list: MovieListKey, genreId: number | null): Browse {
+  const sortBy = genreId === null ? PAGINATED_MOVIE_LISTS[list] : undefined;
+  const usePages = genreId !== null || Boolean(sortBy);
+
+  const paged = useInfiniteQuery({
+    queryKey:
+      genreId !== null
+        ? mediaKeys.moviesByGenre(genreId)
+        : mediaKeys.moviePages(sortBy ?? "none"),
+    initialPageParam: 1,
+    queryFn: ({ pageParam }) =>
+      genreId !== null
+        ? fetchMoviesByGenre(genreId, pageParam)
+        : fetchMoviePage(sortBy as string, pageParam),
+    getNextPageParam,
+    enabled: usePages,
+    staleTime: STALE.medium,
   });
+
+  const collection = useMovieCollections();
+
+  if (usePages) {
+    return {
+      items: dedupe(paged.data?.pages),
+      isLoading: paged.isLoading,
+      isError: paged.isError,
+      isLoadingMore: paged.isFetchingNextPage,
+      canLoadMore: Boolean(paged.hasNextPage),
+      loadMore: () => {
+        if (paged.hasNextPage && !paged.isFetchingNextPage) {
+          void paged.fetchNextPage();
+        }
+      },
+      refetch: () => void paged.refetch(),
+    };
+  }
+
+  return {
+    items: collection.data?.[list] ?? [],
+    isLoading: collection.isLoading,
+    isError: collection.isError,
+    isLoadingMore: false,
+    canLoadMore: false,
+    loadMore: () => undefined,
+    refetch: () => void collection.refetch(),
+  };
+}
+
+export function useSeriesBrowse(list: SeriesListKey, genreId: number | null): Browse {
+  const sortBy = genreId === null ? PAGINATED_SERIES_LISTS[list] : undefined;
+  const usePages = genreId !== null || Boolean(sortBy);
+
+  const paged = useInfiniteQuery({
+    queryKey:
+      genreId !== null
+        ? mediaKeys.seriesByGenre(genreId)
+        : mediaKeys.seriesPages(sortBy ?? "none"),
+    initialPageParam: 1,
+    queryFn: ({ pageParam }) =>
+      genreId !== null
+        ? fetchSeriesByGenre(genreId, pageParam)
+        : fetchSeriesPage(sortBy as string, pageParam),
+    getNextPageParam,
+    enabled: usePages,
+    staleTime: STALE.medium,
+  });
+
+  const collection = useSeriesCollections();
+
+  if (usePages) {
+    return {
+      items: dedupe(paged.data?.pages),
+      isLoading: paged.isLoading,
+      isError: paged.isError,
+      isLoadingMore: paged.isFetchingNextPage,
+      canLoadMore: Boolean(paged.hasNextPage),
+      loadMore: () => {
+        if (paged.hasNextPage && !paged.isFetchingNextPage) {
+          void paged.fetchNextPage();
+        }
+      },
+      refetch: () => void paged.refetch(),
+    };
+  }
+
+  return {
+    items: collection.data?.[list] ?? [],
+    isLoading: collection.isLoading,
+    isError: collection.isError,
+    isLoadingMore: false,
+    canLoadMore: false,
+    loadMore: () => undefined,
+    refetch: () => void collection.refetch(),
+  };
 }
 
 /** Genre rails for the home screen, fetched in parallel. */
@@ -109,75 +273,18 @@ export function useGenreRails(
         type === "movie"
           ? fetchMoviesByGenre(genre.id, 1)
           : fetchSeriesByGenre(genre.id, 1),
-      select: (page: PagedResult<MediaSummary>) => page.results,
       staleTime: STALE.medium,
     })),
     combine: (results) =>
       genres.map((genre, index) => ({
         genre,
-        items: (results[index]?.data as MediaSummary[] | undefined) ?? [],
+        items: results[index]?.data?.results ?? [],
         isLoading: results[index]?.isLoading ?? false,
       })),
   });
 }
 
-// ── Paginated browse ────────────────────────────────────────────────────────
-
-type PageParam = number;
-
-function infiniteOptions<T>(fetchPage: (page: PageParam) => Promise<PagedResult<T>>) {
-  return {
-    initialPageParam: 1 as PageParam,
-    queryFn: ({ pageParam }: { pageParam: PageParam }) => fetchPage(pageParam),
-    getNextPageParam: (last: PagedResult<T>) =>
-      last.page < Math.min(last.totalPages, 100) ? last.page + 1 : undefined,
-  };
-}
-
-export function useMovieBrowse(list: MovieListKey, genreId: number | null) {
-  const isGenre = genreId !== null;
-  return useInfiniteQuery({
-    queryKey: isGenre
-      ? mediaKeys.moviesByGenre(genreId)
-      : mediaKeys.movieList(list),
-    ...infiniteOptions((page) =>
-      isGenre ? fetchMoviesByGenre(genreId, page) : fetchMovieList(list, page),
-    ),
-    staleTime: isGenre ? STALE.medium : staleForList(list),
-  });
-}
-
-export function useSeriesBrowse(list: SeriesListKey, genreId: number | null) {
-  const isGenre = genreId !== null;
-  return useInfiniteQuery({
-    queryKey: isGenre
-      ? mediaKeys.seriesByGenre(genreId)
-      : mediaKeys.seriesList(list),
-    ...infiniteOptions((page) =>
-      isGenre ? fetchSeriesByGenre(genreId, page) : fetchSeriesList(list, page),
-    ),
-    staleTime: isGenre ? STALE.medium : staleForList(list),
-  });
-}
-
-/** Flatten infinite-query pages into a de-duplicated list. */
-export function flattenPages(
-  pages: PagedResult<MediaSummary>[] | undefined,
-): MediaSummary[] {
-  if (!pages) return [];
-  const seen = new Set<string>();
-  const out: MediaSummary[] = [];
-  for (const page of pages) {
-    for (const item of page.results) {
-      if (seen.has(item.id)) continue;
-      seen.add(item.id);
-      out.push(item);
-    }
-  }
-  return out;
-}
-
-// ── Detail ──────────────────────────────────────────────────────────────────
+// ── Detail ───────────────────────────────────────────────────────────────────
 
 export function useMovieDetail(tmdbId: number | null) {
   return useQuery({
@@ -228,7 +335,7 @@ export function useTrailer(type: MediaType, tmdbId: number | null, enabled = tru
   });
 }
 
-// ── Search ──────────────────────────────────────────────────────────────────
+// ── Search ───────────────────────────────────────────────────────────────────
 
 export function useSearch(query: string) {
   const trimmed = query.trim();
@@ -241,7 +348,4 @@ export function useSearch(query: string) {
   });
 }
 
-export type MediaQueryOptions<T> = Omit<
-  UseQueryOptions<T>,
-  "queryKey" | "queryFn"
->;
+export type { MovieCollections, SeriesCollections };
