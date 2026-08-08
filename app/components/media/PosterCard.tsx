@@ -55,7 +55,11 @@ function PosterCardComponent({
   const inWatchlist = useLibrary((state) => state.isInWatchlist(item.id));
 
   const height = Math.round(width * 1.5);
-  const typeLabel = item.type === "movie" ? "Movie" : "Series";
+  const typeLabel = t(
+    item.type === "movie" ? "Movie" : "Series",
+    undefined,
+    "type",
+  );
   const seasons =
     "seasonCount" in item && item.seasonCount
       ? t(item.seasonCount === 1 ? "{{count}} Season" : "{{count}} Seasons", {

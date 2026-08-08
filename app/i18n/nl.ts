@@ -177,7 +177,7 @@ export const NL: Record<string, string> = {
     "Wekelijkse tips op basis van wat ik kijk",
   "Watchlist reminders": "Herinneringen voor je kijklijst",
   "Nudge me about titles I saved but haven't watched":
-    "Herinner me aan titels die ik opslaan maar nog niet keek",
+    "Herinner me aan titels die ik heb opgeslagen maar nog niet keek",
   Privacy: "Privacy",
   "Watch history": "Kijkgeschiedenis",
   "Let what you watch shape your recommendations":
@@ -323,4 +323,6 @@ export const NL: Record<string, string> = {
     "We hebben nieuwe aanbevelingen op basis van jouw smaak.",
   "Still on your watchlist": "Staat nog op je kijklijst",
   "{{count}} titles are waiting for you.": "{{count}} titels wachten op je.",
+  "Movie#type": "Film",
+  "Series#type": "Serie",
 };

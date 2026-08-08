@@ -216,7 +216,11 @@ export default function ProfileScreen() {
                       </Text>
                       <Text style={styles.ratingMeta}>
                         {[
-                          t(entry.type === "movie" ? "Movie" : "Series"),
+                          t(
+                            entry.type === "movie" ? "Movie" : "Series",
+                            undefined,
+                            "type",
+                          ),
                           entry.year || null,
                           formatRating(entry.rating)
                             ? `Average ${formatRating(entry.rating)}`

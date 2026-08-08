@@ -25,9 +25,18 @@ const DICTIONARIES: Partial<Record<LanguageCode, Dictionary>> = {
 
 const warned = new Set<string>();
 
-function lookup(language: LanguageCode, key: string): string {
+/**
+ * Some English words serve two roles — "Series" is both a navigation label and a
+ * single title's type, which translate differently. A context suffix picks the
+ * right entry (`"Series#type"`) and falls back to the plain key.
+ */
+function lookup(language: LanguageCode, key: string, context?: string): string {
   const dictionary = DICTIONARIES[language];
   if (!dictionary) return key;
+  if (context) {
+    const contextual = dictionary[`${key}#${context}`];
+    if (contextual) return contextual;
+  }
   const translated = dictionary[key];
   if (translated) return translated;
   if (__DEV__ && !warned.has(`${language}:${key}`)) {
@@ -50,13 +59,14 @@ function interpolate(
 export type Translate = (
   key: string,
   values?: Record<string, string | number>,
+  context?: string,
 ) => string;
 
 export function useT(): Translate {
   const language = useSettings((state) => state.language);
   return useCallback(
-    (key: string, values?: Record<string, string | number>) =>
-      interpolate(lookup(language, key), values),
+    (key: string, values?: Record<string, string | number>, context?: string) =>
+      interpolate(lookup(language, key, context), values),
     [language],
   );
 }

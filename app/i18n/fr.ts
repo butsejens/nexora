@@ -325,4 +325,6 @@ export const FR: Record<string, string> = {
     "Nous avons préparé de nouvelles recommandations selon vos goûts.",
   "Still on your watchlist": "Toujours dans votre liste",
   "{{count}} titles are waiting for you.": "{{count}} titres vous attendent.",
+  "Movie#type": "Film",
+  "Series#type": "Série",
 };
