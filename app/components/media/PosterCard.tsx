@@ -134,7 +134,7 @@ function PosterCardComponent({
       </TouchableScale>
 
       {supportsHover && hovered ? (
-        <View style={[styles.hoverLayer, { height }]} pointerEvents="box-none">
+        <View style={[styles.hoverLayer, { height }]}>
           <LinearGradient colors={CARD_SCRIM} style={styles.hoverOverlay}>
             <View style={styles.hoverActions}>
               {onPlayTrailer ? (
@@ -204,6 +204,9 @@ const useStyles = makeStyles((c, t) => ({
     left: SPACING.sm,
   },
   hoverLayer: {
+    // Only the quick-action buttons should capture pointers; the poster beneath
+    // stays clickable. `pointerEvents` belongs in style — the prop is deprecated.
+    pointerEvents: "box-none",
     position: "absolute",
     top: 0,
     left: 0,
