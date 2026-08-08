@@ -11,6 +11,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 
+import { useSettings } from "@/store/settings-store";
 import type {
   EpisodeWatchMap,
   FavoriteItem,
@@ -34,10 +35,7 @@ const ASSUMED_MOVIE_RUNTIME = 110;
 const ASSUMED_EPISODE_RUNTIME = 45;
 
 export type WatchlistSort =
-  | "recently_added"
-  | "rating"
-  | "release_date"
-  | "alphabetical";
+  "recently_added" | "rating" | "release_date" | "alphabetical";
 
 export interface LibraryState {
   watchlist: WatchlistItem[];
@@ -227,8 +225,7 @@ export const useLibrary = create<LibraryState>()(
             ...ref,
             state: watchState,
             watchedAt: new Date().toISOString(),
-            minutes:
-              watchState === "watched" ? creditedMinutes(ref, false) : 0,
+            minutes: watchState === "watched" ? creditedMinutes(ref, false) : 0,
           };
           const patch: Partial<LibraryState> = {
             history: upsertHistory(state.history, entry),
@@ -298,7 +295,10 @@ export const useLibrary = create<LibraryState>()(
           progress[ref.id] = {
             ...ref,
             percent,
-            positionSeconds: Math.max(0, Math.round(input.positionSeconds ?? 0)),
+            positionSeconds: Math.max(
+              0,
+              Math.round(input.positionSeconds ?? 0),
+            ),
             durationSeconds: Math.max(
               0,
               Math.round(input.durationSeconds ?? 0),
@@ -329,7 +329,12 @@ export const useLibrary = create<LibraryState>()(
           return { progress };
         }),
 
-      toggleEpisodeWatched: (series, seasonNumber, episodeNumber, episodeTitle) => {
+      toggleEpisodeWatched: (
+        series,
+        seasonNumber,
+        episodeNumber,
+        episodeTitle,
+      ) => {
         const ref = toLibraryRef(series);
         const key = episodeKey(seasonNumber, episodeNumber);
         const current = get().episodes[ref.id] ?? {};
@@ -365,8 +370,7 @@ export const useLibrary = create<LibraryState>()(
       isEpisodeWatched: (id, seasonNumber, episodeNumber) =>
         Boolean(get().episodes[id]?.[episodeKey(seasonNumber, episodeNumber)]),
 
-      watchedEpisodeCount: (id) =>
-        Object.keys(get().episodes[id] ?? {}).length,
+      watchedEpisodeCount: (id) => Object.keys(get().episodes[id] ?? {}).length,
 
       addRecentSearch: (term) => {
         const trimmed = term.trim();
@@ -442,13 +446,33 @@ export function useLibrarySignals(): LibrarySignals {
   );
 }
 
+/**
+ * Signals for personalisation, honouring the "Watch history" privacy setting.
+ * With it switched off, what you watch stops feeding recommendations, while
+ * deliberate choices — watchlist, favourites and ratings — still count. The
+ * history itself is kept so the profile page and Continue Watching keep working.
+ */
+export function useTasteSignals(): LibrarySignals {
+  const signals = useLibrarySignals();
+  const usesWatchHistory = useSettings(
+    (state) => state.privacy.saveWatchHistory,
+  );
+
+  return useMemo(
+    () =>
+      usesWatchHistory ? signals : { ...signals, history: [], episodes: {} },
+    [signals, usesWatchHistory],
+  );
+}
+
 /** Continue Watching rail, newest activity first. */
 export function useContinueWatching(): WatchProgress[] {
   const progress = useLibrary((state) => state.progress);
   return useMemo(
     () =>
       Object.values(progress).sort(
-        (left, right) => Date.parse(right.updatedAt) - Date.parse(left.updatedAt),
+        (left, right) =>
+          Date.parse(right.updatedAt) - Date.parse(left.updatedAt),
       ),
     [progress],
   );
@@ -459,7 +483,8 @@ export function useRecentlyWatched(): WatchHistoryItem[] {
   return useMemo(
     () =>
       [...history].sort(
-        (left, right) => Date.parse(right.watchedAt) - Date.parse(left.watchedAt),
+        (left, right) =>
+          Date.parse(right.watchedAt) - Date.parse(left.watchedAt),
       ),
     [history],
   );
@@ -475,7 +500,8 @@ export interface LibraryStats {
 }
 
 export function useLibraryStats(): LibraryStats {
-  const { history, favorites, watchlist, ratings, episodes } = useLibrarySignals();
+  const { history, favorites, watchlist, ratings, episodes } =
+    useLibrarySignals();
 
   return useMemo(() => {
     const totalMinutes =

@@ -33,7 +33,7 @@ import { useAuth } from "@/store/auth-store";
 import {
   useContinueWatching,
   useLibrary,
-  useLibrarySignals,
+  useTasteSignals,
 } from "@/store/library-store";
 
 export default function HomeScreen() {
@@ -52,7 +52,7 @@ export default function HomeScreen() {
   const continueWatching = useContinueWatching();
   const clearProgress = useLibrary((state) => state.clearProgress);
   const toggleWatchlist = useLibrary((state) => state.toggleWatchlist);
-  const librarySignals = useLibrarySignals();
+  const tasteSignals = useTasteSignals();
 
   const hero =
     trending.items.find((item) => item.backdrop) ?? trending.items[0] ?? null;
@@ -90,8 +90,8 @@ export default function HomeScreen() {
   ]);
 
   const profile = useMemo(
-    () => buildTasteProfile(librarySignals),
-    [librarySignals],
+    () => buildTasteProfile(tasteSignals),
+    [tasteSignals],
   );
 
   const recommended = useMemo(

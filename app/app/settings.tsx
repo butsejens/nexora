@@ -137,7 +137,7 @@ export default function SettingsScreen() {
           <SettingsSection title="Privacy" icon="lock-closed-outline">
             <ToggleRow
               label="Watch history"
-              hint="Used to personalise your recommendations"
+              hint="Let what you watch shape your recommendations"
               value={privacy.saveWatchHistory}
               onChange={(value) => setPrivacy("saveWatchHistory", value)}
             />
