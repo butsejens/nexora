@@ -12,14 +12,8 @@ import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
 
 import { GenrePill } from "@/components/ui/GenrePill";
-import {
-  COLORS,
-  FONTS,
-  HERO_SCRIM,
-  RADIUS,
-  SHADOWS,
-  SPACING,
-} from "@/constants/theme";
+import { FONTS, RADIUS, SPACING } from "@/constants/theme";
+import { makeStyles, useTheme } from "@/theme";
 import { useResponsive } from "@/hooks/useResponsive";
 import { formatRating, metaLine } from "@/lib/format";
 
@@ -48,6 +42,8 @@ export function TitleHero({
   genres,
   actions,
 }: TitleHeroProps) {
+  const { colors, backdropScrim } = useTheme();
+  const styles = useStyles();
   const { isMobile, gutter, width } = useResponsive();
   const posterWidth = isMobile ? 130 : 240;
   const backdropHeight = isMobile ? 260 : Math.min(width * 0.42, 560);
@@ -67,7 +63,7 @@ export function TitleHero({
           />
         ) : null}
         <LinearGradient
-          colors={[...HERO_SCRIM]}
+          colors={[...backdropScrim] as [string, string, ...string[]]}
           locations={[0, 0.4, 0.8, 1]}
           style={StyleSheet.absoluteFill}
         />
@@ -100,7 +96,7 @@ export function TitleHero({
               <Ionicons
                 name="film-outline"
                 size={30}
-                color={COLORS.textFaint}
+                color={colors.textFaint}
               />
             </View>
           )}
@@ -118,7 +114,7 @@ export function TitleHero({
           <View style={styles.metaRow}>
             {score ? (
               <View style={styles.scoreChip}>
-                <Ionicons name="star" size={14} color={COLORS.star} />
+                <Ionicons name="star" size={14} color={colors.star} />
                 <Text style={styles.scoreText}>{score}</Text>
               </View>
             ) : null}
@@ -142,10 +138,10 @@ export function TitleHero({
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((c, t) => ({
   backdropWrap: {
     width: "100%",
-    backgroundColor: COLORS.surfaceSunken,
+    backgroundColor: c.surfaceSunken,
   },
   body: {
     gap: SPACING.xl,
@@ -163,10 +159,10 @@ const styles = StyleSheet.create({
   posterWrap: {
     borderRadius: RADIUS.lg,
     overflow: "hidden",
-    backgroundColor: COLORS.surface,
+    backgroundColor: c.surface,
     borderWidth: 1,
-    borderColor: COLORS.border,
-    ...SHADOWS.raised,
+    borderColor: c.border,
+    ...t.shadows.raised,
   },
   poster: {
     width: "100%",
@@ -175,7 +171,7 @@ const styles = StyleSheet.create({
   posterFallback: {
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: COLORS.surfaceElevated,
+    backgroundColor: c.surfaceElevated,
   },
   copy: {
     flex: 1,
@@ -188,7 +184,7 @@ const styles = StyleSheet.create({
     fontSize: 40,
     lineHeight: 44,
     letterSpacing: -1,
-    color: COLORS.textPrimary,
+    color: c.textPrimary,
   },
   titleMobile: {
     fontSize: 28,
@@ -199,7 +195,7 @@ const styles = StyleSheet.create({
     fontFamily: FONTS.medium,
     fontSize: 14,
     fontStyle: "italic",
-    color: COLORS.textMuted,
+    color: c.textMuted,
     marginTop: -SPACING.xs,
   },
   metaRow: {
@@ -216,12 +212,12 @@ const styles = StyleSheet.create({
   scoreText: {
     fontFamily: FONTS.bold,
     fontSize: 15,
-    color: COLORS.textPrimary,
+    color: c.textPrimary,
   },
   meta: {
     fontFamily: FONTS.medium,
     fontSize: 13,
-    color: COLORS.textSecondary,
+    color: c.textSecondary,
     flexShrink: 1,
   },
   genreRow: {
@@ -233,7 +229,7 @@ const styles = StyleSheet.create({
     fontFamily: FONTS.regular,
     fontSize: 15,
     lineHeight: 23,
-    color: COLORS.textSecondary,
+    color: c.textSecondary,
   },
   actions: {
     flexDirection: "row",
@@ -242,4 +238,4 @@ const styles = StyleSheet.create({
     flexWrap: "wrap",
     paddingTop: SPACING.sm,
   },
-});
+}));

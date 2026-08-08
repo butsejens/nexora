@@ -1,4 +1,5 @@
 import React, { useEffect } from "react";
+import { StyleSheet } from "react-native";
 import { QueryClientProvider } from "@tanstack/react-query";
 import {
   Inter_400Regular,
@@ -16,13 +17,58 @@ import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import { ErrorBoundary } from "@/components/ErrorBoundary";
-import { COLORS } from "@/constants/theme";
 import { queryClient } from "@/lib/query-client";
 import { startAuthSync } from "@/store/auth-store";
+import { ThemeProvider, useTheme } from "@/theme";
 
 SplashScreen.preventAutoHideAsync().catch(() => {
   // Already prevented, or unsupported on this platform.
 });
+
+/**
+ * Everything that depends on the resolved palette lives here, one level below
+ * the provider that resolves it.
+ */
+function ThemedShell() {
+  const { colors, isDark } = useTheme();
+
+  useEffect(() => {
+    SystemUI.setBackgroundColorAsync(colors.background).catch(() => {
+      // Unsupported on web; the CSS background already matches.
+    });
+  }, [colors.background]);
+
+  return (
+    <SafeAreaProvider
+      style={[styles.root, { backgroundColor: colors.background }]}
+    >
+      <GestureHandlerRootView
+        style={[styles.root, { backgroundColor: colors.background }]}
+      >
+        <StatusBar style={isDark ? "light" : "dark"} />
+        <Stack
+          screenOptions={{
+            headerShown: false,
+            contentStyle: { backgroundColor: colors.background },
+            animation: "fade",
+          }}
+        >
+          <Stack.Screen name="(tabs)" />
+          <Stack.Screen name="movie/[id]" />
+          <Stack.Screen name="series/[id]" />
+          <Stack.Screen name="person/[id]" />
+          <Stack.Screen name="profile" />
+          <Stack.Screen name="settings" />
+          <Stack.Screen name="legal" />
+          <Stack.Screen
+            name="auth"
+            options={{ animation: "slide_from_bottom" }}
+          />
+        </Stack>
+      </GestureHandlerRootView>
+    </SafeAreaProvider>
+  );
+}
 
 export default function RootLayout() {
   const [fontsLoaded, fontError] = useFonts({
@@ -32,12 +78,6 @@ export default function RootLayout() {
     Inter_700Bold,
     Inter_800ExtraBold,
   });
-
-  useEffect(() => {
-    SystemUI.setBackgroundColorAsync(COLORS.background).catch(() => {
-      // Unsupported on web; the CSS background already matches.
-    });
-  }, []);
 
   useEffect(() => startAuthSync(), []);
 
@@ -52,37 +92,16 @@ export default function RootLayout() {
   }, [fontsLoaded, fontError]);
 
   return (
-    <ErrorBoundary>
-      <QueryClientProvider client={queryClient}>
-        <SafeAreaProvider style={styles.root}>
-          <GestureHandlerRootView style={styles.root}>
-            <StatusBar style="light" />
-            <Stack
-              screenOptions={{
-                headerShown: false,
-                contentStyle: { backgroundColor: COLORS.background },
-                animation: "fade",
-              }}
-            >
-              <Stack.Screen name="(tabs)" />
-              <Stack.Screen name="movie/[id]" />
-              <Stack.Screen name="series/[id]" />
-              <Stack.Screen name="person/[id]" />
-              <Stack.Screen name="profile" />
-              <Stack.Screen name="settings" />
-              <Stack.Screen name="legal" />
-              <Stack.Screen
-                name="auth"
-                options={{ animation: "slide_from_bottom" }}
-              />
-            </Stack>
-          </GestureHandlerRootView>
-        </SafeAreaProvider>
-      </QueryClientProvider>
-    </ErrorBoundary>
+    <ThemeProvider>
+      <ErrorBoundary>
+        <QueryClientProvider client={queryClient}>
+          <ThemedShell />
+        </QueryClientProvider>
+      </ErrorBoundary>
+    </ThemeProvider>
   );
 }
 
-const styles = {
-  root: { flex: 1, backgroundColor: COLORS.background },
-} as const;
+const styles = StyleSheet.create({
+  root: { flex: 1 },
+});

@@ -3,10 +3,11 @@
  */
 
 import React from "react";
-import { ScrollView, StyleSheet, Text, View } from "react-native";
+import { ScrollView, Text, View } from "react-native";
 
 import { GenrePill } from "@/components/ui/GenrePill";
-import { COLORS, FONTS, SPACING } from "@/constants/theme";
+import { FONTS, SPACING } from "@/constants/theme";
+import { makeStyles } from "@/theme";
 
 export interface FilterOption<T extends string> {
   value: T;
@@ -32,6 +33,7 @@ export function FilterBar<T extends string>({
   gutter,
   accessibilityLabel,
 }: FilterBarProps<T>) {
+  const styles = useStyles();
   return (
     <View style={styles.block}>
       {heading ? (
@@ -60,7 +62,7 @@ export function FilterBar<T extends string>({
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((c, t) => ({
   block: {
     gap: SPACING.sm,
   },
@@ -69,10 +71,10 @@ const styles = StyleSheet.create({
     fontSize: 11,
     letterSpacing: 1.1,
     textTransform: "uppercase",
-    color: COLORS.textMuted,
+    color: c.textMuted,
   },
   row: {
     gap: SPACING.sm,
     alignItems: "center",
   },
-});
+}));

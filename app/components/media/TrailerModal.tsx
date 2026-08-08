@@ -19,7 +19,8 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 
 import { ErrorState } from "@/components/ui/States";
-import { COLORS, FONTS, RADIUS, SPACING } from "@/constants/theme";
+import { ARTWORK, FONTS, RADIUS, SPACING } from "@/constants/theme";
+import { makeStyles, useTheme } from "@/theme";
 import { useResponsive } from "@/hooks/useResponsive";
 import type { Trailer } from "@/lib/cinelog/types";
 import { Pressable } from "@/components/ui/Pressable";
@@ -73,6 +74,8 @@ export function TrailerModal({
   trailer,
   isLoading = false,
 }: TrailerModalProps) {
+  const { colors } = useTheme();
+  const styles = useStyles();
   const { width, isMobile } = useResponsive();
   const playerWidth = isMobile
     ? width - SPACING.lg * 2
@@ -112,13 +115,13 @@ export function TrailerModal({
                 hovered ? styles.closeHovered : null,
               ]}
             >
-              <Ionicons name="close" size={18} color={COLORS.textPrimary} />
+              <Ionicons name="close" size={18} color={colors.textPrimary} />
             </Pressable>
           </View>
 
           <View style={[styles.player, { height: playerHeight }]}>
             {isLoading ? (
-              <ActivityIndicator color={COLORS.accent} />
+              <ActivityIndicator color={colors.accent} />
             ) : trailer ? (
               <TrailerPlayer videoKey={trailer.key} title={title} />
             ) : (
@@ -141,6 +144,7 @@ interface TrailerPlayerProps {
 }
 
 function TrailerPlayer({ videoKey, title }: TrailerPlayerProps) {
+  const styles = useStyles();
   const html = useMemo(() => embedHtml(videoKey), [videoKey]);
 
   if (Platform.OS === "web") {
@@ -175,20 +179,20 @@ function TrailerPlayer({ videoKey, title }: TrailerPlayerProps) {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((c, t) => ({
   backdrop: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: COLORS.overlayStrong,
+    backgroundColor: ARTWORK.scrimStrong,
     padding: SPACING.lg,
   },
   sheet: {
     borderRadius: RADIUS.lg,
     overflow: "hidden",
-    backgroundColor: COLORS.surface,
+    backgroundColor: c.surface,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: c.border,
   },
   header: {
     flexDirection: "row",
@@ -205,12 +209,12 @@ const styles = StyleSheet.create({
     fontSize: 10,
     letterSpacing: 1.2,
     textTransform: "uppercase",
-    color: COLORS.accent,
+    color: c.accent,
   },
   title: {
     fontFamily: FONTS.bold,
     fontSize: 16,
-    color: COLORS.textPrimary,
+    color: c.textPrimary,
   },
   close: {
     width: 32,
@@ -218,10 +222,10 @@ const styles = StyleSheet.create({
     borderRadius: RADIUS.pill,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: COLORS.glass,
+    backgroundColor: c.glass,
   },
   closeHovered: {
-    backgroundColor: COLORS.glassStrong,
+    backgroundColor: c.glassStrong,
   },
   player: {
     width: "100%",
@@ -233,4 +237,4 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: "#000",
   },
-});
+}));

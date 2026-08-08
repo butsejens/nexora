@@ -1,5 +1,5 @@
 import React, { useMemo } from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { Text, View } from "react-native";
 import { Image } from "expo-image";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
@@ -13,7 +13,8 @@ import { ProfileStats } from "@/components/profile/ProfileStats";
 import { Button } from "@/components/ui/Button";
 import { Screen } from "@/components/ui/Screen";
 import { EmptyState } from "@/components/ui/States";
-import { COLORS, FONTS, RADIUS, SPACING } from "@/constants/theme";
+import { FONTS, RADIUS, SPACING } from "@/constants/theme";
+import { makeStyles, useTheme } from "@/theme";
 import { useResponsive } from "@/hooks/useResponsive";
 import { openTitle } from "@/lib/cinelog/navigation";
 import { formatRating } from "@/lib/format";
@@ -26,6 +27,8 @@ import {
 import { Pressable } from "@/components/ui/Pressable";
 
 export default function ProfileScreen() {
+  const { colors } = useTheme();
+  const styles = useStyles();
   const { gutter, railPosterWidth, isMobile } = useResponsive();
   const user = useAuth((state) => state.user);
   const signOut = useAuth((state) => state.signOut);
@@ -222,7 +225,7 @@ export default function ProfileScreen() {
                     <Ionicons
                       name="chevron-forward"
                       size={16}
-                      color={COLORS.textMuted}
+                      color={colors.textMuted}
                     />
                   </Pressable>
                 ))}
@@ -249,7 +252,7 @@ export default function ProfileScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((c, t) => ({
   header: {
     flexDirection: "row",
     gap: SPACING.xl,
@@ -269,12 +272,12 @@ const styles = StyleSheet.create({
   avatarFallback: {
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: COLORS.accent,
+    backgroundColor: c.accent,
   },
   avatarText: {
     fontFamily: FONTS.extrabold,
     fontSize: 32,
-    color: COLORS.textPrimary,
+    color: c.textPrimary,
   },
   headerCopy: {
     flex: 1,
@@ -284,12 +287,12 @@ const styles = StyleSheet.create({
     fontFamily: FONTS.extrabold,
     fontSize: 28,
     letterSpacing: -0.7,
-    color: COLORS.textPrimary,
+    color: c.textPrimary,
   },
   email: {
     fontFamily: FONTS.regular,
     fontSize: 13,
-    color: COLORS.textSecondary,
+    color: c.textSecondary,
   },
   headerActions: {
     flexDirection: "row",
@@ -306,7 +309,7 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontFamily: FONTS.bold,
     fontSize: 19,
-    color: COLORS.textPrimary,
+    color: c.textPrimary,
   },
   ratingsBlock: {
     gap: SPACING.md,
@@ -320,13 +323,13 @@ const styles = StyleSheet.create({
     gap: SPACING.md,
     padding: SPACING.md,
     borderRadius: RADIUS.lg,
-    backgroundColor: COLORS.surface,
+    backgroundColor: c.surface,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: c.border,
   },
   ratingRowHovered: {
-    backgroundColor: COLORS.surfaceHover,
-    borderColor: COLORS.borderStrong,
+    backgroundColor: c.surfaceHover,
+    borderColor: c.borderStrong,
   },
   scoreBubble: {
     width: 42,
@@ -334,14 +337,14 @@ const styles = StyleSheet.create({
     borderRadius: RADIUS.pill,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: COLORS.accentSoft,
+    backgroundColor: c.accentSoft,
     borderWidth: 1,
-    borderColor: COLORS.accent,
+    borderColor: c.accent,
   },
   scoreBubbleText: {
     fontFamily: FONTS.bold,
     fontSize: 15,
-    color: COLORS.textPrimary,
+    color: c.textPrimary,
   },
   ratingCopy: {
     flex: 1,
@@ -350,11 +353,11 @@ const styles = StyleSheet.create({
   ratingTitle: {
     fontFamily: FONTS.semibold,
     fontSize: 14,
-    color: COLORS.textPrimary,
+    color: c.textPrimary,
   },
   ratingMeta: {
     fontFamily: FONTS.regular,
     fontSize: 12,
-    color: COLORS.textMuted,
+    color: c.textMuted,
   },
-});
+}));

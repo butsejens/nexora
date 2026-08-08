@@ -9,7 +9,6 @@ import React, { useCallback, useRef } from "react";
 import {
   FlatList,
   Platform,
-  StyleSheet,
   Text,
   View,
   type ListRenderItemInfo,
@@ -17,7 +16,8 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 
 import { SkeletonRail } from "@/components/ui/Skeleton";
-import { COLORS, FONTS, LAYOUT, RADIUS, SPACING } from "@/constants/theme";
+import { FONTS, LAYOUT, RADIUS, SPACING } from "@/constants/theme";
+import { makeStyles, useTheme } from "@/theme";
 import { useResponsive } from "@/hooks/useResponsive";
 import { Pressable } from "@/components/ui/Pressable";
 
@@ -46,6 +46,8 @@ export function Carousel<T>({
   itemWidth,
   emptyMessage,
 }: CarouselProps<T>) {
+  const { colors } = useTheme();
+  const styles = useStyles();
   const { gutter, supportsHover, width } = useResponsive();
   const listRef = useRef<FlatList<T>>(null);
   const offsetRef = useRef(0);
@@ -117,7 +119,7 @@ export function Carousel<T>({
               <Ionicons
                 name="chevron-forward"
                 size={14}
-                color={COLORS.textSecondary}
+                color={colors.textSecondary}
               />
             </Pressable>
           ) : null}
@@ -136,7 +138,7 @@ export function Carousel<T>({
                 <Ionicons
                   name="chevron-back"
                   size={16}
-                  color={COLORS.textPrimary}
+                  color={colors.textPrimary}
                 />
               </Pressable>
               <Pressable
@@ -151,7 +153,7 @@ export function Carousel<T>({
                 <Ionicons
                   name="chevron-forward"
                   size={16}
-                  color={COLORS.textPrimary}
+                  color={colors.textPrimary}
                 />
               </Pressable>
             </View>
@@ -184,7 +186,7 @@ export function Carousel<T>({
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((c, t) => ({
   section: {
     gap: SPACING.md,
   },
@@ -201,12 +203,12 @@ const styles = StyleSheet.create({
   title: {
     fontFamily: FONTS.bold,
     fontSize: 19,
-    color: COLORS.textPrimary,
+    color: c.textPrimary,
   },
   subtitle: {
     fontFamily: FONTS.regular,
     fontSize: 12,
-    color: COLORS.textMuted,
+    color: c.textMuted,
   },
   headerActions: {
     flexDirection: "row",
@@ -222,12 +224,12 @@ const styles = StyleSheet.create({
     borderRadius: RADIUS.pill,
   },
   seeAllHovered: {
-    backgroundColor: COLORS.glass,
+    backgroundColor: c.glass,
   },
   seeAllText: {
     fontFamily: FONTS.medium,
     fontSize: 13,
-    color: COLORS.textSecondary,
+    color: c.textSecondary,
   },
   arrows: {
     flexDirection: "row",
@@ -239,13 +241,13 @@ const styles = StyleSheet.create({
     borderRadius: RADIUS.pill,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: COLORS.surface,
+    backgroundColor: c.surface,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: c.border,
   },
   arrowHovered: {
-    backgroundColor: COLORS.surfaceHover,
-    borderColor: COLORS.borderStrong,
+    backgroundColor: c.surfaceHover,
+    borderColor: c.borderStrong,
   },
   listContent: {
     gap: SPACING.md,
@@ -253,6 +255,6 @@ const styles = StyleSheet.create({
   empty: {
     fontFamily: FONTS.regular,
     fontSize: 13,
-    color: COLORS.textMuted,
+    color: c.textMuted,
   },
-});
+}));

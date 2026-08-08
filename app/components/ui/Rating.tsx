@@ -6,10 +6,11 @@
  */
 
 import React from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 
-import { COLORS, FONTS, RADIUS, SPACING } from "@/constants/theme";
+import { ARTWORK, FONTS, RADIUS, SPACING } from "@/constants/theme";
+import { makeStyles, useTheme } from "@/theme";
 import { formatCount, formatRating } from "@/lib/format";
 import { Pressable } from "@/components/ui/Pressable";
 
@@ -25,6 +26,8 @@ export function RatingBadge({
   size = "sm",
   onArtwork = false,
 }: RatingBadgeProps) {
+  const { colors } = useTheme();
+  const styles = useStyles();
   const formatted = formatRating(value);
   if (!formatted) return null;
   const iconSize = size === "sm" ? 11 : 14;
@@ -35,9 +38,17 @@ export function RatingBadge({
       accessible
       accessibilityLabel={`Rated ${formatted} out of 10`}
     >
-      <Ionicons name="star" size={iconSize} color={COLORS.star} />
+      <Ionicons
+        name="star"
+        size={iconSize}
+        color={onArtwork ? ARTWORK.star : colors.star}
+      />
       <Text
-        style={[styles.badgeText, size === "md" ? styles.badgeTextMd : null]}
+        style={[
+          styles.badgeText,
+          size === "md" ? styles.badgeTextMd : null,
+          onArtwork ? styles.badgeTextOnArtwork : null,
+        ]}
       >
         {formatted}
       </Text>
@@ -61,6 +72,7 @@ export function RatingInput({
   averageRating,
   voteCount,
 }: RatingInputProps) {
+  const styles = useStyles();
   const average = formatRating(averageRating);
 
   return (
@@ -123,7 +135,7 @@ export function RatingInput({
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((c, t) => ({
   badge: {
     flexDirection: "row",
     alignItems: "center",
@@ -133,23 +145,26 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.sm,
     paddingVertical: 3,
     borderRadius: RADIUS.pill,
-    backgroundColor: COLORS.overlay,
+    backgroundColor: ARTWORK.chip,
   },
   badgeText: {
     fontFamily: FONTS.semibold,
     fontSize: 11,
-    color: COLORS.textPrimary,
+    color: c.textPrimary,
   },
   badgeTextMd: {
     fontSize: 14,
+  },
+  badgeTextOnArtwork: {
+    color: ARTWORK.textPrimary,
   },
   inputBlock: {
     gap: SPACING.md,
     padding: SPACING.lg,
     borderRadius: RADIUS.lg,
-    backgroundColor: COLORS.surface,
+    backgroundColor: c.surface,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: c.border,
   },
   inputHeader: {
     flexDirection: "row",
@@ -159,12 +174,12 @@ const styles = StyleSheet.create({
   inputTitle: {
     fontFamily: FONTS.semibold,
     fontSize: 15,
-    color: COLORS.textPrimary,
+    color: c.textPrimary,
   },
   clear: {
     fontFamily: FONTS.medium,
     fontSize: 13,
-    color: COLORS.textSecondary,
+    color: c.textSecondary,
   },
   scale: {
     flexDirection: "row",
@@ -177,28 +192,28 @@ const styles = StyleSheet.create({
     borderRadius: RADIUS.pill,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: COLORS.surfaceElevated,
+    backgroundColor: c.surfaceElevated,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: c.border,
   },
   scoreDotActive: {
-    backgroundColor: COLORS.accentSoft,
-    borderColor: COLORS.accent,
+    backgroundColor: c.accentSoft,
+    borderColor: c.accent,
   },
   scoreDotHovered: {
-    borderColor: COLORS.accentBright,
+    borderColor: c.accentBright,
   },
   scoreText: {
     fontFamily: FONTS.semibold,
     fontSize: 13,
-    color: COLORS.textSecondary,
+    color: c.textSecondary,
   },
   scoreTextActive: {
-    color: COLORS.textPrimary,
+    color: c.textPrimary,
   },
   summary: {
     fontFamily: FONTS.regular,
     fontSize: 12,
-    color: COLORS.textMuted,
+    color: c.textMuted,
   },
-});
+}));

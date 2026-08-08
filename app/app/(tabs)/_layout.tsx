@@ -1,12 +1,12 @@
 import React, { useCallback } from "react";
-import { StyleSheet, View } from "react-native";
+import { View } from "react-native";
 import { Tabs, router, usePathname } from "expo-router";
 
 import { BottomNavigation } from "@/components/navigation/BottomNavigation";
 import { DesktopNavigation } from "@/components/navigation/DesktopNavigation";
-import { COLORS } from "@/constants/theme";
 import { useResponsive } from "@/hooks/useResponsive";
 import { useAuth } from "@/store/auth-store";
+import { makeStyles, useTheme } from "@/theme";
 
 /**
  * CineLog tab shell: bottom navigation on phones, a top bar from tablet width
@@ -14,6 +14,8 @@ import { useAuth } from "@/store/auth-store";
  * switching sections.
  */
 export default function TabsLayout() {
+  const { colors } = useTheme();
+  const styles = useStyles();
   const { isMobile, gutter } = useResponsive();
   const pathname = usePathname();
   const user = useAuth((state) => state.user);
@@ -44,7 +46,7 @@ export default function TabsLayout() {
       <Tabs
         screenOptions={{
           headerShown: false,
-          sceneStyle: { backgroundColor: COLORS.background },
+          sceneStyle: { backgroundColor: colors.background },
         }}
         tabBar={(props) =>
           isMobile ? (
@@ -70,9 +72,9 @@ export default function TabsLayout() {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((c, t) => ({
   root: {
     flex: 1,
-    backgroundColor: COLORS.background,
+    backgroundColor: c.background,
   },
-});
+}));

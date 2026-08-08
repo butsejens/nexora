@@ -1,11 +1,12 @@
 import React from "react";
-import { StyleSheet, View } from "react-native";
+import { View } from "react-native";
 import { Stack, router } from "expo-router";
 
 import { EmptyState } from "@/components/ui/States";
-import { COLORS } from "@/constants/theme";
+import { makeStyles } from "@/theme";
 
 export default function NotFoundScreen() {
+  const styles = useStyles();
   return (
     <>
       <Stack.Screen options={{ title: "Not found", headerShown: false }} />
@@ -22,11 +23,11 @@ export default function NotFoundScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((c, t) => ({
   root: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: COLORS.background,
+    backgroundColor: c.background,
   },
-});
+}));

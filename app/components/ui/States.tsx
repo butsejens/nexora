@@ -6,11 +6,12 @@
  */
 
 import React from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 
 import { Button } from "@/components/ui/Button";
-import { COLORS, FONTS, RADIUS, SPACING } from "@/constants/theme";
+import { FONTS, RADIUS, SPACING } from "@/constants/theme";
+import { makeStyles, useTheme } from "@/theme";
 
 export interface EmptyStateProps {
   icon?: keyof typeof Ionicons.glyphMap;
@@ -29,10 +30,12 @@ export function EmptyState({
   onAction,
   compact = false,
 }: EmptyStateProps) {
+  const { colors } = useTheme();
+  const styles = useStyles();
   return (
     <View style={[styles.container, compact ? styles.compact : null]}>
       <View style={styles.iconCircle}>
-        <Ionicons name={icon} size={26} color={COLORS.textSecondary} />
+        <Ionicons name={icon} size={26} color={colors.textSecondary} />
       </View>
       <Text style={styles.title}>{title}</Text>
       <Text style={styles.message}>{message}</Text>
@@ -57,10 +60,12 @@ export function ErrorState({
   message = "We couldn't load this content right now. Please try again.",
   compact = false,
 }: ErrorStateProps) {
+  const { colors } = useTheme();
+  const styles = useStyles();
   return (
     <View style={[styles.container, compact ? styles.compact : null]}>
       <View style={[styles.iconCircle, styles.errorCircle]}>
-        <Ionicons name="cloud-offline-outline" size={26} color={COLORS.error} />
+        <Ionicons name="cloud-offline-outline" size={26} color={colors.error} />
       </View>
       <Text style={styles.title}>{title}</Text>
       <Text style={styles.message}>{message}</Text>
@@ -76,7 +81,7 @@ export function ErrorState({
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((c, t) => ({
   container: {
     alignItems: "center",
     justifyContent: "center",
@@ -91,9 +96,9 @@ const styles = StyleSheet.create({
     width: 60,
     height: 60,
     borderRadius: RADIUS.pill,
-    backgroundColor: COLORS.surface,
+    backgroundColor: c.surface,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: c.border,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -103,15 +108,15 @@ const styles = StyleSheet.create({
   title: {
     fontFamily: FONTS.bold,
     fontSize: 17,
-    color: COLORS.textPrimary,
+    color: c.textPrimary,
     textAlign: "center",
   },
   message: {
     fontFamily: FONTS.regular,
     fontSize: 14,
     lineHeight: 20,
-    color: COLORS.textSecondary,
+    color: c.textSecondary,
     textAlign: "center",
     maxWidth: 340,
   },
-});
+}));

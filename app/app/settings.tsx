@@ -1,5 +1,5 @@
 import React from "react";
-import { StyleSheet, Switch, Text, View } from "react-native";
+import { Switch, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 
@@ -9,7 +9,8 @@ import { FloatingBackButton } from "@/components/navigation/MobileHeader";
 import { Button } from "@/components/ui/Button";
 import { GenrePill } from "@/components/ui/GenrePill";
 import { Screen } from "@/components/ui/Screen";
-import { COLORS, FONTS, RADIUS, SPACING } from "@/constants/theme";
+import { FONTS, RADIUS, SPACING } from "@/constants/theme";
+import { makeStyles, useTheme } from "@/theme";
 import { useResponsive } from "@/hooks/useResponsive";
 import { SafeAlert } from "@/lib/safeAlert";
 import { useAuth } from "@/store/auth-store";
@@ -28,6 +29,7 @@ const THEMES: { value: ThemeMode; label: string }[] = [
 ];
 
 export default function SettingsScreen() {
+  const styles = useStyles();
   const { gutter } = useResponsive();
 
   const user = useAuth((state) => state.user);
@@ -232,10 +234,12 @@ function SettingsSection({
   icon: keyof typeof Ionicons.glyphMap;
   children: React.ReactNode;
 }) {
+  const { colors } = useTheme();
+  const styles = useStyles();
   return (
     <View style={styles.section}>
       <View style={styles.sectionHeader}>
-        <Ionicons name={icon} size={17} color={COLORS.accent} />
+        <Ionicons name={icon} size={17} color={colors.accent} />
         <Text style={styles.sectionTitle} accessibilityRole="header">
           {title}
         </Text>
@@ -246,6 +250,7 @@ function SettingsSection({
 }
 
 function SettingsRow({ label, hint }: { label: string; hint?: string }) {
+  const styles = useStyles();
   return (
     <View style={styles.row}>
       <Text style={styles.rowLabel}>{label}</Text>
@@ -265,6 +270,8 @@ function ToggleRow({
   value: boolean;
   onChange: (value: boolean) => void;
 }) {
+  const { colors } = useTheme();
+  const styles = useStyles();
   // The Switch is the control, so the row itself must not also be pressable —
   // a checkbox inside a button is invalid DOM on web.
   return (
@@ -278,14 +285,14 @@ function ToggleRow({
         onValueChange={onChange}
         accessibilityLabel={label}
         accessibilityHint={hint}
-        trackColor={{ false: COLORS.surfaceHover, true: COLORS.accent }}
-        thumbColor={COLORS.textPrimary}
+        trackColor={{ false: colors.surfaceHover, true: colors.accent }}
+        thumbColor={colors.textPrimary}
       />
     </View>
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((c, t) => ({
   head: {
     gap: SPACING.sm,
     paddingTop: SPACING.xxxl,
@@ -295,12 +302,12 @@ const styles = StyleSheet.create({
     fontFamily: FONTS.extrabold,
     fontSize: 30,
     letterSpacing: -0.8,
-    color: COLORS.textPrimary,
+    color: c.textPrimary,
   },
   subtitle: {
     fontFamily: FONTS.regular,
     fontSize: 14,
-    color: COLORS.textSecondary,
+    color: c.textSecondary,
     maxWidth: 480,
   },
   sections: {
@@ -318,15 +325,15 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontFamily: FONTS.bold,
     fontSize: 17,
-    color: COLORS.textPrimary,
+    color: c.textPrimary,
   },
   sectionBody: {
     gap: SPACING.md,
     padding: SPACING.lg,
     borderRadius: RADIUS.lg,
-    backgroundColor: COLORS.surface,
+    backgroundColor: c.surface,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: c.border,
     alignItems: "flex-start",
   },
   row: {
@@ -336,13 +343,13 @@ const styles = StyleSheet.create({
   rowLabel: {
     fontFamily: FONTS.semibold,
     fontSize: 14,
-    color: COLORS.textPrimary,
+    color: c.textPrimary,
   },
   rowHint: {
     fontFamily: FONTS.regular,
     fontSize: 12,
     lineHeight: 17,
-    color: COLORS.textMuted,
+    color: c.textMuted,
   },
   pillRow: {
     flexDirection: "row",
@@ -360,4 +367,4 @@ const styles = StyleSheet.create({
     flex: 1,
     gap: 2,
   },
-});
+}));

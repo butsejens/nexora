@@ -1,5 +1,5 @@
 import React from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { Text, View } from "react-native";
 import { Image } from "expo-image";
 import { Ionicons } from "@expo/vector-icons";
 import { router, useLocalSearchParams } from "expo-router";
@@ -11,13 +11,16 @@ import { FloatingBackButton } from "@/components/navigation/MobileHeader";
 import { Screen } from "@/components/ui/Screen";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { EmptyState, ErrorState } from "@/components/ui/States";
-import { COLORS, FONTS, RADIUS, SPACING } from "@/constants/theme";
+import { FONTS, RADIUS, SPACING } from "@/constants/theme";
+import { makeStyles, useTheme } from "@/theme";
 import { useResponsive } from "@/hooks/useResponsive";
 import { openTitle, parseIdParam } from "@/lib/cinelog/navigation";
 import { usePerson } from "@/lib/cinelog/queries";
 import { formatDate, metaLine } from "@/lib/format";
 
 export default function PersonScreen() {
+  const { colors } = useTheme();
+  const styles = useStyles();
   const params = useLocalSearchParams<{ id?: string }>();
   const personId = parseIdParam(params.id);
   const { gutter, isMobile } = useResponsive();
@@ -99,7 +102,7 @@ export default function PersonScreen() {
                 { width: photoSize, height: photoSize },
               ]}
             >
-              <Ionicons name="person" size={32} color={COLORS.textFaint} />
+              <Ionicons name="person" size={32} color={colors.textFaint} />
             </View>
           )}
 
@@ -141,7 +144,7 @@ export default function PersonScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((c, t) => ({
   header: {
     flexDirection: "row",
     gap: SPACING.xl,
@@ -154,7 +157,7 @@ const styles = StyleSheet.create({
   },
   photo: {
     borderRadius: RADIUS.pill,
-    backgroundColor: COLORS.surface,
+    backgroundColor: c.surface,
   },
   photoFallback: {
     alignItems: "center",
@@ -169,25 +172,25 @@ const styles = StyleSheet.create({
     fontFamily: FONTS.extrabold,
     fontSize: 30,
     letterSpacing: -0.8,
-    color: COLORS.textPrimary,
+    color: c.textPrimary,
   },
   role: {
     fontFamily: FONTS.semibold,
     fontSize: 12,
     letterSpacing: 1,
     textTransform: "uppercase",
-    color: COLORS.accent,
+    color: c.accent,
   },
   meta: {
     fontFamily: FONTS.medium,
     fontSize: 13,
-    color: COLORS.textSecondary,
+    color: c.textSecondary,
   },
   bio: {
     fontFamily: FONTS.regular,
     fontSize: 14,
     lineHeight: 21,
-    color: COLORS.textSecondary,
+    color: c.textSecondary,
   },
   section: {
     gap: SPACING.md,
@@ -195,6 +198,6 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontFamily: FONTS.bold,
     fontSize: 19,
-    color: COLORS.textPrimary,
+    color: c.textPrimary,
   },
-});
+}));

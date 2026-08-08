@@ -6,16 +6,17 @@
  */
 
 import React from "react";
-import {
-  ActivityIndicator,
-  StyleSheet,
-  Text,
-  View,
-  type ViewStyle,
-} from "react-native";
+import { ActivityIndicator, Text, View, type ViewStyle } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 
-import { COLORS, FONTS, RADIUS, SPACING } from "@/constants/theme";
+import {
+  ARTWORK,
+  FONTS,
+  RADIUS,
+  SPACING,
+  type Palette,
+} from "@/constants/theme";
+import { makeStyles, useTheme } from "@/theme";
 import { Pressable } from "@/components/ui/Pressable";
 
 export type ButtonVariant = "primary" | "secondary" | "ghost" | "danger";
@@ -32,6 +33,8 @@ export interface ButtonProps {
   fullWidth?: boolean;
   style?: ViewStyle;
   accessibilityHint?: string;
+  /** Set when the button sits on a poster or backdrop rather than page chrome. */
+  onArtwork?: boolean;
 }
 
 const SIZES: Record<
@@ -54,7 +57,10 @@ export function Button({
   fullWidth = false,
   style,
   accessibilityHint,
+  onArtwork = false,
 }: ButtonProps) {
+  const styles = useStyles();
+  const { colors } = useTheme();
   const metrics = SIZES[size];
   const isDisabled = disabled || loading;
 
@@ -73,8 +79,8 @@ export function Button({
           paddingHorizontal: metrics.paddingHorizontal,
           alignSelf: fullWidth ? "stretch" : "flex-start",
         },
-        variantStyles[variant],
-        hovered && !isDisabled ? hoverStyles[variant] : null,
+        variantStyle(colors, variant, onArtwork),
+        hovered && !isDisabled ? hoverStyle(colors, variant, onArtwork) : null,
         pressed ? styles.pressed : null,
         isDisabled ? styles.disabled : null,
         style,
@@ -84,7 +90,9 @@ export function Button({
         <ActivityIndicator
           size="small"
           color={
-            variant === "primary" ? COLORS.textPrimary : COLORS.textSecondary
+            variant === "primary"
+              ? colors.textPrimary
+              : labelColor(colors, variant, onArtwork)
           }
         />
       ) : (
@@ -93,14 +101,17 @@ export function Button({
             <Ionicons
               name={icon}
               size={metrics.icon}
-              color={labelColors[variant]}
+              color={labelColor(colors, variant, onArtwork)}
             />
           ) : null}
           <Text
             numberOfLines={1}
             style={[
               styles.label,
-              { fontSize: metrics.fontSize, color: labelColors[variant] },
+              {
+                fontSize: metrics.fontSize,
+                color: labelColor(colors, variant, onArtwork),
+              },
             ]}
           >
             {label}
@@ -120,6 +131,8 @@ export interface IconButtonProps {
   size?: number;
   active?: boolean;
   style?: ViewStyle;
+  /** Set when the button sits on a poster or backdrop rather than page chrome. */
+  onArtwork?: boolean;
 }
 
 export function IconButton({
@@ -130,7 +143,10 @@ export function IconButton({
   size = 40,
   active = false,
   style,
+  onArtwork = false,
 }: IconButtonProps) {
+  const styles = useStyles();
+  const { colors } = useTheme();
   return (
     <Pressable
       onPress={onPress}
@@ -140,9 +156,9 @@ export function IconButton({
       style={({ pressed, hovered }) => [
         styles.base,
         { width: size, height: size, borderRadius: RADIUS.pill },
-        variantStyles[variant],
+        variantStyle(colors, variant, onArtwork),
         active ? styles.iconActive : null,
-        hovered ? hoverStyles[variant] : null,
+        hovered ? hoverStyle(colors, variant, onArtwork) : null,
         pressed ? styles.pressed : null,
         style,
       ]}
@@ -150,13 +166,13 @@ export function IconButton({
       <Ionicons
         name={icon}
         size={size * 0.46}
-        color={active ? COLORS.accent : labelColors[variant]}
+        color={active ? colors.accent : labelColor(colors, variant, onArtwork)}
       />
     </Pressable>
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((c) => ({
   base: {
     alignItems: "center",
     justifyContent: "center",
@@ -179,31 +195,59 @@ const styles = StyleSheet.create({
     opacity: 0.45,
   },
   iconActive: {
-    borderColor: COLORS.accent,
-    backgroundColor: COLORS.accentSoft,
+    borderColor: c.accent,
+    backgroundColor: c.accentSoft,
   },
-});
+}));
 
-const variantStyles: Record<ButtonVariant, ViewStyle> = {
-  primary: { backgroundColor: COLORS.accent },
-  secondary: {
-    backgroundColor: COLORS.glass,
-    borderColor: COLORS.borderStrong,
-  },
-  ghost: { backgroundColor: "transparent" },
-  danger: { backgroundColor: "transparent", borderColor: COLORS.error },
-};
+function variantStyle(
+  colors: Palette,
+  variant: ButtonVariant,
+  onArtwork: boolean,
+): ViewStyle {
+  switch (variant) {
+    case "primary":
+      return { backgroundColor: colors.accent };
+    case "secondary":
+      return onArtwork
+        ? { backgroundColor: ARTWORK.chip, borderColor: ARTWORK.border }
+        : { backgroundColor: colors.glass, borderColor: colors.borderStrong };
+    case "danger":
+      return { backgroundColor: "transparent", borderColor: colors.error };
+    case "ghost":
+    default:
+      return { backgroundColor: "transparent" };
+  }
+}
 
-const hoverStyles: Record<ButtonVariant, ViewStyle> = {
-  primary: { backgroundColor: COLORS.accentBright },
-  secondary: { backgroundColor: COLORS.glassStrong },
-  ghost: { backgroundColor: COLORS.glass },
-  danger: { backgroundColor: "rgba(239, 68, 68, 0.12)" },
-};
+function hoverStyle(
+  colors: Palette,
+  variant: ButtonVariant,
+  onArtwork: boolean,
+): ViewStyle {
+  switch (variant) {
+    case "primary":
+      return { backgroundColor: colors.accentBright };
+    case "secondary":
+      return {
+        backgroundColor: onArtwork ? ARTWORK.chipHover : colors.glassStrong,
+      };
+    case "danger":
+      return { backgroundColor: colors.accentSoft };
+    case "ghost":
+    default:
+      return { backgroundColor: onArtwork ? ARTWORK.chip : colors.glass };
+  }
+}
 
-const labelColors: Record<ButtonVariant, string> = {
-  primary: COLORS.textPrimary,
-  secondary: COLORS.textPrimary,
-  ghost: COLORS.textSecondary,
-  danger: COLORS.error,
-};
+function labelColor(
+  colors: Palette,
+  variant: ButtonVariant,
+  onArtwork: boolean,
+): string {
+  if (variant === "danger") return colors.error;
+  if (onArtwork) {
+    return variant === "ghost" ? ARTWORK.textSecondary : ARTWORK.textPrimary;
+  }
+  return variant === "ghost" ? colors.textSecondary : colors.textPrimary;
+}

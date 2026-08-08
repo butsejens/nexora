@@ -6,10 +6,11 @@
  */
 
 import React from "react";
-import { ScrollView, StyleSheet, View, type ViewStyle } from "react-native";
+import { ScrollView, View, type ViewStyle } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { COLORS, LAYOUT, SPACING } from "@/constants/theme";
+import { LAYOUT, SPACING } from "@/constants/theme";
+import { makeStyles } from "@/theme";
 import { useResponsive } from "@/hooks/useResponsive";
 
 export interface ScreenProps {
@@ -35,6 +36,7 @@ export function Screen({
   onEndReached,
   header,
 }: ScreenProps) {
+  const styles = useStyles();
   const insets = useSafeAreaInsets();
   const { isMobile } = useResponsive();
 
@@ -97,10 +99,10 @@ export function Screen({
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((c, t) => ({
   root: {
     flex: 1,
-    backgroundColor: COLORS.background,
+    backgroundColor: c.background,
   },
   scroll: {
     flex: 1,
@@ -115,4 +117,4 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: "center",
   },
-});
+}));

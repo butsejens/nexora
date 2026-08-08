@@ -11,7 +11,8 @@ import { Ionicons } from "@expo/vector-icons";
 
 import { CineLogLogo } from "@/components/brand/CineLogLogo";
 import { NAV_ITEMS } from "@/components/navigation/navItems";
-import { COLORS, FONTS, LAYOUT, RADIUS, SPACING } from "@/constants/theme";
+import { FONTS, LAYOUT, RADIUS, SPACING } from "@/constants/theme";
+import { makeStyles, useTheme } from "@/theme";
 import { Pressable } from "@/components/ui/Pressable";
 
 export interface DesktopNavigationProps {
@@ -31,6 +32,8 @@ export function DesktopNavigation({
   displayName,
   avatarUrl,
 }: DesktopNavigationProps) {
+  const { colors } = useTheme();
+  const styles = useStyles();
   const initial = displayName.trim().charAt(0).toUpperCase() || "C";
 
   return (
@@ -66,7 +69,7 @@ export function DesktopNavigation({
               <Ionicons
                 name={active ? item.activeIcon : item.icon}
                 size={15}
-                color={active ? COLORS.textPrimary : COLORS.textSecondary}
+                color={active ? colors.textPrimary : colors.textSecondary}
               />
               <Text
                 style={[styles.linkText, active ? styles.linkTextActive : null]}
@@ -101,22 +104,22 @@ export function DesktopNavigation({
         <Text style={styles.profileName} numberOfLines={1}>
           {displayName}
         </Text>
-        <Ionicons name="chevron-down" size={13} color={COLORS.textMuted} />
+        <Ionicons name="chevron-down" size={13} color={colors.textMuted} />
       </Pressable>
     </View>
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((c, t) => ({
   bar: {
     height: LAYOUT.topNavHeight,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     gap: SPACING.xl,
-    backgroundColor: COLORS.background,
+    backgroundColor: c.background,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: COLORS.border,
+    borderBottomColor: c.border,
   },
   links: {
     flexDirection: "row",
@@ -134,19 +137,19 @@ const styles = StyleSheet.create({
     borderRadius: RADIUS.pill,
   },
   linkHovered: {
-    backgroundColor: COLORS.glass,
+    backgroundColor: c.glass,
   },
   linkActive: {
-    backgroundColor: COLORS.surfaceElevated,
+    backgroundColor: c.surfaceElevated,
   },
   linkText: {
     fontFamily: FONTS.medium,
     fontSize: 14,
-    color: COLORS.textSecondary,
+    color: c.textSecondary,
   },
   linkTextActive: {
     fontFamily: FONTS.semibold,
-    color: COLORS.textPrimary,
+    color: c.textPrimary,
   },
   profile: {
     flexDirection: "row",
@@ -159,7 +162,7 @@ const styles = StyleSheet.create({
     maxWidth: 200,
   },
   profileHovered: {
-    backgroundColor: COLORS.glass,
+    backgroundColor: c.glass,
   },
   avatar: {
     width: 32,
@@ -169,17 +172,17 @@ const styles = StyleSheet.create({
   avatarFallback: {
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: COLORS.accent,
+    backgroundColor: c.accent,
   },
   avatarText: {
     fontFamily: FONTS.bold,
     fontSize: 13,
-    color: COLORS.textPrimary,
+    color: c.textPrimary,
   },
   profileName: {
     fontFamily: FONTS.medium,
     fontSize: 13,
-    color: COLORS.textPrimary,
+    color: c.textPrimary,
     flexShrink: 1,
   },
-});
+}));

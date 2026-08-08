@@ -13,14 +13,8 @@ import { Ionicons } from "@expo/vector-icons";
 
 import { IconButton } from "@/components/ui/Button";
 import { TouchableScale } from "@/components/ui/Pressable";
-import {
-  CARD_SCRIM,
-  COLORS,
-  FONTS,
-  RADIUS,
-  SHADOWS,
-  SPACING,
-} from "@/constants/theme";
+import { ARTWORK, CARD_SCRIM, FONTS, RADIUS, SPACING } from "@/constants/theme";
+import { makeStyles } from "@/theme";
 import { formatEpisodeCode } from "@/lib/format";
 import type { WatchProgress } from "@/lib/cinelog/types";
 
@@ -37,6 +31,7 @@ export function ContinueWatchingCard({
   onPress,
   onRemove,
 }: ContinueWatchingCardProps) {
+  const styles = useStyles();
   const height = Math.round((width * 9) / 16);
   const episodeCode = formatEpisodeCode(
     progress.seasonNumber,
@@ -68,7 +63,7 @@ export function ContinueWatchingCard({
           <LinearGradient colors={CARD_SCRIM} style={styles.overlay}>
             <View style={styles.bottom}>
               <View style={styles.playCircle}>
-                <Ionicons name="play" size={16} color={COLORS.textPrimary} />
+                <Ionicons name="play" size={16} color={ARTWORK.textPrimary} />
               </View>
               <View style={styles.copy}>
                 <Text style={styles.title} numberOfLines={1}>
@@ -104,18 +99,19 @@ export function ContinueWatchingCard({
           label={`Remove ${progress.title} from Continue Watching`}
           onPress={onRemove}
           size={28}
+          onArtwork
         />
       </View>
     </View>
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((c, t) => ({
   card: {
     borderRadius: RADIUS.md,
     overflow: "hidden",
-    backgroundColor: COLORS.surface,
-    ...SHADOWS.card,
+    backgroundColor: c.surface,
+    ...t.shadows.card,
   },
   overlay: {
     ...StyleSheet.absoluteFillObject,
@@ -137,7 +133,7 @@ const styles = StyleSheet.create({
     width: 30,
     height: 30,
     borderRadius: RADIUS.pill,
-    backgroundColor: COLORS.accent,
+    backgroundColor: c.accent,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -147,17 +143,17 @@ const styles = StyleSheet.create({
   title: {
     fontFamily: FONTS.semibold,
     fontSize: 13,
-    color: COLORS.textPrimary,
+    color: ARTWORK.textPrimary,
   },
   subtitle: {
     fontFamily: FONTS.regular,
     fontSize: 11,
-    color: COLORS.textSecondary,
+    color: ARTWORK.textSecondary,
   },
   percent: {
     fontFamily: FONTS.semibold,
     fontSize: 11,
-    color: COLORS.textSecondary,
+    color: ARTWORK.textSecondary,
   },
   progressTrack: {
     position: "absolute",
@@ -165,10 +161,10 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
     height: 3,
-    backgroundColor: "rgba(255, 255, 255, 0.2)",
+    backgroundColor: ARTWORK.progressTrack,
   },
   progressFill: {
     height: "100%",
-    backgroundColor: COLORS.accent,
+    backgroundColor: c.accent,
   },
-});
+}));

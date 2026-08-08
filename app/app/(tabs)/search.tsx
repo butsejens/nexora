@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { Text, View } from "react-native";
 import { Image } from "expo-image";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
@@ -13,7 +13,8 @@ import { Screen } from "@/components/ui/Screen";
 import { SearchBar } from "@/components/ui/SearchBar";
 import { SkeletonGrid } from "@/components/ui/Skeleton";
 import { EmptyState, ErrorState } from "@/components/ui/States";
-import { COLORS, FONTS, RADIUS, SPACING } from "@/constants/theme";
+import { FONTS, RADIUS, SPACING } from "@/constants/theme";
+import { makeStyles, useTheme } from "@/theme";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { useResponsive } from "@/hooks/useResponsive";
 import { supportsPeopleSearch } from "@/lib/cinelog/api";
@@ -39,6 +40,7 @@ const POPULAR_SEARCHES = [
 ];
 
 export default function SearchScreen() {
+  const styles = useStyles();
   const { isMobile, gutter } = useResponsive();
   const { columns, posterWidth } = usePosterMetrics();
   const user = useAuth((state) => state.user);
@@ -253,6 +255,7 @@ function ResultSection({
   gutter: number;
   children: React.ReactNode;
 }) {
+  const styles = useStyles();
   return (
     <View style={styles.section}>
       <Text style={[styles.sectionTitle, { paddingHorizontal: gutter }]}>
@@ -270,6 +273,8 @@ function PersonRow({
   person: PersonResult;
   onPress: () => void;
 }) {
+  const { colors } = useTheme();
+  const styles = useStyles();
   return (
     <Pressable
       onPress={onPress}
@@ -290,7 +295,7 @@ function PersonRow({
         />
       ) : (
         <View style={[styles.personPhoto, styles.personFallback]}>
-          <Ionicons name="person" size={20} color={COLORS.textFaint} />
+          <Ionicons name="person" size={20} color={colors.textFaint} />
         </View>
       )}
       <View style={styles.personCopy}>
@@ -303,12 +308,12 @@ function PersonRow({
             .join(" • ")}
         </Text>
       </View>
-      <Ionicons name="chevron-forward" size={16} color={COLORS.textMuted} />
+      <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
     </Pressable>
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((c, t) => ({
   searchBlock: {
     gap: SPACING.md,
     paddingTop: SPACING.lg,
@@ -317,7 +322,7 @@ const styles = StyleSheet.create({
     fontFamily: FONTS.extrabold,
     fontSize: 30,
     letterSpacing: -0.8,
-    color: COLORS.textPrimary,
+    color: c.textPrimary,
   },
   tabsBlock: {
     paddingTop: SPACING.lg,
@@ -337,12 +342,12 @@ const styles = StyleSheet.create({
   suggestionTitle: {
     fontFamily: FONTS.bold,
     fontSize: 17,
-    color: COLORS.textPrimary,
+    color: c.textPrimary,
   },
   clear: {
     fontFamily: FONTS.medium,
     fontSize: 13,
-    color: COLORS.textSecondary,
+    color: c.textSecondary,
   },
   pillRow: {
     flexDirection: "row",
@@ -359,7 +364,7 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontFamily: FONTS.bold,
     fontSize: 19,
-    color: COLORS.textPrimary,
+    color: c.textPrimary,
   },
   peopleGrid: {
     gap: SPACING.sm,
@@ -370,19 +375,19 @@ const styles = StyleSheet.create({
     gap: SPACING.md,
     padding: SPACING.md,
     borderRadius: RADIUS.lg,
-    backgroundColor: COLORS.surface,
+    backgroundColor: c.surface,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: c.border,
   },
   personRowHovered: {
-    backgroundColor: COLORS.surfaceHover,
-    borderColor: COLORS.borderStrong,
+    backgroundColor: c.surfaceHover,
+    borderColor: c.borderStrong,
   },
   personPhoto: {
     width: 46,
     height: 46,
     borderRadius: RADIUS.pill,
-    backgroundColor: COLORS.surfaceElevated,
+    backgroundColor: c.surfaceElevated,
   },
   personFallback: {
     alignItems: "center",
@@ -395,11 +400,11 @@ const styles = StyleSheet.create({
   personName: {
     fontFamily: FONTS.semibold,
     fontSize: 14,
-    color: COLORS.textPrimary,
+    color: c.textPrimary,
   },
   personMeta: {
     fontFamily: FONTS.regular,
     fontSize: 12,
-    color: COLORS.textMuted,
+    color: c.textMuted,
   },
-});
+}));

@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { Text, View } from "react-native";
 import { router } from "expo-router";
 
 import { SeoHead } from "@/components/SeoHead";
@@ -11,7 +11,8 @@ import { MobileHeader } from "@/components/navigation/MobileHeader";
 import { IconButton } from "@/components/ui/Button";
 import { Screen } from "@/components/ui/Screen";
 import { EmptyState } from "@/components/ui/States";
-import { COLORS, FONTS, SPACING } from "@/constants/theme";
+import { FONTS, SPACING } from "@/constants/theme";
+import { makeStyles } from "@/theme";
 import { useResponsive } from "@/hooks/useResponsive";
 import { openTitle } from "@/lib/cinelog/navigation";
 import { useAuth } from "@/store/auth-store";
@@ -37,6 +38,7 @@ const SORTS: FilterOption<WatchlistSort>[] = [
 ];
 
 export default function WatchlistScreen() {
+  const styles = useStyles();
   const { isMobile, gutter } = useResponsive();
   const { posterWidth } = usePosterMetrics();
   const user = useAuth((state) => state.user);
@@ -175,7 +177,7 @@ export default function WatchlistScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((c, t) => ({
   head: {
     gap: SPACING.lg,
     paddingTop: SPACING.lg,
@@ -185,12 +187,12 @@ const styles = StyleSheet.create({
     fontFamily: FONTS.extrabold,
     fontSize: 30,
     letterSpacing: -0.8,
-    color: COLORS.textPrimary,
+    color: c.textPrimary,
   },
   subtitle: {
     fontFamily: FONTS.regular,
     fontSize: 14,
-    color: COLORS.textSecondary,
+    color: c.textSecondary,
     marginTop: -SPACING.sm,
   },
   grid: {
@@ -203,4 +205,4 @@ const styles = StyleSheet.create({
     top: SPACING.sm,
     right: SPACING.sm,
   },
-});
+}));

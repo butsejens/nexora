@@ -3,10 +3,11 @@
  */
 
 import React from "react";
-import { Pressable, StyleSheet, TextInput, View } from "react-native";
+import { Pressable, TextInput, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 
-import { COLORS, FONTS, RADIUS, SPACING } from "@/constants/theme";
+import { FONTS, RADIUS, SPACING } from "@/constants/theme";
+import { makeStyles, useTheme } from "@/theme";
 import { NO_WEB_OUTLINE } from "@/lib/web-style";
 
 export interface SearchBarProps {
@@ -24,14 +25,16 @@ export function SearchBar({
   autoFocus = false,
   onSubmit,
 }: SearchBarProps) {
+  const { colors } = useTheme();
+  const styles = useStyles();
   return (
     <View style={styles.wrap}>
-      <Ionicons name="search" size={18} color={COLORS.textMuted} />
+      <Ionicons name="search" size={18} color={colors.textMuted} />
       <TextInput
         value={value}
         onChangeText={onChangeText}
         placeholder={placeholder}
-        placeholderTextColor={COLORS.textMuted}
+        placeholderTextColor={colors.textMuted}
         style={styles.input}
         autoFocus={autoFocus}
         autoCorrect={false}
@@ -48,14 +51,14 @@ export function SearchBar({
           accessibilityLabel="Clear search"
           hitSlop={8}
         >
-          <Ionicons name="close-circle" size={18} color={COLORS.textMuted} />
+          <Ionicons name="close-circle" size={18} color={colors.textMuted} />
         </Pressable>
       ) : null}
     </View>
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((c, t) => ({
   wrap: {
     flexDirection: "row",
     alignItems: "center",
@@ -63,16 +66,16 @@ const styles = StyleSheet.create({
     height: 48,
     paddingHorizontal: SPACING.lg,
     borderRadius: RADIUS.pill,
-    backgroundColor: COLORS.surface,
+    backgroundColor: c.surface,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: c.border,
   },
   input: {
     flex: 1,
     fontFamily: FONTS.regular,
     fontSize: 15,
-    color: COLORS.textPrimary,
+    color: c.textPrimary,
     // react-native-web paints a focus ring that clashes with the pill border.
     ...NO_WEB_OUTLINE,
   },
-});
+}));

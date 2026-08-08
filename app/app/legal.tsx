@@ -1,12 +1,13 @@
 import React from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { Text, View } from "react-native";
 import { router } from "expo-router";
 
 import { SeoHead } from "@/components/SeoHead";
 import { Footer } from "@/components/layout/Footer";
 import { FloatingBackButton } from "@/components/navigation/MobileHeader";
 import { Screen } from "@/components/ui/Screen";
-import { COLORS, FONTS, SPACING } from "@/constants/theme";
+import { FONTS, SPACING } from "@/constants/theme";
+import { makeStyles } from "@/theme";
 import { useResponsive } from "@/hooks/useResponsive";
 
 const SECTIONS: { heading: string; body: string }[] = [
@@ -33,6 +34,7 @@ const SECTIONS: { heading: string; body: string }[] = [
 ];
 
 export default function LegalScreen() {
+  const styles = useStyles();
   const { gutter } = useResponsive();
 
   return (
@@ -64,7 +66,7 @@ export default function LegalScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((c, t) => ({
   body: {
     gap: SPACING.xl,
     paddingTop: SPACING.xxxl,
@@ -74,7 +76,7 @@ const styles = StyleSheet.create({
     fontFamily: FONTS.extrabold,
     fontSize: 30,
     letterSpacing: -0.8,
-    color: COLORS.textPrimary,
+    color: c.textPrimary,
   },
   section: {
     gap: SPACING.sm,
@@ -82,12 +84,12 @@ const styles = StyleSheet.create({
   heading: {
     fontFamily: FONTS.bold,
     fontSize: 17,
-    color: COLORS.textPrimary,
+    color: c.textPrimary,
   },
   paragraph: {
     fontFamily: FONTS.regular,
     fontSize: 14,
     lineHeight: 22,
-    color: COLORS.textSecondary,
+    color: c.textSecondary,
   },
-});
+}));

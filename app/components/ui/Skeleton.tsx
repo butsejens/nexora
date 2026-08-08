@@ -6,7 +6,7 @@
  */
 
 import React, { useEffect } from "react";
-import { StyleSheet, View, type ViewStyle } from "react-native";
+import { View, type ViewStyle } from "react-native";
 import Animated, {
   Easing,
   useAnimatedStyle,
@@ -15,7 +15,8 @@ import Animated, {
   withTiming,
 } from "react-native-reanimated";
 
-import { COLORS, RADIUS, SPACING } from "@/constants/theme";
+import { RADIUS, SPACING } from "@/constants/theme";
+import { makeStyles, useTheme } from "@/theme";
 
 export interface SkeletonProps {
   width?: number | `${number}%`;
@@ -30,6 +31,7 @@ export function Skeleton({
   radius = RADIUS.xs,
   style,
 }: SkeletonProps) {
+  const { colors } = useTheme();
   const progress = useSharedValue(0.4);
 
   useEffect(() => {
@@ -53,7 +55,7 @@ export function Skeleton({
           width,
           height,
           borderRadius: radius,
-          backgroundColor: COLORS.skeleton,
+          backgroundColor: colors.skeleton,
         },
         animatedStyle,
         style,
@@ -74,6 +76,7 @@ export function SkeletonCard({
   aspectRatio = 2 / 3,
   showMeta = true,
 }: SkeletonCardProps) {
+  const styles = useStyles();
   return (
     <View style={{ width }}>
       <Skeleton width={width} height={width / aspectRatio} radius={RADIUS.md} />
@@ -98,6 +101,7 @@ export function SkeletonRail({
   count = 6,
   gutter,
 }: SkeletonRailProps) {
+  const styles = useStyles();
   return (
     <View style={[styles.rail, { paddingHorizontal: gutter }]}>
       {Array.from({ length: count }).map((_, index) => (
@@ -118,6 +122,7 @@ export function SkeletonGrid({
   posterWidth,
   count,
 }: SkeletonGridProps) {
+  const styles = useStyles();
   const total = count ?? columns * 3;
   return (
     <View style={styles.grid}>
@@ -128,7 +133,7 @@ export function SkeletonGrid({
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((c, t) => ({
   meta: {
     gap: SPACING.xs,
     paddingTop: SPACING.sm,
@@ -143,4 +148,4 @@ const styles = StyleSheet.create({
     flexWrap: "wrap",
     gap: SPACING.md,
   },
-});
+}));

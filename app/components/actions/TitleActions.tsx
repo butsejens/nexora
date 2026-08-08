@@ -6,11 +6,12 @@
  */
 
 import React, { useCallback } from "react";
-import { StyleSheet, View } from "react-native";
+import { View } from "react-native";
 
 import { Button, IconButton } from "@/components/ui/Button";
 import { GenrePill } from "@/components/ui/GenrePill";
-import { COLORS, SPACING } from "@/constants/theme";
+import { SPACING } from "@/constants/theme";
+import { makeStyles } from "@/theme";
 import { SafeHaptics } from "@/lib/safeHaptics";
 import type { LibraryEntryRef, WatchState } from "@/lib/cinelog/types";
 import { useLibrary } from "@/store/library-store";
@@ -129,6 +130,7 @@ export interface WatchStateSelectorProps {
 
 /** Three-way tracking control: Want to Watch / Currently Watching / Watched. */
 export function WatchStateSelector({ item }: WatchStateSelectorProps) {
+  const styles = useStyles();
   const current = useLibrary((state) => state.getWatchState(item.id));
   const setWatchState = useLibrary((state) => state.setWatchState);
 
@@ -149,11 +151,11 @@ export function WatchStateSelector({ item }: WatchStateSelectorProps) {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((c, t) => ({
   stateRow: {
     flexDirection: "row",
     flexWrap: "wrap",
     gap: SPACING.sm,
-    backgroundColor: COLORS.background,
+    backgroundColor: c.background,
   },
-});
+}));

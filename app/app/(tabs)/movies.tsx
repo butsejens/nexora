@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { Text, View } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 
 import { SeoHead } from "@/components/SeoHead";
@@ -9,7 +9,8 @@ import { PosterGrid } from "@/components/media/PosterGrid";
 import { MobileHeader } from "@/components/navigation/MobileHeader";
 import { Screen } from "@/components/ui/Screen";
 import { EmptyState, ErrorState } from "@/components/ui/States";
-import { COLORS, FONTS, SPACING } from "@/constants/theme";
+import { FONTS, SPACING } from "@/constants/theme";
+import { makeStyles } from "@/theme";
 import { useResponsive } from "@/hooks/useResponsive";
 import { GENRES, findGenre } from "@/lib/cinelog/genres";
 import { openTitle } from "@/lib/cinelog/navigation";
@@ -28,6 +29,7 @@ const LIST_FILTERS: FilterOption<MovieListKey>[] = [
 const ALL_GENRES = "all";
 
 export default function MoviesScreen() {
+  const styles = useStyles();
   const { isMobile, gutter } = useResponsive();
   const user = useAuth((state) => state.user);
   const params = useLocalSearchParams<{ genre?: string }>();
@@ -138,7 +140,7 @@ export default function MoviesScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((c, t) => ({
   head: {
     gap: SPACING.lg,
     paddingTop: SPACING.lg,
@@ -148,12 +150,12 @@ const styles = StyleSheet.create({
     fontFamily: FONTS.extrabold,
     fontSize: 30,
     letterSpacing: -0.8,
-    color: COLORS.textPrimary,
+    color: c.textPrimary,
   },
   subtitle: {
     fontFamily: FONTS.regular,
     fontSize: 14,
-    color: COLORS.textSecondary,
+    color: c.textSecondary,
     marginTop: -SPACING.sm,
   },
-});
+}));

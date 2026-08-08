@@ -4,10 +4,11 @@
  */
 
 import React from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { Text, View } from "react-native";
 import Svg, { Defs, LinearGradient, Path, Rect, Stop } from "react-native-svg";
 
-import { COLORS, FONTS } from "@/constants/theme";
+import { FONTS } from "@/constants/theme";
+import { makeStyles, useTheme } from "@/theme";
 
 export interface CineLogMarkProps {
   size?: number;
@@ -19,14 +20,15 @@ export interface CineLogMarkProps {
  * stay identical; both are authored on a 512-unit grid.
  */
 export function CineLogMark({ size = 32 }: CineLogMarkProps) {
+  const { colors } = useTheme();
   const perforations = [92, 178, 264, 350];
 
   return (
     <Svg width={size} height={size} viewBox="0 0 512 512">
       <Defs>
         <LinearGradient id="cinelogMark" x1="0" y1="0" x2="1" y2="1">
-          <Stop offset="0" stopColor={COLORS.accentBright} />
-          <Stop offset="1" stopColor={COLORS.accentDeep} />
+          <Stop offset="0" stopColor={colors.accentBright} />
+          <Stop offset="1" stopColor={colors.accentDeep} />
         </LinearGradient>
       </Defs>
       <Rect
@@ -45,14 +47,14 @@ export function CineLogMark({ size = 32 }: CineLogMarkProps) {
           width={52}
           height={52}
           rx={18}
-          fill={COLORS.textPrimary}
+          fill={colors.textPrimary}
           opacity={0.95}
         />
       ))}
       <Path
         d="M 397.7 176.9 A 118 118 0 1 0 397.7 335.1"
         fill="none"
-        stroke={COLORS.textPrimary}
+        stroke={colors.textPrimary}
         strokeWidth={54}
         strokeLinecap="round"
       />
@@ -73,6 +75,7 @@ export function CineLogLogo({
   showTagline = false,
   markOnly = false,
 }: CineLogLogoProps) {
+  const styles = useStyles();
   if (markOnly) return <CineLogMark size={size} />;
 
   return (
@@ -95,7 +98,7 @@ export function CineLogLogo({
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((c, t) => ({
   row: {
     flexDirection: "row",
     alignItems: "center",
@@ -103,18 +106,18 @@ const styles = StyleSheet.create({
   },
   wordmark: {
     fontFamily: FONTS.extrabold,
-    color: COLORS.textPrimary,
+    color: c.textPrimary,
     letterSpacing: -0.4,
   },
   wordmarkAccent: {
-    color: COLORS.accent,
+    color: c.accent,
   },
   tagline: {
     fontFamily: FONTS.medium,
     fontSize: 10,
     letterSpacing: 1.6,
     textTransform: "uppercase",
-    color: COLORS.textMuted,
+    color: c.textMuted,
     marginTop: 1,
   },
-});
+}));

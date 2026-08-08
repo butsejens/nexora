@@ -12,7 +12,8 @@ import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { NAV_ITEMS } from "@/components/navigation/navItems";
-import { COLORS, FONTS, LAYOUT, RADIUS, SPACING } from "@/constants/theme";
+import { FONTS, LAYOUT, RADIUS, SPACING } from "@/constants/theme";
+import { makeStyles, useTheme } from "@/theme";
 
 export interface BottomNavigationProps {
   /** Current tab route, e.g. "/home". */
@@ -24,6 +25,8 @@ export function BottomNavigation({
   activeRoute,
   onNavigate,
 }: BottomNavigationProps) {
+  const { colors } = useTheme();
+  const styles = useStyles();
   const insets = useSafeAreaInsets();
 
   return (
@@ -58,7 +61,7 @@ export function BottomNavigation({
                 <Ionicons
                   name={active ? item.activeIcon : item.icon}
                   size={21}
-                  color={active ? COLORS.accent : COLORS.textMuted}
+                  color={active ? colors.accent : colors.textMuted}
                 />
               </View>
               <Text style={[styles.label, active ? styles.labelActive : null]}>
@@ -72,16 +75,15 @@ export function BottomNavigation({
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((c, t) => ({
   wrap: {
     position: "absolute",
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor:
-      Platform.OS === "android" ? COLORS.background : COLORS.overlay,
+    backgroundColor: Platform.OS === "android" ? c.background : c.overlay,
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: COLORS.border,
+    borderTopColor: c.border,
   },
   row: {
     flexDirection: "row",
@@ -102,15 +104,15 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   iconWrapActive: {
-    backgroundColor: COLORS.accentSoft,
+    backgroundColor: c.accentSoft,
   },
   label: {
     fontFamily: FONTS.medium,
     fontSize: 10,
-    color: COLORS.textMuted,
+    color: c.textMuted,
   },
   labelActive: {
     fontFamily: FONTS.semibold,
-    color: COLORS.textPrimary,
+    color: c.textPrimary,
   },
-});
+}));

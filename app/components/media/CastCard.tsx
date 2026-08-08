@@ -1,12 +1,13 @@
 /** CineLog — cast member card used in the detail-page cast carousel. */
 
 import React from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { Text, View } from "react-native";
 import { Image } from "expo-image";
 import { Ionicons } from "@expo/vector-icons";
 
 import { TouchableScale } from "@/components/ui/Pressable";
-import { COLORS, FONTS, RADIUS, SPACING } from "@/constants/theme";
+import { FONTS, RADIUS, SPACING } from "@/constants/theme";
+import { makeStyles, useTheme } from "@/theme";
 import type { CastMember } from "@/lib/cinelog/types";
 
 export interface CastCardProps {
@@ -16,6 +17,8 @@ export interface CastCardProps {
 }
 
 export function CastCard({ member, width, onPress }: CastCardProps) {
+  const { colors } = useTheme();
+  const styles = useStyles();
   return (
     <TouchableScale
       onPress={onPress}
@@ -36,7 +39,7 @@ export function CastCard({ member, width, onPress }: CastCardProps) {
           />
         ) : (
           <View style={[styles.photo, styles.fallback]}>
-            <Ionicons name="person" size={24} color={COLORS.textFaint} />
+            <Ionicons name="person" size={24} color={colors.textFaint} />
           </View>
         )}
       </View>
@@ -52,11 +55,11 @@ export function CastCard({ member, width, onPress }: CastCardProps) {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((c, t) => ({
   photoWrap: {
     borderRadius: RADIUS.pill,
     overflow: "hidden",
-    backgroundColor: COLORS.surface,
+    backgroundColor: c.surface,
   },
   photo: {
     width: "100%",
@@ -65,20 +68,20 @@ const styles = StyleSheet.create({
   fallback: {
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: COLORS.surfaceElevated,
+    backgroundColor: c.surfaceElevated,
   },
   name: {
     fontFamily: FONTS.semibold,
     fontSize: 12,
-    color: COLORS.textPrimary,
+    color: c.textPrimary,
     textAlign: "center",
     paddingTop: SPACING.sm,
   },
   character: {
     fontFamily: FONTS.regular,
     fontSize: 11,
-    color: COLORS.textMuted,
+    color: c.textMuted,
     textAlign: "center",
     paddingTop: 1,
   },
-});
+}));

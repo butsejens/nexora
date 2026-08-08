@@ -1,9 +1,10 @@
 /** CineLog — viewing statistics grid shown on the profile page. */
 
 import React from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { Text, View } from "react-native";
 
-import { COLORS, FONTS, RADIUS, SPACING } from "@/constants/theme";
+import { FONTS, RADIUS, SPACING } from "@/constants/theme";
+import { makeStyles } from "@/theme";
 import type { LibraryStats } from "@/store/library-store";
 
 export interface ProfileStatsProps {
@@ -11,6 +12,7 @@ export interface ProfileStatsProps {
 }
 
 export function ProfileStats({ stats }: ProfileStatsProps) {
+  const styles = useStyles();
   const tiles = [
     { label: "Movies Watched", value: stats.moviesWatched },
     { label: "Series Watched", value: stats.seriesWatched },
@@ -35,7 +37,7 @@ export function ProfileStats({ stats }: ProfileStatsProps) {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((c, t) => ({
   grid: {
     flexDirection: "row",
     flexWrap: "wrap",
@@ -47,21 +49,21 @@ const styles = StyleSheet.create({
     paddingVertical: SPACING.lg,
     paddingHorizontal: SPACING.lg,
     borderRadius: RADIUS.lg,
-    backgroundColor: COLORS.surface,
+    backgroundColor: c.surface,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: c.border,
     gap: SPACING.xs,
   },
   value: {
     fontFamily: FONTS.extrabold,
     fontSize: 26,
-    color: COLORS.textPrimary,
+    color: c.textPrimary,
   },
   label: {
     fontFamily: FONTS.medium,
     fontSize: 11,
     letterSpacing: 0.8,
     textTransform: "uppercase",
-    color: COLORS.textMuted,
+    color: c.textMuted,
   },
-});
+}));

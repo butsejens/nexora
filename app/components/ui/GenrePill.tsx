@@ -3,9 +3,10 @@
  */
 
 import React from "react";
-import { StyleSheet, Text } from "react-native";
+import { Text } from "react-native";
 
-import { COLORS, FONTS, RADIUS, SPACING } from "@/constants/theme";
+import { FONTS, RADIUS, SPACING } from "@/constants/theme";
+import { makeStyles } from "@/theme";
 import { Pressable } from "@/components/ui/Pressable";
 
 export interface GenrePillProps {
@@ -22,6 +23,7 @@ export function GenrePill({
   onPress,
   count,
 }: GenrePillProps) {
+  const styles = useStyles();
   const text = typeof count === "number" ? `${label} ${count}` : label;
 
   if (!onPress) {
@@ -55,33 +57,33 @@ export function GenrePill({
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((c, t) => ({
   pillWrap: {
     height: 34,
     paddingHorizontal: SPACING.lg,
     borderRadius: RADIUS.pill,
-    backgroundColor: COLORS.surface,
+    backgroundColor: c.surface,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: c.border,
     alignItems: "center",
     justifyContent: "center",
   },
   pillText: {
     fontFamily: FONTS.medium,
     fontSize: 13,
-    color: COLORS.textSecondary,
+    color: c.textSecondary,
   },
   selected: {
-    backgroundColor: COLORS.accent,
-    borderColor: COLORS.accent,
+    backgroundColor: c.accent,
+    borderColor: c.accent,
   },
   selectedText: {
-    color: COLORS.textPrimary,
+    color: c.textPrimary,
     fontFamily: FONTS.semibold,
   },
   hovered: {
-    backgroundColor: COLORS.surfaceHover,
-    borderColor: COLORS.borderStrong,
+    backgroundColor: c.surfaceHover,
+    borderColor: c.borderStrong,
   },
   pressed: {
     opacity: 0.85,
@@ -94,8 +96,8 @@ const styles = StyleSheet.create({
   static: {
     fontFamily: FONTS.medium,
     fontSize: 12,
-    color: COLORS.textSecondary,
-    backgroundColor: COLORS.glass,
+    color: c.textSecondary,
+    backgroundColor: c.glass,
     overflow: "hidden",
   },
-});
+}));

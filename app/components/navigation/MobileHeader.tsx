@@ -6,13 +6,14 @@
  */
 
 import React from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { Text, View } from "react-native";
 import { Image } from "expo-image";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { CineLogLogo } from "@/components/brand/CineLogLogo";
-import { COLORS, FONTS, RADIUS, SPACING } from "@/constants/theme";
+import { ARTWORK, FONTS, RADIUS, SPACING } from "@/constants/theme";
+import { makeStyles } from "@/theme";
 import { Pressable } from "@/components/ui/Pressable";
 
 export interface MobileHeaderProps {
@@ -34,6 +35,7 @@ export function MobileHeader({
   title,
   transparent = false,
 }: MobileHeaderProps) {
+  const styles = useStyles();
   const insets = useSafeAreaInsets();
   const initial = displayName.trim().charAt(0).toUpperCase() || "C";
 
@@ -83,6 +85,7 @@ export function FloatingBackButton({
   onPress: () => void;
   gutter: number;
 }) {
+  const styles = useStyles();
   const insets = useSafeAreaInsets();
   return (
     <Pressable
@@ -96,18 +99,18 @@ export function FloatingBackButton({
         hovered ? styles.backHovered : null,
       ]}
     >
-      <Ionicons name="chevron-back" size={20} color={COLORS.textPrimary} />
+      <Ionicons name="chevron-back" size={20} color={ARTWORK.textPrimary} />
     </Pressable>
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((c, t) => ({
   bar: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     paddingBottom: SPACING.sm,
-    backgroundColor: COLORS.background,
+    backgroundColor: c.background,
   },
   transparent: {
     backgroundColor: "transparent",
@@ -115,7 +118,7 @@ const styles = StyleSheet.create({
   title: {
     fontFamily: FONTS.bold,
     fontSize: 22,
-    color: COLORS.textPrimary,
+    color: c.textPrimary,
   },
   avatar: {
     width: 32,
@@ -125,12 +128,12 @@ const styles = StyleSheet.create({
   avatarFallback: {
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: COLORS.accent,
+    backgroundColor: c.accent,
   },
   avatarText: {
     fontFamily: FONTS.bold,
     fontSize: 13,
-    color: COLORS.textPrimary,
+    color: c.textPrimary,
   },
   back: {
     position: "absolute",
@@ -140,11 +143,11 @@ const styles = StyleSheet.create({
     borderRadius: RADIUS.pill,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: COLORS.overlay,
+    backgroundColor: ARTWORK.chip,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: c.border,
   },
   backHovered: {
-    backgroundColor: COLORS.surfaceHover,
+    backgroundColor: c.surfaceHover,
   },
-});
+}));

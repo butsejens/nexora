@@ -4,7 +4,6 @@ import {
   Platform,
   Pressable,
   ScrollView,
-  StyleSheet,
   Text,
   TextInput,
   View,
@@ -13,7 +12,8 @@ import { router } from "expo-router";
 
 import { CineLogLogo } from "@/components/brand/CineLogLogo";
 import { Button } from "@/components/ui/Button";
-import { COLORS, FONTS, RADIUS, SPACING } from "@/constants/theme";
+import { FONTS, RADIUS, SPACING } from "@/constants/theme";
+import { makeStyles, useTheme } from "@/theme";
 import { useResponsive } from "@/hooks/useResponsive";
 import { useAuth } from "@/store/auth-store";
 import { NO_WEB_OUTLINE } from "@/lib/web-style";
@@ -39,6 +39,7 @@ const COPY: Record<Mode, { title: string; body: string; cta: string }> = {
 };
 
 export default function AuthScreen() {
+  const styles = useStyles();
   const { gutter, isMobile } = useResponsive();
 
   const [mode, setMode] = useState<Mode>("signin");
@@ -181,13 +182,15 @@ function Field({
   label,
   ...inputProps
 }: { label: string } & React.ComponentProps<typeof TextInput>) {
+  const { colors } = useTheme();
+  const styles = useStyles();
   return (
     <View style={styles.field}>
       <Text style={styles.fieldLabel}>{label}</Text>
       <TextInput
         {...inputProps}
         style={styles.input}
-        placeholderTextColor={COLORS.textMuted}
+        placeholderTextColor={colors.textMuted}
         autoCapitalize="none"
         autoCorrect={false}
         accessibilityLabel={label}
@@ -197,6 +200,7 @@ function Field({
 }
 
 function AuthLink({ label, onPress }: { label: string; onPress: () => void }) {
+  const styles = useStyles();
   return (
     <Pressable
       onPress={onPress}
@@ -208,10 +212,10 @@ function AuthLink({ label, onPress }: { label: string; onPress: () => void }) {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((c, t) => ({
   root: {
     flex: 1,
-    backgroundColor: COLORS.background,
+    backgroundColor: c.background,
   },
   scroll: {
     flexGrow: 1,
@@ -225,9 +229,9 @@ const styles = StyleSheet.create({
     gap: SPACING.xl,
     padding: SPACING.xxl,
     borderRadius: RADIUS.xl,
-    backgroundColor: COLORS.surface,
+    backgroundColor: c.surface,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: c.border,
   },
   cardMobile: {
     padding: SPACING.xl,
@@ -241,13 +245,13 @@ const styles = StyleSheet.create({
     fontFamily: FONTS.bold,
     fontSize: 24,
     letterSpacing: -0.6,
-    color: COLORS.textPrimary,
+    color: c.textPrimary,
   },
   body: {
     fontFamily: FONTS.regular,
     fontSize: 14,
     lineHeight: 20,
-    color: COLORS.textSecondary,
+    color: c.textSecondary,
   },
   form: {
     gap: SPACING.lg,
@@ -260,29 +264,29 @@ const styles = StyleSheet.create({
     fontSize: 12,
     letterSpacing: 0.6,
     textTransform: "uppercase",
-    color: COLORS.textMuted,
+    color: c.textMuted,
   },
   input: {
     height: 48,
     paddingHorizontal: SPACING.lg,
     borderRadius: RADIUS.md,
-    backgroundColor: COLORS.surfaceElevated,
+    backgroundColor: c.surfaceElevated,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: c.border,
     fontFamily: FONTS.regular,
     fontSize: 15,
-    color: COLORS.textPrimary,
+    color: c.textPrimary,
     ...NO_WEB_OUTLINE,
   },
   error: {
     fontFamily: FONTS.medium,
     fontSize: 13,
-    color: COLORS.error,
+    color: c.error,
   },
   success: {
     fontFamily: FONTS.medium,
     fontSize: 13,
-    color: COLORS.success,
+    color: c.success,
   },
   links: {
     gap: SPACING.md,
@@ -291,6 +295,6 @@ const styles = StyleSheet.create({
   link: {
     fontFamily: FONTS.medium,
     fontSize: 13,
-    color: COLORS.textSecondary,
+    color: c.textSecondary,
   },
-});
+}));

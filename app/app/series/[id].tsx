@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { ScrollView, StyleSheet, Text, View } from "react-native";
+import { ScrollView, Text, View } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 
 import {
@@ -21,7 +21,8 @@ import { RatingInput } from "@/components/ui/Rating";
 import { Screen } from "@/components/ui/Screen";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { ErrorState } from "@/components/ui/States";
-import { COLORS, FONTS, SPACING } from "@/constants/theme";
+import { FONTS, SPACING } from "@/constants/theme";
+import { makeStyles } from "@/theme";
 import { useResponsive } from "@/hooks/useResponsive";
 import { useTrailerPlayer } from "@/hooks/useTrailerPlayer";
 import { openPerson, openTitle, parseIdParam } from "@/lib/cinelog/navigation";
@@ -31,6 +32,7 @@ import type { MediaSummary } from "@/lib/cinelog/types";
 import { toLibraryRef, useLibrary } from "@/store/library-store";
 
 export default function SeriesDetailScreen() {
+  const styles = useStyles();
   const params = useLocalSearchParams<{ id?: string }>();
   const tmdbId = parseIdParam(params.id);
   const { gutter, railPosterWidth, isMobile, width } = useResponsive();
@@ -376,7 +378,7 @@ export default function SeriesDetailScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((c, t) => ({
   sections: {
     gap: SPACING.xxl,
     paddingTop: SPACING.xxl,
@@ -390,7 +392,7 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontFamily: FONTS.bold,
     fontSize: 19,
-    color: COLORS.textPrimary,
+    color: c.textPrimary,
   },
   seasonRow: {
     gap: SPACING.sm,
@@ -401,10 +403,10 @@ const styles = StyleSheet.create({
   noEpisodes: {
     fontFamily: FONTS.regular,
     fontSize: 13,
-    color: COLORS.textMuted,
+    color: c.textMuted,
   },
   loadingBody: {
     gap: SPACING.md,
     paddingTop: SPACING.xl,
   },
-});
+}));

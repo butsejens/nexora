@@ -14,13 +14,14 @@ import { Ionicons } from "@expo/vector-icons";
 import { Button } from "@/components/ui/Button";
 import { Skeleton } from "@/components/ui/Skeleton";
 import {
-  COLORS,
+  ARTWORK,
   FONTS,
   HERO_SCRIM,
   HERO_SCRIM_SIDE,
   RADIUS,
   SPACING,
 } from "@/constants/theme";
+import { makeStyles, useTheme } from "@/theme";
 import { useResponsive } from "@/hooks/useResponsive";
 import {
   formatRating,
@@ -50,6 +51,8 @@ export function HeroBanner({
   inWatchlist,
   certification,
 }: HeroBannerProps) {
+  const { colors } = useTheme();
+  const styles = useStyles();
   const { isMobile, gutter, height: viewportHeight } = useResponsive();
   const heroHeight = isMobile
     ? Math.max(440, Math.min(viewportHeight * 0.72, 620))
@@ -116,7 +119,7 @@ export function HeroBanner({
         ]}
       >
         <View style={styles.featuredTag}>
-          <Ionicons name="sparkles" size={12} color={COLORS.accent} />
+          <Ionicons name="sparkles" size={12} color={colors.accent} />
           <Text style={styles.featuredTagText}>Featured today</Text>
         </View>
 
@@ -131,7 +134,7 @@ export function HeroBanner({
         <View style={styles.metaRow}>
           {formatRating(item.rating) ? (
             <View style={styles.ratingChip}>
-              <Ionicons name="star" size={13} color={COLORS.star} />
+              <Ionicons name="star" size={13} color={colors.star} />
               <Text style={styles.ratingText}>{formatRating(item.rating)}</Text>
             </View>
           ) : null}
@@ -157,6 +160,7 @@ export function HeroBanner({
             onPress={onToggleWatchlist}
             variant="secondary"
             size="lg"
+            onArtwork
           />
           <Button
             label="More info"
@@ -164,6 +168,7 @@ export function HeroBanner({
             onPress={onOpen}
             variant="ghost"
             size="lg"
+            onArtwork
           />
         </View>
       </View>
@@ -171,11 +176,11 @@ export function HeroBanner({
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((c, t) => ({
   hero: {
     width: "100%",
     justifyContent: "flex-end",
-    backgroundColor: COLORS.surfaceSunken,
+    backgroundColor: c.surfaceSunken,
     overflow: "hidden",
   },
   content: {
@@ -190,23 +195,23 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.md,
     paddingVertical: 5,
     borderRadius: RADIUS.pill,
-    backgroundColor: COLORS.accentSoft,
+    backgroundColor: c.accentSoft,
     borderWidth: 1,
-    borderColor: COLORS.accentGlow,
+    borderColor: c.accentGlow,
   },
   featuredTagText: {
     fontFamily: FONTS.semibold,
     fontSize: 10,
     letterSpacing: 1.1,
     textTransform: "uppercase",
-    color: COLORS.textPrimary,
+    color: ARTWORK.textPrimary,
   },
   title: {
     fontFamily: FONTS.extrabold,
     fontSize: 48,
     lineHeight: 52,
     letterSpacing: -1.2,
-    color: COLORS.textPrimary,
+    color: ARTWORK.textPrimary,
   },
   titleMobile: {
     fontSize: 34,
@@ -227,19 +232,19 @@ const styles = StyleSheet.create({
   ratingText: {
     fontFamily: FONTS.bold,
     fontSize: 14,
-    color: COLORS.textPrimary,
+    color: ARTWORK.textPrimary,
   },
   meta: {
     fontFamily: FONTS.medium,
     fontSize: 13,
-    color: COLORS.textSecondary,
+    color: ARTWORK.textSecondary,
     flexShrink: 1,
   },
   overview: {
     fontFamily: FONTS.regular,
     fontSize: 14,
     lineHeight: 21,
-    color: COLORS.textSecondary,
+    color: ARTWORK.textSecondary,
   },
   actions: {
     flexDirection: "row",
@@ -248,4 +253,4 @@ const styles = StyleSheet.create({
     flexWrap: "wrap",
     paddingTop: SPACING.xs,
   },
-});
+}));

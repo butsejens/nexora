@@ -10,7 +10,8 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 import { router } from "expo-router";
 
 import { CineLogLogo } from "@/components/brand/CineLogLogo";
-import { COLORS, FONTS, SPACING } from "@/constants/theme";
+import { FONTS, SPACING } from "@/constants/theme";
+import { makeStyles } from "@/theme";
 import { useResponsive } from "@/hooks/useResponsive";
 
 const LINKS: { label: string; href: string }[] = [
@@ -20,6 +21,7 @@ const LINKS: { label: string; href: string }[] = [
 ];
 
 export function Footer() {
+  const styles = useStyles();
   const { gutter, isMobile } = useResponsive();
 
   return (
@@ -55,13 +57,13 @@ export function Footer() {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((c, t) => ({
   footer: {
     paddingTop: SPACING.xxl,
     paddingBottom: SPACING.xl,
     marginTop: SPACING.xl,
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: COLORS.border,
+    borderTopColor: c.border,
     gap: SPACING.lg,
   },
   footerMobile: {
@@ -78,13 +80,13 @@ const styles = StyleSheet.create({
   link: {
     fontFamily: FONTS.medium,
     fontSize: 13,
-    color: COLORS.textSecondary,
+    color: c.textSecondary,
   },
   attribution: {
     fontFamily: FONTS.regular,
     fontSize: 11,
     lineHeight: 16,
-    color: COLORS.textFaint,
+    color: c.textFaint,
     maxWidth: 520,
   },
-});
+}));

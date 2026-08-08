@@ -1,5 +1,5 @@
 import React, { useCallback, useMemo } from "react";
-import { ScrollView, StyleSheet, Text, View } from "react-native";
+import { ScrollView, Text, View } from "react-native";
 import { router } from "expo-router";
 
 import { SeoHead } from "@/components/SeoHead";
@@ -12,7 +12,8 @@ import { MobileHeader } from "@/components/navigation/MobileHeader";
 import { GenrePill } from "@/components/ui/GenrePill";
 import { Screen } from "@/components/ui/Screen";
 import { ErrorState } from "@/components/ui/States";
-import { COLORS, FONTS, SPACING } from "@/constants/theme";
+import { FONTS, SPACING } from "@/constants/theme";
+import { makeStyles } from "@/theme";
 import { useResponsive } from "@/hooks/useResponsive";
 import { useTrailerPlayer } from "@/hooks/useTrailerPlayer";
 import { GENRES } from "@/lib/cinelog/genres";
@@ -37,6 +38,7 @@ import {
 } from "@/store/library-store";
 
 export default function HomeScreen() {
+  const styles = useStyles();
   const { isMobile, gutter, railPosterWidth, width } = useResponsive();
   const user = useAuth((state) => state.user);
   const trailer = useTrailerPlayer();
@@ -292,7 +294,7 @@ export default function HomeScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((c, t) => ({
   rails: {
     gap: SPACING.xxl,
     paddingTop: SPACING.xxl,
@@ -303,9 +305,9 @@ const styles = StyleSheet.create({
   genreHeading: {
     fontFamily: FONTS.bold,
     fontSize: 19,
-    color: COLORS.textPrimary,
+    color: c.textPrimary,
   },
   genreRow: {
     gap: SPACING.sm,
   },
-});
+}));

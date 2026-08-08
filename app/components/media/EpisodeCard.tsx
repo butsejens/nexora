@@ -6,11 +6,12 @@
  */
 
 import React from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { Text, View } from "react-native";
 import { Image } from "expo-image";
 import { Ionicons } from "@expo/vector-icons";
 
-import { COLORS, FONTS, RADIUS, SPACING } from "@/constants/theme";
+import { ARTWORK, FONTS, RADIUS, SPACING } from "@/constants/theme";
+import { makeStyles, useTheme } from "@/theme";
 import { formatDate, formatRuntime, metaLine } from "@/lib/format";
 import type { Episode } from "@/lib/cinelog/types";
 import { Pressable } from "@/components/ui/Pressable";
@@ -31,6 +32,8 @@ export function EpisodeCard({
   isUpNext = false,
   stillWidth,
 }: EpisodeCardProps) {
+  const { colors } = useTheme();
+  const styles = useStyles();
   const stillHeight = Math.round((stillWidth * 9) / 16);
   const meta = metaLine([
     formatRuntime(episode.runtime),
@@ -53,7 +56,7 @@ export function EpisodeCard({
           />
         ) : (
           <View style={[styles.still, styles.stillFallback]}>
-            <Ionicons name="image-outline" size={20} color={COLORS.textFaint} />
+            <Ionicons name="image-outline" size={20} color={colors.textFaint} />
           </View>
         )}
         <View style={styles.numberBadge}>
@@ -95,31 +98,31 @@ export function EpisodeCard({
         <Ionicons
           name={watched ? "checkmark" : "ellipse-outline"}
           size={16}
-          color={watched ? COLORS.textPrimary : COLORS.textMuted}
+          color={watched ? colors.textPrimary : colors.textMuted}
         />
       </Pressable>
     </View>
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((c, t) => ({
   row: {
     flexDirection: "row",
     gap: SPACING.md,
     padding: SPACING.md,
     borderRadius: RADIUS.lg,
-    backgroundColor: COLORS.surface,
+    backgroundColor: c.surface,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: c.border,
   },
   rowUpNext: {
-    borderColor: COLORS.accentGlow,
-    backgroundColor: COLORS.surfaceElevated,
+    borderColor: c.accentGlow,
+    backgroundColor: c.surfaceElevated,
   },
   stillWrap: {
     borderRadius: RADIUS.sm,
     overflow: "hidden",
-    backgroundColor: COLORS.surfaceElevated,
+    backgroundColor: c.surfaceElevated,
   },
   still: {
     width: "100%",
@@ -137,13 +140,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 5,
     paddingVertical: 1,
     borderRadius: RADIUS.xs,
-    backgroundColor: COLORS.overlay,
+    backgroundColor: ARTWORK.chip,
     alignItems: "center",
   },
   numberText: {
     fontFamily: FONTS.bold,
     fontSize: 10,
-    color: COLORS.textPrimary,
+    color: ARTWORK.textPrimary,
   },
   body: {
     flex: 1,
@@ -157,7 +160,7 @@ const styles = StyleSheet.create({
   title: {
     fontFamily: FONTS.semibold,
     fontSize: 14,
-    color: COLORS.textPrimary,
+    color: c.textPrimary,
     flexShrink: 1,
   },
   upNext: {
@@ -165,18 +168,18 @@ const styles = StyleSheet.create({
     fontSize: 9,
     letterSpacing: 0.8,
     textTransform: "uppercase",
-    color: COLORS.accent,
+    color: c.accent,
   },
   meta: {
     fontFamily: FONTS.medium,
     fontSize: 11,
-    color: COLORS.textMuted,
+    color: c.textMuted,
   },
   overview: {
     fontFamily: FONTS.regular,
     fontSize: 12,
     lineHeight: 17,
-    color: COLORS.textSecondary,
+    color: c.textSecondary,
   },
   check: {
     width: 30,
@@ -184,16 +187,16 @@ const styles = StyleSheet.create({
     borderRadius: RADIUS.pill,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: COLORS.surfaceElevated,
+    backgroundColor: c.surfaceElevated,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: c.border,
     alignSelf: "center",
   },
   checkOn: {
-    backgroundColor: COLORS.accent,
-    borderColor: COLORS.accent,
+    backgroundColor: c.accent,
+    borderColor: c.accent,
   },
   checkHovered: {
-    borderColor: COLORS.borderStrong,
+    borderColor: c.borderStrong,
   },
-});
+}));

@@ -15,14 +15,8 @@ import { Ionicons } from "@expo/vector-icons";
 import { IconButton } from "@/components/ui/Button";
 import { TouchableScale } from "@/components/ui/Pressable";
 import { RatingBadge } from "@/components/ui/Rating";
-import {
-  CARD_SCRIM,
-  COLORS,
-  FONTS,
-  RADIUS,
-  SHADOWS,
-  SPACING,
-} from "@/constants/theme";
+import { ARTWORK, CARD_SCRIM, FONTS, RADIUS, SPACING } from "@/constants/theme";
+import { makeStyles, useTheme } from "@/theme";
 import { useResponsive } from "@/hooks/useResponsive";
 import { metaLine } from "@/lib/format";
 import type { LibraryEntryRef, MediaSummary } from "@/lib/cinelog/types";
@@ -51,6 +45,8 @@ function PosterCardComponent({
   subtitle,
   hideMeta = false,
 }: PosterCardProps) {
+  const { colors } = useTheme();
+  const styles = useStyles();
   const { supportsHover } = useResponsive();
   const [hovered, setHovered] = useState(false);
   const toggleWatchlist = useLibrary((state) => state.toggleWatchlist);
@@ -96,7 +92,7 @@ function PosterCardComponent({
               <Ionicons
                 name={item.type === "movie" ? "film-outline" : "tv-outline"}
                 size={28}
-                color={COLORS.textFaint}
+                color={colors.textFaint}
               />
             </View>
           )}
@@ -140,6 +136,7 @@ function PosterCardComponent({
                   onPress={onPlayTrailer}
                   variant="primary"
                   size={34}
+                  onArtwork
                 />
               ) : null}
               <IconButton
@@ -152,6 +149,7 @@ function PosterCardComponent({
                 onPress={handleWatchlist}
                 active={inWatchlist}
                 size={34}
+                onArtwork
               />
             </View>
             <Text style={styles.hoverMeta} numberOfLines={2}>
@@ -170,12 +168,12 @@ export const PosterCard = React.memo(PosterCardComponent);
 export const MovieCard = PosterCard;
 export const SeriesCard = PosterCard;
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((c, t) => ({
   posterWrap: {
     borderRadius: RADIUS.md,
     overflow: "hidden",
-    backgroundColor: COLORS.surface,
-    ...SHADOWS.card,
+    backgroundColor: c.surface,
+    ...t.shadows.card,
   },
   poster: {
     width: "100%",
@@ -184,7 +182,7 @@ const styles = StyleSheet.create({
   posterFallback: {
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: COLORS.surfaceElevated,
+    backgroundColor: c.surfaceElevated,
   },
   ratingSlot: {
     position: "absolute",
@@ -212,7 +210,7 @@ const styles = StyleSheet.create({
   hoverMeta: {
     fontFamily: FONTS.medium,
     fontSize: 11,
-    color: COLORS.textSecondary,
+    color: ARTWORK.textSecondary,
   },
   progressTrack: {
     position: "absolute",
@@ -220,11 +218,11 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
     height: 3,
-    backgroundColor: "rgba(255, 255, 255, 0.2)",
+    backgroundColor: ARTWORK.progressTrack,
   },
   progressFill: {
     height: "100%",
-    backgroundColor: COLORS.accent,
+    backgroundColor: c.accent,
   },
   meta: {
     paddingTop: SPACING.sm,
@@ -233,11 +231,11 @@ const styles = StyleSheet.create({
   title: {
     fontFamily: FONTS.semibold,
     fontSize: 13,
-    color: COLORS.textPrimary,
+    color: c.textPrimary,
   },
   subtitle: {
     fontFamily: FONTS.regular,
     fontSize: 11,
-    color: COLORS.textMuted,
+    color: c.textMuted,
   },
-});
+}));
