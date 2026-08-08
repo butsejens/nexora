@@ -221,19 +221,6 @@ function presentable(items: MediaSummary[], requireVotes = true): MediaSummary[]
   );
 }
 
-function mergeUnique(...lists: MediaSummary[][]): MediaSummary[] {
-  const seen = new Set<string>();
-  const out: MediaSummary[] = [];
-  for (const list of lists) {
-    for (const item of list) {
-      if (seen.has(item.id)) continue;
-      seen.add(item.id);
-      out.push(item);
-    }
-  }
-  return out;
-}
-
 function parseCast(input: unknown): CastMember[] {
   if (!Array.isArray(input)) return [];
   return input
@@ -479,129 +466,120 @@ function parsePersonResult(input: unknown): PersonResult | null {
   };
 }
 
-// ── Curated collections ──────────────────────────────────────────────────────
+// ── Browse collections ───────────────────────────────────────────────────────
 
 /**
- * Both the media API and TMDB expose curated collections as fixed first pages.
- * The API bundles all of a media type's collections into one cached response, so
- * the whole home screen costs two requests.
+ * How each browse filter is expressed against the media API.
+ *
+ * The API's discover route accepts a page, a sort and an optional release-year
+ * window, which covers every filter except trending. It cannot apply a vote
+ * floor, so "Top Rated" sorts by vote count — the films and shows with the most
+ * votes — and reorders each page by score. That surfaces the recognised classics
+ * instead of the obscure single-vote 10/10 entries a raw `vote_average.desc`
+ * returns.
  */
-export interface MovieCollections {
-  trending: MediaSummary[];
-  popular: MediaSummary[];
-  now_playing: MediaSummary[];
-  top_rated: MediaSummary[];
-  upcoming: MediaSummary[];
+interface ListSpec {
+  /** Read TMDB's trending feed instead of discover (a single fixed page). */
+  trending?: "movie" | "tv";
+  sort?: string;
+  /** Release-year window, resolved at call time so it follows the calendar. */
+  years?: () => { from: number; to: number };
+  /** Reorder each page by score, for the vote-count-driven Top Rated filter. */
+  resortByRating?: boolean;
+  /** Keep unreleased titles that have no score yet (used by Upcoming). */
+  allowUnrated?: boolean;
+  /** Keep only titles first released within this many months. */
+  withinMonths?: number;
+  /** Endpoint used when the direct TMDB transport is enabled. */
+  direct: { path: string; params?: Record<string, string | number> };
 }
 
-export interface SeriesCollections {
-  trending: MediaSummary[];
-  popular: MediaSummary[];
-  airing_now: MediaSummary[];
-  top_rated: MediaSummary[];
-  new_series: MediaSummary[];
-}
+const currentYear = () => new Date().getFullYear();
 
-function assertNonEmpty<T extends Record<string, MediaSummary[]>>(bundle: T): T {
-  const total = Object.values(bundle).reduce((sum, list) => sum + list.length, 0);
-  if (total === 0) {
-    throw new Error("The media API returned no titles.");
-  }
-  return bundle;
-}
-
-export async function fetchMovieCollections(): Promise<MovieCollections> {
-  if (hasDirectTmdbKey) {
-    const [trending, popular, nowPlaying, topRated, upcoming] = await Promise.all([
-      tmdbDirect<RawRecord>("/trending/movie/week"),
-      tmdbDirect<RawRecord>("/movie/popular"),
-      tmdbDirect<RawRecord>("/movie/now_playing"),
-      tmdbDirect<RawRecord>("/movie/top_rated"),
-      tmdbDirect<RawRecord>("/movie/upcoming"),
-    ]);
-    return assertNonEmpty({
-      trending: presentable(parseSummaries(trending.results, "movie")),
-      popular: presentable(parseSummaries(popular.results, "movie")),
-      now_playing: presentable(parseSummaries(nowPlaying.results, "movie")),
-      top_rated: presentable(parseSummaries(topRated.results, "movie")),
-      upcoming: presentable(parseSummaries(upcoming.results, "movie"), false),
-    });
-  }
-
-  const data = await apiJson<RawRecord>("/api/movies/trending");
-  return assertNonEmpty({
-    trending: presentable(parseSummaries(data.trending, "movie")),
-    popular: presentable(parseSummaries(data.popular, "movie")),
-    now_playing: presentable(parseSummaries(data.newReleases, "movie")),
-    // `acclaimed` is TMDB discover filtered to 8+ ratings with 1000+ votes,
-    // which extends the curated top-rated page without diluting it.
-    top_rated: mergeUnique(
-      presentable(parseSummaries(data.topRated, "movie")),
-      presentable(parseSummaries(data.acclaimed, "movie")),
-    ),
-    upcoming: presentable(parseSummaries(data.upcoming, "movie"), false),
-  });
-}
-
-export async function fetchSeriesCollections(): Promise<SeriesCollections> {
-  if (hasDirectTmdbKey) {
-    const [trending, popular, onAir, topRated, newSeries] = await Promise.all([
-      tmdbDirect<RawRecord>("/trending/tv/week"),
-      tmdbDirect<RawRecord>("/tv/popular"),
-      tmdbDirect<RawRecord>("/tv/on_the_air"),
-      tmdbDirect<RawRecord>("/tv/top_rated"),
-      tmdbDirect<RawRecord>("/discover/tv", {
-        sort_by: "first_air_date.desc",
-        "vote_count.gte": 10,
-      }),
-    ]);
-    return assertNonEmpty({
-      trending: presentable(parseSummaries(trending.results, "series")),
-      popular: presentable(parseSummaries(popular.results, "series")),
-      airing_now: presentable(parseSummaries(onAir.results, "series")),
-      top_rated: presentable(parseSummaries(topRated.results, "series")),
-      new_series: presentable(parseSummaries(newSeries.results, "series")),
-    });
-  }
-
-  const data = await apiJson<RawRecord>("/api/series/trending");
-  return assertNonEmpty({
-    trending: presentable(parseSummaries(data.trending, "series")),
-    popular: presentable(parseSummaries(data.popular, "series")),
-    airing_now: presentable(parseSummaries(data.newReleases, "series")),
-    top_rated: mergeUnique(
-      presentable(parseSummaries(data.topRated, "series")),
-      presentable(parseSummaries(data.hiddenGems, "series")),
-    ),
-    new_series: presentable(parseSummaries(data.airingToday, "series")),
-  });
-}
-
-// ── Paginated browse ─────────────────────────────────────────────────────────
-
-/**
- * Browse filters that can keep loading pages. The remaining filters are curated
- * fixed-size collections, which the hooks serve from the bundles above.
- */
-export const PAGINATED_MOVIE_LISTS: Partial<Record<MovieListKey, string>> = {
-  popular: "popularity.desc",
+const MOVIE_LISTS: Record<MovieListKey, ListSpec> = {
+  popular: {
+    sort: "popularity.desc",
+    direct: { path: "/movie/popular" },
+  },
+  trending: {
+    trending: "movie",
+    direct: { path: "/trending/movie/week" },
+  },
+  top_rated: {
+    sort: "vote_count.desc",
+    resortByRating: true,
+    direct: { path: "/movie/top_rated" },
+  },
+  now_playing: {
+    sort: "popularity.desc",
+    years: () => ({ from: currentYear(), to: currentYear() }),
+    direct: { path: "/movie/now_playing" },
+  },
+  upcoming: {
+    sort: "popularity.desc",
+    years: () => ({ from: currentYear() + 1, to: currentYear() + 2 }),
+    allowUnrated: true,
+    direct: { path: "/movie/upcoming" },
+  },
 };
 
-export const PAGINATED_SERIES_LISTS: Partial<Record<SeriesListKey, string>> = {
-  popular: "popularity.desc",
-  new_series: "first_air_date.desc",
+const SERIES_LISTS: Record<SeriesListKey, ListSpec> = {
+  popular: {
+    sort: "popularity.desc",
+    direct: { path: "/tv/popular" },
+  },
+  trending: {
+    trending: "tv",
+    direct: { path: "/trending/tv/week" },
+  },
+  top_rated: {
+    sort: "vote_count.desc",
+    resortByRating: true,
+    direct: { path: "/tv/top_rated" },
+  },
+  new_series: {
+    // The series discover route takes no date window, so recency is applied to
+    // the popularity-ranked pages, where new shows already rank high.
+    sort: "popularity.desc",
+    withinMonths: 18,
+    direct: {
+      path: "/discover/tv",
+      params: { sort_by: "first_air_date.desc", "vote_count.gte": 20 },
+    },
+  },
 };
+
+/** Filters that keep loading pages; trending is a single fixed page. */
+export function canPaginate(spec: ListSpec): boolean {
+  return !spec.trending;
+}
+
+export const MOVIE_LIST_SPECS = MOVIE_LISTS;
+export const SERIES_LIST_SPECS = SERIES_LISTS;
+
+function withinMonths(items: MediaSummary[], months: number): MediaSummary[] {
+  const cutoff = Date.now() - months * 30 * 24 * 60 * 60 * 1000;
+  return items.filter((item) => {
+    if (!item.releaseDate) return false;
+    const released = Date.parse(item.releaseDate);
+    return Number.isFinite(released) && released >= cutoff && released <= Date.now();
+  });
+}
 
 function parseItemsPage(
   input: unknown,
   fallbackType: MediaType,
-  requireVotes = true,
+  spec?: ListSpec,
 ): PagedResult<MediaSummary> {
   const raw = (input ?? {}) as RawRecord;
-  const results = presentable(
+  let results = presentable(
     parseSummaries(raw.items ?? raw.results, fallbackType),
-    requireVotes,
+    !spec?.allowUnrated,
   );
+  if (spec?.withinMonths) results = withinMonths(results, spec.withinMonths);
+  if (spec?.resortByRating) {
+    results = [...results].sort((left, right) => right.rating - left.rating);
+  }
   return {
     page: num(raw.page) || 1,
     totalPages: num(raw.totalPages ?? raw.total_pages) || 1,
@@ -610,40 +588,64 @@ function parseItemsPage(
   };
 }
 
-export async function fetchMoviePage(
-  sortBy: string,
+async function fetchList(
+  kind: "movies" | "series",
+  spec: ListSpec,
   page: number,
 ): Promise<PagedResult<MediaSummary>> {
+  const type: MediaType = kind === "movies" ? "movie" : "series";
+
   if (hasDirectTmdbKey) {
-    const data = await tmdbDirect<RawRecord>("/discover/movie", {
-      sort_by: sortBy,
-      "vote_count.gte": MIN_VOTES,
+    const data = await tmdbDirect<RawRecord>(spec.direct.path, {
       page,
+      ...(spec.direct.params ?? {}),
     });
-    return parseItemsPage(data, "movie");
+    return parseItemsPage(data, type, spec);
   }
-  const data = await apiJson<RawRecord>(
-    `/api/movies/all${query({ sort_by: sortBy, page })}`,
+
+  if (spec.trending) {
+    const data = await apiData<RawRecord>(
+      `/api/media/trending${query({ type: spec.trending, window: "week" })}`,
+    );
+    return parseItemsPage({ ...data, page: 1, total_pages: 1 }, type, spec);
+  }
+
+  const years = spec.years?.();
+  const data = await apiData<RawRecord>(
+    `/api/media/${kind}${query({
+      page,
+      sort: spec.sort,
+      from_year: years?.from,
+      to_year: years?.to,
+    })}`,
   );
-  return parseItemsPage(data, "movie");
+  return parseItemsPage(data, type, spec);
 }
 
-export async function fetchSeriesPage(
-  sortBy: string,
-  page: number,
+export function fetchMovieList(
+  list: MovieListKey,
+  page = 1,
 ): Promise<PagedResult<MediaSummary>> {
+  return fetchList("movies", MOVIE_LISTS[list], page);
+}
+
+export function fetchSeriesList(
+  list: SeriesListKey,
+  page = 1,
+): Promise<PagedResult<MediaSummary>> {
+  return fetchList("series", SERIES_LISTS[list], page);
+}
+
+/** Mixed movie + series trending feed, used by the home hero and top rail. */
+export async function fetchTrending(): Promise<MediaSummary[]> {
   if (hasDirectTmdbKey) {
-    const data = await tmdbDirect<RawRecord>("/discover/tv", {
-      sort_by: sortBy,
-      "vote_count.gte": MIN_VOTES,
-      page,
-    });
-    return parseItemsPage(data, "series");
+    const data = await tmdbDirect<RawRecord>("/trending/all/week");
+    return presentable(parseSummaries(data.results));
   }
-  const data = await apiJson<RawRecord>(
-    `/api/series/all${query({ sort_by: sortBy, page })}`,
+  const data = await apiData<RawRecord>(
+    "/api/media/trending?type=all&window=week",
   );
-  return parseItemsPage(data, "series");
+  return presentable(parseSummaries(data.results));
 }
 
 export async function fetchMoviesByGenre(

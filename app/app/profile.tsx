@@ -22,10 +22,9 @@ import { openTitle } from "@/lib/cinelog/navigation";
 import { formatRating } from "@/lib/format";
 import { useAuth } from "@/store/auth-store";
 import {
-  selectRecentlyWatched,
-  selectStats,
   useLibrary,
-  type LibraryState,
+  useLibraryStats,
+  useRecentlyWatched,
 } from "@/store/library-store";
 import { Pressable } from "@/components/ui/Pressable";
 
@@ -34,12 +33,9 @@ export default function ProfileScreen() {
   const user = useAuth((state) => state.user);
   const signOut = useAuth((state) => state.signOut);
 
-  const libraryState = useLibrary((state) => state);
-  const stats = useMemo(() => selectStats(libraryState as LibraryState), [libraryState]);
-  const recentlyWatched = useMemo(
-    () => selectRecentlyWatched(libraryState as LibraryState).slice(0, 20),
-    [libraryState],
-  );
+  const stats = useLibraryStats();
+  const history = useRecentlyWatched();
+  const recentlyWatched = useMemo(() => history.slice(0, 20), [history]);
 
   const favorites = useLibrary((state) => state.favorites);
   const ratings = useLibrary((state) => state.ratings);

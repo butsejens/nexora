@@ -36,6 +36,7 @@ export default function MovieDetailScreen() {
   const movie = detail.data?.title;
 
   const trailer = useTrailerPlayer(detail.data?.trailers[0] ?? null);
+  const openTrailer = trailer.open;
 
   const ref = useMemo(() => (movie ? toLibraryRef(movie) : null), [movie]);
   const userRating = useLibrary((state) => (ref ? state.getRating(ref.id) : null));
@@ -49,11 +50,11 @@ export default function MovieDetailScreen() {
         width={railPosterWidth}
         onPress={() => openTitle(item)}
         onPlayTrailer={() =>
-          trailer.open({ type: item.type, tmdbId: item.tmdbId, title: item.title })
+          openTrailer({ type: item.type, tmdbId: item.tmdbId, title: item.title })
         }
       />
     ),
-    [railPosterWidth, trailer],
+    [railPosterWidth, openTrailer],
   );
 
   if (!tmdbId) {

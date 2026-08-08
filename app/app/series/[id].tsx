@@ -48,6 +48,7 @@ export default function SeriesDetailScreen() {
 
   const season = useSeason(tmdbId, selectedSeason);
   const trailer = useTrailerPlayer(detail.data?.trailers[0] ?? null);
+  const openTrailer = trailer.open;
 
   const ref = useMemo(() => (series ? toLibraryRef(series) : null), [series]);
   const userRating = useLibrary((state) => (ref ? state.getRating(ref.id) : null));
@@ -123,11 +124,11 @@ export default function SeriesDetailScreen() {
         width={railPosterWidth}
         onPress={() => openTitle(item)}
         onPlayTrailer={() =>
-          trailer.open({ type: item.type, tmdbId: item.tmdbId, title: item.title })
+          openTrailer({ type: item.type, tmdbId: item.tmdbId, title: item.title })
         }
       />
     ),
-    [railPosterWidth, trailer],
+    [railPosterWidth, openTrailer],
   );
 
   if (!tmdbId) {

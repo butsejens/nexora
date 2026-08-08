@@ -5,7 +5,7 @@
  * fetched once a viewer actually asks for it.
  */
 
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useMemo, useState } from "react";
 
 import { TrailerModal } from "@/components/media/TrailerModal";
 import { useTrailer } from "@/lib/cinelog/queries";
@@ -36,15 +36,20 @@ export function useTrailerPlayer(preloaded?: Trailer | null): TrailerPlayer {
   const open = useCallback((next: TrailerTarget) => setTarget(next), []);
   const close = useCallback(() => setTarget(null), []);
 
-  const element = (
-    <TrailerModal
-      visible={target !== null}
-      onClose={close}
-      title={target?.title ?? ""}
-      trailer={preloaded ?? data ?? null}
-      isLoading={!preloaded && isLoading}
-    />
+  const element = useMemo(
+    () => (
+      <TrailerModal
+        visible={target !== null}
+        onClose={close}
+        title={target?.title ?? ""}
+        trailer={preloaded ?? data ?? null}
+        isLoading={!preloaded && isLoading}
+      />
+    ),
+    [target, close, preloaded, data, isLoading],
   );
 
-  return { open, close, element };
+  // Kept stable so screens can list `open` in a `useCallback` dependency array
+  // without rebuilding their card renderers on every render.
+  return useMemo(() => ({ open, close, element }), [open, close, element]);
 }

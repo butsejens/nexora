@@ -6,6 +6,7 @@
  * storage so it survives restarts and works offline.
  */
 
+import { useMemo } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
@@ -412,27 +413,55 @@ export const useLibrary = create<LibraryState>()(
   ),
 );
 
-// ── Selectors ────────────────────────────────────────────────────────────────
+// ── Derived views ────────────────────────────────────────────────────────────
+//
+// Anything derived is exposed as a hook that subscribes to the stored slices
+// (which keep a stable identity between writes) and memoizes the result. A
+// selector that built a fresh array or object on every read would compare as
+// changed on every render and loop forever.
+
+/** The stored signals the recommendation engine and profile page read from. */
+export interface LibrarySignals {
+  history: WatchHistoryItem[];
+  favorites: FavoriteItem[];
+  watchlist: WatchlistItem[];
+  ratings: Record<MediaId, UserRating>;
+  episodes: Record<MediaId, EpisodeWatchMap>;
+}
+
+export function useLibrarySignals(): LibrarySignals {
+  const history = useLibrary((state) => state.history);
+  const favorites = useLibrary((state) => state.favorites);
+  const watchlist = useLibrary((state) => state.watchlist);
+  const ratings = useLibrary((state) => state.ratings);
+  const episodes = useLibrary((state) => state.episodes);
+
+  return useMemo(
+    () => ({ history, favorites, watchlist, ratings, episodes }),
+    [history, favorites, watchlist, ratings, episodes],
+  );
+}
 
 /** Continue Watching rail, newest activity first. */
-export function selectContinueWatching(state: LibraryState): WatchProgress[] {
-  return Object.values(state.progress).sort(
-    (a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt),
+export function useContinueWatching(): WatchProgress[] {
+  const progress = useLibrary((state) => state.progress);
+  return useMemo(
+    () =>
+      Object.values(progress).sort(
+        (left, right) => Date.parse(right.updatedAt) - Date.parse(left.updatedAt),
+      ),
+    [progress],
   );
 }
 
-export function selectWatchedTitles(
-  state: LibraryState,
-  type?: MediaType,
-): WatchHistoryItem[] {
-  return state.history.filter(
-    (entry) => entry.state === "watched" && (!type || entry.type === type),
-  );
-}
-
-export function selectRecentlyWatched(state: LibraryState): WatchHistoryItem[] {
-  return [...state.history].sort(
-    (a, b) => Date.parse(b.watchedAt) - Date.parse(a.watchedAt),
+export function useRecentlyWatched(): WatchHistoryItem[] {
+  const history = useLibrary((state) => state.history);
+  return useMemo(
+    () =>
+      [...history].sort(
+        (left, right) => Date.parse(right.watchedAt) - Date.parse(left.watchedAt),
+      ),
+    [history],
   );
 }
 
@@ -445,26 +474,32 @@ export interface LibraryStats {
   favoritesCount: number;
 }
 
-export function selectStats(state: LibraryState): LibraryStats {
-  const totalMinutes =
-    state.history.reduce((sum, entry) => sum + (entry.minutes || 0), 0) +
-    Object.values(state.episodes).reduce(
-      (sum, map) => sum + Object.keys(map).length * ASSUMED_EPISODE_RUNTIME,
-      0,
-    );
+export function useLibraryStats(): LibraryStats {
+  const { history, favorites, watchlist, ratings, episodes } = useLibrarySignals();
 
-  return {
-    moviesWatched: selectWatchedTitles(state, "movie").length,
-    seriesWatched: new Set(
-      state.history
-        .filter((entry) => entry.type === "series")
-        .map((entry) => entry.id),
-    ).size,
-    watchlistCount: state.watchlist.length,
-    hoursWatched: Math.round(totalMinutes / 60),
-    ratingsCount: Object.keys(state.ratings).length,
-    favoritesCount: state.favorites.length,
-  };
+  return useMemo(() => {
+    const totalMinutes =
+      history.reduce((sum, entry) => sum + (entry.minutes || 0), 0) +
+      Object.values(episodes).reduce(
+        (sum, map) => sum + Object.keys(map).length * ASSUMED_EPISODE_RUNTIME,
+        0,
+      );
+
+    return {
+      moviesWatched: history.filter(
+        (entry) => entry.state === "watched" && entry.type === "movie",
+      ).length,
+      seriesWatched: new Set(
+        history
+          .filter((entry) => entry.type === "series")
+          .map((entry) => entry.id),
+      ).size,
+      watchlistCount: watchlist.length,
+      hoursWatched: Math.round(totalMinutes / 60),
+      ratingsCount: Object.keys(ratings).length,
+      favoritesCount: favorites.length,
+    };
+  }, [history, favorites, watchlist, ratings, episodes]);
 }
 
 export function sortWatchlist(

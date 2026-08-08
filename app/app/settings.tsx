@@ -1,5 +1,5 @@
 import React from "react";
-import { Pressable, StyleSheet, Switch, Text, View } from "react-native";
+import { StyleSheet, Switch, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 
@@ -250,15 +250,10 @@ function ToggleRow({
   value: boolean;
   onChange: (value: boolean) => void;
 }) {
+  // The Switch is the control, so the row itself must not also be pressable —
+  // a checkbox inside a button is invalid DOM on web.
   return (
-    <Pressable
-      onPress={() => onChange(!value)}
-      accessibilityRole="switch"
-      accessibilityState={{ checked: value }}
-      accessibilityLabel={label}
-      accessibilityHint={hint}
-      style={styles.toggleRow}
-    >
+    <View style={styles.toggleRow}>
       <View style={styles.toggleCopy}>
         <Text style={styles.rowLabel}>{label}</Text>
         <Text style={styles.rowHint}>{hint}</Text>
@@ -266,10 +261,12 @@ function ToggleRow({
       <Switch
         value={value}
         onValueChange={onChange}
+        accessibilityLabel={label}
+        accessibilityHint={hint}
         trackColor={{ false: COLORS.surfaceHover, true: COLORS.accent }}
         thumbColor={COLORS.textPrimary}
       />
-    </Pressable>
+    </View>
   );
 }
 

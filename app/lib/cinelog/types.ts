@@ -163,12 +163,7 @@ export type MovieListKey =
   | "now_playing"
   | "upcoming";
 
-export type SeriesListKey =
-  | "popular"
-  | "trending"
-  | "top_rated"
-  | "airing_now"
-  | "new_series";
+export type SeriesListKey = "popular" | "trending" | "top_rated" | "new_series";
 
 // ── User library ─────────────────────────────────────────────────────────────
 

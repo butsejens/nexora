@@ -38,61 +38,65 @@ export function ContinueWatchingCard({
   const artwork = progress.backdrop ?? progress.poster;
 
   return (
-    <TouchableScale
-      onPress={onPress}
-      style={{ width }}
-      accessibilityRole="button"
-      accessibilityLabel={`Continue watching ${progress.title}${
-        episodeCode ? `, ${episodeCode}` : ""
-      }, ${progress.percent} percent complete`}
-    >
-      <View style={[styles.card, { width, height }]}>
-        {artwork ? (
-          <Image
-            source={{ uri: artwork }}
-            style={StyleSheet.absoluteFill}
-            contentFit="cover"
-            transition={200}
-            cachePolicy="memory-disk"
-          />
-        ) : null}
-        <LinearGradient colors={CARD_SCRIM} style={styles.overlay}>
-          <View style={styles.topRow}>
-            <IconButton
-              icon="close"
-              label={`Remove ${progress.title} from Continue Watching`}
-              onPress={onRemove}
-              size={28}
+    // Remove sits outside the pressable card so the two buttons aren't nested.
+    <View style={{ width }}>
+      <TouchableScale
+        onPress={onPress}
+        style={{ width }}
+        accessibilityRole="button"
+        accessibilityLabel={`Continue watching ${progress.title}${
+          episodeCode ? `, ${episodeCode}` : ""
+        }${progress.percent > 0 ? `, ${progress.percent} percent complete` : ""}`}
+      >
+        <View style={[styles.card, { width, height }]}>
+          {artwork ? (
+            <Image
+              source={{ uri: artwork }}
+              style={StyleSheet.absoluteFill}
+              contentFit="cover"
+              transition={200}
+              cachePolicy="memory-disk"
             />
-          </View>
-          <View style={styles.bottom}>
-            <View style={styles.playCircle}>
-              <Ionicons name="play" size={16} color={COLORS.textPrimary} />
+          ) : null}
+          <LinearGradient colors={CARD_SCRIM} style={styles.overlay}>
+            <View style={styles.bottom}>
+              <View style={styles.playCircle}>
+                <Ionicons name="play" size={16} color={COLORS.textPrimary} />
+              </View>
+              <View style={styles.copy}>
+                <Text style={styles.title} numberOfLines={1}>
+                  {progress.title}
+                </Text>
+                <Text style={styles.subtitle} numberOfLines={1}>
+                  {episodeCode
+                    ? `${episodeCode}${progress.episodeTitle ? ` · ${progress.episodeTitle}` : ""}`
+                    : "Continue"}
+                </Text>
+              </View>
+              {progress.percent > 0 ? (
+                <Text style={styles.percent}>{progress.percent}%</Text>
+              ) : null}
             </View>
-            <View style={styles.copy}>
-              <Text style={styles.title} numberOfLines={1}>
-                {progress.title}
-              </Text>
-              <Text style={styles.subtitle} numberOfLines={1}>
-                {episodeCode
-                  ? `${episodeCode}${progress.episodeTitle ? ` · ${progress.episodeTitle}` : ""}`
-                  : "Continue"}
-              </Text>
+          </LinearGradient>
+          {progress.percent > 0 ? (
+            <View style={styles.progressTrack}>
+              <View
+                style={[styles.progressFill, { width: `${Math.min(100, progress.percent)}%` }]}
+              />
             </View>
-            {progress.percent > 0 ? (
-              <Text style={styles.percent}>{progress.percent}%</Text>
-            ) : null}
-          </View>
-        </LinearGradient>
-        {progress.percent > 0 ? (
-          <View style={styles.progressTrack}>
-            <View
-              style={[styles.progressFill, { width: `${Math.min(100, progress.percent)}%` }]}
-            />
-          </View>
-        ) : null}
+          ) : null}
+        </View>
+      </TouchableScale>
+
+      <View style={styles.removeSlot}>
+        <IconButton
+          icon="close"
+          label={`Remove ${progress.title} from Continue Watching`}
+          onPress={onRemove}
+          size={28}
+        />
       </View>
-    </TouchableScale>
+    </View>
   );
 }
 
@@ -108,9 +112,10 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     padding: SPACING.sm,
   },
-  topRow: {
-    flexDirection: "row",
-    justifyContent: "flex-end",
+  removeSlot: {
+    position: "absolute",
+    top: SPACING.sm,
+    right: SPACING.sm,
   },
   bottom: {
     flexDirection: "row",

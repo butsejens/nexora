@@ -13,7 +13,7 @@ import type {
   MediaSummary,
   Recommendation,
 } from "@/lib/cinelog/types";
-import type { LibraryState } from "@/store/library-store";
+import type { LibrarySignals } from "@/store/library-store";
 
 /** How much each signal contributes to a genre's affinity score. */
 const SIGNAL_WEIGHT = {
@@ -50,11 +50,11 @@ function addAffinity(
   }
 }
 
-export function buildTasteProfile(state: LibraryState): TasteProfile {
+export function buildTasteProfile(signals: LibrarySignals): TasteProfile {
   const genreAffinity: Record<number, number> = {};
   const seenIds = new Set<string>();
 
-  for (const entry of state.history) {
+  for (const entry of signals.history) {
     seenIds.add(entry.id);
     addAffinity(
       genreAffinity,
@@ -62,15 +62,15 @@ export function buildTasteProfile(state: LibraryState): TasteProfile {
       entry.state === "watched" ? SIGNAL_WEIGHT.watched : SIGNAL_WEIGHT.watching,
     );
   }
-  for (const entry of state.favorites) {
+  for (const entry of signals.favorites) {
     seenIds.add(entry.id);
     addAffinity(genreAffinity, entry.genreIds, SIGNAL_WEIGHT.favorite);
   }
-  for (const entry of state.watchlist) {
+  for (const entry of signals.watchlist) {
     seenIds.add(entry.id);
     addAffinity(genreAffinity, entry.genreIds, SIGNAL_WEIGHT.watchlist);
   }
-  for (const rating of Object.values(state.ratings)) {
+  for (const rating of Object.values(signals.ratings)) {
     seenIds.add(rating.id);
     addAffinity(
       genreAffinity,
@@ -95,10 +95,10 @@ export function buildTasteProfile(state: LibraryState): TasteProfile {
     .map(([id]) => Number(id));
 
   const seeds = [
-    ...[...state.history]
+    ...[...signals.history]
       .sort((a, b) => Date.parse(b.watchedAt) - Date.parse(a.watchedAt))
       .map((entry) => entry as LibraryEntryRef),
-    ...state.favorites,
+    ...signals.favorites,
   ].filter(
     (entry, index, all) =>
       all.findIndex((other) => other.id === entry.id) === index,

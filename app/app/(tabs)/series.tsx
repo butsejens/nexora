@@ -20,7 +20,6 @@ const LIST_FILTERS: FilterOption<SeriesListKey>[] = [
   { value: "popular", label: "Popular" },
   { value: "trending", label: "Trending" },
   { value: "top_rated", label: "Top Rated" },
-  { value: "airing_now", label: "Airing Now" },
   { value: "new_series", label: "New Series" },
 ];
 

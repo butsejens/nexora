@@ -61,39 +61,69 @@ function PosterCardComponent({
   }, [item, toggleWatchlist]);
 
   return (
-    <TouchableScale
-      onPress={onPress}
-      onHoverIn={() => setHovered(true)}
-      onHoverOut={() => setHovered(false)}
+    // The quick actions sit as a sibling of the pressable card, not inside it:
+    // nesting one button-role element in another produces invalid DOM on web.
+    <View
       style={{ width }}
-      accessibilityRole="button"
-      accessibilityLabel={`${item.title}, ${typeLabel}${item.year ? `, ${item.year}` : ""}`}
+      onPointerEnter={() => setHovered(true)}
+      onPointerLeave={() => setHovered(false)}
     >
-      <View style={[styles.posterWrap, { width, height }]}>
-        {item.poster ? (
-          <Image
-            source={{ uri: item.poster }}
-            style={styles.poster}
-            contentFit="cover"
-            transition={220}
-            cachePolicy="memory-disk"
-            accessibilityLabel={`${item.title} poster`}
-          />
-        ) : (
-          <View style={[styles.poster, styles.posterFallback]}>
-            <Ionicons
-              name={item.type === "movie" ? "film-outline" : "tv-outline"}
-              size={28}
-              color={COLORS.textFaint}
+      <TouchableScale
+        onPress={onPress}
+        style={{ width }}
+        accessibilityRole="button"
+        accessibilityLabel={`${item.title}, ${typeLabel}${item.year ? `, ${item.year}` : ""}`}
+      >
+        <View style={[styles.posterWrap, { width, height }]}>
+          {item.poster ? (
+            <Image
+              source={{ uri: item.poster }}
+              style={styles.poster}
+              contentFit="cover"
+              transition={220}
+              cachePolicy="memory-disk"
+              accessibilityLabel={`${item.title} poster`}
             />
-          </View>
-        )}
+          ) : (
+            <View style={[styles.poster, styles.posterFallback]}>
+              <Ionicons
+                name={item.type === "movie" ? "film-outline" : "tv-outline"}
+                size={28}
+                color={COLORS.textFaint}
+              />
+            </View>
+          )}
 
-        <View style={styles.ratingSlot}>
-          <RatingBadge value={item.rating} onArtwork />
+          <View style={styles.ratingSlot}>
+            <RatingBadge value={item.rating} onArtwork />
+          </View>
+
+          {typeof progressPercent === "number" ? (
+            <View style={styles.progressTrack}>
+              <View
+                style={[
+                  styles.progressFill,
+                  { width: `${Math.min(100, Math.max(2, progressPercent))}%` },
+                ]}
+              />
+            </View>
+          ) : null}
         </View>
 
-        {supportsHover && hovered ? (
+        {hideMeta ? null : (
+          <View style={styles.meta}>
+            <Text style={styles.title} numberOfLines={1}>
+              {item.title}
+            </Text>
+            <Text style={styles.subtitle} numberOfLines={1}>
+              {subtitle || metaLine([item.year || null, seasons || typeLabel])}
+            </Text>
+          </View>
+        )}
+      </TouchableScale>
+
+      {supportsHover && hovered ? (
+        <View style={[styles.hoverLayer, { height }]} pointerEvents="box-none">
           <LinearGradient colors={CARD_SCRIM} style={styles.hoverOverlay}>
             <View style={styles.hoverActions}>
               {onPlayTrailer ? (
@@ -121,31 +151,9 @@ function PosterCardComponent({
               {metaLine([typeLabel, item.year || null, seasons])}
             </Text>
           </LinearGradient>
-        ) : null}
-
-        {typeof progressPercent === "number" ? (
-          <View style={styles.progressTrack}>
-            <View
-              style={[
-                styles.progressFill,
-                { width: `${Math.min(100, Math.max(2, progressPercent))}%` },
-              ]}
-            />
-          </View>
-        ) : null}
-      </View>
-
-      {hideMeta ? null : (
-        <View style={styles.meta}>
-          <Text style={styles.title} numberOfLines={1}>
-            {item.title}
-          </Text>
-          <Text style={styles.subtitle} numberOfLines={1}>
-            {subtitle || metaLine([item.year || null, seasons || typeLabel])}
-          </Text>
         </View>
-      )}
-    </TouchableScale>
+      ) : null}
+    </View>
   );
 }
 
@@ -175,6 +183,14 @@ const styles = StyleSheet.create({
     position: "absolute",
     top: SPACING.sm,
     left: SPACING.sm,
+  },
+  hoverLayer: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    borderRadius: RADIUS.md,
+    overflow: "hidden",
   },
   hoverOverlay: {
     ...StyleSheet.absoluteFillObject,

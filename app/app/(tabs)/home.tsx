@@ -16,7 +16,12 @@ import { useResponsive } from "@/hooks/useResponsive";
 import { useTrailerPlayer } from "@/hooks/useTrailerPlayer";
 import { GENRES } from "@/lib/cinelog/genres";
 import { openTitle } from "@/lib/cinelog/navigation";
-import { useMovieRail, useSeriesRail, useTrending } from "@/lib/cinelog/queries";
+import {
+  useInterleaved,
+  useMovieRail,
+  useSeriesRail,
+  useTrending,
+} from "@/lib/cinelog/queries";
 import {
   becauseYouWatched,
   buildTasteProfile,
@@ -25,15 +30,16 @@ import {
 import type { MediaSummary } from "@/lib/cinelog/types";
 import { useAuth } from "@/store/auth-store";
 import {
-  selectContinueWatching,
+  useContinueWatching,
   useLibrary,
-  type LibraryState,
+  useLibrarySignals,
 } from "@/store/library-store";
 
 export default function HomeScreen() {
   const { isMobile, gutter, railPosterWidth, width } = useResponsive();
   const user = useAuth((state) => state.user);
   const trailer = useTrailerPlayer();
+  const openTrailer = trailer.open;
 
   const trending = useTrending();
   const popularMovies = useMovieRail("popular");
@@ -42,10 +48,10 @@ export default function HomeScreen() {
   const topRatedMovies = useMovieRail("top_rated");
   const topRatedSeries = useSeriesRail("top_rated");
 
-  const continueWatching = useLibrary(selectContinueWatching);
+  const continueWatching = useContinueWatching();
   const clearProgress = useLibrary((state) => state.clearProgress);
   const toggleWatchlist = useLibrary((state) => state.toggleWatchlist);
-  const libraryState = useLibrary((state) => state);
+  const librarySignals = useLibrarySignals();
 
   const hero = trending.items.find((item) => item.backdrop) ?? trending.items[0] ?? null;
   const heroInWatchlist = useLibrary((state) =>
@@ -81,10 +87,7 @@ export default function HomeScreen() {
     topRatedSeries.items,
   ]);
 
-  const profile = useMemo(
-    () => buildTasteProfile(libraryState as LibraryState),
-    [libraryState],
-  );
+  const profile = useMemo(() => buildTasteProfile(librarySignals), [librarySignals]);
 
   const recommended = useMemo(
     () => recommendForYou({ candidates, profile }),
@@ -96,16 +99,7 @@ export default function HomeScreen() {
     [candidates, profile],
   );
 
-  const topRated = useMemo(() => {
-    const movies = topRatedMovies.items;
-    const series = topRatedSeries.items;
-    const mixed: MediaSummary[] = [];
-    for (let index = 0; index < Math.max(movies.length, series.length); index += 1) {
-      if (movies[index]) mixed.push(movies[index]);
-      if (series[index]) mixed.push(series[index]);
-    }
-    return mixed;
-  }, [topRatedMovies.items, topRatedSeries.items]);
+  const topRated = useInterleaved(topRatedMovies.items, topRatedSeries.items);
 
   const renderPoster = useCallback(
     (item: MediaSummary) => (
@@ -114,11 +108,11 @@ export default function HomeScreen() {
         width={railPosterWidth}
         onPress={() => openTitle(item)}
         onPlayTrailer={() =>
-          trailer.open({ type: item.type, tmdbId: item.tmdbId, title: item.title })
+          openTrailer({ type: item.type, tmdbId: item.tmdbId, title: item.title })
         }
       />
     ),
-    [railPosterWidth, trailer],
+    [railPosterWidth, openTrailer],
   );
 
   const continueCardWidth = isMobile
