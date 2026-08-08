@@ -113,6 +113,7 @@ export function toLibraryRef(
     rating: item.rating,
     genres: "genres" in item ? (item.genres ?? []) : [],
     genreIds: "genreIds" in item ? (item.genreIds ?? []) : [],
+    releaseDate: "releaseDate" in item ? (item.releaseDate ?? null) : null,
   };
   if ("seasonCount" in item && typeof item.seasonCount === "number") {
     ref.seasonCount = item.seasonCount;

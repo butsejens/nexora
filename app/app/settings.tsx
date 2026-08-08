@@ -3,6 +3,7 @@ import { Switch, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 
+import { useT } from "@/i18n";
 import { SeoHead } from "@/components/SeoHead";
 import { Footer } from "@/components/layout/Footer";
 import { FloatingBackButton } from "@/components/navigation/MobileHeader";
@@ -29,6 +30,7 @@ const THEMES: { value: ThemeMode; label: string }[] = [
 ];
 
 export default function SettingsScreen() {
+  const t = useT();
   const styles = useStyles();
   const { gutter } = useResponsive();
 
@@ -51,7 +53,7 @@ export default function SettingsScreen() {
   return (
     <>
       <SeoHead
-        title="Settings"
+        title={t("Settings")}
         description="Appearance, language, notifications, privacy and account settings."
       />
       <Screen reserveBottomNav>
@@ -59,36 +61,40 @@ export default function SettingsScreen() {
 
         <View style={[styles.head, { paddingHorizontal: gutter }]}>
           <Text style={styles.title} accessibilityRole="header">
-            Settings
+            {t("Settings")}
           </Text>
           <Text style={styles.subtitle}>
-            Tune how CineLog looks, what it tells you and what it remembers.
+            {t(
+              "Tune how CineLog looks, what it tells you and what it remembers.",
+            )}
           </Text>
         </View>
 
         <View style={[styles.sections, { paddingHorizontal: gutter }]}>
-          <SettingsSection title="Profile" icon="person-circle-outline">
+          <SettingsSection title={t("Profile")} icon="person-circle-outline">
             <SettingsRow
-              label={user ? user.displayName : "Not signed in"}
+              label={user ? user.displayName : t("Not signed in")}
               hint={
                 user
                   ? user.email
-                  : "Sign in to sync your library across devices"
+                  : t("Sign in to sync your library across devices")
               }
             />
             {user ? null : (
               <Button
-                label="Sign in"
+                label={t("Sign in")}
                 onPress={() => router.push("/auth")}
                 size="sm"
               />
             )}
           </SettingsSection>
 
-          <SettingsSection title="Appearance" icon="color-palette-outline">
+          <SettingsSection title={t("Appearance")} icon="color-palette-outline">
             <SettingsRow
-              label="Theme"
-              hint="CineLog is designed dark-first; light mode keeps contrast accessible."
+              label={t("Theme")}
+              hint={t(
+                "CineLog is designed dark-first; light mode keeps contrast accessible.",
+              )}
             />
             <View style={styles.pillRow}>
               {THEMES.map((option) => (
@@ -102,7 +108,7 @@ export default function SettingsScreen() {
             </View>
           </SettingsSection>
 
-          <SettingsSection title="Language" icon="language-outline">
+          <SettingsSection title={t("Language")} icon="language-outline">
             <View style={styles.pillRow}>
               {LANGUAGES.map((option) => (
                 <GenrePill
@@ -115,59 +121,64 @@ export default function SettingsScreen() {
             </View>
           </SettingsSection>
 
-          <SettingsSection title="Notifications" icon="notifications-outline">
+          <SettingsSection
+            title={t("Notifications")}
+            icon="notifications-outline"
+          >
             <ToggleRow
-              label="New releases"
-              hint="Tell me when something I follow lands"
+              label={t("New releases")}
+              hint={t("Tell me when something I follow lands")}
               value={notifications.newReleases}
               onChange={(value) => setNotification("newReleases", value)}
             />
             <ToggleRow
-              label="Recommendations"
-              hint="Weekly picks based on what I watch"
+              label={t("Recommendations")}
+              hint={t("Weekly picks based on what I watch")}
               value={notifications.recommendations}
               onChange={(value) => setNotification("recommendations", value)}
             />
             <ToggleRow
-              label="Watchlist reminders"
-              hint="Nudge me about titles I saved but haven't watched"
+              label={t("Watchlist reminders")}
+              hint={t("Nudge me about titles I saved but haven't watched")}
               value={notifications.watchlistReminders}
               onChange={(value) => setNotification("watchlistReminders", value)}
             />
           </SettingsSection>
 
-          <SettingsSection title="Privacy" icon="lock-closed-outline">
+          <SettingsSection title={t("Privacy")} icon="lock-closed-outline">
             <ToggleRow
-              label="Watch history"
-              hint="Let what you watch shape your recommendations"
+              label={t("Watch history")}
+              hint={t("Let what you watch shape your recommendations")}
               value={privacy.saveWatchHistory}
               onChange={(value) => setPrivacy("saveWatchHistory", value)}
             />
             <ToggleRow
-              label="Profile visibility"
-              hint="Let other viewers find your CineLog profile"
+              label={t("Profile visibility")}
+              hint={t("Let other viewers find your CineLog profile")}
               value={privacy.publicProfile}
               onChange={(value) => setPrivacy("publicProfile", value)}
             />
             <Button
-              label="Clear watch history"
+              label={t("Clear watch history")}
               icon="trash-outline"
               variant="secondary"
               size="sm"
               onPress={() =>
                 SafeAlert.confirm(
-                  "Clear watch history",
-                  "This removes everything you've watched, your episode ticks and Continue Watching.",
-                  "Clear history",
+                  t("Clear watch history"),
+                  t(
+                    "This removes everything you've watched, your episode ticks and Continue Watching.",
+                  ),
+                  t("Clear history"),
                   clearHistory,
                 )
               }
             />
           </SettingsSection>
 
-          <SettingsSection title="Account" icon="key-outline">
+          <SettingsSection title={t("Account")} icon="key-outline">
             <Button
-              label="Change password"
+              label={t("Change password")}
               icon="mail-outline"
               variant="secondary"
               size="sm"
@@ -178,24 +189,28 @@ export default function SettingsScreen() {
                 }
                 void sendPasswordReset(user.email);
                 SafeAlert.confirm(
-                  "Password reset sent",
-                  `We've emailed a reset link to ${user.email}.`,
-                  "Got it",
+                  t("Password reset sent"),
+                  t("We've emailed a reset link to {{email}}.", {
+                    email: user.email,
+                  }),
+                  t("Got it"),
                   () => undefined,
-                  { destructive: false, cancelText: "Close" },
+                  { destructive: false, cancelText: t("Close") },
                 );
               }}
             />
             <Button
-              label="Delete account data"
+              label={t("Delete account data")}
               icon="close-circle-outline"
               variant="danger"
               size="sm"
               onPress={() =>
                 SafeAlert.confirm(
-                  "Delete account data",
-                  "This erases your watchlist, favourites, ratings and history from this device and signs you out.",
-                  "Delete everything",
+                  t("Delete account data"),
+                  t(
+                    "This erases your watchlist, favourites, ratings and history from this device and signs you out.",
+                  ),
+                  t("Delete everything"),
                   () => {
                     resetLibrary();
                     void signOut();
@@ -206,7 +221,7 @@ export default function SettingsScreen() {
             />
             {user ? (
               <Button
-                label="Logout"
+                label={t("Logout")}
                 icon="log-out-outline"
                 variant="secondary"
                 size="sm"

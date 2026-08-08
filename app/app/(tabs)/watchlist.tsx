@@ -2,6 +2,7 @@ import React, { useMemo, useState } from "react";
 import { Text, View } from "react-native";
 import { router } from "expo-router";
 
+import { useT } from "@/i18n";
 import { SeoHead } from "@/components/SeoHead";
 import { Footer } from "@/components/layout/Footer";
 import { FilterBar, type FilterOption } from "@/components/media/FilterBar";
@@ -38,6 +39,7 @@ const SORTS: FilterOption<WatchlistSort>[] = [
 ];
 
 export default function WatchlistScreen() {
+  const t = useT();
   const styles = useStyles();
   const { isMobile, gutter } = useResponsive();
   const { posterWidth } = usePosterMetrics();
@@ -77,7 +79,7 @@ export default function WatchlistScreen() {
   return (
     <>
       <SeoHead
-        title="Watchlist"
+        title={t("Watchlist")}
         description="Everything you saved to watch later, sorted the way you want it."
       />
       <Screen
@@ -85,10 +87,10 @@ export default function WatchlistScreen() {
         header={
           isMobile ? (
             <MobileHeader
-              title="Watchlist"
+              title={t("Watchlist")}
               onOpenProfile={() => router.push("/profile")}
               gutter={gutter}
-              displayName={user?.displayName ?? "Guest"}
+              displayName={user?.displayName ?? t("Guest")}
               avatarUrl={user?.avatarUrl ?? null}
             />
           ) : null
@@ -100,13 +102,18 @@ export default function WatchlistScreen() {
               style={[styles.title, { paddingHorizontal: gutter }]}
               accessibilityRole="header"
             >
-              Watchlist
+              {t("Watchlist")}
             </Text>
           )}
           <Text style={[styles.subtitle, { paddingHorizontal: gutter }]}>
             {watchlist.length === 0
-              ? "Everything you save lands here"
-              : `${watchlist.length} ${watchlist.length === 1 ? "title" : "titles"} saved`}
+              ? t("Everything you save lands here")
+              : t(
+                  watchlist.length === 1
+                    ? "{{count}} title saved"
+                    : "{{count}} titles saved",
+                  { count: watchlist.length },
+                )}
           </Text>
 
           {watchlist.length > 0 ? (
@@ -116,15 +123,15 @@ export default function WatchlistScreen() {
                 value={tab}
                 onChange={setTab}
                 gutter={gutter}
-                accessibilityLabel="Watchlist type"
+                accessibilityLabel={t("Watchlist type")}
               />
               <FilterBar
                 options={SORTS}
                 value={sort}
                 onChange={setSort}
-                heading="Sort by"
+                heading={t("Sort by")}
                 gutter={gutter}
-                accessibilityLabel="Watchlist sorting"
+                accessibilityLabel={t("Watchlist sorting")}
               />
             </>
           ) : null}
@@ -133,20 +140,22 @@ export default function WatchlistScreen() {
         {watchlist.length === 0 ? (
           <EmptyState
             icon="heart-outline"
-            title="Your watchlist is empty"
-            message="Start discovering movies and series to build your list."
-            actionLabel="Explore"
+            title={t("Your watchlist is empty")}
+            message={t(
+              "Start discovering movies and series to build your list.",
+            )}
+            actionLabel={t("Explore")}
             onAction={() => router.navigate("/(tabs)/home")}
           />
         ) : items.length === 0 ? (
           <EmptyState
             icon="funnel-outline"
-            title="Nothing in this filter"
-            message={
+            title={t("Nothing in this filter")}
+            message={t(
               tab === "movies"
                 ? "You haven't saved any films yet."
-                : "You haven't saved any shows yet."
-            }
+                : "You haven't saved any shows yet.",
+            )}
             compact
           />
         ) : (

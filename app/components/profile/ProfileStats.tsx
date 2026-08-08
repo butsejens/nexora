@@ -3,6 +3,7 @@
 import React from "react";
 import { Text, View } from "react-native";
 
+import { useT } from "@/i18n";
 import { FONTS, RADIUS, SPACING } from "@/constants/theme";
 import { makeStyles } from "@/theme";
 import type { LibraryStats } from "@/store/library-store";
@@ -12,6 +13,7 @@ export interface ProfileStatsProps {
 }
 
 export function ProfileStats({ stats }: ProfileStatsProps) {
+  const t = useT();
   const styles = useStyles();
   const tiles = [
     { label: "Movies Watched", value: stats.moviesWatched },
@@ -27,10 +29,10 @@ export function ProfileStats({ stats }: ProfileStatsProps) {
           key={tile.label}
           style={styles.tile}
           accessible
-          accessibilityLabel={`${tile.label}: ${tile.value}`}
+          accessibilityLabel={`${t(tile.label)}: ${tile.value}`}
         >
           <Text style={styles.value}>{tile.value}</Text>
-          <Text style={styles.label}>{tile.label}</Text>
+          <Text style={styles.label}>{t(tile.label)}</Text>
         </View>
       ))}
     </View>

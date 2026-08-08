@@ -2,6 +2,7 @@ import React, { useCallback, useMemo } from "react";
 import { ScrollView, Text, View } from "react-native";
 import { router } from "expo-router";
 
+import { useT } from "@/i18n";
 import { SeoHead } from "@/components/SeoHead";
 import { Footer } from "@/components/layout/Footer";
 import { Carousel } from "@/components/media/Carousel";
@@ -38,6 +39,7 @@ import {
 } from "@/store/library-store";
 
 export default function HomeScreen() {
+  const t = useT();
   const styles = useStyles();
   const { isMobile, gutter, railPosterWidth, width } = useResponsive();
   const user = useAuth((state) => state.user);
@@ -140,7 +142,7 @@ export default function HomeScreen() {
             <MobileHeader
               onOpenProfile={() => router.push("/profile")}
               gutter={gutter}
-              displayName={user?.displayName ?? "Guest"}
+              displayName={user?.displayName ?? t("Guest")}
               avatarUrl={user?.avatarUrl ?? null}
             />
           ) : null
@@ -168,7 +170,7 @@ export default function HomeScreen() {
 
         <View style={styles.rails}>
           <Carousel
-            title="Trending Now"
+            title={t("Trending Now")}
             items={trending.items}
             isLoading={trending.isLoading}
             itemWidth={railPosterWidth}
@@ -177,7 +179,7 @@ export default function HomeScreen() {
           />
 
           <Carousel
-            title="Popular Movies"
+            title={t("Popular Movies")}
             items={popularMovies.items}
             isLoading={popularMovies.isLoading}
             itemWidth={railPosterWidth}
@@ -187,7 +189,7 @@ export default function HomeScreen() {
           />
 
           <Carousel
-            title="Popular Series"
+            title={t("Popular Series")}
             items={popularSeries.items}
             isLoading={popularSeries.isLoading}
             itemWidth={railPosterWidth}
@@ -198,8 +200,8 @@ export default function HomeScreen() {
 
           {continueWatching.length > 0 ? (
             <Carousel
-              title="Continue Watching"
-              subtitle="Pick up where you left off"
+              title={t("Continue Watching")}
+              subtitle={t("Pick up where you left off")}
               items={continueWatching}
               isLoading={false}
               itemWidth={continueCardWidth}
@@ -216,8 +218,8 @@ export default function HomeScreen() {
           ) : null}
 
           <Carousel
-            title="New Releases"
-            subtitle="In cinemas now"
+            title={t("New Releases")}
+            subtitle={t("In cinemas now")}
             items={newReleases.items}
             isLoading={newReleases.isLoading}
             itemWidth={railPosterWidth}
@@ -226,7 +228,7 @@ export default function HomeScreen() {
           />
 
           <Carousel
-            title="Top Rated"
+            title={t("Top Rated")}
             items={topRated}
             isLoading={topRatedMovies.isLoading || topRatedSeries.isLoading}
             itemWidth={railPosterWidth}
@@ -235,11 +237,11 @@ export default function HomeScreen() {
           />
 
           <Carousel
-            title="Recommended For You"
+            title={t("Recommended For You")}
             subtitle={
               profile.hasSignal
-                ? "Based on what you watch, rate and save"
-                : "Rate a few titles and this gets personal"
+                ? t("Based on what you watch, rate and save")
+                : t("Rate a few titles and this gets personal")
             }
             items={recommended.map((entry) => entry.item)}
             isLoading={candidates.length === 0}
@@ -250,7 +252,9 @@ export default function HomeScreen() {
 
           {becauseRail ? (
             <Carousel
-              title={`Because You Watched ${becauseRail.seed.title}`}
+              title={t("Because You Watched {{title}}", {
+                title: becauseRail.seed.title,
+              })}
               items={becauseRail.items}
               isLoading={false}
               itemWidth={railPosterWidth}
@@ -261,7 +265,7 @@ export default function HomeScreen() {
 
           <View style={styles.genreBlock}>
             <Text style={[styles.genreHeading, { paddingHorizontal: gutter }]}>
-              Browse by Genre
+              {t("Browse by Genre")}
             </Text>
             <ScrollView
               horizontal

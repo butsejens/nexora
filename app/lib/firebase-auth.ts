@@ -77,7 +77,8 @@ export async function registerWithEmail(
 }
 
 export async function requestPasswordReset(email: string) {
-  if (!firebaseAuth) throw new Error("Password reset is not available right now.");
+  if (!firebaseAuth)
+    throw new Error("Password reset is not available right now.");
   await sendPasswordResetEmail(firebaseAuth, email);
 }
 

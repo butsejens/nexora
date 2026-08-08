@@ -4,6 +4,7 @@ import { Image } from "expo-image";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 
+import { useT } from "@/i18n";
 import { SeoHead } from "@/components/SeoHead";
 import { Footer } from "@/components/layout/Footer";
 import { Carousel } from "@/components/media/Carousel";
@@ -27,6 +28,7 @@ import {
 import { Pressable } from "@/components/ui/Pressable";
 
 export default function ProfileScreen() {
+  const t = useT();
   const { colors } = useTheme();
   const styles = useStyles();
   const { gutter, railPosterWidth, isMobile } = useResponsive();
@@ -50,13 +52,13 @@ export default function ProfileScreen() {
     [ratings],
   );
 
-  const displayName = user?.displayName ?? "Guest";
+  const displayName = user?.displayName ?? t("Guest");
   const initial = displayName.trim().charAt(0).toUpperCase() || "C";
 
   return (
     <>
       <SeoHead
-        title="Profile"
+        title={t("Profile")}
         description="Your viewing stats, recently watched titles, favourites and ratings."
       />
       <Screen reserveBottomNav>
@@ -94,13 +96,13 @@ export default function ProfileScreen() {
               {user ? (
                 <>
                   <Button
-                    label="Settings"
+                    label={t("Settings")}
                     icon="settings-outline"
                     variant="secondary"
                     onPress={() => router.push("/settings")}
                   />
                   <Button
-                    label="Logout"
+                    label={t("Logout")}
                     icon="log-out-outline"
                     variant="danger"
                     onPress={() => {
@@ -111,12 +113,12 @@ export default function ProfileScreen() {
               ) : (
                 <>
                   <Button
-                    label="Sign in"
+                    label={t("Sign in")}
                     icon="log-in-outline"
                     onPress={() => router.push("/auth")}
                   />
                   <Button
-                    label="Settings"
+                    label={t("Settings")}
                     icon="settings-outline"
                     variant="secondary"
                     onPress={() => router.push("/settings")}
@@ -134,7 +136,7 @@ export default function ProfileScreen() {
         <View style={styles.sections}>
           {recentlyWatched.length > 0 ? (
             <Carousel
-              title="Recently Watched"
+              title={t("Recently Watched")}
               items={recentlyWatched}
               isLoading={false}
               itemWidth={railPosterWidth}
@@ -144,7 +146,9 @@ export default function ProfileScreen() {
                   item={item}
                   width={railPosterWidth}
                   onPress={() => openTitle(item)}
-                  subtitle={item.state === "watched" ? "Watched" : "Watching"}
+                  subtitle={t(
+                    item.state === "watched" ? "Watched" : "Watching",
+                  )}
                 />
               )}
             />
@@ -152,7 +156,7 @@ export default function ProfileScreen() {
 
           {favoriteMovies.length > 0 ? (
             <Carousel
-              title="Favorite Movies"
+              title={t("Favorite Movies")}
               items={favoriteMovies}
               isLoading={false}
               itemWidth={railPosterWidth}
@@ -169,7 +173,7 @@ export default function ProfileScreen() {
 
           {favoriteSeries.length > 0 ? (
             <Carousel
-              title="Favorite Series"
+              title={t("Favorite Series")}
               items={favoriteSeries}
               isLoading={false}
               itemWidth={railPosterWidth}
@@ -189,7 +193,7 @@ export default function ProfileScreen() {
               <Text
                 style={[styles.sectionTitle, { paddingHorizontal: gutter }]}
               >
-                Your Ratings
+                {t("Your Ratings")}
               </Text>
               <View style={[styles.ratingList, { paddingHorizontal: gutter }]}>
                 {ratedTitles.map((entry) => (
@@ -212,7 +216,7 @@ export default function ProfileScreen() {
                       </Text>
                       <Text style={styles.ratingMeta}>
                         {[
-                          entry.type === "movie" ? "Movie" : "Series",
+                          t(entry.type === "movie" ? "Movie" : "Series"),
                           entry.year || null,
                           formatRating(entry.rating)
                             ? `Average ${formatRating(entry.rating)}`
@@ -238,9 +242,11 @@ export default function ProfileScreen() {
           ratedTitles.length === 0 ? (
             <EmptyState
               icon="stats-chart-outline"
-              title="Your CineLog story starts here"
-              message="Rate a film, favourite a show or tick off an episode and this page fills up."
-              actionLabel="Explore"
+              title={t("Your CineLog story starts here")}
+              message={t(
+                "Rate a film, favourite a show or tick off an episode and this page fills up.",
+              )}
+              actionLabel={t("Explore")}
               onAction={() => router.navigate("/(tabs)/home")}
             />
           ) : null}

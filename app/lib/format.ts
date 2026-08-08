@@ -15,17 +15,24 @@ export function formatRuntime(minutes: number | null | undefined): string {
 export function formatCount(value: number | null | undefined): string {
   const count = Math.max(0, Math.round(Number(value ?? 0)));
   if (count >= 1_000_000) return `${(count / 1_000_000).toFixed(1)}M`;
-  if (count >= 1_000) return `${(count / 1_000).toFixed(count >= 10_000 ? 0 : 1)}K`;
+  if (count >= 1_000)
+    return `${(count / 1_000).toFixed(count >= 10_000 ? 0 : 1)}K`;
   return String(count);
 }
 
-/** `"2024-03-14"` → `"14 Mar 2024"`. Returns `""` for missing dates. */
-export function formatDate(value: string | null | undefined): string {
+/**
+ * `"2024-03-14"` → `"14 Mar 2024"`. Returns `""` for missing dates. Pass the
+ * viewer's locale (see `useLocale`) so the month name matches the interface.
+ */
+export function formatDate(
+  value: string | null | undefined,
+  locale = "en-GB",
+): string {
   const raw = String(value ?? "").trim();
   if (!raw) return "";
   const parsed = new Date(raw);
   if (Number.isNaN(parsed.getTime())) return raw;
-  return parsed.toLocaleDateString("en-GB", {
+  return parsed.toLocaleDateString(locale, {
     day: "numeric",
     month: "short",
     year: "numeric",
@@ -39,13 +46,6 @@ export function formatRating(value: number | null | undefined): string {
   return rating.toFixed(1);
 }
 
-/** `3` → `"3 Seasons"`, `1` → `"1 Season"`. */
-export function formatSeasons(count: number | null | undefined): string {
-  const seasons = Math.max(0, Math.round(Number(count ?? 0)));
-  if (!seasons) return "";
-  return `${seasons} ${seasons === 1 ? "Season" : "Seasons"}`;
-}
-
 /** `"S03 E06"` label for a series episode. */
 export function formatEpisodeCode(
   seasonNumber: number | undefined,
@@ -57,7 +57,9 @@ export function formatEpisodeCode(
 }
 
 /** Join non-empty metadata fragments with a middle dot. */
-export function metaLine(parts: (string | number | null | undefined)[]): string {
+export function metaLine(
+  parts: (string | number | null | undefined)[],
+): string {
   return parts
     .map((part) => String(part ?? "").trim())
     .filter(Boolean)

@@ -9,6 +9,7 @@ import React from "react";
 import { Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 
+import { useT } from "@/i18n";
 import { Button } from "@/components/ui/Button";
 import { FONTS, RADIUS, SPACING } from "@/constants/theme";
 import { makeStyles, useTheme } from "@/theme";
@@ -56,10 +57,11 @@ export interface ErrorStateProps {
 
 export function ErrorState({
   onRetry,
-  title = "Something went wrong",
-  message = "We couldn't load this content right now. Please try again.",
+  title,
+  message,
   compact = false,
 }: ErrorStateProps) {
+  const t = useT();
   const { colors } = useTheme();
   const styles = useStyles();
   return (
@@ -67,11 +69,14 @@ export function ErrorState({
       <View style={[styles.iconCircle, styles.errorCircle]}>
         <Ionicons name="cloud-offline-outline" size={26} color={colors.error} />
       </View>
-      <Text style={styles.title}>{title}</Text>
-      <Text style={styles.message}>{message}</Text>
+      <Text style={styles.title}>{title ?? t("Something went wrong")}</Text>
+      <Text style={styles.message}>
+        {message ??
+          t("We couldn't load this content right now. Please try again.")}
+      </Text>
       {onRetry ? (
         <Button
-          label="Try again"
+          label={t("Try again")}
           icon="refresh"
           onPress={onRetry}
           variant="secondary"

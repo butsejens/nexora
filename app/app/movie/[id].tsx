@@ -8,6 +8,7 @@ import {
   WatchStateSelector,
   WatchlistButton,
 } from "@/components/actions/TitleActions";
+import { useT } from "@/i18n";
 import { Footer } from "@/components/layout/Footer";
 import { SeoHead } from "@/components/SeoHead";
 import { Carousel } from "@/components/media/Carousel";
@@ -29,6 +30,7 @@ import type { MediaSummary } from "@/lib/cinelog/types";
 import { toLibraryRef, useLibrary } from "@/store/library-store";
 
 export default function MovieDetailScreen() {
+  const t = useT();
   const params = useLocalSearchParams<{ id?: string }>();
   const tmdbId = parseIdParam(params.id);
   const { gutter, railPosterWidth, isMobile } = useResponsive();
@@ -68,8 +70,10 @@ export default function MovieDetailScreen() {
     return (
       <Screen scroll={false}>
         <ErrorState
-          title="We couldn't open that film"
-          message="The link looks incomplete. Head back and pick a title again."
+          title={t("We couldn't open that film")}
+          message={t(
+            "The link looks incomplete. Head back and pick a title again.",
+          )}
           onRetry={() => router.replace("/(tabs)/movies")}
         />
       </Screen>
@@ -126,7 +130,9 @@ export default function MovieDetailScreen() {
             movie.year || null,
             movie.certification,
             formatRuntime(movie.runtime),
-            movie.directors.length ? `Dir. ${movie.directors[0]}` : null,
+            movie.directors.length
+              ? t("Dir. {{name}}", { name: movie.directors[0] })
+              : null,
           ]}
           genres={movie.genres}
           actions={
@@ -161,7 +167,7 @@ export default function MovieDetailScreen() {
 
           {cast.length > 0 ? (
             <Carousel
-              title="Cast"
+              title={t("Cast")}
               items={cast}
               isLoading={false}
               itemWidth={castCardWidth}
@@ -178,7 +184,7 @@ export default function MovieDetailScreen() {
 
           {similar.length > 0 ? (
             <Carousel
-              title="Similar Movies"
+              title={t("Similar Movies")}
               items={similar}
               isLoading={false}
               itemWidth={railPosterWidth}
@@ -189,7 +195,7 @@ export default function MovieDetailScreen() {
 
           {recommendations.length > 0 ? (
             <Carousel
-              title="More Like This"
+              title={t("More Like This")}
               items={recommendations}
               isLoading={false}
               itemWidth={railPosterWidth}

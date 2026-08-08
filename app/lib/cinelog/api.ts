@@ -215,7 +215,10 @@ function parseSummaries(
  * enforced when the payload includes them, since the media API's list shape
  * omits them.
  */
-function presentable(items: MediaSummary[], requireVotes = true): MediaSummary[] {
+function presentable(
+  items: MediaSummary[],
+  requireVotes = true,
+): MediaSummary[] {
   return items.filter(
     (item) =>
       Boolean(item.poster) &&
@@ -285,22 +288,24 @@ function parseTrailers(input: unknown): Trailer[] {
 
 function parseSeasonSummaries(input: unknown): SeasonSummary[] {
   if (!Array.isArray(input)) return [];
-  return input
-    .map((entry) => {
-      const raw = (entry ?? {}) as RawRecord;
-      const seasonNumber = num(raw.seasonNumber ?? raw.season_number);
-      return {
-        seasonNumber,
-        name: str(raw.name) || `Season ${seasonNumber}`,
-        episodeCount: num(raw.episodeCount ?? raw.episode_count),
-        airDate: str(raw.airDate ?? raw.air_date) || null,
-        poster: image(raw.poster ?? raw.poster_path, "w500"),
-        overview: str(raw.overview),
-      };
-    })
-    // Season 0 holds specials; the detail page lists real seasons only.
-    .filter((season) => season.seasonNumber > 0)
-    .sort((left, right) => left.seasonNumber - right.seasonNumber);
+  return (
+    input
+      .map((entry) => {
+        const raw = (entry ?? {}) as RawRecord;
+        const seasonNumber = num(raw.seasonNumber ?? raw.season_number);
+        return {
+          seasonNumber,
+          name: str(raw.name) || `Season ${seasonNumber}`,
+          episodeCount: num(raw.episodeCount ?? raw.episode_count),
+          airDate: str(raw.airDate ?? raw.air_date) || null,
+          poster: image(raw.poster ?? raw.poster_path, "w500"),
+          overview: str(raw.overview),
+        };
+      })
+      // Season 0 holds specials; the detail page lists real seasons only.
+      .filter((season) => season.seasonNumber > 0)
+      .sort((left, right) => left.seasonNumber - right.seasonNumber)
+  );
 }
 
 function parseEpisodes(input: unknown, seasonNumber: number): Episode[] {
@@ -315,7 +320,8 @@ function parseEpisodes(input: unknown, seasonNumber: number): Episode[] {
       return {
         id: String(tmdbId || `${seasonNumber}-${episodeNumber}`),
         tmdbId,
-        seasonNumber: num(raw.seasonNumber ?? raw.season_number) || seasonNumber,
+        seasonNumber:
+          num(raw.seasonNumber ?? raw.season_number) || seasonNumber,
         episodeNumber,
         title: str(raw.title || raw.name) || `Episode ${episodeNumber}`,
         overview: str(raw.overview),
@@ -346,7 +352,8 @@ function parseCertification(raw: RawRecord): string | null {
     }
   }
 
-  const contentRatings = (raw.content_ratings as RawRecord | undefined)?.results;
+  const contentRatings = (raw.content_ratings as RawRecord | undefined)
+    ?.results;
   if (Array.isArray(contentRatings)) {
     for (const entry of contentRatings as RawRecord[]) {
       if (str(entry.iso_3166_1) !== "US") continue;
@@ -361,7 +368,9 @@ function parseCertification(raw: RawRecord): string | null {
 function jobNames(crew: CrewMember[], ...jobs: string[]): string[] {
   return Array.from(
     new Set(
-      crew.filter((member) => jobs.includes(member.job)).map((member) => member.name),
+      crew
+        .filter((member) => jobs.includes(member.job))
+        .map((member) => member.name),
     ),
   );
 }
@@ -399,7 +408,10 @@ function parseMovieDetail(input: unknown): TitleDetail<Movie> {
     cast,
     crew,
     trailers: parseTrailers(raw.trailers ?? nested(raw, "videos")),
-    similar: presentable(parseSummaries(nested(raw, "similar"), "movie"), false),
+    similar: presentable(
+      parseSummaries(nested(raw, "similar"), "movie"),
+      false,
+    ),
     recommendations: presentable(
       parseSummaries(nested(raw, "recommendations"), "movie"),
       false,
@@ -439,7 +451,10 @@ function parseSeriesDetail(input: unknown): TitleDetail<Series> {
     cast,
     crew,
     trailers: parseTrailers(raw.trailers ?? nested(raw, "videos")),
-    similar: presentable(parseSummaries(nested(raw, "similar"), "series"), false),
+    similar: presentable(
+      parseSummaries(nested(raw, "similar"), "series"),
+      false,
+    ),
     recommendations: presentable(
       parseSummaries(nested(raw, "recommendations"), "series"),
       false,
@@ -566,7 +581,9 @@ function withinMonths(items: MediaSummary[], months: number): MediaSummary[] {
   return items.filter((item) => {
     if (!item.releaseDate) return false;
     const released = Date.parse(item.releaseDate);
-    return Number.isFinite(released) && released >= cutoff && released <= Date.now();
+    return (
+      Number.isFinite(released) && released >= cutoff && released <= Date.now()
+    );
   });
 }
 
@@ -697,7 +714,8 @@ export async function fetchMovieDetail(
 ): Promise<TitleDetail<Movie>> {
   if (hasDirectTmdbKey) {
     const data = await tmdbDirect<RawRecord>(`/movie/${tmdbId}`, {
-      append_to_response: "credits,videos,recommendations,similar,release_dates",
+      append_to_response:
+        "credits,videos,recommendations,similar,release_dates",
     });
     return parseMovieDetail(data);
   }
@@ -787,8 +805,12 @@ export async function searchMedia(
   );
   const all = parseSummaries(data.results);
   return {
-    movies: all.filter((item) => item.type === "movie" && item.poster).sort(byPopularity),
-    series: all.filter((item) => item.type === "series" && item.poster).sort(byPopularity),
+    movies: all
+      .filter((item) => item.type === "movie" && item.poster)
+      .sort(byPopularity),
+    series: all
+      .filter((item) => item.type === "series" && item.poster)
+      .sort(byPopularity),
     people: [],
   };
 }

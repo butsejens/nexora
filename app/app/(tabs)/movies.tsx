@@ -2,6 +2,7 @@ import React, { useMemo, useState } from "react";
 import { Text, View } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 
+import { useT } from "@/i18n";
 import { SeoHead } from "@/components/SeoHead";
 import { Footer } from "@/components/layout/Footer";
 import { FilterBar, type FilterOption } from "@/components/media/FilterBar";
@@ -29,6 +30,7 @@ const LIST_FILTERS: FilterOption<MovieListKey>[] = [
 const ALL_GENRES = "all";
 
 export default function MoviesScreen() {
+  const t = useT();
   const styles = useStyles();
   const { isMobile, gutter } = useResponsive();
   const user = useAuth((state) => state.user);
@@ -64,7 +66,7 @@ export default function MoviesScreen() {
   return (
     <>
       <SeoHead
-        title="Movies"
+        title={t("Movies")}
         description="Browse popular, trending, top rated, now playing and upcoming films by genre."
       />
       <Screen
@@ -73,10 +75,10 @@ export default function MoviesScreen() {
         header={
           isMobile ? (
             <MobileHeader
-              title="Movies"
+              title={t("Movies")}
               onOpenProfile={() => router.push("/profile")}
               gutter={gutter}
-              displayName={user?.displayName ?? "Guest"}
+              displayName={user?.displayName ?? t("Guest")}
               avatarUrl={user?.avatarUrl ?? null}
             />
           ) : null
@@ -88,11 +90,13 @@ export default function MoviesScreen() {
               style={[styles.title, { paddingHorizontal: gutter }]}
               accessibilityRole="header"
             >
-              Movies
+              {t("Movies")}
             </Text>
           )}
           <Text style={[styles.subtitle, { paddingHorizontal: gutter }]}>
-            {activeLabel ? `${activeLabel} films` : "Browse every film"}
+            {activeLabel
+              ? t("{{label}} films", { label: t(activeLabel) })
+              : t("Browse every film")}
           </Text>
 
           <FilterBar
@@ -104,16 +108,16 @@ export default function MoviesScreen() {
               setGenreSlug(ALL_GENRES);
             }}
             gutter={gutter}
-            accessibilityLabel="Movie collections"
+            accessibilityLabel={t("Movie collections")}
           />
 
           <FilterBar
             options={genreOptions}
             value={genreSlug}
             onChange={setGenreSlug}
-            heading="Genres"
+            heading={t("Genres")}
             gutter={gutter}
-            accessibilityLabel="Movie genres"
+            accessibilityLabel={t("Movie genres")}
           />
         </View>
 
@@ -122,8 +126,8 @@ export default function MoviesScreen() {
         ) : items.length === 0 && !browse.isLoading ? (
           <EmptyState
             icon="film-outline"
-            title="No films here yet"
-            message="Try another collection or genre to keep discovering."
+            title={t("No films here yet")}
+            message={t("Try another collection or genre to keep discovering.")}
           />
         ) : (
           <PosterGrid

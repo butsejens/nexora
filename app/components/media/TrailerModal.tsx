@@ -18,6 +18,7 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 
+import { useT } from "@/i18n";
 import { ErrorState } from "@/components/ui/States";
 import { ARTWORK, FONTS, RADIUS, SPACING } from "@/constants/theme";
 import { makeStyles, useTheme } from "@/theme";
@@ -74,6 +75,7 @@ export function TrailerModal({
   trailer,
   isLoading = false,
 }: TrailerModalProps) {
+  const t = useT();
   const { colors } = useTheme();
   const styles = useStyles();
   const { width, isMobile } = useResponsive();
@@ -95,12 +97,12 @@ export function TrailerModal({
           style={StyleSheet.absoluteFill}
           onPress={onClose}
           accessibilityRole="button"
-          accessibilityLabel="Close trailer"
+          accessibilityLabel={t("Close trailer")}
         />
         <View style={[styles.sheet, { width: playerWidth }]}>
           <View style={styles.header}>
             <View style={styles.headerCopy}>
-              <Text style={styles.eyebrow}>Trailer</Text>
+              <Text style={styles.eyebrow}>{t("Trailer")}</Text>
               <Text style={styles.title} numberOfLines={1}>
                 {title}
               </Text>
@@ -108,7 +110,7 @@ export function TrailerModal({
             <Pressable
               onPress={onClose}
               accessibilityRole="button"
-              accessibilityLabel="Close trailer"
+              accessibilityLabel={t("Close trailer")}
               hitSlop={8}
               style={({ hovered }) => [
                 styles.close,
@@ -127,8 +129,10 @@ export function TrailerModal({
             ) : (
               <ErrorState
                 compact
-                title="No trailer yet"
-                message="This title doesn't have a trailer published on CineLog's source."
+                title={t("No trailer yet")}
+                message={t(
+                  "This title doesn't have a trailer published on CineLog's source.",
+                )}
               />
             )}
           </View>

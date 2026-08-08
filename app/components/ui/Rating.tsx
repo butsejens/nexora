@@ -9,6 +9,7 @@ import React from "react";
 import { Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 
+import { useT } from "@/i18n";
 import { ARTWORK, FONTS, RADIUS, SPACING } from "@/constants/theme";
 import { makeStyles, useTheme } from "@/theme";
 import { formatCount, formatRating } from "@/lib/format";
@@ -26,6 +27,7 @@ export function RatingBadge({
   size = "sm",
   onArtwork = false,
 }: RatingBadgeProps) {
+  const t = useT();
   const { colors } = useTheme();
   const styles = useStyles();
   const formatted = formatRating(value);
@@ -36,7 +38,9 @@ export function RatingBadge({
     <View
       style={[styles.badge, onArtwork ? styles.badgeOnArtwork : null]}
       accessible
-      accessibilityLabel={`Rated ${formatted} out of 10`}
+      accessibilityLabel={t("Rated {{rating}} out of 10", {
+        rating: formatted,
+      })}
     >
       <Ionicons
         name="star"
@@ -72,20 +76,21 @@ export function RatingInput({
   averageRating,
   voteCount,
 }: RatingInputProps) {
+  const t = useT();
   const styles = useStyles();
   const average = formatRating(averageRating);
 
   return (
     <View style={styles.inputBlock}>
       <View style={styles.inputHeader}>
-        <Text style={styles.inputTitle}>Your rating</Text>
+        <Text style={styles.inputTitle}>{t("Your rating")}</Text>
         {value ? (
           <Pressable
             onPress={onClear}
             accessibilityRole="button"
-            accessibilityLabel="Remove your rating"
+            accessibilityLabel={t("Remove your rating")}
           >
-            <Text style={styles.clear}>Remove</Text>
+            <Text style={styles.clear}>{t("Remove")}</Text>
           </Pressable>
         ) : null}
       </View>
@@ -93,7 +98,7 @@ export function RatingInput({
       <View
         style={styles.scale}
         accessibilityRole="adjustable"
-        accessibilityLabel="Rate this title from 1 to 10"
+        accessibilityLabel={t("Rate this title from 1 to 10")}
         accessibilityValue={{ min: 1, max: 10, now: value ?? 0 }}
       >
         {Array.from({ length: 10 }, (_, index) => index + 1).map((score) => {
@@ -103,7 +108,7 @@ export function RatingInput({
               key={score}
               onPress={() => onChange(score)}
               accessibilityRole="button"
-              accessibilityLabel={`Rate ${score} out of 10`}
+              accessibilityLabel={t("Rate {{score}} out of 10", { score })}
               accessibilityState={{ selected: value === score }}
               style={({ hovered, pressed }) => [
                 styles.scoreDot,
@@ -126,10 +131,12 @@ export function RatingInput({
 
       <Text style={styles.summary}>
         {value
-          ? `You rated this ${value}/10`
-          : "Tap a number to rate this title"}
-        {average ? ` • Average ${average}` : ""}
-        {voteCount ? ` from ${formatCount(voteCount)} ratings` : ""}
+          ? t("You rated this {{score}}/10", { score: value })
+          : t("Tap a number to rate this title")}
+        {average ? ` • ${t("Average {{rating}}", { rating: average })}` : ""}
+        {voteCount
+          ? ` ${t("from {{count}} ratings", { count: formatCount(voteCount) })}`
+          : ""}
       </Text>
     </View>
   );

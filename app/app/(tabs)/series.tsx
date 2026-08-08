@@ -2,6 +2,7 @@ import React, { useMemo, useState } from "react";
 import { Text, View } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 
+import { useT } from "@/i18n";
 import { SeoHead } from "@/components/SeoHead";
 import { Footer } from "@/components/layout/Footer";
 import { FilterBar, type FilterOption } from "@/components/media/FilterBar";
@@ -28,6 +29,7 @@ const LIST_FILTERS: FilterOption<SeriesListKey>[] = [
 const ALL_GENRES = "all";
 
 export default function SeriesScreen() {
+  const t = useT();
   const styles = useStyles();
   const { isMobile, gutter } = useResponsive();
   const user = useAuth((state) => state.user);
@@ -67,7 +69,7 @@ export default function SeriesScreen() {
   return (
     <>
       <SeoHead
-        title="Series"
+        title={t("Series")}
         description="Browse popular, trending, top rated and brand new television series by genre."
       />
       <Screen
@@ -76,10 +78,10 @@ export default function SeriesScreen() {
         header={
           isMobile ? (
             <MobileHeader
-              title="Series"
+              title={t("Series")}
               onOpenProfile={() => router.push("/profile")}
               gutter={gutter}
-              displayName={user?.displayName ?? "Guest"}
+              displayName={user?.displayName ?? t("Guest")}
               avatarUrl={user?.avatarUrl ?? null}
             />
           ) : null
@@ -91,11 +93,13 @@ export default function SeriesScreen() {
               style={[styles.title, { paddingHorizontal: gutter }]}
               accessibilityRole="header"
             >
-              Series
+              {t("Series")}
             </Text>
           )}
           <Text style={[styles.subtitle, { paddingHorizontal: gutter }]}>
-            {activeLabel ? `${activeLabel} shows` : "Browse every show"}
+            {activeLabel
+              ? t("{{label}} shows", { label: t(activeLabel) })
+              : t("Browse every show")}
           </Text>
 
           <FilterBar
@@ -106,16 +110,16 @@ export default function SeriesScreen() {
               setGenreSlug(ALL_GENRES);
             }}
             gutter={gutter}
-            accessibilityLabel="Series collections"
+            accessibilityLabel={t("Series collections")}
           />
 
           <FilterBar
             options={genreOptions}
             value={genreSlug}
             onChange={setGenreSlug}
-            heading="Genres"
+            heading={t("Genres")}
             gutter={gutter}
-            accessibilityLabel="Series genres"
+            accessibilityLabel={t("Series genres")}
           />
         </View>
 
@@ -124,8 +128,8 @@ export default function SeriesScreen() {
         ) : items.length === 0 && !browse.isLoading ? (
           <EmptyState
             icon="tv-outline"
-            title="No shows here yet"
-            message="Try another collection or genre to keep discovering."
+            title={t("No shows here yet")}
+            message={t("Try another collection or genre to keep discovering.")}
           />
         ) : (
           <PosterGrid

@@ -9,6 +9,7 @@ import React from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { router } from "expo-router";
 
+import { useT } from "@/i18n";
 import { CineLogLogo } from "@/components/brand/CineLogLogo";
 import { FONTS, SPACING } from "@/constants/theme";
 import { makeStyles } from "@/theme";
@@ -21,6 +22,7 @@ const LINKS: { label: string; href: string }[] = [
 ];
 
 export function Footer() {
+  const t = useT();
   const styles = useStyles();
   const { gutter, isMobile } = useResponsive();
 
@@ -42,16 +44,17 @@ export function Footer() {
             key={link.href}
             onPress={() => router.push(link.href as never)}
             accessibilityRole="link"
-            accessibilityLabel={link.label}
+            accessibilityLabel={t(link.label)}
           >
-            <Text style={styles.link}>{link.label}</Text>
+            <Text style={styles.link}>{t(link.label)}</Text>
           </Pressable>
         ))}
       </View>
 
       <Text style={styles.attribution}>
-        Movie and series data provided by The Movie Database (TMDB). CineLog is
-        not endorsed or certified by TMDB.
+        {t(
+          "Movie and series data provided by The Movie Database (TMDB). CineLog is not endorsed or certified by TMDB.",
+        )}
       </Text>
     </View>
   );

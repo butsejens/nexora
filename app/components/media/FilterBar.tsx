@@ -5,6 +5,7 @@
 import React from "react";
 import { ScrollView, Text, View } from "react-native";
 
+import { useT } from "@/i18n";
 import { GenrePill } from "@/components/ui/GenrePill";
 import { FONTS, SPACING } from "@/constants/theme";
 import { makeStyles } from "@/theme";
@@ -33,6 +34,7 @@ export function FilterBar<T extends string>({
   gutter,
   accessibilityLabel,
 }: FilterBarProps<T>) {
+  const t = useT();
   const styles = useStyles();
   return (
     <View style={styles.block}>
@@ -51,7 +53,7 @@ export function FilterBar<T extends string>({
         {options.map((option) => (
           <GenrePill
             key={option.value}
-            label={option.label}
+            label={t(option.label)}
             count={option.count}
             selected={option.value === value}
             onPress={() => onChange(option.value)}

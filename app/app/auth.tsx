@@ -10,6 +10,7 @@ import {
 } from "react-native";
 import { router } from "expo-router";
 
+import { useT } from "@/i18n";
 import { CineLogLogo } from "@/components/brand/CineLogLogo";
 import { Button } from "@/components/ui/Button";
 import { FONTS, RADIUS, SPACING } from "@/constants/theme";
@@ -39,6 +40,7 @@ const COPY: Record<Mode, { title: string; body: string; cta: string }> = {
 };
 
 export default function AuthScreen() {
+  const t = useT();
   const styles = useStyles();
   const { gutter, isMobile } = useResponsive();
 
@@ -91,37 +93,37 @@ export default function AuthScreen() {
 
           <View style={styles.copy}>
             <Text style={styles.title} accessibilityRole="header">
-              {copy.title}
+              {t(copy.title)}
             </Text>
-            <Text style={styles.body}>{copy.body}</Text>
+            <Text style={styles.body}>{t(copy.body)}</Text>
           </View>
 
           <View style={styles.form}>
             {mode === "signup" ? (
               <Field
-                label="Name"
+                label={t("Name")}
                 value={name}
                 onChangeText={setName}
-                placeholder="How should we call you?"
+                placeholder={t("How should we call you?")}
                 autoComplete="name"
               />
             ) : null}
 
             <Field
-              label="Email"
+              label={t("Email")}
               value={email}
               onChangeText={setEmail}
-              placeholder="you@example.com"
+              placeholder={t("you@example.com")}
               keyboardType="email-address"
               autoComplete="email"
             />
 
             {mode === "reset" ? null : (
               <Field
-                label="Password"
+                label={t("Password")}
                 value={password}
                 onChangeText={setPassword}
-                placeholder="At least 8 characters"
+                placeholder={t("At least 8 characters")}
                 secureTextEntry
                 autoComplete={
                   mode === "signup" ? "new-password" : "current-password"
@@ -136,12 +138,12 @@ export default function AuthScreen() {
             ) : null}
             {resetSent ? (
               <Text style={styles.success} accessibilityRole="alert">
-                Check your inbox for the reset link.
+                {t("Check your inbox for the reset link.")}
               </Text>
             ) : null}
 
             <Button
-              label={copy.cta}
+              label={t(copy.cta)}
               onPress={() => void submit()}
               loading={isSubmitting}
               fullWidth
@@ -153,22 +155,22 @@ export default function AuthScreen() {
             {mode === "signin" ? (
               <>
                 <AuthLink
-                  label="Create an account"
+                  label={t("Create an account")}
                   onPress={() => switchMode("signup")}
                 />
                 <AuthLink
-                  label="Forgot password?"
+                  label={t("Forgot password?")}
                   onPress={() => switchMode("reset")}
                 />
               </>
             ) : (
               <AuthLink
-                label="Back to sign in"
+                label={t("Back to sign in")}
                 onPress={() => switchMode("signin")}
               />
             )}
             <AuthLink
-              label="Continue without an account"
+              label={t("Continue without an account")}
               onPress={() => router.replace("/(tabs)/home")}
             />
           </View>

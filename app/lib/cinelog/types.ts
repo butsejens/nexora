@@ -157,11 +157,7 @@ export interface PersonResult {
 // ── Browse filters ───────────────────────────────────────────────────────────
 
 export type MovieListKey =
-  | "popular"
-  | "trending"
-  | "top_rated"
-  | "now_playing"
-  | "upcoming";
+  "popular" | "trending" | "top_rated" | "now_playing" | "upcoming";
 
 export type SeriesListKey = "popular" | "trending" | "top_rated" | "new_series";
 
@@ -184,6 +180,8 @@ export interface LibraryEntryRef {
   /** Only set for series. */
   seasonCount?: number;
   runtime?: number;
+  /** ISO release / first-air date, used for release reminders. */
+  releaseDate?: string | null;
 }
 
 export interface WatchlistItem extends LibraryEntryRef {

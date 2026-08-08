@@ -2,6 +2,7 @@ import React from "react";
 import { Text, View } from "react-native";
 import { router } from "expo-router";
 
+import { useT } from "@/i18n";
 import { SeoHead } from "@/components/SeoHead";
 import { Footer } from "@/components/layout/Footer";
 import { FloatingBackButton } from "@/components/navigation/MobileHeader";
@@ -34,13 +35,14 @@ const SECTIONS: { heading: string; body: string }[] = [
 ];
 
 export default function LegalScreen() {
+  const t = useT();
   const styles = useStyles();
   const { gutter } = useResponsive();
 
   return (
     <>
       <SeoHead
-        title="Legal & Privacy"
+        title={t("Legal & Privacy")}
         description="How CineLog handles your data, and the sources behind its movie and series information."
       />
       <Screen reserveBottomNav>
@@ -48,14 +50,14 @@ export default function LegalScreen() {
 
         <View style={[styles.body, { paddingHorizontal: gutter }]}>
           <Text style={styles.title} accessibilityRole="header">
-            Legal & Privacy
+            {t("Legal & Privacy")}
           </Text>
           {SECTIONS.map((section) => (
             <View key={section.heading} style={styles.section}>
               <Text style={styles.heading} accessibilityRole="header">
                 {section.heading}
               </Text>
-              <Text style={styles.paragraph}>{section.body}</Text>
+              <Text style={styles.paragraph}>{t(section.body)}</Text>
             </View>
           ))}
         </View>

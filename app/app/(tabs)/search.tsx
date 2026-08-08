@@ -4,6 +4,7 @@ import { Image } from "expo-image";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 
+import { useT } from "@/i18n";
 import { SeoHead } from "@/components/SeoHead";
 import { FilterBar, type FilterOption } from "@/components/media/FilterBar";
 import { PosterGrid, usePosterMetrics } from "@/components/media/PosterGrid";
@@ -40,6 +41,7 @@ const POPULAR_SEARCHES = [
 ];
 
 export default function SearchScreen() {
+  const t = useT();
   const styles = useStyles();
   const { isMobile, gutter } = useResponsive();
   const { columns, posterWidth } = usePosterMetrics();
@@ -104,7 +106,7 @@ export default function SearchScreen() {
   return (
     <>
       <SeoHead
-        title="Search"
+        title={t("Search")}
         description="Search thousands of movies and series and jump straight to the details."
       />
       <Screen
@@ -112,10 +114,10 @@ export default function SearchScreen() {
         header={
           isMobile ? (
             <MobileHeader
-              title="Search"
+              title={t("Search")}
               onOpenProfile={() => router.push("/profile")}
               gutter={gutter}
-              displayName={user?.displayName ?? "Guest"}
+              displayName={user?.displayName ?? t("Guest")}
               avatarUrl={user?.avatarUrl ?? null}
             />
           ) : null
@@ -124,7 +126,7 @@ export default function SearchScreen() {
         <View style={[styles.searchBlock, { paddingHorizontal: gutter }]}>
           {isMobile ? null : (
             <Text style={styles.title} accessibilityRole="header">
-              Search
+              {t("Search")}
             </Text>
           )}
           <SearchBar value={term} onChangeText={setTerm} />
@@ -137,7 +139,7 @@ export default function SearchScreen() {
               value={tab}
               onChange={setTab}
               gutter={gutter}
-              accessibilityLabel="Search result types"
+              accessibilityLabel={t("Search result types")}
             />
           </View>
         ) : null}
@@ -147,13 +149,15 @@ export default function SearchScreen() {
             {recentSearches.length > 0 ? (
               <View style={styles.suggestionGroup}>
                 <View style={styles.suggestionHeader}>
-                  <Text style={styles.suggestionTitle}>Recent Searches</Text>
+                  <Text style={styles.suggestionTitle}>
+                    {t("Recent Searches")}
+                  </Text>
                   <Pressable
                     onPress={clearRecentSearches}
                     accessibilityRole="button"
-                    accessibilityLabel="Clear recent searches"
+                    accessibilityLabel={t("Clear recent searches")}
                   >
-                    <Text style={styles.clear}>Clear</Text>
+                    <Text style={styles.clear}>{t("Clear")}</Text>
                   </Pressable>
                 </View>
                 <View style={styles.pillRow}>
@@ -169,7 +173,9 @@ export default function SearchScreen() {
             ) : null}
 
             <View style={styles.suggestionGroup}>
-              <Text style={styles.suggestionTitle}>Popular Searches</Text>
+              <Text style={styles.suggestionTitle}>
+                {t("Popular Searches")}
+              </Text>
               <View style={styles.pillRow}>
                 {POPULAR_SEARCHES.map((entry) => (
                   <GenrePill
@@ -183,8 +189,8 @@ export default function SearchScreen() {
 
             <EmptyState
               icon="search-outline"
-              title="Find your next favorite"
-              message="Search thousands of movies, series and people."
+              title={t("Find your next favorite")}
+              message={t("Search thousands of movies, series and people.")}
             />
           </View>
         ) : search.isError ? (
@@ -196,28 +202,30 @@ export default function SearchScreen() {
         ) : totalResults === 0 ? (
           <EmptyState
             icon="search-outline"
-            title={`No results for "${debounced.trim()}"`}
-            message="Check the spelling, or try a different title, actor or director."
+            title={t('No results for "{{query}}"', { query: debounced.trim() })}
+            message={t(
+              "Check the spelling, or try a different title, actor or director.",
+            )}
           />
         ) : (
           <View style={styles.results}>
             {(tab === "all" || tab === "movies") &&
             results!.movies.length > 0 ? (
-              <ResultSection title="Movies" gutter={gutter}>
+              <ResultSection title={t("Movies")} gutter={gutter}>
                 <PosterGrid items={results!.movies} onSelect={openTitle} />
               </ResultSection>
             ) : null}
 
             {(tab === "all" || tab === "series") &&
             results!.series.length > 0 ? (
-              <ResultSection title="Series" gutter={gutter}>
+              <ResultSection title={t("Series")} gutter={gutter}>
                 <PosterGrid items={results!.series} onSelect={openTitle} />
               </ResultSection>
             ) : null}
 
             {(tab === "all" || tab === "people") &&
             results!.people.length > 0 ? (
-              <ResultSection title="People" gutter={gutter}>
+              <ResultSection title={t("People")} gutter={gutter}>
                 <View
                   style={[styles.peopleGrid, { paddingHorizontal: gutter }]}
                 >
@@ -235,8 +243,8 @@ export default function SearchScreen() {
             {tab === "people" && results!.people.length === 0 ? (
               <EmptyState
                 icon="people-outline"
-                title="No people found"
-                message="Try an actor or director's full name."
+                title={t("No people found")}
+                message={t("Try an actor or director's full name.")}
               />
             ) : null}
           </View>

@@ -11,6 +11,7 @@ import { Image } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
 
+import { useT } from "@/i18n";
 import { Button } from "@/components/ui/Button";
 import { Skeleton } from "@/components/ui/Skeleton";
 import {
@@ -23,12 +24,7 @@ import {
 } from "@/constants/theme";
 import { makeStyles, useTheme } from "@/theme";
 import { useResponsive } from "@/hooks/useResponsive";
-import {
-  formatRating,
-  formatRuntime,
-  formatSeasons,
-  metaLine,
-} from "@/lib/format";
+import { formatRating, formatRuntime, metaLine } from "@/lib/format";
 import type { MediaSummary, Movie, Series } from "@/lib/cinelog/types";
 
 export interface HeroBannerProps {
@@ -51,6 +47,7 @@ export function HeroBanner({
   inWatchlist,
   certification,
 }: HeroBannerProps) {
+  const t = useT();
   const { colors } = useTheme();
   const styles = useStyles();
   const { isMobile, gutter, height: viewportHeight } = useResponsive();
@@ -75,7 +72,9 @@ export function HeroBanner({
     item.type === "movie" && "runtime" in item
       ? formatRuntime(item.runtime)
       : "seasonCount" in item
-        ? formatSeasons(item.seasonCount)
+        ? t(item.seasonCount === 1 ? "{{count}} Season" : "{{count}} Seasons", {
+            count: item.seasonCount,
+          })
         : "";
 
   const meta = metaLine([
@@ -120,7 +119,7 @@ export function HeroBanner({
       >
         <View style={styles.featuredTag}>
           <Ionicons name="sparkles" size={12} color={colors.accent} />
-          <Text style={styles.featuredTagText}>Featured today</Text>
+          <Text style={styles.featuredTagText}>{t("Featured today")}</Text>
         </View>
 
         <Text
@@ -149,13 +148,13 @@ export function HeroBanner({
 
         <View style={styles.actions}>
           <Button
-            label="Watch Trailer"
+            label={t("Watch Trailer")}
             icon="play"
             onPress={onWatchTrailer}
             size="lg"
           />
           <Button
-            label={inWatchlist ? "In Watchlist" : "Add to Watchlist"}
+            label={t(inWatchlist ? "In Watchlist" : "Add to Watchlist")}
             icon={inWatchlist ? "checkmark" : "add"}
             onPress={onToggleWatchlist}
             variant="secondary"
@@ -163,7 +162,7 @@ export function HeroBanner({
             onArtwork
           />
           <Button
-            label="More info"
+            label={t("More info")}
             icon="information-circle-outline"
             onPress={onOpen}
             variant="ghost"

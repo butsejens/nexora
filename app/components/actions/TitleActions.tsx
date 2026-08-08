@@ -8,6 +8,7 @@
 import React, { useCallback } from "react";
 import { View } from "react-native";
 
+import { useT } from "@/i18n";
 import { Button, IconButton } from "@/components/ui/Button";
 import { GenrePill } from "@/components/ui/GenrePill";
 import { SPACING } from "@/constants/theme";
@@ -27,6 +28,7 @@ export function WatchlistButton({
   variant = "button",
   size = "md",
 }: WatchlistButtonProps) {
+  const t = useT();
   const saved = useLibrary((state) => state.isInWatchlist(item.id));
   const toggle = useLibrary((state) => state.toggleWatchlist);
 
@@ -35,7 +37,7 @@ export function WatchlistButton({
     void SafeHaptics.selection();
   }, [item, toggle]);
 
-  const label = saved ? "In Watchlist" : "Add to Watchlist";
+  const label = t(saved ? "In Watchlist" : "Add to Watchlist");
 
   if (variant === "icon") {
     return (
@@ -59,11 +61,11 @@ export function WatchlistButton({
       onPress={onPress}
       variant="secondary"
       size={size}
-      accessibilityHint={
+      accessibilityHint={t(
         saved
           ? "Removes this title from your watchlist"
-          : "Saves this title for later"
-      }
+          : "Saves this title for later",
+      )}
     />
   );
 }
@@ -106,14 +108,15 @@ export function TrailerButton({
   size = "md",
   disabled,
 }: TrailerButtonProps) {
+  const t = useT();
   return (
     <Button
-      label="Watch Trailer"
+      label={t("Watch Trailer")}
       icon="play"
       onPress={onPress}
       size={size}
       disabled={disabled}
-      accessibilityHint="Plays the trailer inside CineLog"
+      accessibilityHint={t("Plays the trailer inside CineLog")}
     />
   );
 }

@@ -10,6 +10,7 @@ import { Text, View } from "react-native";
 import { Image } from "expo-image";
 import { Ionicons } from "@expo/vector-icons";
 
+import { useLocale, useT } from "@/i18n";
 import { ARTWORK, FONTS, RADIUS, SPACING } from "@/constants/theme";
 import { makeStyles, useTheme } from "@/theme";
 import { formatDate, formatRuntime, metaLine } from "@/lib/format";
@@ -32,12 +33,14 @@ export function EpisodeCard({
   isUpNext = false,
   stillWidth,
 }: EpisodeCardProps) {
+  const t = useT();
+  const locale = useLocale();
   const { colors } = useTheme();
   const styles = useStyles();
   const stillHeight = Math.round((stillWidth * 9) / 16);
   const meta = metaLine([
     formatRuntime(episode.runtime),
-    formatDate(episode.airDate),
+    formatDate(episode.airDate, locale),
   ]);
 
   return (
@@ -52,7 +55,9 @@ export function EpisodeCard({
             contentFit="cover"
             transition={200}
             cachePolicy="memory-disk"
-            accessibilityLabel={`Still from ${episode.title}`}
+            accessibilityLabel={t("Still from {{title}}", {
+              title: episode.title,
+            })}
           />
         ) : (
           <View style={[styles.still, styles.stillFallback]}>
@@ -69,7 +74,7 @@ export function EpisodeCard({
           <Text style={styles.title} numberOfLines={1}>
             {episode.title}
           </Text>
-          {isUpNext ? <Text style={styles.upNext}>Up next</Text> : null}
+          {isUpNext ? <Text style={styles.upNext}>{t("Up next")}</Text> : null}
         </View>
         {meta ? <Text style={styles.meta}>{meta}</Text> : null}
         {episode.overview ? (
@@ -85,8 +90,14 @@ export function EpisodeCard({
         accessibilityState={{ checked: watched }}
         accessibilityLabel={
           watched
-            ? `Mark episode ${episode.episodeNumber}, ${episode.title}, as unwatched`
-            : `Mark episode ${episode.episodeNumber}, ${episode.title}, as watched`
+            ? t("Mark episode {{number}}, {{title}}, as unwatched", {
+                number: episode.episodeNumber,
+                title: episode.title,
+              })
+            : t("Mark episode {{number}}, {{title}}, as watched", {
+                number: episode.episodeNumber,
+                title: episode.title,
+              })
         }
         hitSlop={8}
         style={({ hovered }) => [

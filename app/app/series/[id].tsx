@@ -8,6 +8,7 @@ import {
   WatchStateSelector,
   WatchlistButton,
 } from "@/components/actions/TitleActions";
+import { useT } from "@/i18n";
 import { Footer } from "@/components/layout/Footer";
 import { SeoHead } from "@/components/SeoHead";
 import { Carousel } from "@/components/media/Carousel";
@@ -27,11 +28,12 @@ import { useResponsive } from "@/hooks/useResponsive";
 import { useTrailerPlayer } from "@/hooks/useTrailerPlayer";
 import { openPerson, openTitle, parseIdParam } from "@/lib/cinelog/navigation";
 import { useSeason, useSeriesDetail } from "@/lib/cinelog/queries";
-import { formatRuntime, formatSeasons } from "@/lib/format";
+import { formatRuntime } from "@/lib/format";
 import type { MediaSummary } from "@/lib/cinelog/types";
 import { toLibraryRef, useLibrary } from "@/store/library-store";
 
 export default function SeriesDetailScreen() {
+  const t = useT();
   const styles = useStyles();
   const params = useLocalSearchParams<{ id?: string }>();
   const tmdbId = parseIdParam(params.id);
@@ -160,8 +162,10 @@ export default function SeriesDetailScreen() {
     return (
       <Screen scroll={false}>
         <ErrorState
-          title="We couldn't open that show"
-          message="The link looks incomplete. Head back and pick a title again."
+          title={t("We couldn't open that show")}
+          message={t(
+            "The link looks incomplete. Head back and pick a title again.",
+          )}
           onRetry={() => router.replace("/(tabs)/series")}
         />
       </Screen>
@@ -212,7 +216,9 @@ export default function SeriesDetailScreen() {
         <TitleHero
           title={series.title}
           tagline={
-            series.creators.length ? `Created by ${series.creators[0]}` : null
+            series.creators.length
+              ? t("Created by {{name}}", { name: series.creators[0] })
+              : null
           }
           overview={series.overview}
           poster={series.poster}
@@ -221,8 +227,17 @@ export default function SeriesDetailScreen() {
           metaParts={[
             series.year || null,
             series.certification,
-            formatSeasons(series.seasonCount),
-            series.episodeCount ? `${series.episodeCount} Episodes` : null,
+            series.seasonCount
+              ? t(
+                  series.seasonCount === 1
+                    ? "{{count}} Season"
+                    : "{{count}} Seasons",
+                  { count: series.seasonCount },
+                )
+              : null,
+            series.episodeCount
+              ? t("{{count}} Episodes", { count: series.episodeCount })
+              : null,
             formatRuntime(series.episodeRuntime),
             series.networks[0] ?? null,
           ]}
@@ -262,7 +277,7 @@ export default function SeriesDetailScreen() {
               <Text
                 style={[styles.sectionTitle, { paddingHorizontal: gutter }]}
               >
-                Seasons
+                {t("Seasons")}
               </Text>
               <ScrollView
                 horizontal
@@ -272,12 +287,14 @@ export default function SeriesDetailScreen() {
                   { paddingHorizontal: gutter },
                 ]}
                 accessibilityRole="tablist"
-                accessibilityLabel="Select a season"
+                accessibilityLabel={t("Select a season")}
               >
                 {series.seasons.map((entry) => (
                   <GenrePill
                     key={entry.seasonNumber}
-                    label={`Season ${entry.seasonNumber}`}
+                    label={t("Season {{number}}", {
+                      number: entry.seasonNumber,
+                    })}
                     selected={entry.seasonNumber === selectedSeason}
                     onPress={() => setSelectedSeason(entry.seasonNumber)}
                   />
@@ -297,13 +314,15 @@ export default function SeriesDetailScreen() {
                 ) : season.isError ? (
                   <ErrorState
                     compact
-                    title="Episodes unavailable"
-                    message="We couldn't load this season right now. Please try again."
+                    title={t("Episodes unavailable")}
+                    message={t(
+                      "We couldn't load this season right now. Please try again.",
+                    )}
                     onRetry={() => void season.refetch()}
                   />
                 ) : episodes.length === 0 ? (
                   <Text style={styles.noEpisodes}>
-                    No episode details published for this season yet.
+                    {t("No episode details published for this season yet.")}
                   </Text>
                 ) : (
                   episodes.map((episode) => (
@@ -333,7 +352,7 @@ export default function SeriesDetailScreen() {
 
           {cast.length > 0 ? (
             <Carousel
-              title="Cast"
+              title={t("Cast")}
               items={cast}
               isLoading={false}
               itemWidth={castCardWidth}
@@ -350,7 +369,7 @@ export default function SeriesDetailScreen() {
 
           {similar.length > 0 ? (
             <Carousel
-              title="Similar Series"
+              title={t("Similar Series")}
               items={similar}
               isLoading={false}
               itemWidth={railPosterWidth}
@@ -361,7 +380,7 @@ export default function SeriesDetailScreen() {
 
           {recommendations.length > 0 ? (
             <Carousel
-              title="More Like This"
+              title={t("More Like This")}
               items={recommendations}
               isLoading={false}
               itemWidth={railPosterWidth}

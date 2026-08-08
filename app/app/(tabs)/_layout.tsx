@@ -2,6 +2,7 @@ import React, { useCallback } from "react";
 import { View } from "react-native";
 import { Tabs, router, usePathname } from "expo-router";
 
+import { useT } from "@/i18n";
 import { BottomNavigation } from "@/components/navigation/BottomNavigation";
 import { DesktopNavigation } from "@/components/navigation/DesktopNavigation";
 import { useResponsive } from "@/hooks/useResponsive";
@@ -14,6 +15,7 @@ import { makeStyles, useTheme } from "@/theme";
  * switching sections.
  */
 export default function TabsLayout() {
+  const t = useT();
   const { colors } = useTheme();
   const styles = useStyles();
   const { isMobile, gutter } = useResponsive();
@@ -38,7 +40,7 @@ export default function TabsLayout() {
           onNavigate={navigate}
           onOpenProfile={openProfile}
           gutter={gutter}
-          displayName={user?.displayName ?? "Guest"}
+          displayName={user?.displayName ?? t("Guest")}
           avatarUrl={user?.avatarUrl ?? null}
         />
       )}

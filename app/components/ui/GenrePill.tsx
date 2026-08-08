@@ -5,6 +5,7 @@
 import React from "react";
 import { Text } from "react-native";
 
+import { useT } from "@/i18n";
 import { FONTS, RADIUS, SPACING } from "@/constants/theme";
 import { makeStyles } from "@/theme";
 import { Pressable } from "@/components/ui/Pressable";
@@ -23,8 +24,11 @@ export function GenrePill({
   onPress,
   count,
 }: GenrePillProps) {
+  const t = useT();
   const styles = useStyles();
-  const text = typeof count === "number" ? `${label} ${count}` : label;
+  const translated = t(label);
+  const text =
+    typeof count === "number" ? `${translated} ${count}` : translated;
 
   if (!onPress) {
     return (

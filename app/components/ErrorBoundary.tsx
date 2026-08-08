@@ -11,18 +11,22 @@
 import React, { Component, type PropsWithChildren } from "react";
 import { View } from "react-native";
 
+import { useT } from "@/i18n";
 import { ErrorState } from "@/components/ui/States";
 import { makeStyles } from "@/theme";
 
 type ErrorBoundaryState = { error: Error | null };
 
 function ErrorFallback({ onRetry }: { onRetry: () => void }) {
+  const t = useT();
   const styles = useStyles();
   return (
     <View style={styles.root}>
       <ErrorState
-        title="CineLog hit a snag"
-        message="Something unexpected happened while rendering this screen. Reloading usually fixes it."
+        title={t("CineLog hit a snag")}
+        message={t(
+          "Something unexpected happened while rendering this screen. Reloading usually fixes it.",
+        )}
         onRetry={onRetry}
       />
     </View>

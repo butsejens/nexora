@@ -12,6 +12,7 @@ import { Image } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
 
+import { useT } from "@/i18n";
 import { IconButton } from "@/components/ui/Button";
 import { TouchableScale } from "@/components/ui/Pressable";
 import { RatingBadge } from "@/components/ui/Rating";
@@ -45,6 +46,7 @@ function PosterCardComponent({
   subtitle,
   hideMeta = false,
 }: PosterCardProps) {
+  const t = useT();
   const { colors } = useTheme();
   const styles = useStyles();
   const { supportsHover } = useResponsive();
@@ -56,7 +58,9 @@ function PosterCardComponent({
   const typeLabel = item.type === "movie" ? "Movie" : "Series";
   const seasons =
     "seasonCount" in item && item.seasonCount
-      ? `${item.seasonCount} ${item.seasonCount === 1 ? "Season" : "Seasons"}`
+      ? t(item.seasonCount === 1 ? "{{count}} Season" : "{{count}} Seasons", {
+          count: item.seasonCount,
+        })
       : "";
 
   const handleWatchlist = useCallback(() => {
@@ -85,7 +89,7 @@ function PosterCardComponent({
               contentFit="cover"
               transition={220}
               cachePolicy="memory-disk"
-              accessibilityLabel={`${item.title} poster`}
+              accessibilityLabel={t("{{title}} poster", { title: item.title })}
             />
           ) : (
             <View style={[styles.poster, styles.posterFallback]}>
@@ -132,7 +136,9 @@ function PosterCardComponent({
               {onPlayTrailer ? (
                 <IconButton
                   icon="play"
-                  label={`Watch the ${item.title} trailer`}
+                  label={t("Watch the {{title}} trailer", {
+                    title: item.title,
+                  })}
                   onPress={onPlayTrailer}
                   variant="primary"
                   size={34}
@@ -143,8 +149,12 @@ function PosterCardComponent({
                 icon={inWatchlist ? "checkmark" : "add"}
                 label={
                   inWatchlist
-                    ? `Remove ${item.title} from your watchlist`
-                    : `Save ${item.title} to your watchlist`
+                    ? t("Remove {{title}} from your watchlist", {
+                        title: item.title,
+                      })
+                    : t("Save {{title}} to your watchlist", {
+                        title: item.title,
+                      })
                 }
                 onPress={handleWatchlist}
                 active={inWatchlist}

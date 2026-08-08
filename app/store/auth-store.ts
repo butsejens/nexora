@@ -46,7 +46,9 @@ export interface AuthState {
   ) => Promise<boolean>;
   signOut: () => Promise<void>;
   sendPasswordReset: (email: string) => Promise<boolean>;
-  updateProfileDetails: (patch: Partial<Pick<CineLogUser, "displayName" | "avatarUrl">>) => void;
+  updateProfileDetails: (
+    patch: Partial<Pick<CineLogUser, "displayName" | "avatarUrl">>,
+  ) => void;
   clearError: () => void;
 }
 

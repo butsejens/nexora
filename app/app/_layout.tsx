@@ -17,6 +17,7 @@ import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { useNotificationSync } from "@/hooks/useNotificationSync";
 import { queryClient } from "@/lib/query-client";
 import { startAuthSync } from "@/store/auth-store";
 import { ThemeProvider, useTheme } from "@/theme";
@@ -31,6 +32,8 @@ SplashScreen.preventAutoHideAsync().catch(() => {
  */
 function ThemedShell() {
   const { colors, isDark } = useTheme();
+
+  useNotificationSync();
 
   useEffect(() => {
     SystemUI.setBackgroundColorAsync(colors.background).catch(() => {

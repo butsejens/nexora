@@ -7,6 +7,7 @@ import React from "react";
 import { Text, View } from "react-native";
 import Svg, { Defs, LinearGradient, Path, Rect, Stop } from "react-native-svg";
 
+import { useT } from "@/i18n";
 import { FONTS } from "@/constants/theme";
 import { makeStyles, useTheme } from "@/theme";
 
@@ -75,6 +76,7 @@ export function CineLogLogo({
   showTagline = false,
   markOnly = false,
 }: CineLogLogoProps) {
+  const t = useT();
   const styles = useStyles();
   if (markOnly) return <CineLogMark size={size} />;
 
@@ -91,7 +93,7 @@ export function CineLogLogo({
           Cine<Text style={styles.wordmarkAccent}>Log</Text>
         </Text>
         {showTagline ? (
-          <Text style={styles.tagline}>Discover. Track. Watch.</Text>
+          <Text style={styles.tagline}>{t("Discover. Track. Watch.")}</Text>
         ) : null}
       </View>
     </View>

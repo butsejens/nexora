@@ -59,7 +59,9 @@ export function buildTasteProfile(signals: LibrarySignals): TasteProfile {
     addAffinity(
       genreAffinity,
       entry.genreIds,
-      entry.state === "watched" ? SIGNAL_WEIGHT.watched : SIGNAL_WEIGHT.watching,
+      entry.state === "watched"
+        ? SIGNAL_WEIGHT.watched
+        : SIGNAL_WEIGHT.watching,
     );
   }
   for (const entry of signals.favorites) {
@@ -115,10 +117,7 @@ export function buildTasteProfile(signals: LibrarySignals): TasteProfile {
 
 /** Named genres the viewer leans towards, for UI copy. */
 export function topGenreLabels(profile: TasteProfile, limit = 3): string[] {
-  return profile.topGenreIds
-    .slice(0, limit)
-    .map(genreName)
-    .filter(Boolean);
+  return profile.topGenreIds.slice(0, limit).map(genreName).filter(Boolean);
 }
 
 function scoreCandidate(
@@ -183,7 +182,9 @@ export function recommendForYou({
       return {
         item: candidate,
         score,
-        reason: genreLabel ? `Because you watch ${genreLabel}` : "Picked for you",
+        reason: genreLabel
+          ? `Because you watch ${genreLabel}`
+          : "Picked for you",
       };
     })
     .filter((entry) => {

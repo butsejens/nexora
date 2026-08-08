@@ -11,6 +11,7 @@ import { Image } from "expo-image";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { useT } from "@/i18n";
 import { CineLogLogo } from "@/components/brand/CineLogLogo";
 import { ARTWORK, FONTS, RADIUS, SPACING } from "@/constants/theme";
 import { makeStyles } from "@/theme";
@@ -35,6 +36,7 @@ export function MobileHeader({
   title,
   transparent = false,
 }: MobileHeaderProps) {
+  const t = useT();
   const styles = useStyles();
   const insets = useSafeAreaInsets();
   const initial = displayName.trim().charAt(0).toUpperCase() || "C";
@@ -58,7 +60,9 @@ export function MobileHeader({
       <Pressable
         onPress={onOpenProfile}
         accessibilityRole="button"
-        accessibilityLabel={`Open your CineLog profile, ${displayName}`}
+        accessibilityLabel={t("Open your CineLog profile, {{name}}", {
+          name: displayName,
+        })}
         hitSlop={8}
       >
         {avatarUrl ? (
@@ -85,13 +89,14 @@ export function FloatingBackButton({
   onPress: () => void;
   gutter: number;
 }) {
+  const t = useT();
   const styles = useStyles();
   const insets = useSafeAreaInsets();
   return (
     <Pressable
       onPress={onPress}
       accessibilityRole="button"
-      accessibilityLabel="Go back"
+      accessibilityLabel={t("Go back")}
       hitSlop={8}
       style={({ hovered }) => [
         styles.back,

@@ -4,6 +4,7 @@ import { Image } from "expo-image";
 import { Ionicons } from "@expo/vector-icons";
 import { router, useLocalSearchParams } from "expo-router";
 
+import { useLocale, useT } from "@/i18n";
 import { Footer } from "@/components/layout/Footer";
 import { SeoHead } from "@/components/SeoHead";
 import { PosterGrid } from "@/components/media/PosterGrid";
@@ -19,6 +20,8 @@ import { usePerson } from "@/lib/cinelog/queries";
 import { formatDate, metaLine } from "@/lib/format";
 
 export default function PersonScreen() {
+  const t = useT();
+  const locale = useLocale();
   const { colors } = useTheme();
   const styles = useStyles();
   const params = useLocalSearchParams<{ id?: string }>();
@@ -61,8 +64,12 @@ export default function PersonScreen() {
 
   const photoSize = isMobile ? 110 : 168;
   const lifespan = metaLine([
-    person.birthday ? `Born ${formatDate(person.birthday)}` : null,
-    person.deathday ? `Died ${formatDate(person.deathday)}` : null,
+    person.birthday
+      ? t("Born {{date}}", { date: formatDate(person.birthday, locale) })
+      : null,
+    person.deathday
+      ? t("Died {{date}}", { date: formatDate(person.deathday, locale) })
+      : null,
     person.placeOfBirth,
   ]);
 
@@ -92,7 +99,7 @@ export default function PersonScreen() {
               style={[styles.photo, { width: photoSize, height: photoSize }]}
               contentFit="cover"
               transition={220}
-              accessibilityLabel={`Photo of ${person.name}`}
+              accessibilityLabel={t("Photo of {{name}}", { name: person.name })}
             />
           ) : (
             <View
@@ -124,14 +131,14 @@ export default function PersonScreen() {
 
         <View style={styles.section}>
           <Text style={[styles.sectionTitle, { paddingHorizontal: gutter }]}>
-            Known For
+            {t("Known For")}
           </Text>
           {person.knownFor.length === 0 ? (
             <EmptyState
               compact
               icon="film-outline"
-              title="No credits to show"
-              message="We don't have any titles for this person yet."
+              title={t("No credits to show")}
+              message={t("We don't have any titles for this person yet.")}
             />
           ) : (
             <PosterGrid items={person.knownFor} onSelect={openTitle} />

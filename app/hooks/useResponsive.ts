@@ -33,15 +33,16 @@ export function useResponsive(): Responsive {
   const isTablet = width >= BREAKPOINTS.mobile && width < BREAKPOINTS.tablet;
   const isDesktop = width >= BREAKPOINTS.tablet;
 
-  const gridColumns = width >= 1800
-    ? 8
-    : width >= 1440
-      ? 7
-      : width >= BREAKPOINTS.tablet
-        ? 6
-        : width >= BREAKPOINTS.mobile
-          ? 4
-          : 2;
+  const gridColumns =
+    width >= 1800
+      ? 8
+      : width >= 1440
+        ? 7
+        : width >= BREAKPOINTS.tablet
+          ? 6
+          : width >= BREAKPOINTS.mobile
+            ? 4
+            : 2;
 
   const gutter = isMobile ? 16 : isTablet ? 24 : 32;
 

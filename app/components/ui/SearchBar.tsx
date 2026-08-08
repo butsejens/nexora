@@ -6,6 +6,7 @@ import React from "react";
 import { Pressable, TextInput, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 
+import { useT } from "@/i18n";
 import { FONTS, RADIUS, SPACING } from "@/constants/theme";
 import { makeStyles, useTheme } from "@/theme";
 import { NO_WEB_OUTLINE } from "@/lib/web-style";
@@ -21,10 +22,11 @@ export interface SearchBarProps {
 export function SearchBar({
   value,
   onChangeText,
-  placeholder = "Search movies, series, actors...",
+  placeholder,
   autoFocus = false,
   onSubmit,
 }: SearchBarProps) {
+  const t = useT();
   const { colors } = useTheme();
   const styles = useStyles();
   return (
@@ -33,7 +35,7 @@ export function SearchBar({
       <TextInput
         value={value}
         onChangeText={onChangeText}
-        placeholder={placeholder}
+        placeholder={placeholder ?? t("Search movies, series, actors...")}
         placeholderTextColor={colors.textMuted}
         style={styles.input}
         autoFocus={autoFocus}
@@ -41,14 +43,14 @@ export function SearchBar({
         autoCapitalize="none"
         returnKeyType="search"
         onSubmitEditing={onSubmit}
-        accessibilityLabel="Search CineLog"
+        accessibilityLabel={t("Search CineLog")}
         accessibilityRole="search"
       />
       {value.length > 0 ? (
         <Pressable
           onPress={() => onChangeText("")}
           accessibilityRole="button"
-          accessibilityLabel="Clear search"
+          accessibilityLabel={t("Clear search")}
           hitSlop={8}
         >
           <Ionicons name="close-circle" size={18} color={colors.textMuted} />

@@ -11,6 +11,7 @@ import { BlurView } from "expo-blur";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { useT } from "@/i18n";
 import { NAV_ITEMS } from "@/components/navigation/navItems";
 import { FONTS, LAYOUT, RADIUS, SPACING } from "@/constants/theme";
 import { makeStyles, useTheme } from "@/theme";
@@ -25,6 +26,7 @@ export function BottomNavigation({
   activeRoute,
   onNavigate,
 }: BottomNavigationProps) {
+  const t = useT();
   const { colors } = useTheme();
   const styles = useStyles();
   const insets = useSafeAreaInsets();
@@ -36,7 +38,7 @@ export function BottomNavigation({
         { paddingBottom: Math.max(insets.bottom, SPACING.sm) },
       ]}
       accessibilityRole="tablist"
-      accessibilityLabel="Main navigation"
+      accessibilityLabel={t("Main navigation")}
     >
       {/* Blur keeps content visible behind the bar on iOS and web. */}
       {Platform.OS === "android" ? null : (
@@ -51,7 +53,7 @@ export function BottomNavigation({
               onPress={() => onNavigate(item.route)}
               accessibilityRole="tab"
               accessibilityState={{ selected: active }}
-              accessibilityLabel={item.label}
+              accessibilityLabel={t(item.label)}
               style={styles.tab}
               hitSlop={4}
             >
@@ -65,7 +67,7 @@ export function BottomNavigation({
                 />
               </View>
               <Text style={[styles.label, active ? styles.labelActive : null]}>
-                {item.label}
+                {t(item.label)}
               </Text>
             </Pressable>
           );

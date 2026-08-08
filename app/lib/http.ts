@@ -65,8 +65,11 @@ function inferredDevHost(): string {
   try {
     const raw =
       Constants?.expoConfig?.hostUri ||
-      (Constants as { manifest2?: { extra?: { expoClient?: { hostUri?: string } } } })
-        ?.manifest2?.extra?.expoClient?.hostUri ||
+      (
+        Constants as {
+          manifest2?: { extra?: { expoClient?: { hostUri?: string } } };
+        }
+      )?.manifest2?.extra?.expoClient?.hostUri ||
       "";
     return String(raw).split(":")[0] || "";
   } catch {
@@ -76,10 +79,7 @@ function inferredDevHost(): string {
 
 export function getApiBaseCandidates(): string[] {
   const explicit = normalizeBase(ENV.apiBase);
-  const fallbacks = ENV.apiBases
-    .split(",")
-    .map(normalizeBase)
-    .filter(Boolean);
+  const fallbacks = ENV.apiBases.split(",").map(normalizeBase).filter(Boolean);
 
   if (Platform.OS === "web") {
     const candidates: string[] = [lastWorkingBase, explicit, ...fallbacks];
@@ -190,7 +190,10 @@ async function performRequest<T>(
         continue;
       }
       if (!res.ok) {
-        throw new HttpError(res.status, `${res.status} ${res.statusText}`.trim());
+        throw new HttpError(
+          res.status,
+          `${res.status} ${res.statusText}`.trim(),
+        );
       }
 
       lastWorkingBase = base;

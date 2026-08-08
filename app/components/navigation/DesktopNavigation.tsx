@@ -9,6 +9,7 @@ import { StyleSheet, Text, View } from "react-native";
 import { Image } from "expo-image";
 import { Ionicons } from "@expo/vector-icons";
 
+import { useT } from "@/i18n";
 import { CineLogLogo } from "@/components/brand/CineLogLogo";
 import { NAV_ITEMS } from "@/components/navigation/navItems";
 import { FONTS, LAYOUT, RADIUS, SPACING } from "@/constants/theme";
@@ -32,6 +33,7 @@ export function DesktopNavigation({
   displayName,
   avatarUrl,
 }: DesktopNavigationProps) {
+  const t = useT();
   const { colors } = useTheme();
   const styles = useStyles();
   const initial = displayName.trim().charAt(0).toUpperCase() || "C";
@@ -40,12 +42,12 @@ export function DesktopNavigation({
     <View
       style={[styles.bar, { paddingHorizontal: gutter }]}
       accessibilityRole="tablist"
-      accessibilityLabel="Main navigation"
+      accessibilityLabel={t("Main navigation")}
     >
       <Pressable
         onPress={() => onNavigate("/home")}
         accessibilityRole="link"
-        accessibilityLabel="CineLog home"
+        accessibilityLabel={t("CineLog home")}
       >
         <CineLogLogo size={26} />
       </Pressable>
@@ -59,7 +61,7 @@ export function DesktopNavigation({
               onPress={() => onNavigate(item.route)}
               accessibilityRole="tab"
               accessibilityState={{ selected: active }}
-              accessibilityLabel={item.label}
+              accessibilityLabel={t(item.label)}
               style={({ hovered }) => [
                 styles.link,
                 hovered && !active ? styles.linkHovered : null,
@@ -74,7 +76,7 @@ export function DesktopNavigation({
               <Text
                 style={[styles.linkText, active ? styles.linkTextActive : null]}
               >
-                {item.label}
+                {t(item.label)}
               </Text>
             </Pressable>
           );
@@ -84,7 +86,9 @@ export function DesktopNavigation({
       <Pressable
         onPress={onOpenProfile}
         accessibilityRole="button"
-        accessibilityLabel={`Open your CineLog profile, ${displayName}`}
+        accessibilityLabel={t("Open your CineLog profile, {{name}}", {
+          name: displayName,
+        })}
         style={({ hovered }) => [
           styles.profile,
           hovered ? styles.profileHovered : null,

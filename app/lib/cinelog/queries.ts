@@ -37,7 +37,8 @@ import type {
 export const mediaKeys = {
   trending: () => ["media", "trending"] as const,
   movieList: (list: MovieListKey) => ["media", "movies", "list", list] as const,
-  seriesList: (list: SeriesListKey) => ["media", "series", "list", list] as const,
+  seriesList: (list: SeriesListKey) =>
+    ["media", "series", "list", list] as const,
   moviesByGenre: (genreId: number) =>
     ["media", "movies", "genre", genreId] as const,
   seriesByGenre: (genreId: number) =>
@@ -97,7 +98,10 @@ export function useMovieRail(list: MovieListKey): Rail {
   const query = useMediaList(
     mediaKeys.movieList(list),
     (page) => fetchMovieList(list, page),
-    { paginates: canPaginate(MOVIE_LIST_SPECS[list]), staleTime: staleForList(list) },
+    {
+      paginates: canPaginate(MOVIE_LIST_SPECS[list]),
+      staleTime: staleForList(list),
+    },
   );
   return {
     items: query.data?.pages[0]?.results ?? [],
@@ -111,7 +115,10 @@ export function useSeriesRail(list: SeriesListKey): Rail {
   const query = useMediaList(
     mediaKeys.seriesList(list),
     (page) => fetchSeriesList(list, page),
-    { paginates: canPaginate(SERIES_LIST_SPECS[list]), staleTime: staleForList(list) },
+    {
+      paginates: canPaginate(SERIES_LIST_SPECS[list]),
+      staleTime: staleForList(list),
+    },
   );
   return {
     items: query.data?.pages[0]?.results ?? [],
@@ -148,7 +155,9 @@ export interface Browse {
   refetch: () => void;
 }
 
-function dedupe(pages: PagedResult<MediaSummary>[] | undefined): MediaSummary[] {
+function dedupe(
+  pages: PagedResult<MediaSummary>[] | undefined,
+): MediaSummary[] {
   if (!pages) return [];
   const seen = new Set<string>();
   const out: MediaSummary[] = [];
@@ -178,7 +187,10 @@ function toBrowse(query: ReturnType<typeof useMediaList>): Browse {
   };
 }
 
-export function useMovieBrowse(list: MovieListKey, genreId: number | null): Browse {
+export function useMovieBrowse(
+  list: MovieListKey,
+  genreId: number | null,
+): Browse {
   return toBrowse(
     useMediaList(
       genreId !== null
@@ -196,7 +208,10 @@ export function useMovieBrowse(list: MovieListKey, genreId: number | null): Brow
   );
 }
 
-export function useSeriesBrowse(list: SeriesListKey, genreId: number | null): Browse {
+export function useSeriesBrowse(
+  list: SeriesListKey,
+  genreId: number | null,
+): Browse {
   return toBrowse(
     useMediaList(
       genreId !== null
@@ -234,7 +249,10 @@ export function useSeriesDetail(tmdbId: number | null) {
   });
 }
 
-export function useSeason(seriesId: number | null, seasonNumber: number | null) {
+export function useSeason(
+  seriesId: number | null,
+  seasonNumber: number | null,
+) {
   return useQuery({
     queryKey: mediaKeys.season(seriesId ?? 0, seasonNumber ?? 0),
     queryFn: () => fetchSeason(seriesId as number, seasonNumber as number),
@@ -256,7 +274,11 @@ export function usePerson(personId: number | null) {
   });
 }
 
-export function useTrailer(type: MediaType, tmdbId: number | null, enabled = true) {
+export function useTrailer(
+  type: MediaType,
+  tmdbId: number | null,
+  enabled = true,
+) {
   return useQuery({
     queryKey: mediaKeys.trailer(type, tmdbId ?? 0),
     queryFn: () => fetchPrimaryTrailer(type, tmdbId as number),
@@ -282,7 +304,11 @@ export function useSearch(query: string) {
 export function useInterleaved(left: MediaSummary[], right: MediaSummary[]) {
   return useMemo(() => {
     const mixed: MediaSummary[] = [];
-    for (let index = 0; index < Math.max(left.length, right.length); index += 1) {
+    for (
+      let index = 0;
+      index < Math.max(left.length, right.length);
+      index += 1
+    ) {
       if (left[index]) mixed.push(left[index]);
       if (right[index]) mixed.push(right[index]);
     }

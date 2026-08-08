@@ -15,6 +15,7 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 
+import { useT } from "@/i18n";
 import { SkeletonRail } from "@/components/ui/Skeleton";
 import { FONTS, LAYOUT, RADIUS, SPACING } from "@/constants/theme";
 import { makeStyles, useTheme } from "@/theme";
@@ -46,6 +47,7 @@ export function Carousel<T>({
   itemWidth,
   emptyMessage,
 }: CarouselProps<T>) {
+  const t = useT();
   const { colors } = useTheme();
   const styles = useStyles();
   const { gutter, supportsHover, width } = useResponsive();
@@ -109,13 +111,13 @@ export function Carousel<T>({
             <Pressable
               onPress={onSeeAll}
               accessibilityRole="button"
-              accessibilityLabel={`See all in ${title}`}
+              accessibilityLabel={t("See all in {{title}}", { title })}
               style={({ hovered }) => [
                 styles.seeAll,
                 hovered ? styles.seeAllHovered : null,
               ]}
             >
-              <Text style={styles.seeAllText}>See all</Text>
+              <Text style={styles.seeAllText}>{t("See all")}</Text>
               <Ionicons
                 name="chevron-forward"
                 size={14}
@@ -129,7 +131,7 @@ export function Carousel<T>({
               <Pressable
                 onPress={() => scrollBy(-1)}
                 accessibilityRole="button"
-                accessibilityLabel={`Scroll ${title} left`}
+                accessibilityLabel={t("Scroll {{title}} left", { title })}
                 style={({ hovered }) => [
                   styles.arrow,
                   hovered ? styles.arrowHovered : null,
@@ -144,7 +146,7 @@ export function Carousel<T>({
               <Pressable
                 onPress={() => scrollBy(1)}
                 accessibilityRole="button"
-                accessibilityLabel={`Scroll ${title} right`}
+                accessibilityLabel={t("Scroll {{title}} right", { title })}
                 style={({ hovered }) => [
                   styles.arrow,
                   hovered ? styles.arrowHovered : null,
