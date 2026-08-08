@@ -17,7 +17,7 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 
 import { SkeletonRail } from "@/components/ui/Skeleton";
-import { COLORS, FONTS, RADIUS, SPACING } from "@/constants/theme";
+import { COLORS, FONTS, LAYOUT, RADIUS, SPACING } from "@/constants/theme";
 import { useResponsive } from "@/hooks/useResponsive";
 import { Pressable } from "@/components/ui/Pressable";
 
@@ -46,9 +46,14 @@ export function Carousel<T>({
   itemWidth,
   emptyMessage,
 }: CarouselProps<T>) {
-  const { gutter, supportsHover } = useResponsive();
+  const { gutter, supportsHover, width } = useResponsive();
   const listRef = useRef<FlatList<T>>(null);
   const offsetRef = useRef(0);
+
+  // Arrows only make sense once the row is wider than the space it has.
+  const contentWidth = items.length * (itemWidth + SPACING.md) - SPACING.md;
+  const visibleWidth = Math.min(width, LAYOUT.maxContentWidth) - gutter * 2;
+  const showArrows = supportsHover && contentWidth > visibleWidth;
 
   const scrollBy = useCallback(
     (direction: 1 | -1) => {
@@ -110,7 +115,7 @@ export function Carousel<T>({
             </Pressable>
           ) : null}
 
-          {supportsHover ? (
+          {showArrows ? (
             <View style={styles.arrows}>
               <Pressable
                 onPress={() => scrollBy(-1)}
