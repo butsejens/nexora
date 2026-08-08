@@ -140,7 +140,7 @@ const useStyles = makeStyles((c, t) => ({
     backgroundColor: c.glass,
   },
   linkActive: {
-    backgroundColor: c.surfaceElevated,
+    backgroundColor: c.surfaceHover,
   },
   linkText: {
     fontFamily: FONTS.medium,
