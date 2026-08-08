@@ -7,7 +7,7 @@
  */
 
 import { useMemo } from "react";
-import { useInfiniteQuery, useQueries, useQuery } from "@tanstack/react-query";
+import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 
 import { STALE } from "@/lib/query-client";
 import {
@@ -52,11 +52,36 @@ export const mediaKeys = {
     ["media", "trailer", type, id] as const,
 };
 
+function nextPageParam(last: PagedResult<MediaSummary>) {
+  // TMDB caps discover at 500 pages; 100 is far past what anyone scrolls.
+  return last.page < Math.min(last.totalPages, 100) ? last.page + 1 : undefined;
+}
+
 /** Fast-moving lists refresh sooner than the evergreen ones. */
 const SHORT_LIVED = new Set(["trending", "now_playing", "new_series"]);
 
 function staleForList(list: string): number {
   return SHORT_LIVED.has(list) ? STALE.short : STALE.medium;
+}
+
+/**
+ * Rails and browse pages read the same cache entry for a given filter, so both
+ * go through one infinite query. A rail shows the first page; a browse page
+ * flattens every loaded page. (Mixing `useQuery` and `useInfiniteQuery` on one
+ * key would store two incompatible shapes and crash whichever ran second.)
+ */
+function useMediaList(
+  queryKey: readonly unknown[],
+  fetchPage: (page: number) => Promise<PagedResult<MediaSummary>>,
+  options: { paginates: boolean; staleTime: number },
+) {
+  return useInfiniteQuery({
+    queryKey,
+    initialPageParam: 1,
+    queryFn: ({ pageParam }) => fetchPage(pageParam),
+    getNextPageParam: options.paginates ? nextPageParam : () => undefined,
+    staleTime: options.staleTime,
+  });
 }
 
 export interface Rail {
@@ -66,40 +91,34 @@ export interface Rail {
   refetch: () => void;
 }
 
-function toRail(query: {
-  data?: PagedResult<MediaSummary>;
-  isLoading: boolean;
-  isError: boolean;
-  refetch: () => unknown;
-}): Rail {
+// ── Rails ────────────────────────────────────────────────────────────────────
+
+export function useMovieRail(list: MovieListKey): Rail {
+  const query = useMediaList(
+    mediaKeys.movieList(list),
+    (page) => fetchMovieList(list, page),
+    { paginates: canPaginate(MOVIE_LIST_SPECS[list]), staleTime: staleForList(list) },
+  );
   return {
-    items: query.data?.results ?? [],
+    items: query.data?.pages[0]?.results ?? [],
     isLoading: query.isLoading,
     isError: query.isError,
     refetch: () => void query.refetch(),
   };
 }
 
-// ── Rails ────────────────────────────────────────────────────────────────────
-
-export function useMovieRail(list: MovieListKey): Rail {
-  return toRail(
-    useQuery({
-      queryKey: mediaKeys.movieList(list),
-      queryFn: () => fetchMovieList(list, 1),
-      staleTime: staleForList(list),
-    }),
-  );
-}
-
 export function useSeriesRail(list: SeriesListKey): Rail {
-  return toRail(
-    useQuery({
-      queryKey: mediaKeys.seriesList(list),
-      queryFn: () => fetchSeriesList(list, 1),
-      staleTime: staleForList(list),
-    }),
+  const query = useMediaList(
+    mediaKeys.seriesList(list),
+    (page) => fetchSeriesList(list, page),
+    { paginates: canPaginate(SERIES_LIST_SPECS[list]), staleTime: staleForList(list) },
   );
+  return {
+    items: query.data?.pages[0]?.results ?? [],
+    isLoading: query.isLoading,
+    isError: query.isError,
+    refetch: () => void query.refetch(),
+  };
 }
 
 /** Mixed movie + series feed used by the home hero and the Trending rail. */
@@ -115,32 +134,6 @@ export function useTrending(): Rail {
     isError: query.isError,
     refetch: () => void query.refetch(),
   };
-}
-
-/** Genre rails, fetched in parallel. */
-export function useGenreRails(
-  genres: { id: number; label: string }[],
-  type: MediaType,
-) {
-  return useQueries({
-    queries: genres.map((genre) => ({
-      queryKey:
-        type === "movie"
-          ? mediaKeys.moviesByGenre(genre.id)
-          : mediaKeys.seriesByGenre(genre.id),
-      queryFn: () =>
-        type === "movie"
-          ? fetchMoviesByGenre(genre.id, 1)
-          : fetchSeriesByGenre(genre.id, 1),
-      staleTime: STALE.medium,
-    })),
-    combine: (results) =>
-      genres.map((genre, index) => ({
-        genre,
-        items: results[index]?.data?.results ?? [],
-        isLoading: results[index]?.isLoading ?? false,
-      })),
-  });
 }
 
 // ── Browse ───────────────────────────────────────────────────────────────────
@@ -169,20 +162,7 @@ function dedupe(pages: PagedResult<MediaSummary>[] | undefined): MediaSummary[] 
   return out;
 }
 
-function nextPageParam(last: PagedResult<MediaSummary>) {
-  // TMDB caps discover at 500 pages; 100 is far past what anyone scrolls.
-  return last.page < Math.min(last.totalPages, 100) ? last.page + 1 : undefined;
-}
-
-function toBrowse(query: {
-  data?: { pages: PagedResult<MediaSummary>[] };
-  isLoading: boolean;
-  isError: boolean;
-  isFetchingNextPage: boolean;
-  hasNextPage: boolean;
-  fetchNextPage: () => unknown;
-  refetch: () => unknown;
-}): Browse {
+function toBrowse(query: ReturnType<typeof useMediaList>): Browse {
   return {
     items: dedupe(query.data?.pages),
     isLoading: query.isLoading,
@@ -199,40 +179,38 @@ function toBrowse(query: {
 }
 
 export function useMovieBrowse(list: MovieListKey, genreId: number | null): Browse {
-  const paginates = genreId !== null || canPaginate(MOVIE_LIST_SPECS[list]);
   return toBrowse(
-    useInfiniteQuery({
-      queryKey:
+    useMediaList(
+      genreId !== null
+        ? mediaKeys.moviesByGenre(genreId)
+        : mediaKeys.movieList(list),
+      (page) =>
         genreId !== null
-          ? mediaKeys.moviesByGenre(genreId)
-          : mediaKeys.movieList(list),
-      initialPageParam: 1,
-      queryFn: ({ pageParam }) =>
-        genreId !== null
-          ? fetchMoviesByGenre(genreId, pageParam)
-          : fetchMovieList(list, pageParam),
-      getNextPageParam: paginates ? nextPageParam : () => undefined,
-      staleTime: genreId !== null ? STALE.medium : staleForList(list),
-    }),
+          ? fetchMoviesByGenre(genreId, page)
+          : fetchMovieList(list, page),
+      {
+        paginates: genreId !== null || canPaginate(MOVIE_LIST_SPECS[list]),
+        staleTime: genreId !== null ? STALE.medium : staleForList(list),
+      },
+    ),
   );
 }
 
 export function useSeriesBrowse(list: SeriesListKey, genreId: number | null): Browse {
-  const paginates = genreId !== null || canPaginate(SERIES_LIST_SPECS[list]);
   return toBrowse(
-    useInfiniteQuery({
-      queryKey:
+    useMediaList(
+      genreId !== null
+        ? mediaKeys.seriesByGenre(genreId)
+        : mediaKeys.seriesList(list),
+      (page) =>
         genreId !== null
-          ? mediaKeys.seriesByGenre(genreId)
-          : mediaKeys.seriesList(list),
-      initialPageParam: 1,
-      queryFn: ({ pageParam }) =>
-        genreId !== null
-          ? fetchSeriesByGenre(genreId, pageParam)
-          : fetchSeriesList(list, pageParam),
-      getNextPageParam: paginates ? nextPageParam : () => undefined,
-      staleTime: genreId !== null ? STALE.medium : staleForList(list),
-    }),
+          ? fetchSeriesByGenre(genreId, page)
+          : fetchSeriesList(list, page),
+      {
+        paginates: genreId !== null || canPaginate(SERIES_LIST_SPECS[list]),
+        staleTime: genreId !== null ? STALE.medium : staleForList(list),
+      },
+    ),
   );
 }
 

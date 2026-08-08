@@ -13,7 +13,7 @@
 
 import { ENV, hasDirectTmdbKey } from "@/constants/env";
 import { apiData, apiJson } from "@/lib/http";
-import { genreNames } from "@/lib/cinelog/genres";
+import { genreIdsFromNames, genreNames } from "@/lib/cinelog/genres";
 import type {
   CastMember,
   CrewMember,
@@ -156,9 +156,13 @@ export function parseSummary(
   );
   if (!title) return null;
 
-  const genreIds = toGenreIds(raw.genreIds ?? raw.genre_ids ?? raw.genres);
-  // The media API exposes genre names as `genre`; TMDB detail uses `genres`.
+  // The media API exposes genre names as `genre` on list items and as `genres`
+  // on detail responses, where the numeric IDs are dropped — so names are mapped
+  // back to IDs to keep the taste profile working.
   const genreLabels = toNames(raw.genre ?? raw.genres);
+  const declaredIds = toGenreIds(raw.genreIds ?? raw.genre_ids ?? raw.genres);
+  const genreIds =
+    declaredIds.length > 0 ? declaredIds : genreIdsFromNames(genreLabels);
 
   return {
     id: `${type}:${tmdbId}`,

@@ -64,6 +64,29 @@ export function genreName(id: number): string {
   return GENRE_NAMES[id] ?? "";
 }
 
+/**
+ * Reverse lookup for payloads that carry genre names but no IDs — the media
+ * API's detail responses, for example. Without this the taste profile would see
+ * no genres for anything saved from a detail page.
+ */
+const GENRE_IDS_BY_NAME = new Map<string, number>([
+  ...Object.entries(GENRE_NAMES).map(
+    ([id, name]) => [name.toLowerCase(), Number(id)] as const,
+  ),
+  // TMDB's own aliases for the same genres.
+  ["science fiction", 878],
+  ["sci-fi & fantasy", 10765],
+  ["action & adventure", 10759],
+  ["war & politics", 10768],
+]);
+
+export function genreIdsFromNames(names: string[]): number[] {
+  const ids = names
+    .map((name) => GENRE_IDS_BY_NAME.get(name.trim().toLowerCase()))
+    .filter((id): id is number => typeof id === "number");
+  return Array.from(new Set(ids));
+}
+
 export function genreNames(ids: number[] | undefined): string[] {
   return (ids ?? []).map(genreName).filter(Boolean);
 }
