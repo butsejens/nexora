@@ -9,6 +9,7 @@ import {
   WatchlistButton,
 } from "@/components/actions/TitleActions";
 import { Footer } from "@/components/layout/Footer";
+import { SeoHead } from "@/components/SeoHead";
 import { Carousel } from "@/components/media/Carousel";
 import { CastCard } from "@/components/media/CastCard";
 import { EpisodeCard } from "@/components/media/EpisodeCard";
@@ -51,15 +52,24 @@ export default function SeriesDetailScreen() {
   const openTrailer = trailer.open;
 
   const ref = useMemo(() => (series ? toLibraryRef(series) : null), [series]);
-  const userRating = useLibrary((state) => (ref ? state.getRating(ref.id) : null));
+  const userRating = useLibrary((state) =>
+    ref ? state.getRating(ref.id) : null,
+  );
   const rate = useLibrary((state) => state.rate);
   const clearRating = useLibrary((state) => state.clearRating);
-  const episodeMap = useLibrary((state) => (ref ? state.episodes[ref.id] : undefined));
-  const toggleEpisodeWatched = useLibrary((state) => state.toggleEpisodeWatched);
+  const episodeMap = useLibrary((state) =>
+    ref ? state.episodes[ref.id] : undefined,
+  );
+  const toggleEpisodeWatched = useLibrary(
+    (state) => state.toggleEpisodeWatched,
+  );
   const saveProgress = useLibrary((state) => state.saveProgress);
   const clearProgress = useLibrary((state) => state.clearProgress);
 
-  const episodes = useMemo(() => season.data?.episodes ?? [], [season.data?.episodes]);
+  const episodes = useMemo(
+    () => season.data?.episodes ?? [],
+    [season.data?.episodes],
+  );
 
   /** First unwatched episode of the selected season gets the "up next" accent. */
   const upNextNumber = useMemo(() => {
@@ -88,7 +98,9 @@ export default function SeriesDetailScreen() {
       const watchedNumbers = new Set(
         episodes
           .filter((episode) =>
-            Boolean(episodeMap?.[`s${episode.seasonNumber}e${episode.episodeNumber}`]),
+            Boolean(
+              episodeMap?.[`s${episode.seasonNumber}e${episode.episodeNumber}`],
+            ),
           )
           .map((episode) => episode.episodeNumber),
       );
@@ -114,7 +126,14 @@ export default function SeriesDetailScreen() {
         episodeTitle: next?.title ?? episodeTitle,
       });
     },
-    [ref, episodes, episodeMap, toggleEpisodeWatched, saveProgress, clearProgress],
+    [
+      ref,
+      episodes,
+      episodeMap,
+      toggleEpisodeWatched,
+      saveProgress,
+      clearProgress,
+    ],
   );
 
   const renderPoster = useCallback(
@@ -124,7 +143,11 @@ export default function SeriesDetailScreen() {
         width={railPosterWidth}
         onPress={() => openTitle(item)}
         onPlayTrailer={() =>
-          openTrailer({ type: item.type, tmdbId: item.tmdbId, title: item.title })
+          openTrailer({
+            type: item.type,
+            tmdbId: item.tmdbId,
+            title: item.title,
+          })
         }
       />
     ),
@@ -176,12 +199,19 @@ export default function SeriesDetailScreen() {
 
   return (
     <>
+      <SeoHead
+        title={series.year ? `${series.title} (${series.year})` : series.title}
+        description={series.overview}
+        image={series.backdrop ?? series.poster}
+      />
       <Screen reserveBottomNav>
         <FloatingBackButton onPress={() => router.back()} gutter={gutter} />
 
         <TitleHero
           title={series.title}
-          tagline={series.creators.length ? `Created by ${series.creators[0]}` : null}
+          tagline={
+            series.creators.length ? `Created by ${series.creators[0]}` : null
+          }
           overview={series.overview}
           poster={series.poster}
           backdrop={series.backdrop}
@@ -227,13 +257,18 @@ export default function SeriesDetailScreen() {
 
           {series.seasons.length > 0 ? (
             <View style={styles.seasonBlock}>
-              <Text style={[styles.sectionTitle, { paddingHorizontal: gutter }]}>
+              <Text
+                style={[styles.sectionTitle, { paddingHorizontal: gutter }]}
+              >
                 Seasons
               </Text>
               <ScrollView
                 horizontal
                 showsHorizontalScrollIndicator={false}
-                contentContainerStyle={[styles.seasonRow, { paddingHorizontal: gutter }]}
+                contentContainerStyle={[
+                  styles.seasonRow,
+                  { paddingHorizontal: gutter },
+                ]}
                 accessibilityRole="tablist"
                 accessibilityLabel="Select a season"
               >
@@ -250,7 +285,12 @@ export default function SeriesDetailScreen() {
               <View style={[styles.episodeList, { paddingHorizontal: gutter }]}>
                 {season.isLoading ? (
                   Array.from({ length: 4 }).map((_, index) => (
-                    <Skeleton key={index} width={contentWidth} height={96} radius={18} />
+                    <Skeleton
+                      key={index}
+                      width={contentWidth}
+                      height={96}
+                      radius={18}
+                    />
                   ))
                 ) : season.isError ? (
                   <ErrorState
@@ -270,7 +310,9 @@ export default function SeriesDetailScreen() {
                       episode={episode}
                       stillWidth={stillWidth}
                       watched={Boolean(
-                        episodeMap?.[`s${episode.seasonNumber}e${episode.episodeNumber}`],
+                        episodeMap?.[
+                          `s${episode.seasonNumber}e${episode.episodeNumber}`
+                        ],
                       )}
                       isUpNext={episode.episodeNumber === upNextNumber}
                       onToggleWatched={() =>

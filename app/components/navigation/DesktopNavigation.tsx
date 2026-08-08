@@ -5,11 +5,7 @@
  */
 
 import React from "react";
-import {
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
+import { StyleSheet, Text, View } from "react-native";
 import { Image } from "expo-image";
 import { Ionicons } from "@expo/vector-icons";
 
@@ -72,7 +68,9 @@ export function DesktopNavigation({
                 size={15}
                 color={active ? COLORS.textPrimary : COLORS.textSecondary}
               />
-              <Text style={[styles.linkText, active ? styles.linkTextActive : null]}>
+              <Text
+                style={[styles.linkText, active ? styles.linkTextActive : null]}
+              >
                 {item.label}
               </Text>
             </Pressable>
@@ -84,10 +82,17 @@ export function DesktopNavigation({
         onPress={onOpenProfile}
         accessibilityRole="button"
         accessibilityLabel={`Open your CineLog profile, ${displayName}`}
-        style={({ hovered }) => [styles.profile, hovered ? styles.profileHovered : null]}
+        style={({ hovered }) => [
+          styles.profile,
+          hovered ? styles.profileHovered : null,
+        ]}
       >
         {avatarUrl ? (
-          <Image source={{ uri: avatarUrl }} style={styles.avatar} contentFit="cover" />
+          <Image
+            source={{ uri: avatarUrl }}
+            style={styles.avatar}
+            contentFit="cover"
+          />
         ) : (
           <View style={[styles.avatar, styles.avatarFallback]}>
             <Text style={styles.avatarText}>{initial}</Text>

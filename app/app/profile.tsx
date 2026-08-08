@@ -1,13 +1,10 @@
 import React, { useMemo } from "react";
-import {
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
+import { StyleSheet, Text, View } from "react-native";
 import { Image } from "expo-image";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 
+import { SeoHead } from "@/components/SeoHead";
 import { Footer } from "@/components/layout/Footer";
 import { Carousel } from "@/components/media/Carousel";
 import { PosterCard } from "@/components/media/PosterCard";
@@ -54,183 +51,201 @@ export default function ProfileScreen() {
   const initial = displayName.trim().charAt(0).toUpperCase() || "C";
 
   return (
-    <Screen reserveBottomNav>
-      <FloatingBackButton onPress={() => router.back()} gutter={gutter} />
+    <>
+      <SeoHead
+        title="Profile"
+        description="Your viewing stats, recently watched titles, favourites and ratings."
+      />
+      <Screen reserveBottomNav>
+        <FloatingBackButton onPress={() => router.back()} gutter={gutter} />
 
-      <View
-        style={[
-          styles.header,
-          { paddingHorizontal: gutter },
-          isMobile ? styles.headerMobile : null,
-        ]}
-      >
-        {user?.avatarUrl ? (
-          <Image source={{ uri: user.avatarUrl }} style={styles.avatar} contentFit="cover" />
-        ) : (
-          <View style={[styles.avatar, styles.avatarFallback]}>
-            <Text style={styles.avatarText}>{initial}</Text>
-          </View>
-        )}
+        <View
+          style={[
+            styles.header,
+            { paddingHorizontal: gutter },
+            isMobile ? styles.headerMobile : null,
+          ]}
+        >
+          {user?.avatarUrl ? (
+            <Image
+              source={{ uri: user.avatarUrl }}
+              style={styles.avatar}
+              contentFit="cover"
+            />
+          ) : (
+            <View style={[styles.avatar, styles.avatarFallback]}>
+              <Text style={styles.avatarText}>{initial}</Text>
+            </View>
+          )}
 
-        <View style={styles.headerCopy}>
-          <Text style={styles.name} accessibilityRole="header">
-            {displayName}
-          </Text>
-          <Text style={styles.email}>
-            {user ? user.email : "Sign in to sync your library across devices"}
-          </Text>
-          <View style={styles.headerActions}>
-            {user ? (
-              <>
-                <Button
-                  label="Settings"
-                  icon="settings-outline"
-                  variant="secondary"
-                  onPress={() => router.push("/settings")}
-                />
-                <Button
-                  label="Logout"
-                  icon="log-out-outline"
-                  variant="danger"
-                  onPress={() => {
-                    void signOut();
-                  }}
-                />
-              </>
-            ) : (
-              <>
-                <Button
-                  label="Sign in"
-                  icon="log-in-outline"
-                  onPress={() => router.push("/auth")}
-                />
-                <Button
-                  label="Settings"
-                  icon="settings-outline"
-                  variant="secondary"
-                  onPress={() => router.push("/settings")}
-                />
-              </>
-            )}
-          </View>
-        </View>
-      </View>
-
-      <View style={[styles.statsBlock, { paddingHorizontal: gutter }]}>
-        <ProfileStats stats={stats} />
-      </View>
-
-      <View style={styles.sections}>
-        {recentlyWatched.length > 0 ? (
-          <Carousel
-            title="Recently Watched"
-            items={recentlyWatched}
-            isLoading={false}
-            itemWidth={railPosterWidth}
-            keyExtractor={(item) => item.id}
-            renderItem={(item) => (
-              <PosterCard
-                item={item}
-                width={railPosterWidth}
-                onPress={() => openTitle(item)}
-                subtitle={item.state === "watched" ? "Watched" : "Watching"}
-              />
-            )}
-          />
-        ) : null}
-
-        {favoriteMovies.length > 0 ? (
-          <Carousel
-            title="Favorite Movies"
-            items={favoriteMovies}
-            isLoading={false}
-            itemWidth={railPosterWidth}
-            keyExtractor={(item) => item.id}
-            renderItem={(item) => (
-              <PosterCard
-                item={item}
-                width={railPosterWidth}
-                onPress={() => openTitle(item)}
-              />
-            )}
-          />
-        ) : null}
-
-        {favoriteSeries.length > 0 ? (
-          <Carousel
-            title="Favorite Series"
-            items={favoriteSeries}
-            isLoading={false}
-            itemWidth={railPosterWidth}
-            keyExtractor={(item) => item.id}
-            renderItem={(item) => (
-              <PosterCard
-                item={item}
-                width={railPosterWidth}
-                onPress={() => openTitle(item)}
-              />
-            )}
-          />
-        ) : null}
-
-        {ratedTitles.length > 0 ? (
-          <View style={styles.ratingsBlock}>
-            <Text style={[styles.sectionTitle, { paddingHorizontal: gutter }]}>
-              Your Ratings
+          <View style={styles.headerCopy}>
+            <Text style={styles.name} accessibilityRole="header">
+              {displayName}
             </Text>
-            <View style={[styles.ratingList, { paddingHorizontal: gutter }]}>
-              {ratedTitles.map((entry) => (
-                <Pressable
-                  key={entry.id}
-                  onPress={() => openTitle(entry)}
-                  accessibilityRole="button"
-                  accessibilityLabel={`${entry.title}, you rated it ${entry.score} out of 10`}
-                  style={({ hovered }) => [
-                    styles.ratingRow,
-                    hovered ? styles.ratingRowHovered : null,
-                  ]}
-                >
-                  <View style={styles.scoreBubble}>
-                    <Text style={styles.scoreBubbleText}>{entry.score}</Text>
-                  </View>
-                  <View style={styles.ratingCopy}>
-                    <Text style={styles.ratingTitle} numberOfLines={1}>
-                      {entry.title}
-                    </Text>
-                    <Text style={styles.ratingMeta}>
-                      {[
-                        entry.type === "movie" ? "Movie" : "Series",
-                        entry.year || null,
-                        formatRating(entry.rating)
-                          ? `Average ${formatRating(entry.rating)}`
-                          : null,
-                      ]
-                        .filter(Boolean)
-                        .join(" • ")}
-                    </Text>
-                  </View>
-                  <Ionicons name="chevron-forward" size={16} color={COLORS.textMuted} />
-                </Pressable>
-              ))}
+            <Text style={styles.email}>
+              {user
+                ? user.email
+                : "Sign in to sync your library across devices"}
+            </Text>
+            <View style={styles.headerActions}>
+              {user ? (
+                <>
+                  <Button
+                    label="Settings"
+                    icon="settings-outline"
+                    variant="secondary"
+                    onPress={() => router.push("/settings")}
+                  />
+                  <Button
+                    label="Logout"
+                    icon="log-out-outline"
+                    variant="danger"
+                    onPress={() => {
+                      void signOut();
+                    }}
+                  />
+                </>
+              ) : (
+                <>
+                  <Button
+                    label="Sign in"
+                    icon="log-in-outline"
+                    onPress={() => router.push("/auth")}
+                  />
+                  <Button
+                    label="Settings"
+                    icon="settings-outline"
+                    variant="secondary"
+                    onPress={() => router.push("/settings")}
+                  />
+                </>
+              )}
             </View>
           </View>
-        ) : null}
+        </View>
 
-        {recentlyWatched.length === 0 &&
-        favorites.length === 0 &&
-        ratedTitles.length === 0 ? (
-          <EmptyState
-            icon="stats-chart-outline"
-            title="Your CineLog story starts here"
-            message="Rate a film, favourite a show or tick off an episode and this page fills up."
-            actionLabel="Explore"
-            onAction={() => router.navigate("/(tabs)/home")}
-          />
-        ) : null}
-      </View>
+        <View style={[styles.statsBlock, { paddingHorizontal: gutter }]}>
+          <ProfileStats stats={stats} />
+        </View>
 
-      <Footer />
-    </Screen>
+        <View style={styles.sections}>
+          {recentlyWatched.length > 0 ? (
+            <Carousel
+              title="Recently Watched"
+              items={recentlyWatched}
+              isLoading={false}
+              itemWidth={railPosterWidth}
+              keyExtractor={(item) => item.id}
+              renderItem={(item) => (
+                <PosterCard
+                  item={item}
+                  width={railPosterWidth}
+                  onPress={() => openTitle(item)}
+                  subtitle={item.state === "watched" ? "Watched" : "Watching"}
+                />
+              )}
+            />
+          ) : null}
+
+          {favoriteMovies.length > 0 ? (
+            <Carousel
+              title="Favorite Movies"
+              items={favoriteMovies}
+              isLoading={false}
+              itemWidth={railPosterWidth}
+              keyExtractor={(item) => item.id}
+              renderItem={(item) => (
+                <PosterCard
+                  item={item}
+                  width={railPosterWidth}
+                  onPress={() => openTitle(item)}
+                />
+              )}
+            />
+          ) : null}
+
+          {favoriteSeries.length > 0 ? (
+            <Carousel
+              title="Favorite Series"
+              items={favoriteSeries}
+              isLoading={false}
+              itemWidth={railPosterWidth}
+              keyExtractor={(item) => item.id}
+              renderItem={(item) => (
+                <PosterCard
+                  item={item}
+                  width={railPosterWidth}
+                  onPress={() => openTitle(item)}
+                />
+              )}
+            />
+          ) : null}
+
+          {ratedTitles.length > 0 ? (
+            <View style={styles.ratingsBlock}>
+              <Text
+                style={[styles.sectionTitle, { paddingHorizontal: gutter }]}
+              >
+                Your Ratings
+              </Text>
+              <View style={[styles.ratingList, { paddingHorizontal: gutter }]}>
+                {ratedTitles.map((entry) => (
+                  <Pressable
+                    key={entry.id}
+                    onPress={() => openTitle(entry)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`${entry.title}, you rated it ${entry.score} out of 10`}
+                    style={({ hovered }) => [
+                      styles.ratingRow,
+                      hovered ? styles.ratingRowHovered : null,
+                    ]}
+                  >
+                    <View style={styles.scoreBubble}>
+                      <Text style={styles.scoreBubbleText}>{entry.score}</Text>
+                    </View>
+                    <View style={styles.ratingCopy}>
+                      <Text style={styles.ratingTitle} numberOfLines={1}>
+                        {entry.title}
+                      </Text>
+                      <Text style={styles.ratingMeta}>
+                        {[
+                          entry.type === "movie" ? "Movie" : "Series",
+                          entry.year || null,
+                          formatRating(entry.rating)
+                            ? `Average ${formatRating(entry.rating)}`
+                            : null,
+                        ]
+                          .filter(Boolean)
+                          .join(" • ")}
+                      </Text>
+                    </View>
+                    <Ionicons
+                      name="chevron-forward"
+                      size={16}
+                      color={COLORS.textMuted}
+                    />
+                  </Pressable>
+                ))}
+              </View>
+            </View>
+          ) : null}
+
+          {recentlyWatched.length === 0 &&
+          favorites.length === 0 &&
+          ratedTitles.length === 0 ? (
+            <EmptyState
+              icon="stats-chart-outline"
+              title="Your CineLog story starts here"
+              message="Rate a film, favourite a show or tick off an episode and this page fills up."
+              actionLabel="Explore"
+              onAction={() => router.navigate("/(tabs)/home")}
+            />
+          ) : null}
+        </View>
+
+        <Footer />
+      </Screen>
+    </>
   );
 }
 

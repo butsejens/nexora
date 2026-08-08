@@ -59,7 +59,9 @@ export function WatchlistButton({
       variant="secondary"
       size={size}
       accessibilityHint={
-        saved ? "Removes this title from your watchlist" : "Saves this title for later"
+        saved
+          ? "Removes this title from your watchlist"
+          : "Saves this title for later"
       }
     />
   );
@@ -98,7 +100,11 @@ export interface TrailerButtonProps {
   disabled?: boolean;
 }
 
-export function TrailerButton({ onPress, size = "md", disabled }: TrailerButtonProps) {
+export function TrailerButton({
+  onPress,
+  size = "md",
+  disabled,
+}: TrailerButtonProps) {
   return (
     <Button
       label="Watch Trailer"

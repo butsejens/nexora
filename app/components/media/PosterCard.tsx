@@ -15,7 +15,14 @@ import { Ionicons } from "@expo/vector-icons";
 import { IconButton } from "@/components/ui/Button";
 import { TouchableScale } from "@/components/ui/Pressable";
 import { RatingBadge } from "@/components/ui/Rating";
-import { CARD_SCRIM, COLORS, FONTS, RADIUS, SHADOWS, SPACING } from "@/constants/theme";
+import {
+  CARD_SCRIM,
+  COLORS,
+  FONTS,
+  RADIUS,
+  SHADOWS,
+  SPACING,
+} from "@/constants/theme";
 import { useResponsive } from "@/hooks/useResponsive";
 import { metaLine } from "@/lib/format";
 import type { LibraryEntryRef, MediaSummary } from "@/lib/cinelog/types";

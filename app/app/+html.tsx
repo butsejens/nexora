@@ -7,9 +7,8 @@ import { ScrollViewStyleReset } from "expo-router/html";
  * flashing white.
  */
 
-const TITLE = "CineLog — Discover. Track. Watch.";
-const DESCRIPTION =
-  "Discover movies and series, build your watchlist, track what you watch and find your next favorite with CineLog.";
+// Titles, descriptions and share images are set per route in `SeoHead`, so this
+// shell only carries the metadata that never changes between pages.
 const THEME_COLOR = "#08090B";
 
 /**
@@ -46,25 +45,20 @@ export default function RootHtml({ children }: PropsWithChildren) {
           content="width=device-width, initial-scale=1, shrink-to-fit=no, viewport-fit=cover"
         />
 
-        <title>{TITLE}</title>
-        <meta name="description" content={DESCRIPTION} />
         <meta name="theme-color" content={THEME_COLOR} />
         <meta name="application-name" content="CineLog" />
-
         <meta property="og:type" content="website" />
         <meta property="og:site_name" content="CineLog" />
-        <meta property="og:title" content={TITLE} />
-        <meta property="og:description" content={DESCRIPTION} />
-        <meta property="og:image" content="/assets/images/icon.png" />
         <meta name="twitter:card" content="summary_large_image" />
-        <meta name="twitter:title" content={TITLE} />
-        <meta name="twitter:description" content={DESCRIPTION} />
 
         <meta name="mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-title" content="CineLog" />
-        <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-        <link rel="apple-touch-icon" href="/assets/images/icon.png" />
+        <meta
+          name="apple-mobile-web-app-status-bar-style"
+          content="black-translucent"
+        />
+        <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
         <link rel="manifest" href="/manifest.json" />
 
         <ScrollViewStyleReset />

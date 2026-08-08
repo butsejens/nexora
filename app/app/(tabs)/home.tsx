@@ -2,6 +2,7 @@ import React, { useCallback, useMemo } from "react";
 import { ScrollView, StyleSheet, Text, View } from "react-native";
 import { router } from "expo-router";
 
+import { SeoHead } from "@/components/SeoHead";
 import { Footer } from "@/components/layout/Footer";
 import { Carousel } from "@/components/media/Carousel";
 import { ContinueWatchingCard } from "@/components/media/ContinueWatchingCard";
@@ -53,7 +54,8 @@ export default function HomeScreen() {
   const toggleWatchlist = useLibrary((state) => state.toggleWatchlist);
   const librarySignals = useLibrarySignals();
 
-  const hero = trending.items.find((item) => item.backdrop) ?? trending.items[0] ?? null;
+  const hero =
+    trending.items.find((item) => item.backdrop) ?? trending.items[0] ?? null;
   const heroInWatchlist = useLibrary((state) =>
     hero ? state.isInWatchlist(hero.id) : false,
   );
@@ -87,7 +89,10 @@ export default function HomeScreen() {
     topRatedSeries.items,
   ]);
 
-  const profile = useMemo(() => buildTasteProfile(librarySignals), [librarySignals]);
+  const profile = useMemo(
+    () => buildTasteProfile(librarySignals),
+    [librarySignals],
+  );
 
   const recommended = useMemo(
     () => recommendForYou({ candidates, profile }),
@@ -108,21 +113,24 @@ export default function HomeScreen() {
         width={railPosterWidth}
         onPress={() => openTitle(item)}
         onPlayTrailer={() =>
-          openTrailer({ type: item.type, tmdbId: item.tmdbId, title: item.title })
+          openTrailer({
+            type: item.type,
+            tmdbId: item.tmdbId,
+            title: item.title,
+          })
         }
       />
     ),
     [railPosterWidth, openTrailer],
   );
 
-  const continueCardWidth = isMobile
-    ? Math.min(width - gutter * 2, 300)
-    : 320;
+  const continueCardWidth = isMobile ? Math.min(width - gutter * 2, 300) : 320;
 
   const heroUnavailable = trending.isError && trending.items.length === 0;
 
   return (
     <>
+      <SeoHead description="Discover what to watch next: trending films and shows, new releases, top rated picks and recommendations tuned to your taste." />
       <Screen
         reserveBottomNav
         header={
@@ -256,7 +264,10 @@ export default function HomeScreen() {
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
-              contentContainerStyle={[styles.genreRow, { paddingHorizontal: gutter }]}
+              contentContainerStyle={[
+                styles.genreRow,
+                { paddingHorizontal: gutter },
+              ]}
             >
               {GENRES.map((genre) => (
                 <GenrePill

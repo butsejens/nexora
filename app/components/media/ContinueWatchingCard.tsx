@@ -13,7 +13,14 @@ import { Ionicons } from "@expo/vector-icons";
 
 import { IconButton } from "@/components/ui/Button";
 import { TouchableScale } from "@/components/ui/Pressable";
-import { CARD_SCRIM, COLORS, FONTS, RADIUS, SHADOWS, SPACING } from "@/constants/theme";
+import {
+  CARD_SCRIM,
+  COLORS,
+  FONTS,
+  RADIUS,
+  SHADOWS,
+  SPACING,
+} from "@/constants/theme";
 import { formatEpisodeCode } from "@/lib/format";
 import type { WatchProgress } from "@/lib/cinelog/types";
 
@@ -81,7 +88,10 @@ export function ContinueWatchingCard({
           {progress.percent > 0 ? (
             <View style={styles.progressTrack}>
               <View
-                style={[styles.progressFill, { width: `${Math.min(100, progress.percent)}%` }]}
+                style={[
+                  styles.progressFill,
+                  { width: `${Math.min(100, progress.percent)}%` },
+                ]}
               />
             </View>
           ) : null}

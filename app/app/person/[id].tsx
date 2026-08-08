@@ -5,6 +5,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { router, useLocalSearchParams } from "expo-router";
 
 import { Footer } from "@/components/layout/Footer";
+import { SeoHead } from "@/components/SeoHead";
 import { PosterGrid } from "@/components/media/PosterGrid";
 import { FloatingBackButton } from "@/components/navigation/MobileHeader";
 import { Screen } from "@/components/ui/Screen";
@@ -28,7 +29,9 @@ export default function PersonScreen() {
     return (
       <Screen scroll={false}>
         <FloatingBackButton onPress={() => router.back()} gutter={gutter} />
-        <ErrorState onRetry={personId ? () => void query.refetch() : undefined} />
+        <ErrorState
+          onRetry={personId ? () => void query.refetch() : undefined}
+        />
       </Screen>
     );
   }
@@ -38,7 +41,11 @@ export default function PersonScreen() {
       <Screen>
         <FloatingBackButton onPress={() => router.back()} gutter={gutter} />
         <View style={[styles.header, { paddingHorizontal: gutter }]}>
-          <Skeleton width={isMobile ? 110 : 160} height={isMobile ? 110 : 160} radius={999} />
+          <Skeleton
+            width={isMobile ? 110 : 160}
+            height={isMobile ? 110 : 160}
+            radius={999}
+          />
           <View style={styles.headerCopy}>
             <Skeleton width="50%" height={26} />
             <Skeleton width="30%" height={14} />
@@ -57,68 +64,80 @@ export default function PersonScreen() {
   ]);
 
   return (
-    <Screen reserveBottomNav>
-      <FloatingBackButton onPress={() => router.back()} gutter={gutter} />
+    <>
+      <SeoHead
+        title={person.name}
+        description={
+          person.biography ||
+          `${person.name} on CineLog: biography and the titles they are known for.`
+        }
+        image={person.photo}
+      />
+      <Screen reserveBottomNav>
+        <FloatingBackButton onPress={() => router.back()} gutter={gutter} />
 
-      <View
-        style={[
-          styles.header,
-          { paddingHorizontal: gutter },
-          isMobile ? styles.headerMobile : null,
-        ]}
-      >
-        {person.photo ? (
-          <Image
-            source={{ uri: person.photo }}
-            style={[styles.photo, { width: photoSize, height: photoSize }]}
-            contentFit="cover"
-            transition={220}
-            accessibilityLabel={`Photo of ${person.name}`}
-          />
-        ) : (
-          <View
-            style={[
-              styles.photo,
-              styles.photoFallback,
-              { width: photoSize, height: photoSize },
-            ]}
-          >
-            <Ionicons name="person" size={32} color={COLORS.textFaint} />
-          </View>
-        )}
+        <View
+          style={[
+            styles.header,
+            { paddingHorizontal: gutter },
+            isMobile ? styles.headerMobile : null,
+          ]}
+        >
+          {person.photo ? (
+            <Image
+              source={{ uri: person.photo }}
+              style={[styles.photo, { width: photoSize, height: photoSize }]}
+              contentFit="cover"
+              transition={220}
+              accessibilityLabel={`Photo of ${person.name}`}
+            />
+          ) : (
+            <View
+              style={[
+                styles.photo,
+                styles.photoFallback,
+                { width: photoSize, height: photoSize },
+              ]}
+            >
+              <Ionicons name="person" size={32} color={COLORS.textFaint} />
+            </View>
+          )}
 
-        <View style={styles.headerCopy}>
-          <Text style={styles.name} accessibilityRole="header">
-            {person.name}
-          </Text>
-          {person.knownForDepartment ? (
-            <Text style={styles.role}>{person.knownForDepartment}</Text>
-          ) : null}
-          {lifespan ? <Text style={styles.meta}>{lifespan}</Text> : null}
-          {person.biography ? (
-            <Text style={styles.bio} numberOfLines={isMobile ? 8 : 10}>
-              {person.biography}
+          <View style={styles.headerCopy}>
+            <Text style={styles.name} accessibilityRole="header">
+              {person.name}
             </Text>
-          ) : null}
+            {person.knownForDepartment ? (
+              <Text style={styles.role}>{person.knownForDepartment}</Text>
+            ) : null}
+            {lifespan ? <Text style={styles.meta}>{lifespan}</Text> : null}
+            {person.biography ? (
+              <Text style={styles.bio} numberOfLines={isMobile ? 8 : 10}>
+                {person.biography}
+              </Text>
+            ) : null}
+          </View>
         </View>
-      </View>
 
-      <View style={styles.section}>
-        <Text style={[styles.sectionTitle, { paddingHorizontal: gutter }]}>Known For</Text>
-        {person.knownFor.length === 0 ? (
-          <EmptyState
-            compact
-            icon="film-outline"
-            title="No credits to show"
-            message="We don't have any titles for this person yet."
-          />
-        ) : (
-          <PosterGrid items={person.knownFor} onSelect={openTitle} />
-        )}
-      </View>
+        <View style={styles.section}>
+          <Text style={[styles.sectionTitle, { paddingHorizontal: gutter }]}>
+            Known For
+          </Text>
+          {person.knownFor.length === 0 ? (
+            <EmptyState
+              compact
+              icon="film-outline"
+              title="No credits to show"
+              message="We don't have any titles for this person yet."
+            />
+          ) : (
+            <PosterGrid items={person.knownFor} onSelect={openTitle} />
+          )}
+        </View>
 
-      <Footer />
-    </Screen>
+        <Footer />
+      </Screen>
+    </>
   );
 }
 

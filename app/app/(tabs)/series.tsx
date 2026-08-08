@@ -2,6 +2,7 @@ import React, { useMemo, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 
+import { SeoHead } from "@/components/SeoHead";
 import { Footer } from "@/components/layout/Footer";
 import { FilterBar, type FilterOption } from "@/components/media/FilterBar";
 import { PosterGrid } from "@/components/media/PosterGrid";
@@ -32,7 +33,9 @@ export default function SeriesScreen() {
 
   const [list, setList] = useState<SeriesListKey>("popular");
   const [genreSlug, setGenreSlug] = useState<string>(
-    params.genre && findGenre(params.genre)?.seriesId ? params.genre : ALL_GENRES,
+    params.genre && findGenre(params.genre)?.seriesId
+      ? params.genre
+      : ALL_GENRES,
   );
 
   const genreOptions = useMemo<FilterOption<string>[]>(
@@ -60,71 +63,80 @@ export default function SeriesScreen() {
       : (LIST_FILTERS.find((filter) => filter.value === list)?.label ?? "");
 
   return (
-    <Screen
-      reserveBottomNav
-      onEndReached={browse.canLoadMore ? browse.loadMore : undefined}
-      header={
-        isMobile ? (
-          <MobileHeader
-            title="Series"
-            onOpenProfile={() => router.push("/profile")}
-            gutter={gutter}
-            displayName={user?.displayName ?? "Guest"}
-            avatarUrl={user?.avatarUrl ?? null}
-          />
-        ) : null
-      }
-    >
-      <View style={styles.head}>
-        {isMobile ? null : (
-          <Text style={[styles.title, { paddingHorizontal: gutter }]} accessibilityRole="header">
-            Series
+    <>
+      <SeoHead
+        title="Series"
+        description="Browse popular, trending, top rated and brand new television series by genre."
+      />
+      <Screen
+        reserveBottomNav
+        onEndReached={browse.canLoadMore ? browse.loadMore : undefined}
+        header={
+          isMobile ? (
+            <MobileHeader
+              title="Series"
+              onOpenProfile={() => router.push("/profile")}
+              gutter={gutter}
+              displayName={user?.displayName ?? "Guest"}
+              avatarUrl={user?.avatarUrl ?? null}
+            />
+          ) : null
+        }
+      >
+        <View style={styles.head}>
+          {isMobile ? null : (
+            <Text
+              style={[styles.title, { paddingHorizontal: gutter }]}
+              accessibilityRole="header"
+            >
+              Series
+            </Text>
+          )}
+          <Text style={[styles.subtitle, { paddingHorizontal: gutter }]}>
+            {activeLabel ? `${activeLabel} shows` : "Browse every show"}
           </Text>
+
+          <FilterBar
+            options={LIST_FILTERS}
+            value={list}
+            onChange={(next) => {
+              setList(next);
+              setGenreSlug(ALL_GENRES);
+            }}
+            gutter={gutter}
+            accessibilityLabel="Series collections"
+          />
+
+          <FilterBar
+            options={genreOptions}
+            value={genreSlug}
+            onChange={setGenreSlug}
+            heading="Genres"
+            gutter={gutter}
+            accessibilityLabel="Series genres"
+          />
+        </View>
+
+        {browse.isError && items.length === 0 ? (
+          <ErrorState onRetry={browse.refetch} />
+        ) : items.length === 0 && !browse.isLoading ? (
+          <EmptyState
+            icon="tv-outline"
+            title="No shows here yet"
+            message="Try another collection or genre to keep discovering."
+          />
+        ) : (
+          <PosterGrid
+            items={items}
+            onSelect={openTitle}
+            isLoading={browse.isLoading}
+            isLoadingMore={browse.isLoadingMore}
+          />
         )}
-        <Text style={[styles.subtitle, { paddingHorizontal: gutter }]}>
-          {activeLabel ? `${activeLabel} shows` : "Browse every show"}
-        </Text>
 
-        <FilterBar
-          options={LIST_FILTERS}
-          value={list}
-          onChange={(next) => {
-            setList(next);
-            setGenreSlug(ALL_GENRES);
-          }}
-          gutter={gutter}
-          accessibilityLabel="Series collections"
-        />
-
-        <FilterBar
-          options={genreOptions}
-          value={genreSlug}
-          onChange={setGenreSlug}
-          heading="Genres"
-          gutter={gutter}
-          accessibilityLabel="Series genres"
-        />
-      </View>
-
-      {browse.isError && items.length === 0 ? (
-        <ErrorState onRetry={browse.refetch} />
-      ) : items.length === 0 && !browse.isLoading ? (
-        <EmptyState
-          icon="tv-outline"
-          title="No shows here yet"
-          message="Try another collection or genre to keep discovering."
-        />
-      ) : (
-        <PosterGrid
-          items={items}
-          onSelect={openTitle}
-          isLoading={browse.isLoading}
-          isLoadingMore={browse.isLoadingMore}
-        />
-      )}
-
-      <Footer />
-    </Screen>
+        <Footer />
+      </Screen>
+    </>
   );
 }
 

@@ -22,9 +22,7 @@ export function CastCard({ member, width, onPress }: CastCardProps) {
       style={{ width }}
       accessibilityRole="button"
       accessibilityLabel={
-        member.character
-          ? `${member.name} as ${member.character}`
-          : member.name
+        member.character ? `${member.name} as ${member.character}` : member.name
       }
     >
       <View style={[styles.photoWrap, { width, height: width }]}>

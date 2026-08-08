@@ -65,7 +65,12 @@ export function ErrorState({
       <Text style={styles.title}>{title}</Text>
       <Text style={styles.message}>{message}</Text>
       {onRetry ? (
-        <Button label="Try again" icon="refresh" onPress={onRetry} variant="secondary" />
+        <Button
+          label="Try again"
+          icon="refresh"
+          onPress={onRetry}
+          variant="secondary"
+        />
       ) : null}
     </View>
   );

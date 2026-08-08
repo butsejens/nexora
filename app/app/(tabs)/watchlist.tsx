@@ -2,6 +2,7 @@ import React, { useMemo, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { router } from "expo-router";
 
+import { SeoHead } from "@/components/SeoHead";
 import { Footer } from "@/components/layout/Footer";
 import { FilterBar, type FilterOption } from "@/components/media/FilterBar";
 import { PosterCard } from "@/components/media/PosterCard";
@@ -14,7 +15,11 @@ import { COLORS, FONTS, SPACING } from "@/constants/theme";
 import { useResponsive } from "@/hooks/useResponsive";
 import { openTitle } from "@/lib/cinelog/navigation";
 import { useAuth } from "@/store/auth-store";
-import { sortWatchlist, useLibrary, type WatchlistSort } from "@/store/library-store";
+import {
+  sortWatchlist,
+  useLibrary,
+  type WatchlistSort,
+} from "@/store/library-store";
 
 type WatchlistTab = "all" | "movies" | "series";
 
@@ -68,96 +73,105 @@ export default function WatchlistScreen() {
   }));
 
   return (
-    <Screen
-      reserveBottomNav
-      header={
-        isMobile ? (
-          <MobileHeader
-            title="Watchlist"
-            onOpenProfile={() => router.push("/profile")}
-            gutter={gutter}
-            displayName={user?.displayName ?? "Guest"}
-            avatarUrl={user?.avatarUrl ?? null}
-          />
-        ) : null
-      }
-    >
-      <View style={styles.head}>
-        {isMobile ? null : (
-          <Text style={[styles.title, { paddingHorizontal: gutter }]} accessibilityRole="header">
-            Watchlist
+    <>
+      <SeoHead
+        title="Watchlist"
+        description="Everything you saved to watch later, sorted the way you want it."
+      />
+      <Screen
+        reserveBottomNav
+        header={
+          isMobile ? (
+            <MobileHeader
+              title="Watchlist"
+              onOpenProfile={() => router.push("/profile")}
+              gutter={gutter}
+              displayName={user?.displayName ?? "Guest"}
+              avatarUrl={user?.avatarUrl ?? null}
+            />
+          ) : null
+        }
+      >
+        <View style={styles.head}>
+          {isMobile ? null : (
+            <Text
+              style={[styles.title, { paddingHorizontal: gutter }]}
+              accessibilityRole="header"
+            >
+              Watchlist
+            </Text>
+          )}
+          <Text style={[styles.subtitle, { paddingHorizontal: gutter }]}>
+            {watchlist.length === 0
+              ? "Everything you save lands here"
+              : `${watchlist.length} ${watchlist.length === 1 ? "title" : "titles"} saved`}
           </Text>
-        )}
-        <Text style={[styles.subtitle, { paddingHorizontal: gutter }]}>
-          {watchlist.length === 0
-            ? "Everything you save lands here"
-            : `${watchlist.length} ${watchlist.length === 1 ? "title" : "titles"} saved`}
-        </Text>
 
-        {watchlist.length > 0 ? (
-          <>
-            <FilterBar
-              options={tabsWithCounts}
-              value={tab}
-              onChange={setTab}
-              gutter={gutter}
-              accessibilityLabel="Watchlist type"
-            />
-            <FilterBar
-              options={SORTS}
-              value={sort}
-              onChange={setSort}
-              heading="Sort by"
-              gutter={gutter}
-              accessibilityLabel="Watchlist sorting"
-            />
-          </>
-        ) : null}
-      </View>
-
-      {watchlist.length === 0 ? (
-        <EmptyState
-          icon="heart-outline"
-          title="Your watchlist is empty"
-          message="Start discovering movies and series to build your list."
-          actionLabel="Explore"
-          onAction={() => router.navigate("/(tabs)/home")}
-        />
-      ) : items.length === 0 ? (
-        <EmptyState
-          icon="funnel-outline"
-          title="Nothing in this filter"
-          message={
-            tab === "movies"
-              ? "You haven't saved any films yet."
-              : "You haven't saved any shows yet."
-          }
-          compact
-        />
-      ) : (
-        <View style={[styles.grid, { paddingHorizontal: gutter }]}>
-          {items.map((item) => (
-            <View key={item.id} style={{ width: posterWidth }}>
-              <PosterCard
-                item={item}
-                width={posterWidth}
-                onPress={() => openTitle(item)}
+          {watchlist.length > 0 ? (
+            <>
+              <FilterBar
+                options={tabsWithCounts}
+                value={tab}
+                onChange={setTab}
+                gutter={gutter}
+                accessibilityLabel="Watchlist type"
               />
-              <View style={styles.removeSlot}>
-                <IconButton
-                  icon="trash-outline"
-                  label={`Remove ${item.title} from your watchlist`}
-                  onPress={() => removeFromWatchlist(item.id)}
-                  size={30}
-                />
-              </View>
-            </View>
-          ))}
+              <FilterBar
+                options={SORTS}
+                value={sort}
+                onChange={setSort}
+                heading="Sort by"
+                gutter={gutter}
+                accessibilityLabel="Watchlist sorting"
+              />
+            </>
+          ) : null}
         </View>
-      )}
 
-      <Footer />
-    </Screen>
+        {watchlist.length === 0 ? (
+          <EmptyState
+            icon="heart-outline"
+            title="Your watchlist is empty"
+            message="Start discovering movies and series to build your list."
+            actionLabel="Explore"
+            onAction={() => router.navigate("/(tabs)/home")}
+          />
+        ) : items.length === 0 ? (
+          <EmptyState
+            icon="funnel-outline"
+            title="Nothing in this filter"
+            message={
+              tab === "movies"
+                ? "You haven't saved any films yet."
+                : "You haven't saved any shows yet."
+            }
+            compact
+          />
+        ) : (
+          <View style={[styles.grid, { paddingHorizontal: gutter }]}>
+            {items.map((item) => (
+              <View key={item.id} style={{ width: posterWidth }}>
+                <PosterCard
+                  item={item}
+                  width={posterWidth}
+                  onPress={() => openTitle(item)}
+                />
+                <View style={styles.removeSlot}>
+                  <IconButton
+                    icon="trash-outline"
+                    label={`Remove ${item.title} from your watchlist`}
+                    onPress={() => removeFromWatchlist(item.id)}
+                    size={30}
+                  />
+                </View>
+              </View>
+            ))}
+          </View>
+        )}
+
+        <Footer />
+      </Screen>
+    </>
   );
 }
 

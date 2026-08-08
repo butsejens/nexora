@@ -12,7 +12,14 @@ import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
 
 import { GenrePill } from "@/components/ui/GenrePill";
-import { COLORS, FONTS, HERO_SCRIM, RADIUS, SHADOWS, SPACING } from "@/constants/theme";
+import {
+  COLORS,
+  FONTS,
+  HERO_SCRIM,
+  RADIUS,
+  SHADOWS,
+  SPACING,
+} from "@/constants/theme";
 import { useResponsive } from "@/hooks/useResponsive";
 import { formatRating, metaLine } from "@/lib/format";
 
@@ -90,7 +97,11 @@ export function TitleHero({
             />
           ) : (
             <View style={[styles.poster, styles.posterFallback]}>
-              <Ionicons name="film-outline" size={30} color={COLORS.textFaint} />
+              <Ionicons
+                name="film-outline"
+                size={30}
+                color={COLORS.textFaint}
+              />
             </View>
           )}
         </View>

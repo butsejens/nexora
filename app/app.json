@@ -52,7 +52,7 @@
     "web": {
       "favicon": "./assets/images/favicon.png",
       "bundler": "metro",
-      "output": "single",
+      "output": "static",
       "name": "CineLog",
       "shortName": "CineLog",
       "themeColor": "#08090B",

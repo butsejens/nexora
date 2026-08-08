@@ -6,11 +6,7 @@
  */
 
 import React from "react";
-import {
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
+import { StyleSheet, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 
 import { COLORS, FONTS, RADIUS, SPACING } from "@/constants/theme";
@@ -24,7 +20,11 @@ export interface RatingBadgeProps {
   onArtwork?: boolean;
 }
 
-export function RatingBadge({ value, size = "sm", onArtwork = false }: RatingBadgeProps) {
+export function RatingBadge({
+  value,
+  size = "sm",
+  onArtwork = false,
+}: RatingBadgeProps) {
   const formatted = formatRating(value);
   if (!formatted) return null;
   const iconSize = size === "sm" ? 11 : 14;
@@ -36,7 +36,9 @@ export function RatingBadge({ value, size = "sm", onArtwork = false }: RatingBad
       accessibilityLabel={`Rated ${formatted} out of 10`}
     >
       <Ionicons name="star" size={iconSize} color={COLORS.star} />
-      <Text style={[styles.badgeText, size === "md" ? styles.badgeTextMd : null]}>
+      <Text
+        style={[styles.badgeText, size === "md" ? styles.badgeTextMd : null]}
+      >
         {formatted}
       </Text>
     </View>
@@ -98,7 +100,10 @@ export function RatingInput({
               ]}
             >
               <Text
-                style={[styles.scoreText, active ? styles.scoreTextActive : null]}
+                style={[
+                  styles.scoreText,
+                  active ? styles.scoreTextActive : null,
+                ]}
               >
                 {score}
               </Text>

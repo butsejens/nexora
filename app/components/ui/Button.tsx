@@ -83,7 +83,9 @@ export function Button({
       {loading ? (
         <ActivityIndicator
           size="small"
-          color={variant === "primary" ? COLORS.textPrimary : COLORS.textSecondary}
+          color={
+            variant === "primary" ? COLORS.textPrimary : COLORS.textSecondary
+          }
         />
       ) : (
         <View style={styles.content}>

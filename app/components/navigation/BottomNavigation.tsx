@@ -20,12 +20,18 @@ export interface BottomNavigationProps {
   onNavigate: (route: string) => void;
 }
 
-export function BottomNavigation({ activeRoute, onNavigate }: BottomNavigationProps) {
+export function BottomNavigation({
+  activeRoute,
+  onNavigate,
+}: BottomNavigationProps) {
   const insets = useSafeAreaInsets();
 
   return (
     <View
-      style={[styles.wrap, { paddingBottom: Math.max(insets.bottom, SPACING.sm) }]}
+      style={[
+        styles.wrap,
+        { paddingBottom: Math.max(insets.bottom, SPACING.sm) },
+      ]}
       accessibilityRole="tablist"
       accessibilityLabel="Main navigation"
     >
@@ -46,7 +52,9 @@ export function BottomNavigation({ activeRoute, onNavigate }: BottomNavigationPr
               style={styles.tab}
               hitSlop={4}
             >
-              <View style={[styles.iconWrap, active ? styles.iconWrapActive : null]}>
+              <View
+                style={[styles.iconWrap, active ? styles.iconWrapActive : null]}
+              >
                 <Ionicons
                   name={active ? item.activeIcon : item.icon}
                   size={21}
@@ -70,7 +78,8 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: Platform.OS === "android" ? COLORS.background : COLORS.overlay,
+    backgroundColor:
+      Platform.OS === "android" ? COLORS.background : COLORS.overlay,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: COLORS.border,
   },

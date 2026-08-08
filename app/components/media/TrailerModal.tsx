@@ -74,7 +74,9 @@ export function TrailerModal({
   isLoading = false,
 }: TrailerModalProps) {
   const { width, isMobile } = useResponsive();
-  const playerWidth = isMobile ? width - SPACING.lg * 2 : Math.min(width * 0.8, 1080);
+  const playerWidth = isMobile
+    ? width - SPACING.lg * 2
+    : Math.min(width * 0.8, 1080);
   const playerHeight = Math.round((playerWidth * 9) / 16);
 
   return (
@@ -105,7 +107,10 @@ export function TrailerModal({
               accessibilityRole="button"
               accessibilityLabel="Close trailer"
               hitSlop={8}
-              style={({ hovered }) => [styles.close, hovered ? styles.closeHovered : null]}
+              style={({ hovered }) => [
+                styles.close,
+                hovered ? styles.closeHovered : null,
+              ]}
             >
               <Ionicons name="close" size={18} color={COLORS.textPrimary} />
             </Pressable>

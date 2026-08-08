@@ -35,7 +35,9 @@ export function FilterBar<T extends string>({
   return (
     <View style={styles.block}>
       {heading ? (
-        <Text style={[styles.heading, { paddingHorizontal: gutter }]}>{heading}</Text>
+        <Text style={[styles.heading, { paddingHorizontal: gutter }]}>
+          {heading}
+        </Text>
       ) : null}
       <ScrollView
         horizontal

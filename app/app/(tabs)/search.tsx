@@ -1,13 +1,10 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import {
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
+import { StyleSheet, Text, View } from "react-native";
 import { Image } from "expo-image";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 
+import { SeoHead } from "@/components/SeoHead";
 import { FilterBar, type FilterOption } from "@/components/media/FilterBar";
 import { PosterGrid, usePosterMetrics } from "@/components/media/PosterGrid";
 import { MobileHeader } from "@/components/navigation/MobileHeader";
@@ -71,7 +68,9 @@ export default function SearchScreen() {
         value: "all",
         label: "All",
         count: results
-          ? results.movies.length + results.series.length + results.people.length
+          ? results.movies.length +
+            results.series.length +
+            results.people.length
           : undefined,
       },
       { value: "movies", label: "Movies", count: results?.movies.length },
@@ -80,7 +79,11 @@ export default function SearchScreen() {
     // People search needs TMDB's person index, which only the direct transport
     // reaches — hiding the tab beats showing one that can never fill.
     if (supportsPeopleSearch) {
-      base.push({ value: "people", label: "People", count: results?.people.length });
+      base.push({
+        value: "people",
+        label: "People",
+        count: results?.people.length,
+      });
     }
     return base;
   }, [results]);
@@ -97,57 +100,76 @@ export default function SearchScreen() {
     : 0;
 
   return (
-    <Screen
-      reserveBottomNav
-      header={
-        isMobile ? (
-          <MobileHeader
-            title="Search"
-            onOpenProfile={() => router.push("/profile")}
-            gutter={gutter}
-            displayName={user?.displayName ?? "Guest"}
-            avatarUrl={user?.avatarUrl ?? null}
-          />
-        ) : null
-      }
-    >
-      <View style={[styles.searchBlock, { paddingHorizontal: gutter }]}>
-        {isMobile ? null : (
-          <Text style={styles.title} accessibilityRole="header">
-            Search
-          </Text>
-        )}
-        <SearchBar value={term} onChangeText={setTerm} />
-      </View>
-
-      {hasQuery ? (
-        <View style={styles.tabsBlock}>
-          <FilterBar
-            options={tabs}
-            value={tab}
-            onChange={setTab}
-            gutter={gutter}
-            accessibilityLabel="Search result types"
-          />
+    <>
+      <SeoHead
+        title="Search"
+        description="Search thousands of movies and series and jump straight to the details."
+      />
+      <Screen
+        reserveBottomNav
+        header={
+          isMobile ? (
+            <MobileHeader
+              title="Search"
+              onOpenProfile={() => router.push("/profile")}
+              gutter={gutter}
+              displayName={user?.displayName ?? "Guest"}
+              avatarUrl={user?.avatarUrl ?? null}
+            />
+          ) : null
+        }
+      >
+        <View style={[styles.searchBlock, { paddingHorizontal: gutter }]}>
+          {isMobile ? null : (
+            <Text style={styles.title} accessibilityRole="header">
+              Search
+            </Text>
+          )}
+          <SearchBar value={term} onChangeText={setTerm} />
         </View>
-      ) : null}
 
-      {!hasQuery ? (
-        <View style={[styles.suggestions, { paddingHorizontal: gutter }]}>
-          {recentSearches.length > 0 ? (
-            <View style={styles.suggestionGroup}>
-              <View style={styles.suggestionHeader}>
-                <Text style={styles.suggestionTitle}>Recent Searches</Text>
-                <Pressable
-                  onPress={clearRecentSearches}
-                  accessibilityRole="button"
-                  accessibilityLabel="Clear recent searches"
-                >
-                  <Text style={styles.clear}>Clear</Text>
-                </Pressable>
+        {hasQuery ? (
+          <View style={styles.tabsBlock}>
+            <FilterBar
+              options={tabs}
+              value={tab}
+              onChange={setTab}
+              gutter={gutter}
+              accessibilityLabel="Search result types"
+            />
+          </View>
+        ) : null}
+
+        {!hasQuery ? (
+          <View style={[styles.suggestions, { paddingHorizontal: gutter }]}>
+            {recentSearches.length > 0 ? (
+              <View style={styles.suggestionGroup}>
+                <View style={styles.suggestionHeader}>
+                  <Text style={styles.suggestionTitle}>Recent Searches</Text>
+                  <Pressable
+                    onPress={clearRecentSearches}
+                    accessibilityRole="button"
+                    accessibilityLabel="Clear recent searches"
+                  >
+                    <Text style={styles.clear}>Clear</Text>
+                  </Pressable>
+                </View>
+                <View style={styles.pillRow}>
+                  {recentSearches.map((entry) => (
+                    <GenrePill
+                      key={entry}
+                      label={entry}
+                      onPress={() => runSuggestion(entry)}
+                    />
+                  ))}
+                </View>
               </View>
+            ) : null}
+
+            <View style={styles.suggestionGroup}>
+              <Text style={styles.suggestionTitle}>Popular Searches</Text>
               <View style={styles.pillRow}>
-                {recentSearches.map((entry) => (
+                {POPULAR_SEARCHES.map((entry) => (
                   <GenrePill
                     key={entry}
                     label={entry}
@@ -156,77 +178,69 @@ export default function SearchScreen() {
                 ))}
               </View>
             </View>
-          ) : null}
 
-          <View style={styles.suggestionGroup}>
-            <Text style={styles.suggestionTitle}>Popular Searches</Text>
-            <View style={styles.pillRow}>
-              {POPULAR_SEARCHES.map((entry) => (
-                <GenrePill
-                  key={entry}
-                  label={entry}
-                  onPress={() => runSuggestion(entry)}
-                />
-              ))}
-            </View>
+            <EmptyState
+              icon="search-outline"
+              title="Find your next favorite"
+              message="Search thousands of movies, series and people."
+            />
           </View>
-
+        ) : search.isError ? (
+          <ErrorState onRetry={() => void search.refetch()} />
+        ) : isSearching ? (
+          <View style={{ paddingHorizontal: gutter }}>
+            <SkeletonGrid columns={columns} posterWidth={posterWidth} />
+          </View>
+        ) : totalResults === 0 ? (
           <EmptyState
             icon="search-outline"
-            title="Find your next favorite"
-            message="Search thousands of movies, series and people."
+            title={`No results for "${debounced.trim()}"`}
+            message="Check the spelling, or try a different title, actor or director."
           />
-        </View>
-      ) : search.isError ? (
-        <ErrorState onRetry={() => void search.refetch()} />
-      ) : isSearching ? (
-        <View style={{ paddingHorizontal: gutter }}>
-          <SkeletonGrid columns={columns} posterWidth={posterWidth} />
-        </View>
-      ) : totalResults === 0 ? (
-        <EmptyState
-          icon="search-outline"
-          title={`No results for "${debounced.trim()}"`}
-          message="Check the spelling, or try a different title, actor or director."
-        />
-      ) : (
-        <View style={styles.results}>
-          {(tab === "all" || tab === "movies") && results!.movies.length > 0 ? (
-            <ResultSection title="Movies" gutter={gutter}>
-              <PosterGrid items={results!.movies} onSelect={openTitle} />
-            </ResultSection>
-          ) : null}
+        ) : (
+          <View style={styles.results}>
+            {(tab === "all" || tab === "movies") &&
+            results!.movies.length > 0 ? (
+              <ResultSection title="Movies" gutter={gutter}>
+                <PosterGrid items={results!.movies} onSelect={openTitle} />
+              </ResultSection>
+            ) : null}
 
-          {(tab === "all" || tab === "series") && results!.series.length > 0 ? (
-            <ResultSection title="Series" gutter={gutter}>
-              <PosterGrid items={results!.series} onSelect={openTitle} />
-            </ResultSection>
-          ) : null}
+            {(tab === "all" || tab === "series") &&
+            results!.series.length > 0 ? (
+              <ResultSection title="Series" gutter={gutter}>
+                <PosterGrid items={results!.series} onSelect={openTitle} />
+              </ResultSection>
+            ) : null}
 
-          {(tab === "all" || tab === "people") && results!.people.length > 0 ? (
-            <ResultSection title="People" gutter={gutter}>
-              <View style={[styles.peopleGrid, { paddingHorizontal: gutter }]}>
-                {results!.people.map((person) => (
-                  <PersonRow
-                    key={person.id}
-                    person={person}
-                    onPress={() => openPerson(person.id)}
-                  />
-                ))}
-              </View>
-            </ResultSection>
-          ) : null}
+            {(tab === "all" || tab === "people") &&
+            results!.people.length > 0 ? (
+              <ResultSection title="People" gutter={gutter}>
+                <View
+                  style={[styles.peopleGrid, { paddingHorizontal: gutter }]}
+                >
+                  {results!.people.map((person) => (
+                    <PersonRow
+                      key={person.id}
+                      person={person}
+                      onPress={() => openPerson(person.id)}
+                    />
+                  ))}
+                </View>
+              </ResultSection>
+            ) : null}
 
-          {tab === "people" && results!.people.length === 0 ? (
-            <EmptyState
-              icon="people-outline"
-              title="No people found"
-              message="Try an actor or director's full name."
-            />
-          ) : null}
-        </View>
-      )}
-    </Screen>
+            {tab === "people" && results!.people.length === 0 ? (
+              <EmptyState
+                icon="people-outline"
+                title="No people found"
+                message="Try an actor or director's full name."
+              />
+            ) : null}
+          </View>
+        )}
+      </Screen>
+    </>
   );
 }
 
@@ -241,7 +255,9 @@ function ResultSection({
 }) {
   return (
     <View style={styles.section}>
-      <Text style={[styles.sectionTitle, { paddingHorizontal: gutter }]}>{title}</Text>
+      <Text style={[styles.sectionTitle, { paddingHorizontal: gutter }]}>
+        {title}
+      </Text>
       {children}
     </View>
   );
@@ -261,10 +277,17 @@ function PersonRow({
       accessibilityLabel={`${person.name}${
         person.knownForDepartment ? `, ${person.knownForDepartment}` : ""
       }`}
-      style={({ hovered }) => [styles.personRow, hovered ? styles.personRowHovered : null]}
+      style={({ hovered }) => [
+        styles.personRow,
+        hovered ? styles.personRowHovered : null,
+      ]}
     >
       {person.photo ? (
-        <Image source={{ uri: person.photo }} style={styles.personPhoto} contentFit="cover" />
+        <Image
+          source={{ uri: person.photo }}
+          style={styles.personPhoto}
+          contentFit="cover"
+        />
       ) : (
         <View style={[styles.personPhoto, styles.personFallback]}>
           <Ionicons name="person" size={20} color={COLORS.textFaint} />

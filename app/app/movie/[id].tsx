@@ -9,6 +9,7 @@ import {
   WatchlistButton,
 } from "@/components/actions/TitleActions";
 import { Footer } from "@/components/layout/Footer";
+import { SeoHead } from "@/components/SeoHead";
 import { Carousel } from "@/components/media/Carousel";
 import { CastCard } from "@/components/media/CastCard";
 import { PosterCard } from "@/components/media/PosterCard";
@@ -39,7 +40,9 @@ export default function MovieDetailScreen() {
   const openTrailer = trailer.open;
 
   const ref = useMemo(() => (movie ? toLibraryRef(movie) : null), [movie]);
-  const userRating = useLibrary((state) => (ref ? state.getRating(ref.id) : null));
+  const userRating = useLibrary((state) =>
+    ref ? state.getRating(ref.id) : null,
+  );
   const rate = useLibrary((state) => state.rate);
   const clearRating = useLibrary((state) => state.clearRating);
 
@@ -50,7 +53,11 @@ export default function MovieDetailScreen() {
         width={railPosterWidth}
         onPress={() => openTitle(item)}
         onPlayTrailer={() =>
-          openTrailer({ type: item.type, tmdbId: item.tmdbId, title: item.title })
+          openTrailer({
+            type: item.type,
+            tmdbId: item.tmdbId,
+            title: item.title,
+          })
         }
       />
     ),
@@ -100,6 +107,11 @@ export default function MovieDetailScreen() {
 
   return (
     <>
+      <SeoHead
+        title={movie.year ? `${movie.title} (${movie.year})` : movie.title}
+        description={movie.overview}
+        image={movie.backdrop ?? movie.poster}
+      />
       <Screen reserveBottomNav>
         <FloatingBackButton onPress={() => router.back()} gutter={gutter} />
 

@@ -49,7 +49,12 @@ export function Skeleton({
       accessibilityElementsHidden
       importantForAccessibility="no-hide-descendants"
       style={[
-        { width, height, borderRadius: radius, backgroundColor: COLORS.skeleton },
+        {
+          width,
+          height,
+          borderRadius: radius,
+          backgroundColor: COLORS.skeleton,
+        },
         animatedStyle,
         style,
       ]}
@@ -88,7 +93,11 @@ export interface SkeletonRailProps {
   gutter: number;
 }
 
-export function SkeletonRail({ posterWidth, count = 6, gutter }: SkeletonRailProps) {
+export function SkeletonRail({
+  posterWidth,
+  count = 6,
+  gutter,
+}: SkeletonRailProps) {
   return (
     <View style={[styles.rail, { paddingHorizontal: gutter }]}>
       {Array.from({ length: count }).map((_, index) => (
@@ -104,7 +113,11 @@ export interface SkeletonGridProps {
   count?: number;
 }
 
-export function SkeletonGrid({ columns, posterWidth, count }: SkeletonGridProps) {
+export function SkeletonGrid({
+  columns,
+  posterWidth,
+  count,
+}: SkeletonGridProps) {
   const total = count ?? columns * 3;
   return (
     <View style={styles.grid}>

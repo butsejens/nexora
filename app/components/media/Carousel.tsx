@@ -108,10 +108,17 @@ export function Carousel<T>({
               onPress={onSeeAll}
               accessibilityRole="button"
               accessibilityLabel={`See all in ${title}`}
-              style={({ hovered }) => [styles.seeAll, hovered ? styles.seeAllHovered : null]}
+              style={({ hovered }) => [
+                styles.seeAll,
+                hovered ? styles.seeAllHovered : null,
+              ]}
             >
               <Text style={styles.seeAllText}>See all</Text>
-              <Ionicons name="chevron-forward" size={14} color={COLORS.textSecondary} />
+              <Ionicons
+                name="chevron-forward"
+                size={14}
+                color={COLORS.textSecondary}
+              />
             </Pressable>
           ) : null}
 
@@ -121,17 +128,31 @@ export function Carousel<T>({
                 onPress={() => scrollBy(-1)}
                 accessibilityRole="button"
                 accessibilityLabel={`Scroll ${title} left`}
-                style={({ hovered }) => [styles.arrow, hovered ? styles.arrowHovered : null]}
+                style={({ hovered }) => [
+                  styles.arrow,
+                  hovered ? styles.arrowHovered : null,
+                ]}
               >
-                <Ionicons name="chevron-back" size={16} color={COLORS.textPrimary} />
+                <Ionicons
+                  name="chevron-back"
+                  size={16}
+                  color={COLORS.textPrimary}
+                />
               </Pressable>
               <Pressable
                 onPress={() => scrollBy(1)}
                 accessibilityRole="button"
                 accessibilityLabel={`Scroll ${title} right`}
-                style={({ hovered }) => [styles.arrow, hovered ? styles.arrowHovered : null]}
+                style={({ hovered }) => [
+                  styles.arrow,
+                  hovered ? styles.arrowHovered : null,
+                ]}
               >
-                <Ionicons name="chevron-forward" size={16} color={COLORS.textPrimary} />
+                <Ionicons
+                  name="chevron-forward"
+                  size={16}
+                  color={COLORS.textPrimary}
+                />
               </Pressable>
             </View>
           ) : null}
@@ -145,7 +166,10 @@ export function Carousel<T>({
         keyExtractor={keyExtractor}
         horizontal
         showsHorizontalScrollIndicator={false}
-        contentContainerStyle={[styles.listContent, { paddingHorizontal: gutter }]}
+        contentContainerStyle={[
+          styles.listContent,
+          { paddingHorizontal: gutter },
+        ]}
         onScroll={(event) => {
           offsetRef.current = event.nativeEvent.contentOffset.x;
         }}

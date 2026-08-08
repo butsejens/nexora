@@ -122,7 +122,9 @@ export default function AuthScreen() {
                 onChangeText={setPassword}
                 placeholder="At least 8 characters"
                 secureTextEntry
-                autoComplete={mode === "signup" ? "new-password" : "current-password"}
+                autoComplete={
+                  mode === "signup" ? "new-password" : "current-password"
+                }
               />
             )}
 
@@ -149,11 +151,20 @@ export default function AuthScreen() {
           <View style={styles.links}>
             {mode === "signin" ? (
               <>
-                <AuthLink label="Create an account" onPress={() => switchMode("signup")} />
-                <AuthLink label="Forgot password?" onPress={() => switchMode("reset")} />
+                <AuthLink
+                  label="Create an account"
+                  onPress={() => switchMode("signup")}
+                />
+                <AuthLink
+                  label="Forgot password?"
+                  onPress={() => switchMode("reset")}
+                />
               </>
             ) : (
-              <AuthLink label="Back to sign in" onPress={() => switchMode("signin")} />
+              <AuthLink
+                label="Back to sign in"
+                onPress={() => switchMode("signin")}
+              />
             )}
             <AuthLink
               label="Continue without an account"
@@ -187,7 +198,11 @@ function Field({
 
 function AuthLink({ label, onPress }: { label: string; onPress: () => void }) {
   return (
-    <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel={label}>
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+    >
       <Text style={styles.link}>{label}</Text>
     </Pressable>
   );

@@ -6,11 +6,7 @@
  */
 
 import React from "react";
-import {
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
+import { StyleSheet, Text, View } from "react-native";
 import { Image } from "expo-image";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -64,7 +60,11 @@ export function MobileHeader({
         hitSlop={8}
       >
         {avatarUrl ? (
-          <Image source={{ uri: avatarUrl }} style={styles.avatar} contentFit="cover" />
+          <Image
+            source={{ uri: avatarUrl }}
+            style={styles.avatar}
+            contentFit="cover"
+          />
         ) : (
           <View style={[styles.avatar, styles.avatarFallback]}>
             <Text style={styles.avatarText}>{initial}</Text>

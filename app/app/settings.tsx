@@ -3,6 +3,7 @@ import { StyleSheet, Switch, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 
+import { SeoHead } from "@/components/SeoHead";
 import { Footer } from "@/components/layout/Footer";
 import { FloatingBackButton } from "@/components/navigation/MobileHeader";
 import { Button } from "@/components/ui/Button";
@@ -46,165 +47,179 @@ export default function SettingsScreen() {
   const resetLibrary = useLibrary((state) => state.resetLibrary);
 
   return (
-    <Screen reserveBottomNav>
-      <FloatingBackButton onPress={() => router.back()} gutter={gutter} />
+    <>
+      <SeoHead
+        title="Settings"
+        description="Appearance, language, notifications, privacy and account settings."
+      />
+      <Screen reserveBottomNav>
+        <FloatingBackButton onPress={() => router.back()} gutter={gutter} />
 
-      <View style={[styles.head, { paddingHorizontal: gutter }]}>
-        <Text style={styles.title} accessibilityRole="header">
-          Settings
-        </Text>
-        <Text style={styles.subtitle}>
-          Tune how CineLog looks, what it tells you and what it remembers.
-        </Text>
-      </View>
+        <View style={[styles.head, { paddingHorizontal: gutter }]}>
+          <Text style={styles.title} accessibilityRole="header">
+            Settings
+          </Text>
+          <Text style={styles.subtitle}>
+            Tune how CineLog looks, what it tells you and what it remembers.
+          </Text>
+        </View>
 
-      <View style={[styles.sections, { paddingHorizontal: gutter }]}>
-        <SettingsSection title="Profile" icon="person-circle-outline">
-          <SettingsRow
-            label={user ? user.displayName : "Not signed in"}
-            hint={user ? user.email : "Sign in to sync your library across devices"}
-          />
-          {user ? null : (
-            <Button label="Sign in" onPress={() => router.push("/auth")} size="sm" />
-          )}
-        </SettingsSection>
-
-        <SettingsSection title="Appearance" icon="color-palette-outline">
-          <SettingsRow
-            label="Theme"
-            hint="CineLog is designed dark-first; light mode keeps contrast accessible."
-          />
-          <View style={styles.pillRow}>
-            {THEMES.map((option) => (
-              <GenrePill
-                key={option.value}
-                label={option.label}
-                selected={theme === option.value}
-                onPress={() => setTheme(option.value)}
-              />
-            ))}
-          </View>
-        </SettingsSection>
-
-        <SettingsSection title="Language" icon="language-outline">
-          <View style={styles.pillRow}>
-            {LANGUAGES.map((option) => (
-              <GenrePill
-                key={option.code}
-                label={option.label}
-                selected={language === option.code}
-                onPress={() => setLanguage(option.code as LanguageCode)}
-              />
-            ))}
-          </View>
-        </SettingsSection>
-
-        <SettingsSection title="Notifications" icon="notifications-outline">
-          <ToggleRow
-            label="New releases"
-            hint="Tell me when something I follow lands"
-            value={notifications.newReleases}
-            onChange={(value) => setNotification("newReleases", value)}
-          />
-          <ToggleRow
-            label="Recommendations"
-            hint="Weekly picks based on what I watch"
-            value={notifications.recommendations}
-            onChange={(value) => setNotification("recommendations", value)}
-          />
-          <ToggleRow
-            label="Watchlist reminders"
-            hint="Nudge me about titles I saved but haven't watched"
-            value={notifications.watchlistReminders}
-            onChange={(value) => setNotification("watchlistReminders", value)}
-          />
-        </SettingsSection>
-
-        <SettingsSection title="Privacy" icon="lock-closed-outline">
-          <ToggleRow
-            label="Watch history"
-            hint="Used to personalise your recommendations"
-            value={privacy.saveWatchHistory}
-            onChange={(value) => setPrivacy("saveWatchHistory", value)}
-          />
-          <ToggleRow
-            label="Profile visibility"
-            hint="Let other viewers find your CineLog profile"
-            value={privacy.publicProfile}
-            onChange={(value) => setPrivacy("publicProfile", value)}
-          />
-          <Button
-            label="Clear watch history"
-            icon="trash-outline"
-            variant="secondary"
-            size="sm"
-            onPress={() =>
-              SafeAlert.confirm(
-                "Clear watch history",
-                "This removes everything you've watched, your episode ticks and Continue Watching.",
-                "Clear history",
-                clearHistory,
-              )
-            }
-          />
-        </SettingsSection>
-
-        <SettingsSection title="Account" icon="key-outline">
-          <Button
-            label="Change password"
-            icon="mail-outline"
-            variant="secondary"
-            size="sm"
-            onPress={() => {
-              if (!user) {
-                router.push("/auth");
-                return;
+        <View style={[styles.sections, { paddingHorizontal: gutter }]}>
+          <SettingsSection title="Profile" icon="person-circle-outline">
+            <SettingsRow
+              label={user ? user.displayName : "Not signed in"}
+              hint={
+                user
+                  ? user.email
+                  : "Sign in to sync your library across devices"
               }
-              void sendPasswordReset(user.email);
-              SafeAlert.confirm(
-                "Password reset sent",
-                `We've emailed a reset link to ${user.email}.`,
-                "Got it",
-                () => undefined,
-                { destructive: false, cancelText: "Close" },
-              );
-            }}
-          />
-          <Button
-            label="Delete account data"
-            icon="close-circle-outline"
-            variant="danger"
-            size="sm"
-            onPress={() =>
-              SafeAlert.confirm(
-                "Delete account data",
-                "This erases your watchlist, favourites, ratings and history from this device and signs you out.",
-                "Delete everything",
-                () => {
-                  resetLibrary();
-                  void signOut();
-                  router.replace("/(tabs)/home");
-                },
-              )
-            }
-          />
-          {user ? (
+            />
+            {user ? null : (
+              <Button
+                label="Sign in"
+                onPress={() => router.push("/auth")}
+                size="sm"
+              />
+            )}
+          </SettingsSection>
+
+          <SettingsSection title="Appearance" icon="color-palette-outline">
+            <SettingsRow
+              label="Theme"
+              hint="CineLog is designed dark-first; light mode keeps contrast accessible."
+            />
+            <View style={styles.pillRow}>
+              {THEMES.map((option) => (
+                <GenrePill
+                  key={option.value}
+                  label={option.label}
+                  selected={theme === option.value}
+                  onPress={() => setTheme(option.value)}
+                />
+              ))}
+            </View>
+          </SettingsSection>
+
+          <SettingsSection title="Language" icon="language-outline">
+            <View style={styles.pillRow}>
+              {LANGUAGES.map((option) => (
+                <GenrePill
+                  key={option.code}
+                  label={option.label}
+                  selected={language === option.code}
+                  onPress={() => setLanguage(option.code as LanguageCode)}
+                />
+              ))}
+            </View>
+          </SettingsSection>
+
+          <SettingsSection title="Notifications" icon="notifications-outline">
+            <ToggleRow
+              label="New releases"
+              hint="Tell me when something I follow lands"
+              value={notifications.newReleases}
+              onChange={(value) => setNotification("newReleases", value)}
+            />
+            <ToggleRow
+              label="Recommendations"
+              hint="Weekly picks based on what I watch"
+              value={notifications.recommendations}
+              onChange={(value) => setNotification("recommendations", value)}
+            />
+            <ToggleRow
+              label="Watchlist reminders"
+              hint="Nudge me about titles I saved but haven't watched"
+              value={notifications.watchlistReminders}
+              onChange={(value) => setNotification("watchlistReminders", value)}
+            />
+          </SettingsSection>
+
+          <SettingsSection title="Privacy" icon="lock-closed-outline">
+            <ToggleRow
+              label="Watch history"
+              hint="Used to personalise your recommendations"
+              value={privacy.saveWatchHistory}
+              onChange={(value) => setPrivacy("saveWatchHistory", value)}
+            />
+            <ToggleRow
+              label="Profile visibility"
+              hint="Let other viewers find your CineLog profile"
+              value={privacy.publicProfile}
+              onChange={(value) => setPrivacy("publicProfile", value)}
+            />
             <Button
-              label="Logout"
-              icon="log-out-outline"
+              label="Clear watch history"
+              icon="trash-outline"
+              variant="secondary"
+              size="sm"
+              onPress={() =>
+                SafeAlert.confirm(
+                  "Clear watch history",
+                  "This removes everything you've watched, your episode ticks and Continue Watching.",
+                  "Clear history",
+                  clearHistory,
+                )
+              }
+            />
+          </SettingsSection>
+
+          <SettingsSection title="Account" icon="key-outline">
+            <Button
+              label="Change password"
+              icon="mail-outline"
               variant="secondary"
               size="sm"
               onPress={() => {
-                void signOut();
-                router.replace("/(tabs)/home");
+                if (!user) {
+                  router.push("/auth");
+                  return;
+                }
+                void sendPasswordReset(user.email);
+                SafeAlert.confirm(
+                  "Password reset sent",
+                  `We've emailed a reset link to ${user.email}.`,
+                  "Got it",
+                  () => undefined,
+                  { destructive: false, cancelText: "Close" },
+                );
               }}
             />
-          ) : null}
-        </SettingsSection>
-      </View>
+            <Button
+              label="Delete account data"
+              icon="close-circle-outline"
+              variant="danger"
+              size="sm"
+              onPress={() =>
+                SafeAlert.confirm(
+                  "Delete account data",
+                  "This erases your watchlist, favourites, ratings and history from this device and signs you out.",
+                  "Delete everything",
+                  () => {
+                    resetLibrary();
+                    void signOut();
+                    router.replace("/(tabs)/home");
+                  },
+                )
+              }
+            />
+            {user ? (
+              <Button
+                label="Logout"
+                icon="log-out-outline"
+                variant="secondary"
+                size="sm"
+                onPress={() => {
+                  void signOut();
+                  router.replace("/(tabs)/home");
+                }}
+              />
+            ) : null}
+          </SettingsSection>
+        </View>
 
-      <Footer />
-    </Screen>
+        <Footer />
+      </Screen>
+    </>
   );
 }
 

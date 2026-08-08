@@ -39,11 +39,18 @@ export function Screen({
   const { isMobile } = useResponsive();
 
   const bottomPadding =
-    (reserveBottomNav && isMobile ? LAYOUT.bottomNavHeight + insets.bottom : 0) +
-    SPACING.xxxl;
+    (reserveBottomNav && isMobile
+      ? LAYOUT.bottomNavHeight + insets.bottom
+      : 0) + SPACING.xxxl;
 
   const inner = (
-    <View style={[styles.centered, { maxWidth: LAYOUT.maxContentWidth }, contentStyle]}>
+    <View
+      style={[
+        styles.centered,
+        { maxWidth: LAYOUT.maxContentWidth },
+        contentStyle,
+      ]}
+    >
       {children}
     </View>
   );
@@ -52,7 +59,9 @@ export function Screen({
     return (
       <View style={styles.root}>
         {header}
-        <View style={[styles.flexCenter, { paddingBottom: bottomPadding }]}>{inner}</View>
+        <View style={[styles.flexCenter, { paddingBottom: bottomPadding }]}>
+          {inner}
+        </View>
       </View>
     );
   }
@@ -62,7 +71,10 @@ export function Screen({
       {header}
       <ScrollView
         style={styles.scroll}
-        contentContainerStyle={[styles.scrollContent, { paddingBottom: bottomPadding }]}
+        contentContainerStyle={[
+          styles.scrollContent,
+          { paddingBottom: bottomPadding },
+        ]}
         showsVerticalScrollIndicator={false}
         scrollEventThrottle={128}
         onScroll={
@@ -71,7 +83,9 @@ export function Screen({
                 const { layoutMeasurement, contentOffset, contentSize } =
                   event.nativeEvent;
                 const distanceFromEnd =
-                  contentSize.height - contentOffset.y - layoutMeasurement.height;
+                  contentSize.height -
+                  contentOffset.y -
+                  layoutMeasurement.height;
                 if (distanceFromEnd < END_THRESHOLD) onEndReached();
               }
             : undefined

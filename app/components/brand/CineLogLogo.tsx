@@ -29,7 +29,14 @@ export function CineLogMark({ size = 32 }: CineLogMarkProps) {
           <Stop offset="1" stopColor={COLORS.accentDeep} />
         </LinearGradient>
       </Defs>
-      <Rect x={0} y={0} width={512} height={512} rx={133} fill="url(#cinelogMark)" />
+      <Rect
+        x={0}
+        y={0}
+        width={512}
+        height={512}
+        rx={133}
+        fill="url(#cinelogMark)"
+      />
       {perforations.map((y) => (
         <Rect
           key={y}

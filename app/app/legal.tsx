@@ -2,6 +2,7 @@ import React from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { router } from "expo-router";
 
+import { SeoHead } from "@/components/SeoHead";
 import { Footer } from "@/components/layout/Footer";
 import { FloatingBackButton } from "@/components/navigation/MobileHeader";
 import { Screen } from "@/components/ui/Screen";
@@ -35,25 +36,31 @@ export default function LegalScreen() {
   const { gutter } = useResponsive();
 
   return (
-    <Screen reserveBottomNav>
-      <FloatingBackButton onPress={() => router.back()} gutter={gutter} />
+    <>
+      <SeoHead
+        title="Legal & Privacy"
+        description="How CineLog handles your data, and the sources behind its movie and series information."
+      />
+      <Screen reserveBottomNav>
+        <FloatingBackButton onPress={() => router.back()} gutter={gutter} />
 
-      <View style={[styles.body, { paddingHorizontal: gutter }]}>
-        <Text style={styles.title} accessibilityRole="header">
-          Legal & Privacy
-        </Text>
-        {SECTIONS.map((section) => (
-          <View key={section.heading} style={styles.section}>
-            <Text style={styles.heading} accessibilityRole="header">
-              {section.heading}
-            </Text>
-            <Text style={styles.paragraph}>{section.body}</Text>
-          </View>
-        ))}
-      </View>
+        <View style={[styles.body, { paddingHorizontal: gutter }]}>
+          <Text style={styles.title} accessibilityRole="header">
+            Legal & Privacy
+          </Text>
+          {SECTIONS.map((section) => (
+            <View key={section.heading} style={styles.section}>
+              <Text style={styles.heading} accessibilityRole="header">
+                {section.heading}
+              </Text>
+              <Text style={styles.paragraph}>{section.body}</Text>
+            </View>
+          ))}
+        </View>
 
-      <Footer />
-    </Screen>
+        <Footer />
+      </Screen>
+    </>
   );
 }
 

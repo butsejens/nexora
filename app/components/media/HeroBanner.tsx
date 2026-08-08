@@ -22,7 +22,12 @@ import {
   SPACING,
 } from "@/constants/theme";
 import { useResponsive } from "@/hooks/useResponsive";
-import { formatRating, formatRuntime, formatSeasons, metaLine } from "@/lib/format";
+import {
+  formatRating,
+  formatRuntime,
+  formatSeasons,
+  metaLine,
+} from "@/lib/format";
 import type { MediaSummary, Movie, Series } from "@/lib/cinelog/types";
 
 export interface HeroBannerProps {

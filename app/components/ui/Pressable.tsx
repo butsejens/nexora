@@ -34,11 +34,11 @@ export interface InteractionState {
 
 export interface PressableProps extends Omit<RNPressableProps, "style"> {
   style?:
-    | StyleProp<ViewStyle>
-    | ((state: InteractionState) => StyleProp<ViewStyle>);
+    StyleProp<ViewStyle> | ((state: InteractionState) => StyleProp<ViewStyle>);
 }
 
-export const Pressable = RNPressable as unknown as React.ComponentType<PressableProps>;
+export const Pressable =
+  RNPressable as unknown as React.ComponentType<PressableProps>;
 
 export interface TouchableScaleProps extends Omit<RNPressableProps, "style"> {
   children: React.ReactNode;

@@ -43,13 +43,13 @@ export default function RootLayout() {
 
   useEffect(() => {
     // Fonts are the only blocking asset; a missing font must not trap the user
-    // behind the splash screen, so hide it on error as well.
+    // behind the splash screen, so hide it on error as well. The tree renders
+    // regardless — blocking on fonts would make the static web export emit empty
+    // pages, and the splash already covers the swap on native.
     if (fontsLoaded || fontError) {
       SplashScreen.hideAsync().catch(() => undefined);
     }
   }, [fontsLoaded, fontError]);
-
-  if (!fontsLoaded && !fontError) return null;
 
   return (
     <ErrorBoundary>
@@ -71,7 +71,10 @@ export default function RootLayout() {
               <Stack.Screen name="profile" />
               <Stack.Screen name="settings" />
               <Stack.Screen name="legal" />
-              <Stack.Screen name="auth" options={{ animation: "slide_from_bottom" }} />
+              <Stack.Screen
+                name="auth"
+                options={{ animation: "slide_from_bottom" }}
+              />
             </Stack>
           </GestureHandlerRootView>
         </SafeAreaProvider>

@@ -6,11 +6,7 @@
  */
 
 import React from "react";
-import {
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
+import { StyleSheet, Text, View } from "react-native";
 import { Image } from "expo-image";
 import { Ionicons } from "@expo/vector-icons";
 
@@ -43,7 +39,9 @@ export function EpisodeCard({
 
   return (
     <View style={[styles.row, isUpNext ? styles.rowUpNext : null]}>
-      <View style={[styles.stillWrap, { width: stillWidth, height: stillHeight }]}>
+      <View
+        style={[styles.stillWrap, { width: stillWidth, height: stillHeight }]}
+      >
         {episode.still ? (
           <Image
             source={{ uri: episode.still }}

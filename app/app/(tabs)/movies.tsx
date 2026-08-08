@@ -2,6 +2,7 @@ import React, { useMemo, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 
+import { SeoHead } from "@/components/SeoHead";
 import { Footer } from "@/components/layout/Footer";
 import { FilterBar, type FilterOption } from "@/components/media/FilterBar";
 import { PosterGrid } from "@/components/media/PosterGrid";
@@ -59,72 +60,81 @@ export default function MoviesScreen() {
       : (LIST_FILTERS.find((filter) => filter.value === list)?.label ?? "");
 
   return (
-    <Screen
-      reserveBottomNav
-      onEndReached={browse.canLoadMore ? browse.loadMore : undefined}
-      header={
-        isMobile ? (
-          <MobileHeader
-            title="Movies"
-            onOpenProfile={() => router.push("/profile")}
-            gutter={gutter}
-            displayName={user?.displayName ?? "Guest"}
-            avatarUrl={user?.avatarUrl ?? null}
-          />
-        ) : null
-      }
-    >
-      <View style={styles.head}>
-        {isMobile ? null : (
-          <Text style={[styles.title, { paddingHorizontal: gutter }]} accessibilityRole="header">
-            Movies
+    <>
+      <SeoHead
+        title="Movies"
+        description="Browse popular, trending, top rated, now playing and upcoming films by genre."
+      />
+      <Screen
+        reserveBottomNav
+        onEndReached={browse.canLoadMore ? browse.loadMore : undefined}
+        header={
+          isMobile ? (
+            <MobileHeader
+              title="Movies"
+              onOpenProfile={() => router.push("/profile")}
+              gutter={gutter}
+              displayName={user?.displayName ?? "Guest"}
+              avatarUrl={user?.avatarUrl ?? null}
+            />
+          ) : null
+        }
+      >
+        <View style={styles.head}>
+          {isMobile ? null : (
+            <Text
+              style={[styles.title, { paddingHorizontal: gutter }]}
+              accessibilityRole="header"
+            >
+              Movies
+            </Text>
+          )}
+          <Text style={[styles.subtitle, { paddingHorizontal: gutter }]}>
+            {activeLabel ? `${activeLabel} films` : "Browse every film"}
           </Text>
+
+          <FilterBar
+            options={LIST_FILTERS}
+            value={list}
+            onChange={(next) => {
+              setList(next);
+              // A curated list replaces a genre filter rather than stacking with it.
+              setGenreSlug(ALL_GENRES);
+            }}
+            gutter={gutter}
+            accessibilityLabel="Movie collections"
+          />
+
+          <FilterBar
+            options={genreOptions}
+            value={genreSlug}
+            onChange={setGenreSlug}
+            heading="Genres"
+            gutter={gutter}
+            accessibilityLabel="Movie genres"
+          />
+        </View>
+
+        {browse.isError && items.length === 0 ? (
+          <ErrorState onRetry={browse.refetch} />
+        ) : items.length === 0 && !browse.isLoading ? (
+          <EmptyState
+            icon="film-outline"
+            title="No films here yet"
+            message="Try another collection or genre to keep discovering."
+          />
+        ) : (
+          <PosterGrid
+            items={items}
+            onSelect={openTitle}
+            isLoading={browse.isLoading}
+            isLoadingMore={browse.isLoadingMore}
+          />
         )}
-        <Text style={[styles.subtitle, { paddingHorizontal: gutter }]}>
-          {activeLabel ? `${activeLabel} films` : "Browse every film"}
-        </Text>
 
-        <FilterBar
-          options={LIST_FILTERS}
-          value={list}
-          onChange={(next) => {
-            setList(next);
-            // A curated list replaces a genre filter rather than stacking with it.
-            setGenreSlug(ALL_GENRES);
-          }}
-          gutter={gutter}
-          accessibilityLabel="Movie collections"
-        />
-
-        <FilterBar
-          options={genreOptions}
-          value={genreSlug}
-          onChange={setGenreSlug}
-          heading="Genres"
-          gutter={gutter}
-          accessibilityLabel="Movie genres"
-        />
-      </View>
-
-      {browse.isError && items.length === 0 ? (
-        <ErrorState onRetry={browse.refetch} />
-      ) : items.length === 0 && !browse.isLoading ? (
-        <EmptyState
-          icon="film-outline"
-          title="No films here yet"
-          message="Try another collection or genre to keep discovering."
-        />
-      ) : (
-        <PosterGrid
-          items={items}
-          onSelect={openTitle}
-          isLoading={browse.isLoading}
-          isLoadingMore={browse.isLoadingMore}
-        />
-      )}
-
-      <Footer />
-    </Screen>
+        <Footer />
+      </Screen>
+    </>
   );
 }
 

@@ -11,20 +11,20 @@
   "categories": ["entertainment", "lifestyle"],
   "icons": [
     {
-      "src": "/assets/images/icon.png",
-      "sizes": "1024x1024",
+      "src": "/icon.png",
+      "sizes": "512x512",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "/assets/images/android-icon-foreground.png",
-      "sizes": "1024x1024",
+      "src": "/icon.png",
+      "sizes": "512x512",
       "type": "image/png",
       "purpose": "maskable"
     },
     {
-      "src": "/assets/images/favicon.png",
-      "sizes": "256x256",
+      "src": "/apple-touch-icon.png",
+      "sizes": "180x180",
       "type": "image/png",
       "purpose": "any"
     }
