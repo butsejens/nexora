@@ -94,6 +94,15 @@ export default function RootLayout() {
     }
   }, [fontsLoaded, fontError]);
 
+  useEffect(() => {
+    // Failsafe: never keep users stuck behind splash if startup hooks stall.
+    const timeout = setTimeout(() => {
+      SplashScreen.hideAsync().catch(() => undefined);
+    }, 900);
+
+    return () => clearTimeout(timeout);
+  }, []);
+
   return (
     <ThemeProvider>
       <ErrorBoundary>
