@@ -1019,7 +1019,77 @@ function StreamWebView({
             } catch (e) {}
           };
 
+          var isolatePrimaryVideo = function() {
+            try {
+              var videos = Array.from(document.querySelectorAll('video'));
+              videos.sort(function(a, b) {
+                var aScore = ((a.videoWidth || 0) * (a.videoHeight || 0)) + ((a.duration || 0) * 10) + (a.paused ? 0 : 100000);
+                var bScore = ((b.videoWidth || 0) * (b.videoHeight || 0)) + ((b.duration || 0) * 10) + (b.paused ? 0 : 100000);
+                return bScore - aScore;
+              });
+              var video = videos[0] || document.querySelector('video');
+              if (!video || !document.body) return;
+
+              try {
+                document.documentElement.style.background = '#000';
+                document.body.style.background = '#000';
+                document.body.style.margin = '0';
+                document.body.style.overflow = 'hidden';
+              } catch (e) {}
+
+              var preserveChain = new Set();
+              var cursor = video;
+              while (cursor && cursor !== document.body) {
+                preserveChain.add(cursor);
+                cursor = cursor.parentElement;
+              }
+              preserveChain.add(video);
+
+              var allNodes = Array.from(document.body.querySelectorAll('*'));
+              allNodes.forEach(function(node) {
+                if (!node || !node.tagName) return;
+                var tag = String(node.tagName).toLowerCase();
+                if (tag === 'script' || tag === 'style' || tag === 'link' || tag === 'source' || tag === 'track') return;
+                if (node === video || preserveChain.has(node) || node.contains(video) || video.contains(node)) {
+                  return;
+                }
+                try {
+                  node.style.visibility = 'hidden';
+                  node.style.opacity = '0';
+                  node.style.pointerEvents = 'none';
+                  node.style.display = 'none';
+                } catch (e) {}
+              });
+
+              var keywordSelectors = [
+                '[class*="logo" i]',
+                '[id*="logo" i]',
+                '[class*="watermark" i]',
+                '[id*="watermark" i]',
+                '[class*="controls" i]',
+                '[id*="controls" i]',
+                '[class*="pause" i]',
+                '[id*="pause" i]',
+                '[class*="rewind" i]',
+                '[class*="forward" i]'
+              ];
+              keywordSelectors.forEach(function(selector) {
+                try {
+                  var matches = Array.from(document.querySelectorAll(selector));
+                  matches.forEach(function(node) {
+                    if (node === video || node.contains(video) || video.contains(node)) return;
+                    node.style.visibility = 'hidden';
+                    node.style.opacity = '0';
+                    node.style.pointerEvents = 'none';
+                    node.style.display = 'none';
+                  });
+                } catch (e) {}
+              });
+            } catch (e) {}
+          };
+
           var enforceInlinePlayback = function() {
+              isolatePrimaryVideo();
             try {
               if (document.fullscreenElement && document.exitFullscreen) {
                 document.exitFullscreen().catch(function(){});
@@ -1196,8 +1266,10 @@ function StreamWebView({
           setInterval(bindVideoEvents, 1200);
           setInterval(emitProgress, 1800);
           setInterval(enforceInlinePlayback, 700);
+          setInterval(isolatePrimaryVideo, 700);
           setTimeout(forceAudio, 800);
           setTimeout(enforceInlinePlayback, 350);
+          setTimeout(isolatePrimaryVideo, 350);
         } catch (error) {}
       })();
     `;
