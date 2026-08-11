@@ -35,7 +35,10 @@ export function BottomNavigation({
     <View
       style={[
         styles.wrap,
-        { paddingBottom: Math.max(insets.bottom, SPACING.sm) },
+        {
+          paddingBottom: Math.max(insets.bottom, SPACING.sm),
+          paddingHorizontal: SPACING.xs,
+        },
       ]}
       accessibilityRole="tablist"
       accessibilityLabel={t("Main navigation")}
@@ -91,17 +94,20 @@ const useStyles = makeStyles((c, t) => ({
     flexDirection: "row",
     alignItems: "center",
     height: LAYOUT.bottomNavHeight,
+    gap: 2,
   },
   tab: {
     flex: 1,
+    minWidth: 0,
     alignItems: "center",
     justifyContent: "center",
     gap: 2,
+    paddingHorizontal: 2,
   },
   iconWrap: {
-    width: 40,
-    height: 26,
-    borderRadius: RADIUS.pill,
+    width: 44,
+    height: 30,
+    borderRadius: 14,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -110,7 +116,8 @@ const useStyles = makeStyles((c, t) => ({
   },
   label: {
     fontFamily: FONTS.medium,
-    fontSize: 10,
+    fontSize: 11,
+    textAlign: "center",
     color: c.textMuted,
   },
   labelActive: {

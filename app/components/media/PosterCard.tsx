@@ -51,6 +51,7 @@ function PosterCardComponent({
   const styles = useStyles();
   const { supportsHover } = useResponsive();
   const [hovered, setHovered] = useState(false);
+  const [posterFailed, setPosterFailed] = useState(false);
   const toggleWatchlist = useLibrary((state) => state.toggleWatchlist);
   const inWatchlist = useLibrary((state) => state.isInWatchlist(item.id));
 
@@ -71,6 +72,13 @@ function PosterCardComponent({
     toggleWatchlist(item);
   }, [item, toggleWatchlist]);
 
+  const hasPoster =
+    !posterFailed &&
+    Boolean(item.poster) &&
+    !String(item.poster).toLowerCase().includes("null") &&
+    !String(item.poster).toLowerCase().includes("undefined");
+  const posterUri = hasPoster ? String(item.poster) : undefined;
+
   return (
     // The quick actions sit as a sibling of the pressable card, not inside it:
     // nesting one button-role element in another produces invalid DOM on web.
@@ -86,13 +94,14 @@ function PosterCardComponent({
         accessibilityLabel={`${item.title}, ${typeLabel}${item.year ? `, ${item.year}` : ""}`}
       >
         <View style={[styles.posterWrap, { width, height }]}>
-          {item.poster ? (
+          {posterUri ? (
             <Image
-              source={{ uri: item.poster }}
+              source={{ uri: posterUri }}
               style={styles.poster}
               contentFit="cover"
               transition={220}
               cachePolicy="memory-disk"
+              onError={() => setPosterFailed(true)}
               accessibilityLabel={t("{{title}} poster", { title: item.title })}
             />
           ) : (

@@ -38,6 +38,12 @@ import {
   useTasteSignals,
 } from "@/store/library-store";
 
+function hasValidPoster(item: { poster: string | null }): boolean {
+  if (!item.poster) return false;
+  const lowered = String(item.poster).toLowerCase();
+  return !lowered.includes("null") && !lowered.includes("undefined");
+}
+
 export default function HomeScreen() {
   const t = useT();
   const styles = useStyles();
@@ -80,6 +86,7 @@ export default function HomeScreen() {
       for (const item of pool) {
         if (seen.has(item.id)) continue;
         seen.add(item.id);
+        if (!hasValidPoster(item)) continue;
         merged.push(item);
       }
     }
@@ -109,6 +116,31 @@ export default function HomeScreen() {
   );
 
   const topRated = useInterleaved(topRatedMovies.items, topRatedSeries.items);
+
+  const trendingItems = useMemo(
+    () => trending.items.filter(hasValidPoster),
+    [trending.items],
+  );
+  const popularMovieItems = useMemo(
+    () => popularMovies.items.filter(hasValidPoster),
+    [popularMovies.items],
+  );
+  const popularSeriesItems = useMemo(
+    () => popularSeries.items.filter(hasValidPoster),
+    [popularSeries.items],
+  );
+  const newReleaseItems = useMemo(
+    () => newReleases.items.filter(hasValidPoster),
+    [newReleases.items],
+  );
+  const topRatedItems = useMemo(
+    () => topRated.filter(hasValidPoster),
+    [topRated],
+  );
+  const recommendedItems = useMemo(
+    () => recommended.map((entry) => entry.item).filter(hasValidPoster),
+    [recommended],
+  );
 
   const renderPoster = useCallback(
     (item: MediaSummary) => (
@@ -226,7 +258,7 @@ export default function HomeScreen() {
 
           <Carousel
             title={t("Trending Now")}
-            items={trending.items}
+            items={trendingItems}
             isLoading={trending.isLoading}
             itemWidth={railPosterWidth}
             keyExtractor={(item) => item.id}
@@ -235,7 +267,7 @@ export default function HomeScreen() {
 
           <Carousel
             title={t("Popular Movies")}
-            items={popularMovies.items}
+            items={popularMovieItems}
             isLoading={popularMovies.isLoading}
             itemWidth={railPosterWidth}
             keyExtractor={(item) => item.id}
@@ -245,7 +277,7 @@ export default function HomeScreen() {
 
           <Carousel
             title={t("Popular Series")}
-            items={popularSeries.items}
+            items={popularSeriesItems}
             isLoading={popularSeries.isLoading}
             itemWidth={railPosterWidth}
             keyExtractor={(item) => item.id}
@@ -256,7 +288,7 @@ export default function HomeScreen() {
           <Carousel
             title={t("New Releases")}
             subtitle={t("In cinemas now")}
-            items={newReleases.items}
+            items={newReleaseItems}
             isLoading={newReleases.isLoading}
             itemWidth={railPosterWidth}
             keyExtractor={(item) => item.id}
@@ -265,7 +297,7 @@ export default function HomeScreen() {
 
           <Carousel
             title={t("Top Rated")}
-            items={topRated}
+            items={topRatedItems}
             isLoading={topRatedMovies.isLoading || topRatedSeries.isLoading}
             itemWidth={railPosterWidth}
             keyExtractor={(item) => item.id}
@@ -279,7 +311,7 @@ export default function HomeScreen() {
                 ? t("Based on what you watch, rate and save")
                 : t("Rate a few titles and this gets personal")
             }
-            items={recommended.map((entry) => entry.item)}
+            items={recommendedItems}
             isLoading={candidates.length === 0}
             itemWidth={railPosterWidth}
             keyExtractor={(item) => item.id}

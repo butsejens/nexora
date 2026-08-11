@@ -639,10 +639,15 @@ function StreamWebView({
             '[id*="ad"], [class*="ad"], [id*="ads"], [class*="ads"], [id*="banner"], [class*="banner"], iframe[src*="doubleclick"], iframe[src*="googlesyndication"], iframe[src*="adservice"], iframe[src*="taboola"], iframe[src*="outbrain"], .adsbygoogle, .google-auto-placed { display: none !important; }',
             'video::-webkit-media-controls, video::-webkit-media-controls-enclosure, video::-webkit-media-controls-panel, video::-webkit-media-controls-play-button, video::-webkit-media-controls-fullscreen-button, video::-webkit-media-controls-overlay-enclosure, video::-webkit-media-controls-start-playback-button { display: none !important; -webkit-appearance: none !important; }',
             'video::-moz-media-controls { display: none !important; }',
-            'button[aria-label*="fullscreen" i], button[title*="fullscreen" i], .fullscreen, [class*="fullscreen" i], [id*="fullscreen" i], [class*="pip" i], [id*="pip" i], button[aria-label*="picture in picture" i] { display: none !important; visibility: hidden !important; opacity: 0 !important; pointer-events: none !important; }',
+            'button, [role="button"], [class*="control" i], [id*="control" i], [class*="overlay" i], [id*="overlay" i], [class*="player-ui" i], [class*="seek" i], [class*="rewind" i], [class*="forward" i], button[aria-label*="fullscreen" i], button[title*="fullscreen" i], .fullscreen, [class*="fullscreen" i], [id*="fullscreen" i], [class*="pip" i], [id*="pip" i], button[aria-label*="picture in picture" i] { visibility: hidden !important; opacity: 0 !important; pointer-events: none !important; }',
             'iframe, video { border: 0 !important; box-shadow: none !important; }'
           ].join(' ');
           document.head.appendChild(style);
+
+          try {
+            document.documentElement.style.touchAction = 'none';
+            if (document.body) document.body.style.touchAction = 'none';
+          } catch (e) {}
 
           const hideCandidates = (root) => {
             const candidates = Array.from(root.querySelectorAll('*'));
@@ -670,7 +675,7 @@ function StreamWebView({
                 return;
               }
               if (frame.style) {
-                frame.style.pointerEvents = 'auto';
+                frame.style.pointerEvents = 'none';
                 frame.style.zIndex = '1';
               }
             });
@@ -736,6 +741,7 @@ function StreamWebView({
               video.setAttribute('disablePictureInPicture', 'true');
               video.style.objectFit = 'contain';
               video.style.background = '#000';
+              video.style.pointerEvents = 'none';
               if (typeof video.requestFullscreen === 'function') {
                 video.requestFullscreen = function() { return Promise.resolve(); };
               }
