@@ -469,6 +469,7 @@ function StreamWebView({
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const webViewRef = useRef<WebView>(null);
+  const topHostLockRef = useRef("");
   const autoHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const volumeBoostIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const volumeRafRef = useRef<number | null>(null);
@@ -584,10 +585,26 @@ function StreamWebView({
               return { subtitles: subtitles, audios: audios };
             };
             if (command === 'toggle') {
+              try {
+                video.muted = false;
+                if (!Number.isFinite(video.volume) || video.volume < 0.85) {
+                  video.volume = 1;
+                }
+                video.playsInline = true;
+                video.setAttribute('playsinline', 'true');
+                video.setAttribute('webkit-playsinline', 'true');
+              } catch (e) {}
               if (video.paused) {
                 video.play && video.play().catch(function(){});
               } else {
                 video.pause && video.pause();
+              }
+              if (window.ReactNativeWebView) {
+                window.ReactNativeWebView.postMessage(JSON.stringify({
+                  type: 'VOLUME_SYNC',
+                  volume: Number(video.volume || 0),
+                  muted: Boolean(video.muted)
+                }));
               }
             }
             if (command === 'seekBy') {
@@ -788,6 +805,14 @@ function StreamWebView({
   );
 
   const handleWebViewLoad = useCallback(() => {
+    try {
+      const host = new URL(url).hostname.toLowerCase();
+      if (host && !topHostLockRef.current) {
+        topHostLockRef.current = host;
+      }
+    } catch {
+      // Keep lock empty when URL parsing fails.
+    }
     onLoad();
     setVolume(1);
     setIsMuted(false);
@@ -804,8 +829,12 @@ function StreamWebView({
         volumeBoostIntervalRef.current = null;
       }
     }, 700);
+    // Ensure native controls show correct startup volume state right away.
+    setTimeout(() => {
+      applyVolume(1, false);
+    }, 200);
     setTimeout(requestTrackSync, 900);
-  }, [applyVolume, onLoad, requestTrackSync]);
+  }, [applyVolume, onLoad, requestTrackSync, url]);
 
   useEffect(() => {
     return () => {
@@ -1204,6 +1233,26 @@ function StreamWebView({
           if (blockedHosts.some((host) => target.includes(host))) return false;
           if (!target.startsWith("http") && !target.startsWith("about:") && !target.startsWith("data:") && !target.startsWith("blob:")) return false;
           if (target.startsWith("intent:") || target.startsWith("market:") || target.startsWith("mailto:") || target.startsWith("tel:")) return false;
+
+          const requestWithFrame = request as { url?: string; isTopFrame?: boolean };
+          const isTopFrame = requestWithFrame.isTopFrame !== false;
+          if (!isTopFrame) return true;
+
+          try {
+            const targetHost = new URL(target).hostname.toLowerCase();
+            const lockedHost = topHostLockRef.current;
+            if (
+              lockedHost &&
+              targetHost &&
+              targetHost !== lockedHost &&
+              !targetHost.endsWith(`.${lockedHost}`)
+            ) {
+              return false;
+            }
+          } catch {
+            return false;
+          }
+
           return true;
         }}
         startInLoadingState
