@@ -69,12 +69,15 @@ export interface CineLogLogoProps {
   showTagline?: boolean;
   /** Hide the wordmark and render the mark on its own. */
   markOnly?: boolean;
+  /** Use a tighter tagline style for narrow mobile/footer layouts. */
+  compactTagline?: boolean;
 }
 
 export function CineLogLogo({
   size = 30,
   showTagline = false,
   markOnly = false,
+  compactTagline = false,
 }: CineLogLogoProps) {
   const t = useT();
   const styles = useStyles();
@@ -98,7 +101,12 @@ export function CineLogLogo({
           Cine<Text style={styles.wordmarkAccent}>Log</Text>
         </Text>
         {showTagline ? (
-          <Text style={styles.tagline} numberOfLines={1}>
+          <Text
+            style={[styles.tagline, compactTagline ? styles.taglineCompact : null]}
+            numberOfLines={1}
+            adjustsFontSizeToFit
+            minimumFontScale={0.78}
+          >
             {t("Discover. Track. Watch.")}
           </Text>
         ) : null}
@@ -117,6 +125,7 @@ const useStyles = makeStyles((c, t) => ({
   },
   wordmarkWrap: {
     minWidth: 0,
+    flexGrow: 1,
     flexShrink: 1,
   },
   wordmark: {
@@ -132,9 +141,15 @@ const useStyles = makeStyles((c, t) => ({
   tagline: {
     fontFamily: FONTS.medium,
     fontSize: 10,
-    letterSpacing: 1.6,
+    letterSpacing: 1.1,
     textTransform: "uppercase",
     color: c.textMuted,
     marginTop: 1,
+    paddingRight: 4,
+  },
+  taglineCompact: {
+    fontSize: 9,
+    letterSpacing: 0.9,
+    paddingRight: 6,
   },
 }));

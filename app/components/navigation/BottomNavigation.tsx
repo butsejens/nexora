@@ -69,7 +69,12 @@ export function BottomNavigation({
                   color={active ? colors.accent : colors.textMuted}
                 />
               </View>
-              <Text style={[styles.label, active ? styles.labelActive : null]}>
+              <Text
+                style={[styles.label, active ? styles.labelActive : null]}
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.75}
+              >
                 {t(item.label)}
               </Text>
             </Pressable>
@@ -93,7 +98,9 @@ const useStyles = makeStyles((c, t) => ({
   row: {
     flexDirection: "row",
     alignItems: "center",
-    height: LAYOUT.bottomNavHeight,
+    minHeight: LAYOUT.bottomNavHeight,
+    paddingTop: 2,
+    paddingBottom: 4,
     gap: 0,
   },
   tab: {
@@ -105,9 +112,9 @@ const useStyles = makeStyles((c, t) => ({
     paddingHorizontal: 1,
   },
   iconWrap: {
-    width: 38,
-    height: 34,
-    borderRadius: 17,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -118,12 +125,13 @@ const useStyles = makeStyles((c, t) => ({
   },
   label: {
     fontFamily: FONTS.medium,
-    fontSize: 10,
-    lineHeight: 12,
+    fontSize: 9,
+    lineHeight: 11,
     paddingHorizontal: 1,
     textAlign: "center",
     color: c.textMuted,
     width: "100%",
+    includeFontPadding: false,
   },
   labelActive: {
     fontFamily: FONTS.semibold,

@@ -35,7 +35,7 @@ export function Footer() {
       ]}
     >
       <View style={styles.brandBlock}>
-        <CineLogLogo size={24} showTagline />
+        <CineLogLogo size={24} showTagline compactTagline />
       </View>
 
       <View style={styles.linkRow}>
@@ -74,6 +74,8 @@ const useStyles = makeStyles((c, t) => ({
   },
   brandBlock: {
     flexDirection: "row",
+    width: "100%",
+    minWidth: 0,
   },
   linkRow: {
     flexDirection: "row",
