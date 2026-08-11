@@ -35,7 +35,7 @@ export function Footer() {
       ]}
     >
       <View style={styles.brandBlock}>
-        <CineLogLogo size={24} showTagline compactTagline />
+        <CineLogLogo size={24} />
       </View>
 
       <View style={styles.linkRow}>
@@ -71,6 +71,7 @@ const useStyles = makeStyles((c, t) => ({
   },
   footerMobile: {
     alignItems: "flex-start",
+    paddingBottom: SPACING.xxl,
   },
   brandBlock: {
     flexDirection: "row",

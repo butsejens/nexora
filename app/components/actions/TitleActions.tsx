@@ -858,6 +858,34 @@ function StreamWebView({
     [],
   );
 
+  const trustedStreamHosts = useMemo(
+    () => [
+      "vidlink.pro",
+      "vidfast.pro",
+      "player.videasy.net",
+      "player.vidsrc.nl",
+      "warezcdn.com",
+      "flicky.host",
+      "moviesapi.club",
+      "flickystream.ru",
+      "autoembed.cc",
+      "embed.su",
+      "111movies.net",
+      "vidsrc.stream",
+      "2embed.org",
+      "www.2embed.org",
+    ],
+    [],
+  );
+
+  const primaryHost = useMemo(() => {
+    try {
+      return new URL(url).hostname.toLowerCase();
+    } catch {
+      return "";
+    }
+  }, [url]);
+
   const injectedJavaScript = useMemo(() => {
     return `
       (function(){
@@ -1182,6 +1210,22 @@ function StreamWebView({
           if (blockedHosts.some((host) => target.includes(host))) return false;
           if (!target.startsWith("http") && !target.startsWith("about:") && !target.startsWith("data:") && !target.startsWith("blob:")) return false;
           if (target.startsWith("intent:") || target.startsWith("market:") || target.startsWith("mailto:") || target.startsWith("tel:")) return false;
+
+          try {
+            const targetHost = new URL(target).hostname.toLowerCase();
+            const samePrimary =
+              primaryHost.length > 0 &&
+              (targetHost === primaryHost || targetHost.endsWith(`.${primaryHost}`));
+            const trustedHost = trustedStreamHosts.some(
+              (host) => targetHost === host || targetHost.endsWith(`.${host}`),
+            );
+            if (!samePrimary && !trustedHost) {
+              return false;
+            }
+          } catch {
+            return false;
+          }
+
           return true;
         }}
         startInLoadingState

@@ -6,7 +6,7 @@
  */
 
 import React from "react";
-import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
+import { Platform, Pressable, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 import { BlurView } from "expo-blur";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -30,6 +30,8 @@ export function BottomNavigation({
   const { colors } = useTheme();
   const styles = useStyles();
   const insets = useSafeAreaInsets();
+  const { width } = useWindowDimensions();
+  const compact = width < 380;
 
   return (
     <View
@@ -47,7 +49,12 @@ export function BottomNavigation({
       {Platform.OS === "android" ? null : (
         <BlurView intensity={40} tint="dark" style={StyleSheet.absoluteFill} />
       )}
-      <View style={styles.row}>
+      <View
+        style={[
+          styles.row,
+          compact ? styles.rowCompact : null,
+        ]}
+      >
         {NAV_ITEMS.map((item) => {
           const active = activeRoute === item.route;
           return (
@@ -57,23 +64,31 @@ export function BottomNavigation({
               accessibilityRole="tab"
               accessibilityState={{ selected: active }}
               accessibilityLabel={t(item.label)}
-              style={styles.tab}
+              style={[styles.tab, compact ? styles.tabCompact : null]}
               hitSlop={4}
             >
               <View
-                style={[styles.iconWrap, active ? styles.iconWrapActive : null]}
+                style={[
+                  styles.iconWrap,
+                  compact ? styles.iconWrapCompact : null,
+                  active ? styles.iconWrapActive : null,
+                ]}
               >
                 <Ionicons
                   name={active ? item.activeIcon : item.icon}
-                  size={21}
+                  size={compact ? 19 : 21}
                   color={active ? colors.accent : colors.textMuted}
                 />
               </View>
               <Text
-                style={[styles.label, active ? styles.labelActive : null]}
+                style={[
+                  styles.label,
+                  compact ? styles.labelCompact : null,
+                  active ? styles.labelActive : null,
+                ]}
                 numberOfLines={1}
                 adjustsFontSizeToFit
-                minimumFontScale={0.75}
+                minimumFontScale={0.82}
               >
                 {t(item.label)}
               </Text>
@@ -99,9 +114,13 @@ const useStyles = makeStyles((c, t) => ({
     flexDirection: "row",
     alignItems: "center",
     minHeight: LAYOUT.bottomNavHeight,
-    paddingTop: 2,
-    paddingBottom: 4,
+    paddingTop: 3,
+    paddingBottom: 6,
     gap: 0,
+  },
+  rowCompact: {
+    minHeight: LAYOUT.bottomNavHeight - 2,
+    paddingBottom: 8,
   },
   tab: {
     flex: 1,
@@ -111,12 +130,20 @@ const useStyles = makeStyles((c, t) => ({
     gap: 3,
     paddingHorizontal: 1,
   },
+  tabCompact: {
+    gap: 2,
+  },
   iconWrap: {
     width: 36,
     height: 36,
     borderRadius: 18,
     alignItems: "center",
     justifyContent: "center",
+  },
+  iconWrapCompact: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
   },
   iconWrapActive: {
     backgroundColor: c.accentSoft,
@@ -125,13 +152,17 @@ const useStyles = makeStyles((c, t) => ({
   },
   label: {
     fontFamily: FONTS.medium,
-    fontSize: 9,
-    lineHeight: 11,
+    fontSize: 10,
+    lineHeight: 12,
     paddingHorizontal: 1,
     textAlign: "center",
     color: c.textMuted,
     width: "100%",
     includeFontPadding: false,
+  },
+  labelCompact: {
+    fontSize: 9,
+    lineHeight: 11,
   },
   labelActive: {
     fontFamily: FONTS.semibold,
