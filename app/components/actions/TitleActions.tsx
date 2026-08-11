@@ -471,9 +471,7 @@ function StreamWebView({
   const webViewRef = useRef<WebView>(null);
   const autoHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const volumeBoostIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const seekRafRef = useRef<number | null>(null);
   const volumeRafRef = useRef<number | null>(null);
-  const pendingSeekRef = useRef<number | null>(null);
   const pendingVolumeRef = useRef<number | null>(null);
   const [controlsVisible, setControlsVisible] = useState(true);
   const [durationSeconds, setDurationSeconds] = useState(0);
@@ -487,6 +485,7 @@ function StreamWebView({
   const [showTracksPanel, setShowTracksPanel] = useState(false);
   const [subtitleTracks, setSubtitleTracks] = useState<PlayerSubtitleTrack[]>([]);
   const [audioTracks, setAudioTracks] = useState<PlayerAudioTrack[]>([]);
+  const [selectedSubtitleIndex, setSelectedSubtitleIndex] = useState<number>(-1);
   useKeepAwake();
 
   const clearHideTimer = useCallback(() => {
@@ -537,7 +536,21 @@ function StreamWebView({
       const script = `
         (function () {
           try {
-            var video = document.querySelector('video');
+            var getPrimaryVideo = function() {
+              try {
+                var videos = Array.from(document.querySelectorAll('video'));
+                if (!videos.length) return null;
+                videos.sort(function(a, b) {
+                  var aScore = ((a.videoWidth || 0) * (a.videoHeight || 0)) + ((a.duration || 0) * 10) + (a.paused ? 0 : 100000);
+                  var bScore = ((b.videoWidth || 0) * (b.videoHeight || 0)) + ((b.duration || 0) * 10) + (b.paused ? 0 : 100000);
+                  return bScore - aScore;
+                });
+                return videos[0] || null;
+              } catch (e) {
+                return document.querySelector('video');
+              }
+            };
+            var video = getPrimaryVideo();
             if (!video) return;
             var command = ${JSON.stringify(command)};
             var value = Number(${JSON.stringify(value)}) || 0;
@@ -624,6 +637,9 @@ function StreamWebView({
               try {
                 var subtitleIdx = Math.floor(value);
                 var textTracks = video.textTracks || [];
+                if (!textTracks.length && window.ReactNativeWebView) {
+                  window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'SUBTITLES_UNAVAILABLE' }));
+                }
                 for (var k = 0; k < textTracks.length; k++) {
                   textTracks[k].mode = (k === subtitleIdx && subtitleIdx >= 0) ? 'showing' : 'disabled';
                 }
@@ -692,23 +708,11 @@ function StreamWebView({
     (x: number) => {
       if (durationSeconds <= 0 || progressTrackWidth <= 0) return;
       const ratio = Math.max(0, Math.min(1, x / progressTrackWidth));
-      sendPlayerCommand("seekTo", ratio * durationSeconds);
+      const nextSeconds = ratio * durationSeconds;
+      setScrubPreviewSeconds(nextSeconds);
+      sendPlayerCommand("seekTo", nextSeconds, false);
     },
     [durationSeconds, progressTrackWidth, sendPlayerCommand],
-  );
-
-  const scheduleSeekTo = useCallback(
-    (nextSeconds: number) => {
-      pendingSeekRef.current = nextSeconds;
-      if (seekRafRef.current != null) return;
-      seekRafRef.current = requestAnimationFrame(() => {
-        seekRafRef.current = null;
-        const target = pendingSeekRef.current;
-        if (target == null) return;
-        sendPlayerCommand("seekTo", target, false);
-      });
-    },
-    [sendPlayerCommand],
   );
 
   const applyVolume = useCallback(
@@ -739,6 +743,8 @@ function StreamWebView({
     (x: number) => {
       if (volumeTrackWidth <= 0) return;
       const ratio = Math.max(0, Math.min(1, x / volumeTrackWidth));
+      setVolume(ratio);
+      setIsMuted(ratio <= 0.001);
       scheduleVolumeTo(ratio);
     },
     [scheduleVolumeTo, volumeTrackWidth],
@@ -758,9 +764,8 @@ function StreamWebView({
       const ratio = Math.max(0, Math.min(1, x / progressTrackWidth));
       const nextTime = ratio * durationSeconds;
       setScrubPreviewSeconds(nextTime);
-      scheduleSeekTo(nextTime);
     },
-    [durationSeconds, progressTrackWidth, scheduleSeekTo],
+    [durationSeconds, progressTrackWidth],
   );
 
   const requestTrackSync = useCallback(() => {
@@ -769,6 +774,7 @@ function StreamWebView({
 
   const handleSubtitleSelection = useCallback(
     (index: number) => {
+      setSelectedSubtitleIndex(index);
       sendPlayerCommand("setSubtitleTrack", index);
     },
     [sendPlayerCommand],
@@ -806,9 +812,6 @@ function StreamWebView({
       if (volumeBoostIntervalRef.current) {
         clearInterval(volumeBoostIntervalRef.current);
         volumeBoostIntervalRef.current = null;
-      }
-      if (seekRafRef.current != null) {
-        cancelAnimationFrame(seekRafRef.current);
       }
       if (volumeRafRef.current != null) {
         cancelAnimationFrame(volumeRafRef.current);
@@ -883,7 +886,7 @@ function StreamWebView({
             '[id*="ad"], [class*="ad"], [id*="ads"], [class*="ads"], [id*="banner"], [class*="banner"], iframe[src*="doubleclick"], iframe[src*="googlesyndication"], iframe[src*="adservice"], iframe[src*="taboola"], iframe[src*="outbrain"], .adsbygoogle, .google-auto-placed { display: none !important; }',
             'video::-webkit-media-controls, video::-webkit-media-controls-enclosure, video::-webkit-media-controls-panel, video::-webkit-media-controls-play-button, video::-webkit-media-controls-fullscreen-button, video::-webkit-media-controls-overlay-enclosure, video::-webkit-media-controls-start-playback-button { display: none !important; -webkit-appearance: none !important; }',
             'video::-moz-media-controls { display: none !important; }',
-            'button, [role="button"], [class*="control" i], [id*="control" i], [class*="overlay" i], [id*="overlay" i], [class*="player-ui" i], [class*="seek" i], [class*="rewind" i], [class*="forward" i], button[aria-label*="fullscreen" i], button[title*="fullscreen" i], .fullscreen, [class*="fullscreen" i], [id*="fullscreen" i], [class*="pip" i], [id*="pip" i], button[aria-label*="picture in picture" i] { visibility: hidden !important; opacity: 0 !important; pointer-events: none !important; }',
+            'button[aria-label*="fullscreen" i], button[title*="fullscreen" i], .fullscreen, [class*="fullscreen" i], [id*="fullscreen" i], [class*="pip" i], [id*="pip" i], button[aria-label*="picture in picture" i], [class*="rewind" i], [class*="forward" i] { visibility: hidden !important; opacity: 0 !important; pointer-events: none !important; }',
             'iframe, video { border: 0 !important; box-shadow: none !important; }'
           ].join(' ');
           document.head.appendChild(style);
@@ -941,7 +944,13 @@ function StreamWebView({
 
           var forceAudio = function() {
             try {
-              var media = document.querySelector('video, audio');
+              var videos = Array.from(document.querySelectorAll('video'));
+              videos.sort(function(a, b) {
+                var aScore = ((a.videoWidth || 0) * (a.videoHeight || 0)) + ((a.duration || 0) * 10) + (a.paused ? 0 : 100000);
+                var bScore = ((b.videoWidth || 0) * (b.videoHeight || 0)) + ((b.duration || 0) * 10) + (b.paused ? 0 : 100000);
+                return bScore - aScore;
+              });
+              var media = videos[0] || document.querySelector('video, audio');
               if (!media) return;
               media.muted = false;
               media.volume = 1;
@@ -953,7 +962,13 @@ function StreamWebView({
 
           var emitProgress = function() {
             try {
-              var video = document.querySelector('video');
+              var videos = Array.from(document.querySelectorAll('video'));
+              videos.sort(function(a, b) {
+                var aScore = ((a.videoWidth || 0) * (a.videoHeight || 0)) + ((a.duration || 0) * 10) + (a.paused ? 0 : 100000);
+                var bScore = ((b.videoWidth || 0) * (b.videoHeight || 0)) + ((b.duration || 0) * 10) + (b.paused ? 0 : 100000);
+                return bScore - aScore;
+              });
+              var video = videos[0] || document.querySelector('video');
               if (!video || !window.ReactNativeWebView) return;
               try {
                 video.controls = false;
@@ -969,7 +984,13 @@ function StreamWebView({
           };
 
           var bindVideoEvents = function() {
-            var video = document.querySelector('video');
+            var videos = Array.from(document.querySelectorAll('video'));
+            videos.sort(function(a, b) {
+              var aScore = ((a.videoWidth || 0) * (a.videoHeight || 0)) + ((a.duration || 0) * 10) + (a.paused ? 0 : 100000);
+              var bScore = ((b.videoWidth || 0) * (b.videoHeight || 0)) + ((b.duration || 0) * 10) + (b.paused ? 0 : 100000);
+              return bScore - aScore;
+            });
+            var video = videos[0] || document.querySelector('video');
             if (!video || video.__cinelogBound) return;
             video.__cinelogBound = true;
             try {
@@ -1140,6 +1161,15 @@ function StreamWebView({
                 : [];
               setSubtitleTracks(incomingSubtitles);
               setAudioTracks(incomingAudios);
+              const activeSubtitle = incomingSubtitles.find((track) => track.mode === "showing");
+              setSelectedSubtitleIndex(activeSubtitle ? activeSubtitle.index : -1);
+              return;
+            }
+            if (payload.type === "SUBTITLES_UNAVAILABLE") {
+              Alert.alert(
+                "No subtitles available",
+                "This stream provider does not expose subtitle tracks in embedded playback.",
+              );
             }
           } catch {
             // Ignore malformed bridge events from third-party players.
@@ -1310,7 +1340,7 @@ function StreamWebView({
                 }}
                 onResponderRelease={(event) => {
                   handleProgressPress(event.nativeEvent.locationX);
-                  setScrubPreviewSeconds(null);
+                  setTimeout(() => setScrubPreviewSeconds(null), 120);
                 }}
                 accessibilityRole="adjustable"
                 accessibilityLabel="Seek"
@@ -1321,7 +1351,7 @@ function StreamWebView({
                     {
                       width:
                         durationSeconds > 0
-                          ? `${Math.max(0, Math.min(100, (positionSeconds / durationSeconds) * 100))}%`
+                          ? `${Math.max(0, Math.min(100, (((scrubPreviewSeconds ?? positionSeconds) / durationSeconds) * 100)))}%`
                           : "0%",
                     },
                   ]}
@@ -1335,7 +1365,10 @@ function StreamWebView({
               <Text style={styles.tracksTitle}>Subtitles</Text>
               <View style={styles.trackRow}>
                 <Pressable
-                  style={styles.trackPill}
+                  style={[
+                    styles.trackPill,
+                    selectedSubtitleIndex < 0 ? styles.trackPillActive : null,
+                  ]}
                   onPress={() => handleSubtitleSelection(-1)}
                   accessibilityRole="button"
                   accessibilityLabel="Subtitles off"
@@ -1347,7 +1380,7 @@ function StreamWebView({
                     key={`subtitle-${track.index}`}
                     style={[
                       styles.trackPill,
-                      track.mode === "showing" ? styles.trackPillActive : null,
+                      selectedSubtitleIndex === track.index ? styles.trackPillActive : null,
                     ]}
                     onPress={() => handleSubtitleSelection(track.index)}
                     accessibilityRole="button"
@@ -1473,8 +1506,9 @@ const useStyles = makeStyles((c) => ({
   },
   controlsTopBar: {
     flexDirection: "row",
-    justifyContent: "space-between",
+    justifyContent: "flex-start",
     alignItems: "center",
+    flexWrap: "wrap",
     gap: SPACING.sm,
   },
   topActionButton: {
@@ -1485,8 +1519,8 @@ const useStyles = makeStyles((c) => ({
     borderWidth: 1,
     borderColor: c.borderStrong,
     backgroundColor: "rgba(0,0,0,0.65)",
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.xs,
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: 6,
   },
   topActionLabel: {
     color: c.textPrimary,
