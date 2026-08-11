@@ -595,38 +595,21 @@ function StreamWebView({
                 video.setAttribute('webkit-playsinline', 'true');
                 video.controls = false;
                 video.removeAttribute('controls');
-                if (video.webkitSupportsPresentationMode) {
-                  video.webkitSetPresentationMode('inline');
-                }
               } catch (e) {}
               if (video.paused) {
-                try {
-                  var nativePlay = (window.HTMLMediaElement && HTMLMediaElement.prototype && HTMLMediaElement.prototype.play)
-                    ? HTMLMediaElement.prototype.play
-                    : null;
-                  if (nativePlay) {
-                    nativePlay.call(video).catch(function(){});
-                  } else {
-                    video.play && video.play().catch(function(){});
-                  }
-                } catch (e) {
-                  video.play && video.play().catch(function(){});
-                }
+                video.play && video.play().catch(function(){});
               } else {
-                try {
-                  var nativePause = (window.HTMLMediaElement && HTMLMediaElement.prototype && HTMLMediaElement.prototype.pause)
-                    ? HTMLMediaElement.prototype.pause
-                    : null;
-                  if (nativePause) {
-                    nativePause.call(video);
-                  } else {
-                    video.pause && video.pause();
-                  }
-                } catch (e) {
-                  video.pause && video.pause();
-                }
+                video.pause && video.pause();
               }
-              enforceInlinePlayback();
+              try {
+                var overlayNodes = Array.from(document.querySelectorAll('[class*="rewind" i], [class*="forward" i], [class*="seek" i], [class*="play" i], [class*="pause" i], [aria-label*="rewind" i], [aria-label*="forward" i], [aria-label*="pause" i], [aria-label*="play" i]'));
+                overlayNodes.forEach(function(node) {
+                  if (!node || node === video || node.contains(video) || video.contains(node)) return;
+                  node.style.display = 'none';
+                  node.style.visibility = 'hidden';
+                  node.style.pointerEvents = 'none';
+                });
+              } catch (e) {}
               if (window.ReactNativeWebView) {
                 window.ReactNativeWebView.postMessage(JSON.stringify({
                   type: 'VOLUME_SYNC',
@@ -944,9 +927,7 @@ function StreamWebView({
             'video::-webkit-media-controls, video::-webkit-media-controls-enclosure, video::-webkit-media-controls-panel, video::-webkit-media-controls-play-button, video::-webkit-media-controls-fullscreen-button, video::-webkit-media-controls-overlay-enclosure, video::-webkit-media-controls-start-playback-button { display: none !important; -webkit-appearance: none !important; }',
             'video::-moz-media-controls { display: none !important; }',
             'button[aria-label*="fullscreen" i], button[title*="fullscreen" i], .fullscreen, [class*="fullscreen" i], [id*="fullscreen" i], [class*="pip" i], [id*="pip" i], button[aria-label*="picture in picture" i], [class*="rewind" i], [class*="forward" i] { visibility: hidden !important; opacity: 0 !important; pointer-events: none !important; }',
-            '.jw-controls, .jw-display, .jw-display-icon-container, .jw-logo, .vjs-control-bar, .vjs-big-play-button, .plyr__controls, .plyr__control, [class*="player-control" i], [class*="overlay" i], [class*="watermark" i] { visibility: hidden !important; opacity: 0 !important; pointer-events: none !important; }',
-            'iframe, video { border: 0 !important; box-shadow: none !important; }',
-            'body * { -webkit-user-select: none !important; user-select: none !important; }'
+            'iframe, video { border: 0 !important; box-shadow: none !important; }'
           ].join(' ');
           document.head.appendChild(style);
 
@@ -1019,7 +1000,7 @@ function StreamWebView({
             } catch (e) {}
           };
 
-          var isolatePrimaryVideo = function() {
+          var hideThirdPartyControlOverlays = function() {
             try {
               var videos = Array.from(document.querySelectorAll('video'));
               videos.sort(function(a, b) {
@@ -1030,92 +1011,30 @@ function StreamWebView({
               var video = videos[0] || document.querySelector('video');
               if (!video || !document.body) return;
 
-              try {
-                document.documentElement.style.background = '#000';
-                document.body.style.background = '#000';
-                document.body.style.margin = '0';
-                document.body.style.overflow = 'hidden';
-              } catch (e) {}
+              var selector = [
+                '[class*="rewind" i]',
+                '[class*="forward" i]',
+                '[class*="seek" i]',
+                '[class*="play" i]',
+                '[class*="pause" i]',
+                '[aria-label*="rewind" i]',
+                '[aria-label*="forward" i]',
+                '[aria-label*="pause" i]',
+                '[aria-label*="play" i]',
+                '[class*="jw-display" i]',
+                '[class*="vjs-big-play" i]',
+                '[class*="plyr__control" i]'
+              ].join(',');
 
-              var preserveChain = new Set();
-              var cursor = video;
-              while (cursor && cursor !== document.body) {
-                preserveChain.add(cursor);
-                cursor = cursor.parentElement;
-              }
-              preserveChain.add(video);
-
-              var allNodes = Array.from(document.body.querySelectorAll('*'));
-              allNodes.forEach(function(node) {
-                if (!node || !node.tagName) return;
-                var tag = String(node.tagName).toLowerCase();
-                if (tag === 'script' || tag === 'style' || tag === 'link' || tag === 'source' || tag === 'track') return;
-                if (node === video || preserveChain.has(node) || node.contains(video) || video.contains(node)) {
-                  return;
-                }
+              var overlayNodes = Array.from(document.querySelectorAll(selector));
+              overlayNodes.forEach(function(node) {
+                if (!node || node === video || node.contains(video) || video.contains(node)) return;
                 try {
+                  node.style.display = 'none';
                   node.style.visibility = 'hidden';
                   node.style.opacity = '0';
                   node.style.pointerEvents = 'none';
-                  node.style.display = 'none';
                 } catch (e) {}
-              });
-
-              var keywordSelectors = [
-                '[class*="logo" i]',
-                '[id*="logo" i]',
-                '[class*="watermark" i]',
-                '[id*="watermark" i]',
-                '[class*="controls" i]',
-                '[id*="controls" i]',
-                '[class*="pause" i]',
-                '[id*="pause" i]',
-                '[class*="rewind" i]',
-                '[class*="forward" i]'
-              ];
-              keywordSelectors.forEach(function(selector) {
-                try {
-                  var matches = Array.from(document.querySelectorAll(selector));
-                  matches.forEach(function(node) {
-                    if (node === video || node.contains(video) || video.contains(node)) return;
-                    node.style.visibility = 'hidden';
-                    node.style.opacity = '0';
-                    node.style.pointerEvents = 'none';
-                    node.style.display = 'none';
-                  });
-                } catch (e) {}
-              });
-            } catch (e) {}
-          };
-
-          var enforceInlinePlayback = function() {
-              isolatePrimaryVideo();
-            try {
-              if (document.fullscreenElement && document.exitFullscreen) {
-                document.exitFullscreen().catch(function(){});
-              }
-            } catch (e) {}
-            try {
-              if (document.webkitFullscreenElement && document.webkitExitFullscreen) {
-                document.webkitExitFullscreen();
-              }
-            } catch (e) {}
-            try {
-              var videos = Array.from(document.querySelectorAll('video'));
-              videos.forEach(function(video) {
-                try {
-                  video.controls = false;
-                  video.removeAttribute('controls');
-                  video.playsInline = true;
-                  video.setAttribute('playsinline', 'true');
-                  video.setAttribute('webkit-playsinline', 'true');
-                  video.disablePictureInPicture = true;
-                  video.setAttribute('disablePictureInPicture', 'true');
-                  video.style.pointerEvents = 'none';
-                  if (video.webkitSupportsPresentationMode && video.webkitPresentationMode !== 'inline') {
-                    video.webkitSetPresentationMode('inline');
-                  }
-                } catch (err) {}
               });
             } catch (e) {}
           };
@@ -1197,6 +1116,9 @@ function StreamWebView({
             ['timeupdate', 'loadedmetadata', 'playing', 'pause'].forEach(function(evt){
               video.addEventListener(evt, emitProgress, { passive: true });
             });
+            ['timeupdate', 'playing', 'pause'].forEach(function(evt){
+              video.addEventListener(evt, hideThirdPartyControlOverlays, { passive: true });
+            });
             ['webkitbeginfullscreen', 'webkitendfullscreen', 'enterpictureinpicture', 'leavepictureinpicture'].forEach(function(evt){
               video.addEventListener(evt, function(e){
                 if (e && typeof e.preventDefault === 'function') e.preventDefault();
@@ -1211,6 +1133,7 @@ function StreamWebView({
               }, { capture: true, passive: false });
             });
             emitProgress();
+            hideThirdPartyControlOverlays();
           };
 
           try {
@@ -1259,17 +1182,11 @@ function StreamWebView({
           document.addEventListener('click', blockClickIfNeeded, true);
           document.addEventListener('touchstart', blockClickIfNeeded, true);
           document.addEventListener('pointerdown', blockClickIfNeeded, true);
-          document.addEventListener('fullscreenchange', enforceInlinePlayback, true);
-          document.addEventListener('webkitfullscreenchange', enforceInlinePlayback, true);
-          document.addEventListener('enterpictureinpicture', enforceInlinePlayback, true);
-          document.addEventListener('leavepictureinpicture', enforceInlinePlayback, true);
           setInterval(bindVideoEvents, 1200);
           setInterval(emitProgress, 1800);
-          setInterval(enforceInlinePlayback, 700);
-          setInterval(isolatePrimaryVideo, 700);
+          setInterval(hideThirdPartyControlOverlays, 350);
           setTimeout(forceAudio, 800);
-          setTimeout(enforceInlinePlayback, 350);
-          setTimeout(isolatePrimaryVideo, 350);
+          setTimeout(hideThirdPartyControlOverlays, 350);
         } catch (error) {}
       })();
     `;
