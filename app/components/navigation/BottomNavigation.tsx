@@ -145,6 +145,7 @@ const useStyles = makeStyles((c, t) => ({
   },
   iconWrapActive: {
     backgroundColor: c.accent,
+    borderRadius: 18,
     borderWidth: 0,
     shadowColor: c.accent,
     shadowOffset: { width: 0, height: 0 },
