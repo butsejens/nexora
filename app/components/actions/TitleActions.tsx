@@ -593,12 +593,40 @@ function StreamWebView({
                 video.playsInline = true;
                 video.setAttribute('playsinline', 'true');
                 video.setAttribute('webkit-playsinline', 'true');
+                video.controls = false;
+                video.removeAttribute('controls');
+                if (video.webkitSupportsPresentationMode) {
+                  video.webkitSetPresentationMode('inline');
+                }
               } catch (e) {}
               if (video.paused) {
-                video.play && video.play().catch(function(){});
+                try {
+                  var nativePlay = (window.HTMLMediaElement && HTMLMediaElement.prototype && HTMLMediaElement.prototype.play)
+                    ? HTMLMediaElement.prototype.play
+                    : null;
+                  if (nativePlay) {
+                    nativePlay.call(video).catch(function(){});
+                  } else {
+                    video.play && video.play().catch(function(){});
+                  }
+                } catch (e) {
+                  video.play && video.play().catch(function(){});
+                }
               } else {
-                video.pause && video.pause();
+                try {
+                  var nativePause = (window.HTMLMediaElement && HTMLMediaElement.prototype && HTMLMediaElement.prototype.pause)
+                    ? HTMLMediaElement.prototype.pause
+                    : null;
+                  if (nativePause) {
+                    nativePause.call(video);
+                  } else {
+                    video.pause && video.pause();
+                  }
+                } catch (e) {
+                  video.pause && video.pause();
+                }
               }
+              enforceInlinePlayback();
               if (window.ReactNativeWebView) {
                 window.ReactNativeWebView.postMessage(JSON.stringify({
                   type: 'VOLUME_SYNC',
@@ -916,7 +944,9 @@ function StreamWebView({
             'video::-webkit-media-controls, video::-webkit-media-controls-enclosure, video::-webkit-media-controls-panel, video::-webkit-media-controls-play-button, video::-webkit-media-controls-fullscreen-button, video::-webkit-media-controls-overlay-enclosure, video::-webkit-media-controls-start-playback-button { display: none !important; -webkit-appearance: none !important; }',
             'video::-moz-media-controls { display: none !important; }',
             'button[aria-label*="fullscreen" i], button[title*="fullscreen" i], .fullscreen, [class*="fullscreen" i], [id*="fullscreen" i], [class*="pip" i], [id*="pip" i], button[aria-label*="picture in picture" i], [class*="rewind" i], [class*="forward" i] { visibility: hidden !important; opacity: 0 !important; pointer-events: none !important; }',
-            'iframe, video { border: 0 !important; box-shadow: none !important; }'
+            '.jw-controls, .jw-display, .jw-display-icon-container, .jw-logo, .vjs-control-bar, .vjs-big-play-button, .plyr__controls, .plyr__control, [class*="player-control" i], [class*="overlay" i], [class*="watermark" i] { visibility: hidden !important; opacity: 0 !important; pointer-events: none !important; }',
+            'iframe, video { border: 0 !important; box-shadow: none !important; }',
+            'body * { -webkit-user-select: none !important; user-select: none !important; }'
           ].join(' ');
           document.head.appendChild(style);
 
@@ -986,6 +1016,37 @@ function StreamWebView({
               if (media.paused) {
                 media.play().catch(function(){});
               }
+            } catch (e) {}
+          };
+
+          var enforceInlinePlayback = function() {
+            try {
+              if (document.fullscreenElement && document.exitFullscreen) {
+                document.exitFullscreen().catch(function(){});
+              }
+            } catch (e) {}
+            try {
+              if (document.webkitFullscreenElement && document.webkitExitFullscreen) {
+                document.webkitExitFullscreen();
+              }
+            } catch (e) {}
+            try {
+              var videos = Array.from(document.querySelectorAll('video'));
+              videos.forEach(function(video) {
+                try {
+                  video.controls = false;
+                  video.removeAttribute('controls');
+                  video.playsInline = true;
+                  video.setAttribute('playsinline', 'true');
+                  video.setAttribute('webkit-playsinline', 'true');
+                  video.disablePictureInPicture = true;
+                  video.setAttribute('disablePictureInPicture', 'true');
+                  video.style.pointerEvents = 'none';
+                  if (video.webkitSupportsPresentationMode && video.webkitPresentationMode !== 'inline') {
+                    video.webkitSetPresentationMode('inline');
+                  }
+                } catch (err) {}
+              });
             } catch (e) {}
           };
 
@@ -1128,9 +1189,15 @@ function StreamWebView({
           document.addEventListener('click', blockClickIfNeeded, true);
           document.addEventListener('touchstart', blockClickIfNeeded, true);
           document.addEventListener('pointerdown', blockClickIfNeeded, true);
+          document.addEventListener('fullscreenchange', enforceInlinePlayback, true);
+          document.addEventListener('webkitfullscreenchange', enforceInlinePlayback, true);
+          document.addEventListener('enterpictureinpicture', enforceInlinePlayback, true);
+          document.addEventListener('leavepictureinpicture', enforceInlinePlayback, true);
           setInterval(bindVideoEvents, 1200);
           setInterval(emitProgress, 1800);
+          setInterval(enforceInlinePlayback, 700);
           setTimeout(forceAudio, 800);
+          setTimeout(enforceInlinePlayback, 350);
         } catch (error) {}
       })();
     `;
