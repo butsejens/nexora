@@ -132,8 +132,9 @@ const useStyles = makeStyles((c, t) => ({
     color: c.textPrimary,
   },
   logoWrap: {
-    minWidth: 0,
-    flexShrink: 1,
+    flex: 1,
+    minWidth: 120,
+    maxWidth: 200,
     paddingRight: SPACING.sm,
   },
   avatar: {

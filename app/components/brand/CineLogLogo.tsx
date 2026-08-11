@@ -121,12 +121,10 @@ const useStyles = makeStyles((c, t) => ({
     alignItems: "center",
     gap: 10,
     minWidth: 0,
-    flexShrink: 1,
   },
   wordmarkWrap: {
-    minWidth: 0,
-    flexGrow: 1,
-    flexShrink: 1,
+    minWidth: 80,
+    flexShrink: 0,
   },
   wordmark: {
     fontFamily: FONTS.extrabold,
