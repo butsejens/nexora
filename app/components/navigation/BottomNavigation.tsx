@@ -45,10 +45,8 @@ export function BottomNavigation({
       accessibilityRole="tablist"
       accessibilityLabel={t("Main navigation")}
     >
-      {/* Blur keeps content visible behind the bar on iOS and web. */}
-      {Platform.OS === "android" ? null : (
-        <BlurView intensity={40} tint="dark" style={StyleSheet.absoluteFill} />
-      )}
+      {/* Glass effect blur on all platforms */}
+      <BlurView intensity={80} tint="dark" style={StyleSheet.absoluteFill} />
       <View
         style={[
           styles.row,
@@ -77,7 +75,7 @@ export function BottomNavigation({
                 <Ionicons
                   name={active ? item.activeIcon : item.icon}
                   size={compact ? 19 : 21}
-                  color={active ? colors.accent : colors.textMuted}
+                  color={active ? "#FFFFFF" : colors.textMuted}
                 />
               </View>
               <Text
@@ -106,9 +104,9 @@ const useStyles = makeStyles((c, t) => ({
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: Platform.OS === "android" ? c.background : c.overlay,
+    backgroundColor: "rgba(0, 0, 0, 0.7)",
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: c.border,
+    borderTopColor: "rgba(255, 255, 255, 0.1)",
   },
   row: {
     flexDirection: "row",
@@ -146,9 +144,13 @@ const useStyles = makeStyles((c, t) => ({
     borderRadius: 17,
   },
   iconWrapActive: {
-    backgroundColor: c.accentSoft,
-    borderWidth: 1,
-    borderColor: c.accentGlow,
+    backgroundColor: c.accent,
+    borderWidth: 0,
+    shadowColor: c.accent,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.5,
+    shadowRadius: 8,
+    elevation: 8,
   },
   label: {
     fontFamily: FONTS.medium,
@@ -166,6 +168,6 @@ const useStyles = makeStyles((c, t) => ({
   },
   labelActive: {
     fontFamily: FONTS.semibold,
-    color: c.textPrimary,
+    color: "#FFFFFF",
   },
 }));

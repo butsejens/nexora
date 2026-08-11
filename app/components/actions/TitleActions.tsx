@@ -1035,6 +1035,19 @@ function StreamWebView({
               video.style.objectFit = 'contain';
               video.style.background = '#000';
               video.style.pointerEvents = 'none';
+              
+              if (video.webkitSupportsPresentationMode) {
+                try { video.webkitSetPresentationMode('inline'); } catch (e) {}
+              }
+              
+              video.addEventListener('webkitpresentationmodechanged', function(e) {
+                if (e && typeof e.preventDefault === 'function') e.preventDefault();
+                try {
+                  if (video.webkitPresentationMode !== 'inline') {
+                    video.webkitSetPresentationMode('inline');
+                  }
+                } catch (err) {}
+              });
               if (typeof video.requestFullscreen === 'function') {
                 video.requestFullscreen = function() { return Promise.resolve(); };
               }
@@ -1052,10 +1065,18 @@ function StreamWebView({
             ['timeupdate', 'loadedmetadata', 'playing', 'pause'].forEach(function(evt){
               video.addEventListener(evt, emitProgress, { passive: true });
             });
-            video.addEventListener('webkitbeginfullscreen', function(e){
-              if (e && typeof e.preventDefault === 'function') e.preventDefault();
-              try { video.pause && video.pause(); } catch (err) {}
-              try { video.play && video.play().catch(function(){}); } catch (err) {}
+            ['webkitbeginfullscreen', 'webkitendfullscreen', 'enterpictureinpicture', 'leavepictureinpicture'].forEach(function(evt){
+              video.addEventListener(evt, function(e){
+                if (e && typeof e.preventDefault === 'function') e.preventDefault();
+                if (e && typeof e.stopPropagation === 'function') e.stopPropagation();
+                if (e && typeof e.stopImmediatePropagation === 'function') e.stopImmediatePropagation();
+                try { 
+                  if (video.webkitSupportsPresentationMode) {
+                    video.webkitSetPresentationMode('inline');
+                  }
+                } catch (err) {}
+                return false;
+              }, { capture: true, passive: false });
             });
             emitProgress();
           };
@@ -1123,6 +1144,7 @@ function StreamWebView({
         allowsFullscreenVideo={false}
         allowsInlineMediaPlayback
         allowsAirPlayForMediaPlayback={false}
+        allowsPictureInPictureMediaPlayback={false}
         mediaPlaybackRequiresUserAction={false}
         javaScriptEnabled
         domStorageEnabled
