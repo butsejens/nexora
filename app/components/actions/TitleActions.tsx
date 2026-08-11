@@ -429,6 +429,20 @@ interface StreamWebViewProps {
   onPlaybackSync: (positionSeconds: number, durationSeconds: number) => void;
 }
 
+interface PlayerSubtitleTrack {
+  index: number;
+  label: string;
+  language: string;
+  mode: "disabled" | "hidden" | "showing";
+}
+
+interface PlayerAudioTrack {
+  index: number;
+  label: string;
+  language: string;
+  enabled: boolean;
+}
+
 function formatSeconds(totalSeconds: number): string {
   if (!Number.isFinite(totalSeconds) || totalSeconds <= 0) return "0:00";
   const safe = Math.floor(totalSeconds);
@@ -456,6 +470,11 @@ function StreamWebView({
   const insets = useSafeAreaInsets();
   const webViewRef = useRef<WebView>(null);
   const autoHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const volumeBoostIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const seekRafRef = useRef<number | null>(null);
+  const volumeRafRef = useRef<number | null>(null);
+  const pendingSeekRef = useRef<number | null>(null);
+  const pendingVolumeRef = useRef<number | null>(null);
   const [controlsVisible, setControlsVisible] = useState(true);
   const [durationSeconds, setDurationSeconds] = useState(0);
   const [positionSeconds, setPositionSeconds] = useState(0);
@@ -464,6 +483,10 @@ function StreamWebView({
   const [isMuted, setIsMuted] = useState(false);
   const [progressTrackWidth, setProgressTrackWidth] = useState(0);
   const [volumeTrackWidth, setVolumeTrackWidth] = useState(0);
+  const [scrubPreviewSeconds, setScrubPreviewSeconds] = useState<number | null>(null);
+  const [showTracksPanel, setShowTracksPanel] = useState(false);
+  const [subtitleTracks, setSubtitleTracks] = useState<PlayerSubtitleTrack[]>([]);
+  const [audioTracks, setAudioTracks] = useState<PlayerAudioTrack[]>([]);
   useKeepAwake();
 
   const clearHideTimer = useCallback(() => {
@@ -498,7 +521,19 @@ function StreamWebView({
   }, [clearHideTimer]);
 
   const sendPlayerCommand = useCallback(
-    (command: "toggle" | "seekBy" | "seekTo" | "cast" | "setVolume", value = 0) => {
+    (
+      command:
+        | "toggle"
+        | "seekBy"
+        | "seekTo"
+        | "cast"
+        | "setVolume"
+        | "getTracks"
+        | "setSubtitleTrack"
+        | "setAudioTrack",
+      value = 0,
+      shouldRevealControls = true,
+    ) => {
       const script = `
         (function () {
           try {
@@ -506,6 +541,35 @@ function StreamWebView({
             if (!video) return;
             var command = ${JSON.stringify(command)};
             var value = Number(${JSON.stringify(value)}) || 0;
+            var collectTracks = function() {
+              var subtitles = [];
+              var audios = [];
+              try {
+                var tt = video.textTracks || [];
+                for (var i = 0; i < tt.length; i++) {
+                  var s = tt[i];
+                  subtitles.push({
+                    index: i,
+                    label: String((s && s.label) || ('Subtitle ' + (i + 1))),
+                    language: String((s && s.language) || ''),
+                    mode: String((s && s.mode) || 'disabled')
+                  });
+                }
+              } catch (e) {}
+              try {
+                var at = video.audioTracks || [];
+                for (var j = 0; j < at.length; j++) {
+                  var a = at[j];
+                  audios.push({
+                    index: j,
+                    label: String((a && a.label) || ('Audio ' + (j + 1))),
+                    language: String((a && a.language) || ''),
+                    enabled: Boolean(a && a.enabled)
+                  });
+                }
+              } catch (e) {}
+              return { subtitles: subtitles, audios: audios };
+            };
             if (command === 'toggle') {
               if (video.paused) {
                 video.play && video.play().catch(function(){});
@@ -548,13 +612,55 @@ function StreamWebView({
                 }));
               }
             }
+            if (command === 'getTracks' && window.ReactNativeWebView) {
+              var tracks = collectTracks();
+              window.ReactNativeWebView.postMessage(JSON.stringify({
+                type: 'TRACKS_SYNC',
+                subtitles: tracks.subtitles,
+                audios: tracks.audios
+              }));
+            }
+            if (command === 'setSubtitleTrack') {
+              try {
+                var subtitleIdx = Math.floor(value);
+                var textTracks = video.textTracks || [];
+                for (var k = 0; k < textTracks.length; k++) {
+                  textTracks[k].mode = (k === subtitleIdx && subtitleIdx >= 0) ? 'showing' : 'disabled';
+                }
+                if (window.ReactNativeWebView) {
+                  var tracksAfterSubtitle = collectTracks();
+                  window.ReactNativeWebView.postMessage(JSON.stringify({
+                    type: 'TRACKS_SYNC',
+                    subtitles: tracksAfterSubtitle.subtitles,
+                    audios: tracksAfterSubtitle.audios
+                  }));
+                }
+              } catch (e) {}
+            }
+            if (command === 'setAudioTrack') {
+              try {
+                var audioIdx = Math.floor(value);
+                var mediaAudioTracks = video.audioTracks || [];
+                for (var m = 0; m < mediaAudioTracks.length; m++) {
+                  mediaAudioTracks[m].enabled = m === audioIdx;
+                }
+                if (window.ReactNativeWebView) {
+                  var tracksAfterAudio = collectTracks();
+                  window.ReactNativeWebView.postMessage(JSON.stringify({
+                    type: 'TRACKS_SYNC',
+                    subtitles: tracksAfterAudio.subtitles,
+                    audios: tracksAfterAudio.audios
+                  }));
+                }
+              } catch (e) {}
+            }
           } catch (e) {}
         })();
         true;
       `;
 
       webViewRef.current?.injectJavaScript(script);
-      showControls();
+      if (shouldRevealControls) showControls();
     },
     [showControls],
   );
@@ -591,23 +697,51 @@ function StreamWebView({
     [durationSeconds, progressTrackWidth, sendPlayerCommand],
   );
 
+  const scheduleSeekTo = useCallback(
+    (nextSeconds: number) => {
+      pendingSeekRef.current = nextSeconds;
+      if (seekRafRef.current != null) return;
+      seekRafRef.current = requestAnimationFrame(() => {
+        seekRafRef.current = null;
+        const target = pendingSeekRef.current;
+        if (target == null) return;
+        sendPlayerCommand("seekTo", target, false);
+      });
+    },
+    [sendPlayerCommand],
+  );
+
   const applyVolume = useCallback(
-    (nextVolume: number) => {
+    (nextVolume: number, shouldRevealControls = true) => {
       const safe = Math.max(0, Math.min(1, nextVolume));
       setVolume(safe);
       setIsMuted(safe <= 0.001);
-      sendPlayerCommand("setVolume", safe);
+      sendPlayerCommand("setVolume", safe, shouldRevealControls);
     },
     [sendPlayerCommand],
+  );
+
+  const scheduleVolumeTo = useCallback(
+    (nextVolume: number) => {
+      pendingVolumeRef.current = nextVolume;
+      if (volumeRafRef.current != null) return;
+      volumeRafRef.current = requestAnimationFrame(() => {
+        volumeRafRef.current = null;
+        const target = pendingVolumeRef.current;
+        if (target == null) return;
+        applyVolume(target, false);
+      });
+    },
+    [applyVolume],
   );
 
   const handleVolumePress = useCallback(
     (x: number) => {
       if (volumeTrackWidth <= 0) return;
       const ratio = Math.max(0, Math.min(1, x / volumeTrackWidth));
-      applyVolume(ratio);
+      scheduleVolumeTo(ratio);
     },
-    [applyVolume, volumeTrackWidth],
+    [scheduleVolumeTo, volumeTrackWidth],
   );
 
   const handleToggleMute = useCallback(() => {
@@ -618,12 +752,69 @@ function StreamWebView({
     applyVolume(0);
   }, [applyVolume, isMuted, volume]);
 
+  const handleProgressDrag = useCallback(
+    (x: number) => {
+      if (durationSeconds <= 0 || progressTrackWidth <= 0) return;
+      const ratio = Math.max(0, Math.min(1, x / progressTrackWidth));
+      const nextTime = ratio * durationSeconds;
+      setScrubPreviewSeconds(nextTime);
+      scheduleSeekTo(nextTime);
+    },
+    [durationSeconds, progressTrackWidth, scheduleSeekTo],
+  );
+
+  const requestTrackSync = useCallback(() => {
+    sendPlayerCommand("getTracks");
+  }, [sendPlayerCommand]);
+
+  const handleSubtitleSelection = useCallback(
+    (index: number) => {
+      sendPlayerCommand("setSubtitleTrack", index);
+    },
+    [sendPlayerCommand],
+  );
+
+  const handleAudioSelection = useCallback(
+    (index: number) => {
+      sendPlayerCommand("setAudioTrack", index);
+    },
+    [sendPlayerCommand],
+  );
+
   const handleWebViewLoad = useCallback(() => {
     onLoad();
-    setTimeout(() => {
-      sendPlayerCommand("setVolume", Math.max(0.15, volume));
-    }, 450);
-  }, [onLoad, sendPlayerCommand, volume]);
+    setVolume(1);
+    setIsMuted(false);
+    applyVolume(1, false);
+    if (volumeBoostIntervalRef.current) {
+      clearInterval(volumeBoostIntervalRef.current);
+    }
+    let attempts = 0;
+    volumeBoostIntervalRef.current = setInterval(() => {
+      attempts += 1;
+      applyVolume(1, false);
+      if (attempts >= 6 && volumeBoostIntervalRef.current) {
+        clearInterval(volumeBoostIntervalRef.current);
+        volumeBoostIntervalRef.current = null;
+      }
+    }, 700);
+    setTimeout(requestTrackSync, 900);
+  }, [applyVolume, onLoad, requestTrackSync]);
+
+  useEffect(() => {
+    return () => {
+      if (volumeBoostIntervalRef.current) {
+        clearInterval(volumeBoostIntervalRef.current);
+        volumeBoostIntervalRef.current = null;
+      }
+      if (seekRafRef.current != null) {
+        cancelAnimationFrame(seekRafRef.current);
+      }
+      if (volumeRafRef.current != null) {
+        cancelAnimationFrame(volumeRafRef.current);
+      }
+    };
+  }, []);
 
   const blockedHosts = useMemo(
     () => [
@@ -905,6 +1096,8 @@ function StreamWebView({
               paused?: unknown;
               volume?: unknown;
               muted?: unknown;
+              subtitles?: unknown;
+              audios?: unknown;
             };
             if (typeof payload.type !== "string") return;
 
@@ -936,6 +1129,17 @@ function StreamWebView({
                 setVolume(Math.max(0, Math.min(1, nextVolume)));
               }
               setIsMuted(Boolean(payload.muted));
+              return;
+            }
+            if (payload.type === "TRACKS_SYNC") {
+              const incomingSubtitles = Array.isArray(payload.subtitles)
+                ? (payload.subtitles as PlayerSubtitleTrack[])
+                : [];
+              const incomingAudios = Array.isArray(payload.audios)
+                ? (payload.audios as PlayerAudioTrack[])
+                : [];
+              setSubtitleTracks(incomingSubtitles);
+              setAudioTracks(incomingAudios);
             }
           } catch {
             // Ignore malformed bridge events from third-party players.
@@ -998,6 +1202,22 @@ function StreamWebView({
               />
               <Text style={styles.topActionLabel}>{Platform.OS === "android" ? "Cast" : "AirPlay"}</Text>
             </Pressable>
+            <Pressable
+              onPress={() => {
+                requestTrackSync();
+                setShowTracksPanel((value) => !value);
+              }}
+              style={styles.topActionButton}
+              accessibilityRole="button"
+              accessibilityLabel="Subtitles and audio"
+            >
+              <Ionicons
+                name="chatbubble-ellipses-outline"
+                size={18}
+                color={colors.textPrimary}
+              />
+              <Text style={styles.topActionLabel}>CC/Audio</Text>
+            </Pressable>
           </View>
 
           <View style={styles.controlsCenterRow}>
@@ -1048,10 +1268,21 @@ function StreamWebView({
                   color={colors.textPrimary}
                 />
               </Pressable>
-              <Pressable
+              <View
                 style={styles.volumeTrack}
                 onLayout={handleVolumeTrackLayout}
-                onPress={(event) => handleVolumePress(event.nativeEvent.locationX)}
+                onStartShouldSetResponder={() => true}
+                onMoveShouldSetResponder={() => true}
+                onResponderGrant={(event) => {
+                  showControls();
+                  handleVolumePress(event.nativeEvent.locationX);
+                }}
+                onResponderMove={(event) => {
+                  handleVolumePress(event.nativeEvent.locationX);
+                }}
+                onResponderRelease={(event) => {
+                  handleVolumePress(event.nativeEvent.locationX);
+                }}
                 accessibilityRole="adjustable"
                 accessibilityLabel="Volume"
               >
@@ -1061,16 +1292,26 @@ function StreamWebView({
                     { width: `${Math.round(Math.max(0, Math.min(100, volume * 100)))}%` },
                   ]}
                 />
-              </Pressable>
+              </View>
             </View>
             <View style={styles.controlsBottomMain}>
-              <Text style={styles.timeLabel}>{formatSeconds(positionSeconds)}</Text>
-              <Pressable
+              <Text style={styles.timeLabel}>{formatSeconds(scrubPreviewSeconds ?? positionSeconds)}</Text>
+              <View
                 style={styles.progressTrack}
                 onLayout={handleProgressTrackLayout}
-                onPress={(event) =>
-                  handleProgressPress(event.nativeEvent.locationX)
-                }
+                onStartShouldSetResponder={() => true}
+                onMoveShouldSetResponder={() => true}
+                onResponderGrant={(event) => {
+                  showControls();
+                  handleProgressDrag(event.nativeEvent.locationX);
+                }}
+                onResponderMove={(event) => {
+                  handleProgressDrag(event.nativeEvent.locationX);
+                }}
+                onResponderRelease={(event) => {
+                  handleProgressPress(event.nativeEvent.locationX);
+                  setScrubPreviewSeconds(null);
+                }}
                 accessibilityRole="adjustable"
                 accessibilityLabel="Seek"
               >
@@ -1085,10 +1326,64 @@ function StreamWebView({
                     },
                   ]}
                 />
-              </Pressable>
+              </View>
               <Text style={styles.timeLabel}>{formatSeconds(durationSeconds)}</Text>
             </View>
           </View>
+          {showTracksPanel ? (
+            <View style={styles.tracksPanel}>
+              <Text style={styles.tracksTitle}>Subtitles</Text>
+              <View style={styles.trackRow}>
+                <Pressable
+                  style={styles.trackPill}
+                  onPress={() => handleSubtitleSelection(-1)}
+                  accessibilityRole="button"
+                  accessibilityLabel="Subtitles off"
+                >
+                  <Text style={styles.trackPillText}>Off</Text>
+                </Pressable>
+                {subtitleTracks.map((track) => (
+                  <Pressable
+                    key={`subtitle-${track.index}`}
+                    style={[
+                      styles.trackPill,
+                      track.mode === "showing" ? styles.trackPillActive : null,
+                    ]}
+                    onPress={() => handleSubtitleSelection(track.index)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Subtitle ${track.label}`}
+                  >
+                    <Text style={styles.trackPillText} numberOfLines={1}>
+                      {track.label || track.language || `Sub ${track.index + 1}`}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+
+              <Text style={styles.tracksTitle}>Audio</Text>
+              <View style={styles.trackRow}>
+                {audioTracks.length === 0 ? (
+                  <Text style={styles.trackInfoText}>Provider does not expose audio tracks</Text>
+                ) : null}
+                {audioTracks.map((track) => (
+                  <Pressable
+                    key={`audio-${track.index}`}
+                    style={[
+                      styles.trackPill,
+                      track.enabled ? styles.trackPillActive : null,
+                    ]}
+                    onPress={() => handleAudioSelection(track.index)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Audio ${track.label}`}
+                  >
+                    <Text style={styles.trackPillText} numberOfLines={1}>
+                      {track.label || track.language || `Audio ${track.index + 1}`}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+            </View>
+          ) : null}
         </View>
       ) : null}
       {isLoading ? (
@@ -1265,6 +1560,49 @@ const useStyles = makeStyles((c) => ({
     flexDirection: "row",
     alignItems: "center",
     gap: SPACING.sm,
+  },
+  tracksPanel: {
+    backgroundColor: "rgba(6,7,9,0.9)",
+    borderWidth: 1,
+    borderColor: c.borderStrong,
+    borderRadius: RADIUS.md,
+    padding: SPACING.sm,
+    gap: SPACING.sm,
+    marginBottom: SPACING.sm,
+  },
+  tracksTitle: {
+    color: c.textPrimary,
+    fontFamily: FONTS.semibold,
+    fontSize: 12,
+  },
+  trackRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: SPACING.xs,
+    alignItems: "center",
+  },
+  trackPill: {
+    borderRadius: RADIUS.pill,
+    borderWidth: 1,
+    borderColor: c.borderStrong,
+    backgroundColor: "rgba(255,255,255,0.06)",
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: SPACING.xs,
+    maxWidth: 160,
+  },
+  trackPillActive: {
+    backgroundColor: c.accentSoft,
+    borderColor: c.accentGlow,
+  },
+  trackPillText: {
+    color: c.textPrimary,
+    fontFamily: FONTS.medium,
+    fontSize: 11,
+  },
+  trackInfoText: {
+    color: c.textMuted,
+    fontFamily: FONTS.medium,
+    fontSize: 11,
   },
   progressTrack: {
     flex: 1,
