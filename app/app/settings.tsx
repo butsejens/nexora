@@ -1,7 +1,8 @@
 import React from "react";
-import { Switch, Text, View } from "react-native";
+import { Platform, StatusBar, Switch, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useT } from "@/i18n";
 import { SeoHead } from "@/components/SeoHead";
@@ -33,6 +34,8 @@ export default function SettingsScreen() {
   const t = useT();
   const styles = useStyles();
   const { gutter } = useResponsive();
+  const insets = useSafeAreaInsets();
+  const statusBarHeight = insets.top > 0 ? insets.top : (Platform.OS === "android" ? (StatusBar.currentHeight ?? 24) : 0);
 
   const user = useAuth((state) => state.user);
   const signOut = useAuth((state) => state.signOut);
@@ -59,7 +62,7 @@ export default function SettingsScreen() {
       <Screen reserveBottomNav>
         <FloatingBackButton onPress={() => router.back()} gutter={gutter} />
 
-        <View style={[styles.head, { paddingHorizontal: gutter }]}>
+        <View style={[styles.head, { paddingHorizontal: gutter, paddingTop: statusBarHeight + SPACING.sm + 38 + SPACING.md }]}>
           <Text style={styles.title} accessibilityRole="header">
             {t("Settings")}
           </Text>
@@ -310,7 +313,6 @@ function ToggleRow({
 const useStyles = makeStyles((c, t) => ({
   head: {
     gap: SPACING.sm,
-    paddingTop: SPACING.xxxl,
     paddingBottom: SPACING.xl,
   },
   title: {

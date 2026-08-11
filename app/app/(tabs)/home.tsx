@@ -169,6 +169,61 @@ export default function HomeScreen() {
         )}
 
         <View style={styles.rails}>
+          {continueWatching.length > 0 ? (
+            <Carousel
+              title={t("Continue Watching")}
+              subtitle={t("Pick up where you left off")}
+              items={continueWatching}
+              isLoading={false}
+              itemWidth={continueCardWidth}
+              keyExtractor={(item) => item.id}
+              renderItem={(item) => (
+                <ContinueWatchingCard
+                  progress={item}
+                  width={continueCardWidth}
+                  onPress={() => {
+                    if (item.type === "movie") {
+                      router.push({
+                        pathname: "/movie/[id]",
+                        params: {
+                          id: String(item.tmdbId),
+                          autoplay: "1",
+                          resumeSeconds: String(item.positionSeconds || 0),
+                        },
+                      } as never);
+                      return;
+                    }
+
+                    router.push({
+                      pathname: "/series/[id]",
+                      params: {
+                        id: String(item.tmdbId),
+                        autoplay: "1",
+                        season: String(item.seasonNumber || 1),
+                        episode: String(item.episodeNumber || 1),
+                        resumeSeconds: String(item.positionSeconds || 0),
+                      },
+                    } as never);
+                  }}
+                  onRemove={() => clearProgress(item.id)}
+                />
+              )}
+            />
+          ) : null}
+
+          {becauseRail ? (
+            <Carousel
+              title={t("Because You Watched {{title}}", {
+                title: becauseRail.seed.title,
+              })}
+              items={becauseRail.items}
+              isLoading={false}
+              itemWidth={railPosterWidth}
+              keyExtractor={(item) => item.id}
+              renderItem={renderPoster}
+            />
+          ) : null}
+
           <Carousel
             title={t("Trending Now")}
             items={trending.items}
@@ -197,25 +252,6 @@ export default function HomeScreen() {
             renderItem={renderPoster}
             onSeeAll={() => router.navigate("/(tabs)/series")}
           />
-
-          {continueWatching.length > 0 ? (
-            <Carousel
-              title={t("Continue Watching")}
-              subtitle={t("Pick up where you left off")}
-              items={continueWatching}
-              isLoading={false}
-              itemWidth={continueCardWidth}
-              keyExtractor={(item) => item.id}
-              renderItem={(item) => (
-                <ContinueWatchingCard
-                  progress={item}
-                  width={continueCardWidth}
-                  onPress={() => openTitle(item)}
-                  onRemove={() => clearProgress(item.id)}
-                />
-              )}
-            />
-          ) : null}
 
           <Carousel
             title={t("New Releases")}
@@ -249,19 +285,6 @@ export default function HomeScreen() {
             keyExtractor={(item) => item.id}
             renderItem={renderPoster}
           />
-
-          {becauseRail ? (
-            <Carousel
-              title={t("Because You Watched {{title}}", {
-                title: becauseRail.seed.title,
-              })}
-              items={becauseRail.items}
-              isLoading={false}
-              itemWidth={railPosterWidth}
-              keyExtractor={(item) => item.id}
-              renderItem={renderPoster}
-            />
-          ) : null}
 
           <View style={styles.genreBlock}>
             <Text style={[styles.genreHeading, { paddingHorizontal: gutter }]}>

@@ -21,6 +21,9 @@ export interface EpisodeCardProps {
   episode: Episode;
   watched: boolean;
   onToggleWatched: () => void;
+  onArmPlay?: () => void;
+  onPlay?: () => void;
+  armedForPlay?: boolean;
   /** True for the next unwatched episode, which gets the "up next" accent. */
   isUpNext?: boolean;
   stillWidth: number;
@@ -30,6 +33,9 @@ export function EpisodeCard({
   episode,
   watched,
   onToggleWatched,
+  onArmPlay,
+  onPlay,
+  armedForPlay = false,
   isUpNext = false,
   stillWidth,
 }: EpisodeCardProps) {
@@ -43,8 +49,38 @@ export function EpisodeCard({
     formatDate(episode.airDate, locale),
   ]);
 
+  const handleRowPress = React.useCallback(() => {
+    if (!onPlay) return;
+    if (armedForPlay) {
+      onPlay();
+      return;
+    }
+    onArmPlay?.();
+  }, [armedForPlay, onArmPlay, onPlay]);
+
   return (
-    <View style={[styles.row, isUpNext ? styles.rowUpNext : null]}>
+    <Pressable
+      onPress={handleRowPress}
+      style={({ hovered }) => [
+        styles.row,
+        isUpNext ? styles.rowUpNext : null,
+        hovered ? styles.rowHovered : null,
+      ]}
+      accessibilityRole={onPlay ? "button" : undefined}
+      accessibilityLabel={
+        onPlay
+          ? armedForPlay
+            ? t("Play episode {{number}}, {{title}}", {
+                number: episode.episodeNumber,
+                title: episode.title,
+              })
+            : t("Tap again to play episode {{number}}, {{title}}", {
+                number: episode.episodeNumber,
+                title: episode.title,
+              })
+          : undefined
+      }
+    >
       <View
         style={[styles.stillWrap, { width: stillWidth, height: stillHeight }]}
       >
@@ -82,6 +118,31 @@ export function EpisodeCard({
             {episode.overview}
           </Text>
         ) : null}
+        {onPlay ? (
+          <Pressable
+            onPress={armedForPlay ? onPlay : onArmPlay}
+            style={({ hovered }) => [
+              styles.playButton,
+              armedForPlay ? styles.playButtonArmed : null,
+              hovered ? styles.playButtonHovered : null,
+            ]}
+            accessibilityRole="button"
+            accessibilityLabel={
+              armedForPlay
+                ? t("Play now")
+                : t("Tap once more to start episode")
+            }
+          >
+            <Ionicons
+              name={armedForPlay ? "play" : "chevron-forward"}
+              size={14}
+              color={colors.textPrimary}
+            />
+            <Text style={styles.playButtonText}>
+              {armedForPlay ? t("Play now") : t("Tap again to play")}
+            </Text>
+          </Pressable>
+        ) : null}
       </View>
 
       <Pressable
@@ -112,7 +173,7 @@ export function EpisodeCard({
           color={watched ? colors.textPrimary : colors.textMuted}
         />
       </Pressable>
-    </View>
+    </Pressable>
   );
 }
 
@@ -129,6 +190,9 @@ const useStyles = makeStyles((c, t) => ({
   rowUpNext: {
     borderColor: c.accentGlow,
     backgroundColor: c.surfaceElevated,
+  },
+  rowHovered: {
+    borderColor: c.borderStrong,
   },
   stillWrap: {
     borderRadius: RADIUS.sm,
@@ -209,5 +273,30 @@ const useStyles = makeStyles((c, t) => ({
   },
   checkHovered: {
     borderColor: c.borderStrong,
+  },
+  playButton: {
+    alignSelf: "flex-start",
+    marginTop: SPACING.xs,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    borderRadius: RADIUS.pill,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    backgroundColor: c.surfaceElevated,
+    borderWidth: 1,
+    borderColor: c.border,
+  },
+  playButtonArmed: {
+    backgroundColor: c.accent,
+    borderColor: c.accent,
+  },
+  playButtonHovered: {
+    borderColor: c.borderStrong,
+  },
+  playButtonText: {
+    fontFamily: FONTS.medium,
+    fontSize: 12,
+    color: c.textPrimary,
   },
 }));

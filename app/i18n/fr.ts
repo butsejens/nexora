@@ -59,6 +59,13 @@ export const FR: Record<string, string> = {
   Movie: "Film",
 
   // ── Page de détail ─────────────────────────────────────────────────────────
+  Play: "Lecture",
+  "Plays the best available stream": "Lit le meilleur flux disponible",
+  "Now playing": "Lecture en cours",
+  "Unable to open player": "Impossible d'ouvrir le lecteur",
+  "No stream source is available.": "Aucune source de streaming n'est disponible.",
+  "All stream providers failed to load.": "Tous les fournisseurs de streaming n'ont pas pu se charger.",
+  Cancel: "Annuler",
   "Watch Trailer": "Voir la bande-annonce",
   "Plays the trailer inside CineLog": "Lit la bande-annonce dans CineLog",
   "Add to Watchlist": "Ajouter à ma liste",
@@ -203,7 +210,6 @@ export const FR: Record<string, string> = {
   "Delete everything": "Tout supprimer",
   Logout: "Se déconnecter",
   "Not signed in": "Non connecté",
-  Cancel: "Annuler",
 
   // ── Compte ─────────────────────────────────────────────────────────────────
   "Welcome back": "Bon retour",

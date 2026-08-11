@@ -59,6 +59,13 @@ export const NL: Record<string, string> = {
   Movie: "Film",
 
   // ── Detailpagina ───────────────────────────────────────────────────────────
+  Play: "Afspelen",
+  "Plays the best available stream": "Speelt de beste beschikbare stream af",
+  "Now playing": "Nu aan het spelen",
+  "Unable to open player": "Kan de speler niet openen",
+  "No stream source is available.": "Er is geen streambron beschikbaar.",
+  "All stream providers failed to load.": "Alle streamproviders konden niet laden.",
+  Cancel: "Annuleren",
   "Watch Trailer": "Trailer bekijken",
   "Plays the trailer inside CineLog": "Speelt de trailer in CineLog",
   "Add to Watchlist": "Aan kijklijst toevoegen",
@@ -202,7 +209,6 @@ export const NL: Record<string, string> = {
   "Delete everything": "Alles verwijderen",
   Logout: "Afmelden",
   "Not signed in": "Niet aangemeld",
-  Cancel: "Annuleren",
 
   // ── Account ────────────────────────────────────────────────────────────────
   "Welcome back": "Welkom terug",

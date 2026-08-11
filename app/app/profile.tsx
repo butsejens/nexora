@@ -26,12 +26,16 @@ import {
   useRecentlyWatched,
 } from "@/store/library-store";
 import { Pressable } from "@/components/ui/Pressable";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { Platform, StatusBar } from "react-native";
 
 export default function ProfileScreen() {
   const t = useT();
   const { colors } = useTheme();
   const styles = useStyles();
   const { gutter, railPosterWidth, isMobile } = useResponsive();
+  const insets = useSafeAreaInsets();
+  const statusBarHeight = insets.top > 0 ? insets.top : (Platform.OS === "android" ? (StatusBar.currentHeight ?? 24) : 0);
   const user = useAuth((state) => state.user);
   const signOut = useAuth((state) => state.signOut);
 
@@ -67,7 +71,7 @@ export default function ProfileScreen() {
         <View
           style={[
             styles.header,
-            { paddingHorizontal: gutter },
+            { paddingHorizontal: gutter, paddingTop: statusBarHeight + SPACING.sm + 38 + SPACING.md },
             isMobile ? styles.headerMobile : null,
           ]}
         >
@@ -266,7 +270,6 @@ const useStyles = makeStyles((c, t) => ({
   header: {
     flexDirection: "row",
     gap: SPACING.xl,
-    paddingTop: SPACING.xxxl,
     paddingBottom: SPACING.xl,
     alignItems: "center",
   },

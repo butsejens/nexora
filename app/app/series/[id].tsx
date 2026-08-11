@@ -1,9 +1,9 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ScrollView, Text, View } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 
 import {
-  FavoriteButton,
+  PlayButton,
   TrailerButton,
   WatchStateSelector,
   WatchlistButton,
@@ -35,14 +35,39 @@ import { toLibraryRef, useLibrary } from "@/store/library-store";
 export default function SeriesDetailScreen() {
   const t = useT();
   const styles = useStyles();
-  const params = useLocalSearchParams<{ id?: string }>();
+  const params = useLocalSearchParams<{
+    id?: string;
+    autoplay?: string;
+    season?: string;
+    episode?: string;
+    resumeSeconds?: string;
+  }>();
   const tmdbId = parseIdParam(params.id);
+  const autoPlayFromParams = params.autoplay === "1";
+  const seasonFromParams = Number.parseInt(String(params.season ?? "1"), 10);
+  const episodeFromParams = Number.parseInt(
+    String(params.episode ?? "1"),
+    10,
+  );
+  const resumeSecondsFromParams = Number.parseInt(
+    String(params.resumeSeconds ?? "0"),
+    10,
+  );
   const { gutter, railPosterWidth, isMobile, width } = useResponsive();
 
   const detail = useSeriesDetail(tmdbId);
   const series = detail.data?.title;
 
   const [selectedSeason, setSelectedSeason] = useState<number | null>(null);
+  const [armedEpisodeKey, setArmedEpisodeKey] = useState<string | null>(null);
+  const [episodePlayRequest, setEpisodePlayRequest] = useState(0);
+  const [episodePlayTarget, setEpisodePlayTarget] = useState<{
+    seasonNumber: number;
+    episodeNumber: number;
+  } | null>(null);
+  const [applyResumeFromParams, setApplyResumeFromParams] =
+    useState(autoPlayFromParams);
+  const autoPlayInitializedRef = useRef(false);
 
   // Default to the first real season once the detail payload lands.
   useEffect(() => {
@@ -50,6 +75,33 @@ export default function SeriesDetailScreen() {
       setSelectedSeason(series.seasons[0].seasonNumber);
     }
   }, [series?.seasons, selectedSeason]);
+
+  useEffect(() => {
+    setArmedEpisodeKey(null);
+  }, [selectedSeason]);
+
+  useEffect(() => {
+    if (!autoPlayFromParams || autoPlayInitializedRef.current) return;
+    autoPlayInitializedRef.current = true;
+
+    const safeSeason = Number.isFinite(seasonFromParams)
+      ? Math.max(1, seasonFromParams)
+      : 1;
+    const safeEpisode = Number.isFinite(episodeFromParams)
+      ? Math.max(1, episodeFromParams)
+      : 1;
+
+    setSelectedSeason(safeSeason);
+    setEpisodePlayTarget({
+      seasonNumber: safeSeason,
+      episodeNumber: safeEpisode,
+    });
+    setEpisodePlayRequest((value) => value + 1);
+  }, [
+    autoPlayFromParams,
+    seasonFromParams,
+    episodeFromParams,
+  ]);
 
   const season = useSeason(tmdbId, selectedSeason);
   const trailer = useTrailerPlayer(detail.data?.trailers[0] ?? null);
@@ -244,6 +296,21 @@ export default function SeriesDetailScreen() {
           genres={series.genres}
           actions={
             <>
+              <PlayButton
+                tmdbId={series.tmdbId}
+                type="series"
+                title={series.title}
+                libraryRef={ref}
+                seasonNumber={episodePlayTarget?.seasonNumber ?? selectedSeason ?? 1}
+                episodeNumber={episodePlayTarget?.episodeNumber ?? 1}
+                autoPlayRequest={episodePlayRequest}
+                startAtSeconds={
+                  applyResumeFromParams && Number.isFinite(resumeSecondsFromParams)
+                    ? Math.max(0, resumeSecondsFromParams)
+                    : 0
+                }
+                size="lg"
+              />
               <TrailerButton
                 size="lg"
                 onPress={() =>
@@ -255,7 +322,6 @@ export default function SeriesDetailScreen() {
                 }
               />
               <WatchlistButton item={ref} size="lg" />
-              <FavoriteButton item={ref} />
             </>
           }
         />
@@ -336,6 +402,24 @@ export default function SeriesDetailScreen() {
                         ],
                       )}
                       isUpNext={episode.episodeNumber === upNextNumber}
+                      armedForPlay={
+                        armedEpisodeKey ===
+                        `s${episode.seasonNumber}e${episode.episodeNumber}`
+                      }
+                      onArmPlay={() =>
+                        setArmedEpisodeKey(
+                          `s${episode.seasonNumber}e${episode.episodeNumber}`,
+                        )
+                      }
+                      onPlay={() => {
+                        setArmedEpisodeKey(null);
+                        setApplyResumeFromParams(false);
+                        setEpisodePlayTarget({
+                          seasonNumber: episode.seasonNumber,
+                          episodeNumber: episode.episodeNumber,
+                        });
+                        setEpisodePlayRequest((value) => value + 1);
+                      }}
                       onToggleWatched={() =>
                         handleEpisodeToggle(
                           episode.episodeNumber,

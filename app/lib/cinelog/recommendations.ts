@@ -205,25 +205,48 @@ export function becauseYouWatched(
   profile: TasteProfile,
   limit = 20,
 ): { seed: LibraryEntryRef; items: MediaSummary[] } | null {
-  const seed = profile.seeds.find((entry) => (entry.genreIds ?? []).length > 0);
-  if (!seed) return null;
+  const seedCandidates = profile.seeds.filter(
+    (entry) => (entry.genreIds ?? []).length > 0,
+  );
+  if (seedCandidates.length === 0) return null;
 
-  const seedGenres = new Set(seed.genreIds ?? []);
-  const items = candidates
-    .filter(
-      (candidate) =>
-        candidate.id !== seed.id &&
-        !profile.seenIds.has(candidate.id) &&
-        candidate.poster &&
-        candidate.genreIds.some((id) => seedGenres.has(id)),
-    )
-    .sort((a, b) => {
-      const overlap = (item: MediaSummary) =>
-        item.genreIds.filter((id) => seedGenres.has(id)).length;
-      const diff = overlap(b) - overlap(a);
-      return diff !== 0 ? diff : b.rating - a.rating;
-    })
-    .slice(0, limit);
+  const daySeed = Math.floor(Date.now() / 86_400_000);
+  const startIndex = daySeed % seedCandidates.length;
 
-  return items.length >= 4 ? { seed, items } : null;
+  const orderedSeeds = seedCandidates.map(
+    (_, index) => seedCandidates[(startIndex + index) % seedCandidates.length],
+  );
+
+  for (const seed of orderedSeeds) {
+    const seedGenres = new Set(seed.genreIds ?? []);
+    const scored = candidates
+      .filter(
+        (candidate) =>
+          candidate.id !== seed.id &&
+          !profile.seenIds.has(candidate.id) &&
+          candidate.poster &&
+          candidate.genreIds.some((id) => seedGenres.has(id)),
+      )
+      .sort((a, b) => {
+        const overlap = (item: MediaSummary) =>
+          item.genreIds.filter((id) => seedGenres.has(id)).length;
+        const diff = overlap(b) - overlap(a);
+        return diff !== 0 ? diff : b.rating - a.rating;
+      });
+
+    const movies = scored.filter((item) => item.type === "movie");
+    const series = scored.filter((item) => item.type === "series");
+
+    const mixed: MediaSummary[] = [];
+    const maxLen = Math.max(movies.length, series.length);
+    for (let i = 0; i < maxLen && mixed.length < limit; i += 1) {
+      if (movies[i]) mixed.push(movies[i]);
+      if (series[i] && mixed.length < limit) mixed.push(series[i]);
+    }
+
+    const items = mixed.length > 0 ? mixed : scored.slice(0, limit);
+    if (items.length >= 4) return { seed, items };
+  }
+
+  return null;
 }

@@ -7,9 +7,10 @@
  * "video unavailable" embed error.
  */
 
-import React, { useMemo } from "react";
+import React from "react";
 import {
   ActivityIndicator,
+  Linking,
   Modal,
   Platform,
   StyleSheet,
@@ -25,8 +26,8 @@ import { makeStyles, useTheme } from "@/theme";
 import { useResponsive } from "@/hooks/useResponsive";
 import type { Trailer } from "@/lib/cinelog/types";
 import { Pressable } from "@/components/ui/Pressable";
-
-const YOUTUBE_ORIGIN = "https://www.youtube.com";
+import YoutubePlayer from "react-native-youtube-iframe";
+import { WebView } from "react-native-webview";
 
 function embedUrl(videoKey: string): string {
   const params = new URLSearchParams({
@@ -36,28 +37,7 @@ function embedUrl(videoKey: string): string {
     rel: "0",
     fs: "1",
   });
-  return `${YOUTUBE_ORIGIN}/embed/${videoKey}?${params}`;
-}
-
-/** Minimal page so the embed loads with a youtube.com referrer on native. */
-function embedHtml(videoKey: string): string {
-  return `<!DOCTYPE html>
-<html>
-  <head>
-    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
-    <style>
-      html, body { margin: 0; padding: 0; background: #000; height: 100%; overflow: hidden; }
-      iframe { border: 0; width: 100%; height: 100%; }
-    </style>
-  </head>
-  <body>
-    <iframe
-      src="${embedUrl(videoKey)}"
-      allow="autoplay; encrypted-media; picture-in-picture"
-      allowfullscreen
-    ></iframe>
-  </body>
-</html>`;
+  return `https://www.youtube.com/embed/${videoKey}?${params}`;
 }
 
 export interface TrailerModalProps {
@@ -125,7 +105,12 @@ export function TrailerModal({
             {isLoading ? (
               <ActivityIndicator color={colors.accent} />
             ) : trailer ? (
-              <TrailerPlayer videoKey={trailer.key} title={title} />
+              <TrailerPlayer
+                videoKey={trailer.key}
+                title={title}
+                onExternalOpen={onClose}
+                playerHeight={playerHeight}
+              />
             ) : (
               <ErrorState
                 compact
@@ -145,11 +130,41 @@ export function TrailerModal({
 interface TrailerPlayerProps {
   videoKey: string;
   title: string;
+  onExternalOpen: () => void;
+  playerHeight: number;
 }
 
-function TrailerPlayer({ videoKey, title }: TrailerPlayerProps) {
+function TrailerPlayer({
+  videoKey,
+  title,
+  onExternalOpen,
+  playerHeight,
+}: TrailerPlayerProps) {
   const styles = useStyles();
-  const html = useMemo(() => embedHtml(videoKey), [videoKey]);
+  const t = useT();
+  const [mode, setMode] = React.useState<"youtube" | "webview" | "failed">("youtube");
+  const [nativeReady, setNativeReady] = React.useState(false);
+
+  React.useEffect(() => {
+    setMode("youtube");
+    setNativeReady(false);
+  }, [videoKey]);
+
+  React.useEffect(() => {
+    if (mode !== "youtube" || nativeReady) return;
+    const timer = setTimeout(() => {
+      setMode("webview");
+    }, 4500);
+    return () => clearTimeout(timer);
+  }, [mode, nativeReady]);
+
+  const openExternal = React.useCallback(() => {
+    void Linking.openURL(
+      `https://www.youtube.com/watch?v=${encodeURIComponent(videoKey)}`,
+    )
+      .then(onExternalOpen)
+      .catch(() => undefined);
+  }, [onExternalOpen, videoKey]);
 
   if (Platform.OS === "web") {
     return React.createElement("iframe", {
@@ -161,26 +176,102 @@ function TrailerPlayer({ videoKey, title }: TrailerPlayerProps) {
     });
   }
 
-  // Loaded lazily so the WebView bundle never reaches the web build, where the
-  // iframe path above is used instead.
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const { WebView } = require("react-native-webview");
-  return (
-    <WebView
-      source={{ html, baseUrl: YOUTUBE_ORIGIN }}
-      style={styles.webview}
-      allowsFullscreenVideo
-      mediaPlaybackRequiresUserAction={false}
-      javaScriptEnabled
-      domStorageEnabled
-      // Only the embed itself may load; anything else stays out of the player.
-      onShouldStartLoadWithRequest={(request: { url: string }) =>
-        request.url.startsWith(YOUTUBE_ORIGIN) ||
-        request.url.startsWith("about:") ||
-        request.url.startsWith("data:")
-      }
-    />
-  );
+  if (mode === "youtube") {
+    return (
+      <View style={styles.youtubeWrap}>
+        <YoutubePlayer
+          height={playerHeight}
+          width="100%"
+          play
+          videoId={videoKey}
+          forceAndroidAutoplay
+          onReady={() => setNativeReady(true)}
+          onError={() => setMode("webview")}
+          initialPlayerParams={{
+            controls: true,
+            modestbranding: true,
+            rel: false,
+            iv_load_policy: 3,
+            cc_load_policy: 0,
+          }}
+        />
+      </View>
+    );
+  }
+
+  if (mode === "webview") {
+    return (
+      <WebView
+        source={{ uri: embedUrl(videoKey) }}
+        style={styles.webview}
+        allowsFullscreenVideo
+        allowsInlineMediaPlayback
+        mediaPlaybackRequiresUserAction={false}
+        javaScriptEnabled
+        domStorageEnabled
+        thirdPartyCookiesEnabled
+        originWhitelist={["*"]}
+        injectedJavaScript={`(function(){
+          try {
+            var unmute = function(){
+              var media = document.querySelector('video');
+              if (!media) return;
+              media.muted = false;
+              media.volume = 1;
+              media.play && media.play().catch(function(){});
+            };
+            document.addEventListener('click', unmute, true);
+            document.addEventListener('touchstart', unmute, true);
+            setTimeout(unmute, 800);
+          } catch (e) {}
+        })(); true;`}
+        onError={() => setMode("failed")}
+        onHttpError={() => setMode("failed")}
+        onShouldStartLoadWithRequest={(request: { url: string }) => {
+          const target = String(request.url || "").toLowerCase();
+          if (target.startsWith("about:") || target.startsWith("data:") || target.startsWith("blob:")) return true;
+          if (!target.startsWith("http")) return false;
+          try {
+            const host = new URL(target).hostname.toLowerCase();
+            return (
+              host === "youtube.com" ||
+              host.endsWith(".youtube.com") ||
+              host === "youtube-nocookie.com" ||
+              host.endsWith(".youtube-nocookie.com") ||
+              host === "youtu.be" ||
+              host.endsWith(".googlevideo.com") ||
+              host.endsWith(".ytimg.com")
+            );
+          } catch {
+            return false;
+          }
+        }}
+        startInLoadingState
+        renderLoading={() => (
+          <View style={styles.loadingWrap}>
+            <ActivityIndicator color={styles.loadingSpinner.color} />
+          </View>
+        )}
+      />
+    );
+  }
+
+  if (mode === "failed") {
+    return (
+      <View style={styles.fallbackWrap}>
+        <Text style={styles.fallbackTitle}>{t("Trailer unavailable in app")}</Text>
+        <Text style={styles.fallbackBody}>
+          {t("Open the trailer externally if the embedded player is blocked.")}
+        </Text>
+        <Pressable style={styles.fallbackButton} onPress={openExternal}>
+          <Ionicons name="open-outline" size={16} color={styles.fallbackButtonText.color} />
+          <Text style={styles.fallbackButtonText}>{t("Open on YouTube")}</Text>
+        </Pressable>
+      </View>
+    );
+  }
+
+  return null;
 }
 
 const useStyles = makeStyles((c, t) => ({
@@ -240,5 +331,49 @@ const useStyles = makeStyles((c, t) => ({
   webview: {
     flex: 1,
     backgroundColor: "#000",
+  },
+  loadingWrap: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#000",
+  },
+  loadingSpinner: {
+    color: c.accent,
+  },
+  youtubeWrap: {
+    flex: 1,
+    width: "100%",
+    backgroundColor: "#000",
+  },
+  fallbackWrap: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: SPACING.md,
+    paddingHorizontal: SPACING.lg,
+  },
+  fallbackTitle: {
+    color: c.textPrimary,
+    fontFamily: FONTS.semibold,
+    fontSize: 16,
+    textAlign: "center",
+  },
+  fallbackBody: {
+    color: c.textSecondary,
+    textAlign: "center",
+  },
+  fallbackButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: SPACING.xs,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    borderRadius: RADIUS.md,
+    backgroundColor: c.accent,
+  },
+  fallbackButtonText: {
+    color: c.textInverse,
+    fontFamily: FONTS.semibold,
   },
 }));

@@ -3,7 +3,7 @@ import { StyleSheet, View } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 
 import {
-  FavoriteButton,
+  PlayButton,
   TrailerButton,
   WatchStateSelector,
   WatchlistButton,
@@ -31,8 +31,14 @@ import { toLibraryRef, useLibrary } from "@/store/library-store";
 
 export default function MovieDetailScreen() {
   const t = useT();
-  const params = useLocalSearchParams<{ id?: string }>();
+  const params = useLocalSearchParams<{
+    id?: string;
+    autoplay?: string;
+    resumeSeconds?: string;
+  }>();
   const tmdbId = parseIdParam(params.id);
+  const autoPlayRequest = params.autoplay === "1" ? 1 : undefined;
+  const resumeSeconds = Number.parseInt(String(params.resumeSeconds ?? "0"), 10);
   const { gutter, railPosterWidth, isMobile } = useResponsive();
 
   const detail = useMovieDetail(tmdbId);
@@ -137,6 +143,15 @@ export default function MovieDetailScreen() {
           genres={movie.genres}
           actions={
             <>
+              <PlayButton
+                tmdbId={movie.tmdbId}
+                type="movie"
+                title={movie.title}
+                libraryRef={ref}
+                autoPlayRequest={autoPlayRequest}
+                startAtSeconds={Number.isFinite(resumeSeconds) ? Math.max(0, resumeSeconds) : 0}
+                size="lg"
+              />
               <TrailerButton
                 size="lg"
                 onPress={() =>
@@ -148,7 +163,6 @@ export default function MovieDetailScreen() {
                 }
               />
               <WatchlistButton item={ref} size="lg" />
-              <FavoriteButton item={ref} />
             </>
           }
         />

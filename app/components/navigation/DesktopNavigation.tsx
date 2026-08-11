@@ -5,9 +5,10 @@
  */
 
 import React from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { Platform, StatusBar, StyleSheet, Text, View } from "react-native";
 import { Image } from "expo-image";
 import { Ionicons } from "@expo/vector-icons";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useT } from "@/i18n";
 import { CineLogLogo } from "@/components/brand/CineLogLogo";
@@ -36,11 +37,24 @@ export function DesktopNavigation({
   const t = useT();
   const { colors } = useTheme();
   const styles = useStyles();
+  const insets = useSafeAreaInsets();
+  const statusBarHeight =
+    insets.top > 0
+      ? insets.top
+      : Platform.OS === "android"
+        ? (StatusBar.currentHeight ?? 24)
+        : 0;
   const initial = displayName.trim().charAt(0).toUpperCase() || "C";
 
   return (
     <View
-      style={[styles.bar, { paddingHorizontal: gutter }]}
+      style={[
+        styles.bar,
+        {
+          paddingHorizontal: gutter,
+          paddingTop: statusBarHeight + SPACING.xs,
+        },
+      ]}
       accessibilityRole="tablist"
       accessibilityLabel={t("Main navigation")}
     >
@@ -48,6 +62,7 @@ export function DesktopNavigation({
         onPress={() => onNavigate("/home")}
         accessibilityRole="link"
         accessibilityLabel={t("CineLog home")}
+        style={styles.logoPressable}
       >
         <CineLogLogo size={26} />
       </Pressable>
@@ -116,11 +131,12 @@ export function DesktopNavigation({
 
 const useStyles = makeStyles((c, t) => ({
   bar: {
-    height: LAYOUT.topNavHeight,
+    minHeight: LAYOUT.topNavHeight,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     gap: SPACING.xl,
+    paddingBottom: SPACING.xs,
     backgroundColor: c.background,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: c.border,
@@ -131,6 +147,11 @@ const useStyles = makeStyles((c, t) => ({
     gap: SPACING.xs,
     flex: 1,
     justifyContent: "center",
+  },
+  logoPressable: {
+    minWidth: 0,
+    flexShrink: 1,
+    paddingRight: SPACING.sm,
   },
   link: {
     flexDirection: "row",

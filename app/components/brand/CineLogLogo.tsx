@@ -88,12 +88,19 @@ export function CineLogLogo({
       accessibilityLabel="CineLog"
     >
       <CineLogMark size={size} />
-      <View>
-        <Text style={[styles.wordmark, { fontSize: size * 0.68 }]}>
+      <View style={styles.wordmarkWrap}>
+        <Text
+          style={[styles.wordmark, { fontSize: size * 0.68 }]}
+          numberOfLines={1}
+          adjustsFontSizeToFit
+          minimumFontScale={0.85}
+        >
           Cine<Text style={styles.wordmarkAccent}>Log</Text>
         </Text>
         {showTagline ? (
-          <Text style={styles.tagline}>{t("Discover. Track. Watch.")}</Text>
+          <Text style={styles.tagline} numberOfLines={1}>
+            {t("Discover. Track. Watch.")}
+          </Text>
         ) : null}
       </View>
     </View>
@@ -105,11 +112,19 @@ const useStyles = makeStyles((c, t) => ({
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
+    minWidth: 0,
+    flexShrink: 1,
+  },
+  wordmarkWrap: {
+    minWidth: 0,
+    flexShrink: 1,
   },
   wordmark: {
     fontFamily: FONTS.extrabold,
     color: c.textPrimary,
     letterSpacing: -0.4,
+    includeFontPadding: false,
+    textAlignVertical: "center",
   },
   wordmarkAccent: {
     color: c.accent,

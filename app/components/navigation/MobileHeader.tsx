@@ -6,7 +6,7 @@
  */
 
 import React from "react";
-import { Text, View } from "react-native";
+import { Platform, StatusBar, Text, View } from "react-native";
 import { Image } from "expo-image";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -39,6 +39,9 @@ export function MobileHeader({
   const t = useT();
   const styles = useStyles();
   const insets = useSafeAreaInsets();
+  // On Android, insets.top can be 0 when the system reports edge-to-edge but
+  // SafeAreaProvider hasn't resolved yet — fall back to StatusBar.currentHeight.
+  const statusBarHeight = insets.top > 0 ? insets.top : (Platform.OS === "android" ? (StatusBar.currentHeight ?? 24) : 0);
   const initial = displayName.trim().charAt(0).toUpperCase() || "C";
 
   return (
@@ -46,7 +49,7 @@ export function MobileHeader({
       style={[
         styles.bar,
         transparent ? styles.transparent : null,
-        { paddingTop: insets.top + SPACING.sm, paddingHorizontal: gutter },
+        { paddingTop: statusBarHeight + SPACING.sm, paddingHorizontal: gutter },
       ]}
     >
       {title ? (
@@ -54,7 +57,9 @@ export function MobileHeader({
           {title}
         </Text>
       ) : (
-        <CineLogLogo size={24} />
+        <View style={styles.logoWrap}>
+          <CineLogLogo size={24} />
+        </View>
       )}
 
       <Pressable
@@ -92,6 +97,7 @@ export function FloatingBackButton({
   const t = useT();
   const styles = useStyles();
   const insets = useSafeAreaInsets();
+  const statusBarHeight = insets.top > 0 ? insets.top : (Platform.OS === "android" ? (StatusBar.currentHeight ?? 24) : 0);
   return (
     <Pressable
       onPress={onPress}
@@ -100,7 +106,7 @@ export function FloatingBackButton({
       hitSlop={8}
       style={({ hovered }) => [
         styles.back,
-        { top: insets.top + SPACING.sm, left: gutter },
+        { top: statusBarHeight + SPACING.sm, left: gutter },
         hovered ? styles.backHovered : null,
       ]}
     >
@@ -124,6 +130,11 @@ const useStyles = makeStyles((c, t) => ({
     fontFamily: FONTS.bold,
     fontSize: 22,
     color: c.textPrimary,
+  },
+  logoWrap: {
+    minWidth: 0,
+    flexShrink: 1,
+    paddingRight: SPACING.sm,
   },
   avatar: {
     width: 32,

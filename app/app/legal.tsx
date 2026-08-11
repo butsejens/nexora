@@ -14,7 +14,15 @@ import { useResponsive } from "@/hooks/useResponsive";
 const SECTIONS: { heading: string; body: string }[] = [
   {
     heading: "About CineLog",
-    body: "CineLog is a discovery and tracking app for movies and series. It helps you find titles, build a watchlist, rate what you've seen and keep track of where you are in a show. CineLog does not host, stream or distribute any video content.",
+    body: "CineLog is a discovery and tracking app for movies and series. It helps you find titles, build a watchlist, rate what you've seen and keep track of where you are in a show. CineLog does not host, stream or distribute video files itself and does not claim ownership of third-party media.",
+  },
+  {
+    heading: "How playback works",
+    body: "When you press play, CineLog may open embedded third-party playback providers. Availability, stream quality, subtitle tracks and playback controls can vary by provider, region and device. If a provider is unavailable, CineLog can try fallback providers.",
+  },
+  {
+    heading: "Third-party services",
+    body: "CineLog uses third-party services for metadata, trailers, authentication, notifications, analytics and playback embeds. These services may process technical data such as IP address, device model, app version, locale and request timestamps to deliver their functionality.",
   },
   {
     heading: "Content and attribution",
@@ -26,7 +34,39 @@ const SECTIONS: { heading: string; body: string }[] = [
   },
   {
     heading: "Your data",
-    body: "Your watchlist, favourites, ratings, viewing history and episode progress are stored on your device. When you sign in, they can also be synced to your account so they follow you between devices. You can clear your history or delete all of your data at any time from Settings.",
+    body: "Your watchlist, favourites, ratings, viewing history and episode progress are stored on your device. When you sign in, they may also be synced to your account so they can follow you between devices. You can clear history and delete profile-level data from Settings.",
+  },
+  {
+    heading: "Data categories we process",
+    body: "Depending on features you use, CineLog may process account identifiers, profile preferences, watch activity, search queries, notification tokens, crash diagnostics and anti-abuse telemetry. Sensitive payment card data is not processed directly by CineLog in this app flow.",
+  },
+  {
+    heading: "Why we process data",
+    body: "Data is processed to provide core app features, restore your library and progress, secure accounts, troubleshoot reliability issues, reduce abuse and improve product quality. Processing is limited to what is needed for these purposes.",
+  },
+  {
+    heading: "Retention and deletion",
+    body: "Library and progress records are retained while your account remains active or until you delete them. Operational logs are retained for a limited period for security and reliability. You can request account deletion where supported by your platform account and applicable law.",
+  },
+  {
+    heading: "Your choices and controls",
+    body: "You can edit watch status, ratings and saved lists at any time. You can remove entries from Continue Watching, clear history and manage notification preferences in Settings. On compatible devices, playback target options like AirPlay or Cast depend on browser, OS and provider support.",
+  },
+  {
+    heading: "Regional and legal compliance",
+    body: "Depending on your location, you may have rights to access, correct, export or delete personal data. CineLog aims to support applicable privacy requirements including transparency, minimization and user control principles.",
+  },
+  {
+    heading: "Acceptable use",
+    body: "You agree not to misuse CineLog, interfere with service integrity, attempt unauthorized access, bypass security controls or violate rights of content owners and service providers. Features may be restricted or suspended in case of abuse.",
+  },
+  {
+    heading: "No warranty of availability",
+    body: "CineLog is provided as-is. Third-party APIs, metadata and playback providers may change, degrade or become unavailable without notice. We cannot guarantee uninterrupted playback, permanent provider availability or universal device compatibility.",
+  },
+  {
+    heading: "Policy updates",
+    body: "This notice can be updated when features, providers or legal requirements change. Material updates may be reflected in app release notes or legal screen revisions.",
   },
   {
     heading: "Contact",

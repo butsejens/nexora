@@ -5,16 +5,33 @@
  * store subscription so pressing it re-renders the button rather than the page.
  */
 
-import React, { useCallback } from "react";
-import { View } from "react-native";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  ActivityIndicator,
+  Alert,
+  LayoutChangeEvent,
+  Modal,
+  Platform,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
+import { WebView } from "react-native-webview";
+import * as ScreenOrientation from "expo-screen-orientation";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { StatusBar } from "expo-status-bar";
+import { Ionicons } from "@expo/vector-icons";
+import { useKeepAwake } from "expo-keep-awake";
 
 import { useT } from "@/i18n";
 import { Button, IconButton } from "@/components/ui/Button";
 import { GenrePill } from "@/components/ui/GenrePill";
-import { SPACING } from "@/constants/theme";
-import { makeStyles } from "@/theme";
+import { FONTS, RADIUS, SPACING } from "@/constants/theme";
+import { makeStyles, useTheme } from "@/theme";
+import { apiData } from "@/lib/http";
 import { SafeHaptics } from "@/lib/safeHaptics";
-import type { LibraryEntryRef, WatchState } from "@/lib/cinelog/types";
+import type { LibraryEntryRef, MediaType, WatchState } from "@/lib/cinelog/types";
 import { useLibrary } from "@/store/library-store";
 
 export interface WatchlistButtonProps {
@@ -121,6 +138,869 @@ export function TrailerButton({
   );
 }
 
+interface StreamProvider {
+  id: string;
+  label: string;
+  movieUrl: (tmdbId: number) => string;
+  tvUrl: (tmdbId: number, season: number, episode: number) => string;
+}
+
+interface ProviderTemplate {
+  id: string;
+  label: string;
+  movieUrl: string;
+  tvUrl: string;
+}
+
+function applyTemplate(
+  template: string,
+  tmdbId: number,
+  seasonNumber: number,
+  episodeNumber: number,
+): string {
+  return String(template || "")
+    .replaceAll("{tmdbId}", String(tmdbId))
+    .replaceAll("{id}", String(tmdbId))
+    .replaceAll("{s}", String(seasonNumber))
+    .replaceAll("{e}", String(episodeNumber));
+}
+
+const STREAM_PROVIDERS: StreamProvider[] = [
+  { id: "vidlinkpro", label: "Server 1", movieUrl: (id) => `https://vidlink.pro/movie/${id}`, tvUrl: (id, s, e) => `https://vidlink.pro/tv/${id}/${s}/${e}` },
+  { id: "vidfast", label: "Server 2", movieUrl: (id) => `https://vidfast.pro/movie/${id}`, tvUrl: (id, s, e) => `https://vidfast.pro/tv/${id}/${s}/${e}` },
+  { id: "videasy", label: "Server 3", movieUrl: (id) => `https://player.videasy.net/movie/${id}`, tvUrl: (id, s, e) => `https://player.videasy.net/tv/${id}/${s}/${e}` },
+  { id: "vidsrcnl", label: "Server 4", movieUrl: (id) => `https://player.vidsrc.nl/embed/movie/${id}`, tvUrl: (id, s, e) => `https://player.vidsrc.nl/embed/tv/${id}/${s}/${e}` },
+  { id: "warezcdn", label: "Server 5", movieUrl: (id) => `https://warezcdn.com/embed/movie/${id}`, tvUrl: (id, s, e) => `https://warezcdn.com/embed/tv/${id}/${s}/${e}` },
+  { id: "flicky", label: "Server 6", movieUrl: (id) => `https://flicky.host/embed/movie/?id=${id}`, tvUrl: (id, s, e) => `https://flicky.host/embed/tv/?id=${id}&s=${s}&e=${e}` },
+  { id: "moviesapi", label: "Server 7", movieUrl: (id) => `https://moviesapi.club/movie/${id}`, tvUrl: (id, s, e) => `https://moviesapi.club/tv/${id}-${s}-${e}` },
+  { id: "flickystream", label: "Server 8", movieUrl: (id) => `https://flickystream.ru/movie/${id}`, tvUrl: (id, s, e) => `https://flickystream.ru/tv/${id}/${s}/${e}` },
+  { id: "autoembed", label: "Server 9", movieUrl: (id) => `https://autoembed.cc/movie/tmdb-${id}`, tvUrl: (id, s, e) => `https://autoembed.cc/tv/tmdb-${id}/${s}/${e}` },
+  { id: "embedsu", label: "Server 10", movieUrl: (id) => `https://embed.su/embed/movie/${id}`, tvUrl: (id, s, e) => `https://embed.su/embed/tv/${id}/${s}/${e}` },
+  { id: "111movies", label: "Server 11", movieUrl: (id) => `https://111movies.net/movie/${id}`, tvUrl: (id, s, e) => `https://111movies.net/tv/${id}/${s}/${e}` },
+  { id: "vidsrcstream", label: "Server 12", movieUrl: (id) => `https://vidsrc.stream/embed/movie/${id}`, tvUrl: (id, s, e) => `https://vidsrc.stream/embed/tv/${id}/${s}/${e}` },
+  { id: "2embedorg", label: "Server 13", movieUrl: (id) => `https://www.2embed.org/embed/movie?id=${id}`, tvUrl: (id, s, e) => `https://www.2embed.org/embed/tv?id=${id}&s=${s}&e=${e}` },
+];
+
+export interface PlayButtonProps {
+  tmdbId: number;
+  type: MediaType;
+  title: string;
+  libraryRef?: LibraryEntryRef;
+  seasonNumber?: number;
+  episodeNumber?: number;
+  startAtSeconds?: number;
+  size?: "sm" | "md" | "lg";
+  autoPlayRequest?: number;
+}
+
+export function PlayButton({
+  tmdbId,
+  type,
+  title,
+  libraryRef,
+  seasonNumber = 1,
+  episodeNumber = 1,
+  startAtSeconds = 0,
+  size = "md",
+  autoPlayRequest,
+}: PlayButtonProps) {
+  const t = useT();
+  const styles = useStyles();
+  const insets = useSafeAreaInsets();
+  const [visible, setVisible] = useState(false);
+  const [activeUrl, setActiveUrl] = useState<string | null>(null);
+  const [providerIndex, setProviderIndex] = useState(0);
+  const [isLoading, setIsLoading] = useState(false);
+  const [providerTemplates, setProviderTemplates] = useState<ProviderTemplate[]>([]);
+  const lastAutoRequestRef = useRef<number | undefined>(undefined);
+  const progressTickRef = useRef(0);
+  const saveProgress = useLibrary((state) => state.saveProgress);
+
+  const ref = useMemo<LibraryEntryRef>(
+    () =>
+      libraryRef ?? {
+        id: `${type}:${tmdbId}`,
+        tmdbId,
+        type,
+        title,
+        poster: null,
+        backdrop: null,
+        year: 0,
+        rating: 0,
+        genres: [],
+        genreIds: [],
+        releaseDate: null,
+      },
+    [libraryRef, tmdbId, title, type],
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadProviders = async () => {
+      try {
+        const next = await apiData<ProviderTemplate[]>("/api/streams/providers");
+        if (!cancelled && Array.isArray(next) && next.length > 0) {
+          setProviderTemplates(next);
+        }
+      } catch {
+        // Keep static fallback providers when backend is unreachable.
+      }
+    };
+    void loadProviders();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const providers = useMemo(() => {
+    if (providerTemplates.length > 0) {
+      return providerTemplates.map((provider) => ({
+        id: provider.id,
+        label: provider.label,
+        url:
+          type === "movie"
+            ? applyTemplate(provider.movieUrl, tmdbId, seasonNumber, episodeNumber)
+            : applyTemplate(provider.tvUrl, tmdbId, seasonNumber, episodeNumber),
+      }));
+    }
+
+    return STREAM_PROVIDERS.map((provider) => ({
+      ...provider,
+      url:
+        type === "movie"
+          ? provider.movieUrl(tmdbId)
+          : provider.tvUrl(tmdbId, seasonNumber, episodeNumber),
+    }));
+  }, [episodeNumber, providerTemplates, seasonNumber, tmdbId, type]);
+
+  const showUnavailableDialog = useCallback(() => {
+    Alert.alert(
+      "Unable to play this title",
+      "The video source is currently unavailable. Please try again later.",
+      [
+        { text: "Back", style: "cancel", onPress: () => setVisible(false) },
+        {
+          text: "Try Again",
+          onPress: () => {
+            const first = providers[0];
+            if (!first) {
+              setVisible(false);
+              return;
+            }
+            setProviderIndex(0);
+            setActiveUrl(first.url);
+            setIsLoading(true);
+            setVisible(true);
+          },
+        },
+      ],
+    );
+  }, [providers]);
+
+  const openProvider = useCallback(
+    (nextIndex: number) => {
+      const nextProvider = providers[nextIndex];
+      if (!nextProvider) {
+        setVisible(false);
+        setIsLoading(false);
+        showUnavailableDialog();
+        return;
+      }
+
+      setProviderIndex(nextIndex);
+      setActiveUrl(nextProvider.url);
+      setIsLoading(true);
+      setVisible(true);
+    },
+    [providers, showUnavailableDialog],
+  );
+
+  const handlePress = useCallback(() => {
+    void SafeHaptics.selection();
+    openProvider(0);
+  }, [openProvider]);
+
+  const handleStreamFail = useCallback(() => {
+    const nextIndex = providerIndex + 1;
+    if (nextIndex < providers.length) {
+      openProvider(nextIndex);
+      return;
+    }
+
+    setVisible(false);
+    setIsLoading(false);
+    showUnavailableDialog();
+  }, [openProvider, providerIndex, providers, showUnavailableDialog]);
+
+  useEffect(() => {
+    if (autoPlayRequest == null) return;
+    if (lastAutoRequestRef.current === autoPlayRequest) return;
+    lastAutoRequestRef.current = autoPlayRequest;
+    openProvider(0);
+  }, [autoPlayRequest, openProvider]);
+
+  const handlePlaybackSync = useCallback(
+    (positionSeconds: number, durationSeconds: number) => {
+      if (!Number.isFinite(positionSeconds) || !Number.isFinite(durationSeconds)) return;
+      if (durationSeconds <= 0) return;
+
+      const now = Date.now();
+      if (now - progressTickRef.current < 2000) return;
+      progressTickRef.current = now;
+
+      const percent = Math.max(
+        0,
+        Math.min(100, Math.round((positionSeconds / durationSeconds) * 100)),
+      );
+
+      saveProgress(ref, {
+        percent,
+        positionSeconds,
+        durationSeconds,
+        seasonNumber: type === "series" ? seasonNumber : undefined,
+        episodeNumber: type === "series" ? episodeNumber : undefined,
+      });
+    },
+    [episodeNumber, ref, saveProgress, seasonNumber, type],
+  );
+
+  useEffect(() => {
+    if (!visible || Platform.OS !== "android") return;
+    void ScreenOrientation.lockAsync(
+      ScreenOrientation.OrientationLock.LANDSCAPE,
+    ).catch(() => undefined);
+    return () => {
+      void ScreenOrientation.lockAsync(
+        ScreenOrientation.OrientationLock.DEFAULT,
+      ).catch(() => undefined);
+    };
+  }, [visible]);
+
+  return (
+    <>
+      <Button
+        label={t("Play")}
+        icon="play"
+        onPress={handlePress}
+        size={size}
+        accessibilityHint={t("Plays the best available stream")}
+      />
+
+      <Modal
+        visible={visible}
+        transparent={false}
+        animationType="fade"
+        onRequestClose={() => setVisible(false)}
+        statusBarTranslucent
+      >
+        <StatusBar hidden />
+        <View style={styles.modalBackdrop}>
+          <View style={[styles.modalSheet, { paddingTop: insets.top }]}> 
+            <View style={styles.playerFrame}>
+              {activeUrl ? (
+                <StreamWebView
+                  key={activeUrl}
+                  url={activeUrl}
+                  onFail={handleStreamFail}
+                  onLoad={() => setIsLoading(false)}
+                  onClose={() => setVisible(false)}
+                  isLoading={isLoading}
+                  startAtSeconds={startAtSeconds}
+                  onPlaybackSync={handlePlaybackSync}
+                />
+              ) : (
+                <ActivityIndicator size="large" color={styles.spinner.color} />
+              )}
+            </View>
+          </View>
+        </View>
+      </Modal>
+    </>
+  );
+}
+
+interface StreamWebViewProps {
+  url: string;
+  onFail: () => void;
+  onLoad: () => void;
+  onClose: () => void;
+  isLoading: boolean;
+  startAtSeconds: number;
+  onPlaybackSync: (positionSeconds: number, durationSeconds: number) => void;
+}
+
+function formatSeconds(totalSeconds: number): string {
+  if (!Number.isFinite(totalSeconds) || totalSeconds <= 0) return "0:00";
+  const safe = Math.floor(totalSeconds);
+  const hours = Math.floor(safe / 3600);
+  const minutes = Math.floor((safe % 3600) / 60);
+  const seconds = safe % 60;
+  if (hours > 0) {
+    return `${hours}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+  }
+  return `${minutes}:${String(seconds).padStart(2, "0")}`;
+}
+
+function StreamWebView({
+  url,
+  onFail,
+  onLoad,
+  onClose,
+  isLoading,
+  startAtSeconds,
+  onPlaybackSync,
+}: StreamWebViewProps) {
+  const t = useT();
+  const styles = useStyles();
+  const { colors } = useTheme();
+  const insets = useSafeAreaInsets();
+  const webViewRef = useRef<WebView>(null);
+  const autoHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [controlsVisible, setControlsVisible] = useState(true);
+  const [durationSeconds, setDurationSeconds] = useState(0);
+  const [positionSeconds, setPositionSeconds] = useState(0);
+  const [isPlaying, setIsPlaying] = useState(true);
+  const [progressTrackWidth, setProgressTrackWidth] = useState(0);
+  useKeepAwake();
+
+  const clearHideTimer = useCallback(() => {
+    if (!autoHideTimerRef.current) return;
+    clearTimeout(autoHideTimerRef.current);
+    autoHideTimerRef.current = null;
+  }, []);
+
+  const scheduleHideControls = useCallback(() => {
+    clearHideTimer();
+    autoHideTimerRef.current = setTimeout(() => {
+      setControlsVisible(false);
+    }, 3200);
+  }, [clearHideTimer]);
+
+  const showControls = useCallback((reschedule = true) => {
+    setControlsVisible(true);
+    if (reschedule) scheduleHideControls();
+  }, [scheduleHideControls]);
+
+  useEffect(() => {
+    if (!isPlaying || !controlsVisible) {
+      clearHideTimer();
+      return;
+    }
+    scheduleHideControls();
+    return clearHideTimer;
+  }, [clearHideTimer, controlsVisible, isPlaying, scheduleHideControls]);
+
+  useEffect(() => {
+    return clearHideTimer;
+  }, [clearHideTimer]);
+
+  const sendPlayerCommand = useCallback(
+    (command: "toggle" | "seekBy" | "seekTo" | "cast", value = 0) => {
+      const script = `
+        (function () {
+          try {
+            var video = document.querySelector('video');
+            if (!video) return;
+            var command = ${JSON.stringify(command)};
+            var value = Number(${JSON.stringify(value)}) || 0;
+            if (command === 'toggle') {
+              if (video.paused) {
+                video.play && video.play().catch(function(){});
+              } else {
+                video.pause && video.pause();
+              }
+            }
+            if (command === 'seekBy') {
+              video.currentTime = Math.max(0, Math.min((video.duration || 0), (video.currentTime || 0) + value));
+            }
+            if (command === 'seekTo') {
+              video.currentTime = Math.max(0, Math.min((video.duration || 0), value));
+            }
+            if (command === 'cast') {
+              try {
+                if (typeof video.webkitShowPlaybackTargetPicker === 'function') {
+                  video.webkitShowPlaybackTargetPicker();
+                  return;
+                }
+              } catch (e) {}
+              try {
+                if (video.remote && typeof video.remote.prompt === 'function') {
+                  video.remote.prompt();
+                  return;
+                }
+              } catch (e) {}
+              if (window.ReactNativeWebView) {
+                window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'CAST_UNSUPPORTED' }));
+              }
+            }
+          } catch (e) {}
+        })();
+        true;
+      `;
+
+      webViewRef.current?.injectJavaScript(script);
+      showControls();
+    },
+    [showControls],
+  );
+
+  const handleTogglePlayback = useCallback(() => {
+    sendPlayerCommand("toggle");
+  }, [sendPlayerCommand]);
+
+  const handleSeekBy = useCallback(
+    (deltaSeconds: number) => {
+      sendPlayerCommand("seekBy", deltaSeconds);
+    },
+    [sendPlayerCommand],
+  );
+
+  const handleProgressTrackLayout = useCallback((event: LayoutChangeEvent) => {
+    setProgressTrackWidth(event.nativeEvent.layout.width);
+  }, []);
+
+  const handleCastPress = useCallback(() => {
+    sendPlayerCommand("cast");
+  }, [sendPlayerCommand]);
+
+  const handleProgressPress = useCallback(
+    (x: number) => {
+      if (durationSeconds <= 0 || progressTrackWidth <= 0) return;
+      const ratio = Math.max(0, Math.min(1, x / progressTrackWidth));
+      sendPlayerCommand("seekTo", ratio * durationSeconds);
+    },
+    [durationSeconds, progressTrackWidth, sendPlayerCommand],
+  );
+
+  const blockedHosts = useMemo(
+    () => [
+      "doubleclick.net",
+      "googlesyndication.com",
+      "googleadservices.com",
+      "adservice.google.com",
+      "popads.net",
+      "exoclick",
+      "propellerads",
+      "trafficstars",
+      "juicyads",
+      "pushame",
+      "clickadu",
+      "hilltopads",
+      "adsterra",
+      "ad-maven",
+      "admaven",
+      "popcash.net",
+      "trafficjunky",
+      "pushground",
+      "richpush",
+      "bidswitch.net",
+      "taboola.com",
+      "outbrain.com",
+      "adnxs.com",
+      "adsrvr.org",
+      "serving-sys.com",
+      "mgid.com",
+      "revcontent.com",
+      "zedo.com",
+      "lqm.io",
+      "popunder.net",
+      "adf.ly",
+      "bc.vc",
+      "sh.st",
+    ],
+    [],
+  );
+
+  const injectedJavaScript = useMemo(() => {
+    return `
+      (function(){
+        try {
+          var blocked = [
+            'doubleclick.net','googlesyndication.com','googleadservices.com','adservice.google.com',
+            'popads.net','exoclick','propellerads','trafficstars','juicyads','pushame','clickadu',
+            'hilltopads','adsterra','ad-maven','admaven','popcash.net','trafficjunky','pushground',
+            'richpush','bidswitch.net','taboola.com','outbrain.com','adnxs.com','adsrvr.org',
+            'serving-sys.com','mgid.com','revcontent.com','zedo.com','lqm.io','popunder.net','adf.ly','bc.vc','sh.st'
+          ];
+
+          var isBlockedUrl = function(raw) {
+            if (!raw) return false;
+            var v = String(raw).toLowerCase();
+            for (var i = 0; i < blocked.length; i++) {
+              if (v.indexOf(blocked[i]) !== -1) return true;
+            }
+            return false;
+          };
+
+          var resumeAt = ${Math.max(0, Math.round(startAtSeconds))};
+
+          const style = document.createElement('style');
+          style.innerHTML = [
+            '[id*="ad"], [class*="ad"], [id*="ads"], [class*="ads"], [id*="banner"], [class*="banner"], iframe[src*="doubleclick"], iframe[src*="googlesyndication"], iframe[src*="adservice"], iframe[src*="taboola"], iframe[src*="outbrain"], .adsbygoogle, .google-auto-placed { display: none !important; }',
+            'video::-webkit-media-controls, video::-webkit-media-controls-enclosure, video::-webkit-media-controls-panel, video::-webkit-media-controls-play-button, video::-webkit-media-controls-fullscreen-button, video::-webkit-media-controls-overlay-enclosure, video::-webkit-media-controls-start-playback-button { display: none !important; -webkit-appearance: none !important; }',
+            'video::-moz-media-controls { display: none !important; }',
+            'button[aria-label*="fullscreen" i], button[title*="fullscreen" i], .fullscreen, [class*="fullscreen" i], [id*="fullscreen" i], [class*="pip" i], [id*="pip" i], button[aria-label*="picture in picture" i] { display: none !important; visibility: hidden !important; opacity: 0 !important; pointer-events: none !important; }',
+            'iframe, video { border: 0 !important; box-shadow: none !important; }'
+          ].join(' ');
+          document.head.appendChild(style);
+
+          const hideCandidates = (root) => {
+            const candidates = Array.from(root.querySelectorAll('*'));
+            for (const node of candidates) {
+              const idText = String(node.id || '').toLowerCase();
+              const classText = String(node.className || '').toLowerCase();
+              const attrs = idText + ' ' + classText;
+              if (/(^|\W)(ad|ads|sponsor|banner|popunder|popup)(\W|$)/i.test(attrs)) {
+                node.style.display = 'none';
+              }
+            }
+          };
+
+          hideCandidates(document);
+
+          const observer = new MutationObserver(() => hideCandidates(document));
+          observer.observe(document.documentElement, { childList: true, subtree: true });
+
+          const blockExternalFrames = () => {
+            const frames = Array.from(document.querySelectorAll('iframe'));
+            frames.forEach((frame) => {
+              const src = (frame.getAttribute('src') || '').toLowerCase();
+              if (src && isBlockedUrl(src)) {
+                frame.remove();
+                return;
+              }
+              if (frame.style) {
+                frame.style.pointerEvents = 'auto';
+                frame.style.zIndex = '1';
+              }
+            });
+          };
+
+          blockExternalFrames();
+          setInterval(blockExternalFrames, 1500);
+
+          window.open = function(nextUrl) {
+            if (isBlockedUrl(nextUrl)) return null;
+            return null;
+          };
+
+          try {
+            if (window.top && window.self !== window.top) {
+              window.top.open = function() { return null; };
+            }
+          } catch (e) {}
+
+          var forceAudio = function() {
+            try {
+              var media = document.querySelector('video, audio');
+              if (!media) return;
+              media.muted = false;
+              media.volume = 1;
+              if (media.paused) {
+                media.play().catch(function(){});
+              }
+            } catch (e) {}
+          };
+
+          var emitProgress = function() {
+            try {
+              var video = document.querySelector('video');
+              if (!video || !window.ReactNativeWebView) return;
+              try {
+                video.controls = false;
+                video.removeAttribute('controls');
+              } catch (e) {}
+              window.ReactNativeWebView.postMessage(JSON.stringify({
+                type: 'PLAYBACK_SYNC',
+                currentTime: Number(video.currentTime || 0),
+                duration: Number(video.duration || 0),
+                paused: Boolean(video.paused)
+              }));
+            } catch (e) {}
+          };
+
+          var bindVideoEvents = function() {
+            var video = document.querySelector('video');
+            if (!video || video.__cinelogBound) return;
+            video.__cinelogBound = true;
+            try {
+              video.playsInline = true;
+              video.setAttribute('playsinline', 'true');
+              video.setAttribute('webkit-playsinline', 'true');
+              video.controls = false;
+              video.removeAttribute('controls');
+              video.setAttribute('x-webkit-airplay', 'deny');
+              video.setAttribute('airplay', 'deny');
+              video.setAttribute('controlsList', 'nofullscreen nodownload noplaybackrate');
+              video.disablePictureInPicture = true;
+              video.setAttribute('disablePictureInPicture', 'true');
+              video.style.objectFit = 'contain';
+              video.style.background = '#000';
+              if (typeof video.requestFullscreen === 'function') {
+                video.requestFullscreen = function() { return Promise.resolve(); };
+              }
+              if (typeof video.webkitEnterFullscreen === 'function') {
+                video.webkitEnterFullscreen = function() {};
+              }
+              if (typeof video.webkitRequestFullscreen === 'function') {
+                video.webkitRequestFullscreen = function() {};
+              }
+            } catch (e) {}
+            if (resumeAt > 0 && !video.__cinelogResumed) {
+              video.__cinelogResumed = true;
+              try { video.currentTime = resumeAt; } catch (e) {}
+            }
+            ['timeupdate', 'loadedmetadata', 'playing', 'pause'].forEach(function(evt){
+              video.addEventListener(evt, emitProgress, { passive: true });
+            });
+            video.addEventListener('webkitbeginfullscreen', function(e){
+              if (e && typeof e.preventDefault === 'function') e.preventDefault();
+              try { video.pause && video.pause(); } catch (err) {}
+              try { video.play && video.play().catch(function(){}); } catch (err) {}
+            });
+            emitProgress();
+          };
+
+          try {
+            if (window.Element && Element.prototype && typeof Element.prototype.requestFullscreen === 'function') {
+              Element.prototype.requestFullscreen = function() { return Promise.resolve(); };
+            }
+            if (window.HTMLVideoElement && HTMLVideoElement.prototype) {
+              if (typeof HTMLVideoElement.prototype.webkitEnterFullscreen === 'function') {
+                HTMLVideoElement.prototype.webkitEnterFullscreen = function() {};
+              }
+              if (typeof HTMLVideoElement.prototype.webkitRequestFullscreen === 'function') {
+                HTMLVideoElement.prototype.webkitRequestFullscreen = function() {};
+              }
+            }
+          } catch (e) {}
+
+          var blockClickIfNeeded = function(event) {
+            if (window.ReactNativeWebView) {
+              window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'USER_INTERACTION' }));
+            }
+            var node = event.target;
+            while (node) {
+              var href = '';
+              try {
+                href = String(node.href || node.getAttribute && node.getAttribute('href') || '');
+              } catch (e) {}
+              if (isBlockedUrl(href)) {
+                event.preventDefault();
+                event.stopPropagation();
+                event.stopImmediatePropagation && event.stopImmediatePropagation();
+                forceAudio();
+                return false;
+              }
+              if (node.target === '_blank') {
+                event.preventDefault();
+                event.stopPropagation();
+                event.stopImmediatePropagation && event.stopImmediatePropagation();
+                forceAudio();
+                return false;
+              }
+              node = node.parentElement;
+            }
+            return true;
+          };
+
+          document.addEventListener('click', blockClickIfNeeded, true);
+          document.addEventListener('touchstart', blockClickIfNeeded, true);
+          document.addEventListener('pointerdown', blockClickIfNeeded, true);
+          setInterval(bindVideoEvents, 1200);
+          setInterval(emitProgress, 1800);
+          setTimeout(forceAudio, 800);
+        } catch (error) {}
+      })();
+    `;
+  }, []);
+
+  return (
+    <View style={styles.streamContainer}>
+      <WebView
+        ref={webViewRef}
+        source={{ uri: url }}
+        style={styles.webview}
+        allowsFullscreenVideo={false}
+        allowsInlineMediaPlayback
+        allowsAirPlayForMediaPlayback={false}
+        mediaPlaybackRequiresUserAction={false}
+        javaScriptEnabled
+        domStorageEnabled
+        sharedCookiesEnabled
+        thirdPartyCookiesEnabled={false}
+        mixedContentMode="always"
+        userAgent="Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.6099.210 Mobile Safari/537.36"
+        injectedJavaScript={injectedJavaScript}
+        onLoad={onLoad}
+        onError={onFail}
+        onHttpError={onFail}
+        onMessage={(event) => {
+          try {
+            const raw = JSON.parse(String(event.nativeEvent.data || "")) as unknown;
+            if (!raw || typeof raw !== "object") return;
+            const payload = raw as {
+              type?: unknown;
+              currentTime?: unknown;
+              duration?: unknown;
+              paused?: unknown;
+            };
+            if (typeof payload.type !== "string") return;
+
+            if (payload.type === "USER_INTERACTION") {
+              showControls();
+              return;
+            }
+            if (payload.type === "CAST_UNSUPPORTED") {
+              Alert.alert(
+                Platform.OS === "android" ? "Cast not available" : "AirPlay not available",
+                Platform.OS === "android"
+                  ? "This stream provider does not expose Google Cast controls in the embedded player."
+                  : "This stream provider does not expose AirPlay controls in the embedded player.",
+              );
+              return;
+            }
+            if (payload.type === "PLAYBACK_SYNC") {
+              const nextCurrent = Number(payload.currentTime || 0);
+              const nextDuration = Number(payload.duration || 0);
+              setPositionSeconds(nextCurrent);
+              setDurationSeconds(nextDuration);
+              setIsPlaying(!Boolean(payload.paused));
+              onPlaybackSync(nextCurrent, nextDuration);
+            }
+          } catch {
+            // Ignore malformed bridge events from third-party players.
+          }
+        }}
+        setSupportMultipleWindows={false}
+        allowsBackForwardNavigationGestures={false}
+        onShouldStartLoadWithRequest={(request: { url: string }) => {
+          const target = String(request.url || "").toLowerCase();
+          if (blockedHosts.some((host) => target.includes(host))) return false;
+          if (!target.startsWith("http") && !target.startsWith("about:") && !target.startsWith("data:") && !target.startsWith("blob:")) return false;
+          if (target.startsWith("intent:") || target.startsWith("market:") || target.startsWith("mailto:") || target.startsWith("tel:")) return false;
+          return true;
+        }}
+        startInLoadingState
+        renderLoading={() => (
+          <View style={styles.loadingState}>
+            <ActivityIndicator size="large" color={colors.accent} />
+          </View>
+        )}
+      />
+      <Pressable
+        style={styles.controlsTouchLayer}
+        onPress={() => {
+          if (controlsVisible) {
+            setControlsVisible(false);
+            clearHideTimer();
+            return;
+          }
+          showControls();
+        }}
+        accessibilityRole="button"
+        accessibilityLabel="Show or hide player controls"
+      />
+      {controlsVisible ? (
+        <View
+          pointerEvents="box-none"
+          style={[styles.controlsOverlay, { paddingTop: insets.top + SPACING.sm }]}
+        >
+          <View style={styles.controlsTopBar}>
+            <Pressable
+              onPress={onClose}
+              style={styles.topActionButton}
+              accessibilityRole="button"
+              accessibilityLabel="Close player"
+            >
+              <Ionicons name="close" size={18} color={colors.textPrimary} />
+              <Text style={styles.topActionLabel}>Close</Text>
+            </Pressable>
+            <Pressable
+              onPress={handleCastPress}
+              style={styles.topActionButton}
+              accessibilityRole="button"
+              accessibilityLabel={Platform.OS === "android" ? t("Cast to TV") : t("AirPlay to TV")}
+            >
+              <Ionicons
+                name="tv-outline"
+                size={18}
+                color={colors.textPrimary}
+              />
+              <Text style={styles.topActionLabel}>{Platform.OS === "android" ? "Cast" : "AirPlay"}</Text>
+            </Pressable>
+          </View>
+
+          <View style={styles.controlsCenterRow}>
+            <Pressable
+              onPress={() => handleSeekBy(-10)}
+              style={styles.controlButton}
+              accessibilityRole="button"
+              accessibilityLabel="Rewind 10 seconds"
+            >
+              <Ionicons name="play-back" size={20} color={colors.textPrimary} />
+              <Text style={styles.controlButtonText}>10s</Text>
+            </Pressable>
+            <Pressable
+              onPress={handleTogglePlayback}
+              style={[styles.controlButton, styles.controlButtonPrimary]}
+              accessibilityRole="button"
+              accessibilityLabel={isPlaying ? "Pause" : "Play"}
+            >
+              <Ionicons
+                name={isPlaying ? "pause" : "play"}
+                size={26}
+                color={colors.textPrimary}
+              />
+              <Text style={styles.controlButtonText}>{isPlaying ? "Pause" : "Play"}</Text>
+            </Pressable>
+            <Pressable
+              onPress={() => handleSeekBy(10)}
+              style={styles.controlButton}
+              accessibilityRole="button"
+              accessibilityLabel="Forward 10 seconds"
+            >
+              <Ionicons name="play-forward" size={20} color={colors.textPrimary} />
+              <Text style={styles.controlButtonText}>10s</Text>
+            </Pressable>
+          </View>
+
+          <View style={styles.controlsBottomBar}>
+            <Text style={styles.timeLabel}>{formatSeconds(positionSeconds)}</Text>
+            <Pressable
+              style={styles.progressTrack}
+              onLayout={handleProgressTrackLayout}
+              onPress={(event) =>
+                handleProgressPress(event.nativeEvent.locationX)
+              }
+              accessibilityRole="adjustable"
+              accessibilityLabel="Seek"
+            >
+              <View
+                style={[
+                  styles.progressFill,
+                  {
+                    width:
+                      durationSeconds > 0
+                        ? `${Math.max(0, Math.min(100, (positionSeconds / durationSeconds) * 100))}%`
+                        : "0%",
+                  },
+                ]}
+              />
+            </Pressable>
+            <Text style={styles.timeLabel}>{formatSeconds(durationSeconds)}</Text>
+          </View>
+        </View>
+      ) : null}
+      {isLoading ? (
+        <View style={[styles.loadingChip, { top: insets.top + SPACING.sm }]}> 
+          <ActivityIndicator size="small" color={colors.textPrimary} />
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
 const WATCH_STATES: { value: WatchState; label: string }[] = [
   { value: "want_to_watch", label: "Want to Watch" },
   { value: "watching", label: "Currently Watching" },
@@ -154,11 +1034,146 @@ export function WatchStateSelector({ item }: WatchStateSelectorProps) {
   );
 }
 
-const useStyles = makeStyles((c, t) => ({
+const useStyles = makeStyles((c) => ({
   stateRow: {
     flexDirection: "row",
     flexWrap: "wrap",
     gap: SPACING.sm,
     backgroundColor: c.background,
+  },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: "#000",
+  },
+  modalSheet: {
+    flex: 1,
+    backgroundColor: "#000",
+    padding: 0,
+    paddingTop: 0,
+  },
+  playerFrame: {
+    flex: 1,
+    minHeight: 0,
+    borderRadius: 0,
+    overflow: "hidden",
+    backgroundColor: "#000",
+  },
+  streamContainer: {
+    flex: 1,
+    backgroundColor: "#000",
+  },
+  webview: {
+    flex: 1,
+    backgroundColor: "#000",
+  },
+  controlsTouchLayer: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 3,
+  },
+  controlsOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 5,
+    justifyContent: "space-between",
+    paddingHorizontal: SPACING.md,
+    paddingBottom: SPACING.xl,
+  },
+  controlsTopBar: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: SPACING.sm,
+  },
+  topActionButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: SPACING.xs,
+    borderRadius: RADIUS.pill,
+    borderWidth: 1,
+    borderColor: c.borderStrong,
+    backgroundColor: "rgba(0,0,0,0.65)",
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.xs,
+  },
+  topActionLabel: {
+    color: c.textPrimary,
+    fontSize: 12,
+    fontFamily: FONTS.medium,
+  },
+  controlsCenterRow: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: SPACING.lg,
+  },
+  controlButton: {
+    minWidth: 82,
+    borderRadius: 999,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.md,
+    backgroundColor: "rgba(0,0,0,0.62)",
+    borderWidth: 1,
+    borderColor: c.borderStrong,
+    alignItems: "center",
+    gap: 4,
+  },
+  controlButtonPrimary: {
+    minWidth: 96,
+    backgroundColor: "rgba(14,16,20,0.92)",
+    borderColor: c.accentGlow,
+  },
+  controlButtonText: {
+    color: c.textPrimary,
+    fontSize: 12,
+    fontFamily: FONTS.medium,
+  },
+  controlsBottomBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: SPACING.sm,
+    backgroundColor: "rgba(8,9,11,0.82)",
+    borderRadius: RADIUS.md,
+    borderWidth: 1,
+    borderColor: c.borderStrong,
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.sm,
+  },
+  progressTrack: {
+    flex: 1,
+    height: 8,
+    borderRadius: 999,
+    overflow: "hidden",
+    backgroundColor: "rgba(255,255,255,0.2)",
+  },
+  progressFill: {
+    height: "100%",
+    backgroundColor: c.accent,
+  },
+  timeLabel: {
+    color: c.textPrimary,
+    minWidth: 52,
+    textAlign: "center",
+    fontSize: 12,
+    fontFamily: FONTS.medium,
+  },
+  loadingState: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#000",
+  },
+  spinner: {
+    color: c.accent,
+  },
+  loadingChip: {
+    position: "absolute",
+    right: SPACING.md,
+    width: 28,
+    height: 28,
+    borderRadius: 999,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(0,0,0,0.5)",
+    zIndex: 3,
   },
 }));
