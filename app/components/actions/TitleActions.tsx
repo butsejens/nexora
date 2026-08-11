@@ -460,7 +460,10 @@ function StreamWebView({
   const [durationSeconds, setDurationSeconds] = useState(0);
   const [positionSeconds, setPositionSeconds] = useState(0);
   const [isPlaying, setIsPlaying] = useState(true);
+  const [volume, setVolume] = useState(1);
+  const [isMuted, setIsMuted] = useState(false);
   const [progressTrackWidth, setProgressTrackWidth] = useState(0);
+  const [volumeTrackWidth, setVolumeTrackWidth] = useState(0);
   useKeepAwake();
 
   const clearHideTimer = useCallback(() => {
@@ -495,7 +498,7 @@ function StreamWebView({
   }, [clearHideTimer]);
 
   const sendPlayerCommand = useCallback(
-    (command: "toggle" | "seekBy" | "seekTo" | "cast", value = 0) => {
+    (command: "toggle" | "seekBy" | "seekTo" | "cast" | "setVolume", value = 0) => {
       const script = `
         (function () {
           try {
@@ -533,6 +536,18 @@ function StreamWebView({
                 window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'CAST_UNSUPPORTED' }));
               }
             }
+            if (command === 'setVolume') {
+              var safe = Math.max(0, Math.min(1, value));
+              video.muted = safe <= 0.001;
+              video.volume = safe;
+              if (window.ReactNativeWebView) {
+                window.ReactNativeWebView.postMessage(JSON.stringify({
+                  type: 'VOLUME_SYNC',
+                  volume: Number(video.volume || 0),
+                  muted: Boolean(video.muted)
+                }));
+              }
+            }
           } catch (e) {}
         })();
         true;
@@ -559,6 +574,10 @@ function StreamWebView({
     setProgressTrackWidth(event.nativeEvent.layout.width);
   }, []);
 
+  const handleVolumeTrackLayout = useCallback((event: LayoutChangeEvent) => {
+    setVolumeTrackWidth(event.nativeEvent.layout.width);
+  }, []);
+
   const handleCastPress = useCallback(() => {
     sendPlayerCommand("cast");
   }, [sendPlayerCommand]);
@@ -571,6 +590,40 @@ function StreamWebView({
     },
     [durationSeconds, progressTrackWidth, sendPlayerCommand],
   );
+
+  const applyVolume = useCallback(
+    (nextVolume: number) => {
+      const safe = Math.max(0, Math.min(1, nextVolume));
+      setVolume(safe);
+      setIsMuted(safe <= 0.001);
+      sendPlayerCommand("setVolume", safe);
+    },
+    [sendPlayerCommand],
+  );
+
+  const handleVolumePress = useCallback(
+    (x: number) => {
+      if (volumeTrackWidth <= 0) return;
+      const ratio = Math.max(0, Math.min(1, x / volumeTrackWidth));
+      applyVolume(ratio);
+    },
+    [applyVolume, volumeTrackWidth],
+  );
+
+  const handleToggleMute = useCallback(() => {
+    if (isMuted || volume <= 0.001) {
+      applyVolume(0.85);
+      return;
+    }
+    applyVolume(0);
+  }, [applyVolume, isMuted, volume]);
+
+  const handleWebViewLoad = useCallback(() => {
+    onLoad();
+    setTimeout(() => {
+      sendPlayerCommand("setVolume", Math.max(0.15, volume));
+    }, 450);
+  }, [onLoad, sendPlayerCommand, volume]);
 
   const blockedHosts = useMemo(
     () => [
@@ -838,7 +891,7 @@ function StreamWebView({
         mixedContentMode="always"
         userAgent="Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.6099.210 Mobile Safari/537.36"
         injectedJavaScript={injectedJavaScript}
-        onLoad={onLoad}
+        onLoad={handleWebViewLoad}
         onError={onFail}
         onHttpError={onFail}
         onMessage={(event) => {
@@ -850,6 +903,8 @@ function StreamWebView({
               currentTime?: unknown;
               duration?: unknown;
               paused?: unknown;
+              volume?: unknown;
+              muted?: unknown;
             };
             if (typeof payload.type !== "string") return;
 
@@ -873,6 +928,14 @@ function StreamWebView({
               setDurationSeconds(nextDuration);
               setIsPlaying(!Boolean(payload.paused));
               onPlaybackSync(nextCurrent, nextDuration);
+              return;
+            }
+            if (payload.type === "VOLUME_SYNC") {
+              const nextVolume = Number(payload.volume);
+              if (Number.isFinite(nextVolume)) {
+                setVolume(Math.max(0, Math.min(1, nextVolume)));
+              }
+              setIsMuted(Boolean(payload.muted));
             }
           } catch {
             // Ignore malformed bridge events from third-party players.
@@ -972,29 +1035,59 @@ function StreamWebView({
           </View>
 
           <View style={styles.controlsBottomBar}>
-            <Text style={styles.timeLabel}>{formatSeconds(positionSeconds)}</Text>
-            <Pressable
-              style={styles.progressTrack}
-              onLayout={handleProgressTrackLayout}
-              onPress={(event) =>
-                handleProgressPress(event.nativeEvent.locationX)
-              }
-              accessibilityRole="adjustable"
-              accessibilityLabel="Seek"
-            >
-              <View
-                style={[
-                  styles.progressFill,
-                  {
-                    width:
-                      durationSeconds > 0
-                        ? `${Math.max(0, Math.min(100, (positionSeconds / durationSeconds) * 100))}%`
-                        : "0%",
-                  },
-                ]}
-              />
-            </Pressable>
-            <Text style={styles.timeLabel}>{formatSeconds(durationSeconds)}</Text>
+            <View style={styles.volumeRow}>
+              <Pressable
+                style={styles.volumeButton}
+                onPress={handleToggleMute}
+                accessibilityRole="button"
+                accessibilityLabel={isMuted || volume <= 0.001 ? "Unmute" : "Mute"}
+              >
+                <Ionicons
+                  name={isMuted || volume <= 0.001 ? "volume-mute" : volume < 0.45 ? "volume-low" : "volume-high"}
+                  size={16}
+                  color={colors.textPrimary}
+                />
+              </Pressable>
+              <Pressable
+                style={styles.volumeTrack}
+                onLayout={handleVolumeTrackLayout}
+                onPress={(event) => handleVolumePress(event.nativeEvent.locationX)}
+                accessibilityRole="adjustable"
+                accessibilityLabel="Volume"
+              >
+                <View
+                  style={[
+                    styles.volumeFill,
+                    { width: `${Math.round(Math.max(0, Math.min(100, volume * 100)))}%` },
+                  ]}
+                />
+              </Pressable>
+            </View>
+            <View style={styles.controlsBottomMain}>
+              <Text style={styles.timeLabel}>{formatSeconds(positionSeconds)}</Text>
+              <Pressable
+                style={styles.progressTrack}
+                onLayout={handleProgressTrackLayout}
+                onPress={(event) =>
+                  handleProgressPress(event.nativeEvent.locationX)
+                }
+                accessibilityRole="adjustable"
+                accessibilityLabel="Seek"
+              >
+                <View
+                  style={[
+                    styles.progressFill,
+                    {
+                      width:
+                        durationSeconds > 0
+                          ? `${Math.max(0, Math.min(100, (positionSeconds / durationSeconds) * 100))}%`
+                          : "0%",
+                    },
+                  ]}
+                />
+              </Pressable>
+              <Text style={styles.timeLabel}>{formatSeconds(durationSeconds)}</Text>
+            </View>
           </View>
         </View>
       ) : null}
@@ -1134,8 +1227,6 @@ const useStyles = makeStyles((c) => ({
     fontFamily: FONTS.medium,
   },
   controlsBottomBar: {
-    flexDirection: "row",
-    alignItems: "center",
     gap: SPACING.sm,
     backgroundColor: "rgba(8,9,11,0.82)",
     borderRadius: RADIUS.md,
@@ -1143,6 +1234,37 @@ const useStyles = makeStyles((c) => ({
     borderColor: c.borderStrong,
     paddingVertical: SPACING.sm,
     paddingHorizontal: SPACING.sm,
+  },
+  volumeRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: SPACING.xs,
+  },
+  volumeButton: {
+    width: 28,
+    height: 28,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: c.borderStrong,
+    backgroundColor: "rgba(0,0,0,0.36)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  volumeTrack: {
+    width: 92,
+    height: 8,
+    borderRadius: 999,
+    overflow: "hidden",
+    backgroundColor: "rgba(255,255,255,0.2)",
+  },
+  volumeFill: {
+    height: "100%",
+    backgroundColor: c.accent,
+  },
+  controlsBottomMain: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: SPACING.sm,
   },
   progressTrack: {
     flex: 1,
