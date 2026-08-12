@@ -61,7 +61,7 @@ function checkNode() {
   }
 }
 
-info("Nexora doctor draait checks...");
+info("CineLog doctor draait checks...");
 checkNode();
 ensureEnvFile("app/.env");
 ensureEnvFile("server/.env");

@@ -22,8 +22,8 @@ function removeOldVersionedApks(baseDir, currentVersion) {
   for (const entry of entries) {
     if (!entry.isFile()) continue;
     const name = entry.name;
-    if (!/^nexora-v.+\.apk$/i.test(name)) continue;
-    if (currentVersion && name.toLowerCase() === `nexora-v${currentVersion}.apk`.toLowerCase()) continue;
+    if (!/^cinelog-v.+\.apk$/i.test(name)) continue;
+    if (currentVersion && name.toLowerCase() === `cinelog-v${currentVersion}.apk`.toLowerCase()) continue;
 
     const fullPath = path.join(baseDir, name);
     fs.rmSync(fullPath, { force: true });

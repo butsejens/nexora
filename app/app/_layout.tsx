@@ -1,117 +1,80 @@
+import React, { useEffect } from "react";
+import { StyleSheet } from "react-native";
 import { QueryClientProvider } from "@tanstack/react-query";
 import {
-  useFonts,
   Inter_400Regular,
   Inter_500Medium,
   Inter_600SemiBold,
   Inter_700Bold,
   Inter_800ExtraBold,
+  useFonts,
 } from "@expo-google-fonts/inter";
-import { Stack, router, usePathname, useRootNavigationState } from "expo-router";
+import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
-import * as Updates from "expo-updates";
-import { Asset } from "expo-asset";
 import * as SystemUI from "expo-system-ui";
-import React, { useEffect, useRef } from "react";
-import { AppState } from "react-native";
+import { StatusBar } from "expo-status-bar";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
-import Constants from "expo-constants";
-
-import { PersonalizationBridge } from "@/components/PersonalizationBridge";
-import { ErrorBoundary } from "@/components/ErrorBoundary";
-import { NexoraMenuOverlay } from "@/components/navigation/NexoraMenuOverlay";
-import { StartupUpdateBar } from "@/components/update";
-import appConfig from "@/app.json";
-import { queryClient } from "@/lib/query-client";
-import { NexoraProvider } from "@/context/NexoraContext";
-import { UserStateProvider } from "@/context/UserStateContext";
 import { SafeAreaProvider } from "react-native-safe-area-context";
-import { COLORS } from "@/constants/colors";
-import { logStartupEvent } from "@/services/startup-orchestrator";
-import { recordLaunchSnapshot } from "@/services/update-diagnostics";
-import { refreshStreamProviders } from "@/lib/playback-engine";
-import {
-  hydrateSelfHealingLogs,
-  installGlobalErrorHandler,
-  logSelfHealing,
-} from "@/core/self-healing";
-import { runHealthCheck } from "@/src/core/autonomous/healthMonitor";
-import { refreshMaintenanceSnapshot } from "@/src/core/autonomous/maintenanceMode";
-import { AUTONOMOUS_CONFIG } from "@/src/core/autonomous/autonomousConfig";
+
+import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { useNotificationSync } from "@/hooks/useNotificationSync";
+import { warmupApi } from "@/lib/http";
+import { queryClient } from "@/lib/query-client";
+import { startAuthSync } from "@/store/auth-store";
+import { ThemeProvider, useTheme } from "@/theme";
 
 SplashScreen.preventAutoHideAsync().catch(() => {
-  // Ignore unsupported or duplicate prevent call.
+  // Already prevented, or unsupported on this platform.
 });
 
-function logUpdateDiagnostics() {
-  try {
-    const info: Record<string, unknown> = {
-      appVersion: Constants.expoConfig?.version || "unknown",
-      runtimeVersion: String(Updates.runtimeVersion || "unknown"),
-      updateId: Updates.updateId || "embedded",
-      channel: Updates.channel || "unknown",
-      isEmbedded: Updates.isEmbeddedLaunch,
-      createdAt: Updates.createdAt?.toISOString() || "unknown",
-      isEnabled: Updates.isEnabled,
-    };
-    if (__DEV__) console.info("[nexora:start] update diagnostics", info);
-    logStartupEvent("boot", "info", "update-diagnostics", info);
-    void recordLaunchSnapshot();
-  } catch (error) {
-    if (__DEV__)
-      console.warn("[nexora:start] failed to read update diagnostics", error);
-  }
-}
+/**
+ * Everything that depends on the resolved palette lives here, one level below
+ * the provider that resolves it.
+ */
+function ThemedShell() {
+  const { colors, isDark } = useTheme();
 
-function RootLayoutNav() {
+  useNotificationSync();
+
+  useEffect(() => {
+    SystemUI.setBackgroundColorAsync(colors.background).catch(() => {
+      // Unsupported on web; the CSS background already matches.
+    });
+  }, [colors.background]);
+
   return (
-    <Stack
-      screenOptions={{
-        headerShown: false,
-        contentStyle: { backgroundColor: COLORS.background },
-        animation: "fade",
-      }}
+    <SafeAreaProvider
+      style={[styles.root, { backgroundColor: colors.background }]}
     >
-      <Stack.Screen name="index" options={{ headerShown: false }} />
-      <Stack.Screen
-        name="auth"
-        options={{ headerShown: false, gestureEnabled: false }}
-      />
-      <Stack.Screen
-        name="onboarding/quick-start"
-        options={{ headerShown: false, gestureEnabled: false }}
-      />
-      <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-      <Stack.Screen
-        name="player"
-        options={{
-          headerShown: false,
-          animation: "slide_from_bottom",
-          gestureEnabled: true,
-          gestureDirection: "vertical",
-        }}
-      />
-      <Stack.Screen name="profile" options={{ headerShown: false }} />
-      <Stack.Screen name="settings" options={{ headerShown: false }} />
-      <Stack.Screen name="select-profile" options={{ headerShown: false }} />
-      <Stack.Screen name="manage-profiles" options={{ headerShown: false }} />
-      <Stack.Screen name="detail" options={{ headerShown: false }} />
-      <Stack.Screen name="media/movies" options={{ headerShown: false }} />
-      <Stack.Screen name="media/series" options={{ headerShown: false }} />
-      <Stack.Screen name="media/detail" options={{ headerShown: false }} />
-      <Stack.Screen name="media/studio" options={{ headerShown: false }} />
-      <Stack.Screen name="favorites" options={{ headerShown: false }} />
-      <Stack.Screen name="premium" options={{ headerShown: false }} />
-      <Stack.Screen name="notifications" options={{ headerShown: false }} />
-      <Stack.Screen name="legal" options={{ headerShown: false }} />
-    </Stack>
+      <GestureHandlerRootView
+        style={[styles.root, { backgroundColor: colors.background }]}
+      >
+        <StatusBar style={isDark ? "light" : "dark"} />
+        <Stack
+          screenOptions={{
+            headerShown: false,
+            contentStyle: { backgroundColor: colors.background },
+            animation: "fade",
+          }}
+        >
+          <Stack.Screen name="(tabs)" />
+          <Stack.Screen name="movie/[id]" />
+          <Stack.Screen name="series/[id]" />
+          <Stack.Screen name="person/[id]" />
+          <Stack.Screen name="profile" />
+          <Stack.Screen name="settings" />
+          <Stack.Screen name="legal" />
+          <Stack.Screen
+            name="auth"
+            options={{ animation: "slide_from_bottom" }}
+          />
+        </Stack>
+      </GestureHandlerRootView>
+    </SafeAreaProvider>
   );
 }
 
 export default function RootLayout() {
-  const navState = useRootNavigationState();
-  const pathname = usePathname();
-
   const [fontsLoaded, fontError] = useFonts({
     Inter_400Regular,
     Inter_500Medium,
@@ -120,188 +83,42 @@ export default function RootLayout() {
     Inter_800ExtraBold,
   });
 
-  const startupLoggedRef = useRef(false);
+  useEffect(() => startAuthSync(), []);
 
   useEffect(() => {
-    installGlobalErrorHandler();
-    void hydrateSelfHealingLogs();
-    void logSelfHealing("info", "UI", "self-healing-initialized");
+    void warmupApi();
   }, []);
 
   useEffect(() => {
-    SystemUI.setBackgroundColorAsync(COLORS.background).catch(() => {
-      // Ignore if unsupported on current platform.
-    });
-  }, []);
-
-  useEffect(() => {
-    const bootstrapDelay = setTimeout(() => {
-      refreshStreamProviders();
-    }, 1500);
-    return () => clearTimeout(bootstrapDelay);
-  }, []);
-
-  useEffect(() => {
-    let mounted = true;
-    const run = async () => {
-      if (!mounted) return;
-      await Promise.allSettled([runHealthCheck(), refreshMaintenanceSnapshot()]);
-    };
-    void run();
-    const timer = setInterval(() => {
-      void run();
-    }, AUTONOMOUS_CONFIG.health.monitorIntervalMs);
-    return () => {
-      mounted = false;
-      clearInterval(timer);
-    };
-  }, []);
-
-  useEffect(() => {
-    if (startupLoggedRef.current) return;
-    startupLoggedRef.current = true;
-    logStartupEvent("boot", "info", "app-launch", { startedAt: Date.now() });
-    logUpdateDiagnostics();
-  }, []);
-
-  useEffect(() => {
-    if (!fontsLoaded && !fontError) {
-      return;
+    // Fonts are the only blocking asset; a missing font must not trap the user
+    // behind the splash screen, so hide it on error as well. The tree renders
+    // regardless — blocking on fonts would make the static web export emit empty
+    // pages, and the splash already covers the swap on native.
+    if (fontsLoaded || fontError) {
+      SplashScreen.hideAsync().catch(() => undefined);
     }
-    SplashScreen.hideAsync().catch(() => undefined);
-  }, [fontError, fontsLoaded]);
+  }, [fontsLoaded, fontError]);
 
   useEffect(() => {
+    // Failsafe: never keep users stuck behind splash if startup hooks stall.
     const timeout = setTimeout(() => {
       SplashScreen.hideAsync().catch(() => undefined);
-    }, 600);
+    }, 900);
 
     return () => clearTimeout(timeout);
   }, []);
 
-  useEffect(() => {
-    let isMounted = true;
-    let sub: { remove: () => void } | null = null;
-
-    const setupNotificationListener = async () => {
-      try {
-        const Notifications = await import("expo-notifications");
-        if (!isMounted) return;
-        sub = Notifications.addNotificationResponseReceivedListener(
-          (response) => {
-            if (!navState?.key) return;
-            if (
-              response.notification.request.content.data?.type === "app_update"
-            ) {
-              router.push("/profile");
-            }
-          },
-        );
-      } catch (error) {
-        if (__DEV__)
-          console.warn(
-            "[nexora:start] notifications listener unavailable",
-            error,
-          );
-      }
-    };
-
-    void setupNotificationListener();
-
-    return () => {
-      isMounted = false;
-      sub?.remove();
-    };
-  }, [navState?.key]);
-
-  useEffect(() => {
-    const sub = AppState.addEventListener("change", (state) => {
-      if (state === "active") {
-        refreshStreamProviders();
-      }
-    });
-
-    return () => {
-      sub.remove();
-    };
-  }, []);
-
-  useEffect(() => {
-    if (typeof document === "undefined") return;
-
-    try {
-      const iconUri = Asset.fromModule(
-        require("../assets/images/favicon.png"),
-      ).uri;
-      const configVersion = String(Constants.expoConfig?.version || "0.0.0");
-      const staticConfigVersion = String((appConfig as any)?.expo?.version || "0.0.0");
-      const faviconVersion =
-        staticConfigVersion !== "0.0.0" ? staticConfigVersion : configVersion;
-      const cacheBustedHref = iconUri.includes("?")
-        ? `${iconUri}&v=${faviconVersion}`
-        : `${iconUri}?v=${faviconVersion}`;
-
-      const existing = document.querySelector('link[rel="icon"]');
-      const faviconLink = existing || document.createElement("link");
-      faviconLink.setAttribute("rel", "icon");
-      faviconLink.setAttribute("type", "image/png");
-      faviconLink.setAttribute("href", cacheBustedHref);
-
-      if (!faviconLink.parentNode) {
-        document.head.appendChild(faviconLink);
-      }
-    } catch (error) {
-      if (__DEV__) {
-        console.warn("[nexora:web] failed to set favicon", error);
-      }
-    }
-  }, []);
-
-  useEffect(() => {
-    if (!__DEV__) return;
-    // #region agent log
-    fetch("http://127.0.0.1:7379/ingest/4d747d85-0c03-4a11-8a60-a6d4fd09190a", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Debug-Session-Id": "165c99",
-      },
-      body: JSON.stringify({
-        sessionId: "165c99",
-        runId: "baseline-6",
-        hypothesisId: "H11",
-        location: "app/_layout:pathname",
-        message: "root-route-visited",
-        data: {
-          pathname,
-          navReady: Boolean(navState?.key),
-          origin:
-            typeof window !== "undefined" ? window.location.origin : "native",
-        },
-        timestamp: Date.now(),
-      }),
-    }).catch(() => {});
-    // #endregion
-  }, [pathname, navState?.key]);
-
   return (
-    <ErrorBoundary>
-      <QueryClientProvider client={queryClient}>
-        <SafeAreaProvider style={{ flex: 1, backgroundColor: COLORS.background }}>
-          <GestureHandlerRootView
-            style={{ flex: 1, backgroundColor: COLORS.background }}
-          >
-            <NexoraProvider>
-              <UserStateProvider>
-                <PersonalizationBridge />
-                <RootLayoutNav />
-                <NexoraMenuOverlay />
-                <StartupUpdateBar />
-              </UserStateProvider>
-            </NexoraProvider>
-          </GestureHandlerRootView>
-        </SafeAreaProvider>
-      </QueryClientProvider>
-    </ErrorBoundary>
+    <ThemeProvider>
+      <ErrorBoundary>
+        <QueryClientProvider client={queryClient}>
+          <ThemedShell />
+        </QueryClientProvider>
+      </ErrorBoundary>
+    </ThemeProvider>
   );
 }
+
+const styles = StyleSheet.create({
+  root: { flex: 1 },
+});

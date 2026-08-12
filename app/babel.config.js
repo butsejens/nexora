@@ -1,5 +1,7 @@
 module.exports = function (api) {
   api.cache(true);
+  const projectRoot = __dirname;
+
   return {
     presets: [["babel-preset-expo", { unstable_transformImportMeta: true }]],
     plugins: [
@@ -7,9 +9,9 @@ module.exports = function (api) {
       [
         "module-resolver",
         {
-          root: [require("path").resolve(__dirname)],
+          root: [projectRoot],
           alias: {
-            "@": require("path").resolve(__dirname),
+            "@": projectRoot,
           },
           extensions: [
             ".ios.ts",

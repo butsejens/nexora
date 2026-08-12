@@ -105,19 +105,15 @@ android {
     buildToolsVersion = rootProject.ext.buildToolsVersion
     compileSdk = rootProject.ext.compileSdkVersion
 
-    namespace = "com.nexora.sportsstream"
+    namespace = "com.cinelog.app"
     defaultConfig {
-        applicationId "com.nexora.sportsstream"
+        applicationId "com.cinelog.app"
         minSdkVersion = rootProject.ext.minSdkVersion
         targetSdkVersion = rootProject.ext.targetSdkVersion
         versionCode versionCodeFromVersionName
         versionName versionNameFromAppJson
 
         buildConfigField "String", "REACT_NATIVE_RELEASE_LEVEL", "\"${findProperty('reactNativeReleaseLevel') ?: 'stable'}\""
-
-        // AdMob Application ID injected from CI secret or falls back to Google's test ID.
-        def admobId = System.getenv("EXPO_PUBLIC_ADMOB_ANDROID_APP_ID") ?: "ca-app-pub-3940256099942544~3347511713"
-        manifestPlaceholders = [admobAppId: admobId]
 
         ndk {
             abiFilters "arm64-v8a", "x86_64"
