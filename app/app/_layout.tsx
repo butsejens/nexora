@@ -18,6 +18,7 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { useNotificationSync } from "@/hooks/useNotificationSync";
+import { warmupApi } from "@/lib/http";
 import { queryClient } from "@/lib/query-client";
 import { startAuthSync } from "@/store/auth-store";
 import { ThemeProvider, useTheme } from "@/theme";
@@ -83,6 +84,10 @@ export default function RootLayout() {
   });
 
   useEffect(() => startAuthSync(), []);
+
+  useEffect(() => {
+    void warmupApi();
+  }, []);
 
   useEffect(() => {
     // Fonts are the only blocking asset; a missing font must not trap the user

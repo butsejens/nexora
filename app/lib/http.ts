@@ -121,10 +121,30 @@ export function getApiBaseCandidates(): string[] {
   ]);
 }
 
+/**
+ * Fire-and-forget backend warmup for cold-starting hosted APIs (Render, etc.).
+ * This runs at app bootstrap so the first content query waits less often.
+ */
+export async function warmupApi(): Promise<void> {
+  const bases = getApiBaseCandidates();
+  for (const base of bases) {
+    if (!base) continue;
+    try {
+      const res = await fetchWithTimeout(`${base}/health`, { method: "GET" });
+      if (res.ok) {
+        lastWorkingBase = base;
+        return;
+      }
+    } catch {
+      // Best-effort warmup only; failures are handled by normal request flow.
+    }
+  }
+}
+
 function timeoutFor(url: string): number {
   // Cold starts on free hosting tiers can take a while; local servers fail fast.
   if (isLoopback(url)) return 10_000;
-  return __DEV__ ? 20_000 : 18_000;
+  return __DEV__ ? 20_000 : 10_000;
 }
 
 interface FetchOptions {
