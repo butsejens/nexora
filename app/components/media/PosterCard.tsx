@@ -6,7 +6,7 @@
  * devices the card stays clean and tapping opens the detail page.
  */
 
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { Image } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
@@ -79,6 +79,10 @@ function PosterCardComponent({
     !String(item.poster).toLowerCase().includes("undefined");
   const posterUri = hasPoster ? String(item.poster) : undefined;
 
+  useEffect(() => {
+    setPosterFailed(false);
+  }, [item.id]);
+
   return (
     // The quick actions sit as a sibling of the pressable card, not inside it:
     // nesting one button-role element in another produces invalid DOM on web.
@@ -101,6 +105,7 @@ function PosterCardComponent({
               contentFit="cover"
               transition={220}
               cachePolicy="memory-disk"
+              recyclingKey={item.id}
               onError={() => setPosterFailed(true)}
               accessibilityLabel={t("{{title}} poster", { title: item.title })}
             />

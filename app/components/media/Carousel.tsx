@@ -181,7 +181,9 @@ export function Carousel<T>({
         initialNumToRender={6}
         maxToRenderPerBatch={6}
         windowSize={5}
-        removeClippedSubviews={Platform.OS !== "web"}
+        // Nested horizontal FlatLists inside a vertical ScrollView can render
+        // stale/unclickable recycled cells on Android when clipping is enabled.
+        removeClippedSubviews={Platform.OS === "android" ? false : true}
         accessibilityLabel={title}
       />
     </View>

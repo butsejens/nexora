@@ -91,6 +91,7 @@ export function EpisodeCard({
             contentFit="cover"
             transition={200}
             cachePolicy="memory-disk"
+            recyclingKey={episode.id}
             accessibilityLabel={t("Still from {{title}}", {
               title: episode.title,
             })}

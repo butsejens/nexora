@@ -58,6 +58,7 @@ export function ContinueWatchingCard({
               contentFit="cover"
               transition={200}
               cachePolicy="memory-disk"
+              recyclingKey={progress.id}
             />
           ) : null}
           <LinearGradient colors={CARD_SCRIM} style={styles.overlay}>

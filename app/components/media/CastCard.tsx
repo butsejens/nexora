@@ -36,6 +36,7 @@ export function CastCard({ member, width, onPress }: CastCardProps) {
             contentFit="cover"
             transition={200}
             cachePolicy="memory-disk"
+            recyclingKey={String(member.id)}
           />
         ) : (
           <View style={[styles.photo, styles.fallback]}>
