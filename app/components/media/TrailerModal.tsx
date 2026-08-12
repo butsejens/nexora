@@ -144,10 +144,12 @@ function TrailerPlayer({
   const t = useT();
   const [mode, setMode] = React.useState<"youtube" | "webview" | "failed">("youtube");
   const [nativeReady, setNativeReady] = React.useState(false);
+  const [webviewLoaded, setWebviewLoaded] = React.useState(false);
 
   React.useEffect(() => {
     setMode("youtube");
     setNativeReady(false);
+    setWebviewLoaded(false);
   }, [videoKey]);
 
   React.useEffect(() => {
@@ -157,6 +159,16 @@ function TrailerPlayer({
     }, 4500);
     return () => clearTimeout(timer);
   }, [mode, nativeReady]);
+
+  // Some networks block YouTube silently (no error/timeout event from the
+  // WebView itself), so the loading spinner would otherwise spin forever.
+  React.useEffect(() => {
+    if (mode !== "webview" || webviewLoaded) return;
+    const timer = setTimeout(() => {
+      setMode("failed");
+    }, 12000);
+    return () => clearTimeout(timer);
+  }, [mode, webviewLoaded]);
 
   const openExternal = React.useCallback(() => {
     void Linking.openURL(
@@ -227,6 +239,7 @@ function TrailerPlayer({
         })(); true;`}
         onError={() => setMode("failed")}
         onHttpError={() => setMode("failed")}
+        onLoadEnd={() => setWebviewLoaded(true)}
         onShouldStartLoadWithRequest={(request: { url: string }) => {
           const target = String(request.url || "").toLowerCase();
           if (target.startsWith("about:") || target.startsWith("data:") || target.startsWith("blob:")) return true;

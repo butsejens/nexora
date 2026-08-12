@@ -5,13 +5,13 @@
  * mount the posters that are actually on screen.
  */
 
-import React, { useCallback, useRef } from "react";
+import React, { useRef } from "react";
 import {
-  FlatList,
-  Platform,
+  ScrollView,
   Text,
   View,
-  type ListRenderItemInfo,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 
@@ -51,7 +51,7 @@ export function Carousel<T>({
   const { colors } = useTheme();
   const styles = useStyles();
   const { gutter, supportsHover, width } = useResponsive();
-  const listRef = useRef<FlatList<T>>(null);
+  const listRef = useRef<ScrollView>(null);
   const offsetRef = useRef(0);
 
   // Arrows only make sense once the row is wider than the space it has.
@@ -59,19 +59,11 @@ export function Carousel<T>({
   const visibleWidth = Math.min(width, LAYOUT.maxContentWidth) - gutter * 2;
   const showArrows = supportsHover && contentWidth > visibleWidth;
 
-  const scrollBy = useCallback(
-    (direction: 1 | -1) => {
-      const step = (itemWidth + SPACING.md) * 3;
-      const next = Math.max(0, offsetRef.current + step * direction);
-      listRef.current?.scrollToOffset({ offset: next, animated: true });
-    },
-    [itemWidth],
-  );
-
-  const listRenderItem = useCallback(
-    ({ item, index }: ListRenderItemInfo<T>) => renderItem(item, index),
-    [renderItem],
-  );
+  const scrollBy = (direction: 1 | -1) => {
+    const step = (itemWidth + SPACING.md) * 3;
+    const next = Math.max(0, offsetRef.current + step * direction);
+    listRef.current?.scrollTo({ x: next, animated: true });
+  };
 
   if (isLoading && items.length === 0) {
     return (
@@ -163,29 +155,29 @@ export function Carousel<T>({
         </View>
       </View>
 
-      <FlatList
+      <ScrollView
         ref={listRef}
-        data={items}
-        renderItem={listRenderItem}
-        keyExtractor={keyExtractor}
         horizontal
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={[
           styles.listContent,
           { paddingHorizontal: gutter },
         ]}
-        onScroll={(event) => {
+        onScroll={(event: NativeSyntheticEvent<NativeScrollEvent>) => {
           offsetRef.current = event.nativeEvent.contentOffset.x;
         }}
         scrollEventThrottle={64}
-        initialNumToRender={6}
-        maxToRenderPerBatch={6}
-        windowSize={5}
-        // Nested horizontal FlatLists inside a vertical ScrollView can render
-        // stale/unclickable recycled cells on Android when clipping is enabled.
-        removeClippedSubviews={Platform.OS === "android" ? false : true}
         accessibilityLabel={title}
-      />
+      >
+        {/* Plain map instead of FlatList: rails are bounded in size (one page,
+            ~20 items max), and FlatList's view recycling produced stale,
+            unclickable gray cells on Android after navigating back to Home. */}
+        {items.map((item, index) => (
+          <React.Fragment key={keyExtractor(item, index)}>
+            {renderItem(item, index)}
+          </React.Fragment>
+        ))}
+      </ScrollView>
     </View>
   );
 }
