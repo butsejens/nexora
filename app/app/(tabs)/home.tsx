@@ -94,8 +94,22 @@ export default function HomeScreen() {
   const toggleWatchlist = useLibrary((state) => state.toggleWatchlist);
   const tasteSignals = useTasteSignals();
 
-  const hero =
-    trending.items.find((item) => item.backdrop) ?? trending.items[0] ?? null;
+  const heroFromTrending =
+    trending.items.find((item) => item.backdrop || item.poster) ??
+    trending.items[0] ??
+    null;
+  const heroFallbackPool = [
+    ...popularMovies.items,
+    ...popularSeries.items,
+    ...newReleases.items,
+    ...topRatedMovies.items,
+    ...topRatedSeries.items,
+  ];
+  const heroFromFallback =
+    heroFallbackPool.find((item) => item.backdrop || item.poster) ?? null;
+  const hero = heroFromTrending ?? heroFromFallback;
+  const heroLoading =
+    !hero && (trending.isLoading || popularMovies.isLoading || popularSeries.isLoading);
   const heroInWatchlist = useLibrary((state) =>
     hero ? state.isInWatchlist(hero.id) : false,
   );
@@ -192,7 +206,7 @@ export default function HomeScreen() {
 
   const continueCardWidth = isMobile ? Math.min(width - gutter * 2, 300) : 320;
 
-  const heroUnavailable = trending.isError && trending.items.length === 0;
+  const heroUnavailable = !hero && !heroLoading;
 
   return (
     <>
@@ -215,7 +229,7 @@ export default function HomeScreen() {
         ) : (
           <HeroBanner
             item={hero}
-            isLoading={trending.isLoading}
+            isLoading={heroLoading}
             onOpen={() => hero && openTitle(hero)}
             onWatchTrailer={() =>
               hero &&

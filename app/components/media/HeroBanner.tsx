@@ -5,7 +5,7 @@
  * one on wide screens) keeps the copy readable regardless of the artwork.
  */
 
-import React from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { Image } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
@@ -54,6 +54,17 @@ export function HeroBanner({
   const heroHeight = isMobile
     ? Math.max(440, Math.min(viewportHeight * 0.72, 620))
     : Math.max(480, Math.min(viewportHeight * 0.82, 760));
+  const [backdropFailed, setBackdropFailed] = useState(false);
+
+  useEffect(() => {
+    setBackdropFailed(false);
+  }, [item?.id]);
+
+  const artworkUri = useMemo(() => {
+    if (!item) return "";
+    if (!backdropFailed && item.backdrop) return item.backdrop;
+    return item.poster ?? "";
+  }, [item, backdropFailed]);
 
   if (isLoading || !item) {
     return (
@@ -86,13 +97,18 @@ export function HeroBanner({
 
   return (
     <View style={[styles.hero, { height: heroHeight }]}>
-      {item.backdrop || item.poster ? (
+      {artworkUri ? (
         <Image
-          source={{ uri: item.backdrop ?? item.poster ?? "" }}
+          source={{ uri: artworkUri }}
           style={StyleSheet.absoluteFill}
           contentFit="cover"
           transition={320}
           cachePolicy="memory-disk"
+          onError={() => {
+            if (!backdropFailed && item.backdrop && item.poster) {
+              setBackdropFailed(true);
+            }
+          }}
           accessibilityLabel={`${item.title} artwork`}
         />
       ) : null}
