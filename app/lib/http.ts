@@ -124,7 +124,7 @@ export function getApiBaseCandidates(): string[] {
 function timeoutFor(url: string): number {
   // Cold starts on free hosting tiers can take a while; local servers fail fast.
   if (isLoopback(url)) return 10_000;
-  return __DEV__ ? 20_000 : 45_000;
+  return __DEV__ ? 20_000 : 18_000;
 }
 
 interface FetchOptions {
@@ -134,12 +134,22 @@ interface FetchOptions {
 }
 
 async function fetchWithTimeout(url: string, init: FetchOptions) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutFor(url));
+  const timeoutMs = timeoutFor(url);
+  let timer: ReturnType<typeof setTimeout> | undefined;
+
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      reject(new Error(`Request timed out after ${timeoutMs}ms`));
+    }, timeoutMs);
+  });
+
   try {
-    return await fetch(url, { ...init, signal: controller.signal });
+    return (await Promise.race([
+      fetch(url, init),
+      timeoutPromise,
+    ])) as Response;
   } finally {
-    clearTimeout(timer);
+    if (timer) clearTimeout(timer);
   }
 }
 

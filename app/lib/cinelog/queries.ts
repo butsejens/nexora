@@ -74,7 +74,7 @@ function staleForList(list: string): number {
 function useMediaList(
   queryKey: readonly unknown[],
   fetchPage: (page: number) => Promise<PagedResult<MediaSummary>>,
-  options: { paginates: boolean; staleTime: number },
+  options: { paginates: boolean; staleTime: number; enabled?: boolean },
 ) {
   return useInfiniteQuery({
     queryKey,
@@ -82,6 +82,7 @@ function useMediaList(
     queryFn: ({ pageParam }) => fetchPage(pageParam),
     getNextPageParam: options.paginates ? nextPageParam : () => undefined,
     staleTime: options.staleTime,
+    enabled: options.enabled ?? true,
   });
 }
 
@@ -94,34 +95,44 @@ export interface Rail {
 
 // ── Rails ────────────────────────────────────────────────────────────────────
 
-export function useMovieRail(list: MovieListKey): Rail {
+export function useMovieRail(
+  list: MovieListKey,
+  options: { enabled?: boolean } = {},
+): Rail {
   const query = useMediaList(
     mediaKeys.movieList(list),
     (page) => fetchMovieList(list, page),
     {
       paginates: canPaginate(MOVIE_LIST_SPECS[list]),
       staleTime: staleForList(list),
+      enabled: options.enabled,
     },
   );
+  const items = useMemo(() => query.data?.pages[0]?.results ?? [], [query.data]);
   return {
-    items: query.data?.pages[0]?.results ?? [],
+    items,
     isLoading: query.isLoading,
     isError: query.isError,
     refetch: () => void query.refetch(),
   };
 }
 
-export function useSeriesRail(list: SeriesListKey): Rail {
+export function useSeriesRail(
+  list: SeriesListKey,
+  options: { enabled?: boolean } = {},
+): Rail {
   const query = useMediaList(
     mediaKeys.seriesList(list),
     (page) => fetchSeriesList(list, page),
     {
       paginates: canPaginate(SERIES_LIST_SPECS[list]),
       staleTime: staleForList(list),
+      enabled: options.enabled,
     },
   );
+  const items = useMemo(() => query.data?.pages[0]?.results ?? [], [query.data]);
   return {
-    items: query.data?.pages[0]?.results ?? [],
+    items,
     isLoading: query.isLoading,
     isError: query.isError,
     refetch: () => void query.refetch(),
@@ -135,8 +146,9 @@ export function useTrending(): Rail {
     queryFn: fetchTrending,
     staleTime: STALE.short,
   });
+  const items = useMemo(() => query.data ?? [], [query.data]);
   return {
-    items: query.data ?? [],
+    items,
     isLoading: query.isLoading,
     isError: query.isError,
     refetch: () => void query.refetch(),

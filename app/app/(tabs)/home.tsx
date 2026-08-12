@@ -1,5 +1,5 @@
-import React, { useCallback, useMemo } from "react";
-import { ScrollView, Text, View } from "react-native";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { InteractionManager, ScrollView, Text, View } from "react-native";
 import { router } from "expo-router";
 
 import { useT } from "@/i18n";
@@ -55,9 +55,39 @@ export default function HomeScreen() {
   const trending = useTrending();
   const popularMovies = useMovieRail("popular");
   const popularSeries = useSeriesRail("popular");
-  const newReleases = useMovieRail("now_playing");
-  const topRatedMovies = useMovieRail("top_rated");
-  const topRatedSeries = useSeriesRail("top_rated");
+  const [secondaryRailsEnabled, setSecondaryRailsEnabled] = useState(false);
+  const primaryContentReady = trending.items.length > 0 || trending.isError;
+
+  useEffect(() => {
+    if (secondaryRailsEnabled) return;
+    const timer = setTimeout(() => {
+      setSecondaryRailsEnabled(true);
+    }, 8000);
+    return () => clearTimeout(timer);
+  }, [secondaryRailsEnabled]);
+
+  useEffect(() => {
+    if (secondaryRailsEnabled) return;
+    // Keep startup focused on hero + top rails, but don't block forever when
+    // the trending request fails; secondary rails should still load.
+    if (!primaryContentReady) return;
+
+    const task = InteractionManager.runAfterInteractions(() => {
+      setSecondaryRailsEnabled(true);
+    });
+
+    return () => task.cancel();
+  }, [secondaryRailsEnabled, primaryContentReady]);
+
+  const newReleases = useMovieRail("now_playing", {
+    enabled: secondaryRailsEnabled,
+  });
+  const topRatedMovies = useMovieRail("top_rated", {
+    enabled: secondaryRailsEnabled,
+  });
+  const topRatedSeries = useSeriesRail("top_rated", {
+    enabled: secondaryRailsEnabled,
+  });
 
   const continueWatching = useContinueWatching();
   const clearProgress = useLibrary((state) => state.clearProgress);
@@ -289,7 +319,7 @@ export default function HomeScreen() {
             title={t("New Releases")}
             subtitle={t("In cinemas now")}
             items={newReleaseItems}
-            isLoading={newReleases.isLoading}
+            isLoading={secondaryRailsEnabled && newReleases.isLoading}
             itemWidth={railPosterWidth}
             keyExtractor={(item) => item.id}
             renderItem={renderPoster}
@@ -298,7 +328,10 @@ export default function HomeScreen() {
           <Carousel
             title={t("Top Rated")}
             items={topRatedItems}
-            isLoading={topRatedMovies.isLoading || topRatedSeries.isLoading}
+            isLoading={
+              secondaryRailsEnabled &&
+              (topRatedMovies.isLoading || topRatedSeries.isLoading)
+            }
             itemWidth={railPosterWidth}
             keyExtractor={(item) => item.id}
             renderItem={renderPoster}

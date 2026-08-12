@@ -10,11 +10,28 @@ function readString(value: string | undefined): string {
   return String(value ?? "").trim();
 }
 
+/**
+ * Fallback cloud API used when release builds are missing EXPO_PUBLIC_API_BASE.
+ * This keeps standalone APK/AAB installs functional outside local dev.
+ */
+const DEFAULT_PUBLIC_API_BASE = "https://nexora-api-8xxb.onrender.com";
+
+function resolveApiBase(): string {
+  return readString(process.env.EXPO_PUBLIC_API_BASE) || DEFAULT_PUBLIC_API_BASE;
+}
+
+function resolveApiBases(): string {
+  return readString(process.env.EXPO_PUBLIC_API_BASES);
+}
+
+const resolvedApiBase = resolveApiBase();
+const resolvedApiBases = resolveApiBases();
+
 export const ENV = {
   /** Primary CineLog API base URL (proxies TMDB and holds the server key). */
-  apiBase: readString(process.env.EXPO_PUBLIC_API_BASE),
+  apiBase: resolvedApiBase,
   /** Comma-separated fallback API bases tried in order when the primary fails. */
-  apiBases: readString(process.env.EXPO_PUBLIC_API_BASES),
+  apiBases: resolvedApiBases,
   /**
    * Optional client-side TMDB key. When present the app talks to TMDB directly,
    * which removes a network hop for standalone mobile builds. Leave it empty to
