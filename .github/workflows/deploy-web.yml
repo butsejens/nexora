@@ -23,8 +23,24 @@ jobs:
 
       - name: Create production env
         run: |
-          cp .env.production.example .env
-          cp .env.production.example app/.env
+          if [ -f .env.production.example ]; then
+            cp .env.production.example .env
+            cp .env.production.example app/.env
+          else
+            cat > .env.production.example <<'EOF'
+EXPO_PUBLIC_API_BASE=
+EXPO_PUBLIC_API_BASES=
+EXPO_PUBLIC_SUPABASE_URL=
+EXPO_PUBLIC_SUPABASE_ANON_KEY=
+EXPO_PUBLIC_TMDB_API_KEY=
+EXPO_PUBLIC_REVENUECAT_IOS_API_KEY=
+EXPO_PUBLIC_REVENUECAT_ANDROID_API_KEY=
+NODE_ENV=production
+PORT=10000
+EOF
+            cp .env.production.example .env
+            cp .env.production.example app/.env
+          fi
 
       - name: Export Expo web build
         run: npm -w app run web:export
