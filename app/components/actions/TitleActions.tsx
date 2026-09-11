@@ -469,6 +469,26 @@ function StreamWebView({
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const webViewRef = useRef<WebView>(null);
+  // On web builds prefer a plain iframe instead of the native WebView wrapper.
+  if (Platform.OS === "web") {
+    return React.createElement("iframe", {
+      src: url,
+      title: `CineLog player`,
+      allow: "autoplay; encrypted-media; picture-in-picture; fullscreen",
+      allowFullScreen: true,
+      style: { width: "100%", height: "100%", border: 0, background: "#000" },
+      onLoad: () => {
+        try {
+          onLoad();
+        } catch {}
+      },
+      onError: () => {
+        try {
+          onFail();
+        } catch {}
+      },
+    });
+  }
   const topHostLockRef = useRef("");
   const autoHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const volumeBoostIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);

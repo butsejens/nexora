@@ -52,6 +52,52 @@ npm run app:web    # app in the browser
 npm run server     # API only
 ```
 
+## 4. Free public web hosting
+
+CineLog already exports a browser build with Expo, so it can be deployed on free static hosting. The app is designed for browsing and tracking movies/series, and trailers play through the official YouTube embed. It does not host full copyrighted video files.
+
+### Option A: Vercel (free)
+
+1. Push this repo to GitHub.
+2. Create a new Vercel project and select this repository.
+3. Set the project root to the repository root.
+4. Use these build settings:
+
+```bash
+Install Command: npm install
+Build Command: npm -w app run web:export
+Output Directory: app/dist
+```
+
+5. Publish the project.
+
+The repository includes a `vercel.json` config for a static export fallback.
+
+### Option B: Netlify (free)
+
+1. Import the repo in Netlify.
+2. Set the publish directory to `app/dist`.
+3. Use a redirect rule so deep links open the SPA entry page:
+
+```toml
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+```
+
+The repository includes a `netlify.toml` config ready for this.
+
+### Public API configuration
+
+Set your web app to use a public API endpoint in `app/.env` before deploying:
+
+```bash
+EXPO_PUBLIC_API_BASE=https://your-cinelog-api.onrender.com
+```
+
+If you deploy only the static frontend, keep the backend on Render or another free host and point the browser app there.
+
 ## Architecture
 
 ```

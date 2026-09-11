@@ -1,0 +1,50 @@
+name: Deploy web
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Create production env
+        run: |
+          cp .env.production.example .env
+          cp .env.production.example app/.env
+
+      - name: Export Expo web build
+        run: npm -w app run web:export
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: cinelog-web-dist
+          path: app/dist
+
+      - name: Deploy to Vercel (if token present)
+        if: ${{ secrets.VERCEL_TOKEN != '' }}
+        run: |
+          npm install -g vercel@latest
+          # Deploy the static export directory. Vercel CLI will infer project if linked,
+          # otherwise deploy as a new project under the provided team/org.
+          vercel deploy app/dist --prod --token "$VERCEL_TOKEN" --confirm || true
+
+      - name: Deploy to Netlify (if token + site id present)
+        if: ${{ secrets.NETLIFY_AUTH_TOKEN != '' && secrets.NETLIFY_SITE_ID != '' }}
+        run: |
+          npm install -g netlify-cli
+          netlify deploy --dir=app/dist --site="$NETLIFY_SITE_ID" --auth="$NETLIFY_AUTH_TOKEN" --prod || true
