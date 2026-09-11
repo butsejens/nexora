@@ -1,964 +1,419 @@
-import React, { useEffect, useMemo, useState } from "react";
-import {
-  Dimensions,
-  FlatList,
-  Pressable,
-  RefreshControl,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
-import { Image as ExpoImage } from "expo-image";
-import { LinearGradient } from "expo-linear-gradient";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { InteractionManager, ScrollView, Text, View } from "react-native";
 import { router } from "expo-router";
-import { Ionicons } from "@expo/vector-icons";
 
-import { COLORS } from "@/constants/colors";
+import { useT } from "@/i18n";
+import { SeoHead } from "@/components/SeoHead";
+import { Footer } from "@/components/layout/Footer";
+import { Carousel } from "@/components/media/Carousel";
+import { ContinueWatchingCard } from "@/components/media/ContinueWatchingCard";
+import { HeroBanner } from "@/components/media/HeroBanner";
+import { PosterCard } from "@/components/media/PosterCard";
+import { MobileHeader } from "@/components/navigation/MobileHeader";
+import { GenrePill } from "@/components/ui/GenrePill";
+import { Screen } from "@/components/ui/Screen";
+import { ErrorState } from "@/components/ui/States";
+import { FONTS, SPACING } from "@/constants/theme";
+import { makeStyles } from "@/theme";
+import { useResponsive } from "@/hooks/useResponsive";
+import { useTrailerPlayer } from "@/hooks/useTrailerPlayer";
+import { GENRES } from "@/lib/cinelog/genres";
+import { openTitle } from "@/lib/cinelog/navigation";
 import {
+  useInterleaved,
+  useMovieRail,
+  useSeriesRail,
   useTrending,
-  usePopularMovies,
-  usePopularSeries,
-  useNowPlayingMovies,
-  useOnAirSeries,
-  useTopRatedMovies,
-  useTopRatedSeries,
-  usePersonalizedMovies,
-  usePersonalizedSeries,
-} from "@/lib/use-tmdb";
-import { ONBOARDING_GENRE_TMDB_IDS } from "@/lib/tmdb";
-import { useProfileStore } from "@/store/profileStore";
-import { useUserAccountStore } from "@/store/userAccountStore";
-import { useNexora, type WatchedItem } from "@/context/NexoraContext";
-import { getMediaKind, getRawId } from "@/lib/id-namespace";
-import type { Movie, Series } from "@/types/streaming";
-import { recoverEmptyList } from "@/core/self-healing";
-import { resolveBestHeaderUri } from "@/core/self-healing/imageFallback";
+} from "@/lib/cinelog/queries";
+import {
+  becauseYouWatched,
+  buildTasteProfile,
+  recommendForYou,
+} from "@/lib/cinelog/recommendations";
+import type { MediaSummary } from "@/lib/cinelog/types";
+import { useAuth } from "@/store/auth-store";
+import {
+  useContinueWatching,
+  useLibrary,
+  useTasteSignals,
+} from "@/store/library-store";
 
-const { width: W, height: H } = Dimensions.get("window");
-const HERO_H = Math.min(H * 0.72, 620);
-const POSTER_W = W > 1024 ? 190 : W > 760 ? 168 : 146;
-const POSTER_H = Math.round(POSTER_W * 1.5);
-// Top 10 card dimensions — taller poster, square number overlapping left edge
-const TOP10_CARD_W = W > 760 ? 176 : 152;
-const TOP10_CARD_H = Math.round(TOP10_CARD_W * 1.52);
-const TOP10_NUM_SIZE = W > 760 ? 132 : 112; // font-size for the big number
-// Provider IDs to show on home screen — 5 main services for NL/BE (Netflix, Disney+, Prime, Apple TV+, Videoland)
-const STREAMING_SERVICES = [
-  { id: 8, label: "Netflix" },
-  { id: 337, label: "Disney+" },
-  { id: 119, label: "Prime Video" },
-  { id: 350, label: "Apple TV+" },
-  { id: 188, label: "Videoland" },
-] as const;
-
-type Content = Movie | Series;
-const EMPTY_CONTENT: Content[] = [];
-const EMPTY_GENRES: string[] = [];
-
-function contentKey(item: Content): string {
-  return `${item.type}:${item.id}`;
-}
-
-function dedupe(items: Content[]): Content[] {
-  const seen = new Set<string>();
-  return items.filter((item) => {
-    const key = contentKey(item);
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
-}
-
-function withPoster(items: Content[]): Content[] {
-  return items.filter((item) => !!item.poster);
-}
-
-/** Require a backdrop image AND a decent rating for hero eligibility. */
-function heroEligible(items: Content[]): Content[] {
-  return items.filter((item) => !!item.backdrop && item.rating >= 6.8);
-}
-
-function toDetail(item: Content) {
-  router.push({
-    pathname: "/media/detail",
-    params: { id: item.id, type: item.type },
-  });
-}
-
-function Hero({
-  item,
-  isInList,
-  onToggleList,
-}: {
-  item: Content;
-  isInList: boolean;
-  onToggleList: () => void;
-}) {
-  return (
-    <View style={styles.hero}>
-      <ExpoImage
-        source={resolveBestHeaderUri(item.backdrop ?? item.poster ?? undefined)}
-        style={StyleSheet.absoluteFillObject}
-        contentFit="cover"
-        priority="high"
-        cachePolicy="memory-disk"
-        onLoad={(event) => {
-          // #region agent log
-          if (__DEV__) {
-            fetch("http://127.0.0.1:7379/ingest/4d747d85-0c03-4a11-8a60-a6d4fd09190a", {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                "X-Debug-Session-Id": "165c99",
-              },
-              body: JSON.stringify({
-                sessionId: "165c99",
-                runId: "baseline-4",
-                hypothesisId: "H9",
-                location: "tabs/home:hero-image-onLoad",
-                message: "hero-image-loaded",
-                data: {
-                  id: item.id,
-                  src: item.backdrop ?? item.poster ?? null,
-                  width: event?.source?.width ?? null,
-                  height: event?.source?.height ?? null,
-                },
-                timestamp: Date.now(),
-              }),
-            }).catch(() => {});
-          }
-          // #endregion
-        }}
-      />
-      {/* Bottom fade — keeps top of image fully visible */}
-      <LinearGradient
-        colors={["transparent", "rgba(6,5,10,0.30)", COLORS.background]}
-        locations={[0.42, 0.74, 1]}
-        style={StyleSheet.absoluteFillObject}
-      />
-      {/* Subtle left vignette for text legibility only */}
-      <LinearGradient
-        colors={["rgba(6,5,10,0.38)", "transparent"]}
-        start={{ x: 0, y: 1 }}
-        end={{ x: 0.55, y: 1 }}
-        style={StyleSheet.absoluteFillObject}
-      />
-
-      <View style={styles.heroContent}>
-        <Text style={styles.heroTitle} numberOfLines={2}>
-          {item.title}
-        </Text>
-        <View style={styles.heroMeta}>
-          <Text style={styles.heroMetaText}>{item.year}</Text>
-          <View style={styles.dot} />
-          <Ionicons name="star" size={12} color={COLORS.gold} />
-          <Text style={styles.heroMetaText}>{item.rating.toFixed(1)}</Text>
-          {item.genres.slice(0, 2).map((g) => (
-            <React.Fragment key={g}>
-              <View style={styles.dot} />
-              <Text style={styles.heroMetaText}>{g}</Text>
-            </React.Fragment>
-          ))}
-        </View>
-        <Text style={styles.heroDesc} numberOfLines={2}>
-          {item.description}
-        </Text>
-
-        <View style={styles.heroButtons}>
-          <Pressable
-            style={({ pressed }) => [
-              styles.watchBtn,
-              pressed && { opacity: 0.82 },
-            ]}
-            onPress={() => toDetail(item)}
-          >
-            <Ionicons name="play" size={16} color="#000" />
-            <Text style={styles.watchBtnText}>Kijk nu</Text>
-          </Pressable>
-          <Pressable
-            style={({ pressed }) => [
-              styles.listBtn,
-              pressed && { opacity: 0.82 },
-            ]}
-            onPress={onToggleList}
-            accessibilityRole="button"
-            accessibilityLabel={
-              isInList ? "Verwijder uit mijn lijst" : "Voeg toe aan mijn lijst"
-            }
-          >
-            <Ionicons
-              name={isInList ? "checkmark" : "add"}
-              size={17}
-              color={COLORS.text}
-            />
-            <Text style={styles.listBtnText}>Mijn lijst</Text>
-          </Pressable>
-        </View>
-      </View>
-    </View>
-  );
-}
-
-function ContinueWatchingRail({ items }: { items: WatchedItem[] }) {
-  if (!items.length) return null;
-
-  return (
-    <View style={styles.section}>
-      <View style={styles.sectionHead}>
-        <Text style={styles.sectionTitle}>Kijk verder</Text>
-      </View>
-      <FlatList
-        horizontal
-        data={items}
-        keyExtractor={(item) => item.id}
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.railPad}
-        renderItem={({ item }) => {
-          const rawId = getRawId(item.id);
-          const kind =
-            getMediaKind(item.id) ||
-            (item.type === "series" ? "series" : "movie");
-          const progress = Math.min(1, Math.max(0, Number(item.progress || 0)));
-          return (
-            <Pressable
-              style={({ pressed }) => [
-                styles.continueCard,
-                pressed && { opacity: 0.85 },
-              ]}
-              onPress={() =>
-                router.push({
-                  pathname: "/media/detail",
-                  params: { id: rawId, type: kind },
-                })
-              }
-              accessibilityRole="button"
-              accessibilityLabel={item.title}
-            >
-              <View style={styles.continuePoster}>
-                <ExpoImage
-                  source={item.poster ?? item.backdrop ?? undefined}
-                  style={StyleSheet.absoluteFillObject}
-                  contentFit="cover"
-                  transition={200}
-                />
-                {!item.poster && !item.backdrop ? (
-                  <View style={styles.continueFallback}>
-                    <Ionicons
-                      name="play-circle-outline"
-                      size={28}
-                      color={COLORS.textMuted}
-                    />
-                  </View>
-                ) : null}
-                <View style={styles.continueProgressTrack}>
-                  <View
-                    style={[
-                      styles.continueProgressFill,
-                      { width: `${Math.max(8, progress * 100)}%` },
-                    ]}
-                  />
-                </View>
-              </View>
-              <Text style={styles.continueTitle} numberOfLines={2}>
-                {item.title}
-              </Text>
-              {item.type === "series" && item.season && item.episode ? (
-                <Text style={styles.continueMeta} numberOfLines={1}>
-                  S{item.season} E{item.episode}
-                </Text>
-              ) : null}
-            </Pressable>
-          );
-        }}
-      />
-    </View>
-  );
-}
-
-// Top 10 accent colors — cycle through vivid hues like VTM GO magenta
-const TOP10_COLORS = [
-  "#E91E8C",
-  "#D32CE6",
-  "#9B27AF",
-  "#5E35B1",
-  "#1E88E5",
-  "#00ACC1",
-  "#43A047",
-  "#FB8C00",
-  "#E53935",
-  "#8E24AA",
-];
-
-function Top10Rail({ data }: { data: Content[] }) {
-  if (data.length === 0) return null;
-  const items = data.slice(0, 10);
-  return (
-    <View style={styles.section}>
-      <View style={styles.sectionHead}>
-        <Text style={styles.sectionTitle}>Top 10 op Cinelog</Text>
-      </View>
-      <FlatList
-        horizontal
-        data={items}
-        keyExtractor={(item, i) => `top10-${i}-${item.id}`}
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.railPad}
-        ItemSeparatorComponent={() => <View style={{ width: 16 }} />}
-        renderItem={({ item, index }) => {
-          const accentColor = TOP10_COLORS[index % TOP10_COLORS.length];
-          return (
-            <Pressable style={styles.top10Item} onPress={() => toDetail(item)}>
-              {/* Poster card — absolutely positioned on the right */}
-              <View style={styles.top10Card}>
-                <ExpoImage
-                  source={resolveBestHeaderUri(item.poster ?? item.backdrop ?? undefined)}
-                  style={StyleSheet.absoluteFillObject}
-                  contentFit="cover"
-                  transition={200}
-                />
-                <LinearGradient
-                  colors={["transparent", "rgba(6,5,10,0.75)"]}
-                  style={StyleSheet.absoluteFillObject}
-                />
-              </View>
-              {/* Big number — absolutely positioned on the left, in front */}
-              <Text style={[styles.top10Num, { color: accentColor }]}>
-                {index + 1}
-              </Text>
-            </Pressable>
-          );
-        }}
-      />
-    </View>
-  );
-}
-
-function StreamingServiceRow() {
-  return (
-    <ScrollView
-      horizontal
-      showsHorizontalScrollIndicator={false}
-      contentContainerStyle={styles.providerRow}
-    >
-      {STREAMING_SERVICES.map((svc) => (
-        <Pressable
-          key={svc.id}
-          style={styles.providerTile}
-          onPress={() =>
-            router.push({
-              pathname: "/media/provider",
-              params: { providerId: svc.id, name: svc.label },
-            })
-          }
-        >
-          <LinearGradient
-            colors={["rgba(255,255,255,0.07)", "rgba(255,255,255,0.02)"]}
-            style={StyleSheet.absoluteFillObject}
-          />
-          <Text style={styles.providerLabel} numberOfLines={1}>
-            {svc.label}
-          </Text>
-        </Pressable>
-      ))}
-    </ScrollView>
-  );
-}
-
-function Section({
-  title,
-  data,
-  seeAll,
-}: {
-  title: string;
-  data: Content[];
-  seeAll?: string;
-}) {
-  if (data.length === 0) return null;
-  return (
-    <View style={styles.section}>
-      <View style={styles.sectionHead}>
-        <Text style={styles.sectionTitle}>{title}</Text>
-        {seeAll ? (
-          <Pressable onPress={() => router.push(seeAll as any)}>
-            <Text style={styles.seeAll}>Alles</Text>
-          </Pressable>
-        ) : null}
-      </View>
-
-      <FlatList
-        horizontal
-        data={data}
-        keyExtractor={(item) => `${title}-${item.id}`}
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.railPad}
-        ItemSeparatorComponent={() => <View style={{ width: 12 }} />}
-        renderItem={({ item }) => (
-          <Pressable style={styles.poster} onPress={() => toDetail(item)}>
-            <ExpoImage
-              source={item.poster ?? item.backdrop ?? undefined}
-              style={StyleSheet.absoluteFillObject}
-              contentFit="cover"
-              transition={200}
-            />
-            <LinearGradient
-              colors={["transparent", "rgba(6,5,10,0.86)"]}
-              style={StyleSheet.absoluteFillObject}
-            />
-            <View style={styles.posterFooter}>
-              <Text style={styles.posterTitle} numberOfLines={2}>
-                {item.title}
-              </Text>
-            </View>
-          </Pressable>
-        )}
-      />
-    </View>
-  );
+function hasValidPoster(item: { poster: string | null }): boolean {
+  if (!item.poster) return false;
+  const lowered = String(item.poster).toLowerCase();
+  return !lowered.includes("null") && !lowered.includes("undefined");
 }
 
 export default function HomeScreen() {
-  const insets = useSafeAreaInsets();
-  const [refreshing, setRefreshing] = useState(false);
-  const { watchHistory, toggleFavorite, isFavorite } = useNexora();
+  const t = useT();
+  const styles = useStyles();
+  const { isMobile, gutter, railPosterWidth, width } = useResponsive();
+  const user = useAuth((state) => state.user);
+  const trailer = useTrailerPlayer();
+  const openTrailer = trailer.open;
 
-  const activeProfile = useProfileStore((s) => s.getActiveProfile());
-  const preferredGenres = useUserAccountStore((s) => s.info.genres) ?? EMPTY_GENRES;
-
-  const movieGenreIds = useMemo(
-    () =>
-      preferredGenres
-        .map((key) => ONBOARDING_GENRE_TMDB_IDS[key]?.movie)
-        .filter((id): id is number => typeof id === "number"),
-    [preferredGenres],
-  );
-  const tvGenreIds = useMemo(
-    () =>
-      preferredGenres
-        .map((key) => ONBOARDING_GENRE_TMDB_IDS[key]?.tv)
-        .filter((id): id is number => typeof id === "number"),
-    [preferredGenres],
-  );
-
-  const trendingQuery = useTrending();
-  const popularMoviesQuery = usePopularMovies();
-  const popularSeriesQuery = usePopularSeries();
-  const nowPlayingQuery = useNowPlayingMovies();
-  const onAirQuery = useOnAirSeries();
-  const topRatedMoviesQuery = useTopRatedMovies();
-  const topRatedSeriesQuery = useTopRatedSeries();
-  const personalizedMoviesQuery = usePersonalizedMovies(movieGenreIds, movieGenreIds.length > 0);
-  const personalizedSeriesQuery = usePersonalizedSeries(tvGenreIds, tvGenreIds.length > 0);
-
-  const trending = trendingQuery.data ?? EMPTY_CONTENT;
-  const popularMovies = popularMoviesQuery.data ?? EMPTY_CONTENT;
-  const popularSeries = popularSeriesQuery.data ?? EMPTY_CONTENT;
-  const nowPlaying = nowPlayingQuery.data ?? EMPTY_CONTENT;
-  const onAir = onAirQuery.data ?? EMPTY_CONTENT;
-  const topRatedMovies = topRatedMoviesQuery.data ?? EMPTY_CONTENT;
-  const topRatedSeries = topRatedSeriesQuery.data ?? EMPTY_CONTENT;
-  const personalizedMovies = personalizedMoviesQuery.data ?? EMPTY_CONTENT;
-  const personalizedSeries = personalizedSeriesQuery.data ?? EMPTY_CONTENT;
-  const refetchTrending = trendingQuery.refetch;
-  const trendingSafe = useMemo(
-    () =>
-      recoverEmptyList({
-        source: trending as Content[],
-        fallback: dedupe([...popularMovies, ...popularSeries, ...nowPlaying, ...onAir]),
-        scope: "home-trending",
-        onRefetch: () => {
-          void refetchTrending();
-        },
-      }),
-    [trending, popularMovies, popularSeries, nowPlaying, onAir, refetchTrending],
-  );
-
-  const fallbackPool = useMemo(
-    () =>
-      dedupe([
-        ...popularMovies,
-        ...popularSeries,
-        ...nowPlaying,
-        ...onAir,
-      ]),
-    [popularMovies, popularSeries, nowPlaying, onAir],
-  );
-
-  const top10Data = useMemo(
-    () =>
-      withPoster(
-        dedupe([
-          ...trendingSafe,
-          ...popularMovies,
-          ...popularSeries,
-          ...nowPlaying,
-          ...onAir,
-        ]),
-      ).slice(0, 10),
-    [trendingSafe, popularMovies, popularSeries, nowPlaying, onAir],
-  );
-
-  const top10Ids = useMemo(
-    () => new Set(top10Data.map((item) => contentKey(item))),
-    [top10Data],
-  );
-
-  // Build each rail sequentially so no item appears in more than one section.
-  // usedIds grows after each rail is computed — later rails filter it out.
-  const { mustWatch, seriesPicks, moviePicks, trendingRail } = useMemo(() => {
-    const used = new Set<string>(top10Ids);
-
-    const pick = (candidates: Content[], limit: number): Content[] => {
-      const result: Content[] = [];
-      for (const item of withPoster(dedupe(candidates))) {
-        const key = contentKey(item);
-        if (used.has(key)) continue;
-        result.push(item);
-        if (result.length >= limit) break;
-      }
-      result.forEach((item) => used.add(contentKey(item)));
-      return result;
-    };
-
-    // Each rail draws from its own genre-personalized + top-rated pool first
-    // (biggest, most genre-relevant source) before falling back to the
-    // popular/now-playing/on-air pools, so rails don't starve each other.
-    const mustWatch = pick(
-      [...personalizedMovies, ...popularMovies, ...nowPlaying, ...topRatedMovies] as Content[],
-      16,
-    );
-    const seriesPicks = pick(
-      [...personalizedSeries, ...popularSeries, ...onAir, ...topRatedSeries] as Content[],
-      16,
-    );
-    const moviePicks = pick(
-      [...topRatedMovies, ...personalizedMovies, ...popularMovies, ...nowPlaying] as Content[],
-      16,
-    );
-    const trendingRail = pick(
-      [...trendingSafe, ...fallbackPool],
-      16,
-    );
-
-    return { mustWatch, seriesPicks, moviePicks, trendingRail };
-  }, [
-    top10Ids,
-    popularMovies,
-    nowPlaying,
-    popularSeries,
-    onAir,
-    trendingSafe,
-    fallbackPool,
-    topRatedMovies,
-    topRatedSeries,
-    personalizedMovies,
-    personalizedSeries,
-  ]);
-
-  // Pick the best hero: must have a real backdrop + rating ≥ 6.8
-  const heroItem = (heroEligible(trendingSafe)[0] ??
-    heroEligible(fallbackPool)[0] ??
-    withPoster(trendingSafe)[0] ??
-    withPoster(fallbackPool)[0]) as Content | undefined;
+  const trending = useTrending();
+  const popularMovies = useMovieRail("popular");
+  const popularSeries = useSeriesRail("popular");
+  const [secondaryRailsEnabled, setSecondaryRailsEnabled] = useState(false);
+  const primaryContentReady = trending.items.length > 0 || trending.isError;
 
   useEffect(() => {
-    if (!__DEV__) return;
-    // #region agent log
-    fetch("http://127.0.0.1:7379/ingest/4d747d85-0c03-4a11-8a60-a6d4fd09190a", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Debug-Session-Id": "165c99",
-      },
-      body: JSON.stringify({
-        sessionId: "165c99",
-        runId: "baseline",
-        hypothesisId: "H4",
-        location: "tabs/home:hero",
-        message: "hero-source-selected",
-        data: {
-          heroId: heroItem?.id || null,
-          hasBackdrop: Boolean(heroItem?.backdrop),
-          backdropUrl: heroItem?.backdrop || null,
-        },
-        timestamp: Date.now(),
-      }),
-    }).catch(() => {});
-    // #endregion
-  }, [heroItem?.id, heroItem?.backdrop]);
+    if (secondaryRailsEnabled) return;
+    const timer = setTimeout(() => {
+      setSecondaryRailsEnabled(true);
+    }, 8000);
+    return () => clearTimeout(timer);
+  }, [secondaryRailsEnabled]);
 
-  const isLoading =
-    trendingQuery.isLoading ||
-    popularMoviesQuery.isLoading ||
-    popularSeriesQuery.isLoading;
+  useEffect(() => {
+    if (secondaryRailsEnabled) return;
+    // Keep startup focused on hero + top rails, but don't block forever when
+    // the trending request fails; secondary rails should still load.
+    if (!primaryContentReady) return;
 
-  const hasAnyContent =
-    !!heroItem ||
-    mustWatch.length > 0 ||
-    seriesPicks.length > 0 ||
-    moviePicks.length > 0 ||
-    trendingRail.length > 0;
+    const task = InteractionManager.runAfterInteractions(() => {
+      setSecondaryRailsEnabled(true);
+    });
 
-  const onRefresh = async () => {
-    setRefreshing(true);
-    await Promise.allSettled([
-      trendingQuery.refetch(),
-      popularMoviesQuery.refetch(),
-      popularSeriesQuery.refetch(),
-      nowPlayingQuery.refetch(),
-      onAirQuery.refetch(),
-    ]);
-    setRefreshing(false);
-  };
+    return () => task.cancel();
+  }, [secondaryRailsEnabled, primaryContentReady]);
 
-  const continueWatching = useMemo(
-    () =>
-      watchHistory
-        .filter(
-          (item) =>
-            (item.type === "movie" || item.type === "series") &&
-            !!item.title &&
-            (item.progress == null || item.progress < 0.95),
-        )
-        .slice(0, 20),
-    [watchHistory],
+  const newReleases = useMovieRail("now_playing", {
+    enabled: secondaryRailsEnabled,
+  });
+  const topRatedMovies = useMovieRail("top_rated", {
+    enabled: secondaryRailsEnabled,
+  });
+  const topRatedSeries = useSeriesRail("top_rated", {
+    enabled: secondaryRailsEnabled,
+  });
+
+  const continueWatching = useContinueWatching();
+  const clearProgress = useLibrary((state) => state.clearProgress);
+  const toggleWatchlist = useLibrary((state) => state.toggleWatchlist);
+  const tasteSignals = useTasteSignals();
+
+  const heroFromTrending =
+    trending.items.find((item) => item.backdrop || item.poster) ??
+    trending.items[0] ??
+    null;
+  const heroFallbackPool = [
+    ...popularMovies.items,
+    ...popularSeries.items,
+    ...newReleases.items,
+    ...topRatedMovies.items,
+    ...topRatedSeries.items,
+  ];
+  const heroFromFallback =
+    heroFallbackPool.find((item) => item.backdrop || item.poster) ?? null;
+  const hero = heroFromTrending ?? heroFromFallback;
+  const heroLoading =
+    !hero && (trending.isLoading || popularMovies.isLoading || popularSeries.isLoading);
+  const heroInWatchlist = useLibrary((state) =>
+    hero ? state.isInWatchlist(hero.id) : false,
   );
 
-  const heroInList = heroItem
-    ? isFavorite(String(heroItem.id), heroItem.type)
-    : false;
+  /** Everything currently loaded, used as the recommendation candidate pool. */
+  const candidates = useMemo<MediaSummary[]>(() => {
+    const pools = [
+      trending.items,
+      popularMovies.items,
+      popularSeries.items,
+      newReleases.items,
+      topRatedMovies.items,
+      topRatedSeries.items,
+    ];
+    const seen = new Set<string>();
+    const merged: MediaSummary[] = [];
+    for (const pool of pools) {
+      for (const item of pool) {
+        if (seen.has(item.id)) continue;
+        seen.add(item.id);
+        if (!hasValidPoster(item)) continue;
+        merged.push(item);
+      }
+    }
+    return merged;
+  }, [
+    trending.items,
+    popularMovies.items,
+    popularSeries.items,
+    newReleases.items,
+    topRatedMovies.items,
+    topRatedSeries.items,
+  ]);
+
+  const profile = useMemo(
+    () => buildTasteProfile(tasteSignals),
+    [tasteSignals],
+  );
+
+  const recommended = useMemo(
+    () => recommendForYou({ candidates, profile }),
+    [candidates, profile],
+  );
+
+  const becauseRail = useMemo(
+    () => becauseYouWatched(candidates, profile),
+    [candidates, profile],
+  );
+
+  const topRated = useInterleaved(topRatedMovies.items, topRatedSeries.items);
+
+  const trendingItems = useMemo(
+    () => trending.items.filter(hasValidPoster),
+    [trending.items],
+  );
+  const popularMovieItems = useMemo(
+    () => popularMovies.items.filter(hasValidPoster),
+    [popularMovies.items],
+  );
+  const popularSeriesItems = useMemo(
+    () => popularSeries.items.filter(hasValidPoster),
+    [popularSeries.items],
+  );
+  const newReleaseItems = useMemo(
+    () => newReleases.items.filter(hasValidPoster),
+    [newReleases.items],
+  );
+  const topRatedItems = useMemo(
+    () => topRated.filter(hasValidPoster),
+    [topRated],
+  );
+  const recommendedItems = useMemo(
+    () => recommended.map((entry) => entry.item).filter(hasValidPoster),
+    [recommended],
+  );
+
+  const renderPoster = useCallback(
+    (item: MediaSummary) => (
+      <PosterCard
+        item={item}
+        width={railPosterWidth}
+        onPress={() => openTitle(item)}
+        onPlayTrailer={() =>
+          openTrailer({
+            type: item.type,
+            tmdbId: item.tmdbId,
+            title: item.title,
+          })
+        }
+      />
+    ),
+    [railPosterWidth, openTrailer],
+  );
+
+  const continueCardWidth = isMobile ? Math.min(width - gutter * 2, 300) : 320;
+
+  const heroUnavailable = !hero && !heroLoading;
 
   return (
-    <View style={styles.root}>
-      <ScrollView
-        showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-            tintColor={COLORS.accent}
-          />
+    <>
+      <SeoHead description="Discover what to watch next: trending films and shows, new releases, top rated picks and recommendations tuned to your taste." />
+      <Screen
+        reserveBottomNav
+        header={
+          isMobile ? (
+            <MobileHeader
+              onOpenProfile={() => router.push("/profile")}
+              gutter={gutter}
+              displayName={user?.displayName ?? t("Guest")}
+              avatarUrl={user?.avatarUrl ?? null}
+            />
+          ) : null
         }
-        contentContainerStyle={{ paddingBottom: insets.bottom + 32 }}
       >
-        {heroItem ? (
-          <Hero
-            item={heroItem}
-            isInList={heroInList}
-            onToggleList={() =>
-              toggleFavorite(String(heroItem.id), heroItem.type)
+        {heroUnavailable ? (
+          <ErrorState onRetry={trending.refetch} />
+        ) : (
+          <HeroBanner
+            item={hero}
+            isLoading={heroLoading}
+            onOpen={() => hero && openTitle(hero)}
+            onWatchTrailer={() =>
+              hero &&
+              trailer.open({
+                type: hero.type,
+                tmdbId: hero.tmdbId,
+                title: hero.title,
+              })
             }
+            onToggleWatchlist={() => hero && toggleWatchlist(hero)}
+            inWatchlist={heroInWatchlist}
           />
-        ) : null}
+        )}
 
-        <StreamingServiceRow />
+        <View style={styles.rails}>
+          {continueWatching.length > 0 ? (
+            <Carousel
+              title={t("Continue Watching")}
+              subtitle={t("Pick up where you left off")}
+              items={continueWatching}
+              isLoading={false}
+              itemWidth={continueCardWidth}
+              keyExtractor={(item) => item.id}
+              renderItem={(item) => (
+                <ContinueWatchingCard
+                  progress={item}
+                  width={continueCardWidth}
+                  onPress={() => {
+                    if (item.type === "movie") {
+                      router.push({
+                        pathname: "/movie/[id]",
+                        params: {
+                          id: String(item.tmdbId),
+                          autoplay: "1",
+                          resumeSeconds: String(item.positionSeconds || 0),
+                        },
+                      } as never);
+                      return;
+                    }
 
-        <View style={styles.welcomeRow}>
-          <Text style={styles.welcomeTitle}>
-            Welkom {activeProfile?.name ?? "bij Cinelog"}
-          </Text>
+                    router.push({
+                      pathname: "/series/[id]",
+                      params: {
+                        id: String(item.tmdbId),
+                        autoplay: "1",
+                        season: String(item.seasonNumber || 1),
+                        episode: String(item.episodeNumber || 1),
+                        resumeSeconds: String(item.positionSeconds || 0),
+                      },
+                    } as never);
+                  }}
+                  onRemove={() => clearProgress(item.id)}
+                />
+              )}
+            />
+          ) : null}
+
+          {becauseRail ? (
+            <Carousel
+              title={t("Because You Watched {{title}}", {
+                title: becauseRail.seed.title,
+              })}
+              items={becauseRail.items}
+              isLoading={false}
+              itemWidth={railPosterWidth}
+              keyExtractor={(item) => item.id}
+              renderItem={renderPoster}
+            />
+          ) : null}
+
+          <Carousel
+            title={t("Trending Now")}
+            items={trendingItems}
+            isLoading={trending.isLoading}
+            itemWidth={railPosterWidth}
+            keyExtractor={(item) => item.id}
+            renderItem={renderPoster}
+          />
+
+          <Carousel
+            title={t("Popular Movies")}
+            items={popularMovieItems}
+            isLoading={popularMovies.isLoading}
+            itemWidth={railPosterWidth}
+            keyExtractor={(item) => item.id}
+            renderItem={renderPoster}
+            onSeeAll={() => router.navigate("/(tabs)/movies")}
+          />
+
+          <Carousel
+            title={t("Popular Series")}
+            items={popularSeriesItems}
+            isLoading={popularSeries.isLoading}
+            itemWidth={railPosterWidth}
+            keyExtractor={(item) => item.id}
+            renderItem={renderPoster}
+            onSeeAll={() => router.navigate("/(tabs)/series")}
+          />
+
+          <Carousel
+            title={t("New Releases")}
+            subtitle={t("In cinemas now")}
+            items={newReleaseItems}
+            isLoading={secondaryRailsEnabled && newReleases.isLoading}
+            itemWidth={railPosterWidth}
+            keyExtractor={(item) => item.id}
+            renderItem={renderPoster}
+          />
+
+          <Carousel
+            title={t("Top Rated")}
+            items={topRatedItems}
+            isLoading={
+              secondaryRailsEnabled &&
+              (topRatedMovies.isLoading || topRatedSeries.isLoading)
+            }
+            itemWidth={railPosterWidth}
+            keyExtractor={(item) => item.id}
+            renderItem={renderPoster}
+          />
+
+          <Carousel
+            title={t("Recommended For You")}
+            subtitle={
+              profile.hasSignal
+                ? t("Based on what you watch, rate and save")
+                : t("Rate a few titles and this gets personal")
+            }
+            items={recommendedItems}
+            isLoading={candidates.length === 0}
+            itemWidth={railPosterWidth}
+            keyExtractor={(item) => item.id}
+            renderItem={renderPoster}
+          />
+
+          <View style={styles.genreBlock}>
+            <Text style={[styles.genreHeading, { paddingHorizontal: gutter }]}>
+              {t("Browse by Genre")}
+            </Text>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={[
+                styles.genreRow,
+                { paddingHorizontal: gutter },
+              ]}
+            >
+              {GENRES.map((genre) => (
+                <GenrePill
+                  key={genre.slug}
+                  label={genre.label}
+                  onPress={() =>
+                    router.navigate({
+                      pathname: "/(tabs)/movies",
+                      params: { genre: genre.slug },
+                    } as never)
+                  }
+                />
+              ))}
+            </ScrollView>
+          </View>
         </View>
 
-        <ContinueWatchingRail items={continueWatching} />
-
-        {isLoading && !hasAnyContent ? (
-          <View style={styles.emptyWrap}>
-            <Text style={styles.emptyTitle}>Content laden...</Text>
-          </View>
-        ) : null}
-
-        {!isLoading && !hasAnyContent ? (
-          <View style={styles.emptyWrap}>
-            <Text style={styles.emptyTitle}>Geen content ontvangen</Text>
-            <Text style={styles.emptyBody}>
-              Controleer je internetverbinding en vernieuw.
-            </Text>
-            <Pressable style={styles.retryBtn} onPress={onRefresh}>
-              <Text style={styles.retryText}>Opnieuw laden</Text>
-            </Pressable>
-          </View>
-        ) : null}
-
-        <Section title="Nu trending" data={trendingRail} />
-        <Top10Rail data={top10Data} />
-        <Section
-          title="Must watch films"
-          data={mustWatch}
-          seeAll="/(tabs)/movies"
-        />
-        <Section
-          title="Beste series"
-          data={seriesPicks}
-          seeAll="/(tabs)/series"
-        />
-        <Section title="Top films" data={moviePicks} seeAll="/(tabs)/movies" />
-      </ScrollView>
-    </View>
+        <Footer />
+      </Screen>
+      {trailer.element}
+    </>
   );
 }
 
-const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: COLORS.background },
-  hero: {
-    width: "100%",
-    height: HERO_H,
-    justifyContent: "flex-end",
+const useStyles = makeStyles((c, t) => ({
+  rails: {
+    gap: SPACING.xxl,
+    paddingTop: SPACING.xxl,
   },
-  heroContent: {
-    paddingHorizontal: 16,
-    paddingBottom: 26,
+  genreBlock: {
+    gap: SPACING.md,
   },
-  heroTitle: {
-    color: COLORS.text,
-    fontSize: 52,
-    lineHeight: 56,
-    fontFamily: "Inter_800ExtraBold",
-    letterSpacing: -1.2,
-    maxWidth: "72%",
+  genreHeading: {
+    fontFamily: FONTS.bold,
+    fontSize: 19,
+    color: c.textPrimary,
   },
-  heroMeta: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginTop: 8,
-    flexWrap: "wrap",
-    gap: 6,
+  genreRow: {
+    gap: SPACING.sm,
   },
-  heroMetaText: {
-    color: COLORS.textSecondary,
-    fontSize: 13,
-    fontFamily: "Inter_500Medium",
-  },
-  heroDesc: {
-    color: COLORS.textSecondary,
-    fontSize: 14,
-    lineHeight: 20,
-    fontFamily: "Inter_400Regular",
-    marginTop: 10,
-    maxWidth: "66%",
-  },
-  dot: {
-    width: 3,
-    height: 3,
-    borderRadius: 20,
-    backgroundColor: COLORS.textFaint,
-  },
-  heroButtons: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    marginTop: 14,
-  },
-  watchBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    backgroundColor: "#FFFFFF",
-    paddingHorizontal: 18,
-    paddingVertical: 11,
-    borderRadius: 999,
-  },
-  watchBtnText: {
-    color: "#000",
-    fontSize: 16,
-    fontFamily: "Inter_700Bold",
-  },
-  listBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 7,
-    backgroundColor: "rgba(255,255,255,0.15)",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.24)",
-    paddingHorizontal: 16,
-    paddingVertical: 11,
-    borderRadius: 999,
-  },
-  listBtnText: {
-    color: COLORS.text,
-    fontSize: 14,
-    fontFamily: "Inter_600SemiBold",
-  },
-  providerRow: {
-    flexDirection: "row",
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    gap: 10,
-    marginTop: 10,
-  },
-  providerTile: {
-    width: Math.round(W * 0.27),
-    minWidth: 90,
-    maxWidth: 130,
-    backgroundColor: COLORS.cardElevated,
-    borderWidth: 1,
-    borderColor: COLORS.borderLight,
-    borderRadius: 10,
-    height: 48,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 8,
-    overflow: "hidden",
-  },
-  providerLabel: {
-    color: COLORS.text,
-    fontSize: 14,
-    fontFamily: "Inter_700Bold",
-    textAlign: "center",
-    letterSpacing: -0.2,
-  },
-  welcomeRow: {
-    marginTop: 24,
-    paddingHorizontal: 16,
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  welcomeTitle: {
-    color: COLORS.text,
-    fontSize: 24,
-    fontFamily: "Inter_800ExtraBold",
-    letterSpacing: -0.4,
-  },
-  liveHint: {
-    color: COLORS.textMuted,
-    fontSize: 12,
-    fontFamily: "Inter_500Medium",
-  },
-  section: { marginTop: 20 },
-  sectionHead: {
-    paddingHorizontal: 16,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: 10,
-  },
-  sectionTitle: {
-    color: COLORS.text,
-    fontSize: 20,
-    fontFamily: "Inter_700Bold",
-    letterSpacing: -0.3,
-  },
-  seeAll: {
-    color: COLORS.textMuted,
-    fontSize: 13,
-    fontFamily: "Inter_500Medium",
-  },
-  railPad: { paddingHorizontal: 16 },
-  continueCard: {
-    width: POSTER_W,
-    marginRight: 10,
-  },
-  continuePoster: {
-    width: POSTER_W,
-    height: Math.round(POSTER_W * 0.56),
-    borderRadius: 10,
-    overflow: "hidden",
-    backgroundColor: COLORS.cardElevated,
-  },
-  continueFallback: {
-    ...StyleSheet.absoluteFillObject,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  continueProgressTrack: {
-    position: "absolute",
-    left: 0,
-    right: 0,
-    bottom: 0,
-    height: 3,
-    backgroundColor: "rgba(255,255,255,0.22)",
-  },
-  continueProgressFill: {
-    height: "100%",
-    backgroundColor: COLORS.accent,
-  },
-  continueTitle: {
-    color: COLORS.text,
-    fontSize: 13,
-    fontFamily: "Inter_600SemiBold",
-    marginTop: 8,
-    lineHeight: 17,
-  },
-  continueMeta: {
-    color: COLORS.textMuted,
-    fontSize: 11,
-    fontFamily: "Inter_400Regular",
-    marginTop: 2,
-  },
-  poster: {
-    width: POSTER_W,
-    height: POSTER_H,
-    borderRadius: 12,
-    overflow: "hidden",
-    backgroundColor: COLORS.cardElevated,
-  },
-  // Top 10 rail
-  top10Item: {
-    width: TOP10_CARD_W + Math.round(TOP10_NUM_SIZE * 0.42),
-    height: TOP10_CARD_H,
-  },
-  top10Num: {
-    position: "absolute",
-    left: 0,
-    bottom: 4,
-    fontSize: TOP10_NUM_SIZE,
-    fontFamily: "Inter_800ExtraBold",
-    letterSpacing: -3,
-    zIndex: 2,
-    textShadowColor: "rgba(0,0,0,0.6)",
-    textShadowOffset: { width: 2, height: 3 },
-    textShadowRadius: 6,
-  },
-  top10Card: {
-    position: "absolute",
-    right: 0,
-    top: 0,
-    width: TOP10_CARD_W,
-    height: TOP10_CARD_H,
-    borderRadius: 12,
-    overflow: "hidden",
-    backgroundColor: COLORS.cardElevated,
-    zIndex: 1,
-  },
-  posterFooter: {
-    position: "absolute",
-    left: 10,
-    right: 10,
-    bottom: 9,
-  },
-  posterTitle: {
-    color: COLORS.text,
-    fontSize: 13,
-    lineHeight: 17,
-    fontFamily: "Inter_700Bold",
-  },
-  emptyWrap: {
-    paddingHorizontal: 16,
-    paddingVertical: 24,
-    alignItems: "flex-start",
-    gap: 8,
-  },
-  emptyTitle: {
-    color: COLORS.text,
-    fontSize: 16,
-    fontFamily: "Inter_600SemiBold",
-  },
-  emptyBody: {
-    color: COLORS.textMuted,
-    fontSize: 13,
-    fontFamily: "Inter_400Regular",
-  },
-  retryBtn: {
-    marginTop: 4,
-    backgroundColor: COLORS.accent,
-    borderRadius: 999,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-  },
-  retryText: {
-    color: "#fff",
-    fontSize: 13,
-    fontFamily: "Inter_700Bold",
-  },
-});
+}));

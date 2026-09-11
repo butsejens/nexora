@@ -1,6 +1,6 @@
 import os from "node:os";
 
-const bypass = String(process.env.NEXORA_ALLOW_NON_MACBOOK || "").toLowerCase();
+const bypass = String(process.env.CINELOG_ALLOW_NON_MACBOOK || "").toLowerCase();
 if (bypass === "1" || bypass === "true" || bypass === "yes") {
   process.exit(0);
 }
@@ -10,7 +10,7 @@ const defaultHosts = [
   "MacBook-Pro-van-jens.local",
 ];
 
-const configured = String(process.env.NEXORA_ALLOWED_HOSTS || "")
+const configured = String(process.env.CINELOG_ALLOWED_HOSTS || "")
   .split(",")
   .map((value) => value.trim())
   .filter(Boolean);
@@ -22,7 +22,7 @@ if (!allowedHosts.includes(currentHost)) {
   console.error("⛔ Beveiliging: deze actie is alleen toegestaan vanaf je geautoriseerde MacBook.");
   console.error(`Host: ${currentHost}`);
   console.error(`Toegestaan: ${allowedHosts.join(", ")}`);
-  console.error("Gebruik NEXORA_ALLOWED_HOSTS om hostnamen te beheren of NEXORA_ALLOW_NON_MACBOOK=1 als tijdelijke override.");
+  console.error("Gebruik CINELOG_ALLOWED_HOSTS om hostnamen te beheren of CINELOG_ALLOW_NON_MACBOOK=1 als tijdelijke override.");
   process.exit(1);
 }
 

@@ -1,14 +1,19 @@
-import { Platform } from "react-native";
+/**
+ * CineLog — Firebase authentication adapter.
+ *
+ * Every export degrades gracefully when Firebase is not configured, so the app
+ * can run (and be developed) against a local-only account instead.
+ */
+
 import { initializeApp, getApps, getApp } from "firebase/app";
 import {
-  getAuth,
-  GoogleAuthProvider,
-  OAuthProvider,
   createUserWithEmailAndPassword,
+  getAuth,
   onAuthStateChanged,
-  signInWithCredential,
+  sendPasswordResetEmail,
   signInWithEmailAndPassword,
   signOut,
+  updateProfile,
   type User,
 } from "firebase/auth";
 
@@ -23,33 +28,25 @@ const firebaseConfig = {
   appId: ENV.firebase.appId,
 };
 
-function hasFirebaseConfig() {
+function hasFirebaseConfig(): boolean {
   return Boolean(
-    firebaseConfig.apiKey &&
-    firebaseConfig.projectId &&
-    firebaseConfig.appId,
+    firebaseConfig.apiKey && firebaseConfig.projectId && firebaseConfig.appId,
   );
 }
 
 const firebaseApp = hasFirebaseConfig()
-  ? (getApps().length ? getApp() : initializeApp(firebaseConfig))
+  ? getApps().length
+    ? getApp()
+    : initializeApp(firebaseConfig)
   : null;
 
-function createFirebaseAuth() {
-  if (!firebaseApp) return null;
-  if (Platform.OS === "web") return getAuth(firebaseApp);
-  // Native builds can differ in available Firebase RN auth entrypoints.
-  // Use safe default auth init to avoid launch regressions on OTA updates.
-  return getAuth(firebaseApp);
+export const firebaseAuth = firebaseApp ? getAuth(firebaseApp) : null;
+
+export function isFirebaseConfigured(): boolean {
+  return firebaseAuth !== null;
 }
 
-export const firebaseAuth = createFirebaseAuth();
-
-export function isFirebaseAuthConfigured() {
-  return Boolean(firebaseAuth);
-}
-
-export function watchAuthState(listener: (user: User | null) => void) {
+export function watchFirebaseAuth(listener: (user: User | null) => void) {
   if (!firebaseAuth) {
     listener(null);
     return () => undefined;
@@ -57,59 +54,35 @@ export function watchAuthState(listener: (user: User | null) => void) {
   return onAuthStateChanged(firebaseAuth, listener);
 }
 
-export async function authenticateWithGoogleIdToken(idToken: string, accessToken?: string | null) {
-  if (!firebaseAuth) throw new Error("Firebase auth is not configured.");
-  const credential = GoogleAuthProvider.credential(idToken, accessToken || undefined);
-  return await signInWithCredential(firebaseAuth, credential);
+export async function signInWithEmail(email: string, password: string) {
+  if (!firebaseAuth) throw new Error("Sign-in is not available right now.");
+  return signInWithEmailAndPassword(firebaseAuth, email, password);
 }
 
-export async function authenticateWithAppleToken(idToken: string, rawNonce: string) {
-  if (!firebaseAuth) throw new Error("Firebase auth is not configured.");
-  const provider = new OAuthProvider("apple.com");
-  const credential = provider.credential({ idToken, rawNonce });
-  return await signInWithCredential(firebaseAuth, credential);
-}
-
-/**
- * Sign in with email and password.
- * Never creates a new account — throws on invalid credentials.
- */
-export async function authenticateWithEmail(
+export async function registerWithEmail(
   email: string,
   password: string,
-  mode: "signin" | "signup" = "signin",
+  displayName: string,
 ) {
-  if (!firebaseAuth) throw new Error("Firebase auth is niet geconfigureerd.");
-  const normalizedEmail = String(email || "").trim().toLowerCase();
-  const normalizedPassword = String(password || "");
-  if (!normalizedEmail || !normalizedEmail.includes("@")) {
-    throw new Error("Voer een geldig e-mailadres in.");
-  }
-  if (normalizedPassword.length < 8) {
-    throw new Error("Wachtwoord moet minimaal 8 tekens lang zijn.");
-  }
-
-  if (mode === "signup") {
-    return await createUserWithEmailAndPassword(
-      firebaseAuth,
-      normalizedEmail,
-      normalizedPassword,
-    );
-  }
-
-  // Sign in only — never silently create accounts on auth failure.
-  return await signInWithEmailAndPassword(
+  if (!firebaseAuth) throw new Error("Sign-up is not available right now.");
+  const credential = await createUserWithEmailAndPassword(
     firebaseAuth,
-    normalizedEmail,
-    normalizedPassword,
+    email,
+    password,
   );
+  if (displayName) {
+    await updateProfile(credential.user, { displayName });
+  }
+  return credential;
 }
 
-export async function signOutFirebaseUser() {
+export async function requestPasswordReset(email: string) {
+  if (!firebaseAuth)
+    throw new Error("Password reset is not available right now.");
+  await sendPasswordResetEmail(firebaseAuth, email);
+}
+
+export async function signOutFirebase() {
   if (!firebaseAuth) return;
   await signOut(firebaseAuth);
-}
-
-export function getFirebaseCurrentUser() {
-  return firebaseAuth?.currentUser || null;
 }

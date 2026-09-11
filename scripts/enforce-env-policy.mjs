@@ -9,8 +9,8 @@ const entries = [
   { name: "server", plain: path.join(repoRoot, "server", ".env"), encrypted: path.join(repoRoot, "server", ".env.enc") },
 ];
 
-const allowPlain = ["1", "true", "yes"].includes(String(process.env.NEXORA_ALLOW_PLAINTEXT_ONLY || "").toLowerCase());
-const strictEverywhere = ["1", "true", "yes"].includes(String(process.env.NEXORA_STRICT_ENV_POLICY || "").toLowerCase());
+const allowPlain = ["1", "true", "yes"].includes(String(process.env.CINELOG_ALLOW_PLAINTEXT_ONLY || "").toLowerCase());
+const strictEverywhere = ["1", "true", "yes"].includes(String(process.env.CINELOG_STRICT_ENV_POLICY || "").toLowerCase());
 const strictMode = strictEverywhere || mode === "release";
 
 const failures = [];
@@ -26,8 +26,8 @@ for (const entry of entries) {
     else warnings.push(message);
   }
 
-  if (hasEncrypted && !hasPlain && !process.env.NEXORA_SECRETS_PASSPHRASE) {
-    warnings.push(`${entry.name}: encrypted secrets aanwezig zonder plaintext .env. Draai \`npm run secrets:decrypt\` met NEXORA_SECRETS_PASSPHRASE.`);
+  if (hasEncrypted && !hasPlain && !process.env.CINELOG_SECRETS_PASSPHRASE) {
+    warnings.push(`${entry.name}: encrypted secrets aanwezig zonder plaintext .env. Draai \`npm run secrets:decrypt\` met CINELOG_SECRETS_PASSPHRASE.`);
   }
 }
 
@@ -39,7 +39,7 @@ if (warnings.length > 0) {
 if (failures.length > 0) {
   console.error("⛔ Env policy blokkering:");
   for (const failure of failures) console.error(`- ${failure}`);
-  console.error("Gebruik \`npm run secrets:encrypt\` om .env.enc te maken of tijdelijke override: NEXORA_ALLOW_PLAINTEXT_ONLY=1");
+  console.error("Gebruik \`npm run secrets:encrypt\` om .env.enc te maken of tijdelijke override: CINELOG_ALLOW_PLAINTEXT_ONLY=1");
   process.exit(1);
 }
 

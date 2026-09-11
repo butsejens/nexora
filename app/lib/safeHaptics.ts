@@ -4,26 +4,38 @@ import * as Haptics from "expo-haptics";
 export const SafeHaptics = {
   impactLight: async () => {
     if (Platform.OS === "web") return;
-    try { await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); } catch {}
+    try {
+      await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    } catch {}
   },
   impactMedium: async () => {
     if (Platform.OS === "web") return;
-    try { await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); } catch {}
+    try {
+      await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    } catch {}
   },
   selection: async () => {
     if (Platform.OS === "web") return;
-    try { await Haptics.selectionAsync(); } catch {}
+    try {
+      await Haptics.selectionAsync();
+    } catch {}
   },
   success: async () => {
     if (Platform.OS === "web") return;
-    try { await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success); } catch {}
+    try {
+      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch {}
   },
   error: async () => {
     if (Platform.OS === "web") return;
-    try { await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error); } catch {}
+    try {
+      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+    } catch {}
   },
   warning: async () => {
     if (Platform.OS === "web") return;
-    try { await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning); } catch {}
+    try {
+      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+    } catch {}
   },
 };

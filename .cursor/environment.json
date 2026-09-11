@@ -1,0 +1,15 @@
+{
+  "name": "Nexora / CINELOG (Expo app + Node server)",
+  "install": "npm ci && npm run setup && sed -i 's#^EXPO_PUBLIC_API_BASE=.*#EXPO_PUBLIC_API_BASE=http://localhost:18081#' app/.env",
+  "terminals": [
+    {
+      "name": "server",
+      "command": "npm -w server start"
+    },
+    {
+      "name": "expo-web",
+      "command": "cd app && CI=1 npx expo start --web --port 8082"
+    }
+  ],
+  "ports": [18081, 8082]
+}

@@ -6,7 +6,7 @@ function decide(files, force = "auto") {
   return decideRoutes(categories, force);
 }
 
-const otaCase = decide(["app/app/index.tsx", "app/components/NexoraHeader.tsx"]);
+const otaCase = decide(["app/app/index.tsx", "app/components/navigation/DesktopNavigation.tsx"]);
 assert.equal(otaCase.route, "ota");
 assert.equal(otaCase.ota, true);
 assert.equal(otaCase.apk, false);
@@ -21,12 +21,12 @@ const serverCase = decide(["server/index.js", "server/update-manifest.js"]);
 assert.equal(serverCase.route, "server");
 assert.equal(serverCase.server, true);
 
-const mixedCase = decide(["server/index.js", "app/components/NexoraHeader.tsx"]);
+const mixedCase = decide(["server/index.js", "app/components/navigation/DesktopNavigation.tsx"]);
 assert.equal(mixedCase.route, "ota+server");
 assert.equal(mixedCase.ota, true);
 assert.equal(mixedCase.server, true);
 
-const mixedNativeCase = decide(["server/index.js", "ios/Podfile"]);
+const mixedNativeCase = decide(["server/index.js", "android/app/build.gradle"]);
 assert.equal(mixedNativeCase.route, "apk+server");
 assert.equal(mixedNativeCase.apk, true);
 assert.equal(mixedNativeCase.server, true);

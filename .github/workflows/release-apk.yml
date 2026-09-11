@@ -71,7 +71,7 @@ jobs:
         run: |
           VERSION=$(node -e "console.log(require('./app/app.json').expo.version)")
           APK=android/app/build/outputs/apk/release/app-release.apk
-          TARGET=android/app/build/outputs/apk/release/nexora-v${VERSION}.apk
+          TARGET=android/app/build/outputs/apk/release/cinelog-v${VERSION}.apk
           cp "$APK" "$TARGET"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "apk=$TARGET" >> "$GITHUB_OUTPUT"
@@ -79,7 +79,7 @@ jobs:
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: nexora-v${{ steps.meta.outputs.version }}
+          name: cinelog-v${{ steps.meta.outputs.version }}
           path: ${{ steps.meta.outputs.apk }}
           retention-days: 14
 
@@ -90,13 +90,13 @@ jobs:
           VERSION="${{ steps.meta.outputs.version }}"
           TAG="v${VERSION}"
           APK="${{ steps.meta.outputs.apk }}"
-          gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" --title "Nexora ${TAG}" --notes "Automated native release"
+          gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" --title "CineLog ${TAG}" --notes "Automated native release"
           gh release upload "$TAG" "$APK" --clobber
 
       - name: Update release metadata
         run: |
           VERSION="${{ steps.meta.outputs.version }}"
-          APK_URL="https://github.com/${{ github.repository }}/releases/download/v${VERSION}/nexora-v${VERSION}.apk"
+          APK_URL="https://github.com/${{ github.repository }}/releases/download/v${VERSION}/cinelog-v${VERSION}.apk"
           node scripts/release/update-release-metadata.mjs apk "$VERSION" "${{ github.sha }}" "${{ inputs.route }}" "$APK_URL"
 
       - name: Commit metadata update

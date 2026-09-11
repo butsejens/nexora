@@ -16,15 +16,20 @@ export const SafeAlert = {
     options?: { destructive?: boolean; cancelText?: string },
   ) => {
     if (Platform.OS === "web") {
-      const confirmed = typeof window !== "undefined" && typeof window.confirm === "function"
-        ? window.confirm(`${title}\n\n${message}`)
-        : false;
+      const confirmed =
+        typeof window !== "undefined" && typeof window.confirm === "function"
+          ? window.confirm(`${title}\n\n${message}`)
+          : false;
       if (confirmed) onConfirm();
       return;
     }
     Alert.alert(title, message, [
-      { text: options?.cancelText ?? "Annuleren", style: "cancel" },
-      { text: confirmText, style: options?.destructive === false ? "default" : "destructive", onPress: onConfirm },
+      { text: options?.cancelText ?? "Cancel", style: "cancel" },
+      {
+        text: confirmText,
+        style: options?.destructive === false ? "default" : "destructive",
+        onPress: onConfirm,
+      },
     ]);
   },
 };

@@ -5,13 +5,13 @@ function usage() {
   console.log("Usage:");
   console.log("  node scripts/secrets-crypto.mjs encrypt <inputFile> <outputFile>");
   console.log("  node scripts/secrets-crypto.mjs decrypt <inputFile> <outputFile>");
-  console.log("Requires: NEXORA_SECRETS_PASSPHRASE");
+  console.log("Requires: CINELOG_SECRETS_PASSPHRASE");
 }
 
 function getPassphrase() {
-  const passphrase = String(process.env.NEXORA_SECRETS_PASSPHRASE || "");
+  const passphrase = String(process.env.CINELOG_SECRETS_PASSPHRASE || "");
   if (!passphrase) {
-    throw new Error("NEXORA_SECRETS_PASSPHRASE ontbreekt.");
+    throw new Error("CINELOG_SECRETS_PASSPHRASE ontbreekt.");
   }
   return passphrase;
 }

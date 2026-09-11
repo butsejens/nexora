@@ -29,12 +29,12 @@ try {
   const manifestOta = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
   assert.equal(typeof manifestOta.ota.releasedAt, "string");
 
-  execSync("node scripts/release/update-release-metadata.mjs apk 2.6.99 deadbeef apk https://github.com/butsejens/nexora/releases/download/v2.6.99/nexora-v2.6.99.apk", { stdio: "inherit" });
+  execSync("node scripts/release/update-release-metadata.mjs apk 2.6.99 deadbeef apk https://github.com/butsejens/cinelog/releases/download/v2.6.99/cinelog-v2.6.99.apk", { stdio: "inherit" });
   const manifestApk = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
   const appVersionApk = JSON.parse(fs.readFileSync(appVersionPath, "utf8"));
   assert.equal(manifestApk.native.version, "2.6.99");
   assert.equal(appVersionApk.version, "2.6.99");
-  assert.match(String(appVersionApk.apkUrl || ""), /nexora-v2\.6\.99\.apk/);
+  assert.match(String(appVersionApk.apkUrl || ""), /cinelog-v2\.6\.99\.apk/);
 
   execSync("node scripts/release/update-release-metadata.mjs server 2.6.99 0123456789 server", { stdio: "inherit" });
   const manifestServer = JSON.parse(fs.readFileSync(manifestPath, "utf8"));

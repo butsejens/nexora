@@ -1,10 +1,10 @@
-# Nexora Security Hardening
+# CineLog Security Hardening
 
 ## 1) API keys versleutelen
 
 Gebruik een sterke passphrase (bij voorkeur opgeslagen in macOS Keychain) en zet die als environment variabele:
 
-- `export NEXORA_SECRETS_PASSPHRASE="<sterke-passphrase>"`
+- `export CINELOG_SECRETS_PASSPHRASE="<sterke-passphrase>"`
 
 Versleutel je lokale env-bestanden:
 
@@ -33,11 +33,11 @@ Standaard toegestane hostnamen:
 
 Je kunt dit beheren met:
 
-- `NEXORA_ALLOWED_HOSTS="host1,host2"`
+- `CINELOG_ALLOWED_HOSTS="host1,host2"`
 
 Tijdelijke override (niet aanbevolen):
 
-- `NEXORA_ALLOW_NON_MACBOOK=1`
+- `CINELOG_ALLOW_NON_MACBOOK=1`
 
 ## 2b) Strikte .env policy
 
@@ -50,11 +50,11 @@ Release-scripts vereisen nu standaard dat encrypted env-bestanden aanwezig zijn 
 
 Tijdelijke override (noodmodus):
 
-- `NEXORA_ALLOW_PLAINTEXT_ONLY=1`
+- `CINELOG_ALLOW_PLAINTEXT_ONLY=1`
 
 Extra strict mode (ook voor dev/start):
 
-- `NEXORA_STRICT_ENV_POLICY=1`
+- `CINELOG_STRICT_ENV_POLICY=1`
 
 ## 3) Belangrijke realiteit
 
@@ -86,7 +86,7 @@ Manueel triggeren:
 
 Uitschakelen:
 
-- `NEXORA_DISABLE_AUTO_RELEASE=1`
+- `CINELOG_DISABLE_AUTO_RELEASE=1`
 
 ## 5) Volledig automatische secrets-flow
 

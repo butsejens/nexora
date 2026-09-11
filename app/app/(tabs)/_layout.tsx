@@ -1,108 +1,82 @@
-import { Tabs, usePathname, useRootNavigationState, router } from "expo-router";
-import React, { useEffect } from "react";
+import React, { useCallback } from "react";
+import { View } from "react-native";
+import { Tabs, router, usePathname } from "expo-router";
 
-import { useNexora } from "@/context/NexoraContext";
-import { useProfileStore } from "@/store/profileStore";
-import { TopNavBar } from "@/components/navigation/TopNavBar";
-import { isSafeRoute, recoverNavigation } from "@/core/self-healing";
+import { useT } from "@/i18n";
+import { BottomNavigation } from "@/components/navigation/BottomNavigation";
+import { DesktopNavigation } from "@/components/navigation/DesktopNavigation";
+import { useResponsive } from "@/hooks/useResponsive";
+import { useAuth } from "@/store/auth-store";
+import { makeStyles, useTheme } from "@/theme";
 
-export default function TabLayout() {
-  const { isAuthenticated, authReady } = useNexora();
-  const { hasHydrated, activeProfileId } = useProfileStore();
-  const navState = useRootNavigationState();
+/**
+ * CineLog tab shell: bottom navigation on phones, a top bar from tablet width
+ * up. Both drive the same tab navigator so state and scroll position survive
+ * switching sections.
+ */
+export default function TabsLayout() {
+  const t = useT();
+  const { colors } = useTheme();
+  const styles = useStyles();
+  const { isMobile, gutter } = useResponsive();
   const pathname = usePathname();
-  const hideTopNav = pathname?.includes("/more") ?? false;
+  const user = useAuth((state) => state.user);
 
-  useEffect(() => {
-    if (!pathname) return;
-    if (!isSafeRoute(pathname)) {
-      recoverNavigation("unsafe-tab-route", { pathname });
-    }
-  }, [pathname]);
+  const activeRoute = `/${pathname.split("/").filter(Boolean).pop() ?? "home"}`;
 
-  useEffect(() => {
-    if (!__DEV__) return;
-    // #region agent log
-    fetch("http://127.0.0.1:7379/ingest/4d747d85-0c03-4a11-8a60-a6d4fd09190a", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Debug-Session-Id": "165c99",
-      },
-      body: JSON.stringify({
-        sessionId: "165c99",
-        runId: "baseline",
-        hypothesisId: "H2",
-        location: "tabs/_layout:gate-check",
-        message: "tabs-gate-evaluated",
-        data: {
-          navReady: Boolean(navState?.key),
-          authReady,
-          isAuthenticated,
-          hasHydrated,
-          activeProfileId: activeProfileId || null,
-        },
-        timestamp: Date.now(),
-      }),
-    }).catch(() => {});
-    // #endregion
-    if (!navState?.key) return;
-    if (!authReady) return;
+  const navigate = useCallback((route: string) => {
+    router.navigate(`/(tabs)${route}` as never);
+  }, []);
 
-    // Temporary bypass: allow tab access without auth.
-
-    // Profile gate — must have selected a profile
-    if (!hasHydrated) return;
-    if (!activeProfileId) {
-      router.replace("/select-profile");
-    }
-  }, [authReady, isAuthenticated, activeProfileId, hasHydrated, navState?.key]);
-
-  useEffect(() => {
-    if (!__DEV__) return;
-    // #region agent log
-    fetch("http://127.0.0.1:7379/ingest/4d747d85-0c03-4a11-8a60-a6d4fd09190a", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Debug-Session-Id": "165c99",
-      },
-      body: JSON.stringify({
-        sessionId: "165c99",
-        runId: "baseline-5",
-        hypothesisId: "H10",
-        location: "tabs/_layout:pathname",
-        message: "tab-route-visited",
-        data: {
-          pathname,
-          navReady: Boolean(navState?.key),
-        },
-        timestamp: Date.now(),
-      }),
-    }).catch(() => {});
-    // #endregion
-  }, [pathname, navState?.key]);
+  const openProfile = useCallback(() => {
+    router.push("/profile");
+  }, []);
 
   return (
-    <Tabs
-      initialRouteName="home"
-      tabBar={() => (hideTopNav ? null : <TopNavBar />)}
-      screenOptions={{ headerShown: false }}
-    >
-      <Tabs.Screen name="home" options={{ title: "Home" }} />
-      <Tabs.Screen name="live-tv" options={{ title: "Live TV" }} />
-      <Tabs.Screen name="series" options={{ title: "Series" }} />
-      <Tabs.Screen name="movies" options={{ title: "Films" }} />
-      <Tabs.Screen name="kids" options={{ title: "Kids" }} />
-      <Tabs.Screen name="collection" options={{ title: "Collectie" }} />
-      <Tabs.Screen name="studios" options={{ title: "Studios" }} />
-      <Tabs.Screen name="my-list" options={{ title: "Mijn lijst" }} />
-      <Tabs.Screen name="search" options={{ href: null }} />
-      <Tabs.Screen name="more" options={{ title: "Menu", href: null }} />
-      <Tabs.Screen name="smart-feed" options={{ href: null }} />
-      <Tabs.Screen name="downloads" options={{ href: null }} />
-      <Tabs.Screen name="favorites" options={{ href: null }} />
-      <Tabs.Screen name="index" options={{ href: null }} />
-    </Tabs>
+    <View style={styles.root}>
+      {isMobile ? null : (
+        <DesktopNavigation
+          activeRoute={activeRoute}
+          onNavigate={navigate}
+          onOpenProfile={openProfile}
+          gutter={gutter}
+          displayName={user?.displayName ?? t("Guest")}
+          avatarUrl={user?.avatarUrl ?? null}
+        />
+      )}
+
+      <Tabs
+        screenOptions={{
+          headerShown: false,
+          sceneStyle: { backgroundColor: colors.background },
+        }}
+        tabBar={(props) =>
+          isMobile ? (
+            <BottomNavigation
+              activeRoute={activeRoute}
+              onNavigate={(route) => {
+                const target = props.state.routeNames.find(
+                  (name) => `/${name}` === route,
+                );
+                if (target) props.navigation.navigate(target);
+              }}
+            />
+          ) : null
+        }
+      >
+        <Tabs.Screen name="home" options={{ title: "Home" }} />
+        <Tabs.Screen name="movies" options={{ title: "Movies" }} />
+        <Tabs.Screen name="series" options={{ title: "Series" }} />
+        <Tabs.Screen name="search" options={{ title: "Search" }} />
+        <Tabs.Screen name="watchlist" options={{ title: "Watchlist" }} />
+      </Tabs>
+    </View>
   );
 }
+
+const useStyles = makeStyles((c, t) => ({
+  root: {
+    flex: 1,
+    backgroundColor: c.background,
+  },
+}));

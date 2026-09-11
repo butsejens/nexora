@@ -4,7 +4,7 @@
 // ─── Global JS crash guard ────────────────────────────────────────────────────
 // Catches unhandled fatal JS errors that occur before React even mounts
 // (e.g. module evaluation errors, native-module boot failures surfaced in JS).
-// On the NEXT launch, _layout.tsx reads the stored entry and shows a crash report.
+// The entry is kept for diagnostics on the next launch.
 (function installCrashGuard() {
 	try {
 		var prevHandler = global.ErrorUtils && global.ErrorUtils.getGlobalHandler
@@ -24,7 +24,7 @@
 					});
 					// Fire-and-forget — process may die before this resolves, but it
 					// succeeds in the vast majority of soft-crash scenarios.
-					AS.setItem('nexora_crash_log_v1', entry).catch(function () {});
+					AS.setItem('cinelog_crash_log_v1', entry).catch(function () {});
 				} catch (_) {}
 
 				// Always delegate to the original handler so RN's red-box / dev tools

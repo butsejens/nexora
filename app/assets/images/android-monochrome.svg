@@ -1,5 +1,21 @@
-<svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
-  <g transform="translate(-24 -8)">
-    <path d="M702 328C675.594 278.799 625.644 248 570 248C487.291 248 420 315.291 420 398V626C420 708.709 487.291 776 570 776C625.644 776 675.594 745.201 702 696" fill="none" stroke="#F5F5F7" stroke-width="132" stroke-linecap="round" stroke-linejoin="round"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="CineLog">
+  <!-- Themed-icon layer: flat shapes only, so Android can tint it. -->
+  <g transform="translate(146 146) scale(0.4297)">
+    <rect x="0" y="0" width="512" height="512" rx="133" fill="#FFFFFF"/>
+  <!-- Film-strip perforations down the left edge. -->
+  <g fill="#000000" opacity="0.95">
+    <rect x="58" y="92" width="52" height="52" rx="18"/>
+    <rect x="58" y="178" width="52" height="52" rx="18"/>
+    <rect x="58" y="264" width="52" height="52" rx="18"/>
+    <rect x="58" y="350" width="52" height="52" rx="18"/>
+  </g>
+  <!-- The "C" of CineLog, drawn as an open film reel. -->
+  <path
+    d="M 397.7 176.9 A 118 118 0 1 0 397.7 335.1"
+    fill="none"
+    stroke="#000000"
+    stroke-width="54"
+    stroke-linecap="round"
+  />
   </g>
 </svg>
