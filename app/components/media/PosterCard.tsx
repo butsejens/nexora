@@ -51,6 +51,7 @@ function PosterCardComponent({
   const styles = useStyles();
   const { supportsHover } = useResponsive();
   const [hovered, setHovered] = useState(false);
+  const [focused, setFocused] = useState(false);
   const [posterFailed, setPosterFailed] = useState(false);
   const toggleWatchlist = useLibrary((state) => state.toggleWatchlist);
   const inWatchlist = useLibrary((state) => state.isInWatchlist(item.id));
@@ -94,10 +95,12 @@ function PosterCardComponent({
       <TouchableScale
         onPress={onPress}
         style={{ width }}
+        onFocus={() => setFocused(true)}
+        onBlur={() => setFocused(false)}
         accessibilityRole="button"
         accessibilityLabel={`${item.title}, ${typeLabel}${item.year ? `, ${item.year}` : ""}`}
       >
-        <View style={[styles.posterWrap, { width, height }]}>
+        <View style={[styles.posterWrap, { width, height }, focused ? styles.posterFocused : null]}>
           {posterUri ? (
             <Image
               source={{ uri: posterUri }}
@@ -147,7 +150,7 @@ function PosterCardComponent({
         )}
       </TouchableScale>
 
-      {supportsHover && hovered ? (
+      {(focused || (supportsHover && hovered)) ? (
         <View style={[styles.hoverLayer, { height }]}>
           <LinearGradient colors={CARD_SCRIM} style={styles.hoverOverlay}>
             <View style={styles.hoverActions}>
@@ -201,7 +204,12 @@ const useStyles = makeStyles((c, t) => ({
     borderRadius: RADIUS.md,
     overflow: "hidden",
     backgroundColor: c.surface,
+    borderWidth: 2,
+    borderColor: "transparent",
     ...t.shadows.card,
+  },
+  posterFocused: {
+    borderColor: c.accent,
   },
   poster: {
     width: "100%",

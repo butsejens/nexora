@@ -366,4 +366,10 @@ export const NL: Record<string, string> = {
   "Manage Torrentio, Comet, Meteor and automatic best-source playback.":
     "Beheer Torrentio, Comet, Meteor en automatisch afspelen van de beste bron.",
   "Open Addons": "Add-ons openen",
+
+  // ── Over ──────────────────────────────────────────────────────────────
+  About: "Over",
+  "Version {{version}}": "Versie {{version}}",
+  "Build {{build}} · {{platform}}": "Build {{build}} · {{platform}}",
+  "Bundle {{version}} · {{platform}}": "Bundel {{version}} · {{platform}}",
 };

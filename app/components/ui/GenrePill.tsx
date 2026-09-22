@@ -44,10 +44,11 @@ export function GenrePill({
       accessibilityRole="tab"
       accessibilityState={{ selected }}
       accessibilityLabel={label}
-      style={({ pressed, hovered }) => [
+      style={({ pressed, hovered, focused }) => [
         styles.pillWrap,
         selected ? styles.selected : null,
         hovered && !selected ? styles.hovered : null,
+        focused ? styles.focused : null,
         pressed ? styles.pressed : null,
       ]}
     >
@@ -88,6 +89,10 @@ const useStyles = makeStyles((c, t) => ({
   hovered: {
     backgroundColor: c.surfaceHover,
     borderColor: c.borderStrong,
+  },
+  focused: {
+    borderColor: c.accent,
+    borderWidth: 2,
   },
   pressed: {
     opacity: 0.85,

@@ -72,7 +72,7 @@ export function Button({
       accessibilityLabel={label}
       accessibilityHint={accessibilityHint}
       accessibilityState={{ disabled: isDisabled, busy: loading }}
-      style={({ pressed, hovered }) => [
+      style={({ pressed, hovered, focused }) => [
         styles.base,
         {
           height: metrics.height,
@@ -81,6 +81,7 @@ export function Button({
         },
         variantStyle(colors, variant, onArtwork),
         hovered && !isDisabled ? hoverStyle(colors, variant, onArtwork) : null,
+        focused && !isDisabled ? { borderColor: colors.accent, borderWidth: 2 } : null,
         pressed ? styles.pressed : null,
         isDisabled ? styles.disabled : null,
         style,
@@ -153,12 +154,13 @@ export function IconButton({
       accessibilityRole="button"
       accessibilityLabel={label}
       accessibilityState={{ selected: active }}
-      style={({ pressed, hovered }) => [
+      style={({ pressed, hovered, focused }) => [
         styles.base,
         { width: size, height: size, borderRadius: RADIUS.pill },
         variantStyle(colors, variant, onArtwork),
         active ? styles.iconActive : null,
         hovered ? hoverStyle(colors, variant, onArtwork) : null,
+        focused ? { borderColor: colors.accent, borderWidth: 2 } : null,
         pressed ? styles.pressed : null,
         style,
       ]}

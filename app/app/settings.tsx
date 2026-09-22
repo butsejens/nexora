@@ -1,6 +1,7 @@
 import React from "react";
 import { Platform, StatusBar, Switch, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import Constants from "expo-constants";
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -250,6 +251,26 @@ export default function SettingsScreen() {
                 }}
               />
             ) : null}
+          </SettingsSection>
+
+          <SettingsSection title={t("About")} icon="information-circle-outline">
+            <SettingsRow
+              label={t("Version {{version}}", {
+                version:
+                  Constants.nativeAppVersion ?? Constants.expoConfig?.version ?? "—",
+              })}
+              hint={
+                Constants.nativeBuildVersion
+                  ? t("Build {{build}} · {{platform}}", {
+                      build: Constants.nativeBuildVersion,
+                      platform: Platform.OS === "android" ? "Android" : Platform.OS === "ios" ? "iOS" : "Web",
+                    })
+                  : t("Bundle {{version}} · {{platform}}", {
+                      version: String(Constants.expoConfig?.version ?? "—"),
+                      platform: Platform.OS === "android" ? "Android" : Platform.OS === "ios" ? "iOS" : "Web",
+                    })
+              }
+            />
           </SettingsSection>
         </View>
 
