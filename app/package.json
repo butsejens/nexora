@@ -1,7 +1,7 @@
 {
   "name": "cinelog-app",
   "main": "expo-router/entry",
-  "version": "1.0.27",
+  "version": "1.0.28",
   "scripts": {
     "postinstall": "patch-package || true",
     "brand:assets": "node scripts/build-brand-assets.mjs",
@@ -13,6 +13,7 @@
     "lint": "npx expo lint",
     "lint:fix": "npx expo lint --fix",
     "typecheck": "npx tsc --noEmit",
+    "test:streaming": "node --test lib/streaming/__tests__/*.test.mts",
     "ota:production": "NODE_ENV=production npx eas-cli update --branch production --message \"cinelog-ota-production\"",
     "ota:preview": "NODE_ENV=production npx eas-cli update --branch preview --message \"cinelog-ota-preview\"",
     "release:apk": "cd ../android && NODE_ENV=production ./gradlew assembleRelease -x externalNativeBuildDebug",

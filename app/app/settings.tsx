@@ -124,6 +124,22 @@ export default function SettingsScreen() {
             </View>
           </SettingsSection>
 
+          <SettingsSection title={t("Addons")} icon="rocket-outline">
+            <SettingsRow
+              label={t("Streaming sources")}
+              hint={t(
+                "Manage Torrentio, Comet, Meteor and automatic best-source playback.",
+              )}
+            />
+            <Button
+              label={t("Open Addons")}
+              icon="chevron-forward"
+              variant="secondary"
+              size="sm"
+              onPress={() => router.push("/addons")}
+            />
+          </SettingsSection>
+
           <SettingsSection
             title={t("Notifications")}
             icon="notifications-outline"

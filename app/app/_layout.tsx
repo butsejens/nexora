@@ -63,6 +63,7 @@ function ThemedShell() {
           <Stack.Screen name="person/[id]" />
           <Stack.Screen name="profile" />
           <Stack.Screen name="settings" />
+          <Stack.Screen name="addons" />
           <Stack.Screen name="legal" />
           <Stack.Screen
             name="auth"

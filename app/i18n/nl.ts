@@ -331,4 +331,39 @@ export const NL: Record<string, string> = {
   "{{count}} titles are waiting for you.": "{{count}} titels wachten op je.",
   "Movie#type": "Film",
   "Series#type": "Serie",
+
+  // ── Addons & automatisch afspelen ───────────────────────────────────────────
+  Addons: "Add-ons",
+  "Finding the best source…": "Beste bron zoeken…",
+  "Trying another source…": "Andere bron proberen…",
+  "Choose another source": "Andere bron kiezen",
+  Sources: "Bronnen",
+  "Choose a source": "Kies een bron",
+  "Torrentio, Comet and Meteor rank above every other server. CineLog scores every stream and plays the best one automatically.":
+    "Torrentio, Comet en Meteor staan boven alle andere servers. CineLog beoordeelt elke stream en speelt automatisch de beste af.",
+  "Automatic best source": "Automatisch beste bron",
+  "Automatically choose the best source": "Automatisch de beste bron kiezen",
+  "When on, CineLog ranks Torrentio, Comet and Meteor and starts the top result without asking.":
+    "Indien ingeschakeld rangschikt CineLog Torrentio, Comet en Meteor en start het de beste bron zonder te vragen.",
+  "Maximum resolution": "Maximale resolutie",
+  "Preferred language (ISO code)": "Voorkeurstaal (ISO-code)",
+  "Allow HDR / Dolby Vision": "HDR/Dolby Vision toestaan",
+  "Turn off to always prefer standard-dynamic-range sources.":
+    "Schakel uit om altijd standaard-dynamisch-bereik-bronnen te verkiezen.",
+  "Maximum file size (GB, empty = no limit)": "Maximale bestandsgrootte (GB, leeg = geen limiet)",
+  "No limit": "Geen limiet",
+  "Torrentio, Comet & Meteor": "Torrentio, Comet & Meteor",
+  "e.g. https://torrentio.strem.fun (add your own debrid keys in the URL if you have them)":
+    "bv. https://torrentio.strem.fun (voeg je eigen debrid-sleutels toe aan de URL indien van toepassing)",
+  "Your personal Comet instance URL, including any debrid configuration.":
+    "De URL van jouw persoonlijke Comet-instantie, inclusief eventuele debrid-configuratie.",
+  "Your personal Meteor instance URL, including any debrid configuration.":
+    "De URL van jouw persoonlijke Meteor-instantie, inclusief eventuele debrid-configuratie.",
+  "Other servers": "Overige servers",
+  "Used only when none of Torrentio, Comet or Meteor produce a working stream, or when automatic selection is off.":
+    "Wordt pas gebruikt als Torrentio, Comet en Meteor geen werkende stream leveren, of als automatische selectie uit staat.",
+  "Streaming sources": "Streambronnen",
+  "Manage Torrentio, Comet, Meteor and automatic best-source playback.":
+    "Beheer Torrentio, Comet, Meteor en automatisch afspelen van de beste bron.",
+  "Open Addons": "Add-ons openen",
 };

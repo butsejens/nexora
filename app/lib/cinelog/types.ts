@@ -63,6 +63,7 @@ export interface Series extends MediaSummary {
   episodeCount: number;
   status: string | null;
   certification: string | null;
+  imdbId: string | null;
   networks: string[];
   creators: string[];
   /** Average episode runtime in minutes; 0 when unknown. */

@@ -9,6 +9,17 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 
+import {
+  DEFAULT_STREAM_PREFERENCES,
+  defaultProviderConfig,
+} from "@/lib/streaming/config";
+import type {
+  ProviderRuntimeConfig,
+  ResolutionTier,
+  StreamProviderId,
+  UserStreamPreferences,
+} from "@/lib/streaming/types";
+
 export type ThemeMode = "dark" | "light" | "system";
 export type LanguageCode = "en" | "nl" | "fr";
 
@@ -36,10 +47,19 @@ export interface SettingsState {
   language: LanguageCode;
   notifications: NotificationPrefs;
   privacy: PrivacyPrefs;
+  streamPrefs: UserStreamPreferences;
+  streamProviders: Record<StreamProviderId, ProviderRuntimeConfig>;
   setTheme: (theme: ThemeMode) => void;
   setLanguage: (language: LanguageCode) => void;
   setNotification: (key: keyof NotificationPrefs, value: boolean) => void;
   setPrivacy: (key: keyof PrivacyPrefs, value: boolean) => void;
+  setStreamPref: <K extends keyof UserStreamPreferences>(
+    key: K,
+    value: UserStreamPreferences[K],
+  ) => void;
+  setStreamProviderEndpoint: (id: StreamProviderId, endpoint: string) => void;
+  setStreamProviderEnabled: (id: StreamProviderId, enabled: boolean) => void;
+  setStreamProviderTimeout: (id: StreamProviderId, timeoutMs: number) => void;
 }
 
 export const useSettings = create<SettingsState>()(
@@ -56,6 +76,12 @@ export const useSettings = create<SettingsState>()(
         saveWatchHistory: true,
         publicProfile: false,
       },
+      streamPrefs: { ...DEFAULT_STREAM_PREFERENCES },
+      streamProviders: {
+        torrentio: defaultProviderConfig("torrentio"),
+        comet: defaultProviderConfig("comet"),
+        meteor: defaultProviderConfig("meteor"),
+      },
       setTheme: (theme) => set({ theme }),
       setLanguage: (language) => set({ language }),
       setNotification: (key, value) =>
@@ -64,11 +90,50 @@ export const useSettings = create<SettingsState>()(
         })),
       setPrivacy: (key, value) =>
         set((state) => ({ privacy: { ...state.privacy, [key]: value } })),
+      setStreamPref: (key, value) =>
+        set((state) => ({ streamPrefs: { ...state.streamPrefs, [key]: value } })),
+      setStreamProviderEndpoint: (id, endpoint) =>
+        set((state) => ({
+          streamProviders: {
+            ...state.streamProviders,
+            [id]: { ...state.streamProviders[id], endpoint: endpoint.trim() },
+          },
+        })),
+      setStreamProviderEnabled: (id, enabled) =>
+        set((state) => ({
+          streamProviders: {
+            ...state.streamProviders,
+            [id]: { ...state.streamProviders[id], enabled },
+          },
+        })),
+      setStreamProviderTimeout: (id, timeoutMs) =>
+        set((state) => ({
+          streamProviders: {
+            ...state.streamProviders,
+            [id]: { ...state.streamProviders[id], timeoutMs },
+          },
+        })),
     }),
     {
       name: "cinelog.settings.v1",
       storage: createJSONStorage(() => AsyncStorage),
-      version: 1,
+      version: 2,
+      migrate: (persisted) => {
+        const state = (persisted ?? {}) as Partial<SettingsState>;
+        return {
+          ...state,
+          streamPrefs: state.streamPrefs ?? { ...DEFAULT_STREAM_PREFERENCES },
+          streamProviders:
+            state.streamProviders ?? {
+              torrentio: defaultProviderConfig("torrentio"),
+              comet: defaultProviderConfig("comet"),
+              meteor: defaultProviderConfig("meteor"),
+            },
+        } as SettingsState;
+      },
     },
   ),
 );
+
+export type { ResolutionTier };
+

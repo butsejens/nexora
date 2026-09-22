@@ -31,8 +31,15 @@ import { FONTS, RADIUS, SPACING } from "@/constants/theme";
 import { makeStyles, useTheme } from "@/theme";
 import { apiData } from "@/lib/http";
 import { SafeHaptics } from "@/lib/safeHaptics";
+import { fetchImdbId } from "@/lib/cinelog/api";
 import type { LibraryEntryRef, MediaType, WatchState } from "@/lib/cinelog/types";
 import { useLibrary } from "@/store/library-store";
+import { useSettings } from "@/store/settings-store";
+import { DEFAULT_DEVICE_CAPABILITIES } from "@/lib/streaming/config";
+import { AUTO_PROVIDER_LABELS } from "@/lib/streaming/providers/index";
+import { resolveAutoStreams } from "@/lib/streaming/resolver";
+import { AUTO_STREAM_PROVIDER_IDS, type StreamProviderId } from "@/lib/streaming/types";
+import { providerStatsStore } from "@/lib/streaming/statsStoreInstance";
 
 export interface WatchlistButtonProps {
   item: LibraryEntryRef;
@@ -152,6 +159,14 @@ interface ProviderTemplate {
   tvUrl: string;
 }
 
+/** A resolved, immediately-playable source — either a legacy embed URL or an
+ * auto-selected Torrentio/Comet/Meteor stream. */
+interface ResolvedStreamOption {
+  id: string;
+  label: string;
+  url: string;
+}
+
 function applyTemplate(
   template: string,
   tmdbId: number,
@@ -180,6 +195,10 @@ const STREAM_PROVIDERS: StreamProvider[] = [
   { id: "vidsrcstream", label: "Server 12", movieUrl: (id) => `https://vidsrc.stream/embed/movie/${id}`, tvUrl: (id, s, e) => `https://vidsrc.stream/embed/tv/${id}/${s}/${e}` },
   { id: "2embedorg", label: "Server 13", movieUrl: (id) => `https://www.2embed.org/embed/movie?id=${id}`, tvUrl: (id, s, e) => `https://www.2embed.org/embed/tv?id=${id}&s=${s}&e=${e}` },
 ];
+
+/** Labels-only view of the legacy embed servers, for display in the Addons screen. */
+export const LEGACY_STREAM_PROVIDER_LABELS: { id: string; label: string }[] =
+  STREAM_PROVIDERS.map(({ id, label }) => ({ id, label }));
 
 export interface PlayButtonProps {
   tmdbId: number;
@@ -212,9 +231,15 @@ export function PlayButton({
   const [providerIndex, setProviderIndex] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
   const [providerTemplates, setProviderTemplates] = useState<ProviderTemplate[]>([]);
+  const [autoStreams, setAutoStreams] = useState<ResolvedStreamOption[]>([]);
+  const [resolvePhase, setResolvePhase] = useState<"idle" | "resolving" | "switching">("idle");
+  const [pickerVisible, setPickerVisible] = useState(false);
   const lastAutoRequestRef = useRef<number | undefined>(undefined);
   const progressTickRef = useRef(0);
+  const startTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const saveProgress = useLibrary((state) => state.saveProgress);
+  const streamPrefs = useSettings((state) => state.streamPrefs);
+  const streamProviderConfigs = useSettings((state) => state.streamProviders);
 
   const ref = useMemo<LibraryEntryRef>(
     () =>
@@ -252,7 +277,7 @@ export function PlayButton({
     };
   }, []);
 
-  const providers = useMemo(() => {
+  const embedProviders = useMemo(() => {
     if (providerTemplates.length > 0) {
       return providerTemplates.map((provider) => ({
         id: provider.id,
@@ -272,6 +297,62 @@ export function PlayButton({
           : provider.tvUrl(tmdbId, seasonNumber, episodeNumber),
     }));
   }, [episodeNumber, providerTemplates, seasonNumber, tmdbId, type]);
+
+  // Torrentio/Comet/Meteor (when enabled + resolved) always sit ahead of the
+  // legacy embed servers — see resolveBestStreams below.
+  const providers = useMemo(
+    () => [...autoStreams, ...embedProviders],
+    [autoStreams, embedProviders],
+  );
+
+  const autoProviderIdOf = useCallback((providerId: string): StreamProviderId | null => {
+    const prefix = providerId.split(":")[0];
+    return (AUTO_STREAM_PROVIDER_IDS as readonly string[]).includes(prefix)
+      ? (prefix as StreamProviderId)
+      : null;
+  }, []);
+
+  /** Fetches, normalizes, dedupes and scores Torrentio/Comet/Meteor streams. */
+  const resolveBestStreams = useCallback(async (): Promise<ResolvedStreamOption[]> => {
+    if (!streamPrefs.autoSelectBest) return [];
+    const configs = AUTO_STREAM_PROVIDER_IDS.map((id) => streamProviderConfigs[id]).filter(
+      (config) => config.enabled && config.endpoint.trim().length > 0,
+    );
+    if (configs.length === 0) return [];
+
+    try {
+      const imdbId = await fetchImdbId(tmdbId, type);
+      if (!imdbId) return [];
+
+      await providerStatsStore.ensureLoaded();
+      const { streams } = await resolveAutoStreams({
+        configs,
+        context: {
+          type: type === "movie" ? "movie" : "series",
+          tmdbId,
+          imdbId,
+          title,
+          seasonNumber,
+          episodeNumber,
+        },
+        prefs: streamPrefs,
+        device: DEFAULT_DEVICE_CAPABILITIES,
+        stats: providerStatsStore.getAll(),
+      });
+
+      return streams
+        .filter((stream) => Boolean(stream.playbackUrl))
+        .map((stream) => ({
+          id: stream.id,
+          label: `${AUTO_PROVIDER_LABELS[stream.providerId]} · ${
+            stream.resolution !== "unknown" ? stream.resolution.toUpperCase() : "Auto"
+          }`,
+          url: stream.playbackUrl as string,
+        }));
+    } catch {
+      return [];
+    }
+  }, [episodeNumber, seasonNumber, streamPrefs, streamProviderConfigs, title, tmdbId, type]);
 
   const showUnavailableDialog = useCallback(() => {
     Alert.alert(
@@ -293,9 +374,22 @@ export function PlayButton({
             setVisible(true);
           },
         },
+        {
+          text: "Choose Manually",
+          onPress: () => {
+            setVisible(true);
+            setPickerVisible(true);
+          },
+        },
       ],
     );
   }, [providers]);
+
+  const clearStartTimeout = useCallback(() => {
+    if (!startTimeoutRef.current) return;
+    clearTimeout(startTimeoutRef.current);
+    startTimeoutRef.current = null;
+  }, []);
 
   const openProvider = useCallback(
     (nextIndex: number) => {
@@ -315,29 +409,99 @@ export function PlayButton({
     [providers, showUnavailableDialog],
   );
 
+  /** Resolves the best auto stream (if enabled) then starts playback from
+   * index 0 of the combined [auto, ...legacy] list — no picker shown unless
+   * everything failed. */
+  const beginPlayback = useCallback(async () => {
+    setVisible(true);
+    setPickerVisible(false);
+    setActiveUrl(null);
+    setIsLoading(true);
+    setResolvePhase("resolving");
+
+    const resolved = await resolveBestStreams();
+    setAutoStreams(resolved);
+    setResolvePhase("idle");
+
+    const merged = [...resolved, ...embedProviders];
+    const first = merged[0];
+    if (!first) {
+      setVisible(false);
+      setIsLoading(false);
+      showUnavailableDialog();
+      return;
+    }
+
+    setProviderIndex(0);
+    setActiveUrl(first.url);
+    setIsLoading(true);
+  }, [embedProviders, resolveBestStreams, showUnavailableDialog]);
+
   const handlePress = useCallback(() => {
     void SafeHaptics.selection();
-    openProvider(0);
-  }, [openProvider]);
+    void beginPlayback();
+  }, [beginPlayback]);
 
   const handleStreamFail = useCallback(() => {
+    clearStartTimeout();
+    const failedProvider = providers[providerIndex];
+    const failedAutoId = failedProvider ? autoProviderIdOf(failedProvider.id) : null;
+    if (failedAutoId) {
+      void providerStatsStore.recordOutcome(failedAutoId, false, 0);
+    }
+
     const nextIndex = providerIndex + 1;
     if (nextIndex < providers.length) {
+      setResolvePhase("switching");
       openProvider(nextIndex);
       return;
     }
 
+    setResolvePhase("idle");
     setVisible(false);
     setIsLoading(false);
     showUnavailableDialog();
-  }, [openProvider, providerIndex, providers, showUnavailableDialog]);
+  }, [autoProviderIdOf, clearStartTimeout, openProvider, providerIndex, providers, showUnavailableDialog]);
+
+  const handleStreamLoaded = useCallback(() => {
+    clearStartTimeout();
+    setIsLoading(false);
+    setResolvePhase("idle");
+    const activeProvider = providers[providerIndex];
+    const activeAutoId = activeProvider ? autoProviderIdOf(activeProvider.id) : null;
+    if (activeAutoId) {
+      void providerStatsStore.recordOutcome(activeAutoId, true, 0);
+    }
+  }, [autoProviderIdOf, clearStartTimeout, providerIndex, providers]);
+
+  const chooseProviderManually = useCallback(
+    (index: number) => {
+      clearStartTimeout();
+      setPickerVisible(false);
+      setResolvePhase("idle");
+      openProvider(index);
+    },
+    [clearStartTimeout, openProvider],
+  );
+
+  // Give a stream a short window to actually start; if it never fires
+  // `onLoad`, treat it like a playback failure and move on automatically.
+  useEffect(() => {
+    if (!visible || !activeUrl) return;
+    clearStartTimeout();
+    startTimeoutRef.current = setTimeout(() => {
+      handleStreamFail();
+    }, 15000);
+    return clearStartTimeout;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeUrl, visible]);
 
   useEffect(() => {
     if (autoPlayRequest == null) return;
     if (lastAutoRequestRef.current === autoPlayRequest) return;
     lastAutoRequestRef.current = autoPlayRequest;
-    openProvider(0);
-  }, [autoPlayRequest, openProvider]);
+    void beginPlayback();
+  }, [autoPlayRequest, beginPlayback]);
 
   const handlePlaybackSync = useCallback(
     (positionSeconds: number, durationSeconds: number) => {
@@ -402,7 +566,7 @@ export function PlayButton({
                   key={activeUrl}
                   url={activeUrl}
                   onFail={handleStreamFail}
-                  onLoad={() => setIsLoading(false)}
+                  onLoad={handleStreamLoaded}
                   onClose={() => setVisible(false)}
                   isLoading={isLoading}
                   startAtSeconds={startAtSeconds}
@@ -411,9 +575,63 @@ export function PlayButton({
               ) : (
                 <ActivityIndicator size="large" color={styles.spinner.color} />
               )}
+
+              {resolvePhase !== "idle" ? (
+                <View
+                  pointerEvents="none"
+                  style={[styles.resolveBanner, { top: insets.top + SPACING.md }]}
+                >
+                  <ActivityIndicator size="small" color={styles.spinner.color} />
+                  <Text style={styles.resolveBannerText}>
+                    {t(
+                      resolvePhase === "resolving"
+                        ? "Finding the best source…"
+                        : "Trying another source…",
+                    )}
+                  </Text>
+                </View>
+              ) : null}
+
+              {providers.length > 1 ? (
+                <Pressable
+                  onPress={() => setPickerVisible(true)}
+                  style={[styles.sourcesButton, { top: insets.top + SPACING.md }]}
+                  accessibilityRole="button"
+                  accessibilityLabel={t("Choose another source")}
+                >
+                  <Ionicons name="list-outline" size={16} color={styles.spinner.color} />
+                  <Text style={styles.resolveBannerText}>{t("Sources")}</Text>
+                </Pressable>
+              ) : null}
             </View>
           </View>
         </View>
+      </Modal>
+
+      <Modal
+        visible={pickerVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setPickerVisible(false)}
+      >
+        <Pressable style={styles.pickerBackdrop} onPress={() => setPickerVisible(false)}>
+          <View style={styles.pickerSheet}>
+            <Text style={styles.pickerTitle}>{t("Choose a source")}</Text>
+            {providers.map((provider, index) => (
+              <Pressable
+                key={provider.id}
+                style={styles.pickerRow}
+                onPress={() => chooseProviderManually(index)}
+                accessibilityRole="button"
+              >
+                <Text style={styles.pickerRowLabel}>{provider.label}</Text>
+                {index === providerIndex ? (
+                  <Ionicons name="checkmark" size={18} color={styles.spinner.color} />
+                ) : null}
+              </Pressable>
+            ))}
+          </View>
+        </Pressable>
       </Modal>
     </>
   );
@@ -476,6 +694,11 @@ function StreamWebView({
       title: `CineLog player`,
       allow: "autoplay; encrypted-media; picture-in-picture; fullscreen",
       allowFullScreen: true,
+      // Deliberately omits allow-popups/allow-top-navigation so third-party
+      // embed ads can't open popup tabs or hijack the top-level window.
+      sandbox:
+        "allow-scripts allow-same-origin allow-forms allow-presentation allow-orientation-lock",
+      referrerPolicy: "no-referrer",
       style: { width: "100%", height: "100%", border: 0, background: "#000" },
       onLoad: () => {
         try {
@@ -1631,6 +1854,65 @@ const useStyles = makeStyles((c) => ({
     borderRadius: 0,
     overflow: "hidden",
     backgroundColor: "#000",
+  },
+  resolveBanner: {
+    position: "absolute",
+    alignSelf: "center",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: SPACING.xs,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.xs,
+    borderRadius: RADIUS.pill,
+    backgroundColor: "rgba(0,0,0,0.7)",
+  },
+  resolveBannerText: {
+    fontFamily: FONTS.semibold,
+    fontSize: 12,
+    color: "#fff",
+  },
+  sourcesButton: {
+    position: "absolute",
+    right: SPACING.md,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: SPACING.xs,
+    borderRadius: RADIUS.pill,
+    backgroundColor: "rgba(0,0,0,0.7)",
+  },
+  pickerBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.6)",
+    justifyContent: "flex-end",
+  },
+  pickerSheet: {
+    backgroundColor: c.surface,
+    borderTopLeftRadius: RADIUS.lg,
+    borderTopRightRadius: RADIUS.lg,
+    padding: SPACING.lg,
+    gap: SPACING.xs,
+    maxHeight: "70%",
+  },
+  pickerTitle: {
+    fontFamily: FONTS.bold,
+    fontSize: 16,
+    color: c.textPrimary,
+    marginBottom: SPACING.sm,
+  },
+  pickerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingVertical: SPACING.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: c.border,
+  },
+  pickerRowLabel: {
+    fontFamily: FONTS.medium,
+    fontSize: 14,
+    color: c.textPrimary,
   },
   streamContainer: {
     flex: 1,

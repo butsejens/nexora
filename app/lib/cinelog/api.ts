@@ -439,6 +439,12 @@ function parseSeriesDetail(input: unknown): TitleDetail<Series> {
     episodeCount: num(raw.episodeCount ?? raw.number_of_episodes),
     status: str(raw.status) || null,
     certification: parseCertification(raw),
+    imdbId:
+      str(
+        raw.imdbId ??
+          raw.imdb_id ??
+          (raw.external_ids as RawRecord | undefined)?.imdb_id,
+      ) || null,
     networks: toNames(raw.networks),
     creators: toNames(raw.created_by),
     episodeRuntime: num(raw.episodeRuntime) || num(runtimes[0]),
@@ -729,12 +735,39 @@ export async function fetchSeriesDetail(
   if (hasDirectTmdbKey) {
     const data = await tmdbDirect<RawRecord>(`/tv/${tmdbId}`, {
       append_to_response:
-        "aggregate_credits,videos,recommendations,similar,content_ratings",
+        "aggregate_credits,videos,recommendations,similar,content_ratings,external_ids",
     });
     return parseSeriesDetail(data);
   }
   const data = await apiData<RawRecord>(`/api/media/series/${tmdbId}`);
   return parseSeriesDetail(data);
+}
+
+const imdbIdCache = new Map<string, string | null>();
+
+/**
+ * Best-effort IMDb id lookup for the torrent/debrid stream providers, which
+ * key everything off IMDb rather than TMDB. Reuses the existing detail
+ * fetchers (and their caching) instead of adding a new endpoint.
+ */
+export async function fetchImdbId(
+  tmdbId: number,
+  type: MediaType,
+): Promise<string | null> {
+  const cacheKey = `${type}:${tmdbId}`;
+  if (imdbIdCache.has(cacheKey)) return imdbIdCache.get(cacheKey) ?? null;
+  try {
+    const detail =
+      type === "movie"
+        ? await fetchMovieDetail(tmdbId)
+        : await fetchSeriesDetail(tmdbId);
+    const imdbId = detail.title.imdbId;
+    imdbIdCache.set(cacheKey, imdbId);
+    return imdbId;
+  } catch {
+    imdbIdCache.set(cacheKey, null);
+    return null;
+  }
 }
 
 export async function fetchSeason(

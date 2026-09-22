@@ -19,7 +19,7 @@
     "ci:config-validate": "node scripts/release/validate-config.mjs",
     "ci:lint": "npm -w app run lint",
     "ci:typecheck": "npm -w app exec -- tsc --noEmit",
-    "ci:test": "node scripts/release/decision-engine.test.mjs && node scripts/release/pipeline-policy.test.mjs && node server/update-manifest.test.mjs",
+    "ci:test": "node scripts/release/decision-engine.test.mjs && node scripts/release/pipeline-policy.test.mjs && node server/update-manifest.test.mjs && npm -w app run test:streaming",
     "ci:build-sanity": "cd app && npx expo config --type public > /tmp/cinelog-expo-config.json && cd .. && node --check server/index.js && node --check server/update-manifest.js",
     "ci:validate": "npm run ci:env-sanity && npm run ci:config-validate && npm run ci:lint && npm run ci:typecheck && npm run ci:test && npm run ci:build-sanity",
     "release:decide": "node scripts/release/decision-engine.mjs",
@@ -51,5 +51,5 @@
     "expo": "~54.0.27",
     "expo-updates": "~29.0.16"
   },
-  "version": "1.0.27"
+  "version": "1.0.28"
 }
