@@ -1,45 +1,46 @@
 {
   "schemaVersion": 2,
   "native": {
-    "version": "1.0.21",
-    "versionCode": 10021,
-    "buildId": "android-1.0.21",
+    "version": "1.0.28",
+    "versionCode": 10028,
+    "buildId": "android-1.0.28",
     "required": false,
-    "releasedAt": "2026-08-10T20:47:00.000Z",
+    "releasedAt": "2026-09-23T00:38:00.000Z",
     "notes": [
-      "Native build published for 1.0.21",
-      "Commit: cursor/transform-nexora-into-cinelog-7170",
-      "Runtime/OTA channel aligned for automatic Expo Updates"
+      "Torrentio, Comet and Meteor auto-play streaming (ranked above legacy servers, automatic scoring/failover, manual source picker)",
+      "New Addons settings screen for the three providers and auto-play preferences",
+      "Fix: web player iframe is sandboxed so third-party embeds can no longer spawn popups or hijack the browser tab",
+      "Commit: cursor/transform-nexora-into-cinelog-7170"
     ],
     "apk": {
       "available": true,
       "provider": "github-releases",
       "source": "github",
-      "downloadUrl": "https://github.com/butsejens/nexora/releases/download/v1.0.21/nexora-v1.0.21.apk",
-      "url": "https://github.com/butsejens/nexora/releases/download/v1.0.21/nexora-v1.0.21.apk",
-      "fileName": "nexora-v1.0.21.apk",
+      "downloadUrl": "https://github.com/butsejens/nexora/releases/download/v1.0.28/cinelog-v1.0.28.apk",
+      "url": "https://github.com/butsejens/nexora/releases/download/v1.0.28/cinelog-v1.0.28.apk",
+      "fileName": "cinelog-v1.0.28.apk",
       "contentType": "application/vnd.android.package-archive",
-      "fileSizeBytes": 99831740,
+      "fileSizeBytes": 99885824,
       "fileSizeLabel": "95 MB",
-      "versionName": "1.0.21",
-      "versionCode": 10021,
-      "buildId": "android-1.0.21",
-      "checksumSha256": "b7fe6febb66f248bf98390081de766970ee8df42fa71ac9eef85c8bb3cc80f9f",
+      "versionName": "1.0.28",
+      "versionCode": 10028,
+      "buildId": "android-1.0.28",
+      "checksumSha256": "fe0628a59fc48ea9dd390a97b2f981af7558a0a77187915ef6a98e5ba1a535b1",
       "signature": null,
-      "validatedAt": "2026-08-10T20:47:00.000Z",
+      "validatedAt": "2026-09-23T00:38:00.000Z",
       "unavailableReason": null,
       "fallbackMessage": "Download de nieuwste APK via de GitHub releases pagina als de download niet werkt."
     }
   },
   "ota": {
     "channel": "production",
-    "runtimeVersion": "1.0.21",
+    "runtimeVersion": "1.0.28",
     "strategy": "expo-updates",
-    "releasedAt": "2026-08-07T23:16:01.825Z"
+    "releasedAt": "2026-09-23T00:38:00.000Z"
   },
   "server": {
-    "version": "1.0.21",
-    "releasedAt": "2026-08-05T20:23:09Z",
+    "version": "1.0.28",
+    "releasedAt": "2026-09-23T00:38:00.000Z",
     "requiresAppUpdate": false,
     "message": "Server deploys are independent from OTA bundles and APK releases."
   },
@@ -47,6 +48,6 @@
     "manifestUrl": null,
     "otaUrl": null,
     "nativeUrl": null,
-    "apkDownloadUrl": "https://github.com/butsejens/nexora/releases/download/v1.0.21/nexora-v1.0.21.apk"
+    "apkDownloadUrl": "https://github.com/butsejens/nexora/releases/download/v1.0.28/cinelog-v1.0.28.apk"
   }
 }
