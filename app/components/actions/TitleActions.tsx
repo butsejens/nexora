@@ -19,8 +19,9 @@ import {
 } from "react-native";
 import { WebView } from "react-native-webview";
 import * as ScreenOrientation from "expo-screen-orientation";
+import * as NavigationBar from "expo-navigation-bar";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { StatusBar } from "expo-status-bar";
+import { StatusBar, setStatusBarHidden } from "expo-status-bar";
 import { Ionicons } from "@expo/vector-icons";
 import { useKeepAwake } from "expo-keep-awake";
 
@@ -541,6 +542,21 @@ export function PlayButton({
     };
   }, [visible]);
 
+  // True edge-to-edge playback: the status bar is hidden via <StatusBar hidden/>
+  // below, but that alone leaves the Android nav bar (and its gesture pill) on
+  // screen — hide it too, letting a swipe reveal it briefly if needed.
+  useEffect(() => {
+    if (Platform.OS !== "android") return;
+    if (!visible) return;
+    setStatusBarHidden(true, "fade");
+    void NavigationBar.setVisibilityAsync("hidden").catch(() => undefined);
+    void NavigationBar.setBehaviorAsync("overlay-swipe").catch(() => undefined);
+    return () => {
+      setStatusBarHidden(false, "fade");
+      void NavigationBar.setVisibilityAsync("visible").catch(() => undefined);
+    };
+  }, [visible]);
+
   return (
     <>
       <Button
@@ -557,6 +573,7 @@ export function PlayButton({
         animationType="fade"
         onRequestClose={() => setVisible(false)}
         statusBarTranslucent
+        navigationBarTranslucent
       >
         <StatusBar hidden />
         <View style={styles.modalBackdrop}>
