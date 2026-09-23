@@ -234,6 +234,7 @@ export function PlayButton({
   const [autoStreams, setAutoStreams] = useState<ResolvedStreamOption[]>([]);
   const [resolvePhase, setResolvePhase] = useState<"idle" | "resolving" | "switching">("idle");
   const [pickerVisible, setPickerVisible] = useState(false);
+  const [chromeVisible, setChromeVisible] = useState(true);
   const lastAutoRequestRef = useRef<number | undefined>(undefined);
   const progressTickRef = useRef(0);
   const startTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -571,12 +572,13 @@ export function PlayButton({
                   isLoading={isLoading}
                   startAtSeconds={startAtSeconds}
                   onPlaybackSync={handlePlaybackSync}
+                  onControlsVisibilityChange={setChromeVisible}
                 />
               ) : (
                 <ActivityIndicator size="large" color={styles.spinner.color} />
               )}
 
-              {resolvePhase !== "idle" ? (
+              {chromeVisible && resolvePhase !== "idle" ? (
                 <View
                   pointerEvents="none"
                   style={[styles.resolveBanner, { top: insets.top + SPACING.md }]}
@@ -592,7 +594,7 @@ export function PlayButton({
                 </View>
               ) : null}
 
-              {providers.length > 1 ? (
+              {chromeVisible && providers.length > 1 ? (
                 <Pressable
                   onPress={() => setPickerVisible(true)}
                   style={[styles.sourcesButton, { top: insets.top + SPACING.md }]}
@@ -645,6 +647,9 @@ interface StreamWebViewProps {
   isLoading: boolean;
   startAtSeconds: number;
   onPlaybackSync: (positionSeconds: number, durationSeconds: number) => void;
+  /** Native only: lets the parent hide its own overlays (Sources button, resolve
+   * banner) in lockstep with this player's own controls fading out. */
+  onControlsVisibilityChange?: (visible: boolean) => void;
 }
 
 interface PlayerSubtitleTrack {
@@ -681,6 +686,7 @@ function StreamWebView({
   isLoading,
   startAtSeconds,
   onPlaybackSync,
+  onControlsVisibilityChange,
 }: StreamWebViewProps) {
   const t = useT();
   const styles = useStyles();
@@ -742,13 +748,15 @@ function StreamWebView({
     clearHideTimer();
     autoHideTimerRef.current = setTimeout(() => {
       setControlsVisible(false);
+      onControlsVisibilityChange?.(false);
     }, 3200);
-  }, [clearHideTimer]);
+  }, [clearHideTimer, onControlsVisibilityChange]);
 
   const showControls = useCallback((reschedule = true) => {
     setControlsVisible(true);
+    onControlsVisibilityChange?.(true);
     if (reschedule) scheduleHideControls();
-  }, [scheduleHideControls]);
+  }, [onControlsVisibilityChange, scheduleHideControls]);
 
   useEffect(() => {
     if (!isPlaying || !controlsVisible) {
@@ -1566,6 +1574,7 @@ function StreamWebView({
         onPress={() => {
           if (controlsVisible) {
             setControlsVisible(false);
+            onControlsVisibilityChange?.(false);
             clearHideTimer();
             return;
           }
