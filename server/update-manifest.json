@@ -1,52 +1,52 @@
 {
   "schemaVersion": 2,
   "native": {
-    "version": "1.0.33",
-    "versionCode": 10033,
-    "buildId": "android-1.0.33",
-    "required": false,
-    "releasedAt": "2026-09-23T02:20:00.000Z",
+    "version": "1.0.34",
+    "versionCode": 10034,
+    "buildId": "android-1.0.34",
+    "required": true,
+    "releasedAt": "2026-09-23T02:45:00.000Z",
     "notes": [
-      "Fix: several embed servers were confirmed dead and removed from rotation — healthy servers now lead, reducing black-screen-stuck-loading cases",
-      "Fix: /api/streams/providers no longer blocks ~15s on a cold server start",
+      "Fix: black screen stuck loading forever — the player now detects embed pages that load but never actually start the video, and auto-advances to the next server",
+      "Faster failover: 9s per-server timeout (was 15s), 8s cap on the auto-source lookup step",
       "Commit: cursor/transform-nexora-into-cinelog-7170"
     ],
     "apk": {
       "available": true,
       "provider": "github-releases",
       "source": "github",
-      "downloadUrl": "https://github.com/butsejens/nexora/releases/download/v1.0.33/cinelog-v1.0.33.apk",
-      "url": "https://github.com/butsejens/nexora/releases/download/v1.0.33/cinelog-v1.0.33.apk",
-      "fileName": "cinelog-v1.0.33.apk",
+      "downloadUrl": "https://github.com/butsejens/nexora/releases/download/v1.0.34/cinelog-v1.0.34.apk",
+      "url": "https://github.com/butsejens/nexora/releases/download/v1.0.34/cinelog-v1.0.34.apk",
+      "fileName": "cinelog-v1.0.34.apk",
       "contentType": "application/vnd.android.package-archive",
-      "fileSizeBytes": 99910492,
+      "fileSizeBytes": 99910964,
       "fileSizeLabel": "95 MB",
-      "versionName": "1.0.33",
-      "versionCode": 10033,
-      "buildId": "android-1.0.33",
-      "checksumSha256": "ad7be5b43112cbba3209ea0ae52848a66e7babaf65d3d6fa75dddf1c7e64be3a",
+      "versionName": "1.0.34",
+      "versionCode": 10034,
+      "buildId": "android-1.0.34",
+      "checksumSha256": "007005bd90141e1bca3f716168b6bbdf45f93ef4cced23c7f6e97682a9a1d445",
       "signature": null,
-      "validatedAt": "2026-09-23T02:20:00.000Z",
+      "validatedAt": "2026-09-23T02:45:00.000Z",
       "unavailableReason": null,
       "fallbackMessage": "Download de nieuwste APK via de GitHub releases pagina als de download niet werkt."
     }
   },
   "ota": {
     "channel": "production",
-    "runtimeVersion": "1.0.33",
+    "runtimeVersion": "1.0.34",
     "strategy": "expo-updates",
-    "releasedAt": "2026-09-23T02:20:00.000Z"
+    "releasedAt": "2026-09-23T02:45:00.000Z"
   },
   "server": {
-    "version": "1.0.33",
-    "releasedAt": "2026-09-23T02:20:00.000Z",
-    "requiresAppUpdate": false,
-    "message": "Server deploys are independent from OTA bundles and APK releases."
+    "version": "1.0.34",
+    "releasedAt": "2026-09-23T02:45:00.000Z",
+    "requiresAppUpdate": true,
+    "message": "This build fixes playback getting stuck on a black loading screen — please update."
   },
   "endpoints": {
     "manifestUrl": null,
     "otaUrl": null,
     "nativeUrl": null,
-    "apkDownloadUrl": "https://github.com/butsejens/nexora/releases/download/v1.0.33/cinelog-v1.0.33.apk"
+    "apkDownloadUrl": "https://github.com/butsejens/nexora/releases/download/v1.0.34/cinelog-v1.0.34.apk"
   }
 }
