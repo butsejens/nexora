@@ -284,53 +284,9 @@ async function runHealthCheck() {
       ),
     });
 
-    // If there are broken providers, try reserves
-    let swapped = [];
-    if (broken.length > 0 && reserveProviders.length > 0) {
-      // Test reserves
-      const reserveResults = [];
-      for (let i = 0; i < reserveProviders.length; i += 6) {
-        const batch = reserveProviders.slice(i, i + 6);
-        const results = await Promise.all(batch.map(testProvider));
-        reserveResults.push(...results);
-      }
-
-      const healthyReserves = reserveResults.filter((r) => r.healthy);
-
-      // Swap broken active → reserve, healthy reserve → active
-      for (const brokenResult of broken) {
-        if (healthyReserves.length === 0) break;
-
-        const replacement = healthyReserves.shift();
-        const brokenIdx = activeProviders.findIndex(
-          (p) => p.id === brokenResult.id,
-        );
-        const reserveIdx = reserveProviders.findIndex(
-          (p) => p.id === replacement.id,
-        );
-
-        if (brokenIdx !== -1 && reserveIdx !== -1) {
-          const brokenProvider = activeProviders[brokenIdx];
-          const reserveProvider = reserveProviders[reserveIdx];
-
-          // Swap: reserve gets the slot label, broken goes to reserve pool
-          reserveProvider.label = brokenProvider.label;
-          activeProviders[brokenIdx] = reserveProvider;
-          brokenProvider.label = "Reserve";
-          reserveProviders[reserveIdx] = brokenProvider;
-
-          swapped.push({
-            removed: brokenResult.id,
-            reason: `${brokenResult.movie.reason || "ok"}/${brokenResult.tv.reason || "ok"}`,
-            added: replacement.id,
-          });
-          log.info("Provider swapped", {
-            removed: brokenResult.id,
-            added: replacement.id,
-          });
-        }
-      }
-    }
+    // v1.0.21 server order is fixed. Health checks report status only and
+    // must not replace Server 1–13 with reserve providers.
+    const swapped = [];
 
     const elapsedMs = Date.now() - startMs;
 
@@ -421,15 +377,12 @@ export const router = Router();
 
 /**
  * GET /api/streams/providers
- * Returns the current active provider list for the mobile app.
- * The app calls this on startup (or periodically) to get the latest working servers.
+ * Returns the fixed v1.0.21 server list (Server 1–13).
+ * Health checks may still report status, but they must not reorder or swap
+ * this list — the app expects the original v1.0.21 order.
  */
-router.get("/providers", async (_req, res) => {
-  if (!lastHealthReport || !lastCheckAt) {
-    await runHealthCheck().catch(() => undefined);
-  }
-
-  const providers = activeProviders.map((p, i) => ({
+router.get("/providers", (_req, res) => {
+  const providers = ALL_PROVIDERS.slice(0, ACTIVE_SLOTS).map((p, i) => ({
     id: p.id,
     label: `Server ${i + 1}`,
     movieUrl: p.movieUrl("{tmdbId}"),
@@ -438,7 +391,11 @@ router.get("/providers", async (_req, res) => {
   res.json({
     ok: true,
     data: providers,
-    meta: { lastCheck: lastCheckAt, count: providers.length },
+    meta: {
+      lastCheck: lastCheckAt,
+      count: providers.length,
+      source: "v1.0.21",
+    },
   });
 });
 
