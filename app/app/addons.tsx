@@ -145,8 +145,8 @@ export default function AddonsScreen() {
                 key={id}
                 label={AUTO_PROVIDER_LABELS[id]}
                 hint={t(PROVIDER_HINTS[id])}
-                enabled={streamProviders[id].enabled}
-                endpoint={streamProviders[id].endpoint}
+                enabled={Boolean(streamProviders[id]?.enabled)}
+                endpoint={streamProviders[id]?.endpoint ?? ""}
                 onToggle={(value) => setStreamProviderEnabled(id, value)}
                 onEndpointChange={(value) => setStreamProviderEndpoint(id, value)}
               />

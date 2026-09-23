@@ -62,6 +62,18 @@ export interface SettingsState {
   setStreamProviderTimeout: (id: StreamProviderId, timeoutMs: number) => void;
 }
 
+/** Always returns all three provider configs, filling in defaults for any that
+ * are missing from (possibly partial/legacy) persisted state. */
+function withDefaultProviders(
+  partial: Partial<Record<StreamProviderId, ProviderRuntimeConfig>> | undefined,
+): Record<StreamProviderId, ProviderRuntimeConfig> {
+  return {
+    torrentio: partial?.torrentio ?? defaultProviderConfig("torrentio"),
+    comet: partial?.comet ?? defaultProviderConfig("comet"),
+    meteor: partial?.meteor ?? defaultProviderConfig("meteor"),
+  };
+}
+
 export const useSettings = create<SettingsState>()(
   persist(
     (set) => ({
@@ -77,11 +89,7 @@ export const useSettings = create<SettingsState>()(
         publicProfile: false,
       },
       streamPrefs: { ...DEFAULT_STREAM_PREFERENCES },
-      streamProviders: {
-        torrentio: defaultProviderConfig("torrentio"),
-        comet: defaultProviderConfig("comet"),
-        meteor: defaultProviderConfig("meteor"),
-      },
+      streamProviders: withDefaultProviders(undefined),
       setTheme: (theme) => set({ theme }),
       setLanguage: (language) => set({ language }),
       setNotification: (key, value) =>
@@ -95,22 +103,28 @@ export const useSettings = create<SettingsState>()(
       setStreamProviderEndpoint: (id, endpoint) =>
         set((state) => ({
           streamProviders: {
-            ...state.streamProviders,
-            [id]: { ...state.streamProviders[id], endpoint: endpoint.trim() },
+            ...withDefaultProviders(state.streamProviders),
+            [id]: {
+              ...withDefaultProviders(state.streamProviders)[id],
+              endpoint: endpoint.trim(),
+            },
           },
         })),
       setStreamProviderEnabled: (id, enabled) =>
         set((state) => ({
           streamProviders: {
-            ...state.streamProviders,
-            [id]: { ...state.streamProviders[id], enabled },
+            ...withDefaultProviders(state.streamProviders),
+            [id]: { ...withDefaultProviders(state.streamProviders)[id], enabled },
           },
         })),
       setStreamProviderTimeout: (id, timeoutMs) =>
         set((state) => ({
           streamProviders: {
-            ...state.streamProviders,
-            [id]: { ...state.streamProviders[id], timeoutMs },
+            ...withDefaultProviders(state.streamProviders),
+            [id]: {
+              ...withDefaultProviders(state.streamProviders)[id],
+              timeoutMs,
+            },
           },
         })),
     }),
@@ -118,17 +132,30 @@ export const useSettings = create<SettingsState>()(
       name: "cinelog.settings.v1",
       storage: createJSONStorage(() => AsyncStorage),
       version: 2,
+      // The default shallow merge would let a partial/legacy persisted
+      // `streamProviders` (missing a provider key) silently wipe out the other
+      // two, so every read of a missing id is undefined. Deep-merge it instead.
+      merge: (persisted, current) => {
+        const persistedState = (persisted ?? {}) as Partial<SettingsState>;
+        return {
+          ...current,
+          ...persistedState,
+          streamPrefs: {
+            ...DEFAULT_STREAM_PREFERENCES,
+            ...persistedState.streamPrefs,
+          },
+          streamProviders: withDefaultProviders(persistedState.streamProviders),
+        };
+      },
       migrate: (persisted) => {
         const state = (persisted ?? {}) as Partial<SettingsState>;
         return {
           ...state,
-          streamPrefs: state.streamPrefs ?? { ...DEFAULT_STREAM_PREFERENCES },
-          streamProviders:
-            state.streamProviders ?? {
-              torrentio: defaultProviderConfig("torrentio"),
-              comet: defaultProviderConfig("comet"),
-              meteor: defaultProviderConfig("meteor"),
-            },
+          streamPrefs: {
+            ...DEFAULT_STREAM_PREFERENCES,
+            ...state.streamPrefs,
+          },
+          streamProviders: withDefaultProviders(state.streamProviders),
         } as SettingsState;
       },
     },

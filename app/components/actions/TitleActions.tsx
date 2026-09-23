@@ -316,9 +316,12 @@ export function PlayButton({
 
   /** Fetches, normalizes, dedupes and scores Torrentio/Comet/Meteor streams. */
   const resolveBestStreams = useCallback(async (): Promise<ResolvedStreamOption[]> => {
-    if (!streamPrefs.autoSelectBest) return [];
-    const configs = AUTO_STREAM_PROVIDER_IDS.map((id) => streamProviderConfigs[id]).filter(
-      (config) => config.enabled && config.endpoint.trim().length > 0,
+    if (!streamPrefs?.autoSelectBest) return [];
+    const configs = AUTO_STREAM_PROVIDER_IDS.map(
+      (id) => streamProviderConfigs?.[id],
+    ).filter(
+      (config): config is NonNullable<typeof config> =>
+        Boolean(config?.enabled) && Boolean(config?.endpoint?.trim()),
     );
     if (configs.length === 0) return [];
 
@@ -413,7 +416,8 @@ export function PlayButton({
 
   /** Resolves the best auto stream (if enabled) then starts playback from
    * index 0 of the combined [auto, ...legacy] list — no picker shown unless
-   * everything failed. */
+   * everything failed. Wrapped defensively so a bug in resolution never
+   * leaves the player stuck on the loading spinner. */
   const beginPlayback = useCallback(async () => {
     setVisible(true);
     setPickerVisible(false);
@@ -421,7 +425,12 @@ export function PlayButton({
     setIsLoading(true);
     setResolvePhase("resolving");
 
-    const resolved = await resolveBestStreams();
+    let resolved: ResolvedStreamOption[] = [];
+    try {
+      resolved = await resolveBestStreams();
+    } catch {
+      resolved = [];
+    }
     setAutoStreams(resolved);
     setResolvePhase("idle");
 
