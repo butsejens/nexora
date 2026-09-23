@@ -27,9 +27,9 @@ const router = Router();
  */
 router.get('/check', (req, res) => {
   try {
-    const manifest = buildUpdateManifestResponse();
-    const ota      = buildOtaMetadataResponse();
-    const native   = buildNativeMetadataResponse();
+    const manifest = buildUpdateManifestResponse(req);
+    const ota      = buildOtaMetadataResponse(req);
+    const native   = buildNativeMetadataResponse(req);
 
     log.info('update check', {
       clientVersion: req.query.v ?? 'unknown',
@@ -53,7 +53,7 @@ router.get('/check', (req, res) => {
  */
 router.get('/ota', (req, res) => {
   try {
-    return send(res, ok(buildOtaMetadataResponse(), { source: 'internal' }));
+    return send(res, ok(buildOtaMetadataResponse(req), { source: 'internal' }));
   } catch (e) {
     return send(res, err('OTA_META_FAILED', 'OTA metadata unavailable'), 503);
   }
@@ -65,7 +65,7 @@ router.get('/ota', (req, res) => {
  */
 router.get('/native', (req, res) => {
   try {
-    return send(res, ok(buildNativeMetadataResponse(), { source: 'internal' }));
+    return send(res, ok(buildNativeMetadataResponse(req), { source: 'internal' }));
   } catch (e) {
     return send(res, err('NATIVE_META_FAILED', 'Native metadata unavailable'), 503);
   }
@@ -77,7 +77,7 @@ router.get('/native', (req, res) => {
  */
 router.get('/manifest', (req, res) => {
   try {
-    return send(res, ok(buildUpdateManifestResponse(), { source: 'internal' }));
+    return send(res, ok(buildUpdateManifestResponse(req), { source: 'internal' }));
   } catch (e) {
     return send(res, err('MANIFEST_FAILED', 'Manifest unavailable'), 503);
   }
