@@ -1,31 +1,32 @@
 {
   "schemaVersion": 2,
   "native": {
-    "version": "1.0.29",
-    "versionCode": 10029,
-    "buildId": "android-1.0.29",
+    "version": "1.0.30",
+    "versionCode": 10030,
+    "buildId": "android-1.0.30",
     "required": false,
     "releasedAt": "2026-09-23T00:38:00.000Z",
     "notes": [
       "Torrentio, Comet and Meteor auto-play streaming (ranked above legacy servers, automatic scoring/failover, manual source picker)",
       "New Addons settings screen for the three providers and auto-play preferences",
       "Fix: web player iframe is sandboxed so third-party embeds can no longer spawn popups or hijack the browser tab",
-      "Fix: embedded player Play controls are clickable again"
+      "Fix: embedded player Play controls are clickable again",
+      "Fix: valid streams auto-start without the CineLog touch layer blocking the player"
     ],
     "apk": {
       "available": true,
       "provider": "github-releases",
       "source": "github",
-      "downloadUrl": "https://github.com/butsejens/nexora/releases/download/v1.0.29/cinelog-v1.0.29.apk",
-      "url": "https://github.com/butsejens/nexora/releases/download/v1.0.29/cinelog-v1.0.29.apk",
-      "fileName": "cinelog-v1.0.29.apk",
+      "downloadUrl": "https://github.com/butsejens/nexora/releases/download/v1.0.30/cinelog-v1.0.30.apk",
+      "url": "https://github.com/butsejens/nexora/releases/download/v1.0.30/cinelog-v1.0.30.apk",
+      "fileName": "cinelog-v1.0.30.apk",
       "contentType": "application/vnd.android.package-archive",
-      "fileSizeBytes": 99886180,
+      "fileSizeBytes": 99886296,
       "fileSizeLabel": "95 MB",
-      "versionName": "1.0.29",
-      "versionCode": 10029,
-      "buildId": "android-1.0.29",
-      "checksumSha256": "5b0ad0dc46f6a738689d80209bfe11bc37ee96700fb75482438f2fe0f359aee5",
+      "versionName": "1.0.30",
+      "versionCode": 10030,
+      "buildId": "android-1.0.30",
+      "checksumSha256": "6d366ac91e18545f3d38f08fa76bcd6f531952ed9ffa9415514f256fb15b72eb",
       "signature": null,
       "validatedAt": "2026-09-23T00:38:00.000Z",
       "unavailableReason": null,
@@ -39,7 +40,7 @@
     "releasedAt": "2026-09-23T00:38:00.000Z"
   },
   "server": {
-    "version": "1.0.29",
+    "version": "1.0.30",
     "releasedAt": "2026-09-23T00:38:00.000Z",
     "requiresAppUpdate": false,
     "message": "Server deploys are independent from OTA bundles and APK releases."
@@ -48,6 +49,6 @@
     "manifestUrl": null,
     "otaUrl": null,
     "nativeUrl": null,
-    "apkDownloadUrl": "https://github.com/butsejens/nexora/releases/download/v1.0.29/cinelog-v1.0.29.apk"
+    "apkDownloadUrl": "https://github.com/butsejens/nexora/releases/download/v1.0.30/cinelog-v1.0.30.apk"
   }
 }

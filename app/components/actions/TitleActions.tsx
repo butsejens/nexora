@@ -1360,6 +1360,9 @@ function StreamWebView({
               video.__cinelogResumed = true;
               try { video.currentTime = resumeAt; } catch (e) {}
             }
+            try {
+              video.play().catch(function() {});
+            } catch (e) {}
             ['timeupdate', 'loadedmetadata', 'playing', 'pause'].forEach(function(evt){
               video.addEventListener(evt, emitProgress, { passive: true });
             });
@@ -1566,6 +1569,7 @@ function StreamWebView({
         )}
       />
       <Pressable
+        pointerEvents="box-none"
         style={styles.controlsTouchLayer}
         onPress={() => {
           if (controlsVisible) {
