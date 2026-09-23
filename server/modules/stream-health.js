@@ -429,7 +429,19 @@ router.get("/providers", async (_req, res) => {
     await runHealthCheck().catch(() => undefined);
   }
 
-  const providers = activeProviders.map((p, i) => ({
+  // Known-broken servers (per the last health check) are pushed to the end so
+  // the app tries working servers first instead of stalling on a dead one.
+  const healthById = new Map(
+    (lastHealthReport?.active?.details || []).map((d) => [d.id, d.healthy]),
+  );
+  const ordered = [...activeProviders].sort((a, b) => {
+    const aHealthy = healthById.get(a.id) ?? true;
+    const bHealthy = healthById.get(b.id) ?? true;
+    if (aHealthy === bHealthy) return 0;
+    return aHealthy ? -1 : 1;
+  });
+
+  const providers = ordered.map((p, i) => ({
     id: p.id,
     label: `Server ${i + 1}`,
     movieUrl: p.movieUrl("{tmdbId}"),
