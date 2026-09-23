@@ -374,4 +374,8 @@ export const FR: Record<string, string> = {
   "Version {{version}}": "Version {{version}}",
   "Build {{build}} · {{platform}}": "Build {{build}} · {{platform}}",
   "Bundle {{version}} · {{platform}}": "Bundle {{version}} · {{platform}}",
+  Available: "Disponible",
+  Failed: "Échoué",
+  "None of the available servers worked. Try again, or pick a server manually.":
+    "Aucun des serveurs disponibles n'a fonctionné. Réessayez ou choisissez un serveur manuellement.",
 };

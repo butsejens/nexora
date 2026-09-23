@@ -42,6 +42,27 @@ import { resolveAutoStreams } from "@/lib/streaming/resolver";
 import { AUTO_STREAM_PROVIDER_IDS, type StreamProviderId } from "@/lib/streaming/types";
 import { providerStatsStore } from "@/lib/streaming/statsStoreInstance";
 
+/**
+ * Temporary, verbose playback debug logging (title/season/episode picked,
+ * per-server attempt + result, chosen stream, switch reasons). Never logs
+ * full URLs — only the hostname, so tokens/query params never hit the log.
+ */
+function redactUrl(url: string | null | undefined): string {
+  if (!url) return "(none)";
+  try {
+    const parsed = new URL(url);
+    return `${parsed.protocol}//${parsed.hostname}${parsed.pathname}`;
+  } catch {
+    return "(unparsable url)";
+  }
+}
+
+function logPlayer(event: string, data?: Record<string, unknown>): void {
+  // Intentionally not gated behind __DEV__ — release builds still route this
+  // through `adb logcat`/Metro, which is how this gets diagnosed on-device.
+  console.log(`[CineLog:Player] ${event}`, data ?? "");
+}
+
 export interface WatchlistButtonProps {
   item: LibraryEntryRef;
   variant?: "button" | "icon";
@@ -239,9 +260,14 @@ export function PlayButton({
   const [resolvePhase, setResolvePhase] = useState<"idle" | "resolving" | "switching">("idle");
   const [pickerVisible, setPickerVisible] = useState(false);
   const [chromeVisible, setChromeVisible] = useState(true);
+  const [providerStatus, setProviderStatus] = useState<Record<string, "loading" | "ok" | "failed">>({});
   const lastAutoRequestRef = useRef<number | undefined>(undefined);
   const progressTickRef = useRef(0);
   const startTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** Bumped on every new playback attempt so a stale async resolution (from a
+   * previous title/press) can never clobber a newer one, and so a second
+   * Play tap while one is already resolving is ignored. */
+  const playbackSessionRef = useRef(0);
   const saveProgress = useLibrary((state) => state.saveProgress);
   const streamPrefs = useSettings((state) => state.streamPrefs);
   const streamProviderConfigs = useSettings((state) => state.streamProviders);
@@ -363,23 +389,16 @@ export function PlayButton({
   }, [episodeNumber, seasonNumber, streamPrefs, streamProviderConfigs, title, tmdbId, type]);
 
   const showUnavailableDialog = useCallback(() => {
+    logPlayer("all_servers_exhausted", { title, type, seasonNumber, episodeNumber });
     Alert.alert(
       "Unable to play this title",
-      "The video source is currently unavailable. Please try again later.",
+      "None of the available servers worked. Try again, or pick a server manually.",
       [
         { text: "Back", style: "cancel", onPress: () => setVisible(false) },
         {
           text: "Try Again",
           onPress: () => {
-            const first = providers[0];
-            if (!first) {
-              setVisible(false);
-              return;
-            }
-            setProviderIndex(0);
-            setActiveUrl(first.url);
-            setIsLoading(true);
-            setVisible(true);
+            void beginPlaybackRef.current?.();
           },
         },
         {
@@ -391,7 +410,7 @@ export function PlayButton({
         },
       ],
     );
-  }, [providers]);
+  }, [episodeNumber, seasonNumber, title, type]);
 
   const clearStartTimeout = useCallback(() => {
     if (!startTimeoutRef.current) return;
@@ -409,6 +428,13 @@ export function PlayButton({
         return;
       }
 
+      logPlayer("server_attempt", {
+        index: nextIndex,
+        of: providers.length,
+        id: nextProvider.id,
+        host: redactUrl(nextProvider.url),
+      });
+      setProviderStatus((prev) => ({ ...prev, [nextProvider.id]: "loading" }));
       setProviderIndex(nextIndex);
       setActiveUrl(nextProvider.url);
       setIsLoading(true);
@@ -422,11 +448,15 @@ export function PlayButton({
    * everything failed. Wrapped defensively (try/catch + a hard timeout) so a
    * hung network call can never leave the player stuck on the loading spinner. */
   const beginPlayback = useCallback(async () => {
+    const session = ++playbackSessionRef.current;
+    logPlayer("begin_playback", { title, type, tmdbId, seasonNumber, episodeNumber, session });
+
     setVisible(true);
     setPickerVisible(false);
     setActiveUrl(null);
     setIsLoading(true);
     setResolvePhase("resolving");
+    setProviderStatus({});
 
     let resolved: ResolvedStreamOption[] = [];
     try {
@@ -436,9 +466,19 @@ export function PlayButton({
           setTimeout(() => resolve([]), 8000),
         ),
       ]);
-    } catch {
+    } catch (error) {
+      logPlayer("resolve_best_streams_error", { message: String(error) });
       resolved = [];
     }
+
+    // A newer Play press or title change happened while we were resolving —
+    // drop this stale result instead of clobbering the newer session's state.
+    if (session !== playbackSessionRef.current) {
+      logPlayer("stale_resolution_discarded", { session, current: playbackSessionRef.current });
+      return;
+    }
+
+    logPlayer("auto_streams_resolved", { count: resolved.length });
     setAutoStreams(resolved);
     setResolvePhase("idle");
 
@@ -451,19 +491,31 @@ export function PlayButton({
       return;
     }
 
+    logPlayer("server_attempt", { index: 0, of: merged.length, id: first.id, host: redactUrl(first.url) });
+    setProviderStatus((prev) => ({ ...prev, [first.id]: "loading" }));
     setProviderIndex(0);
     setActiveUrl(first.url);
     setIsLoading(true);
-  }, [embedProviders, resolveBestStreams, showUnavailableDialog]);
+  }, [embedProviders, episodeNumber, resolveBestStreams, seasonNumber, showUnavailableDialog, title, tmdbId, type]);
+
+  const beginPlaybackRef = useRef(beginPlayback);
+  beginPlaybackRef.current = beginPlayback;
 
   const handlePress = useCallback(() => {
     void SafeHaptics.selection();
+    // Ignore rapid repeated taps while a request is already resolving —
+    // beginPlayback's own session counter makes this safe even if it fires.
+    if (resolvePhase === "resolving") return;
     void beginPlayback();
-  }, [beginPlayback]);
+  }, [beginPlayback, resolvePhase]);
 
   const handleStreamFail = useCallback(() => {
     clearStartTimeout();
     const failedProvider = providers[providerIndex];
+    logPlayer("server_failed", { id: failedProvider?.id, index: providerIndex });
+    if (failedProvider) {
+      setProviderStatus((prev) => ({ ...prev, [failedProvider.id]: "failed" }));
+    }
     const failedAutoId = failedProvider ? autoProviderIdOf(failedProvider.id) : null;
     if (failedAutoId) {
       void providerStatsStore.recordOutcome(failedAutoId, false, 0);
@@ -471,6 +523,7 @@ export function PlayButton({
 
     const nextIndex = providerIndex + 1;
     if (nextIndex < providers.length) {
+      logPlayer("switching_to_next_server", { nextIndex, reason: "previous server failed or timed out" });
       setResolvePhase("switching");
       openProvider(nextIndex);
       return;
@@ -487,6 +540,10 @@ export function PlayButton({
     setIsLoading(false);
     setResolvePhase("idle");
     const activeProvider = providers[providerIndex];
+    logPlayer("server_playback_started", { id: activeProvider?.id, index: providerIndex });
+    if (activeProvider) {
+      setProviderStatus((prev) => ({ ...prev, [activeProvider.id]: "ok" }));
+    }
     const activeAutoId = activeProvider ? autoProviderIdOf(activeProvider.id) : null;
     if (activeAutoId) {
       void providerStatsStore.recordOutcome(activeAutoId, true, 0);
@@ -495,12 +552,16 @@ export function PlayButton({
 
   const chooseProviderManually = useCallback(
     (index: number) => {
+      // A manual pick ends the current auto-resolution session so any pending
+      // background resolution can't override the user's explicit choice.
+      playbackSessionRef.current += 1;
+      logPlayer("manual_server_chosen", { index, id: providers[index]?.id });
       clearStartTimeout();
       setPickerVisible(false);
       setResolvePhase("idle");
       openProvider(index);
     },
-    [clearStartTimeout, openProvider],
+    [clearStartTimeout, openProvider, providers],
   );
 
   // Give a stream a short window to actually start; if it never fires
@@ -511,6 +572,7 @@ export function PlayButton({
     if (!visible || !activeUrl) return;
     clearStartTimeout();
     startTimeoutRef.current = setTimeout(() => {
+      logPlayer("start_timeout", { host: redactUrl(activeUrl), reason: "page never finished loading within 9s" });
       handleStreamFail();
     }, 9000);
     return clearStartTimeout;
@@ -655,19 +717,31 @@ export function PlayButton({
         <Pressable style={styles.pickerBackdrop} onPress={() => setPickerVisible(false)}>
           <View style={styles.pickerSheet}>
             <Text style={styles.pickerTitle}>{t("Choose a source")}</Text>
-            {providers.map((provider, index) => (
-              <Pressable
-                key={provider.id}
-                style={styles.pickerRow}
-                onPress={() => chooseProviderManually(index)}
-                accessibilityRole="button"
-              >
-                <Text style={styles.pickerRowLabel}>{provider.label}</Text>
-                {index === providerIndex ? (
-                  <Ionicons name="checkmark" size={18} color={styles.spinner.color} />
-                ) : null}
-              </Pressable>
-            ))}
+            {providers.map((provider, index) => {
+              const status = providerStatus[provider.id];
+              return (
+                <Pressable
+                  key={provider.id}
+                  style={styles.pickerRow}
+                  onPress={() => chooseProviderManually(index)}
+                  accessibilityRole="button"
+                >
+                  <Text style={styles.pickerRowLabel}>{provider.label}</Text>
+                  <View style={styles.pickerRowStatus}>
+                    {status === "loading" ? (
+                      <ActivityIndicator size="small" color={styles.spinner.color} />
+                    ) : status === "ok" ? (
+                      <Text style={[styles.pickerStatusText, styles.pickerStatusOk]}>{t("Available")}</Text>
+                    ) : status === "failed" ? (
+                      <Text style={[styles.pickerStatusText, styles.pickerStatusFailed]}>{t("Failed")}</Text>
+                    ) : null}
+                    {index === providerIndex ? (
+                      <Ionicons name="checkmark" size={18} color={styles.spinner.color} />
+                    ) : null}
+                  </View>
+                </Pressable>
+              );
+            })}
           </View>
         </Pressable>
       </Modal>
@@ -1114,13 +1188,20 @@ function StreamWebView({
       // Keep lock empty when URL parsing fails.
     }
     onLoad();
+    logPlayer("webview_page_loaded", { host: redactUrl(url) });
     // The page finishing its own load doesn't mean a video actually started —
     // many dead/blocked embeds just show their own infinite spinner. Fail over
     // to the next provider if we never hear a real PLAYBACK_SYNC from it.
     playbackStartedRef.current = false;
     if (playbackWatchdogRef.current) clearTimeout(playbackWatchdogRef.current);
     playbackWatchdogRef.current = setTimeout(() => {
-      if (!playbackStartedRef.current) onFail();
+      if (!playbackStartedRef.current) {
+        logPlayer("playback_watchdog_timeout", {
+          host: redactUrl(url),
+          reason: "page loaded but no real video progress within 10s",
+        });
+        onFail();
+      }
     }, 10000);
     setVolume(1);
     setIsMuted(false);
@@ -1514,8 +1595,14 @@ function StreamWebView({
         userAgent="Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.6099.210 Mobile Safari/537.36"
         injectedJavaScript={injectedJavaScript}
         onLoad={handleWebViewLoad}
-        onError={onFail}
-        onHttpError={onFail}
+        onError={(event) => {
+          logPlayer("webview_error", { host: redactUrl(url), description: event.nativeEvent?.description });
+          onFail();
+        }}
+        onHttpError={(event) => {
+          logPlayer("webview_http_error", { host: redactUrl(url), statusCode: event.nativeEvent?.statusCode });
+          onFail();
+        }}
         onMessage={(event) => {
           try {
             const raw = JSON.parse(String(event.nativeEvent.data || "")) as unknown;
@@ -1546,13 +1633,18 @@ function StreamWebView({
               return;
             }
             if (payload.type === "PLAYBACK_SYNC") {
-              playbackStartedRef.current = true;
-              if (playbackWatchdogRef.current) {
-                clearTimeout(playbackWatchdogRef.current);
-                playbackWatchdogRef.current = null;
-              }
               const nextCurrent = Number(payload.currentTime || 0);
               const nextDuration = Number(payload.duration || 0);
+              // A <video> tag existing isn't proof of a working stream — many
+              // dead/ad-gated embeds have an empty <video> with no duration.
+              // Only disarm the watchdog once it reports a real position.
+              if (nextDuration > 0.5 || nextCurrent > 0.2) {
+                playbackStartedRef.current = true;
+                if (playbackWatchdogRef.current) {
+                  clearTimeout(playbackWatchdogRef.current);
+                  playbackWatchdogRef.current = null;
+                }
+              }
               setPositionSeconds(nextCurrent);
               setDurationSeconds(nextDuration);
               setIsPlaying(!Boolean(payload.paused));
@@ -1979,6 +2071,21 @@ const useStyles = makeStyles((c) => ({
     fontFamily: FONTS.medium,
     fontSize: 14,
     color: c.textPrimary,
+  },
+  pickerRowStatus: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: SPACING.xs,
+  },
+  pickerStatusText: {
+    fontFamily: FONTS.semibold,
+    fontSize: 11,
+  },
+  pickerStatusOk: {
+    color: c.success,
+  },
+  pickerStatusFailed: {
+    color: c.error,
   },
   streamContainer: {
     flex: 1,

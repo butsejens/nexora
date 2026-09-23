@@ -372,4 +372,8 @@ export const NL: Record<string, string> = {
   "Version {{version}}": "Versie {{version}}",
   "Build {{build}} · {{platform}}": "Build {{build}} · {{platform}}",
   "Bundle {{version}} · {{platform}}": "Bundel {{version}} · {{platform}}",
+  Available: "Beschikbaar",
+  Failed: "Mislukt",
+  "None of the available servers worked. Try again, or pick a server manually.":
+    "Geen enkele beschikbare server werkte. Probeer opnieuw of kies handmatig een server.",
 };
