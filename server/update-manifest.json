@@ -1,52 +1,52 @@
 {
   "schemaVersion": 2,
   "native": {
-    "version": "1.0.32",
-    "versionCode": 10032,
-    "buildId": "android-1.0.32",
-    "required": true,
-    "releasedAt": "2026-09-23T02:00:00.000Z",
+    "version": "1.0.33",
+    "versionCode": 10033,
+    "buildId": "android-1.0.33",
+    "required": false,
+    "releasedAt": "2026-09-23T02:20:00.000Z",
     "notes": [
-      "Fix: player stuck on the loading spinner — a partial/legacy persisted settings object could crash the auto-source resolver before it fell back to the regular servers",
-      "Fix: Addons screen failing to show/change the Torrentio/Comet/Meteor server settings for the same reason",
+      "Fix: several embed servers were confirmed dead and removed from rotation — healthy servers now lead, reducing black-screen-stuck-loading cases",
+      "Fix: /api/streams/providers no longer blocks ~15s on a cold server start",
       "Commit: cursor/transform-nexora-into-cinelog-7170"
     ],
     "apk": {
       "available": true,
       "provider": "github-releases",
       "source": "github",
-      "downloadUrl": "https://github.com/butsejens/nexora/releases/download/v1.0.32/cinelog-v1.0.32.apk",
-      "url": "https://github.com/butsejens/nexora/releases/download/v1.0.32/cinelog-v1.0.32.apk",
-      "fileName": "cinelog-v1.0.32.apk",
+      "downloadUrl": "https://github.com/butsejens/nexora/releases/download/v1.0.33/cinelog-v1.0.33.apk",
+      "url": "https://github.com/butsejens/nexora/releases/download/v1.0.33/cinelog-v1.0.33.apk",
+      "fileName": "cinelog-v1.0.33.apk",
       "contentType": "application/vnd.android.package-archive",
-      "fileSizeBytes": 99910424,
+      "fileSizeBytes": 99910492,
       "fileSizeLabel": "95 MB",
-      "versionName": "1.0.32",
-      "versionCode": 10032,
-      "buildId": "android-1.0.32",
-      "checksumSha256": "94fd37cd10b38f007aaa633e1ce0c178a349d1d360e823d581f6d39a8b7b316d",
+      "versionName": "1.0.33",
+      "versionCode": 10033,
+      "buildId": "android-1.0.33",
+      "checksumSha256": "ad7be5b43112cbba3209ea0ae52848a66e7babaf65d3d6fa75dddf1c7e64be3a",
       "signature": null,
-      "validatedAt": "2026-09-23T02:00:00.000Z",
+      "validatedAt": "2026-09-23T02:20:00.000Z",
       "unavailableReason": null,
       "fallbackMessage": "Download de nieuwste APK via de GitHub releases pagina als de download niet werkt."
     }
   },
   "ota": {
     "channel": "production",
-    "runtimeVersion": "1.0.32",
+    "runtimeVersion": "1.0.33",
     "strategy": "expo-updates",
-    "releasedAt": "2026-09-23T02:00:00.000Z"
+    "releasedAt": "2026-09-23T02:20:00.000Z"
   },
   "server": {
-    "version": "1.0.32",
-    "releasedAt": "2026-09-23T02:00:00.000Z",
-    "requiresAppUpdate": true,
-    "message": "This build fixes a bug that could leave Play stuck loading forever — please update."
+    "version": "1.0.33",
+    "releasedAt": "2026-09-23T02:20:00.000Z",
+    "requiresAppUpdate": false,
+    "message": "Server deploys are independent from OTA bundles and APK releases."
   },
   "endpoints": {
     "manifestUrl": null,
     "otaUrl": null,
     "nativeUrl": null,
-    "apkDownloadUrl": "https://github.com/butsejens/nexora/releases/download/v1.0.32/cinelog-v1.0.32.apk"
+    "apkDownloadUrl": "https://github.com/butsejens/nexora/releases/download/v1.0.33/cinelog-v1.0.33.apk"
   }
 }
