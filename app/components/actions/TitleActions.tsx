@@ -1198,6 +1198,10 @@ function StreamWebView({
 
           const blockExternalFrames = () => {
             const frames = Array.from(document.querySelectorAll('iframe'));
+            const playerFrame = frames.find((frame) => {
+              const src = (frame.getAttribute('src') || '').toLowerCase();
+              return /player|embed|video|stream/.test(src) && !isBlockedUrl(src);
+            }) || frames.find((frame) => !isBlockedUrl(frame.getAttribute('src') || ''));
             frames.forEach((frame) => {
               const src = (frame.getAttribute('src') || '').toLowerCase();
               if (src && isBlockedUrl(src)) {
@@ -1205,8 +1209,8 @@ function StreamWebView({
                 return;
               }
               if (frame.style) {
-                frame.style.pointerEvents = 'none';
-                frame.style.zIndex = '1';
+                frame.style.pointerEvents = frame === playerFrame ? 'auto' : 'none';
+                frame.style.zIndex = frame === playerFrame ? '2' : '1';
               }
             });
           };
@@ -1328,7 +1332,7 @@ function StreamWebView({
               video.setAttribute('disablePictureInPicture', 'true');
               video.style.objectFit = 'contain';
               video.style.background = '#000';
-              video.style.pointerEvents = 'none';
+              video.style.pointerEvents = 'auto';
               
               if (video.webkitSupportsPresentationMode) {
                 try { video.webkitSetPresentationMode('inline'); } catch (e) {}
