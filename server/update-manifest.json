@@ -1,44 +1,45 @@
 {
   "schemaVersion": 2,
   "native": {
-    "version": "1.0.30",
-    "versionCode": 10030,
-    "buildId": "android-1.0.30",
+    "version": "1.0.31",
+    "versionCode": 10031,
+    "buildId": "android-1.0.31",
     "required": false,
-    "releasedAt": "2026-09-23T01:20:00.000Z",
+    "releasedAt": "2026-09-23T01:40:00.000Z",
     "notes": [
-      "Fix: Sources button and resolve/switching banner now hide in lockstep with the native player controls instead of lingering on screen",
+      "Fix: true edge-to-edge playback — Android nav bar/gesture pill now hides along with the status bar during playback",
+      "Foldable support (Samsung Galaxy Z Fold and similar): fold/unfold no longer recreates the Activity or drops fullscreen playback",
       "Commit: cursor/transform-nexora-into-cinelog-7170"
     ],
     "apk": {
       "available": true,
       "provider": "github-releases",
       "source": "github",
-      "downloadUrl": "https://github.com/butsejens/nexora/releases/download/v1.0.30/cinelog-v1.0.30.apk",
-      "url": "https://github.com/butsejens/nexora/releases/download/v1.0.30/cinelog-v1.0.30.apk",
-      "fileName": "cinelog-v1.0.30.apk",
+      "downloadUrl": "https://github.com/butsejens/nexora/releases/download/v1.0.31/cinelog-v1.0.31.apk",
+      "url": "https://github.com/butsejens/nexora/releases/download/v1.0.31/cinelog-v1.0.31.apk",
+      "fileName": "cinelog-v1.0.31.apk",
       "contentType": "application/vnd.android.package-archive",
-      "fileSizeBytes": 99902004,
+      "fileSizeBytes": 99909992,
       "fileSizeLabel": "95 MB",
-      "versionName": "1.0.30",
-      "versionCode": 10030,
-      "buildId": "android-1.0.30",
-      "checksumSha256": "ee0eaecf89bd02738f55a58f65a7a07cbe4ac9771aebc3e69a173a7ccd624a40",
+      "versionName": "1.0.31",
+      "versionCode": 10031,
+      "buildId": "android-1.0.31",
+      "checksumSha256": "ae6a6519144788ff0af5b59e28b2cac2c1b2a6770b551e8f1e070a45b340dbdc",
       "signature": null,
-      "validatedAt": "2026-09-23T01:20:00.000Z",
+      "validatedAt": "2026-09-23T01:40:00.000Z",
       "unavailableReason": null,
       "fallbackMessage": "Download de nieuwste APK via de GitHub releases pagina als de download niet werkt."
     }
   },
   "ota": {
     "channel": "production",
-    "runtimeVersion": "1.0.30",
+    "runtimeVersion": "1.0.31",
     "strategy": "expo-updates",
-    "releasedAt": "2026-09-23T01:20:00.000Z"
+    "releasedAt": "2026-09-23T01:40:00.000Z"
   },
   "server": {
-    "version": "1.0.30",
-    "releasedAt": "2026-09-23T01:20:00.000Z",
+    "version": "1.0.31",
+    "releasedAt": "2026-09-23T01:40:00.000Z",
     "requiresAppUpdate": false,
     "message": "Server deploys are independent from OTA bundles and APK releases."
   },
@@ -46,6 +47,6 @@
     "manifestUrl": null,
     "otaUrl": null,
     "nativeUrl": null,
-    "apkDownloadUrl": "https://github.com/butsejens/nexora/releases/download/v1.0.30/cinelog-v1.0.30.apk"
+    "apkDownloadUrl": "https://github.com/butsejens/nexora/releases/download/v1.0.31/cinelog-v1.0.31.apk"
   }
 }
