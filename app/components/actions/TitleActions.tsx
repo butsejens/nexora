@@ -419,8 +419,8 @@ export function PlayButton({
 
   /** Resolves the best auto stream (if enabled) then starts playback from
    * index 0 of the combined [auto, ...legacy] list — no picker shown unless
-   * everything failed. Wrapped defensively so a bug in resolution never
-   * leaves the player stuck on the loading spinner. */
+   * everything failed. Wrapped defensively (try/catch + a hard timeout) so a
+   * hung network call can never leave the player stuck on the loading spinner. */
   const beginPlayback = useCallback(async () => {
     setVisible(true);
     setPickerVisible(false);
@@ -430,7 +430,12 @@ export function PlayButton({
 
     let resolved: ResolvedStreamOption[] = [];
     try {
-      resolved = await resolveBestStreams();
+      resolved = await Promise.race([
+        resolveBestStreams(),
+        new Promise<ResolvedStreamOption[]>((resolve) =>
+          setTimeout(() => resolve([]), 8000),
+        ),
+      ]);
     } catch {
       resolved = [];
     }
@@ -500,12 +505,14 @@ export function PlayButton({
 
   // Give a stream a short window to actually start; if it never fires
   // `onLoad`, treat it like a playback failure and move on automatically.
+  // Kept short since dead embed servers otherwise waste ~15s each before the
+  // next one is even tried — with up to 13 fallbacks that adds up fast.
   useEffect(() => {
     if (!visible || !activeUrl) return;
     clearStartTimeout();
     startTimeoutRef.current = setTimeout(() => {
       handleStreamFail();
-    }, 15000);
+    }, 9000);
     return clearStartTimeout;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeUrl, visible]);
@@ -752,6 +759,8 @@ function StreamWebView({
   const volumeBoostIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const volumeRafRef = useRef<number | null>(null);
   const pendingVolumeRef = useRef<number | null>(null);
+  const playbackStartedRef = useRef(false);
+  const playbackWatchdogRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [controlsVisible, setControlsVisible] = useState(true);
   const [durationSeconds, setDurationSeconds] = useState(0);
   const [positionSeconds, setPositionSeconds] = useState(0);
@@ -1105,6 +1114,14 @@ function StreamWebView({
       // Keep lock empty when URL parsing fails.
     }
     onLoad();
+    // The page finishing its own load doesn't mean a video actually started —
+    // many dead/blocked embeds just show their own infinite spinner. Fail over
+    // to the next provider if we never hear a real PLAYBACK_SYNC from it.
+    playbackStartedRef.current = false;
+    if (playbackWatchdogRef.current) clearTimeout(playbackWatchdogRef.current);
+    playbackWatchdogRef.current = setTimeout(() => {
+      if (!playbackStartedRef.current) onFail();
+    }, 10000);
     setVolume(1);
     setIsMuted(false);
     applyVolume(1, false);
@@ -1125,7 +1142,13 @@ function StreamWebView({
       applyVolume(1, false);
     }, 200);
     setTimeout(requestTrackSync, 900);
-  }, [applyVolume, onLoad, requestTrackSync, url]);
+  }, [applyVolume, onFail, onLoad, requestTrackSync, url]);
+
+  useEffect(() => {
+    return () => {
+      if (playbackWatchdogRef.current) clearTimeout(playbackWatchdogRef.current);
+    };
+  }, []);
 
   useEffect(() => {
     return () => {
@@ -1523,6 +1546,11 @@ function StreamWebView({
               return;
             }
             if (payload.type === "PLAYBACK_SYNC") {
+              playbackStartedRef.current = true;
+              if (playbackWatchdogRef.current) {
+                clearTimeout(playbackWatchdogRef.current);
+                playbackWatchdogRef.current = null;
+              }
               const nextCurrent = Number(payload.currentTime || 0);
               const nextDuration = Number(payload.duration || 0);
               setPositionSeconds(nextCurrent);
