@@ -26,6 +26,12 @@ const log = createLogger("stream-health");
 // ─── Provider Registry ────────────────────────────────────────────────────────
 // Each provider has: id, label, movieUrl(tmdbId), tvUrl(tmdbId, s, e)
 // This is the single source of truth; the app reads from the API endpoint.
+//
+// Ordered by the live /api/streams/health snapshot taken 2026-09-23: verified
+// healthy providers lead the active rotation so the app's first try succeeds
+// instead of burning through dead ones first. Providers that resolved to
+// ENOTFOUND (the domain is genuinely gone, not just temporarily down) were
+// removed outright rather than kept in rotation to fail forever.
 
 function defineProvider(id, label, movieTpl, tvTpl) {
   return {
@@ -38,7 +44,7 @@ function defineProvider(id, label, movieTpl, tvTpl) {
 }
 
 const ALL_PROVIDERS = [
-  // ── Tier 1: Tested clean players (ex-Server 2–9) ──
+  // ── Verified healthy 2026-09-23 — always tried first ──
   defineProvider(
     "vidlinkpro",
     "Server 1",
@@ -46,10 +52,10 @@ const ALL_PROVIDERS = [
     "https://vidlink.pro/tv/{id}/{s}/{e}",
   ),
   defineProvider(
-    "vidfast",
+    "vidsrcme",
     "Server 2",
-    "https://vidfast.pro/movie/{id}",
-    "https://vidfast.pro/tv/{id}/{s}/{e}",
+    "https://vidsrc.me/embed/movie?tmdb={id}",
+    "https://vidsrc.me/embed/tv?tmdb={id}&season={s}&episode={e}",
   ),
   defineProvider(
     "videasy",
@@ -58,124 +64,95 @@ const ALL_PROVIDERS = [
     "https://player.videasy.net/tv/{id}/{s}/{e}",
   ),
   defineProvider(
-    "vidsrcnl",
+    "rive",
     "Server 4",
+    "https://rivestream.live/embed?type=movie&id={id}",
+    "https://rivestream.live/embed?type=tv&id={id}&season={s}&episode={e}",
+  ),
+  defineProvider(
+    "111movies",
+    "Server 5",
+    "https://111movies.net/movie/{id}",
+    "https://111movies.net/tv/{id}/{s}/{e}",
+  ),
+  // ── Intermittent 2026-09-23 (cert/timeout/404 — worth retrying) ──
+  defineProvider(
+    "vidsrcnl",
+    "Server 6",
     "https://player.vidsrc.nl/embed/movie/{id}",
     "https://player.vidsrc.nl/embed/tv/{id}/{s}/{e}",
   ),
   defineProvider(
     "warezcdn",
-    "Server 5",
+    "Server 7",
     "https://warezcdn.com/embed/movie/{id}",
     "https://warezcdn.com/embed/tv/{id}/{s}/{e}",
   ),
   defineProvider(
     "flicky",
-    "Server 6",
+    "Server 8",
     "https://flicky.host/embed/movie/?id={id}",
     "https://flicky.host/embed/tv/?id={id}&s={s}&e={e}",
   ),
   defineProvider(
-    "moviesapi",
-    "Server 7",
-    "https://moviesapi.club/movie/{id}",
-    "https://moviesapi.club/tv/{id}-{s}-{e}",
-  ),
-  defineProvider(
-    "flickystream",
-    "Server 8",
-    "https://flickystream.ru/movie/{id}",
-    "https://flickystream.ru/tv/{id}/{s}/{e}",
-  ),
-  // ── Tier 2: Additional reliable providers (added 2026-04-13) ──
-  defineProvider(
-    "autoembed",
-    "Server 9",
-    "https://autoembed.cc/movie/tmdb-{id}",
-    "https://autoembed.cc/tv/tmdb-{id}/{s}/{e}",
-  ),
-  defineProvider(
-    "embedsu",
-    "Server 10",
-    "https://embed.su/embed/movie/{id}",
-    "https://embed.su/embed/tv/{id}/{s}/{e}",
-  ),
-  defineProvider(
-    "111movies",
-    "Server 11",
-    "https://111movies.net/movie/{id}",
-    "https://111movies.net/tv/{id}/{s}/{e}",
-  ),
-  defineProvider(
-    "vidsrcstream",
-    "Server 12",
-    "https://vidsrc.stream/embed/movie/{id}",
-    "https://vidsrc.stream/embed/tv/{id}/{s}/{e}",
-  ),
-  defineProvider(
     "2embedorg",
-    "Server 13",
+    "Server 9",
     "https://www.2embed.org/embed/movie?id={id}",
     "https://www.2embed.org/embed/tv?id={id}&s={s}&e={e}",
   ),
-  // ── Reserve pool: tested alternate providers ──
-  defineProvider(
-    "vidsrcme",
-    "Reserve-1",
-    "https://vidsrc.me/embed/movie?tmdb={id}",
-    "https://vidsrc.me/embed/tv?tmdb={id}&season={s}&episode={e}",
-  ),
+  // ── Untested reserves, promoted to active to fill out the rotation ──
   defineProvider(
     "vidsrcxyz",
-    "Reserve-2",
+    "Server 10",
     "https://vidsrc.xyz/embed/movie/{id}",
     "https://vidsrc.xyz/embed/tv/{id}/{s}/{e}",
   ),
   defineProvider(
     "multiembed",
-    "Reserve-3",
+    "Server 11",
     "https://multiembed.mov/?video_id={id}&tmdb=1",
     "https://multiembed.mov/?video_id={id}&tmdb=1&s={s}&e={e}",
   ),
   defineProvider(
     "nontongo",
-    "Reserve-4",
+    "Server 12",
     "https://www.nontongo.win/embed/movie/{id}",
     "https://www.nontongo.win/embed/tv/{id}/{s}/{e}",
   ),
   defineProvider(
     "smashystream",
-    "Reserve-5",
+    "Server 13",
     "https://embed.smashystream.com/playere.php?tmdb={id}",
     "https://embed.smashystream.com/playere.php?tmdb={id}&season={s}&episode={e}",
   ),
+  // ── Reserve pool ──
   defineProvider(
     "premiumize",
-    "Reserve-6",
+    "Reserve-1",
     "https://www.premiumize.me/embed/movie/{id}",
     "https://www.premiumize.me/embed/tv/{id}/{s}/{e}",
   ),
   defineProvider(
     "embedcc",
-    "Reserve-7",
+    "Reserve-2",
     "https://www.2embed.cc/embed/{id}",
     "https://www.2embed.cc/embedtv/{id}&s={s}&e={e}",
   ),
   defineProvider(
-    "moviesapi2",
-    "Reserve-8",
+    "vidfast",
+    "Reserve-3",
+    "https://vidfast.pro/movie/{id}",
+    "https://vidfast.pro/tv/{id}/{s}/{e}",
+  ),
+  defineProvider(
+    "moviesapi",
+    "Reserve-4",
     "https://moviesapi.club/movie/{id}",
     "https://moviesapi.club/tv/{id}-{s}-{e}",
   ),
   defineProvider(
-    "rive",
-    "Reserve-9",
-    "https://rivestream.live/embed?type=movie&id={id}",
-    "https://rivestream.live/embed?type=tv&id={id}&season={s}&episode={e}",
-  ),
-  defineProvider(
     "superembed",
-    "Reserve-10",
+    "Reserve-5",
     "https://superembed.stream/movie/{id}",
     "https://superembed.stream/tv/{id}/{s}/{e}",
   ),
@@ -425,8 +402,12 @@ export const router = Router();
  * The app calls this on startup (or periodically) to get the latest working servers.
  */
 router.get("/providers", async (_req, res) => {
-  if (!lastHealthReport || !lastCheckAt) {
-    await runHealthCheck().catch(() => undefined);
+  // Never block this request on a health check (a cold-start cycle takes
+  // ~15s testing every provider) — serve the current best-known order
+  // immediately and let the background schedule (or a prior /check call)
+  // refresh it for next time.
+  if (!lastHealthReport && !checkRunning) {
+    void runHealthCheck().catch(() => undefined);
   }
 
   // Known-broken servers (per the last health check) are pushed to the end so

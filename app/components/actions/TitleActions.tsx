@@ -181,20 +181,23 @@ function applyTemplate(
     .replaceAll("{e}", String(episodeNumber));
 }
 
+// Offline fallback only (used when /api/streams/providers is unreachable) —
+// ordered to match the server's health-verified priority (see
+// server/modules/stream-health.js). Confirmed-dead domains were dropped.
 const STREAM_PROVIDERS: StreamProvider[] = [
   { id: "vidlinkpro", label: "Server 1", movieUrl: (id) => `https://vidlink.pro/movie/${id}`, tvUrl: (id, s, e) => `https://vidlink.pro/tv/${id}/${s}/${e}` },
-  { id: "vidfast", label: "Server 2", movieUrl: (id) => `https://vidfast.pro/movie/${id}`, tvUrl: (id, s, e) => `https://vidfast.pro/tv/${id}/${s}/${e}` },
+  { id: "vidsrcme", label: "Server 2", movieUrl: (id) => `https://vidsrc.me/embed/movie?tmdb=${id}`, tvUrl: (id, s, e) => `https://vidsrc.me/embed/tv?tmdb=${id}&season=${s}&episode=${e}` },
   { id: "videasy", label: "Server 3", movieUrl: (id) => `https://player.videasy.net/movie/${id}`, tvUrl: (id, s, e) => `https://player.videasy.net/tv/${id}/${s}/${e}` },
-  { id: "vidsrcnl", label: "Server 4", movieUrl: (id) => `https://player.vidsrc.nl/embed/movie/${id}`, tvUrl: (id, s, e) => `https://player.vidsrc.nl/embed/tv/${id}/${s}/${e}` },
-  { id: "warezcdn", label: "Server 5", movieUrl: (id) => `https://warezcdn.com/embed/movie/${id}`, tvUrl: (id, s, e) => `https://warezcdn.com/embed/tv/${id}/${s}/${e}` },
-  { id: "flicky", label: "Server 6", movieUrl: (id) => `https://flicky.host/embed/movie/?id=${id}`, tvUrl: (id, s, e) => `https://flicky.host/embed/tv/?id=${id}&s=${s}&e=${e}` },
-  { id: "moviesapi", label: "Server 7", movieUrl: (id) => `https://moviesapi.club/movie/${id}`, tvUrl: (id, s, e) => `https://moviesapi.club/tv/${id}-${s}-${e}` },
-  { id: "flickystream", label: "Server 8", movieUrl: (id) => `https://flickystream.ru/movie/${id}`, tvUrl: (id, s, e) => `https://flickystream.ru/tv/${id}/${s}/${e}` },
-  { id: "autoembed", label: "Server 9", movieUrl: (id) => `https://autoembed.cc/movie/tmdb-${id}`, tvUrl: (id, s, e) => `https://autoembed.cc/tv/tmdb-${id}/${s}/${e}` },
-  { id: "embedsu", label: "Server 10", movieUrl: (id) => `https://embed.su/embed/movie/${id}`, tvUrl: (id, s, e) => `https://embed.su/embed/tv/${id}/${s}/${e}` },
-  { id: "111movies", label: "Server 11", movieUrl: (id) => `https://111movies.net/movie/${id}`, tvUrl: (id, s, e) => `https://111movies.net/tv/${id}/${s}/${e}` },
-  { id: "vidsrcstream", label: "Server 12", movieUrl: (id) => `https://vidsrc.stream/embed/movie/${id}`, tvUrl: (id, s, e) => `https://vidsrc.stream/embed/tv/${id}/${s}/${e}` },
-  { id: "2embedorg", label: "Server 13", movieUrl: (id) => `https://www.2embed.org/embed/movie?id=${id}`, tvUrl: (id, s, e) => `https://www.2embed.org/embed/tv?id=${id}&s=${s}&e=${e}` },
+  { id: "rive", label: "Server 4", movieUrl: (id) => `https://rivestream.live/embed?type=movie&id=${id}`, tvUrl: (id, s, e) => `https://rivestream.live/embed?type=tv&id=${id}&season=${s}&episode=${e}` },
+  { id: "111movies", label: "Server 5", movieUrl: (id) => `https://111movies.net/movie/${id}`, tvUrl: (id, s, e) => `https://111movies.net/tv/${id}/${s}/${e}` },
+  { id: "vidsrcnl", label: "Server 6", movieUrl: (id) => `https://player.vidsrc.nl/embed/movie/${id}`, tvUrl: (id, s, e) => `https://player.vidsrc.nl/embed/tv/${id}/${s}/${e}` },
+  { id: "warezcdn", label: "Server 7", movieUrl: (id) => `https://warezcdn.com/embed/movie/${id}`, tvUrl: (id, s, e) => `https://warezcdn.com/embed/tv/${id}/${s}/${e}` },
+  { id: "flicky", label: "Server 8", movieUrl: (id) => `https://flicky.host/embed/movie/?id=${id}`, tvUrl: (id, s, e) => `https://flicky.host/embed/tv/?id=${id}&s=${s}&e=${e}` },
+  { id: "2embedorg", label: "Server 9", movieUrl: (id) => `https://www.2embed.org/embed/movie?id=${id}`, tvUrl: (id, s, e) => `https://www.2embed.org/embed/tv?id=${id}&s=${s}&e=${e}` },
+  { id: "vidsrcxyz", label: "Server 10", movieUrl: (id) => `https://vidsrc.xyz/embed/movie/${id}`, tvUrl: (id, s, e) => `https://vidsrc.xyz/embed/tv/${id}/${s}/${e}` },
+  { id: "multiembed", label: "Server 11", movieUrl: (id) => `https://multiembed.mov/?video_id=${id}&tmdb=1`, tvUrl: (id, s, e) => `https://multiembed.mov/?video_id=${id}&tmdb=1&s=${s}&e=${e}` },
+  { id: "nontongo", label: "Server 12", movieUrl: (id) => `https://www.nontongo.win/embed/movie/${id}`, tvUrl: (id, s, e) => `https://www.nontongo.win/embed/tv/${id}/${s}/${e}` },
+  { id: "smashystream", label: "Server 13", movieUrl: (id) => `https://embed.smashystream.com/playere.php?tmdb=${id}`, tvUrl: (id, s, e) => `https://embed.smashystream.com/playere.php?tmdb=${id}&season=${s}&episode=${e}` },
 ];
 
 /** Labels-only view of the legacy embed servers, for display in the Addons screen. */

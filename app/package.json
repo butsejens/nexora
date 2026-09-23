@@ -1,7 +1,7 @@
 {
   "name": "cinelog-app",
   "main": "expo-router/entry",
-  "version": "1.0.32",
+  "version": "1.0.33",
   "scripts": {
     "postinstall": "patch-package || true",
     "brand:assets": "node scripts/build-brand-assets.mjs",
