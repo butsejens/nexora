@@ -1,5 +1,5 @@
 import React, { useMemo } from "react";
-import { Text, View } from "react-native";
+import { Platform, StatusBar, Text, View } from "react-native";
 import { Image } from "expo-image";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
@@ -27,7 +27,6 @@ import {
 } from "@/store/library-store";
 import { Pressable } from "@/components/ui/Pressable";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { Platform, StatusBar } from "react-native";
 
 export default function ProfileScreen() {
   const t = useT();

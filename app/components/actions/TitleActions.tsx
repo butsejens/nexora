@@ -673,7 +673,45 @@ function formatSeconds(totalSeconds: number): string {
   return `${minutes}:${String(seconds).padStart(2, "0")}`;
 }
 
-function StreamWebView({
+// On web builds prefer a plain iframe instead of the native WebView wrapper.
+// Split into two components so neither calls hooks conditionally.
+function StreamWebView(props: StreamWebViewProps) {
+  if (Platform.OS === "web") {
+    return <WebStreamFrame url={props.url} onLoad={props.onLoad} onFail={props.onFail} />;
+  }
+  return <NativeStreamWebView {...props} />;
+}
+
+function WebStreamFrame({
+  url,
+  onLoad,
+  onFail,
+}: Pick<StreamWebViewProps, "url" | "onLoad" | "onFail">) {
+  return React.createElement("iframe", {
+    src: url,
+    title: `CineLog player`,
+    allow: "autoplay; encrypted-media; picture-in-picture; fullscreen",
+    allowFullScreen: true,
+    // Deliberately omits allow-popups/allow-top-navigation so third-party
+    // embed ads can't open popup tabs or hijack the top-level window.
+    sandbox:
+      "allow-scripts allow-same-origin allow-forms allow-presentation allow-orientation-lock",
+    referrerPolicy: "no-referrer",
+    style: { width: "100%", height: "100%", border: 0, background: "#000" },
+    onLoad: () => {
+      try {
+        onLoad();
+      } catch {}
+    },
+    onError: () => {
+      try {
+        onFail();
+      } catch {}
+    },
+  });
+}
+
+function NativeStreamWebView({
   url,
   onFail,
   onLoad,
@@ -687,31 +725,6 @@ function StreamWebView({
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const webViewRef = useRef<WebView>(null);
-  // On web builds prefer a plain iframe instead of the native WebView wrapper.
-  if (Platform.OS === "web") {
-    return React.createElement("iframe", {
-      src: url,
-      title: `CineLog player`,
-      allow: "autoplay; encrypted-media; picture-in-picture; fullscreen",
-      allowFullScreen: true,
-      // Deliberately omits allow-popups/allow-top-navigation so third-party
-      // embed ads can't open popup tabs or hijack the top-level window.
-      sandbox:
-        "allow-scripts allow-same-origin allow-forms allow-presentation allow-orientation-lock",
-      referrerPolicy: "no-referrer",
-      style: { width: "100%", height: "100%", border: 0, background: "#000" },
-      onLoad: () => {
-        try {
-          onLoad();
-        } catch {}
-      },
-      onError: () => {
-        try {
-          onFail();
-        } catch {}
-      },
-    });
-  }
   const topHostLockRef = useRef("");
   const autoHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const volumeBoostIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);

@@ -6,14 +6,14 @@
  */
 
 import React from "react";
-import { Platform, Pressable, StyleSheet, Text, useWindowDimensions, View } from "react-native";
+import { Pressable, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 import { BlurView } from "expo-blur";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useT } from "@/i18n";
 import { NAV_ITEMS } from "@/components/navigation/navItems";
-import { FONTS, LAYOUT, RADIUS, SPACING } from "@/constants/theme";
+import { FONTS, LAYOUT, SPACING } from "@/constants/theme";
 import { makeStyles, useTheme } from "@/theme";
 
 export interface BottomNavigationProps {
