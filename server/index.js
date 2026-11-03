@@ -27,6 +27,7 @@ import { log as serverLog, createLogger } from "./shared/logger.js";
 import { requestTracer, globalErrorHandler } from "./shared/tracer.js";
 import { initRedis } from "./shared/cache.js";
 import { startWorker } from "./shared/queue.js";
+import { buildCorsOptions } from "./shared/cors-policy.js";
 
 // ─── New modular route handlers ───────────────────────────────────────────────
 // These clean routers mount at /api/media, /api/updates, and root.
@@ -148,22 +149,17 @@ const apiLimiter = rateLimit({
 });
 app.use("/api", apiLimiter);
 
-// CORS: allow all in development, restrict to configured domain in production
-const allowedOrigin = process.env.ALLOWED_ORIGIN;
+// CORS: allow all in development; production requires ALLOWED_ORIGIN
 app.use(
   cors(
-    allowedOrigin
-      ? {
-          origin: (origin, cb) => {
-            if (!origin || origin === allowedOrigin) cb(null, true);
-            else cb(new Error("CORS not allowed"), false);
-          },
-          credentials: true,
-        }
-      : undefined,
+    buildCorsOptions({
+      allowedOrigin: process.env.ALLOWED_ORIGIN,
+      nodeEnv: process.env.NODE_ENV,
+    }),
   ),
 );
-app.use(express.json({ limit: "10mb" }));
+// Bodies are small JSON (URLs, ids, session pings); 1 MB leaves ample headroom.
+app.use(express.json({ limit: "1mb" }));
 
 // ─── Response timeout ─────────────────────────────────────────────────────────
 // Ensures no request hangs longer than 45s — returns a timeout error to the client.

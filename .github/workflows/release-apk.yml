@@ -56,7 +56,22 @@ jobs:
       - name: Validate release env
         run: node scripts/release/validate-release-env.mjs release apk
 
+      - name: Decode release keystore
+        env:
+          RELEASE_KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
+        run: |
+          if [ -n "$RELEASE_KEYSTORE_BASE64" ]; then
+            echo "$RELEASE_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/release.keystore"
+            echo "RELEASE_STORE_FILE=$RUNNER_TEMP/release.keystore" >> "$GITHUB_ENV"
+          fi
+
       - name: Build release APK
+        env:
+          RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
+          RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+          RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
+          # Temporary escape hatch while existing installs are moved to the release key.
+          ALLOW_DEBUG_SIGNED_RELEASE: ${{ vars.ALLOW_DEBUG_SIGNED_RELEASE }}
         run: |
           chmod +x android/gradlew
           cd android

@@ -99,6 +99,27 @@ def enableMinifyInReleaseBuilds = (findProperty('android.enableMinifyInReleaseBu
  */
 def jscFlavor = 'io.github.react-native-community:jsc-android:2026004.+'
 
+def releaseStoreFile = findProperty('RELEASE_STORE_FILE') ?: System.getenv('RELEASE_STORE_FILE')
+def releaseStorePassword = findProperty('RELEASE_STORE_PASSWORD') ?: System.getenv('RELEASE_STORE_PASSWORD')
+def releaseKeyAlias = findProperty('RELEASE_KEY_ALIAS') ?: System.getenv('RELEASE_KEY_ALIAS')
+def releaseKeyPassword = findProperty('RELEASE_KEY_PASSWORD') ?: System.getenv('RELEASE_KEY_PASSWORD')
+def releaseSigningReady = releaseStoreFile && releaseStorePassword && releaseKeyAlias && releaseKeyPassword
+def allowDebugSignedRelease = (findProperty('ALLOW_DEBUG_SIGNED_RELEASE') ?: System.getenv('ALLOW_DEBUG_SIGNED_RELEASE')) == 'true'
+
+// Fail release builds loudly instead of silently signing them with the public debug key.
+gradle.taskGraph.whenReady { graph ->
+    def buildsRelease = graph.allTasks.any { task ->
+        task.project == project && task.name ==~ /(assemble|bundle|package|install)Release/
+    }
+    if (buildsRelease && !releaseSigningReady && !allowDebugSignedRelease) {
+        throw new GradleException(
+            "Release signing is not configured. Set RELEASE_STORE_FILE, RELEASE_STORE_PASSWORD, " +
+            "RELEASE_KEY_ALIAS and RELEASE_KEY_PASSWORD, or set ALLOW_DEBUG_SIGNED_RELEASE=true " +
+            "to knowingly sign with the public debug keystore."
+        )
+    }
+}
+
 android {
     ndkVersion = rootProject.ext.ndkVersion
 
@@ -127,17 +148,13 @@ android {
             keyPassword 'android'
         }
         release {
-            def releaseStoreFile = findProperty('RELEASE_STORE_FILE') ?: System.getenv('RELEASE_STORE_FILE')
-            def releaseStorePassword = findProperty('RELEASE_STORE_PASSWORD') ?: System.getenv('RELEASE_STORE_PASSWORD')
-            def releaseKeyAlias = findProperty('RELEASE_KEY_ALIAS') ?: System.getenv('RELEASE_KEY_ALIAS')
-            def releaseKeyPassword = findProperty('RELEASE_KEY_PASSWORD') ?: System.getenv('RELEASE_KEY_PASSWORD')
-
-            if (releaseStoreFile && releaseStorePassword && releaseKeyAlias && releaseKeyPassword) {
+            if (releaseSigningReady) {
                 storeFile file(releaseStoreFile)
                 storePassword releaseStorePassword
                 keyAlias releaseKeyAlias
                 keyPassword releaseKeyPassword
-            } else {
+            } else if (allowDebugSignedRelease) {
+                // Explicit opt-in only: debug.keystore is public in this repo.
                 storeFile file('debug.keystore')
                 storePassword 'android'
                 keyAlias 'androiddebugkey'
