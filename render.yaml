@@ -20,6 +20,9 @@ services:
         value: Europe/Brussels
       - key: PORT
         value: 10000
+      # Required in production: comma-separated web origins (e.g. https://cinelog.app)
+      - key: ALLOWED_ORIGIN
+        sync: false
 
       # ── Media ─────────────────────────────────────────────────────────────
       - key: TMDB_API_KEY
